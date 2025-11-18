@@ -9,6 +9,7 @@
     "job-finder-FE"
   ],
   "scripts": {
+    "prepare": "husky install",
     "lint": "npm run --workspaces lint",
     "lint:server": "npm run lint --workspace job-finder-BE/server",
     "lint:functions": "npm run lint --workspace job-finder-BE/functions",
@@ -18,5 +19,9 @@
     "build:server": "npm run build --workspace job-finder-BE/server",
     "build:functions": "npm run build --workspace job-finder-BE/functions",
     "build:frontend": "npm run build --workspace job-finder-FE"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.6"
   }
 }
