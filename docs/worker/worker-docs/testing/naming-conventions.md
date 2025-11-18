@@ -285,6 +285,8 @@ tests/
 
 ### Pre-commit Hook
 
+> **Note:** The legacy `.githooks` directory from the standalone worker repo has been removed. Use the repo-root Husky hooks (`npm install && npx husky install`) to wire up any additional checks. The example below is preserved in case you want to add a custom hook manually.
+
 Add a pre-commit hook to validate test naming:
 
 ```bash

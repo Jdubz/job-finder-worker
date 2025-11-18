@@ -51,3 +51,7 @@ npx husky install
 - Finish migrating the worker + frontend to the new Node server / SQLite backend
 - Remove remaining Firebase dependencies once parity is achieved
 - Flesh out CI so the root `build` job runs workspace builds + tests
+
+## Security
+
+Please review `SECURITY.md` for responsible disclosure guidelines and expectations around scraping credentials, dependency upgrades, and reporting timelines.
