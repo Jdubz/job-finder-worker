@@ -1,0 +1,22 @@
+{
+  "name": "job-finder-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "shared",
+    "job-finder-BE/functions",
+    "job-finder-BE/server",
+    "job-finder-FE"
+  ],
+  "scripts": {
+    "lint": "npm run --workspaces lint",
+    "lint:server": "npm run lint --workspace job-finder-BE/server",
+    "lint:functions": "npm run lint --workspace job-finder-BE/functions",
+    "lint:frontend": "npm run lint --workspace job-finder-FE",
+    "typecheck": "npm run --workspaces type-check || true",
+    "build": "npm run build --workspace job-finder-BE/server && npm run build --workspace job-finder-FE",
+    "build:server": "npm run build --workspace job-finder-BE/server",
+    "build:functions": "npm run build --workspace job-finder-BE/functions",
+    "build:frontend": "npm run build --workspace job-finder-FE"
+  }
+}
