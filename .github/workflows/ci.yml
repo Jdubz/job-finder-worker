@@ -1,0 +1,86 @@
+name: Monorepo CI
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-docs:
+    name: Docs Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run docs:audit
+
+  lint-web:
+    name: Node Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint:server
+      - run: npm run lint:functions
+      - run: npm run lint:frontend
+
+  build:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build:shared
+      - run: npm run build:server
+      - run: npm run build:functions
+      - run: npm run build:frontend
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:unit --workspace job-finder-FE
+      - run: npm run test:integration --workspace job-finder-FE
+
+  worker-tests:
+    name: Worker Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        working-directory: job-finder-worker
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-test.txt
+      - name: Run pytest subset
+        working-directory: job-finder-worker
+        env:
+          JF_SQLITE_DB_PATH: ${{ github.workspace }}/infra/sqlite/jobfinder.db
+        run: make test-ci
