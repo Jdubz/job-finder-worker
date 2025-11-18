@@ -234,8 +234,8 @@ git push && git push --tags
 ## Repository Links
 
 - **Manager:** https://github.com/Jdubz/job-finder-app-manager
-- **Shared Types:** https://github.com/Jdubz/job-finder-shared-types
-- **NPM Package:** https://www.npmjs.com/package/@shared/types
+- **Shared Types:** `/shared` directory inside the job-finder monorepo
+- **Distribution:** Imported via the `@shared/types` alias (no npm package)
 
 ## Next Steps
 

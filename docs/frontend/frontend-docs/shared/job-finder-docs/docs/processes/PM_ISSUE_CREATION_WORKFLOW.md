@@ -728,7 +728,7 @@ PM maintains the manager repo issue with:
    - How to use shared-types v1.3.0+
    - Complete code examples
    - Test requirements
-   - **Dependency**: "Requires @shared/types@1.3.0+"
+   - **Dependency**: "Requires @shared/types (monorepo root)"
 
 4. **Create FE issue** (complete standalone):
    - Full project context
@@ -736,7 +736,7 @@ PM maintains the manager repo issue with:
    - How to use shared-types v1.3.0+
    - Complete code examples
    - UI mockups
-   - **Dependency**: "Requires @shared/types@1.3.0+"
+   - **Dependency**: "Requires @shared/types (monorepo root)"
 
 5. **Update task files**:
    - `PROJECT_TASK_LIST.md`: Add all three items
