@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # Grant Deploy Permissions for Cloud Functions
 
 ## Issue (RESOLVED)

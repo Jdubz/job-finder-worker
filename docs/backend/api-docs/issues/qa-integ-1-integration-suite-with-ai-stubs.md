@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # QA-INTEG-1 — Integration Test Suite with AI Stubs
 
 - **Status**: Todo

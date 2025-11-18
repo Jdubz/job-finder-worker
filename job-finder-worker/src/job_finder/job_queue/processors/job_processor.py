@@ -4,7 +4,7 @@ This processor handles all job-related queue items and pipeline stages:
 - Job scraping (extracting data from job URLs)
 - Job filtering (strike-based rule engine)
 - Job analysis (AI matching and resume intake generation)
-- Job saving (persist to Firestore job-matches collection)
+- Job saving (persist to the job_matches table)
 
 It supports both:
 1. Decision tree routing (recommended) - auto-detects next stage from pipeline_state
@@ -14,8 +14,6 @@ It supports both:
 import logging
 import traceback
 from typing import Any, Dict, Optional
-
-from google.cloud import firestore as gcloud_firestore
 
 from job_finder.exceptions import QueueProcessingError
 from job_finder.job_queue.models import (
@@ -299,7 +297,7 @@ class JobProcessor(BaseProcessor):
 
     def _do_job_save(self, item: JobQueueItem) -> None:
         """
-        Save job match to Firestore.
+        Save job match to SQLite.
 
         Final step - marks item as SUCCESS, no re-spawning.
         """
@@ -364,17 +362,8 @@ class JobProcessor(BaseProcessor):
             return
 
         # Update the same item with new state and mark as pending for re-processing
-        update_data = {
-            "pipeline_state": updated_state,
-            "pipeline_stage": next_stage,
-            "status": QueueStatus.PENDING.value,  # Requeue for processing
-            "updated_at": gcloud_firestore.SERVER_TIMESTAMP,
-        }
-
         try:
-            doc_ref = self.queue_manager.db.collection("job-queue").document(current_item.id)
-            doc_ref.update(update_data)
-
+            self.queue_manager.requeue_with_state(current_item.id, updated_state, next_stage)
             logger.info(
                 f"Requeued item {current_item.id} for {next_stage}: {current_item.url[:50]}"
             )
@@ -647,7 +636,7 @@ class JobProcessor(BaseProcessor):
 
     def process_job_save(self, item: JobQueueItem) -> None:
         """
-        JOB_SAVE: Save job match to Firestore.
+        JOB_SAVE: Save job match to SQLite.
 
         Final step - no further spawning.
 

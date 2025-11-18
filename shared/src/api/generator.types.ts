@@ -9,7 +9,7 @@
  */
 
 import type { ApiResponse } from "../api.types"
-import type { GenerationType, AIProviderType, ResumeContent, CoverLetterContent, TokenUsage } from "../generator.types"
+import type { TokenUsage, GeneratorDocumentRecord } from "../generator.types"
 
 /**
  * Generate Resume Request
@@ -204,3 +204,25 @@ export type GetGenerationStatusApi = (
 export type RegenerateDocumentApi = (
   request: RegenerateDocumentRequest
 ) => Promise<ApiResponse<RegenerateDocumentResponse>>
+
+/**
+ * Generator document storage APIs (admin)
+ */
+export interface ListGeneratorDocumentsResponse {
+  documents: GeneratorDocumentRecord[]
+  count: number
+}
+
+export interface GetGeneratorDocumentResponse {
+  document: GeneratorDocumentRecord
+}
+
+export interface UpsertGeneratorDocumentRequest {
+  id: string
+  documentType: string
+  payload: Record<string, unknown>
+}
+
+export interface UpsertGeneratorDocumentResponse {
+  document: GeneratorDocumentRecord
+}

@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # Function Migration Guide
 
 This document outlines the process for migrating remaining functions from the portfolio repository to job-finder-BE.

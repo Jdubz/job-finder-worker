@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # PHASE-6-1 — Deploy to Staging Environment
 
 > **Context**: See [README.md](../../README.md) for deployment instructions and [BACKEND_MIGRATION_PLAN.md](../../../docs/architecture/BACKEND_MIGRATION_PLAN.md) for deployment strategy

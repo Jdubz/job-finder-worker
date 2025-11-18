@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # MIG-2 — Generator & Content Services Port
 
 - **Status**: ✅ COMPLETED 2025-10-20 (commit 8c14187)

@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # Production Deployment Fix - Artifact Registry Permissions
 
 **Date**: 2025-10-21

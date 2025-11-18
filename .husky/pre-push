@@ -1,4 +1,4 @@
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
+#!/usr/bin/env sh
+set -e
 
-npm run build:server && npm run build:frontend
+npm run tests:staged

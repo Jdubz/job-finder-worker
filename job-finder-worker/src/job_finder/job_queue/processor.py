@@ -38,7 +38,7 @@ from job_finder.job_queue.processors import (
 )
 from job_finder.job_queue.scraper_intake import ScraperIntake  # For test compatibility
 from job_finder.scrape_runner import ScrapeRunner  # For test compatibility
-from job_finder.storage import FirestoreJobStorage
+from job_finder.storage import JobStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
@@ -56,7 +56,7 @@ class QueueItemProcessor:
         self,
         queue_manager: QueueManager,
         config_loader: ConfigLoader,
-        job_storage: FirestoreJobStorage,
+        job_storage: JobStorage,
         companies_manager: CompaniesManager,
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
@@ -69,7 +69,7 @@ class QueueItemProcessor:
         Args:
             queue_manager: Queue manager for updating item status
             config_loader: Configuration loader for stop lists and filters
-            job_storage: Firestore job storage
+            job_storage: SQLite job storage
             companies_manager: Company data manager
             sources_manager: Job sources manager
             company_info_fetcher: Company info scraper

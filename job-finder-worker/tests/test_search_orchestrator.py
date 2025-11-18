@@ -13,15 +13,7 @@ from job_finder.utils.job_type_filter import FilterDecision
 def mock_config():
     """Create a mock configuration dictionary."""
     return {
-        "profile": {
-            "source": "firestore",
-            "firestore": {
-                "database_name": "test-db",
-                "user_id": None,
-                "name": "Test User",
-                "email": "test@example.com",
-            },
-        },
+        "profile": {"source": "sqlite", "user_id": None, "name": "Test User", "email": "test@example.com"},
         "ai": {
             "enabled": True,
             "provider": "claude",
@@ -62,9 +54,9 @@ class TestJobSearchOrchestratorInit:
 class TestLoadProfile:
     """Test profile loading."""
 
-    @patch("job_finder.search_orchestrator.FirestoreProfileLoader")
-    def test_load_profile_from_firestore(self, mock_loader_class, mock_config, mock_profile):
-        """Test loading profile from Firestore."""
+    @patch("job_finder.search_orchestrator.SQLiteProfileLoader")
+    def test_load_profile_from_sqlite(self, mock_loader_class, mock_config, mock_profile):
+        """Test loading profile from SQLite."""
         mock_loader = Mock()
         mock_loader.load_profile.return_value = mock_profile
         mock_loader_class.return_value = mock_loader
@@ -73,13 +65,13 @@ class TestLoadProfile:
         profile = orchestrator._load_profile()
 
         assert profile == mock_profile
-        mock_loader_class.assert_called_once_with(database_name="test-db")
+        mock_loader_class.assert_called_once_with(None)
         mock_loader.load_profile.assert_called_once_with(
             user_id=None, name="Test User", email="test@example.com"
         )
 
-    @patch.dict("os.environ", {"PROFILE_DATABASE_NAME": "env-override-db"})
-    @patch("job_finder.search_orchestrator.FirestoreProfileLoader")
+    @patch.dict("os.environ", {"JF_SQLITE_DB_PATH": "env-override-db"})
+    @patch("job_finder.search_orchestrator.SQLiteProfileLoader")
     def test_load_profile_respects_env_var(self, mock_loader_class, mock_config, mock_profile):
         """Test profile loading respects environment variable override."""
         mock_loader = Mock()
@@ -90,7 +82,7 @@ class TestLoadProfile:
         orchestrator._load_profile()
 
         # Should use env var instead of config
-        mock_loader_class.assert_called_once_with(database_name="env-override-db")
+        mock_loader_class.assert_called_once_with("env-override-db")
 
     def test_load_profile_json_not_implemented(self, mock_config):
         """Test JSON profile loading raises NotImplementedError."""
@@ -98,7 +90,7 @@ class TestLoadProfile:
 
         orchestrator = JobSearchOrchestrator(mock_config)
 
-        with pytest.raises(NotImplementedError, match="JSON profile loading not yet implemented"):
+        with pytest.raises(NotImplementedError, match="Unsupported profile source: json"):
             orchestrator._load_profile()
 
 
@@ -140,7 +132,7 @@ class TestInitializeStorage:
     @patch("job_finder.search_orchestrator.CompanyInfoFetcher")
     @patch("job_finder.search_orchestrator.CompaniesManager")
     @patch("job_finder.search_orchestrator.JobSourcesManager")
-    @patch("job_finder.search_orchestrator.FirestoreJobStorage")
+    @patch("job_finder.search_orchestrator.JobStorage")
     def test_initialize_storage(
         self,
         mock_storage_class,
@@ -169,15 +161,15 @@ class TestInitializeStorage:
         assert orchestrator.companies_manager == mock_companies
         assert orchestrator.company_info_fetcher == mock_fetcher
 
-        mock_storage_class.assert_called_once_with(database_name="test-storage")
-        mock_sources_class.assert_called_once_with(database_name="test-storage")
-        mock_companies_class.assert_called_once_with(database_name="test-storage")
+        mock_storage_class.assert_called_once_with(None)
+        mock_sources_class.assert_called_once_with(None)
+        mock_companies_class.assert_called_once_with(None)
 
-    @patch.dict("os.environ", {"STORAGE_DATABASE_NAME": "env-storage-db"})
+    @patch.dict("os.environ", {"JF_SQLITE_DB_PATH": "/tmp/env-db"})
     @patch("job_finder.search_orchestrator.CompanyInfoFetcher")
     @patch("job_finder.search_orchestrator.CompaniesManager")
     @patch("job_finder.search_orchestrator.JobSourcesManager")
-    @patch("job_finder.search_orchestrator.FirestoreJobStorage")
+    @patch("job_finder.search_orchestrator.JobStorage")
     def test_initialize_storage_respects_env_var(
         self,
         mock_storage_class,
@@ -191,10 +183,10 @@ class TestInitializeStorage:
         orchestrator.ai_matcher = Mock()
         orchestrator._initialize_storage()
 
-        # All should use env var
-        mock_storage_class.assert_called_once_with(database_name="env-storage-db")
-        mock_sources_class.assert_called_once_with(database_name="env-storage-db")
-        mock_companies_class.assert_called_once_with(database_name="env-storage-db")
+        # All should use env var path
+        mock_storage_class.assert_called_once_with("/tmp/env-db")
+        mock_sources_class.assert_called_once_with("/tmp/env-db")
+        mock_companies_class.assert_called_once_with("/tmp/env-db")
 
 
 class TestGetActiveListings:

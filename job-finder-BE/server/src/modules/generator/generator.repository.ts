@@ -1,13 +1,6 @@
 import type Database from 'better-sqlite3'
+import type { GeneratorDocumentRecord } from '@shared/types'
 import { getDb } from '../../db/sqlite'
-
-export interface GeneratorDocument {
-  id: string
-  documentType: string
-  payload: Record<string, unknown>
-  createdAt: string
-  updatedAt: string
-}
 
 export class GeneratorRepository {
   private db: Database.Database
@@ -16,7 +9,7 @@ export class GeneratorRepository {
     this.db = getDb()
   }
 
-  list(type?: string): GeneratorDocument[] {
+  list(type?: string): GeneratorDocumentRecord[] {
     const sql = type
       ? 'SELECT * FROM generator_documents WHERE document_type = ? ORDER BY created_at DESC'
       : 'SELECT * FROM generator_documents ORDER BY created_at DESC'
@@ -45,7 +38,7 @@ export class GeneratorRepository {
     }))
   }
 
-  get(id: string): GeneratorDocument | null {
+  get(id: string): GeneratorDocumentRecord | null {
     const row = this.db.prepare('SELECT * FROM generator_documents WHERE id = ?').get(id) as
       | {
           id: string
@@ -67,7 +60,7 @@ export class GeneratorRepository {
     }
   }
 
-  save(id: string, documentType: string, payload: unknown): GeneratorDocument {
+  save(id: string, documentType: string, payload: unknown): GeneratorDocumentRecord {
     const now = new Date().toISOString()
     this.db
       .prepare(

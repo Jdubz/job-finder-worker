@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # Production Deployment Guide
 
 This guide covers deploying the job-finder-BE backend to production with zero downtime.

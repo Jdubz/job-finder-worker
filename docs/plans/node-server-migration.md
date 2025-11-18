@@ -1,3 +1,7 @@
+> Status: Active
+> Owner: @jdubz
+> Last Updated: 2025-11-17
+
 # Node Server Migration Plan (Job Finder BE)
 
 _Last updated: November 17, 2025_

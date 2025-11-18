@@ -1,79 +1,36 @@
-"""Health tracking for job sources during scraping operations."""
+"""Helpers for tracking scraper health using SQLite."""
 
-import logging
-from datetime import datetime, timezone, timedelta
+from __future__ import annotations
 
-from google.cloud import firestore as gcloud_firestore
-from google.cloud.firestore_v1.base_query import FieldFilter
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-logger = logging.getLogger(__name__)
-
-
-class SourceHealthTracker:
-    """
-    Track source health and scraping history.
-
-    Maintains detailed statistics about each source including:
-    - Last scrape timestamp and duration
-    - Success/failure counts
-    - Average jobs per scrape
-    - Health score (affects rotation priority)
-    """
-
-    def __init__(self, db_client: gcloud_firestore.Client):
-        """
-        Initialize source health tracker.
-
-        Args:
-            db_client: Firestore client instance (google.cloud.firestore.Client)
-        """
-        self.db = db_client
+from job_finder.storage.sqlite_client import sqlite_connection
 
 
 class CompanyScrapeTracker:
-    """
-    Track scraping frequency by company to ensure fairness.
+    """Track scraping frequency for companies."""
 
-    Prevents some companies from being over-scraped while others go unscraped.
-    """
-
-    def __init__(self, db_client: gcloud_firestore.Client, window_days: int = 30):
-        """
-        Initialize company scrape tracker.
-
-        Args:
-            db_client: Firestore client instance (google.cloud.firestore.Client)
-            window_days: Look-back window for frequency calculation
-        """
-        self.db = db_client
+    def __init__(self, db_path: Optional[str] = None, window_days: int = 30):
+        self.db_path = db_path
         self.window = timedelta(days=window_days)
 
     def get_scrape_frequency(self, company_id: str) -> float:
-        """
-        Get scrapes per day for company in past N days.
-
-        Args:
-            company_id: Company ID to check
-
-        Returns:
-            Scrapes per day (float) in the look-back window
-        """
-        try:
-            cutoff = datetime.now(timezone.utc) - self.window
-
-            # Count recent scrapes from job-sources collection
-            # (We store scraped_at timestamp when sources are scraped)
-            query = (
-                self.db.collection("job-sources")
-                .where(filter=FieldFilter("company_id", "==", company_id))
-                .where(filter=FieldFilter("scraped_at", ">", cutoff))
-            )
-
-            count = len(list(query.stream()))
-            frequency = count / self.window.days
-
-            return frequency
-
-        except Exception as e:
-            logger.warning(f"Error calculating company scrape frequency: {e}")
+        if not company_id:
             return 0.0
+
+        cutoff = datetime.now(timezone.utc) - self.window
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS cnt
+                FROM job_sources
+                WHERE company_id = ?
+                  AND last_scraped_at IS NOT NULL
+                  AND datetime(last_scraped_at) >= datetime(?, 'unixepoch')
+                """,
+                (company_id, cutoff.timestamp()),
+            ).fetchone()
+
+        count = row["cnt"] if row else 0
+        return count / max(self.window.days, 1)

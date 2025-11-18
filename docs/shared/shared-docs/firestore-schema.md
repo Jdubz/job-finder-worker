@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-10-21
+
 # Firestore Schema Documentation
 
 This document describes the complete Firestore database schema for the portfolio project, codified as TypeScript interfaces in the shared-types package.
@@ -351,4 +355,3 @@ To update the schema types when the database structure changes:
 - [Type Guards](../README.md#type-guards) - Runtime validation examples
 - [TypeScript → Python Mapping](../README.md#type-mapping) - Pydantic model examples
 - [Integration Architecture](../README.md#integration-architecture) - How types flow through the system
-

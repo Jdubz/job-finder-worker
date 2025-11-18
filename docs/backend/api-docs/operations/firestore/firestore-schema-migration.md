@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # Firestore Schema Migration - Portfolio to Job Finder
 
 ## 🎯 Migration Goal

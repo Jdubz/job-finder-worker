@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # BE-SEC-1 — Firestore Rules & Indexes Audit
 
 - **Status**: ✅ COMPLETED 2025-10-20

@@ -27,10 +27,10 @@ from job_finder.ai import AIJobMatcher
 from job_finder.ai.providers import create_provider
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.logging_config import get_structured_logger, setup_logging
-from job_finder.profile import FirestoreProfileLoader
+from job_finder.profile import SQLiteProfileLoader
 from job_finder.job_queue import ConfigLoader, QueueManager
 from job_finder.job_queue.processor import QueueItemProcessor
-from job_finder.storage import FirestoreJobStorage
+from job_finder.storage import JobStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
@@ -84,20 +84,11 @@ def load_config() -> Dict[str, Any]:
 
 def initialize_components(config: Dict[str, Any]) -> tuple:
     """Initialize all worker components."""
-    # Load environment variables
-    profile_db = os.getenv(
-        "PROFILE_DATABASE_NAME",
-        config.get("profile", {}).get("firestore", {}).get("database_name", "portfolio"),
-    )
-    storage_db = os.getenv(
-        "STORAGE_DATABASE_NAME", config.get("storage", {}).get("database_name", "portfolio-staging")
-    )
+    db_path = os.getenv("JF_SQLITE_DB_PATH")
 
-    # Initialize storage
-    profile_storage = FirestoreJobStorage(profile_db)
-    storage = FirestoreJobStorage(storage_db)
-    companies_manager = CompaniesManager(storage)
-    job_sources_manager = JobSourcesManager(storage)
+    storage = JobStorage(db_path)
+    companies_manager = CompaniesManager(db_path)
+    job_sources_manager = JobSourcesManager(db_path)
 
     # Initialize AI components
     ai_config = config.get("ai", {})
@@ -111,9 +102,9 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     )
 
     # Initialize other components
-    profile_loader = FirestoreProfileLoader(profile_storage)
+    profile_loader = SQLiteProfileLoader(db_path)
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
-    queue_manager = QueueManager(storage)
+    queue_manager = QueueManager(db_path)
     processor = QueueItemProcessor(
         queue_manager=queue_manager,
         config_loader=ConfigLoader(),

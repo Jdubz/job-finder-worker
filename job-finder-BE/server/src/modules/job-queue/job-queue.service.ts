@@ -6,6 +6,7 @@ const DEFAULT_MAX_RETRIES = 3
 export type SubmitJobInput = {
   url: string
   companyName?: string
+  companyUrl?: string
   source?: QueueSource
   userId?: string | null
   companyId?: string | null
@@ -31,6 +32,10 @@ export class JobQueueService {
   submitJob(input: SubmitJobInput): QueueItem {
     const now = new Date()
     const hasPrebuiltDocs = Boolean(input.generationId)
+    const metadata = {
+      ...(input.metadata ?? {}),
+      ...(input.companyUrl ? { companyUrl: input.companyUrl } : {})
+    }
 
     const item: NewQueueItem = {
       type: 'job',
@@ -44,7 +49,7 @@ export class JobQueueService {
       max_retries: DEFAULT_MAX_RETRIES,
       created_at: now,
       updated_at: now,
-      metadata: input.metadata,
+      metadata: Object.keys(metadata).length ? metadata : undefined,
       result_message: hasPrebuiltDocs ? 'Generated via document builder' : undefined,
       completed_at: hasPrebuiltDocs ? now : undefined
     }

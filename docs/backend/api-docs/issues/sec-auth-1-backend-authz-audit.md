@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # SEC-AUTH-1 — Backend Auth & Role Mapping Validation
 
 - **Status**: Todo

@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-10-21
+
 # Firestore Schema Codification - Summary
 
 ## Overview

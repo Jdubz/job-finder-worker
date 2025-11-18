@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-10-10
+
 # Phase 1: TypeScript Shared-Types Changes
 
 This document contains the TypeScript changes needed in the `job-finder-shared-types` repository for Phase 1 implementation.

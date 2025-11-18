@@ -96,7 +96,7 @@ export class ContentItemRepository {
     if (options.tags?.length) {
       items = items.filter((item) => {
         if (!item.tags) return false
-        return options.tags?.some((tag) => item.tags?.includes(tag)) ?? false
+        return options.tags?.some((tag: string) => item.tags?.includes(tag)) ?? false
       })
     }
 

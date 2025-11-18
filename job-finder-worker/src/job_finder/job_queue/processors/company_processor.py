@@ -4,7 +4,7 @@ This processor handles all company-related queue items and pipeline stages:
 - Company data fetching (scraping website HTML)
 - Company information extraction (AI-powered)
 - Company analysis (tech stack, job board detection, priority scoring)
-- Company persistence (save to Firestore, spawn source discovery)
+- Company persistence (save to SQLite, spawn source discovery)
 
 It implements the granular 4-step company pipeline:
 COMPANY_FETCH → COMPANY_EXTRACT → COMPANY_ANALYZE → COMPANY_SAVE
@@ -306,7 +306,7 @@ class CompanyProcessor(BaseProcessor):
 
     def process_company_save(self, item: JobQueueItem) -> None:
         """
-        COMPANY_SAVE: Save company to Firestore and spawn source discovery if needed.
+        COMPANY_SAVE: Save company to SQLite and spawn source discovery if needed.
 
         Final step - may spawn SOURCE_DISCOVERY if job board found.
 

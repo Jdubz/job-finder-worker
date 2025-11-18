@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # Firebase Emulators Guide
 
 This guide explains how to use Firebase Emulators for local development with the Job Finder backend.

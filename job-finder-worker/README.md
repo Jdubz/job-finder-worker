@@ -60,7 +60,7 @@ A Python-based web scraper that finds online job postings relevant to your exper
    # Place it in a secure location (e.g., ~/.firebase/job-finder-key.json)
 
    # In .env, set:
-   # GOOGLE_APPLICATION_CREDENTIALS=/path/to/serviceAccountKey.json
+   # JF_SQLITE_DB_PATH=/path/to/jobfinder.db
 
    # In config/config.yaml, set:
    # profile:
@@ -114,7 +114,7 @@ The worker will start on `http://127.0.0.1:5555` with endpoints:
 **Production Mode:**
 ```bash
 # Set up environment
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/firebase-key.json
+export JF_SQLITE_DB_PATH=/path/to/jobfinder.db
 
 # Start the worker
 ./run_prod.sh
@@ -326,7 +326,7 @@ If you have the job-finder-FE frontend with Firestore, you can load profile data
 
 **Setup:**
 1. Download Firebase service account key from [Firebase Console](https://console.firebase.google.com/)
-2. Set `GOOGLE_APPLICATION_CREDENTIALS` in `.env`
+2. Set `JF_SQLITE_DB_PATH` in `.env`
 3. Configure `profile.source: "firestore"` in `config.yaml`
 4. Run the job finder - it will automatically load your latest profile data
 

@@ -61,6 +61,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@shared/types": "file:../../shared",
     "@eslint/js": "^9.15.0",
     "@firebase/rules-unit-testing": "^3.0.4",
     "@types/busboy": "^1.5.4",

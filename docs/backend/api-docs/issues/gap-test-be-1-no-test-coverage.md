@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # GAP-TEST-BE-1 — No Test Coverage for Backend Cloud Functions
 
 ## Issue Metadata

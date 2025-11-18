@@ -1,9 +1,18 @@
 import { Router } from 'express'
 import { z } from 'zod'
+import type {
+  ListConfigEntriesResponse,
+  GetConfigEntryResponse,
+  UpsertConfigEntryResponse
+} from '@shared/types'
+import { ApiErrorCode } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
+import { success, failure } from '../../utils/api-response'
 
-const updateSchema = z.object({ payload: z.record(z.unknown()) })
+const updateSchema = z.object({
+  payload: z.record(z.unknown())
+})
 
 export function buildConfigRouter() {
   const router = Router()
@@ -12,7 +21,8 @@ export function buildConfigRouter() {
   router.get(
     '/',
     asyncHandler((_req, res) => {
-      res.json({ configs: repo.list() })
+      const response: ListConfigEntriesResponse = { configs: repo.list() }
+      res.json(success(response))
     })
   )
 
@@ -21,10 +31,11 @@ export function buildConfigRouter() {
     asyncHandler((req, res) => {
       const entry = repo.get(req.params.id)
       if (!entry) {
-        res.status(404).json({ message: 'Config not found' })
+        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Config not found'))
         return
       }
-      res.json({ config: entry })
+      const response: GetConfigEntryResponse = { config: entry }
+      res.json(success(response))
     })
   )
 
@@ -33,7 +44,8 @@ export function buildConfigRouter() {
     asyncHandler((req, res) => {
       const body = updateSchema.parse(req.body)
       const entry = repo.upsert(req.params.id, body.payload)
-      res.json({ config: entry })
+      const response: UpsertConfigEntryResponse = { config: entry }
+      res.json(success(response))
     })
   )
 

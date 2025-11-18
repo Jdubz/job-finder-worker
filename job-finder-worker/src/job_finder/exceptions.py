@@ -32,8 +32,7 @@ class InitializationError(JobFinderError):
     """Raised when a component fails to initialize properly.
 
     Examples:
-    - Firestore client not initialized
-    - Firebase Admin SDK initialization failed
+    - Database client not initialized
     - Manager not initialized before use
     - Profile not loaded before processing
     """
@@ -71,10 +70,10 @@ class StorageError(JobFinderError):
     """Raised when storage operations fail.
 
     Examples:
-    - Firestore not initialized
-    - Failed to save document
-    - Failed to query collection
-    - Database connection error
+    - Database not initialized
+    - Failed to save record
+    - Failed to query table
+    - Connection error
     """
 
     pass

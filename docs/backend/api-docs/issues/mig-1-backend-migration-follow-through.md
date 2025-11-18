@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # MIG-1 — Backend Migration Follow-Through (Phase 1 Closure)
 
 - **Status**: Todo

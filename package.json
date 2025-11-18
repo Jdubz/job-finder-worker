@@ -1,24 +1,32 @@
 {
   "name": "job-finder-monorepo",
   "private": true,
+  "type": "module",
   "version": "0.1.0",
   "workspaces": [
     "shared",
     "job-finder-BE/functions",
     "job-finder-BE/server",
-    "job-finder-FE"
+    "job-finder-FE",
+    "infra/sqlite/seeders"
   ],
   "scripts": {
-    "prepare": "husky install",
+    "prepare": "husky",
     "lint": "npm run --workspaces lint",
     "lint:server": "npm run lint --workspace job-finder-BE/server",
     "lint:functions": "npm run lint --workspace job-finder-BE/functions",
     "lint:frontend": "npm run lint --workspace job-finder-FE",
     "typecheck": "npm run --workspaces type-check || true",
-    "build": "npm run build --workspace job-finder-BE/server && npm run build --workspace job-finder-FE",
-    "build:server": "npm run build --workspace job-finder-BE/server",
-    "build:functions": "npm run build --workspace job-finder-BE/functions",
-    "build:frontend": "npm run build --workspace job-finder-FE"
+    "tests:staged": "node scripts/run-staged-tests.js",
+    "docs:audit": "node scripts/audit-docs.js",
+    "build": "npm run build:shared && npm run build:server:raw && npm run build:frontend:raw",
+    "build:shared": "npm run build --workspace shared",
+    "build:server": "npm run build:shared && npm run build:server:raw",
+    "build:server:raw": "npm run build --workspace job-finder-BE/server",
+    "build:functions": "npm run build:shared && npm run build:functions:raw",
+    "build:functions:raw": "npm run build --workspace job-finder-BE/functions",
+    "build:frontend": "npm run build:shared && npm run build:frontend:raw",
+    "build:frontend:raw": "npm run build --workspace job-finder-FE"
   },
   "devDependencies": {
     "husky": "^9.1.7",

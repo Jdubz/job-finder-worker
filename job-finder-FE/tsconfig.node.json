@@ -14,8 +14,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@shared/types/*": ["../shared/src/*"]
+      "@/*": ["./src/*"]
     },
 
     /* Linting */

@@ -11,8 +11,9 @@ Thanks for helping improve Job Finder! This monorepo contains every service (fro
 ## Installation
 
 ```bash
-npm install           # installs workspace deps
-npx husky install     # enables git hooks (lint+build guards)
+git config core.hooksPath .husky   # point Git at the Husky hooks (once per clone)
+npm install                       # installs workspace deps
+npm run prepare                   # verifies hooks are executable
 ```
 
 Workspaces:
@@ -21,6 +22,7 @@ Workspaces:
 - `job-finder-BE/functions`
 - `job-finder-BE/server`
 - `job-finder-FE`
+- `infra/sqlite/seeders`
 
 ## Common Commands
 
@@ -28,17 +30,20 @@ Workspaces:
 npm run lint:server       # eslint for Node API
 npm run lint:functions    # eslint for Firebase Functions
 npm run lint:frontend     # eslint for frontend
-npm run build:server      # tsc + tsc-alias for Node API
-npm run build:frontend    # build Vite app
+npm run build:server      # shared types + Node API build
+npm run build:frontend    # shared types + Vite app build
 ```
 
 Each package also exposes its own scripts (use `npm run <script> --workspace <name>` when needed).
+The Python worker (`job-finder-worker`) relies on its Makefile (`make test`, `make dev`).
 
 ## Shared Types
 
-All cross-service types live in `/shared`. Import them with `@shared/types`. If you change a schema, update the shared files first, then adjust the consuming packages.
+All cross-service types live in `/shared`. Import them with `@shared/types` (declared via a `file:` dependency). If you change a schema, run `npm run build --workspace shared` first, then update the consuming packages.
 
 ## Tests
+
+Use `npm run tests:staged` to execute the unit/integration suites for every workspace that changed (the script also calls `make test` inside `job-finder-worker` when Python files are touched). The pre-push hook enforces the same check.
 
 Not every package has automated tests yet, but please run the applicable lint/build tasks locally before pushing. CI will run the same commands from the workspace scripts.
 

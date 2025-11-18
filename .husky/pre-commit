@@ -1,4 +1,7 @@
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
+#!/usr/bin/env sh
+set -e
 
-npm run lint:server && npm run lint:functions && npm run lint:frontend
+npm run lint:server
+npm run lint:functions
+npm run lint:frontend
+npm run docs:audit

@@ -4,7 +4,7 @@ Tests cover:
 - JOB_SCRAPE: All scraping scenarios (source-based, AI, errors)
 - JOB_FILTER: Filter passing, rejection, strike accumulation
 - JOB_ANALYZE: AI matching, score thresholds, company data
-- JOB_SAVE: Firestore saving, error handling
+- JOB_SAVE: database saving, error handling
 """
 
 import pytest
@@ -698,8 +698,8 @@ class TestJobAnalyzeEdgeCases:
 class TestJobSaveSuccess:
     """Test successful JOB_SAVE scenarios."""
 
-    def test_save_creates_firestore_document(self, processor, mock_managers):
-        """Should save job match to Firestore."""
+    def test_save_creates_record(self, processor, mock_managers):
+        """Should save job match to the database."""
         job_data = {
             "title": "Senior Engineer",
             "company": "Tech Corp",
@@ -818,8 +818,8 @@ class TestJobSaveFailures:
         # Should NOT save
         mock_managers["job_storage"].save_job_match.assert_not_called()
 
-    def test_save_firestore_error(self, processor, mock_managers):
-        """Should handle Firestore save errors."""
+    def test_save_storage_error(self, processor, mock_managers):
+        """Should handle storage save errors."""
         job_data = {
             "title": "Engineer",
             "company": "Example",
@@ -847,8 +847,8 @@ class TestJobSaveFailures:
             pipeline_state={"job_data": job_data, "match_result": match_result.to_dict()},
         )
 
-        # Mock Firestore error
-        processor.job_storage.save_job_match.side_effect = Exception("Firestore connection error")
+        # Mock storage error
+        processor.job_storage.save_job_match.side_effect = Exception("Storage connection error")
 
         # The exception will be caught and re-raised
         try:

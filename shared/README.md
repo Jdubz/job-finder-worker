@@ -1,6 +1,6 @@
 # Job Finder Shared Types
 
-Shared TypeScript definitions that live inside the `job-finder-worker` monorepo. The codebase consumes these types via the `@shared/types` alias (see each package's `tsconfig.json`). No npm package is published anymore.
+Shared TypeScript definitions that live inside the `job-finder-worker` monorepo. They are shipped as a local workspace package (`@shared/types`) that emits both ESM and CJS bundles plus `.d.ts` files via `tsup`. Add `@shared/types` as a dependency (e.g., `"@shared/types": "file:../shared"`) and run `npm run build --workspace shared` whenever you change the schemas.
 
 ## Overview
 
@@ -12,20 +12,25 @@ This package contains TypeScript type definitions that are:
 
 ### TypeScript Projects
 
-1. Ensure your `tsconfig.json` contains:
+1. Declare the dependency in the workspace that needs it:
 
 ```json
 {
-  "compilerOptions": {
-    "baseUrl": "./src",
-    "paths": {
-      "@shared/types/*": ["../shared/src/*"]
-    }
+  "devDependencies": {
+    "@shared/types": "file:../shared"
   }
 }
 ```
 
-2. Import from the alias:
+2. Build (or watch) the shared package:
+
+```bash
+npm run build --workspace shared
+# or
+npm run dev --workspace shared
+```
+
+3. Import from the package:
 
 ```ts
 import type { JobMatch } from "@shared/types"

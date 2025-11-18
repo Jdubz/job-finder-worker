@@ -48,6 +48,14 @@ test: ## Run all tests
 	@echo "$(CYAN)Running tests...$(RESET)"
 	@. $(VENV_DIR)/bin/activate && pytest -v
 
+test-ci: ## Run targeted CI/unit tests (used by git hooks)
+	@echo "$(CYAN)Running targeted CI tests...$(RESET)"
+	@. $(VENV_DIR)/bin/activate && pytest \
+		tests/test_search_orchestrator.py \
+		tests/test_placeholder.py \
+		tests/queue/test_job_pipeline_comprehensive.py \
+		tests/queue/test_scraper_intake.py
+
 test-fast: ## Run tests without coverage
 	@echo "$(CYAN)Running fast tests...$(RESET)"
 	@. $(VENV_DIR)/bin/activate && pytest -v --no-cov
@@ -127,7 +135,7 @@ check-config: ## Validate configuration files
 
 check-env: ## Check environment variables
 	@echo "$(CYAN)Checking environment...$(RESET)"
-	@echo "GOOGLE_APPLICATION_CREDENTIALS: $$GOOGLE_APPLICATION_CREDENTIALS"
+	@echo "JF_SQLITE_DB_PATH: $$JF_SQLITE_DB_PATH"
 	@echo "ANTHROPIC_API_KEY: $$([ -n "$$ANTHROPIC_API_KEY" ] && echo 'Set' || echo 'Not set')"
 	@echo "OPENAI_API_KEY: $$([ -n "$$OPENAI_API_KEY" ] && echo 'Set' || echo 'Not set')"
 

@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # Firestore Complete Setup Summary
 
 ## ✅ All Changes Complete

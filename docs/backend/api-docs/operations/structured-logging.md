@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # Structured Logging in job-finder-BE
 
 **Last Updated:** 2025-10-28  
