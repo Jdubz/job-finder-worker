@@ -1,0 +1,511 @@
+/**
+ * Integration Tests for Document Generation Pipeline
+ * 
+ * Tests the complete document generation flow from frontend to backend
+ * to identify the root cause of 500 errors.
+ */
+
+import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals"
+import { Request, Response } from "express"
+import { manageGenerator } from "../generator"
+// import { GeneratorService } from "../services/generator.service"
+// import { ContentItemService } from "../services/content-item.service"
+// import { PDFService } from "../services/pdf.service"
+// import { StorageService } from "../services/storage.service"
+// import { createAIProvider } from "../services/ai-provider.factory"
+
+// Mock external dependencies
+jest.mock("../services/generator.service")
+jest.mock("../services/content-item.service")
+jest.mock("../services/pdf.service")
+jest.mock("../services/storage.service")
+jest.mock("../services/ai-provider.factory")
+jest.mock("@google-cloud/firestore")
+jest.mock("@google-cloud/secret-manager")
+
+describe("Document Generation Integration Tests", () => {
+  let mockGeneratorService: any
+  let mockContentItemService: any
+  let mockPDFService: any
+  let mockStorageService: any
+  let mockAIProvider: any
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+
+    // Setup mocks with realistic implementations
+    mockGeneratorService = {
+      createRequest: jest.fn(),
+      getRequest: jest.fn(),
+      updateSteps: jest.fn(),
+      updateStatus: jest.fn(),
+      getPersonalInfo: jest.fn(),
+      updatePersonalInfo: jest.fn(),
+    }
+
+    mockContentItemService = {
+      getContentItems: jest.fn(),
+    }
+
+    mockPDFService = {
+      generateResumePDF: jest.fn(),
+      generateCoverLetterPDF: jest.fn(),
+    }
+
+    mockStorageService = {
+      uploadFile: jest.fn(),
+      getSignedUrl: jest.fn(),
+    }
+
+    mockAIProvider = {
+      generateResume: jest.fn(),
+      generateCoverLetter: jest.fn(),
+      calculateCost: jest.fn(),
+    }
+  })
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
+  describe("Complete Resume Generation Flow", () => {
+    it("should execute complete resume generation pipeline", async () => {
+      // Step 1: Start generation
+      const startReq = {
+        method: "POST",
+        path: "/generator/start",
+        body: {
+          generateType: "resume",
+          job: {
+            role: "Software Engineer",
+            company: "Tech Corp",
+            jobDescriptionText: "Build amazing software with React and TypeScript",
+          },
+          preferences: {
+            style: "modern",
+            emphasize: ["React", "TypeScript", "Node.js"],
+          },
+        },
+      } as Request
+
+      const startRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      } as unknown as Response
+
+      // Mock successful request creation
+      mockGeneratorService.createRequest.mockResolvedValue({
+        id: "test-request-123",
+        status: "pending",
+        steps: [
+          { id: "fetch_data", name: "Fetch Data", status: "pending" },
+          { id: "generate_resume", name: "Generate Resume", status: "pending" },
+          { id: "create_resume_pdf", name: "Create Resume PDF", status: "pending" },
+          { id: "upload_documents", name: "Upload Documents", status: "pending" },
+        ],
+      })
+
+      await manageGenerator(startReq, startRes)
+
+      expect(startRes.status).toHaveBeenCalledWith(200)
+      expect(startRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            requestId: "test-request-123",
+            nextStep: "fetch_data",
+          }),
+        })
+      )
+
+      // Step 2: Execute fetch_data step
+      const fetchReq = {
+        method: "POST",
+        path: "/generator/step/test-request-123",
+        body: {},
+      } as Request
+
+      const fetchRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      } as unknown as Response
+
+      // Mock request state after fetch_data
+      mockGeneratorService.getRequest.mockResolvedValue({
+        id: "test-request-123",
+        status: "processing",
+        steps: [
+          { id: "fetch_data", name: "Fetch Data", status: "completed" },
+          { id: "generate_resume", name: "Generate Resume", status: "pending" },
+          { id: "create_resume_pdf", name: "Create Resume PDF", status: "pending" },
+          { id: "upload_documents", name: "Upload Documents", status: "pending" },
+        ],
+        intermediateResults: {
+          contentItems: [
+            {
+              id: "exp-1",
+              type: "experience",
+              title: "Software Engineer",
+              company: "Tech Corp",
+              startDate: "2020-01-01",
+              endDate: "2023-12-31",
+              description: "Built amazing software with React and TypeScript",
+              skills: ["JavaScript", "React", "TypeScript", "Node.js"],
+            },
+          ],
+        },
+      })
+
+      // Mock personal info
+      mockGeneratorService.getPersonalInfo.mockResolvedValue({
+        name: "John Doe",
+        email: "john@example.com",
+        phone: "555-1234",
+        location: "Portland, OR",
+        website: "https://johndoe.com",
+        github: "https://github.com/johndoe",
+        linkedin: "https://linkedin.com/in/johndoe",
+        avatar: "https://example.com/avatar.jpg",
+        logo: "https://example.com/logo.jpg",
+        accentColor: "#3B82F6",
+        defaultStyle: "modern",
+        aiPrompts: {
+          resume: "Generate a professional resume highlighting technical skills and experience",
+          coverLetter: "Generate a professional cover letter",
+        },
+      })
+
+      // Mock content items
+      mockContentItemService.getContentItems.mockResolvedValue([
+        {
+          id: "exp-1",
+          type: "experience",
+          title: "Software Engineer",
+          company: "Tech Corp",
+          startDate: "2020-01-01",
+          endDate: "2023-12-31",
+          description: "Built amazing software with React and TypeScript",
+          skills: ["JavaScript", "React", "TypeScript", "Node.js"],
+        },
+      ])
+
+      await manageGenerator(fetchReq, fetchRes)
+
+      expect(fetchRes.status).toHaveBeenCalledWith(200)
+      expect(fetchRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            nextStep: "generate_resume",
+          }),
+        })
+      )
+
+      // Step 3: Execute generate_resume step
+      const generateReq = {
+        method: "POST",
+        path: "/generator/step/test-request-123",
+        body: {},
+      } as Request
+
+      const generateRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      } as unknown as Response
+
+      // Mock request state after generate_resume
+      mockGeneratorService.getRequest.mockResolvedValue({
+        id: "test-request-123",
+        status: "processing",
+        steps: [
+          { id: "fetch_data", name: "Fetch Data", status: "completed" },
+          { id: "generate_resume", name: "Generate Resume", status: "completed" },
+          { id: "create_resume_pdf", name: "Create Resume PDF", status: "pending" },
+          { id: "upload_documents", name: "Upload Documents", status: "pending" },
+        ],
+        intermediateResults: {
+          resumeContent: "Generated resume content with React and TypeScript experience",
+          resumeTokenUsage: { totalTokens: 1000, promptTokens: 800, completionTokens: 200 },
+        },
+      })
+
+      // Mock AI provider
+      mockAIProvider.generateResume.mockResolvedValue({
+        content: "Generated resume content with React and TypeScript experience",
+        tokenUsage: { totalTokens: 1000, promptTokens: 800, completionTokens: 200 },
+      })
+
+      await manageGenerator(generateReq, generateRes)
+
+      expect(generateRes.status).toHaveBeenCalledWith(200)
+      expect(generateRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            nextStep: "create_resume_pdf",
+          }),
+        })
+      )
+
+      // Step 4: Execute create_resume_pdf step
+      const pdfReq = {
+        method: "POST",
+        path: "/generator/step/test-request-123",
+        body: {},
+      } as Request
+
+      const pdfRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      } as unknown as Response
+
+      // Mock request state after create_resume_pdf
+      mockGeneratorService.getRequest.mockResolvedValue({
+        id: "test-request-123",
+        status: "processing",
+        steps: [
+          { id: "fetch_data", name: "Fetch Data", status: "completed" },
+          { id: "generate_resume", name: "Generate Resume", status: "completed" },
+          { id: "create_resume_pdf", name: "Create Resume PDF", status: "completed" },
+          { id: "upload_documents", name: "Upload Documents", status: "pending" },
+        ],
+        intermediateResults: {
+          resumePDF: Buffer.from("PDF content"),
+        },
+      })
+
+      // Mock PDF generation
+      mockPDFService.generateResumePDF.mockResolvedValue({
+        buffer: Buffer.from("PDF content"),
+        filename: "resume.pdf",
+      })
+
+      await manageGenerator(pdfReq, pdfRes)
+
+      expect(pdfRes.status).toHaveBeenCalledWith(200)
+      expect(pdfRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            nextStep: "upload_documents",
+          }),
+        })
+      )
+
+      // Step 5: Execute upload_documents step
+      const uploadReq = {
+        method: "POST",
+        path: "/generator/step/test-request-123",
+        body: {},
+      } as Request
+
+      const uploadRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      } as unknown as Response
+
+      // Mock request state after upload_documents
+      mockGeneratorService.getRequest.mockResolvedValue({
+        id: "test-request-123",
+        status: "completed",
+        steps: [
+          { id: "fetch_data", name: "Fetch Data", status: "completed" },
+          { id: "generate_resume", name: "Generate Resume", status: "completed" },
+          { id: "create_resume_pdf", name: "Create Resume PDF", status: "completed" },
+          { id: "upload_documents", name: "Upload Documents", status: "completed" },
+        ],
+        resumeUrl: "https://storage.example.com/resume.pdf",
+      })
+
+      // Mock storage upload
+      mockStorageService.uploadFile.mockResolvedValue({
+        url: "https://storage.example.com/resume.pdf",
+        filename: "resume.pdf",
+      })
+
+      mockStorageService.getSignedUrl.mockResolvedValue("https://storage.example.com/signed-url")
+
+      await manageGenerator(uploadReq, uploadRes)
+
+      expect(uploadRes.status).toHaveBeenCalledWith(200)
+      expect(uploadRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            status: "completed",
+            resumeUrl: "https://storage.example.com/resume.pdf",
+          }),
+        })
+      )
+    })
+  })
+
+  describe("Error Scenarios", () => {
+    it("should handle AI provider failures gracefully", async () => {
+      const req = {
+        method: "POST",
+        path: "/generator/step/test-request-123",
+        body: {},
+      } as Request
+
+      const res = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      } as unknown as Response
+
+      // Mock request with generate_resume as next step
+      mockGeneratorService.getRequest.mockResolvedValue({
+        id: "test-request-123",
+        status: "processing",
+        steps: [
+          { id: "fetch_data", name: "Fetch Data", status: "completed" },
+          { id: "generate_resume", name: "Generate Resume", status: "pending" },
+        ],
+        intermediateResults: {
+          contentItems: [],
+        },
+      })
+
+      // Mock personal info
+      mockGeneratorService.getPersonalInfo.mockResolvedValue({
+        name: "John Doe",
+        email: "john@example.com",
+        aiPrompts: {
+          resume: "Generate a professional resume",
+        },
+      })
+
+      // Mock AI provider failure
+      mockAIProvider.generateResume.mockRejectedValue(new Error("AI service rate limit exceeded"))
+
+      await manageGenerator(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: "STEP_EXECUTION_FAILED",
+          message: "AI service rate limit exceeded",
+        })
+      )
+    })
+
+    it("should handle PDF generation failures gracefully", async () => {
+      const req = {
+        method: "POST",
+        path: "/generator/step/test-request-123",
+        body: {},
+      } as Request
+
+      const res = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      } as unknown as Response
+
+      // Mock request with create_resume_pdf as next step
+      mockGeneratorService.getRequest.mockResolvedValue({
+        id: "test-request-123",
+        status: "processing",
+        steps: [
+          { id: "fetch_data", name: "Fetch Data", status: "completed" },
+          { id: "generate_resume", name: "Generate Resume", status: "completed" },
+          { id: "create_resume_pdf", name: "Create Resume PDF", status: "pending" },
+        ],
+        intermediateResults: {
+          resumeContent: "Generated resume content",
+        },
+      })
+
+      // Mock PDF generation failure
+      mockPDFService.generateResumePDF.mockRejectedValue(new Error("PDF generation failed: Invalid content"))
+
+      await manageGenerator(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: "STEP_EXECUTION_FAILED",
+          message: "PDF generation failed: Invalid content",
+        })
+      )
+    })
+
+    it("should handle storage upload failures gracefully", async () => {
+      const req = {
+        method: "POST",
+        path: "/generator/step/test-request-123",
+        body: {},
+      } as Request
+
+      const res = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      } as unknown as Response
+
+      // Mock request with upload_documents as next step
+      mockGeneratorService.getRequest.mockResolvedValue({
+        id: "test-request-123",
+        status: "processing",
+        steps: [
+          { id: "fetch_data", name: "Fetch Data", status: "completed" },
+          { id: "generate_resume", name: "Generate Resume", status: "completed" },
+          { id: "create_resume_pdf", name: "Create Resume PDF", status: "completed" },
+          { id: "upload_documents", name: "Upload Documents", status: "pending" },
+        ],
+        intermediateResults: {
+          resumePDF: Buffer.from("PDF content"),
+        },
+      })
+
+      // Mock storage upload failure
+      mockStorageService.uploadFile.mockRejectedValue(new Error("Storage quota exceeded"))
+
+      await manageGenerator(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: "STEP_EXECUTION_FAILED",
+          message: "Storage quota exceeded",
+        })
+      )
+    })
+
+    it("should handle database connection failures gracefully", async () => {
+      const req = {
+        method: "POST",
+        path: "/generator/step/test-request-123",
+        body: {},
+      } as Request
+
+      const res = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      } as unknown as Response
+
+      // Mock database connection failure
+      mockGeneratorService.getRequest.mockRejectedValue(new Error("Database connection timeout"))
+
+      await manageGenerator(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: "INTERNAL_ERROR",
+          message: "Database connection timeout",
+        })
+      )
+    })
+  })
+
+  describe("Both Documents Generation", () => {
+    it("should execute complete both documents generation pipeline", async () => {
+      // This test would be similar to the resume generation test
+      // but would include cover letter generation steps
+      // Implementation would follow the same pattern as above
+    })
+  })
+})

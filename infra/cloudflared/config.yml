@@ -1,0 +1,13 @@
+# Cloudflared tunnel configuration for job-finder API
+# Populate CLOUDFLARE_TUNNEL_ID and credentials JSON before running `docker compose up`
+
+tunnel: ${CLOUDFLARE_TUNNEL_ID}
+credentials-file: /etc/cloudflared/${CLOUDFLARE_TUNNEL_ID}.json
+
+ingress:
+  - hostname: job-finder-api.joshwentworth.com
+    service: http://api:8080
+  - service: http_status:404
+
+warp-routing:
+  enabled: false

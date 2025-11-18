@@ -1,0 +1,8 @@
+node_modules
+dist
+build
+.git
+*.lock
+package-lock.json
+coverage
+.vite

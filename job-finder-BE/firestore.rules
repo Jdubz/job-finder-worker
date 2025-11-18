@@ -1,0 +1,248 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // SECURITY MODEL
+    // ============================================================
+    // This is a PUBLIC PORTFOLIO project.
+    // 
+    // READ ACCESS: All collections allow public read access (GET)
+    //              - Anyone can view all data (authenticated or not)
+    //              - This showcases the portfolio functionality
+    //
+    // WRITE ACCESS: Only authenticated users can write/modify data
+    //               - Admin operations gated by authentication
+    //               - Some collections may have additional owner checks
+    //
+    // ============================================================
+
+    // ============================================================
+    // HELPER FUNCTIONS
+    // ============================================================
+
+    /**
+     * Check if user is authenticated
+     * Used ONLY for write operations
+     */
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    /**
+     * Public read access - this is a public portfolio
+     * Anyone can view all data (authenticated or not)
+     */
+    function canRead() {
+      return true;
+    }
+
+    /**
+     * Validate common timestamp fields
+     */
+    function hasValidTimestamps() {
+      return request.resource.data.createdAt is timestamp &&
+             request.resource.data.updatedAt is timestamp;
+    }
+
+    // ============================================================
+    // JOB QUEUE COLLECTION
+    // Used by: job-queue.service.ts
+    // All users can read job queue items
+    // Only authenticated users can submit jobs for processing
+    // ============================================================
+
+    match /job-queue/{queueId} {
+      // All users can read all queue items
+      allow read: if canRead();
+
+      // All authenticated users can create queue items
+      allow create: if isAuthenticated() &&
+                       request.resource.data.created_at is timestamp;
+
+      // All authenticated users can update queue items
+      allow update: if isAuthenticated();
+
+      // All authenticated users can delete queue items
+      allow delete: if isAuthenticated();
+    }
+
+    // ============================================================
+    // GENERATOR DOCUMENTS COLLECTION
+    // Used by: generator.service.ts
+    // Stores document generation requests and responses
+    // History of all generated documents (resumes, cover letters)
+    // ============================================================
+
+    match /generator-documents/{documentId} {
+      // All users can read all documents
+      allow read: if canRead();
+
+      // All authenticated users can create document generation requests
+      allow create: if isAuthenticated() &&
+                       request.resource.data.createdAt is timestamp;
+
+      // Documents are immutable once created (keep history)
+      allow update, delete: if false;
+    }
+
+    // ============================================================
+    // CONTENT ITEMS COLLECTION
+    // Used by: content-item.service.ts
+    // Stores owner's resume content (experience, skills, projects)
+    // Single-owner system - this is the owner's content
+    // ============================================================
+
+    match /content-items/{itemId} {
+      // All users can read all content items
+      allow read: if canRead();
+
+      // All authenticated users can create content items
+      allow create: if isAuthenticated() &&
+                       hasValidTimestamps();
+
+      // All authenticated users can update content items
+      allow update: if isAuthenticated();
+
+      // All authenticated users can delete content items
+      allow delete: if isAuthenticated();
+    }
+
+    // ============================================================
+    // EXPERIENCES COLLECTION
+    // Used by: experience.service.ts
+    // Stores owner's work experience entries
+    // Single-owner system - this is the owner's experience
+    // ============================================================
+
+    match /experiences/{experienceId} {
+      // All users can read all experiences
+      allow read: if canRead();
+
+      // All authenticated users can create experiences
+      allow create: if isAuthenticated() &&
+                       request.resource.data.type == 'experience';
+
+      // All authenticated users can update experiences
+      allow update: if isAuthenticated();
+
+      // All authenticated users can delete experiences
+      allow delete: if isAuthenticated();
+    }
+
+    // ============================================================
+    // PERSONAL INFO COLLECTION
+    // Used by: generator.service.ts
+    // Stores owner's personal information for document generation
+    // CHANGED: Single document at /personal-info/config (not per-user)
+    // ============================================================
+
+    match /personal-info/{docId} {
+      // All users can read personal info
+      allow read: if canRead();
+
+      // All authenticated users can write to personal info
+      allow create, update: if isAuthenticated();
+
+      // Prevent deletion of config document
+      allow delete: if false;
+    }
+
+    // ============================================================
+    // USER PROFILES COLLECTION
+    // Used by: future user profile management
+    // Stores user preferences and settings
+    // NOTE: May be deprecated in single-owner model
+    // ============================================================
+
+    match /user-profiles/{userId} {
+      // All users can read profiles
+      allow read: if canRead();
+
+      // All authenticated users can create/update profiles
+      allow create, update: if isAuthenticated();
+
+      // Prevent profile deletion
+      allow delete: if false;
+    }
+
+    // ============================================================
+    // JOB MATCHES COLLECTION (Shared with job-finder-worker)
+    // Written by worker, read by frontend
+    // All job matches are visible to all users
+    // ============================================================
+
+    match /job-matches/{matchId} {
+      // All users can read all matches
+      allow read: if canRead();
+
+      // Worker writes via service account (no client writes)
+      allow write: if false;
+    }
+
+    // ============================================================
+    // COMPANIES COLLECTION (Shared with job-finder-worker)
+    // Written by worker, read by frontend
+    // Company data visible to all users
+    // ============================================================
+
+    match /companies/{companyId} {
+      // All users can read company data
+      allow read: if canRead();
+
+      // Worker writes via service account (no client writes)
+      allow write: if false;
+    }
+
+    // ============================================================
+    // JOB SOURCES COLLECTION (Shared with job-finder-worker)
+    // Source configurations for job scraping
+    // ============================================================
+
+    match /job-sources/{sourceId} {
+      // All users can read source configs
+      allow read: if canRead();
+
+      // All authenticated users can manage sources
+      allow write: if isAuthenticated();
+    }
+
+    // ============================================================
+    // JOB FINDER CONFIG COLLECTION
+    // Application configuration (AI prompts, settings, personal-info)
+    // ============================================================
+
+    match /job-finder-config/{configId} {
+      // All users can read config
+      allow read: if canRead();
+
+      // All authenticated users can write to config
+      allow write: if isAuthenticated();
+    }
+
+    // ============================================================
+    // AI PROMPTS COLLECTION
+    // Stores AI prompt templates used for document generation
+    // Public portfolio - all users can view prompts
+    // Only authenticated users can manage prompts
+    // ============================================================
+
+    match /ai-prompts/{promptId} {
+      // Public read access - anyone can view prompts
+      allow read: if true;
+
+      // Only authenticated users can manage prompts
+      allow write: if isAuthenticated();
+    }
+
+    // ============================================================
+    // DEFAULT DENY ALL
+    // All other collections require explicit rules
+    // ============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

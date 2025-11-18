@@ -1,0 +1,66 @@
+# Compiled JavaScript files
+dist/
+*.js
+*.js.map
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Node.js dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.runtimeconfig.json
+
+# Firebase
+.firebase/*
+!.firebase/emulator-data/
+.firebase/emulator-data/*
+!.firebase/emulator-data/.gitkeep
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+pubsub-debug.log
+storage-debug.log
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+.temp/
+
+# Secret files
+secrets/
+credentials/
+*.key
+*.pem
+
+# Backups
+backups/
+
+# Prevent --no-verify bypass scripts
+git-bypass-*
+no-verify-*

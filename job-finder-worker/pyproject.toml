@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "job-finder"
+version = "0.1.0"
+description = "Web scraper for finding relevant job postings"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "selenium>=4.15.0",
+    "lxml>=4.9.0",
+    "pandas>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.0",
+    "sqlalchemy>=2.0.0",
+    "anthropic>=0.40.0",
+    "openai>=1.54.0",
+    "pydantic>=2.10.0",
+    "tiktoken>=0.8.0",
+    "firebase-admin>=6.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "black>=23.0.0",
+    "flake8>=6.1.0",
+    "mypy>=1.5.0",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+
+[tool.pytest.ini_options]
+# pytest test discovery configuration
+# See docs/testing/naming-conventions.md for details
+testpaths = ["tests"]                    # Only search for tests in tests/ directory
+python_files = "test_*.py"               # Only collect files starting with test_
+python_classes = "Test*"                 # Only collect classes starting with Test (capital T)
+python_functions = "test_*"              # Only collect functions starting with test_
+addopts = "-v --cov=src/job_finder --cov-report=html --cov-report=term"
+
+[tool.mypy]
+python_version = "3.9"
+warn_unused_configs = true
+ignore_missing_imports = true
+# Gradually enable stricter checks
+# warn_return_any = true
+# disallow_untyped_defs = true
+check_untyped_defs = false
+disallow_any_generics = false
+disallow_untyped_calls = false

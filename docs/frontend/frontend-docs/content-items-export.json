@@ -1,0 +1,575 @@
+[
+  {
+    "id": "overview-section",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "heading": "Overview",
+    "type": "profile-section",
+    "parentId": null,
+    "order": 0,
+    "updatedAt": "2025-10-16T22:28:59.721Z",
+    "structuredData": {
+      "summary": "I design and ship production systems where product velocity and platform reliability meet. Recent work spans low-latency messaging, partner integrations, and shared tooling that standardizes observability and security across services.",
+      "role": "Senior Full-Stack & Platform Engineer",
+      "tagline": "I build user-facing features on top of solid platforms—measurable reliability, happy developers, faster product cycles.",
+      "links": [
+        {
+          "label": "GitHub",
+          "url": "https://github.com/Jdubz"
+        },
+        {
+          "label": "LinkedIn",
+          "url": "https://www.linkedin.com/in/joshwentworth/"
+        },
+        {
+          "label": "Email",
+          "url": "mailto:contact@joshwentworth.com"
+        }
+      ],
+      "primaryStack": [
+        "TypeScript/React",
+        "Node.js",
+        "Python",
+        "Postgres/MySQL/Redis",
+        "Kubernetes",
+        "GCP"
+      ]
+    }
+  },
+  {
+    "id": "fulfil-solutions",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "role": "Senior Software Engineer",
+    "type": "company",
+    "parentId": null,
+    "technologies": [
+      "Angular",
+      "Node.js (TypeScript)",
+      "MySQL",
+      "Redis",
+      "MongoDB",
+      "BullMQ",
+      "Pub/Sub",
+      "Kubernetes",
+      "Grafana/Loki",
+      "Elastic",
+      "Google Cloud Platform (GCP)",
+      "Firebase",
+      "GitHub"
+    ],
+    "accomplishments": [
+      "Scaled the platform from stealth to powering three automated grocery stores (DoorDash DashMart, Whole Foods).",
+      "Integrated partners (Amazon, DoorDash, Uber Eats, Stripe, TaxJar, Twilio, SendGrid, PagerDuty, Slack) to unlock new fulfillment and comms flows.",
+      "Architected & delivered APIs and automation for Amazon Fresh/Whole Foods delivery systems; operationalized with dashboards/alerts.",
+      "Built async job pipelines (BullMQ / queues) and cache patterns that stabilized workloads under bursty demand."
+    ],
+    "location": "Mountain View, CA - Remote (Portland, OR)",
+    "company": "Fulfil Solutions",
+    "startDate": "2021-12",
+    "endDate": "2025-03",
+    "order": 1,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "amazon-fresh-project",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "name": "Amazon Fresh / Whole Foods",
+    "description": "I was on the team engaged on a year-long project to build the cloud infrastructure and API to integrate with Amazon. We worked closely with Amazon's team to translate their business requirements into feasible requirements that would work with our system, which was built with a different architecture in mind. The project was a success, and now Fulfil's robotics are being implemented in whole foods across the US.",
+    "type": "project",
+    "parentId": "fulfil-solutions",
+    "order": 0,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "order-management-apps",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "name": "Order Management Web Apps",
+    "description": "My team was responsible for building and maintaining the end-user facing web (mobile) application and the kiosk application for order pickup.",
+    "type": "project",
+    "parentId": "fulfil-solutions",
+    "order": 1,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "marketplace-support",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "name": "Marketplace Support",
+    "description": "My team was responsible for integrating with marketplaces including Doordash and Uber eats. This meant communicating inventory, order status and lifecycle events, and customer support. We used Doordash Drive for last mile delivery.",
+    "type": "project",
+    "parentId": "fulfil-solutions",
+    "order": 2,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "meow-wolf",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "summary": "I worked on multiple web applications, as well as their component library, and integrated with the docker system for fleet management. These applications had a complex pub/sub architecture to view who was using the installation (if logged in) and update their profile based on completing puzzles.",
+    "role": "Front End Software Developer",
+    "type": "company",
+    "parentId": null,
+    "technologies": [
+      "Docker",
+      "React",
+      "Styled Components",
+      "Bootstrap",
+      "MaterialUI",
+      "Pub/Sub"
+    ],
+    "company": "Meow Wolf",
+    "location": "Denver, CO - Remote",
+    "startDate": "2021-03",
+    "endDate": "2021-07",
+    "order": 2,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "opna-dev",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "summary": "Delivered custom web apps, integrations, and internal tools for Intuit, McDonald's, Google and others.",
+    "role": "Co-Founder & Lead Engineer",
+    "type": "company",
+    "parentId": null,
+    "accomplishments": [
+      "Delivered custom web apps, integrations, and internal tools for Intuit, McDonald's, Google and others.",
+      "Built full-stack solutions with React, Node.js, Python; designed GCP deployments for production scale.",
+      "Implemented featured GCP products as part of Google's partner program: Enterprise apps on Dialogflow (natural language pipeline) and Game Servers for a large mobile gaming company.",
+      "Partnered cross-functionally to design user-focused products and streamline ops workflows."
+    ],
+    "company": "OPNA dev",
+    "location": "San Francisco - Bay Area, CA",
+    "startDate": "2017-06",
+    "endDate": "2021-12",
+    "order": 3,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "intuit-project",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "technologies": [
+      "Vanilla JS",
+      "unit testing"
+    ],
+    "name": "Intuit",
+    "description": "Intuit's marketing team often needed widgets implemented into their product quickly and efficiently. These widgets had to use vanilla JS as we were not allowed access to their dependency library, and had to have excellent text coverage.",
+    "type": "project",
+    "parentId": "opna-dev",
+    "order": 0,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "dialogflow-jll",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "technologies": [
+      "Dialogflow",
+      "App Engine",
+      "GCP",
+      "StackTrace",
+      "GraphQL",
+      "Apollo",
+      "CircleCI",
+      "React",
+      "CodeClimate"
+    ],
+    "name": "Dialogflow & JLL",
+    "description": "I was brought on to create a massive microservice architecture that sat behind an NLP interface. The app was a simple chat with a bot, but could do everything from schedule corporate meetings to order take out. The most requested feature was managing facilities requests. Namely temperature control.",
+    "type": "project",
+    "parentId": "opna-dev",
+    "order": 1,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "dialogflow-mcdonalds",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "technologies": [
+      "Dialogflow",
+      "Node",
+      "Express"
+    ],
+    "name": "Dialogflow & McDonalds",
+    "description": "I was on a team that implemented McDonald's entire menu into a chat application for customer ordering. This allowed for substitutions and order modifications, as well as coupons and special codes.",
+    "type": "project",
+    "parentId": "opna-dev",
+    "order": 2,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "game-servers",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "technologies": [
+      "Python",
+      "gRPC",
+      "Docker"
+    ],
+    "name": "Game servers",
+    "description": "In a multiplayer video game context you cannot simply scale containers up and down to react to load like a normal application. Game servers is a GCP product that allows you to select a set of users for a \"match\" and assign them to a specific instance. the container is then automatically spun up and down for the duration of the match.",
+    "type": "project",
+    "parentId": "opna-dev",
+    "order": 3,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "bartendro",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "technologies": [
+      "Docker",
+      "Django",
+      "Python",
+      "React",
+      "Raspberry Pi"
+    ],
+    "name": "Bartendro",
+    "description": "An open source cocktail mixing machine. We rebuilt the UI and implemented a containerized server that communicated with the hardware. We added observability, remote updates, remote monitoring, and cloud menu management.",
+    "type": "project",
+    "parentId": "opna-dev",
+    "order": 4,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "drivers-benefits",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "technologies": [
+      "Salesforce",
+      "Java (Apex)"
+    ],
+    "name": "Driver's Benefits",
+    "description": "The client had a massive HIPAA compliant Salesforce instance for case management. Their goal was to help gig workers, specifically drivers, obtain health care through government assistance. We helped them update their workflow to adhere to software best practices, like IAC and unit testing, while maintaining HIPAA compliance.",
+    "type": "project",
+    "parentId": "opna-dev",
+    "order": 5,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "contractor-work",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "role": "Software Engineer",
+    "type": "company",
+    "parentId": null,
+    "accomplishments": [
+      "Built applications across enterprise software and embedded systems; worked in JavaScript, Python, and real-time system design."
+    ],
+    "company": "Contractor",
+    "location": "San Francisco - Bay Area, CA",
+    "startDate": "2015-08",
+    "endDate": "2017-06",
+    "order": 4,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "britelite-immersive",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "role": "Technical Director",
+    "type": "company",
+    "parentId": null,
+    "technologies": [
+      "Python",
+      "GLSL",
+      "Touch Designer",
+      "Javascript"
+    ],
+    "accomplishments": [
+      "Design, program and maintain interactive multimedia display systems for events and permanent installations",
+      "Implemented tools for broadcast including many used on the red carpet for awards shows.",
+      "Built and maintained BSO's (Bright Shiny Objects) for marketing initiatives.",
+      "Clients included: Facebook, Instagram, Salesforce, Pinterest, Twitter"
+    ],
+    "company": "BriteLite Immersive",
+    "location": "San Francisco, CA",
+    "startDate": "2013-02",
+    "endDate": "2015-09",
+    "order": 5,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "instagram-instastop",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "name": "Instagram Instastop / Twitter Golden Screen",
+    "accomplishments": [
+      "live on the air - no mistakes.",
+      "calibrating color temperature for the cameras.",
+      "the touch screens were IR grids that were sensitive to the flood lights, causing ghost touches.",
+      "Super high pressure environment. FB / Instagram / Twitter would pay millions for their 30 second spot so it had to be perfect."
+    ],
+    "description": "One of the primary pieces I created at Britelite was a touch screen interface that pulled content from a moderated social media stream and allowed celebrities at the event to record responses live on broadcast that would then be pushed to the moderation and marketing team to re-post as contractually allowed.",
+    "type": "project",
+    "parentId": "britelite-immersive",
+    "order": 0,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "madrone-studios",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "role": "Interactive Developer",
+    "type": "company",
+    "parentId": null,
+    "technologies": [
+      "Python",
+      "GLSL",
+      "Touch Designer"
+    ],
+    "accomplishments": [
+      "Wrote custom, controllable lighting and video applications for an immersive corporate venue including a 15 projector stitch."
+    ],
+    "company": "Madrone Studios",
+    "location": "San Francisco, CA",
+    "startDate": "2012-09",
+    "endDate": "2013-02",
+    "order": 6,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "wentworth-precision",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "summary": "CNC Mill operator",
+    "role": "CNC machinist",
+    "type": "company",
+    "parentId": null,
+    "company": "Wentworth Precision Machining",
+    "location": "Sonora, CA",
+    "startDate": "2004-09",
+    "endDate": "2010-08",
+    "order": 7,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "skills-technologies",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "skills": [],
+    "type": "skill-group",
+    "category": "Skills & Technologies",
+    "parentId": null,
+    "subcategories": [
+      {
+        "skills": [
+          "Angular",
+          "React",
+          "Mobx",
+          "Sentry",
+          "tailwind",
+          "shadcn",
+          "bootstrap",
+          "themeui",
+          "materialui",
+          "styled components"
+        ],
+        "name": "Frontend"
+      },
+      {
+        "skills": [
+          "nodejs",
+          "express",
+          "apollo",
+          "python",
+          "Flask",
+          "C++"
+        ],
+        "name": "Backend"
+      },
+      {
+        "skills": [
+          "GCP",
+          "Linux",
+          "Docker"
+        ],
+        "name": "Platform"
+      },
+      {
+        "skills": [
+          "Doordash Marketplce",
+          "Doordash Drive",
+          "Uber Eats Marketplace",
+          "Stripe",
+          "Taxjar",
+          "Contentful",
+          "Twilio",
+          "SendGrid",
+          "PagerDuty",
+          "Slack"
+        ],
+        "name": "Integrations"
+      },
+      {
+        "skills": [
+          "BullMQ",
+          "RabbitMQ",
+          "Pub/Sub"
+        ],
+        "name": "Messaging / queues"
+      },
+      {
+        "skills": [
+          "Lighthouse"
+        ],
+        "name": "Performance"
+      },
+      {
+        "skills": [
+          "SLAs",
+          "incident response",
+          "error budgets"
+        ],
+        "name": "Reliability"
+      },
+      {
+        "skills": [
+          "Sentry",
+          "Promethius",
+          "Elasctic",
+          "Google Stacktrace",
+          "PagerDuty"
+        ],
+        "name": "Observability"
+      },
+      {
+        "skills": [
+          "redaction/PII",
+          "authN/Z patterns",
+          "signatures"
+        ],
+        "name": "Security"
+      },
+      {
+        "skills": [
+          "Stripe",
+          "TaxJar",
+          "reconciliation",
+          "audits"
+        ],
+        "name": "Payments / tax"
+      },
+      {
+        "skills": [
+          "funnels",
+          "flags",
+          "experimentation"
+        ],
+        "name": "UX / AB testing"
+      },
+      {
+        "skills": [
+          "technology anchors"
+        ],
+        "name": "GCP / Kubernetes / Redis / Postgres / Typescript"
+      },
+      {
+        "skills": [
+          "Jest",
+          "Mocha",
+          "Chai",
+          "Playwright",
+          "Cypress"
+        ],
+        "name": "Unit / Regression Testing"
+      },
+      {
+        "skills": [
+          "JWT",
+          "Oauth2.0"
+        ],
+        "name": "Authentication"
+      }
+    ],
+    "order": 8,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "google-cloud-cert",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "institution": "Google Cloud",
+    "type": "education",
+    "parentId": null,
+    "degree": "Professional Cloud Developer",
+    "startDate": "2019",
+    "endDate": "2021",
+    "order": 9,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "hack-reactor",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "institution": "Hack Reactor",
+    "type": "education",
+    "parentId": null,
+    "degree": "Software Engineering Bootcamp",
+    "startDate": "May 2016",
+    "order": 10,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  },
+  {
+    "id": "ucsc-degree",
+    "createdAt": "2025-10-16T22:28:59.721Z",
+    "updatedBy": "seed-script@joshwentworth.com",
+    "visibility": "published",
+    "createdBy": "seed-script@joshwentworth.com",
+    "institution": "UCSC",
+    "type": "education",
+    "parentId": null,
+    "degree": "B.A. in Classical Western Music",
+    "field": "minors in Electronic Music & Jazz",
+    "honors": "Regents scholar - top 1% of incoming freshmen, 4.5 GPA from high school with top SAT scores.",
+    "startDate": "May 2009",
+    "order": 11,
+    "updatedAt": "2025-10-16T22:28:59.721Z"
+  }
+]

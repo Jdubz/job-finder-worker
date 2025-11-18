@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# Pre-push hook: Blocking safe unit tests
+echo "🧪 Running pre-push checks..."
+
+# Run safe unit tests
+echo "🛡️  Running safe test runner..."
+npm run test || {
+  echo "❌ Tests failed! Please fix failing tests before pushing."
+  exit 1
+}
+
+echo "✅ Pre-push checks passed!"

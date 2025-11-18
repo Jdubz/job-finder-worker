@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# Pre-commit hook: Blocking lint and typecheck
+echo "🔍 Running pre-commit checks..."
+
+# Run lint
+echo "📝 Linting..."
+npm run lint || {
+  echo "❌ Linting failed! Please fix errors before committing."
+  exit 1
+}
+
+# Run typecheck
+echo "🔧 Type checking..."
+npm run type-check || {
+  echo "❌ Type checking failed! Please fix TypeScript errors before committing."
+  exit 1
+}
+
+echo "✅ Pre-commit checks passed!"

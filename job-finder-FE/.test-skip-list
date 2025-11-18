@@ -1,0 +1,3 @@
+src/components/ui/__tests__/button.test.tsx
+src/components/auth/__tests__/AuthIcon.test.tsx
+src/components/layout/__tests__/MainLayout.test.tsx

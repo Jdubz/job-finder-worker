@@ -1,0 +1,30 @@
+# Firebase / Google Cloud Project Configuration
+firebase_project_id = "static-sites-257923"
+gcp_region          = "us-central1"
+
+# Firebase Hosting Site IDs
+staging_site_id    = "job-finder-staging"
+production_site_id = "job-finder-production"
+
+# Cloudflare Configuration
+# REQUIRED: Get this from Cloudflare dashboard
+cloudflare_zone_id = "your-cloudflare-zone-id-here"
+
+# Custom Domain Configuration
+cloudflare_staging_domain    = "job-finder-staging.joshwentworth.com"
+cloudflare_production_domain = "job-finder.joshwentworth.com"
+
+# GitHub Actions Service Account
+# Update this with your actual service account email after creation
+github_actions_service_account_email = "firebase-adminsdk-xxxxx@static-sites-257923.iam.gserviceaccount.com"
+
+# Environment (used for workspace selection)
+environment = "staging"
+
+# Resource Tags
+tags = {
+  project    = "job-finder"
+  managed_by = "terraform"
+  repository = "job-finder-FE"
+  owner      = "jdubz"
+}

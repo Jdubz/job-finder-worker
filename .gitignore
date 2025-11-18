@@ -1,0 +1,12 @@
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+coverage/
+**/coverage/
+.env
+**/.env
+*.log
+**/*.tsbuildinfo
+# build artefacts
+job-finder-worker/htmlcov/

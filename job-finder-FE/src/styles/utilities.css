@@ -1,0 +1,152 @@
+/**
+ * Utility Classes
+ * 
+ * Common CSS patterns extracted from repeated usage across components.
+ * Reduces code duplication and improves maintainability.
+ */
+
+/* Flexbox utilities */
+.flex-center {
+  @apply flex items-center justify-center;
+}
+
+.flex-between {
+  @apply flex items-center justify-between;
+}
+
+.flex-start {
+  @apply flex items-center justify-start;
+}
+
+.flex-end {
+  @apply flex items-center justify-end;
+}
+
+/* Card header patterns */
+.card-header-flex {
+  @apply flex flex-row items-center justify-between space-y-0 pb-2;
+}
+
+/* Icon container patterns */
+.icon-container {
+  @apply flex h-12 w-12 items-center justify-center rounded-full bg-primary/10;
+}
+
+.icon-container-sm {
+  @apply flex h-10 w-10 items-center justify-center rounded-full bg-primary/10;
+}
+
+.icon-container-lg {
+  @apply flex h-16 w-16 items-center justify-center rounded-full bg-primary/10;
+}
+
+/* Loading states */
+.loading-container {
+  @apply flex items-center justify-center min-h-[60vh];
+}
+
+.loading-container-sm {
+  @apply flex items-center justify-center min-h-[400px];
+}
+
+.loading-container-lg {
+  @apply flex items-center justify-center min-h-[calc(100vh-4rem)];
+}
+
+/* Button patterns */
+.btn-primary {
+  @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2;
+}
+
+/* Form patterns */
+.form-field-group {
+  @apply flex gap-4 flex-col md:flex-row;
+}
+
+.form-field-group-item {
+  @apply flex-1;
+}
+
+/* Status indicators */
+.status-healthy {
+  @apply text-green-600;
+}
+
+.status-warning {
+  @apply text-yellow-600;
+}
+
+.status-error {
+  @apply text-red-600;
+}
+
+.status-info {
+  @apply text-blue-600;
+}
+
+/* Spacing utilities */
+.space-section {
+  @apply space-y-4;
+}
+
+.space-section-lg {
+  @apply space-y-6;
+}
+
+.space-section-sm {
+  @apply space-y-2;
+}
+
+/* Text utilities */
+.text-muted {
+  @apply text-sm text-muted-foreground;
+}
+
+.text-muted-italic {
+  @apply text-sm text-muted-foreground italic;
+}
+
+.text-lead {
+  @apply text-base leading-relaxed;
+}
+
+/* Border utilities */
+.border-section {
+  @apply border-t pt-4;
+}
+
+.border-section-lg {
+  @apply border-t pt-6;
+}
+
+/* Grid utilities */
+.grid-auto-fit {
+  @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
+}
+
+.grid-auto-fit-sm {
+  @apply grid grid-cols-1 sm:grid-cols-2 gap-3;
+}
+
+/* Animation utilities */
+.fade-in {
+  @apply transition-opacity duration-200;
+}
+
+.slide-in {
+  @apply transition-all duration-200 transform;
+}
+
+/* Focus utilities */
+.focus-ring {
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+}
+
+/* Hover utilities */
+.hover-lift {
+  @apply transition-transform hover:scale-105;
+}
+
+.hover-glow {
+  @apply transition-shadow hover:shadow-lg;
+}

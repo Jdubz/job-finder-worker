@@ -1,0 +1,135 @@
+version: "3.9"
+
+# Unified production stack (API + worker + SQLite) for the on-host deployment.
+# Usage:
+#   docker compose -f infra/docker-compose.yml --env-file ../.env up -d
+# Ensure /srv/job-finder/{data,backups,secrets,cloudflared} exist on the host.
+
+services:
+  api:
+    image: ghcr.io/jdubz/job-finder-api:latest
+    container_name: job-finder-api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DATABASE_PATH: /data/sqlite/jobfinder.db
+      FIREBASE_PROJECT_ID: portfolio
+      FIREBASE_SERVICE_ACCOUNT_PATH: /run/secrets/firebase-admin.json
+      JOBFINDER_DB_BACKUP_DIR: /data/backups
+    volumes:
+      - type: bind
+        source: /srv/job-finder/data
+        target: /data/sqlite
+      - type: bind
+        source: /srv/job-finder/backups
+        target: /data/backups
+      - type: bind
+        source: /srv/job-finder/secrets/firebase-admin.json
+        target: /run/secrets/firebase-admin.json
+        read_only: true
+    depends_on:
+      sqlite-migrator:
+        condition: service_completed_successfully
+    networks:
+      - jobfinder
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  worker:
+    image: ghcr.io/jdubz/job-finder-worker:latest
+    container_name: job-finder-worker
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      ENVIRONMENT: production
+      ENABLE_QUEUE_MODE: "true"
+      ENABLE_CRON: "true"
+      ENABLE_CLOUD_LOGGING: "false"
+      SQLITE_DB_PATH: /data/sqlite/jobfinder.db
+      CONFIG_PATH: /app/config/config.production.yaml
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-admin.json
+    volumes:
+      - type: bind
+        source: /srv/job-finder/data
+        target: /data/sqlite
+      - type: bind
+        source: /srv/job-finder/config
+        target: /app/config
+      - type: bind
+        source: /srv/job-finder/logs
+        target: /app/logs
+      - type: bind
+        source: /srv/job-finder/worker-data
+        target: /app/data
+      - type: bind
+        source: /srv/job-finder/secrets/firebase-admin.json
+        target: /run/secrets/firebase-admin.json
+        read_only: true
+    depends_on:
+      sqlite-migrator:
+        condition: service_completed_successfully
+    networks:
+      - jobfinder
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  sqlite-migrator:
+    image: ghcr.io/jdubz/job-finder-api:latest
+    container_name: job-finder-sqlite-migrator
+    restart: "no"
+    env_file:
+      - ../.env
+    command: ["node", "dist/scripts/migrate.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /data/sqlite/jobfinder.db
+      SCHEMA_FILE: /migrations/schema.sql
+    volumes:
+      - type: bind
+        source: /srv/job-finder/data
+        target: /data/sqlite
+      - type: bind
+        source: /srv/job-finder/sql/schema.sql
+        target: /migrations/schema.sql
+        read_only: true
+    networks:
+      - jobfinder
+
+  cloudflared:
+    image: cloudflare/cloudflared:2024.10.0
+    container_name: job-finder-cloudflared
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    env_file:
+      - ../.env
+    depends_on:
+      - api
+    volumes:
+      - type: bind
+        source: /srv/job-finder/cloudflared
+        target: /etc/cloudflared
+        read_only: true
+    networks:
+      - jobfinder
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: job-finder-watchtower
+    restart: unless-stopped
+    command: --label-enable --interval 300 --cleanup
+    environment:
+      TZ: America/Los_Angeles
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - jobfinder
+
+networks:
+  jobfinder:
+    driver: bridge

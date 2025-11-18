@@ -1,0 +1,12 @@
+# robots.txt for Job Finder
+# https://job-finder.joshwentworth.com
+
+User-agent: *
+Allow: /
+
+# Disallow sensitive pages
+Disallow: /api/
+Disallow: /__/
+
+# Sitemap location
+Sitemap: https://job-finder.joshwentworth.com/sitemap.xml
