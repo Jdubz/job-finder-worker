@@ -4,7 +4,7 @@ import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { ApiErrorCode } from '@shared/types'
 import { GeneratorWorkflowService, type GenerateDocumentPayload } from './workflow/generator.workflow.service'
-import { GeneratorWorkflowRepository } from './generator.workflow.repository'
+import { GeneratorWorkflowRepository, type GeneratorRequestRecord } from './generator.workflow.repository'
 
 const generateSchema = z.object({
   generateType: z.enum(['resume', 'coverLetter', 'both']),
@@ -55,7 +55,7 @@ export function buildGeneratorWorkflowRouter() {
   router.get(
     '/requests',
     asyncHandler((_req, res) => {
-      const documents = repo.listRequests().map((request) => ({
+      const documents = repo.listRequests().map((request: GeneratorRequestRecord) => ({
         ...request,
         steps: repo.listSteps(request.id),
         artifacts: repo.listArtifacts(request.id)
@@ -73,12 +73,13 @@ export function buildGeneratorWorkflowRouter() {
     '/start',
     asyncHandler(async (req, res) => {
       const payload = startSchema.parse(req.body ?? {})
-      const request = await service.createRequest(payload)
+      const requestId = await service.createRequest(payload)
+      const request = repo.getRequest(requestId)
       res.status(202).json(
         success({
-          requestId: request.id,
-          status: request.status,
-          steps: repo.listSteps(request.id)
+          requestId,
+          status: request?.status ?? 'processing',
+          steps: repo.listSteps(requestId)
         })
       )
     })

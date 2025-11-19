@@ -24,8 +24,8 @@ if [ "${ENABLE_CRON}" = "true" ]; then
     echo ""
 
     # Calculate next run time
-    CURRENT_HOUR=$(date +%H)
-    CURRENT_MIN=$(date +%M)
+    CURRENT_HOUR=$((10#$(date +%H)))
+    CURRENT_MIN=$((10#$(date +%M)))
     NEXT_RUN_HOUR=$(( (CURRENT_HOUR / 6 + 1) * 6 ))
     if [ $NEXT_RUN_HOUR -ge 24 ]; then
         NEXT_RUN_HOUR=0
@@ -66,7 +66,7 @@ if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then
     mkdir -p /app/logs
 
     # Start Flask worker in background
-    /usr/local/bin/python /app/src/job_finder/simple_flask_worker.py >> /app/logs/flask_worker.log 2>&1 &
+    /usr/local/bin/python /app/src/job_finder/flask_worker.py >> /app/logs/flask_worker.log 2>&1 &
     FLASK_WORKER_PID=$!
 
     # Wait a moment and check if it started
@@ -102,7 +102,7 @@ elif [ "${ENABLE_QUEUE_MODE}" = "true" ]; then
     mkdir -p /app/logs
 
     # Start queue worker in background
-    /usr/local/bin/python /app/queue_worker.py >> /app/logs/queue_worker.log 2>&1 &
+    /usr/local/bin/python /app/scripts/workers/queue_worker.py >> /app/logs/queue_worker.log 2>&1 &
     QUEUE_WORKER_PID=$!
 
     # Wait a moment and check if it started

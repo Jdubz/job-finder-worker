@@ -1,4 +1,4 @@
-import type { QueueItem, QueueSource, QueueStats } from '@shared/types'
+import type { QueueItem, QueueSource, QueueStats, QueueStatus, ScrapeConfig } from '@shared/types'
 import { JobQueueRepository, type NewQueueItem, type QueueItemUpdate } from './job-queue.repository'
 
 const DEFAULT_MAX_RETRIES = 3
@@ -23,7 +23,7 @@ export type SubmitCompanyInput = {
 
 export type SubmitScrapeInput = {
   userId?: string | null
-  scrapeConfig?: Record<string, unknown>
+  scrapeConfig?: ScrapeConfig
 }
 
 type ListQueueOptions = {

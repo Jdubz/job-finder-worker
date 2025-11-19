@@ -70,7 +70,7 @@ export class GeneratorRepository {
       )
       .run(id, documentType, JSON.stringify(payload ?? {}), now, now)
 
-    return this.get(id) as GeneratorDocument
+    return this.get(id) as GeneratorDocumentRecord
   }
 
   delete(id: string): void {

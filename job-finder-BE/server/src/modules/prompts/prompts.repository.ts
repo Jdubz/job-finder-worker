@@ -8,16 +8,11 @@ export class PromptsRepository {
   private readonly configRepo = new ConfigRepository()
 
   getPrompts(): PromptConfig {
-    const entry = this.configRepo.get(PROMPTS_CONFIG_ID)
-    if (!entry) {
-      return DEFAULT_PROMPTS
-    }
-
-    return entry.payload as PromptConfig
+    const entry = this.configRepo.get<PromptConfig>(PROMPTS_CONFIG_ID)
+    return entry?.payload ?? DEFAULT_PROMPTS
   }
 
   savePrompts(prompts: PromptConfig): PromptConfig {
-    this.configRepo.upsert(PROMPTS_CONFIG_ID, prompts)
-    return this.getPrompts()
+    return this.configRepo.upsert<PromptConfig>(PROMPTS_CONFIG_ID, prompts).payload
   }
 }

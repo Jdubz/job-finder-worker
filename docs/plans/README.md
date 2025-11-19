@@ -11,6 +11,9 @@ The `docs/plans` directory contains roadmap material, migration prep notes, and 
 - [`prod-migration-prep.md`](./prod-migration-prep.md) – canonical plan for the single-host SQLite + Cloudflared deployment.
 - [`node-server-migration.md`](./node-server-migration.md) – Express/Fastify replacement for Firebase Functions, Docker/Watchtower flow, and cutover steps.
 - [`sqlite-migration.md`](./sqlite-migration.md) – Firestore → SQLite persistence plan (schema mapping, adapters, backups).
+- [`deploy-hardening.md`](./deploy-hardening.md) – Host prep, Cloudflared, and Compose requirements for the production stack (MIG-005).
+- [`cutover-checklist.md`](./cutover-checklist.md) – Day-of production cutover plan (MIG-007).
+- [`firebase-cleanup.md`](./firebase-cleanup.md) – Post-cutover removal of Firebase resources/scripts (MIG-008).
 
 ## Adding New Plans
 

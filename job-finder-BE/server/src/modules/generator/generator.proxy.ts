@@ -33,7 +33,7 @@ async function forwardRequest(req: Request, res: Response) {
   let body: BodyInit | undefined
   if (hasBody) {
     if (rawReq.rawBody) {
-      body = rawReq.rawBody
+      body = new Uint8Array(rawReq.rawBody)
     } else if (req.body && typeof req.body === "object") {
       body = JSON.stringify(req.body)
     }

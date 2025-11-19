@@ -87,15 +87,10 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_PATH: /data/sqlite/jobfinder.db
-      SCHEMA_FILE: /migrations/schema.sql
     volumes:
       - type: bind
         source: /srv/job-finder/data
         target: /data/sqlite
-      - type: bind
-        source: /srv/job-finder/sql/schema.sql
-        target: /migrations/schema.sql
-        read_only: true
     networks:
       - jobfinder
 
@@ -106,6 +101,8 @@ services:
     command: tunnel --config /etc/cloudflared/config.yml run
     env_file:
       - ../.env
+    environment:
+      TUNNEL_ORIGIN_CERT: /etc/cloudflared/cert.pem
     depends_on:
       - api
     volumes:

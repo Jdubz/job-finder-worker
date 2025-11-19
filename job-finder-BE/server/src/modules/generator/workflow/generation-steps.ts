@@ -1,4 +1,4 @@
-import type { GenerationStep, GenerationType } from '@shared/types'
+import type { GenerationStep, GenerationType, TimestampLike } from '@shared/types'
 
 interface GenerationStepInit {
   id: string
@@ -73,13 +73,20 @@ export function createInitialSteps(type: GenerationType): GenerationStep[] {
   }))
 }
 
+function toDate(value?: TimestampLike) {
+  if (!value) {
+    return undefined
+  }
+  return value instanceof Date ? value : value.toDate()
+}
+
 export function startStep(steps: GenerationStep[], id: string): GenerationStep[] {
   return steps.map((step) =>
     step.id === id
       ? {
           ...step,
           status: 'in_progress',
-          startedAt: new Date().toISOString()
+          startedAt: new Date()
         }
       : step
   )
@@ -97,11 +104,11 @@ export function completeStep(
       ? {
           ...step,
           status,
-          completedAt: new Date().toISOString(),
-          duration:
-            step.startedAt != null
-              ? Date.now() - new Date(step.startedAt).getTime()
-              : undefined,
+          completedAt: new Date(),
+          duration: (() => {
+            const started = toDate(step.startedAt)
+            return started ? Date.now() - started.getTime() : undefined
+          })(),
           result: result ?? step.result,
           error: error ?? step.error
         }

@@ -65,7 +65,7 @@ export function buildGeneratorApiRouter() {
     asyncHandler(async (req, res) => {
       const parsed = personalInfoSchema.parse(req.body ?? {})
       if (Object.keys(parsed).length === 0) {
-        res.status(400).json(failure(ApiErrorCode.VALIDATION_ERROR, "No fields to update"))
+        res.status(400).json(failure(ApiErrorCode.VALIDATION_FAILED, "No fields to update"))
         return
       }
 

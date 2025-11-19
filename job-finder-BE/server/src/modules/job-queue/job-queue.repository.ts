@@ -6,7 +6,8 @@ import type {
   QueueStatus,
   QueueSource,
   JobSubTask,
-  CompanySubTask
+  CompanySubTask,
+  SourceTier
 } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
@@ -35,7 +36,7 @@ type QueueItemRow = {
   source_id: string | null
   source_type: string | null
   source_config: string | null
-  source_tier: string | null
+  source_tier: SourceTier | null
   tracking_id: string | null
   ancestry_chain: string | null
   spawn_depth: number

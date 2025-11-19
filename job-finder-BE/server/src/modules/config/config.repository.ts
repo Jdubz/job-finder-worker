@@ -1,10 +1,25 @@
 import type Database from 'better-sqlite3'
+import type { JobFinderConfigEntry } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
-export interface ConfigEntry {
+type ConfigRow = {
   id: string
-  payload: unknown
-  updatedAt: string
+  payload_json: string
+  updated_at: string
+}
+
+const UPSERT_SQL = `
+  INSERT INTO job_finder_config (id, payload_json, updated_at)
+  VALUES (?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET payload_json = excluded.payload_json, updated_at = excluded.updated_at
+`
+
+function mapRow<TPayload = unknown>(row: ConfigRow): JobFinderConfigEntry<TPayload> {
+  return {
+    id: row.id,
+    payload: JSON.parse(row.payload_json) as TPayload,
+    updatedAt: row.updated_at
+  }
 }
 
 export class ConfigRepository {
@@ -14,48 +29,27 @@ export class ConfigRepository {
     this.db = getDb()
   }
 
-  list(): ConfigEntry[] {
-    const rows = this.db.prepare('SELECT id, payload_json, updated_at FROM job_finder_config').all() as Array<{
-      id: string
-      payload_json: string
-      updated_at: string
-    }>
+  list<TPayload = unknown>(): JobFinderConfigEntry<TPayload>[] {
+    const rows = this.db
+      .prepare('SELECT id, payload_json, updated_at FROM job_finder_config')
+      .all() as ConfigRow[]
 
-    return rows.map((row) => ({
-      id: row.id,
-      payload: JSON.parse(row.payload_json),
-      updatedAt: row.updated_at
-    }))
+    return rows.map((row) => mapRow<TPayload>(row))
   }
 
-  get(id: string): ConfigEntry | null {
-    const row = this.db.prepare('SELECT id, payload_json, updated_at FROM job_finder_config WHERE id = ?').get(id) as
-      | {
-          id: string
-          payload_json: string
-          updated_at: string
-        }
-      | undefined
+  get<TPayload = unknown>(id: string): JobFinderConfigEntry<TPayload> | null {
+    const row = this.db
+      .prepare('SELECT id, payload_json, updated_at FROM job_finder_config WHERE id = ?')
+      .get(id) as ConfigRow | undefined
 
-    if (!row) return null
-
-    return {
-      id: row.id,
-      payload: JSON.parse(row.payload_json),
-      updatedAt: row.updated_at
-    }
+    return row ? mapRow<TPayload>(row) : null
   }
 
-  upsert(id: string, payload: unknown): ConfigEntry {
+  upsert<TPayload = unknown>(id: string, payload: TPayload): JobFinderConfigEntry<TPayload> {
     const now = new Date().toISOString()
-    this.db
-      .prepare(
-        `INSERT INTO job_finder_config (id, payload_json, updated_at)
-         VALUES (?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET payload_json = excluded.payload_json, updated_at = excluded.updated_at`
-      )
-      .run(id, JSON.stringify(payload ?? {}), now)
+    const serialized = payload === undefined ? null : payload
+    this.db.prepare(UPSERT_SQL).run(id, JSON.stringify(serialized), now)
 
-    return this.get(id) as ConfigEntry
+    return this.get<TPayload>(id) as JobFinderConfigEntry<TPayload>
   }
 }

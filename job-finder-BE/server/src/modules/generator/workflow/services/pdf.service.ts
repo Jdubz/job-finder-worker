@@ -8,7 +8,7 @@ import type { Logger } from 'pino'
 import type { CoverLetterContent, ResumeContent } from '@shared/types'
 import { logger as rootLogger } from '../../../../logger'
 
-const TEMPLATE_ROOT = path.join(__dirname, '..', 'templates')
+const TEMPLATE_ROOT = path.join(__dirname, '..', '..', 'templates')
 
 export class PDFService {
   private resumeTemplate?: TemplateDelegate
@@ -67,19 +67,17 @@ export class PDFService {
       browser = await puppeteer.launch({
         args: chromium.args,
         executablePath: await chromium.executablePath(),
-        headless: true,
-        defaultViewport: chromium.defaultViewport,
-        ignoreHTTPSErrors: true
+        headless: true
       })
 
       const page = await browser.newPage()
       await page.setContent(html, { waitUntil: 'networkidle0' })
-      const buffer = await page.pdf({
+      const pdfResult = await page.pdf({
         format: 'A4',
         printBackground: true
       })
       await page.close()
-      return buffer
+      return Buffer.isBuffer(pdfResult) ? pdfResult : Buffer.from(pdfResult)
     } catch (error) {
       this.log.warn({ err: error }, 'Falling back to HTML buffer for PDF output')
       return Buffer.from(html, 'utf-8')

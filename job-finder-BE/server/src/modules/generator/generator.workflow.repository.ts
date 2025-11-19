@@ -1,7 +1,6 @@
 import type Database from 'better-sqlite3'
-import type { PersonalInfo } from '@shared/types'
+import type { PersonalInfo, GenerationStep, TimestampLike } from '@shared/types'
 import { getDb } from '../../db/sqlite'
-import type { GenerationStep } from './workflow/generation-steps'
 
 export interface GeneratorRequestRecord {
   id: string
@@ -26,6 +25,20 @@ export interface GeneratorArtifactRecord {
   storagePath: string
   sizeBytes?: number | null
   createdAt: string
+}
+
+function serializeTimestamp(value?: TimestampLike) {
+  if (!value) {
+    return null
+  }
+  if (value instanceof Date) {
+    return value.toISOString()
+  }
+  return value.toDate().toISOString()
+}
+
+function deserializeTimestamp(value: string | null) {
+  return value ? new Date(value) : undefined
 }
 
 export class GeneratorWorkflowRepository {
@@ -173,8 +186,8 @@ export class GeneratorWorkflowRepository {
           step.name,
           step.description ?? '',
           step.status,
-          step.startedAt ?? null,
-          step.completedAt ?? null,
+          serializeTimestamp(step.startedAt),
+          serializeTimestamp(step.completedAt),
           step.duration ?? null,
           step.result ? JSON.stringify(step.result) : null,
           step.error ? JSON.stringify(step.error) : null,
@@ -205,16 +218,16 @@ export class GeneratorWorkflowRepository {
       position: number
     }>
 
-    return rows.map((row) => ({
+    return rows.map((row): GenerationStep => ({
       id: row.id,
       name: row.name,
-      description: row.description ?? undefined,
+      description: row.description ?? '',
       status: row.status as GenerationStep['status'],
-      startedAt: row.started_at ?? undefined,
-      completedAt: row.completed_at ?? undefined,
+      startedAt: deserializeTimestamp(row.started_at),
+      completedAt: deserializeTimestamp(row.completed_at),
       duration: row.duration_ms ?? undefined,
-      result: row.result_json ? (JSON.parse(row.result_json) as Record<string, unknown>) : undefined,
-      error: row.error_json ? (JSON.parse(row.error_json) as Record<string, unknown>) : undefined
+      result: row.result_json ? (JSON.parse(row.result_json) as GenerationStep['result']) : undefined,
+      error: row.error_json ? (JSON.parse(row.error_json) as GenerationStep['error']) : undefined
     }))
   }
 

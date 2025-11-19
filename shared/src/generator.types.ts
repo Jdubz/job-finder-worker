@@ -49,6 +49,7 @@ export interface PersonalInfo {
   website?: string
   github?: string
   linkedin?: string
+  summary?: string
   avatar?: string
   logo?: string
   accentColor?: string

@@ -30,7 +30,7 @@ const resetSchema = z.object({
 const withMetadata = (prompts: PromptConfig, userEmail: string): PromptConfig => ({
   ...prompts,
   updatedBy: userEmail,
-  updatedAt: new Date().toISOString(),
+  updatedAt: new Date(),
 })
 
 export function buildPromptsRouter() {

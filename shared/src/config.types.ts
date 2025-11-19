@@ -1,8 +1,8 @@
 import type { TimestampLike } from "./firestore.types"
 
-export interface JobFinderConfigEntry {
+export interface JobFinderConfigEntry<TPayload = unknown> {
   id: string
-  payload: Record<string, unknown>
+  payload: TPayload
   updatedAt: string
 }
 

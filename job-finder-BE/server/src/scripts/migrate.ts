@@ -1,10 +1,17 @@
 import path from 'node:path'
 import sqlite3 from 'better-sqlite3'
-import { runMigrations } from '../db/migrations'
+import { runMigrations } from '../db/migrations.js'
 
-const DB_PATH = process.env.JF_SQLITE_DB_PATH ?? path.resolve(process.cwd(), '../../infra/sqlite/jobfinder.db')
+const DB_PATH =
+  process.env.JF_SQLITE_DB_PATH ??
+  process.env.DATABASE_PATH ??
+  path.resolve(process.cwd(), '../../infra/sqlite/jobfinder.db')
+
 const MIGRATIONS_DIR =
-  process.env.JF_SQLITE_MIGRATIONS_DIR ?? path.resolve(process.cwd(), '../../infra/sqlite/migrations')
+  process.env.JF_SQLITE_MIGRATIONS_DIR ??
+  process.env.SCHEMA_DIR ??
+  (process.env.SCHEMA_FILE ? path.dirname(process.env.SCHEMA_FILE) : undefined) ??
+  path.resolve(process.cwd(), 'infra/sqlite/migrations')
 
 function main() {
   const db = sqlite3(DB_PATH)

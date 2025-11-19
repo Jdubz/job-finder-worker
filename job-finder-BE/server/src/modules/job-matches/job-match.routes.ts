@@ -6,11 +6,45 @@ import type {
   GetJobMatchResponse,
   SaveJobMatchRequest,
   SaveJobMatchResponse,
-  DeleteJobMatchResponse
+  DeleteJobMatchResponse,
+  ResumeIntakeData
 } from '@shared/types'
 import { JobMatchRepository } from './job-match.repository'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
+
+const resumeIntakeDataSchema: z.ZodType<ResumeIntakeData> = z.object({
+  jobId: z.string(),
+  jobTitle: z.string(),
+  company: z.string(),
+  targetSummary: z.string(),
+  skillsPriority: z.array(z.string()),
+  experienceHighlights: z.array(
+    z.object({
+      company: z.string(),
+      title: z.string(),
+      pointsToEmphasize: z.array(z.string())
+    })
+  ),
+  projectsToInclude: z.array(
+    z.object({
+      name: z.string(),
+      whyRelevant: z.string(),
+      pointsToHighlight: z.array(z.string())
+    })
+  ),
+  achievementAngles: z.array(z.string()),
+  atsKeywords: z.array(z.string()),
+  gapMitigation: z
+    .array(
+      z.object({
+        missingSkill: z.string(),
+        mitigationStrategy: z.string(),
+        coverLetterPoint: z.string()
+      })
+    )
+    .optional()
+})
 
 const jobMatchSchema = z.object({
   id: z.string().optional(),
@@ -31,12 +65,19 @@ const jobMatchSchema = z.object({
   experienceMatch: z.number().min(0).max(100),
   applicationPriority: z.enum(['High', 'Medium', 'Low']),
   customizationRecommendations: z.array(z.string()).optional(),
-  resumeIntakeData: z.record(z.unknown()).optional(),
+  resumeIntakeData: resumeIntakeDataSchema.optional(),
   analyzedAt: z.union([z.string(), z.date()]).optional(),
   createdAt: z.union([z.string(), z.date()]).optional(),
   submittedBy: z.string().nullable().optional(),
   queueItemId: z.string().optional()
 })
+
+function toTimestamp(value?: string | Date) {
+  if (!value) {
+    return new Date()
+  }
+  return value instanceof Date ? value : new Date(value)
+}
 
 const limitSchema = z.coerce.number().int().min(1).max(200).default(50)
 const listQuerySchema = z.object({
@@ -86,11 +127,11 @@ export function buildJobMatchRouter() {
         matchedSkills: payload.matchedSkills ?? [],
         missingSkills: payload.missingSkills ?? [],
         matchReasons: payload.matchReasons ?? [],
+        analyzedAt: toTimestamp(payload.analyzedAt),
+        createdAt: toTimestamp(payload.createdAt),
         keyStrengths: payload.keyStrengths ?? [],
         potentialConcerns: payload.potentialConcerns ?? [],
         customizationRecommendations: payload.customizationRecommendations ?? [],
-        analyzedAt: payload.analyzedAt ?? new Date(),
-        createdAt: payload.createdAt ?? new Date(),
         submittedBy: payload.submittedBy ?? null,
         queueItemId: payload.queueItemId ?? payload.id ?? 'manual'
       }

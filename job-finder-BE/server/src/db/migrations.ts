@@ -17,7 +17,9 @@ function ensureSchemaTable(db: Database.Database) {
 }
 
 function loadApplied(db: Database.Database): Set<string> {
-  const rows = db.prepare<{ name: string }>('SELECT name FROM schema_migrations ORDER BY name').all()
+  const rows = db
+    .prepare<[], { name: string }>('SELECT name FROM schema_migrations ORDER BY name')
+    .all()
   return new Set(rows.map((row) => row.name))
 }
 
@@ -42,11 +44,8 @@ export function runMigrations(db: Database.Database, migrationsDir: string = def
   const appliedNow: string[] = []
   for (const file of pending) {
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8')
-    const tx = db.transaction(() => {
-      db.exec(sql)
-      db.prepare('INSERT INTO schema_migrations (name) VALUES (?)').run(file)
-    })
-    tx()
+    db.exec(sql)
+    db.prepare('INSERT INTO schema_migrations (name) VALUES (?)').run(file)
     appliedNow.push(file)
   }
 
