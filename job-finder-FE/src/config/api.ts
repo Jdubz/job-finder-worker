@@ -11,46 +11,27 @@
  * - Production: static-sites-257923 Firebase project (portfolio database)
  */
 
-const isDevelopment = import.meta.env.MODE === "development"
 const isStaging = import.meta.env.MODE === "staging"
+const rawApiBase =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.VITE_USE_EMULATORS === "true" ? "http://localhost:8080" : "http://localhost:8080")
+const normalizedApiBase = rawApiBase.replace(/\/$/, "")
+const restBaseUrl = `${normalizedApiBase}/api`
+const generatorBaseUrl = `${restBaseUrl}/generator`
 
-/**
- * Get the base URL for the current environment
- *
- * Development: Uses Firebase emulators with static-sites-257923 project
- * Staging/Production: Uses static-sites-257923 Firebase project
- *   - Staging functions: manageGenerator-staging
- *   - Production functions: manageGenerator (no suffix)
- */
-const getBaseUrl = (): string => {
-  if (isDevelopment) {
-    // Local Firebase emulator
-    return import.meta.env.VITE_USE_EMULATORS === "true"
-      ? "http://localhost:5001/static-sites-257923/us-central1"
-      : import.meta.env.VITE_API_BASE_URL || "http://localhost:5001/static-sites-257923/us-central1"
-  }
-  // Both staging and production use static-sites-257923 project (job-finder-BE deployment)
-  // Function names are differentiated by suffix (-staging for staging, none for production)
-  return (
-    import.meta.env.VITE_API_BASE_URL ||
-    "https://us-central1-static-sites-257923.cloudfunctions.net"
-  )
-}
-
-const BASE_URL = getBaseUrl()
-
-/**
- * Function name suffix for environment-specific functions
- * Staging functions have -staging suffix (e.g., manageJobQueue-staging)
- * Production functions have no suffix (e.g., manageJobQueue)
- */
+// Functions API (legacy Firebase Cloud Functions)
+const rawFunctionsBase =
+  import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+  "https://us-central1-static-sites-257923.cloudfunctions.net"
+const functionsBaseUrl = rawFunctionsBase.replace(/\/$/, "")
 const FUNCTION_SUFFIX = isStaging ? "-staging" : ""
 
 /**
  * API Configuration
  */
 export const API_CONFIG = {
-  baseUrl: BASE_URL,
+  baseUrl: restBaseUrl,
+  generatorBaseUrl,
   timeout: 30000,
   retryAttempts: 3,
   retryDelay: 1000,
@@ -61,22 +42,13 @@ export const API_CONFIG = {
  * Note: Staging functions use -staging suffix, production has no suffix
  */
 export const api = {
-  baseUrl: BASE_URL,
+  baseUrl: restBaseUrl,
+  generatorBaseUrl,
 
-  // Firebase Functions endpoints
+  // Firebase Functions endpoints (legacy)
   functions: {
     // Document generation
-    manageGenerator: `${BASE_URL}/manageGenerator${FUNCTION_SUFFIX}`,
-  },
-
-  // Firestore collections (accessed via Firebase SDK, not REST)
-  collections: {
-    jobMatches: "job-matches",
-    jobQueue: "job-queue",
-    contentItems: "content-items",
-    documents: "generated-documents",
-    settings: "job-finder-config",
-    prompts: "ai-prompts",
+    manageGenerator: `${functionsBaseUrl}/manageGenerator${FUNCTION_SUFFIX}`,
   },
 }
 

@@ -39,6 +39,16 @@ const jobMatchSchema = z.object({
 })
 
 const limitSchema = z.coerce.number().int().min(1).max(200).default(50)
+const listQuerySchema = z.object({
+  limit: limitSchema,
+  offset: z.coerce.number().int().min(0).default(0),
+  minScore: z.coerce.number().int().min(0).max(100).optional(),
+  maxScore: z.coerce.number().int().min(0).max(100).optional(),
+  companyName: z.string().min(1).optional(),
+  priority: z.enum(['High', 'Medium', 'Low']).optional(),
+  sortBy: z.enum(['score', 'date', 'company']).optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional()
+})
 
 export function buildJobMatchRouter() {
   const router = Router()
@@ -47,8 +57,8 @@ export function buildJobMatchRouter() {
   router.get(
     '/',
     asyncHandler((req, res) => {
-      const limit = limitSchema.parse(req.query.limit)
-      const matches = repo.list(limit)
+      const filters = listQuerySchema.parse(req.query)
+      const matches = repo.list(filters)
       const response: ListJobMatchesResponse = { matches, count: matches.length }
       res.json(success(response))
     })

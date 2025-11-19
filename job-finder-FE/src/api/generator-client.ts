@@ -2,10 +2,26 @@
  * Generator API Client
  *
  * Handles AI resume and cover letter generation.
- * Integrates with Firebase Cloud Functions.
+ * Integrates with the Node API proxy for document generation.
  */
 
 import { BaseApiClient } from "./base-client"
+import { API_CONFIG } from "@/config/api"
+
+type ApiEnvelope<T> = { success: boolean; data: T }
+
+function unwrapResponse<T>(payload: T | ApiEnvelope<T>): T {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "success" in payload &&
+    "data" in payload &&
+    typeof (payload as ApiEnvelope<T>).success === "boolean"
+  ) {
+    return (payload as ApiEnvelope<T>).data
+  }
+  return payload as T
+}
 
 /**
  * Request payload for generating documents
@@ -105,11 +121,15 @@ export interface ExecuteStepResponse {
 }
 
 export class GeneratorClient extends BaseApiClient {
+  constructor(baseUrl = API_CONFIG.generatorBaseUrl) {
+    super(baseUrl)
+  }
+
   /**
    * Generate a resume or cover letter
    */
   async generateDocument(request: GenerateDocumentRequest): Promise<GenerateDocumentResponse> {
-    return this.post<GenerateDocumentResponse>("/generator/generate", request)
+    return this.post<GenerateDocumentResponse>("/generate", request)
   }
 
   /**
@@ -117,28 +137,32 @@ export class GeneratorClient extends BaseApiClient {
    */
   async getHistory(userId?: string): Promise<DocumentHistoryItem[]> {
     const params = userId ? `?userId=${userId}` : ""
-    return this.get<DocumentHistoryItem[]>(`/generator/requests${params}`)
+    type HistoryResponse = { requests: DocumentHistoryItem[]; count: number }
+    const response = await this.get<HistoryResponse | ApiEnvelope<HistoryResponse>>(`/requests${params}`)
+    const data = unwrapResponse(response)
+    return data.requests ?? []
   }
 
   /**
    * Get user's default settings
    */
   async getUserDefaults(): Promise<UserDefaults> {
-    return this.get<UserDefaults>("/generator/defaults")
+    const response = await this.get<UserDefaults | ApiEnvelope<UserDefaults>>("/defaults")
+    return unwrapResponse(response)
   }
 
   /**
    * Update user's default settings
    */
   async updateUserDefaults(defaults: Partial<UserDefaults>): Promise<{ success: boolean }> {
-    return this.put<{ success: boolean }>("/generator/defaults", defaults)
+    return this.put<{ success: boolean }>("/defaults", defaults)
   }
 
   /**
    * Delete a document from history
    */
   async deleteDocument(documentId: string): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(`/generator/requests/${documentId}`)
+    return this.delete<{ success: boolean }>(`/requests/${documentId}`)
   }
 
   /**
@@ -146,7 +170,7 @@ export class GeneratorClient extends BaseApiClient {
    * Returns requestId to track progress through steps
    */
   async startGeneration(request: GenerateDocumentRequest): Promise<StartGenerationResponse> {
-    return this.post<StartGenerationResponse>("/generator/start", request)
+    return this.post<StartGenerationResponse>("/start", request)
   }
 
   /**
@@ -154,10 +178,10 @@ export class GeneratorClient extends BaseApiClient {
    * Call repeatedly until nextStep is null
    */
   async executeStep(requestId: string): Promise<ExecuteStepResponse> {
-    return this.post<ExecuteStepResponse>(`/generator/step/${requestId}`, {})
+    return this.post<ExecuteStepResponse>(`/step/${requestId}`, {})
   }
 }
 
 // Export singleton instance
 import { api } from "@/config/api"
-export const generatorClient = new GeneratorClient(api.functions.manageGenerator)
+export const generatorClient = new GeneratorClient(api.generatorBaseUrl)

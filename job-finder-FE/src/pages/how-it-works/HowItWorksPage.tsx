@@ -527,7 +527,7 @@ export function HowItWorksPage() {
               <Shield className="h-8 w-8 mb-2 text-primary" />
               <CardTitle>Firebase Backend</CardTitle>
               <CardDescription>
-                Cloud Functions for serverless API, Firestore for data persistence, and Firebase
+                Cloud Functions for serverless API, SQLite/Node services for data persistence, and Firebase
                 Auth for secure authentication
               </CardDescription>
             </CardHeader>
@@ -706,7 +706,7 @@ export function HowItWorksPage() {
               <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90 md:rotate-0" />
               <div className="text-center p-4 border rounded-lg flex-1">
                 <Database className="h-6 w-6 mx-auto mb-2 text-primary" />
-                <p className="font-medium">Queued in Firestore</p>
+                <p className="font-medium">Queued in SQLite</p>
                 <p className="text-xs text-muted-foreground mt-1">job-queue collection</p>
               </div>
               <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90 md:rotate-0" />

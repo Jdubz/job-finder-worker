@@ -16,6 +16,9 @@ beforeAll(() => {
   vi.stubEnv("VITE_FIREBASE_APP_ID", "1:123456789:web:abcdef")
   vi.stubEnv("VITE_USE_EMULATORS", "false")
   vi.stubEnv("VITE_ENVIRONMENT", "test")
+  vi.stubEnv("VITE_OWNER_EMAIL", "owner@test.dev")
+  vi.stubEnv("VITE_AUTH_BYPASS", "false")
+  vi.stubEnv("VITE_E2E_AUTH_TOKEN", "test-token")
 })
 
 // Mock Firebase modules to avoid initialization in tests
@@ -39,25 +42,6 @@ vi.mock("firebase/auth", () => ({
   GoogleAuthProvider: vi.fn(),
 }))
 
-vi.mock("firebase/firestore", () => ({
-  getFirestore: vi.fn(() => ({})),
-  connectFirestoreEmulator: vi.fn(),
-  collection: vi.fn(),
-  doc: vi.fn(),
-  getDoc: vi.fn(),
-  getDocs: vi.fn(),
-  setDoc: vi.fn(),
-  updateDoc: vi.fn(),
-  deleteDoc: vi.fn(),
-  query: vi.fn(),
-  where: vi.fn(),
-  orderBy: vi.fn(),
-  limit: vi.fn(),
-  onSnapshot: vi.fn(() => {
-    // Return unsubscribe function for firestore listeners
-    return () => {}
-  }),
-}))
 
 // Cleanup after each test
 afterEach(() => {

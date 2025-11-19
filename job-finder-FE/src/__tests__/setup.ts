@@ -117,10 +117,6 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: vi.fn(),
 }))
 
-vi.mock("@/contexts/FirestoreContext", () => ({
-  useFirestore: vi.fn(),
-}))
-
 // Mock API clients
 vi.mock("@/api/generator-client", () => ({
   generatorClient: {
@@ -134,14 +130,18 @@ vi.mock("@/api/generator-client", () => ({
   },
 }))
 
-vi.mock("@/api/job-matches-client", () => ({
-  jobMatchesClient: {
-    getMatches: vi.fn(),
-    getMatch: vi.fn(),
-    updateMatch: vi.fn(),
-    deleteMatch: vi.fn(),
-  },
-}))
+vi.mock("@/api/job-matches-client", async () => {
+  const actual = await vi.importActual<typeof import("@/api/job-matches-client")>("@/api/job-matches-client")
+  return {
+    ...actual,
+    jobMatchesClient: {
+      getMatches: vi.fn(),
+      getMatch: vi.fn(),
+      subscribeToMatches: vi.fn(() => vi.fn()),
+      getMatchStats: vi.fn(),
+    },
+  }
+})
 
 // Mock React Router
 vi.mock("react-router-dom", async () => {

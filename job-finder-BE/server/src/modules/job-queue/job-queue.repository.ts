@@ -212,6 +212,49 @@ export class JobQueueRepository {
     return rows.map(buildQueueItem)
   }
 
+  list(options: {
+    status?: QueueStatus | QueueStatus[]
+    type?: QueueItem['type']
+    source?: QueueSource
+    limit?: number
+    offset?: number
+  } = {}): QueueItem[] {
+    let sql = 'SELECT * FROM job_queue WHERE 1 = 1'
+    const params: Array<string | number> = []
+
+    if (options.status) {
+      const statuses = Array.isArray(options.status) ? options.status : [options.status]
+      const placeholders = statuses.map(() => '?').join(', ')
+      sql += ` AND status IN (${placeholders})`
+      params.push(...statuses)
+    }
+
+    if (options.type) {
+      sql += ' AND type = ?'
+      params.push(options.type)
+    }
+
+    if (options.source) {
+      sql += ' AND source = ?'
+      params.push(options.source)
+    }
+
+    sql += ' ORDER BY datetime(created_at) DESC'
+
+    if (typeof options.limit === 'number') {
+      sql += ' LIMIT ?'
+      params.push(options.limit)
+    }
+
+    if (typeof options.offset === 'number') {
+      sql += ' OFFSET ?'
+      params.push(options.offset)
+    }
+
+    const rows = this.db.prepare(sql).all(...params) as QueueItemRow[]
+    return rows.map(buildQueueItem)
+  }
+
   update(id: string, updates: QueueItemUpdate): QueueItem {
     const existing = this.getById(id)
     if (!existing) {

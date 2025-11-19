@@ -119,7 +119,7 @@ All three core services (API, worker, SQLite) now launch from this single compos
 1. **API refactor**: Build the Express/Fastify server plus migration runner referenced by `sqlite-migrator`.
 2. **Worker SQLite adapters**: Implement read/write helpers referencing `/data/sqlite/jobfinder.db` and retire Firestore clients.
 3. **Frontend networking**: Update FE envs (Firebase Hosting config) to use `https://job-finder-api.joshwentworth.com` for all API calls.
-4. **Automated backups**: Add a cron/systemd timer on the host that runs `sqlite3 jobfinder.db ".backup /srv/job-finder/backups/jobfinder-$(date +%F).db"` followed by the remote sync (e.g., `rclone` to Backblaze/S3).
+4. **Backups**: Run `sqlite3 jobfinder.db ".backup /srv/job-finder/backups/jobfinder-$(date +%F).db"` before risky operations and sync `/srv/job-finder/backups` off-site (e.g., `rclone` to Backblaze/S3`). Automation is intentionally deferred.
 5. **Cutover checklist**: Document smoke tests + rollback (point DNS back to Firebase Functions) for go-live day.
 6. **Auth swap**: Remove Firebase Auth clients, plumb GIS token verification, and add the admin allowlist env plumbing throughout shared types and API route guards.
 7. **Husky hooks**: Modernize hook scripts (drop `_/.husky.sh`) and ensure they lint/build all workspaces before PRs merge.

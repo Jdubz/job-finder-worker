@@ -18,4 +18,5 @@ npm install --workspace infra/sqlite/seeders
 npm run export:firestore --workspace infra/sqlite/seeders
 ```
 
+
 Add new infrastructure modules (Terraform, Ansible, etc.) under this folder so they stay versioned with the rest of the stack.

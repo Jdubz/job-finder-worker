@@ -26,8 +26,20 @@ export type SubmitScrapeInput = {
   scrapeConfig?: Record<string, unknown>
 }
 
+type ListQueueOptions = {
+  status?: QueueStatus | QueueStatus[]
+  type?: QueueItem['type']
+  source?: QueueSource
+  limit?: number
+  offset?: number
+}
+
 export class JobQueueService {
   constructor(private readonly repo = new JobQueueRepository()) {}
+
+  list(options: ListQueueOptions = {}): QueueItem[] {
+    return this.repo.list(options)
+  }
 
   submitJob(input: SubmitJobInput): QueueItem {
     const now = new Date()

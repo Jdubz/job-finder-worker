@@ -8,6 +8,7 @@
  */
 
 import { auth, appCheck } from "@/config/firebase"
+import { DEFAULT_E2E_AUTH_TOKEN, TEST_AUTH_TOKEN_KEY } from "@/config/testing"
 import { getToken } from "firebase/app-check"
 
 export interface RequestOptions {
@@ -55,6 +56,11 @@ export class BaseApiClient {
    * Get current user's auth token
    */
   async getAuthToken(): Promise<string | null> {
+    const bypassToken = getBypassTokenOverride()
+    if (bypassToken) {
+      return bypassToken
+    }
+
     const user = auth.currentUser
     if (!user) {
       return null
@@ -219,4 +225,15 @@ export class BaseApiClient {
       return null
     }
   }
+}
+
+function getBypassTokenOverride(): string | null {
+  if (typeof window !== "undefined") {
+    const stored = window.localStorage.getItem(TEST_AUTH_TOKEN_KEY)
+    if (stored) {
+      return stored
+    }
+  }
+
+  return DEFAULT_E2E_AUTH_TOKEN || null
 }

@@ -23,6 +23,7 @@ export * from "./api/queue.types"
 export * from "./api/job-match.types"
 export * from "./api/contact.types"
 export * from "./api/config.types"
+export * from "./api/prompts.types"
 
 // Type guards and utilities
 export * from "./guards"

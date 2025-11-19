@@ -118,7 +118,7 @@ The test suite aims for 80% coverage across:
 ### Context Providers
 
 - Mock authentication context with test users
-- Mock Firestore context with test data
+- Mock API clients and hooks with test data
 - Mock router context for navigation tests
 
 ### External Dependencies

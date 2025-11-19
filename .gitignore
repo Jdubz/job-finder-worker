@@ -10,3 +10,4 @@ coverage/
 **/*.tsbuildinfo
 # build artefacts
 job-finder-worker/htmlcov/
+**/.firebase/

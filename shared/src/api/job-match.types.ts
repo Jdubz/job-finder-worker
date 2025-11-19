@@ -1,4 +1,14 @@
 import type { JobMatch } from "../job.types"
+import type { PaginationParams } from "../api.types"
+
+export interface ListJobMatchesRequest extends PaginationParams {
+  minScore?: number
+  maxScore?: number
+  companyName?: string
+  priority?: JobMatch["applicationPriority"]
+  sortBy?: "score" | "date" | "company"
+  sortOrder?: "asc" | "desc"
+}
 
 export interface ListJobMatchesResponse {
   matches: JobMatch[]

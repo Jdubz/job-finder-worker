@@ -1,117 +1,93 @@
-/**
- * Job Matches API Client
- *
- * Handles querying job matches from Firestore.
- * Uses FirestoreService for consistent data access.
- */
-
-import { firestoreService } from "@/services/firestore"
-import type { QueryConstraints, UnsubscribeFn } from "@/services/firestore/types"
-import type { JobMatch } from "@shared/types"
+import { BaseApiClient } from "./base-client"
+import { API_CONFIG } from "@/config/api"
+import type {
+  ApiSuccessResponse,
+  JobMatch,
+  ListJobMatchesResponse,
+  GetJobMatchResponse,
+} from "@shared/types"
 
 export interface JobMatchFilters {
   minScore?: number
   maxScore?: number
   companyName?: string
+  priority?: JobMatch["applicationPriority"]
   limit?: number
+  offset?: number
+  sortBy?: "score" | "date" | "company"
+  sortOrder?: "asc" | "desc"
 }
 
-export class JobMatchesClient {
-  private collectionName = "job-matches" as const
-
-  /**
-   * Build query constraints from filters
-   */
-  private buildConstraints(filters?: JobMatchFilters): QueryConstraints {
-    const whereConstraints: QueryConstraints["where"] = []
-
-    // Apply score filters
-    if (filters?.minScore !== undefined) {
-      whereConstraints.push({
-        field: "matchScore",
-        operator: ">=",
-        value: filters.minScore,
-      })
-    }
-    if (filters?.maxScore !== undefined) {
-      whereConstraints.push({
-        field: "matchScore",
-        operator: "<=",
-        value: filters.maxScore,
-      })
-    }
-
-    // Apply company filter
-    if (filters?.companyName) {
-      whereConstraints.push({
-        field: "companyName",
-        operator: "==",
-        value: filters.companyName,
-      })
-    }
-
-    const constraints: QueryConstraints = {
-      where: whereConstraints.length > 0 ? whereConstraints : undefined,
-      orderBy: [],
-    }
-
-    // Apply limit
-    if (filters?.limit) {
-      constraints.limit = filters.limit
-    }
-
-    return constraints
+export class JobMatchesClient extends BaseApiClient {
+  constructor(baseUrl = API_CONFIG.baseUrl) {
+    super(baseUrl)
   }
 
-  /**
-   * Get all job matches
-   * Single-owner system - all matches are visible
-   */
-  async getMatches(filters?: JobMatchFilters): Promise<JobMatch[]> {
-    const constraints = this.buildConstraints(filters)
-
-    // Order by match score (highest first) for getMatches
-    constraints.orderBy = [{ field: "matchScore", direction: "desc" }]
-
-    return (await firestoreService.getDocuments(
-      this.collectionName,
-      constraints
-    )) as unknown as JobMatch[]
+  private buildQuery(filters: JobMatchFilters = {}): string {
+    const params = new URLSearchParams()
+    if (filters.minScore !== undefined) params.set("minScore", String(filters.minScore))
+    if (filters.maxScore !== undefined) params.set("maxScore", String(filters.maxScore))
+    if (filters.companyName) params.set("companyName", filters.companyName)
+    if (filters.priority) params.set("priority", filters.priority)
+    if (filters.limit !== undefined) params.set("limit", String(filters.limit))
+    if (filters.offset !== undefined) params.set("offset", String(filters.offset))
+    if (filters.sortBy) params.set("sortBy", filters.sortBy)
+    if (filters.sortOrder) params.set("sortOrder", filters.sortOrder)
+    return params.toString()
   }
 
-  /**
-   * Get a specific job match by ID
-   */
+  async getMatches(filters: JobMatchFilters = {}): Promise<JobMatch[]> {
+    const query = this.buildQuery(filters)
+    const response = await this.get<ApiSuccessResponse<ListJobMatchesResponse>>(
+      `/job-matches${query ? `?${query}` : ""}`
+    )
+    return response.data.matches
+  }
+
   async getMatch(matchId: string): Promise<JobMatch | null> {
-    return (await firestoreService.getDocument(this.collectionName, matchId)) as JobMatch | null
+    try {
+      const response = await this.get<ApiSuccessResponse<GetJobMatchResponse>>(
+        `/job-matches/${matchId}`
+      )
+      return response.data.match
+    } catch (error) {
+      console.warn(`Failed to fetch job match ${matchId}`, error)
+      return null
+    }
   }
 
-  /**
-   * Subscribe to real-time updates for job matches
-   * Single-owner system - all matches are visible
-   */
   subscribeToMatches(
     callback: (matches: JobMatch[]) => void,
     filters?: JobMatchFilters,
-    onError?: (error: Error) => void
-  ): UnsubscribeFn {
-    const constraints = this.buildConstraints(filters)
+    onError?: (error: Error) => void,
+    pollIntervalMs = 10000
+  ): () => void {
+    let stopped = false
 
-    // Order by creation time (newest first) for subscriptions
-    constraints.orderBy = [{ field: "createdAt", direction: "desc" }]
+    const poll = async () => {
+      try {
+        const matches = await this.getMatches(filters)
+        if (!stopped) {
+          callback(matches)
+        }
+      } catch (error) {
+        if (!stopped && onError) {
+          onError(error as Error)
+        }
+      } finally {
+        if (!stopped) {
+          setTimeout(poll, pollIntervalMs)
+        }
+      }
+    }
 
-    return firestoreService.subscribeToCollection(
-      this.collectionName,
-      (matches) => callback(matches as unknown as JobMatch[]),
-      onError || ((error) => console.error("Error fetching job matches:", error)),
-      constraints
-    )
+    poll()
+
+    return () => {
+      stopped = true
+    }
   }
 
-  /**
-   * Get match statistics
-   * Single-owner system - gets stats for all matches
-   */
   async getMatchStats(): Promise<{
     total: number
     highPriority: number
@@ -120,7 +96,6 @@ export class JobMatchesClient {
     averageScore: number
   }> {
     const matches = await this.getMatches()
-
     const stats = {
       total: matches.length,
       highPriority: matches.filter((m) => m.applicationPriority === "High").length,
@@ -137,5 +112,4 @@ export class JobMatchesClient {
   }
 }
 
-// Export singleton instance
 export const jobMatchesClient = new JobMatchesClient()

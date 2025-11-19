@@ -1,10 +1,15 @@
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-17
+> Last Updated: 2025-11-18
 
 # SQLite Migration Plan (Job Finder BE)
 
-_Last updated: November 17, 2025_
+_Last updated: November 18, 2025_
+
+## Status Snapshot (Nov 18, 2025)
+- Phases 0–4 are complete: schema + migrations landed, Node API + worker talk to SQLite, frontend now consumes REST exclusively.
+- Active work: Phase 5 cutover (Cloudflared switch, read-only Firestore fallback, nightly backups).
+- Upcoming tickets: MIG-005 (deploy hardening), MIG-006 (backups), MIG-007 (cutover), MIG-008 (final Firebase cleanup).
 
 ## 1. Context & Goals
 - Both `job-finder-BE` (Firebase Cloud Functions) and `job-finder-FE` currently depend on Firestore directly.

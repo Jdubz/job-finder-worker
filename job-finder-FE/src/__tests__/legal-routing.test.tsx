@@ -89,12 +89,6 @@ vi.mock("../contexts/AuthContext", () => ({
   ),
 }))
 
-vi.mock("../contexts/FirestoreContext", () => ({
-  FirestoreProvider: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="firestore-provider">{children}</div>
-  ),
-}))
-
 describe("Legal Page Routing", () => {
   const renderWithRouter = (initialRoute = "/") => {
     const memoryRouter = createMemoryRouter(router.routes, {

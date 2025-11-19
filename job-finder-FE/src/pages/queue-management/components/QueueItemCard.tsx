@@ -107,6 +107,7 @@ export function QueueItemCard({ item, selected, onSelect, onRetry, onCancel }: Q
 
   return (
     <Card
+      data-testid={`queue-item-${itemId}`}
       className={`transition-all duration-300 ease-in-out hover:shadow-md ${selected ? "ring-2 ring-primary shadow-lg" : ""} ${getStatusBorderClass()}`}
     >
       <CardHeader className="pb-3">

@@ -81,6 +81,10 @@ export function ContentItemDialogV2({
       setError("You must be logged in to save content items")
       return
     }
+    if (!user.email) {
+      setError("A verified email address is required to save content items")
+      return
+    }
 
     setLoading(true)
     setError(null)
@@ -98,7 +102,7 @@ export function ContentItemDialogV2({
           ...formData,
         }
 
-        await contentItemsClient.updateContentItem(item.id, user.uid, updateData)
+        await contentItemsClient.updateContentItem(item.id, user.email, updateData)
 
         await logger.info("database", "completed", `Updated content item: ${item.id}`, {
           details: { itemType: type, itemId: item.id },
@@ -112,7 +116,7 @@ export function ContentItemDialogV2({
           order: 0,
         }
 
-        await contentItemsClient.createContentItem(user.uid, createData)
+        await contentItemsClient.createContentItem(user.uid, user.email, createData)
 
         await logger.info("database", "completed", `Created content item: ${type}`, {
           details: { itemType: type },

@@ -20,6 +20,7 @@ npm run build:frontend   # Build shared types + React app
 npm run lint:server      # Lint the Node API
 npm run lint:functions   # Lint Firebase Functions
 npm run lint:frontend    # Lint the frontend
+npm run test:e2e        # Run cross-system end-to-end tests
 ```
 
 To run scripts inside a workspace manually:

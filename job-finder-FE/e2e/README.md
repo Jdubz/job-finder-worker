@@ -1,163 +1,63 @@
-# End-to-End (E2E) Tests
+# Frontend End-to-End Tests
 
-This directory contains Playwright-based E2E tests that validate critical user workflows across the entire Job Finder application.
+Playwright tests live in this folder and exercise the real frontend against the in-memory Express + SQLite backend. Every spec boots its own auth-bypassed owner session and seeds data through the public REST API.
 
-## Running E2E Tests
+## How It Works
 
-### All E2E Tests
+- `npm run test:e2e --workspace job-finder-FE` starts two servers in parallel:
+  - `scripts/dev/start-api-e2e.mjs` launches the Node API with `file:...mode=memory` SQLite and a fake Firebase service account. Auth/AppCheck are bypassed with the shared `JF_E2E_AUTH_TOKEN`.
+  - `npm run dev --workspace job-finder-FE` runs Vite with `VITE_AUTH_BYPASS=true`, so the app trusts the localStorage auth state injected by each test.
+- Tests seed queue items, content items, and job matches via helper functions in `fixtures/api-client.ts`.
+- Browsers always run headless; screenshots, traces, and HTML reports are emitted on failure.
 
-```bash
-npm run test:e2e
-```
-
-### Run with UI (Interactive)
-
-```bash
-npm run test:e2e:ui
-```
-
-### Run in Headed Mode (See Browser)
-
-```bash
-npm run test:e2e:headed
-```
-
-### Debug Mode
-
-```bash
-npm run test:e2e:debug
-```
-
-### Specific Test File
-
-```bash
-npx playwright test auth.spec.ts
-```
-
-## Test Structure
+## Test Suite Layout
 
 ```
 e2e/
-├── auth.spec.ts          # Authentication workflows
-├── navigation.spec.ts    # Navigation and routing
-└── README.md            # This file
+├── document-builder.spec.ts          # Job match hydration + document builder inputs
+├── owner-config-and-prompts.spec.ts  # Stop list, queue + AI settings, and AI prompts flows
+├── owner-content-and-queue.spec.ts   # Content CRUD + queue management rendering
+├── owner-navigation.spec.ts          # Drawer navigation + owner/guest permissions
+└── fixtures/
+    ├── api-client.ts                 # REST helpers for seeding data
+    └── auth.ts                       # LocalStorage auth bypass utilities
 ```
 
-## Test Categories
-
-### 1. Authentication Tests (`auth.spec.ts`)
-
-- Protected route access and redirects
-- Authentication modal interaction
-- Session persistence across page reloads
-- Session persistence across tabs
-- Editor role enforcement
-
-### 2. Navigation Tests (`navigation.spec.ts`)
-
-- Homepage loading
-- Navigation links functionality
-- 404 page handling
-- Protected page access
-- Responsive design across viewports
-
-## Prerequisites
-
-### 1. Development Server
-
-Tests require the dev server to be running:
+## Running the Suite
 
 ```bash
-npm run dev
+# From repo root
+npm run test:e2e --workspace job-finder-FE
+
+# Headed / UI / debug options are still available
+npm run test:e2e:headed   --workspace job-finder-FE
+npm run test:e2e:ui       --workspace job-finder-FE
+npm run test:e2e:debug    --workspace job-finder-FE
 ```
 
-Server should be accessible at `http://localhost:5173` (default).
+Playwright automatically installs browsers via `npx playwright install` (run once after cloning).
 
-### 2. Environment Variables
+## Writing New Tests
 
-Create `.env.test` with necessary configuration:
+1. **Authenticate up front**
+   ```ts
+   await applyAuthState(page, ownerAuthState())
+   await page.goto("/queue-management")
+   ```
+2. **Seed state via REST** instead of reaching into the DB. Import helpers from `fixtures/api-client`.
+3. **Use accessible selectors** (`getByRole`, `getByLabel`). If selectors are awkward, add a focused `data-testid` to the component rather than brittle CSS.
+4. **Keep tests independent.** Each spec assumes a clean, in-memory database; do not depend on execution order.
 
-```env
-# Test Base URL
-PLAYWRIGHT_BASE_URL=http://localhost:5173
+## CI Expectations
 
-# Firebase Configuration
-VITE_FIREBASE_PROJECT_ID=static-sites-257923
-VITE_USE_EMULATORS=false
+- `PR Checks` run these Playwright specs in parallel with unit, integration, worker, and API e2e tests.
+- The deploy workflow skips tests entirely (it only builds + deploys) because merges to `main` must already have a green PR.
 
-# Optional: Test User Credentials (if testing authenticated flows)
-VITE_TEST_USER_EMAIL=your-test-user@example.com
-VITE_TEST_USER_PASSWORD=your-test-password
-```
+## Troubleshooting
 
-## Test Results
-
-After running tests, view the HTML report:
-
-```bash
-npx playwright show-report
-```
-
-## Writing New E2E Tests
-
-### Basic Test Template
-
-```typescript
-import { test, expect } from '@playwright/test'
-
-test.describe('Feature Name', () => {
-  test.beforeEach(async ({ page }) => {
-    // Navigate to starting page
-    await page.goto('/')
-  })
-
-  test('should do something', async ({ page }) => {
-    // Interact with page
-    await page.click('button[type="submit"]')
-
-    // Assert expectations
-    await expect(page).toHaveURL(/\/dashboard/)
-  })
-})
-```
-
-### Best Practices
-
-1. **Test User Flows, Not Implementation**
-   - Focus on what users do, not internal code
-   - Test complete workflows, not individual functions
-
-2. **Use Stable Selectors**
-   - Prefer `getByRole`, `getByLabel`, `getByText`
-   - Avoid CSS selectors that may change
-   - Add `data-testid` attributes for complex selections
-
-3. **Handle Authentication**
-   - Most tests skip authentication (test redirects instead)
-   - Tests requiring auth should use `test.skip` in CI
-   - Consider using Playwright's authentication storage
-
-4. **Wait Appropriately**
-   - Use Playwright's auto-waiting features
-   - Avoid `page.waitForTimeout()` - use specific waits
-   - Wait for network requests to complete when needed
-
-5. **Test Isolation**
-   - Each test should be independent
-   - Clean up any created data
-   - Don't rely on test execution order
-
-## Authentication in E2E Tests
-
-Most E2E tests in this suite **do not require authentication**. Instead, they test:
-
-- Redirect behavior for protected routes
-- Authentication modal visibility
-- Login page accessibility
-
-### Why Not Test Full OAuth Flow?
-
-- Google OAuth requires interactive browser interaction
+- **Port collisions:** `playwright.config.ts` sets `JF_E2E_API_PORT=5080` by default. Override via env if 5080 is busy.
+- **Auth bypass issues:** Ensure `localStorage` contains `__JF_E2E_AUTH_STATE__` and `__JF_E2E_AUTH_TOKEN__`. Helpers in `fixtures/auth.ts` handle this automatically.
+- **Stuck dev server:** `npm run dev` uses a port guard. If it reuses an old server, stop it (`pkill -f vite`) before rerunning tests.
 - Automated OAuth testing is complex and fragile
 - Integration tests (in `tests/integration/`) cover auth logic
 

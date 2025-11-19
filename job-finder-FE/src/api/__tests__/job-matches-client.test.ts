@@ -1,101 +1,113 @@
-/**
- * Job Matches Client Tests
- * Tests for job matches API client
- */
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { JobMatchesClient } from "../job-matches-client"
+import { auth } from "@/config/firebase"
+import type { JobMatch } from "@shared/types"
 
-import { describe, it, expect, beforeEach, vi } from "vitest"
+vi.mock("@/config/firebase", () => ({
+  auth: {
+    currentUser: null,
+  },
+  appCheck: null,
+}))
+
+declare global {
+  // eslint-disable-next-line no-var
+  var fetch: ReturnType<typeof vi.fn>
+}
+
+global.fetch = vi.fn()
 
 describe("JobMatchesClient", () => {
+  const baseUrl = "https://api.example.com"
+  let client: JobMatchesClient
+
   beforeEach(() => {
-    vi.restoreAllMocks()
+    vi.resetAllMocks()
+    client = new JobMatchesClient(baseUrl)
   })
 
-  describe("query construction", () => {
-    it("should filter by userId when provided", () => {
-      const userId = "test-user-123"
-      expect(userId).toBeTruthy()
-      expect(typeof userId).toBe("string")
-    })
-
-    it("should show all matches when userId is null", () => {
-      const userId = null
-      expect(userId).toBeNull()
-    })
-
-    it("should support score filtering", () => {
-      const filters = {
-        minScore: 70,
-        maxScore: 100,
-      }
-      expect(filters.minScore).toBeGreaterThanOrEqual(0)
-      expect(filters.maxScore).toBeLessThanOrEqual(100)
-    })
-
-    it("should support company name filtering", () => {
-      const filters = {
-        companyName: "Acme Corp",
-      }
-      expect(filters.companyName).toBeTruthy()
-    })
+  afterEach(() => {
+    (auth as any).currentUser = null
   })
 
-  describe("match data structure", () => {
-    it("should have required fields", () => {
-      const mockMatch = {
-        id: "match-123",
-        jobTitle: "Software Engineer",
-        companyName: "Acme Corp",
-        matchScore: 85,
-        submittedBy: "user-123",
-        createdAt: new Date(),
-        analyzedAt: new Date(),
-      }
+  it("fetches matches with query parameters", async () => {
+    const mockMatches: JobMatch[] = [
+      {
+        id: "match-1",
+        url: "https://example.com/job",
+        companyName: "ExampleCo",
+        companyId: "co-1",
+        jobTitle: "Engineer",
+        location: "Remote",
+        salaryRange: null,
+        jobDescription: "Build stuff",
+        companyInfo: null,
+        matchScore: 88,
+        matchedSkills: [],
+        missingSkills: [],
+        matchReasons: [],
+        keyStrengths: [],
+        potentialConcerns: [],
+        experienceMatch: 80,
+        applicationPriority: "High",
+        customizationRecommendations: [],
+        resumeIntakeData: undefined,
+        analyzedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        submittedBy: null,
+        queueItemId: "queue-1",
+      },
+    ]
 
-      expect(mockMatch).toHaveProperty("id")
-      expect(mockMatch).toHaveProperty("jobTitle")
-      expect(mockMatch).toHaveProperty("companyName")
-      expect(mockMatch).toHaveProperty("matchScore")
-      expect(mockMatch).toHaveProperty("submittedBy")
-      expect(mockMatch).toHaveProperty("createdAt")
-      expect(mockMatch).toHaveProperty("analyzedAt")
-    })
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { matches: mockMatches, count: 1 } }),
+      headers: { get: () => 'application/json' },
+    } as Response)
 
-    it("should have match score between 0-100", () => {
-      const score = 85
-      expect(score).toBeGreaterThanOrEqual(0)
-      expect(score).toBeLessThanOrEqual(100)
-    })
+    const matches = await client.getMatches({ minScore: 80 })
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      `${baseUrl}/job-matches?minScore=80`,
+      expect.objectContaining({ method: "GET" })
+    )
+    expect(matches).toEqual(mockMatches)
   })
 
-  describe("subscription handling", () => {
-    it("should call callback with matches", () => {
-      const callback = vi.fn()
-      const mockMatches = [
-        {
-          id: "1",
-          jobTitle: "Engineer",
-          companyName: "Acme",
-          matchScore: 90,
-          submittedBy: "user-1",
-          createdAt: new Date(),
-          analyzedAt: new Date(),
-        },
-      ]
+  it("returns null when match fetch fails", async () => {
+    global.fetch.mockRejectedValue(new Error("network"))
 
-      callback(mockMatches)
+    const result = await client.getMatch("missing")
 
-      expect(callback).toHaveBeenCalledWith(mockMatches)
-      expect(callback).toHaveBeenCalledTimes(1)
-    })
+    expect(result).toBeNull()
+  })
 
-    it("should call error callback on error", () => {
-      const errorCallback = vi.fn()
-      const error = new Error("Test error")
+  it("polls matches via subscribeToMatches", async () => {
+    const callback = vi.fn()
+    const matches: JobMatch[] = []
+    const spy = vi.spyOn(client, "getMatches").mockResolvedValue(matches)
 
-      errorCallback(error)
+    const unsubscribe = client.subscribeToMatches(callback, undefined, undefined, 0)
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
-      expect(errorCallback).toHaveBeenCalledWith(error)
-      expect(errorCallback).toHaveBeenCalledTimes(1)
-    })
+    expect(callback).toHaveBeenCalled()
+    expect(spy).toHaveBeenCalled()
+    unsubscribe()
+  })
+
+  it("calculates match stats", async () => {
+    const matches: JobMatch[] = [
+      { applicationPriority: "High" } as JobMatch,
+      { applicationPriority: "Medium" } as JobMatch,
+      { applicationPriority: "Low" } as JobMatch,
+    ]
+    vi.spyOn(client, "getMatches").mockResolvedValue(matches)
+
+    const stats = await client.getMatchStats()
+
+    expect(stats.total).toBe(3)
+    expect(stats.highPriority).toBe(1)
+    expect(stats.mediumPriority).toBe(1)
+    expect(stats.lowPriority).toBe(1)
   })
 })

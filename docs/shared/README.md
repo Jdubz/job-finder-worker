@@ -4,13 +4,14 @@
 
 # Shared Documentation
 
-This folder contains cross-cutting documentation that applies to multiple services (structured logging, shared Firestore schemas, npm publishing notes, etc.).
+This folder contains cross-cutting documentation that applies to multiple services (SQLite schema reference, shared API contracts, structured logging, npm publishing notes).
 
 ## Highlights
 
-- [`shared-docs/firestore-schema-codification.md`](./shared-docs/firestore-schema-codification.md) – definitive Firestore schema reference.
+- [`shared-docs/sqlite-schema-reference.md`](./shared-docs/sqlite-schema-reference.md) – canonical SQLite table + column mapping shared by backend + worker.
 - [`shared-docs/structured-logging-schema.md`](./shared-docs/structured-logging-schema.md) – logging payload contracts used by both the worker and frontend.
-- Archived references from the historical `job-finder-docs` repo now live in [`docs/archive/job-finder-docs/shared`](../archive/job-finder-docs/shared).
+- [`shared-docs/npm-publishing-setup.md`](./shared-docs/npm-publishing-setup.md) – how to publish the shared types package for local testing.
+- Firestore schema docs were moved to [`docs/archive/2025-11/firestore-ops/shared`](../archive/2025-11/firestore-ops/shared) for historical reference only.
 
 ## When to Update
 

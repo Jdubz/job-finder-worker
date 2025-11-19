@@ -253,8 +253,7 @@ describe("JobFinderConfigPage", () => {
       expect(configClient.updateStopList).toHaveBeenCalledWith(
         expect.objectContaining({
           excludedCompanies: expect.arrayContaining(["New Company"]),
-        }),
-        "test@example.com"
+        })
       )
     })
 
@@ -328,8 +327,7 @@ describe("JobFinderConfigPage", () => {
       expect(configClient.updateQueueSettings).toHaveBeenCalledWith(
         expect.objectContaining({
           maxRetries: 5,
-        }),
-        "test@example.com"
+        })
       )
     })
 
@@ -404,8 +402,7 @@ describe("JobFinderConfigPage", () => {
       expect(configClient.updateAISettings).toHaveBeenCalledWith(
         expect.objectContaining({
           provider: "openai",
-        }),
-        "test@example.com"
+        })
       )
     })
 
@@ -430,8 +427,7 @@ describe("JobFinderConfigPage", () => {
       expect(configClient.updateAISettings).toHaveBeenCalledWith(
         expect.objectContaining({
           model: "gpt-4",
-        }),
-        "test@example.com"
+        })
       )
     })
 
@@ -456,8 +452,7 @@ describe("JobFinderConfigPage", () => {
       expect(configClient.updateAISettings).toHaveBeenCalledWith(
         expect.objectContaining({
           minMatchScore: 80,
-        }),
-        "test@example.com"
+        })
       )
     })
 
@@ -482,8 +477,7 @@ describe("JobFinderConfigPage", () => {
       expect(configClient.updateAISettings).toHaveBeenCalledWith(
         expect.objectContaining({
           costBudgetDaily: 25.5,
-        }),
-        "test@example.com"
+        })
       )
     })
 
