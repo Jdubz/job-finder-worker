@@ -3,6 +3,11 @@ name: Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Optional context for manual deploy"
+        required: false
 
 concurrency:
   group: deploy-main
@@ -24,6 +29,11 @@ jobs:
       WORKER_IMAGE: ghcr.io/jdubz/job-finder-worker/worker:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Show trigger metadata
+        run: |
+          echo "event=${{ github.event_name }}"
+          echo "ref=${{ github.ref }}"
+          echo "sha=${{ github.sha }}"
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
