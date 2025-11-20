@@ -120,3 +120,5 @@ No other free-form `body_json` or `type` discriminator is required. Child conten
 ## Progress Log
 - **2025-11-20** — Added SQLite migration `005_content_items_unify.sql` to reshape the `content_items` table into the new schema (title/role/location/etc.), copy legacy data with `json_extract`, and recreate indexes.
 - **2025-11-20** — Replaced shared content item types/API definitions with the unified fields and refactored the backend repository + routes to drop legacy unions, validate the new schema, and return nested data.
+- **2025-11-20** — Rebuilt the frontend content-items client/page/hooks: removed legacy dialogs/components, added inline edit/child forms, hierarchical rendering, and wired up create/update/delete/reorder flows against the new API.
+- **2025-11-20** — Restored the admin `ContentItemsPage` after a bad merge, reintroducing stable CRUD UI plus import/export controls. Import now normalizes the legacy export JSON into the flattened schema, wipes existing rows, and recreates the hierarchy (including order) while surfacing success/error alerts. Export produces the new canonical shape so future imports stay lossless.
