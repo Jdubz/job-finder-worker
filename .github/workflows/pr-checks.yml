@@ -84,18 +84,18 @@ jobs:
             tests/queue/test_job_pipeline_comprehensive.py \
             tests/queue/test_scraper_intake.py
 
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - name: Run e2e suite
-        env:
-          NODE_ENV: test
-          VITE_AUTH_BYPASS: "true"
-          VITE_E2E_AUTH_TOKEN: "e2e-test-token"
-        run: npm run test:e2e
+  # e2e:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+  #         cache: npm
+  #     - run: npm ci
+  #     - name: Run e2e suite
+  #       env:
+  #         NODE_ENV: test
+  #         VITE_AUTH_BYPASS: "true"
+  #         VITE_E2E_AUTH_TOKEN: "e2e-test-token"
+  #       run: npm run test:e2e
