@@ -4,6 +4,7 @@ import type { GeneratorWorkflowRepository } from '../generator.workflow.reposito
 import type { PersonalInfoStore } from '../personal-info.store'
 import type { PDFService } from '../workflow/services/pdf.service'
 import { storageService } from '../workflow/services/storage.service'
+import type { GenerationStep, PersonalInfo } from '@shared/types'
 
 vi.mock('../workflow/services/cli-runner', () => ({
   runCliProvider: vi.fn().mockResolvedValue({
@@ -35,47 +36,32 @@ vi.mock('../workflow/services/storage.service', () => {
   }
 })
 
-class InMemoryRepo implements GeneratorWorkflowRepository {
-  requests = new Map<
-    string,
-    {
-      id: string
-      generateType: 'resume' | 'coverLetter' | 'both'
-      job: Record<string, unknown>
-      preferences?: Record<string, unknown> | null
-      personalInfo?: Record<string, unknown> | null
-      status: 'pending' | 'processing' | 'completed' | 'failed'
-      resumeUrl?: string | null
-      coverLetterUrl?: string | null
-      jobMatchId?: string | null
-      createdBy?: string | null
-      createdAt: string
-      updatedAt: string
-    }
-  >()
+class InMemoryRepo {
+  requests = new Map<string, any>()
   steps = new Map<string, GenerationStep[]>()
-  artifacts: Record<string, unknown>[] = []
+  artifacts: any[] = []
+  db: any = null
 
-  createRequest(record: any) {
+  createRequest(record: any): any {
     const now = new Date().toISOString()
     const created = { ...record, createdAt: now, updatedAt: now }
     this.requests.set(record.id, created)
     return created
   }
 
-  saveSteps(id: string, steps: GenerationStep[]) {
+  saveSteps(id: string, steps: GenerationStep[]): void {
     this.steps.set(id, steps)
   }
 
-  listSteps(id: string) {
+  listSteps(id: string): GenerationStep[] {
     return this.steps.get(id) ?? []
   }
 
-  getRequest(id: string) {
+  getRequest(id: string): any {
     return this.requests.get(id) ?? null
   }
 
-  updateRequest(id: string, updates: Record<string, unknown>) {
+  updateRequest(id: string, updates: any): any {
     const existing = this.requests.get(id)
     if (!existing) return null
     const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() }
@@ -83,29 +69,44 @@ class InMemoryRepo implements GeneratorWorkflowRepository {
     return updated
   }
 
-  addArtifact(record: any) {
-    this.artifacts.push(record)
-    return record
+  addArtifact(record: any): any {
+    const artifact = {
+      ...record,
+      id: `artifact-${Date.now()}`,
+      createdAt: new Date().toISOString()
+    }
+    this.artifacts.push(artifact)
+    return artifact
   }
 
-  listArtifacts(id: string) {
-    return this.artifacts.filter((artifact) => artifact.requestId === id)
+  listArtifacts(requestId: string): any[] {
+    return this.artifacts.filter((artifact) => artifact.requestId === requestId)
+  }
+
+  listRequests(): any[] {
+    return Array.from(this.requests.values())
+  }
+
+  mapRequest(doc: any): any {
+    return doc
   }
 }
 
-class FakePersonalInfoStore implements PersonalInfoStore {
-  data = {
+class FakePersonalInfoStore {
+  private repo: any = null
+
+  data: PersonalInfo = {
     name: 'Test User',
     email: 'test@example.com',
     accentColor: '#123456'
   }
 
   async get() {
-    return this.data as any
+    return this.data
   }
 
   async update() {
-    return this.data as any
+    return this.data
   }
 }
 
