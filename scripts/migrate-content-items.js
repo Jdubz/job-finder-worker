@@ -8,7 +8,7 @@
  *     --db infra/sqlite/jobfinder.db --user-id <uuid> --user-email someone@example.com [--dry-run]
  */
 
-import { readFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import Database from "better-sqlite3"
@@ -34,7 +34,8 @@ function parseArgs(argv) {
     dbPath: map.get("--db") ?? path.resolve(__dirname, "../infra/sqlite/jobfinder.db"),
     userId: map.get("--user-id") ?? process.env.CONTENT_ITEMS_USER_ID,
     userEmail: map.get("--user-email") ?? process.env.CONTENT_ITEMS_USER_EMAIL,
-    dryRun: map.has("--dry-run")
+    dryRun: map.has("--dry-run"),
+    outputPath: map.get("--output") ?? null
   }
 }
 
@@ -353,6 +354,12 @@ async function main() {
   const normalized = normalizeRecords(records, { userId: options.userId, userEmail: options.userEmail })
   console.log(`[content-items] Built ${normalized.length} root nodes (${countNodes(normalized)} total)`)
 
+  if (options.outputPath) {
+    const exported = serializeNormalized(normalized)
+    writeFileSync(path.resolve(options.outputPath), `${JSON.stringify(exported, null, 2)}\n`, "utf8")
+    console.log(`[content-items] Wrote normalized export to ${path.resolve(options.outputPath)}`)
+  }
+
   if (options.dryRun) {
     console.log(`[dry-run] Parsed ${normalized.length} root items (${countNodes(normalized)} total).`)
     process.exit(0)
@@ -376,6 +383,34 @@ function countNodes(nodes) {
     }
   }
   return total
+}
+
+function serializeNormalized(nodes, parentId = null) {
+  return nodes.map((node) => {
+    const payload = {
+      id: node.legacyId,
+      parentId,
+      order: node.order,
+      title: node.fields.title ?? undefined,
+      role: node.fields.role ?? undefined,
+      location: node.fields.location ?? undefined,
+      website: node.fields.website ?? undefined,
+      startDate: node.fields.startDate ?? undefined,
+      endDate: node.fields.endDate ?? undefined,
+      description: node.fields.description ?? undefined,
+      skills: node.fields.skills ?? undefined,
+      visibility: node.meta.visibility,
+      children: node.children.length ? serializeNormalized(node.children, node.legacyId) : undefined
+    }
+
+    Object.keys(payload).forEach((key) => {
+      if (payload[key] === undefined) {
+        delete payload[key]
+      }
+    })
+
+    return payload
+  })
 }
 
 main().catch((err) => {
