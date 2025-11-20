@@ -42,7 +42,7 @@ describe("useQueueItems", () => {
     vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any)
     vi.mocked(queueClient.listQueueItems).mockResolvedValue({
       items: mockQueueItems as any,
-      pagination: { limit: 50, offset: 0 },
+      pagination: { limit: 50, offset: 0, total: mockQueueItems.length, hasMore: false },
     })
     vi.mocked(queueClient.submitJob).mockResolvedValue(mockQueueItems[0] as any)
     vi.mocked(queueClient.updateQueueItem).mockResolvedValue(mockQueueItems[0] as any)

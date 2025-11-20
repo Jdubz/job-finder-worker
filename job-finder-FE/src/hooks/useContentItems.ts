@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import { contentItemsClient } from "@/api"
+import { contentItemsClient, type CreateContentItemInput } from "@/api"
 import type { ContentItem } from "@shared/types"
-
-type EditableContentItem = Omit<ContentItem, "id" | "userId" | "createdAt" | "updatedAt" | "createdBy" | "updatedBy">
 
 interface UseContentItemsResult {
   contentItems: ContentItem[]
   loading: boolean
   error: Error | null
-  createContentItem: (data: EditableContentItem) => Promise<string>
+  createContentItem: (data: CreateContentItemInput) => Promise<string>
   updateContentItem: (id: string, data: Partial<ContentItem>) => Promise<void>
   deleteContentItem: (id: string) => Promise<void>
   refetch: () => Promise<void>
@@ -55,7 +53,7 @@ export function useContentItems(): UseContentItemsResult {
   }, [fetchItems])
 
   const createContentItem = useCallback(
-    async (data: EditableContentItem) => {
+    async (data: CreateContentItemInput) => {
       if (!user?.id) {
         throw new Error("User must be authenticated to create content items")
       }

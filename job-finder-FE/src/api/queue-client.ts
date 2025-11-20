@@ -53,6 +53,9 @@ export class QueueClient extends BaseApiClient {
 
   async submitJob(request: SubmitJobRequest): Promise<QueueItem> {
     const response = await this.post<ApiSuccessResponse<SubmitJobResponse>>(`/queue/jobs`, request)
+    if (!response.data.queueItem) {
+      throw new Error('Queue item not returned from server')
+    }
     return response.data.queueItem
   }
 
@@ -61,6 +64,9 @@ export class QueueClient extends BaseApiClient {
       `/queue/companies`,
       request
     )
+    if (!response.data.queueItem) {
+      throw new Error('Queue item not returned from server')
+    }
     return response.data.queueItem
   }
 
@@ -69,6 +75,9 @@ export class QueueClient extends BaseApiClient {
       `/queue/scrape`,
       request
     )
+    if (!response.data.queueItem) {
+      throw new Error('Queue item not returned from server')
+    }
     return response.data.queueItem
   }
 

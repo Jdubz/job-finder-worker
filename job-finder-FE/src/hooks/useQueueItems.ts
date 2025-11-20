@@ -40,7 +40,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       updated_at: normalize(item.updated_at) ?? new Date(),
       processed_at: normalize(item.processed_at ?? null) ?? undefined,
       completed_at: normalize(item.completed_at ?? null) ?? undefined,
-    } as QueueItemDocument
+    } as QueueItem
   }, [])
 
   const fetchQueueItems = useCallback(async () => {
@@ -89,7 +89,11 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
 
       const normalized = normalizeQueueItem(queueItem)
       setQueueItems((prev) => [normalized, ...prev])
-      return normalized.id ?? queueItem.id
+      const id = normalized.id ?? queueItem.id
+      if (!id) {
+        throw new Error('Queue item ID not returned from server')
+      }
+      return id
     },
     [normalizeQueueItem, user?.id]
   )

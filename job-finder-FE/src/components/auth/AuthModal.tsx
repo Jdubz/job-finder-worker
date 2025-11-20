@@ -5,6 +5,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
 import { LogOut, Shield, Info } from "lucide-react"
 import { useState } from "react"
