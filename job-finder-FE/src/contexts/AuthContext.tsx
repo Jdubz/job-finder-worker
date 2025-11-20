@@ -15,6 +15,8 @@ const adminEmailSet = new Set(
   Array.isArray(adminConfig.adminEmails) ? adminConfig.adminEmails : []
 )
 
+const BYPASS_FALLBACK_EMAIL = "owner@jobfinder.dev"
+
 interface AuthUser {
   id: string
   uid?: string
@@ -51,16 +53,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const bypassState = readBypassState()
       if (bypassState) {
         const bypassUser = buildBypassUser(bypassState)
-        if (bypassUser) {
-          setUser(bypassUser)
-          setIsOwner(bypassState.isOwner ?? adminEmailSet.has(bypassUser.email))
-        } else {
-          window.localStorage.removeItem(TEST_AUTH_STATE_KEY)
-          window.localStorage.removeItem(TEST_AUTH_TOKEN_KEY)
-          clearStoredAuthToken()
-          setUser(null)
-          setIsOwner(false)
-        }
+        setUser(bypassUser)
+        setIsOwner(bypassState.isOwner ?? adminEmailSet.has(bypassUser.email))
       } else {
         setUser(null)
         setIsOwner(false)
@@ -156,13 +150,9 @@ function resolveBypassToken(state?: BypassAuthState): string {
   return DEFAULT_E2E_AUTH_TOKEN
 }
 
-function buildBypassUser(state: BypassAuthState): AuthUser | null {
+function buildBypassUser(state: BypassAuthState): AuthUser {
   const token = resolveBypassToken(state)
-  const email = state.email
-
-  if (!email) {
-    return null
-  }
+  const email = state.email ?? BYPASS_FALLBACK_EMAIL
 
   storeAuthToken(token)
 

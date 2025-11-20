@@ -18,6 +18,8 @@ import type {
 } from "@shared/types"
 import type { ApiSuccessResponse } from "@shared/types"
 
+export const ROOT_PARENT_SENTINEL = "__root__"
+
 export class ContentItemsClient extends BaseApiClient {
   constructor(baseUrl = API_CONFIG.baseUrl) {
     super(baseUrl)
@@ -30,7 +32,7 @@ export class ContentItemsClient extends BaseApiClient {
     const search = new URLSearchParams()
     search.append("userId", userId)
     if (params.parentId === null) {
-      search.append("parentId", "")
+      search.append("parentId", ROOT_PARENT_SENTINEL)
     } else if (params.parentId) {
       search.append("parentId", params.parentId)
     }

@@ -141,7 +141,7 @@ SELECT
     json_extract(body_json, '$.content')
   ) AS description,
   CASE
-    WHEN raw_skills IS NULL THEN NULL
+    WHEN raw_skills IS NULL OR trim(raw_skills) = '' THEN NULL
     ELSE json(raw_skills)
   END AS skills,
   visibility,
@@ -159,3 +159,4 @@ CREATE INDEX idx_content_items_parent_order ON content_items(parent_id, order_in
 CREATE INDEX idx_content_items_visibility ON content_items(visibility);
 
 PRAGMA foreign_keys=ON;
+E

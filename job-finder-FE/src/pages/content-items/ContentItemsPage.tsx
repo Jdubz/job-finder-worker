@@ -244,9 +244,7 @@ async function replaceContentItems({
   userEmail: string
 }): Promise<number> {
   const allExisting = flattenContentItems(currentItems)
-  for (const item of allExisting) {
-    await contentItemsClient.deleteContentItem(item.id)
-  }
+  await Promise.all(allExisting.map((item) => contentItemsClient.deleteContentItem(item.id)))
 
   let created = 0
 

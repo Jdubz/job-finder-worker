@@ -57,6 +57,8 @@ const reorderRequestSchema = z.object({
   userEmail: z.string().email()
 })
 
+const ROOT_PARENT_SENTINEL = '__root__'
+
 const listQuerySchema = z.object({
   userId: z.string().min(1),
   parentId: nullableIdSchema,
@@ -96,7 +98,11 @@ export function buildContentItemRouter() {
       const items = repo.list({
         userId: query.userId,
         parentId:
-          query.parentId === undefined ? undefined : query.parentId === '' ? null : query.parentId,
+          query.parentId === undefined
+            ? undefined
+            : query.parentId === '' || query.parentId === ROOT_PARENT_SENTINEL
+              ? null
+              : query.parentId,
         visibility: query.visibility,
         includeDrafts: query.includeDrafts,
         limit: query.limit,
