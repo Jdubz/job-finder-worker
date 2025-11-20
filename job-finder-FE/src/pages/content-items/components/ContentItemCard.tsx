@@ -74,7 +74,11 @@ export function ContentItemCard({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border bg-card p-4 shadow-sm">
+    <div
+      className="space-y-3 rounded-lg border bg-card p-4 shadow-sm"
+      data-testid={`content-item-${item.id}`}
+      data-depth={depth}
+    >
       {isEditing ? (
         <ContentItemForm
           initialValues={item}
@@ -100,9 +104,7 @@ export function ContentItemCard({
                 </a>
               )}
             </div>
-            {item.description && (
-              <p className="whitespace-pre-line text-sm text-muted-foreground">{item.description}</p>
-            )}
+            {item.description && <Markdown text={item.description} />}
             {item.skills && item.skills.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-2">
                 {item.skills.map((skill) => (
@@ -117,8 +119,8 @@ export function ContentItemCard({
             )}
           </div>
 
-  <div className="flex flex-wrap gap-2 pt-2">
-            <Button size="sm" variant="default" onClick={() => setIsEditing(true)} disabled={isProcessing}>
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Button size="sm" onClick={() => setIsEditing(true)} disabled={isProcessing}>
               <Pencil className="mr-1 h-4 w-4" /> Edit
             </Button>
             <Button
@@ -182,4 +184,51 @@ export function ContentItemCard({
       )}
     </div>
   )
+}
+
+function Markdown({ text }: { text: string }) {
+  const blocks = text.split(/\n{2,}/)
+  return (
+    <div className="space-y-2 text-sm text-muted-foreground">
+      {blocks.map((block, index) => {
+        const trimmed = block.trim()
+        if (!trimmed) return null
+        if (/^- /.test(trimmed)) {
+          const items = trimmed.split(/\n/).map((line) => line.replace(/^-+\s*/, "").trim())
+          return (
+            <ul key={`${index}-list`} className="list-disc pl-4">
+              {items.map((item, i) => (
+                <li key={i} dangerouslySetInnerHTML={{ __html: formatInline(item) }} />
+              ))}
+            </ul>
+          )
+        }
+        return (
+          <p
+            key={`${index}-paragraph`}
+            className="leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: formatInline(trimmed) }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function formatInline(value: string): string {
+  const escaped = escapeHtml(value)
+  return escaped
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`(.+?)`/g, "<code>$1</code>")
+    .replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
 }

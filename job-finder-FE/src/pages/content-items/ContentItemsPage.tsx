@@ -214,7 +214,7 @@ export function ContentItemsPage() {
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-4" data-testid="content-items-root">
         {sortedContentItems.map((item, index) => (
           <ContentItemCard
             key={item.id}

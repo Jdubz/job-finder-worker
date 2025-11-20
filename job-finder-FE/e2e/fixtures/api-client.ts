@@ -58,17 +58,17 @@ export async function seedContentItem(
   const payload: Record<string, unknown> = {
     userEmail: "owner@jobfinder.dev",
     itemData: {
-      type: "company",
       userId: "e2e-owner",
-      company: "E2E Experience Co",
+      title: "E2E Experience Co",
       role: "QA Lead",
       location: "Remote",
       website: "https://jobs.example.com",
       startDate: "2024-01",
-      summary: "Ensures SQLite-backed workflows ship quickly.",
+      description: "Ensures SQLite-backed workflows ship quickly.",
+      skills: ["testing", "playwright"],
       visibility: "published",
-      order: 1,
-      tags: ["e2e"],
+      order: 0,
+      parentId: null,
     },
     ...rest,
   }
@@ -82,6 +82,49 @@ export async function seedContentItem(
 
   const data = await apiPost<{ item: { id: string } }>(request, "/content-items", payload)
   return data.item.id
+}
+
+export async function deleteContentItem(request: APIRequestContext, itemId: string) {
+  const response = await request.delete(`${API_BASE}/content-items/${itemId}`, {
+    headers: {
+      Authorization: `Bearer ${AUTH_TOKEN}`,
+    },
+  })
+
+  if (!response.ok()) {
+    throw new Error(`Failed to delete content item ${itemId}: ${response.status()} ${await response.text()}`)
+  }
+}
+
+export async function listContentItems(
+  request: APIRequestContext,
+  params: { userId?: string } = {}
+): Promise<Array<{ id: string; title?: string | null }>> {
+  const url = new URL(`${API_BASE}/content-items`)
+  url.searchParams.set("userId", params.userId ?? "e2e-owner")
+  url.searchParams.set("includeDrafts", "true")
+
+  const response = await request.get(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${AUTH_TOKEN}`,
+    },
+  })
+
+  if (!response.ok()) {
+    throw new Error(`Failed to fetch content items: ${response.status()} ${await response.text()}`)
+  }
+
+  const body = (await response.json()) as ApiSuccess<{
+    items: Array<{ id: string; title?: string | null; children?: Array<{ id: string; title?: string | null }> }>
+  }>
+
+  const flatten = (
+    nodes: Array<{ id: string; title?: string | null; children?: Array<{ id: string; title?: string | null }> }>
+  ): Array<{ id: string; title?: string | null }> => {
+    return nodes.flatMap((node) => [node, ...(node.children ? flatten(node.children) : [])])
+  }
+
+  return flatten(body.data.items ?? [])
 }
 
 export async function seedJobMatch(
