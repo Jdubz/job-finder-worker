@@ -31,8 +31,6 @@ const publicLinks: NavLink[] = [
   { to: ROUTES.HOW_IT_WORKS, label: "How It Works", icon: HelpCircle },
   { to: ROUTES.CONTENT_ITEMS, label: "Experience", icon: FolderOpen },
   { to: ROUTES.DOCUMENT_BUILDER, label: "Document Builder", icon: FileText },
-  { to: ROUTES.AI_PROMPTS, label: "AI Prompts", icon: Sparkles },
-  { to: ROUTES.SETTINGS, label: "Settings", icon: Settings },
 ]
 
 const jobFinderLinks: NavLink[] = [
@@ -42,7 +40,9 @@ const jobFinderLinks: NavLink[] = [
 ]
 
 const systemLinks: NavLink[] = [
+  { to: ROUTES.AI_PROMPTS, label: "AI Prompts", icon: Sparkles },
   { to: ROUTES.JOB_FINDER_CONFIG, label: "Configuration", icon: Settings },
+  { to: ROUTES.SETTINGS, label: "Settings", icon: Settings },
 ]
 
 export function Navigation() {

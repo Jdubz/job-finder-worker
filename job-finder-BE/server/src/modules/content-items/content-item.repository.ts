@@ -9,6 +9,20 @@ import type {
 } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
+export class ContentItemNotFoundError extends Error {
+  constructor(message = 'Content item not found') {
+    super(message)
+    this.name = 'ContentItemNotFoundError'
+  }
+}
+
+export class ContentItemInvalidParentError extends Error {
+  constructor(message = 'Invalid content item parent') {
+    super(message)
+    this.name = 'ContentItemInvalidParentError'
+  }
+}
+
 type ContentItemRow = {
   id: string
   user_id: string
@@ -44,8 +58,8 @@ function parseRow(row: ContentItemRow): ContentItem {
     description: row.description,
     skills: row.skills ? (JSON.parse(row.skills) as string[]) : undefined,
     visibility: row.visibility,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
     createdBy: row.created_by,
     updatedBy: row.updated_by
   }
@@ -208,7 +222,10 @@ export class ContentItemRepository {
   }
 
   delete(id: string): void {
-    this.db.prepare('DELETE FROM content_items WHERE id = ?').run(id)
+    const result = this.db.prepare('DELETE FROM content_items WHERE id = ?').run(id)
+    if (result.changes === 0) {
+      throw new ContentItemNotFoundError(`Content item not found: ${id}`)
+    }
   }
 
   private nextOrderIndex(userId: string, parentId: string | null): number {
@@ -221,19 +238,31 @@ export class ContentItemRepository {
             'SELECT COALESCE(MAX(order_index), -1) + 1 AS nextIndex FROM content_items WHERE user_id = ? AND parent_id = ?'
           )
 
-    const row = parentId === null ? stmt.get(userId) : stmt.get(userId, parentId)
-    return (row?.nextIndex as number | undefined) ?? 0
+    const row = (parentId === null
+      ? stmt.get(userId)
+      : stmt.get(userId, parentId)) as { nextIndex: number | null } | undefined
+    return (row?.nextIndex ?? 0) as number
   }
 
   reorder(id: string, parentId: string | null, orderIndex: number, userEmail: string): ContentItem {
     const existing = this.getById(id)
-    if (!existing) throw new Error(`Content item not found: ${id}`)
+    if (!existing) throw new ContentItemNotFoundError(`Content item not found: ${id}`)
 
     const targetParent = parentId ?? null
-    const tx = this.db.transaction(() => {
-      this.resequenceSiblings(existing.parentId, id)
+    if (targetParent) {
+      const parent = this.getById(targetParent)
+      if (!parent) throw new ContentItemInvalidParentError('Parent item not found')
+      if (parent.userId !== existing.userId) {
+        throw new ContentItemInvalidParentError('Parent item belongs to a different user')
+      }
+    }
 
-      const targetSiblings = this.fetchSiblingIds(targetParent).filter((siblingId) => siblingId !== id)
+    const tx = this.db.transaction(() => {
+      this.resequenceSiblings(existing.userId, existing.parentId, id)
+
+      const targetSiblings = this.fetchSiblingIds(existing.userId, targetParent).filter(
+        (siblingId) => siblingId !== id
+      )
       const clampedIndex = Math.max(0, Math.min(orderIndex, targetSiblings.length))
       targetSiblings.splice(clampedIndex, 0, id)
       this.assignOrderForIds(targetSiblings)
@@ -254,20 +283,24 @@ export class ContentItemRepository {
     return this.getById(id) as ContentItem
   }
 
-  private resequenceSiblings(parentId: string | null | undefined, excludeId: string): void {
-    const ids = this.fetchSiblingIds(parentId ?? null).filter((siblingId) => siblingId !== excludeId)
+  private resequenceSiblings(userId: string, parentId: string | null | undefined, excludeId: string): void {
+    const ids = this.fetchSiblingIds(userId, parentId ?? null).filter((siblingId) => siblingId !== excludeId)
     this.assignOrderForIds(ids)
   }
 
-  private fetchSiblingIds(parentId: string | null): string[] {
+  private fetchSiblingIds(userId: string, parentId: string | null): string[] {
     const stmt =
       parentId === null
-        ? this.db.prepare('SELECT id FROM content_items WHERE parent_id IS NULL ORDER BY order_index ASC')
-        : this.db.prepare('SELECT id FROM content_items WHERE parent_id = ? ORDER BY order_index ASC')
+        ? this.db.prepare(
+            'SELECT id FROM content_items WHERE user_id = ? AND parent_id IS NULL ORDER BY order_index ASC'
+          )
+        : this.db.prepare(
+            'SELECT id FROM content_items WHERE user_id = ? AND parent_id = ? ORDER BY order_index ASC'
+          )
     const rows =
       parentId === null
-        ? (stmt.all() as Array<{ id: string }>)
-        : (stmt.all(parentId) as Array<{ id: string }>)
+        ? (stmt.all(userId) as Array<{ id: string }>)
+        : (stmt.all(userId, parentId) as Array<{ id: string }>)
     return rows.map((row) => row.id)
   }
 

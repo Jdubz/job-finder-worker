@@ -44,14 +44,16 @@ No other free-form `body_json` or `type` discriminator is required. Child conten
    | Legacy source | Target field | Notes |
    | --- | --- | --- |
    | `body_json.title`/`name`/`heading` | `title` | choose first non-null |
-   | `body_json.role`/`company` | `role` |
-   | `body_json.location` | `location` |
-   | `body_json.website`/`url` | `website` |
-   | `body_json.startDate` | `start_date` | normalize to YYYY-MM |
-   | `body_json.endDate` | `end_date` |
-   | `body_json.description`/`summary`/`content` | `description` |
-   | `body_json.skills`/`technologies` | `skills` array |
-   | `parent_id`, `order_index`, `visibility`, audit fields | carry over |
+| `body_json.role`/`company` | `role` |
+| `body_json.location` | `location` |
+| `body_json.website`/`url`/`links[0].url` | `website` |
+| `body_json.startDate` | `start_date` | normalize to YYYY-MM |
+| `body_json.endDate` | `end_date` | normalize to YYYY-MM |
+| `body_json.description`/`summary`/`content` | `description` |
+| `body_json.skills`/`technologies` | `skills` array |
+| `parent_id`, `order_index`, `visibility`, audit fields | normalize JSON-wrapped values, then carry over |
+
+   Parent relationships coming from exports occasionally encode `parentId` as `{ "nullValue": null }`. The migration should treat those objects as `NULL` and only persist actual UUID strings. Likewise, the export’s `order` field should be preferred when present, falling back to the legacy table’s `order_index` column.
 
 2. Update `shared/src/content-item.types.ts` to define a single `ContentItem` interface that mirrors the table fields (remove old union types, `CreateContentItemData` variants, etc.). Update all shared exports consumed by FE/BE.
 3. Adjust `job-finder-BE/server/src/modules/content-items/content-item.repository.ts` to:
@@ -124,3 +126,4 @@ No other free-form `body_json` or `type` discriminator is required. Child conten
 - **2025-11-20** — Restored the admin `ContentItemsPage` after a bad merge, reintroducing stable CRUD UI plus import/export controls. Import now normalizes the legacy export JSON into the flattened schema, wipes existing rows, and recreates the hierarchy (including order) while surfacing success/error alerts. Export produces the new canonical shape so future imports stay lossless.
 - **2025-11-20** — Added `scripts/migrate-content-items.js` and the runbook `docs/worker/runbooks/operations/content-items-migration.md` covering dry-runs, destructive imports, and verification so ops can seed SQLite with the unified model without leaving deprecated data behind. Introduced helper utilities + unit tests to keep normalization logic consistent between CLI + frontend.
 - **2025-11-20** — Converted `docs/content-items-export.json` to the new schema via the migration helper, ran the SQLite migrations against `infra/sqlite/jobfinder.db`, and added route-level tests (`content-item.routes.test.ts`) to cover the API contract (create/list/update/reorder/delete). Added Playwright coverage (`content-items-admin.spec.ts`) plus deterministic test selectors to guard the UI workflow.
+- **2025-11-20** — Hardened the Playwright e2e suite: introduced shared UI helpers (`e2e/utils/ui.ts`), updated admin/viewer/unauthenticated specs to reflect the new navigation + auth icon UX, and rebuilt the OAuth flow tests around the `AuthModal`. Document builder seeding now emits a fully valid `resumeIntakeData`, navigation hides all owner-only links, and router exposes `/how-it-works` to keep menu links functional. Full `npm run test:e2e --workspace job-finder-FE` now passes headlessly with all 57 specs.

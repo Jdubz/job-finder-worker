@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
 import adminConfig from '../src/config/admins.json' with { type: 'json' }
+import { getAuthIcon, openAuthModal } from './utils/ui'
 
 const TEST_AUTH_STATE_KEY = '__JF_E2E_AUTH_STATE__'
 const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
@@ -88,9 +89,10 @@ test.describe('Google OAuth Authentication Flow', () => {
     }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
-
-    // Should show user as signed in (check for email in the page)
-    await expect(page.getByText(/viewer@example.com|Test Viewer/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
+    const viewerDialog = await openAuthModal(page, 'viewer')
+    await expect(viewerDialog.getByText(/viewer@example.com/i)).toBeVisible({ timeout: 15000 })
+    await page.keyboard.press('Escape')
 
     // Should be able to access public pages
     await page.goto(ROUTES.JOB_APPLICATIONS, { waitUntil: 'domcontentloaded' })
@@ -123,9 +125,10 @@ test.describe('Google OAuth Authentication Flow', () => {
     }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY, email: adminEmail })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
-
-    // Should show user as signed in
-    await expect(page.getByText(new RegExp(adminEmail, 'i')).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'owner')).toBeVisible({ timeout: 15000 })
+    const adminDialog = await openAuthModal(page, 'owner')
+    await expect(adminDialog.getByText(new RegExp(adminEmail, 'i')).first()).toBeVisible({ timeout: 15000 })
+    await page.keyboard.press('Escape')
 
     // Should be able to access admin pages
     await page.goto(ROUTES.AI_PROMPTS, { waitUntil: 'domcontentloaded' })
@@ -162,15 +165,12 @@ test.describe('Google OAuth Authentication Flow', () => {
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
 
-    // Verify signed in
-    await expect(page.getByText(/signout@example.com/i).first()).toBeVisible({ timeout: 15000 })
+    await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
+    await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
-    // Click user menu
-    const userButton = page.getByRole('button', { name: /signout@example.com|Sign Out Test|profile/i }).first()
-    await userButton.click({ timeout: 10000 })
-
-    // Click sign out
-    const signOutButton = page.getByRole('button', { name: /sign out|log out/i }).first()
+    const authDialog = await openAuthModal(page, 'viewer')
+    const signOutButton = authDialog.getByRole('button', { name: /sign out|log out/i }).first()
+    await expect(signOutButton).toBeVisible({ timeout: 10000 })
     await signOutButton.click({ timeout: 10000 })
 
     // Verify auth cleared
@@ -180,7 +180,7 @@ test.describe('Google OAuth Authentication Flow', () => {
     expect(authCleared).toBe(true)
 
     // Should now see sign in button instead of user menu
-    await expect(page.getByRole('button', { name: /sign in|log in/i }).first()).toBeVisible({ timeout: 10000 })
+    await expect(getAuthIcon(page, 'anonymous')).toBeVisible({ timeout: 10000 })
 
     await page.close()
   })
@@ -203,21 +203,19 @@ test.describe('Google OAuth Authentication Flow', () => {
     }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
-
-    // Verify signed in
-    await expect(page.getByText(/persist@example.com/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
     // Reload page
     await page.reload({ waitUntil: 'domcontentloaded' })
 
     // Should still be signed in
-    await expect(page.getByText(/persist@example.com/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
     // Navigate to another page
     await page.goto(ROUTES.JOB_APPLICATIONS, { waitUntil: 'domcontentloaded' })
 
     // Should still be signed in
-    await expect(page.getByText(/persist@example.com/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
     await page.close()
   })
@@ -240,16 +238,16 @@ test.describe('Google OAuth Authentication Flow', () => {
     }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
-    await expect(page.getByText(/nav@example.com/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
     await page.goto(ROUTES.CONTENT_ITEMS, { waitUntil: 'domcontentloaded' })
-    await expect(page.getByText(/nav@example.com/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
     await page.goto(ROUTES.DOCUMENT_BUILDER, { waitUntil: 'domcontentloaded' })
-    await expect(page.getByText(/nav@example.com/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
     await page.goto(ROUTES.JOB_FINDER, { waitUntil: 'domcontentloaded' })
-    await expect(page.getByText(/nav@example.com/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
     await page.close()
   })
@@ -262,9 +260,7 @@ test.describe('Google OAuth Authentication Flow', () => {
     }, TEST_AUTH_TOKEN_KEY)
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
-
-    // Should see sign in button (not authenticated)
-    await expect(page.getByRole('button', { name: /sign in|log in/i }).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'anonymous')).toBeVisible({ timeout: 15000 })
 
     await page.close()
   })
@@ -287,9 +283,7 @@ test.describe('Google OAuth Authentication Flow', () => {
     }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
-
-    // Should not be authenticated (no email = invalid)
-    await expect(page.getByRole('button', { name: /sign in|log in/i }).first()).toBeVisible({ timeout: 15000 })
+    await expect(getAuthIcon(page, 'anonymous')).toBeVisible({ timeout: 15000 })
 
     await page.close()
   })

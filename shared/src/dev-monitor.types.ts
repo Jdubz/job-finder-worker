@@ -30,10 +30,7 @@ export type LocalService =
 /**
  * Cloud environment names
  */
-export type CloudEnvironment =
-  | 'staging'
-  | 'production'
-  | 'development'
+export type CloudEnvironment = 'production' | 'development'
 
 /**
  * Log source for panel filtering
@@ -46,7 +43,6 @@ export type LogSource =
   | 'local-worker'        // Python worker only
   | 'local-dev-monitor'   // Dev monitor backend only
   // Cloud environments
-  | 'staging-all'         // All staging logs
   | 'production-all'      // All production logs
 
 /**

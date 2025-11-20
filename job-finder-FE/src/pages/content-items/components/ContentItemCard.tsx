@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import type { ContentItemNode } from "@shared/types"
 import type { ContentItemFormValues } from "@/types/content-items"
 import { ContentItemForm } from "./ContentItemForm"
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Trash2 } from "lucide-react"
 
 interface ContentItemCardProps {
   item: ContentItemNode
@@ -79,6 +79,15 @@ export function ContentItemCard({
       data-testid={`content-item-${item.id}`}
       data-depth={depth}
     >
+      {isProcessing && (
+        <div
+          className="flex items-center gap-2 text-sm text-muted-foreground"
+          data-testid={`content-item-${item.id}-spinner`}
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Working…</span>
+        </div>
+      )}
       {isEditing ? (
         <ContentItemForm
           initialValues={item}

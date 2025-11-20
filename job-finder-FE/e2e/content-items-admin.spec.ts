@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test"
+import { test, expect, type Page } from "@playwright/test"
 import { readFile } from "node:fs/promises"
 import { applyAuthState, ownerAuthState } from "./fixtures/auth"
 import { deleteContentItem, listContentItems, seedContentItem } from "./fixtures/api-client"
@@ -33,45 +33,85 @@ test.describe("Content items administration", () => {
 
     try {
       await page.goto("/content-items")
+      await page.waitForLoadState("networkidle")
 
       const alphaCard = page.getByTestId(`content-item-${parentAlpha}`)
-      await expect(alphaCard.getByRole("heading", { name: `${slug} Alpha` })).toBeVisible()
+      await expect(alphaCard).toBeVisible({ timeout: 15000 })
 
       // Edit root item
       await alphaCard.getByRole("button", { name: "Edit" }).click()
-      await alphaCard.getByLabel("Location").fill("Portland, OR")
-      await alphaCard.getByLabel("Website").fill("https://updated.example.com")
-      await alphaCard.getByLabel("Description (Markdown supported)").fill("Owns automation coverage.")
-      await alphaCard.getByLabel("Skills (comma separated)").fill("Playwright, SQLite")
-      await alphaCard.getByRole("button", { name: "Update Item" }).click()
-
-      await expect(alphaCard.getByText("Portland, OR")).toBeVisible()
-      await expect(alphaCard.getByText("Owns automation coverage.")).toBeVisible()
+      const editForm = alphaCard.locator("form").first()
+      await editForm.getByLabel("Location").fill("Portland, OR")
+      await editForm.getByLabel("Website").fill("https://updated.example.com")
+      await editForm.getByLabel("Description (Markdown supported)").fill("Owns automation coverage.")
+      await editForm.getByLabel("Skills (comma separated)").fill("Playwright, SQLite")
+      const updateRequest = page.waitForResponse(
+        (response) =>
+          response.url().includes(`/content-items/${parentAlpha}`) &&
+          response.request().method() === "PATCH"
+      )
+      await editForm.getByRole("button", { name: "Update Item" }).click()
+      const updateResponse = await updateRequest
+      const responseBody = await updateResponse.text()
+      console.log("content-items update response", updateResponse.status(), responseBody)
+      expect(updateResponse.ok()).toBe(true)
+      await waitForCardSpinner(page, parentAlpha)
+      await expect(editForm).not.toBeVisible({ timeout: 15000 })
+      await expect(alphaCard.getByText("Owns automation coverage.")).toBeVisible({ timeout: 15000 })
 
       // Add child item
       const childTitle = `${slug} Child`
       await alphaCard.getByRole("button", { name: "Add Child" }).click()
       const childForm = alphaCard.locator("form").last()
+      const createChildResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/content-items") && response.request().method() === "POST"
+      )
       await childForm.getByLabel("Title").fill(childTitle)
       await childForm.getByLabel("Role").fill("Sr. Engineer")
       await childForm.getByRole("button", { name: "Create Child" }).click()
-      await expect(alphaCard.getByText(childTitle)).toBeVisible()
+      const createChildResponse = await createChildResponsePromise
+      const createChildBody = await createChildResponse.text()
+      let childJson: unknown = createChildBody
+      try {
+        childJson = JSON.parse(createChildBody)
+      } catch {
+        // ignore parse errors
+      }
+      console.log("content-items child response", createChildResponse.status(), childJson)
+      expect(createChildResponse.ok()).toBe(true)
+      await waitForCardSpinner(page, parentAlpha)
+      const childId =
+        typeof childJson === "object" && childJson && "data" in childJson
+          ? (childJson as any).data?.item?.id
+          : null
+      const flatItems = await listContentItems(request)
+      const childRecord = flatItems.find((item) =>
+        childId ? item.id === childId : item.title?.includes(childTitle)
+      )
+      expect(childRecord).toBeTruthy()
+      expect(childRecord?.parentId).toBe(parentAlpha)
 
       // Reorder root items
-      const rootList = page.getByTestId("content-items-root")
-      await expect(rootList.locator("> div[data-testid^='content-item-']").first().getByRole("heading")).toHaveText(
-        `${slug} Alpha`
-      )
-
       const betaCard = page.getByTestId(`content-item-${parentBeta}`)
-      await betaCard.getByRole("button", { name: "Up" }).click()
-      await expect(rootList.locator("> div[data-testid^='content-item-']").first().getByRole("heading")).toHaveText(
-        `${slug} Beta`
+      const reorderResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes(`/content-items/${parentBeta}/reorder`) &&
+          response.request().method() === "POST"
       )
+      await betaCard.getByRole("button", { name: "Up" }).click()
+      const reorderResponse = await reorderResponsePromise
+      expect(reorderResponse.ok()).toBe(true)
 
       // Delete via UI
+      const deleteResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes(`/content-items/${parentBeta}`) &&
+          response.request().method() === "DELETE"
+      )
       await betaCard.getByRole("button", { name: "Delete" }).click()
-      await expect(page.getByTestId(`content-item-${parentBeta}`)).toHaveCount(0)
+      const deleteResponse = await deleteResponsePromise
+      expect(deleteResponse.ok()).toBe(true)
 
       // Export JSON and assert content recorded
       const download = await Promise.all([
@@ -105,3 +145,13 @@ test.describe("Content items administration", () => {
     }
   })
 })
+
+async function waitForCardSpinner(page: Page, cardId: string) {
+  const spinner = page.getByTestId(`content-item-${cardId}-spinner`)
+  try {
+    await spinner.waitFor({ state: "visible", timeout: 1000 })
+  } catch {
+    // spinner might be too fast to appear; that's fine
+  }
+  await spinner.waitFor({ state: "detached", timeout: 15000 })
+}

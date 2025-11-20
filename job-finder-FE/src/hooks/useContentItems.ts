@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { contentItemsClient } from "@/api"
 import type {
+  ContentItem,
   ContentItemNode,
   CreateContentItemData,
   UpdateContentItemData
@@ -11,7 +12,7 @@ interface UseContentItemsResult {
   contentItems: ContentItemNode[]
   loading: boolean
   error: Error | null
-  createContentItem: (data: CreateContentItemData) => Promise<void>
+  createContentItem: (data: CreateContentItemData) => Promise<ContentItem>
   updateContentItem: (id: string, data: UpdateContentItemData) => Promise<void>
   deleteContentItem: (id: string) => Promise<void>
   reorderContentItem: (id: string, parentId: string | null, orderIndex: number) => Promise<void>
@@ -62,11 +63,12 @@ export function useContentItems(): UseContentItemsResult {
   const createContentItem = useCallback(
     async (data: CreateContentItemData) => {
       const auth = ensureAuth()
-      await contentItemsClient.createContentItem(auth.userEmail, {
+      const created = await contentItemsClient.createContentItem(auth.userEmail, {
         ...data,
         userId: data.userId ?? auth.userId
       })
       await fetchItems()
+      return created
     },
     [ensureAuth, fetchItems]
   )

@@ -132,9 +132,17 @@ export async function seedJobMatch(
   overrides: Record<string, unknown> = {}
 ) {
   const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const overrideJobTitle =
+    typeof overrides.jobTitle === "string" ? (overrides.jobTitle as string) : undefined
+  const overrideCompany =
+    typeof overrides.companyName === "string" ? (overrides.companyName as string) : undefined
+
+  const jobTitle = overrideJobTitle ?? "E2E Automation Engineer"
+  const companyName = overrideCompany ?? "SQLite Systems"
+
   const payload = {
-    jobTitle: "E2E Automation Engineer",
-    companyName: "SQLite Systems",
+    jobTitle,
+    companyName,
     url: `https://example.com/jobs/e2e-automation-${uniqueSuffix}`,
     matchScore: 92,
     queueItemId: overrides.queueItemId ?? null,
@@ -152,7 +160,54 @@ export async function seedJobMatch(
     customizationRecommendations: ["Mention SQLite expertise"],
     analyzedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
-    resumeIntakeData: { summary: "Hands-on automation" },
+    resumeIntakeData: {
+      jobId: `resume-${uniqueSuffix}`,
+      jobTitle,
+      company: companyName,
+      targetSummary: "Lead automation suites that improve release confidence for SQLite stacks.",
+      skillsPriority: ["Playwright", "TypeScript", "SQLite", "CI/CD"],
+      experienceHighlights: [
+        {
+          company: "Job Finder",
+          title: "QA Lead",
+          pointsToEmphasize: [
+            "Scaled Playwright test coverage across admin and viewer flows",
+            "Built SQLite-backed pipelines for deterministic dev data",
+          ],
+        },
+      ],
+      projectsToInclude: [
+        {
+          name: "Content Items Unification",
+          whyRelevant: "Demonstrates end-to-end data migrations with tight UI requirements.",
+          pointsToHighlight: [
+            "Designed nested editing experience with optimistic updates",
+            "Introduced import/export workflow for resume data",
+          ],
+        },
+        {
+          name: "Automation Platform",
+          whyRelevant: "Shows leadership driving headless Playwright adoption.",
+          pointsToHighlight: [
+            "Codified headless-only policy to protect prod environments",
+            "Integrated API-level assertions into UI workflows",
+          ],
+        },
+      ],
+      achievementAngles: [
+        "Automation-first leadership that protects production stability",
+        "Hands-on TypeScript expertise across frontend and backend",
+        "Data migrations that eliminate legacy schemas",
+      ],
+      atsKeywords: ["Playwright", "TypeScript", "SQLite", "Automation", "CI/CD"],
+      gapMitigation: [
+        {
+          missingSkill: "Python",
+          mitigationStrategy: "Highlight cross-language testing experience and fast ramp-up.",
+          coverLetterPoint: "Note track record building automation across multiple stacks.",
+        },
+      ],
+    },
     ...(overrides || {}),
   }
 

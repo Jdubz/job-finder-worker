@@ -138,7 +138,7 @@
         "parentId": "i5ku71nwnc6oyFqcVjbJ",
         "order": 0,
         "title": "Intuit",
-        "description": "Intuit's marketing team often needed widgets implemented into their product quickly and efficiently. These widgets had to use vanilla JS as we were not allowed access to their dependency library, and had to have excellent text coverage.",
+        "description": "Intuit's marketing team often needed widgets implemented into their product quickly and efficiently. These widgets had to use vanilla JS as we were not allowed access to their dependency library, and had to have excellent test coverage.",
         "skills": [
           "Vanilla JS",
           "unit testing"
@@ -254,7 +254,7 @@
         "parentId": "lTvWp8Z0Q6q5uSVzaK14",
         "order": 0,
         "title": "Intuit",
-        "description": "Intuit's marketing team often needed widgets implemented into their product quickly and efficiently. These widgets had to use vanilla JS as we were not allowed access to their dependency library, and had to have excellent text coverage.",
+        "description": "Intuit's marketing team often needed widgets implemented into their product quickly and efficiently. These widgets had to use vanilla JS as we were not allowed access to their dependency library, and had to have excellent test coverage.",
         "skills": [
           "Vanilla JS",
           "unit testing"

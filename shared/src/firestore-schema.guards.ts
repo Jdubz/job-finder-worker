@@ -94,7 +94,13 @@ export function isCompanyDocument(value: unknown): value is CompanyDocument {
 // Content Item Document Guards
 // ============================================================================
 
-export function isContentItemDocument(value: unknown): boolean {
+export function isContentItemVisibility(
+  value: unknown
+): value is ContentItemDocumentVisibility {
+  return value === 'published' || value === 'draft' || value === 'archived'
+}
+
+export function isContentItemDocument(value: unknown): value is ContentItemDocument {
   if (typeof value !== 'object' || value === null) return false
 
   const doc = value as Record<string, unknown>
@@ -171,4 +177,3 @@ export function isConfigDocument(value: unknown): value is ConfigDocument {
     (doc.updatedAt instanceof Date || typeof doc.updatedAt === 'object')
   )
 }
-

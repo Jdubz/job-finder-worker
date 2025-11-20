@@ -143,12 +143,12 @@ export interface StructuredLogEntry {
  *
  * Example Cloud Logging query:
  * ```
- * labels.environment="staging"
+ * labels.environment="production"
  * labels.service="job-finder"
  * ```
  */
 export interface CloudLoggingLabels extends Record<string, string> {
-  environment: "staging" | "production" | "development"
+  environment: "production" | "development"
   service: string      // e.g., "job-finder"
   version: string      // e.g., "1.0.0"
 }
@@ -198,7 +198,7 @@ export interface CloudLogEntry {
  * Example usage:
  * ```typescript
  * const { logs } = useWorkerLogs({
- *   environment: 'staging',
+ *   environment: 'production',
  *   queueItemId: 'abc123',
  *   category: 'pipeline',
  *   limit: 100
@@ -207,7 +207,7 @@ export interface CloudLogEntry {
  */
 export interface LogQueryOptions {
   // Filter by environment
-  environment?: "staging" | "production" | "development"
+  environment?: "production" | "development"
 
   // Filter by queue item (get all logs for a specific job)
   queueItemId?: string
@@ -272,7 +272,6 @@ export type LogSource =
   | "local-backend"
   | "local-worker"
   | "local-dev-monitor"
-  | "staging-all"
   | "production-all"
 
 /**

@@ -361,6 +361,21 @@ export function isContentItemVisibility(value: unknown): value is ContentItemVis
 export function isContentItem(value: unknown): value is ContentItem {
   if (!isObject(value)) return false
   const item = value as Partial<ContentItem>
+  if (typeof item.visibility !== "string" || !isContentItemVisibility(item.visibility)) {
+    return false
+  }
+
+  if (typeof item.skills === "string") {
+    try {
+      const parsed = JSON.parse(item.skills)
+      if (!isStringArray(parsed)) {
+        return false
+      }
+      ;(item as ContentItem).skills = parsed
+    } catch {
+      return false
+    }
+  }
 
   return (
     typeof item.id === "string" &&
@@ -375,7 +390,6 @@ export function isContentItem(value: unknown): value is ContentItem {
     (item.endDate === undefined || item.endDate === null || typeof item.endDate === "string") &&
     (item.description === undefined || typeof item.description === "string") &&
     (item.skills === undefined || item.skills === null || isStringArray(item.skills)) &&
-    isContentItemVisibility(item.visibility) &&
     isDateLike(item.createdAt) &&
     isDateLike(item.updatedAt) &&
     typeof item.createdBy === "string" &&

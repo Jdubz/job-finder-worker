@@ -51,8 +51,19 @@ export function ContentItemForm({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+    const normalizedValues = Object.fromEntries(
+      Object.entries(formValues).map(([key, value]) => {
+        if (value === null || value === undefined) {
+          return [key, undefined]
+        }
+        if (typeof value === "string" && value.trim().length === 0) {
+          return [key, undefined]
+        }
+        return [key, value]
+      })
+    ) as ContentItemFormValues
     const payload: ContentItemFormValues = {
-      ...formValues,
+      ...normalizedValues,
       skills: parseSkills(skillsText)
     }
 

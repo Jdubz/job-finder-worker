@@ -400,7 +400,7 @@ class JobQueueItem(BaseModel):
 4. **Update job-finder-FE:** `npm update @jdubz/job-finder-shared-types`
 5. **Update Python models** in job-finder to mirror changes
 6. **Test both projects** together
-7. **Deploy to staging** and verify integration
+7. **Deploy from `main`** (production-only) after verifying locally/in CI
 
 ### Version Management
 

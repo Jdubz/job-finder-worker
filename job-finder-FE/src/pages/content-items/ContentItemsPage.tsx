@@ -13,10 +13,10 @@ import {
   countNodes,
   flattenContentItems,
   normalizeImportNodes,
-  NormalizedImportNode,
   serializeForExport,
   sortNodesByOrder
 } from "./content-items.helpers"
+import type { NormalizedImportNode } from "./content-items.helpers"
 
 interface AlertState {
   type: "success" | "error"

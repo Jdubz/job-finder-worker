@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, type Response } from 'express'
 import { z } from 'zod'
 import { ApiErrorCode } from '@shared/types'
 import type {
@@ -13,7 +13,7 @@ import type {
   UpdateContentItemRequest,
   UpdateContentItemResponse
 } from '@shared/types'
-import { ContentItemRepository } from './content-item.repository'
+import { ContentItemRepository, ContentItemInvalidParentError, ContentItemNotFoundError } from './content-item.repository'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 
@@ -139,35 +139,62 @@ export function buildContentItemRouter() {
   router.patch(
     '/:id',
     asyncHandler((req, res) => {
-      const payload = updateRequestSchema.parse(req.body) as UpdateContentItemRequest
-      const item = repo.update(req.params.id, { ...payload.itemData, userEmail: payload.userEmail })
-      const response: UpdateContentItemResponse = { item, message: 'Content item updated' }
-      res.json(success(response))
+      try {
+        const payload = updateRequestSchema.parse(req.body) as UpdateContentItemRequest
+        const item = repo.update(req.params.id, { ...payload.itemData, userEmail: payload.userEmail })
+        const response: UpdateContentItemResponse = { item, message: 'Content item updated' }
+        res.json(success(response))
+      } catch (err) {
+        if (handleRepoError(err, res)) return
+        throw err
+      }
     })
   )
 
   router.delete(
     '/:id',
     asyncHandler((req, res) => {
-      repo.delete(req.params.id)
-      const response: DeleteContentItemResponse = {
-        itemId: req.params.id,
-        deleted: true,
-        message: 'Content item deleted'
+      try {
+        repo.delete(req.params.id)
+        const response: DeleteContentItemResponse = {
+          itemId: req.params.id,
+          deleted: true,
+          message: 'Content item deleted'
+        }
+        res.json(success(response))
+      } catch (err) {
+        if (handleRepoError(err, res)) return
+        throw err
       }
-      res.json(success(response))
     })
   )
 
   router.post(
     '/:id/reorder',
     asyncHandler((req, res) => {
-      const payload = reorderRequestSchema.parse(req.body)
-      const item = repo.reorder(req.params.id, payload.parentId ?? null, payload.orderIndex, payload.userEmail)
-      const response: ReorderContentItemResponse = { item }
-      res.json(success(response))
+      try {
+        const payload = reorderRequestSchema.parse(req.body)
+        const item = repo.reorder(req.params.id, payload.parentId ?? null, payload.orderIndex, payload.userEmail)
+        const response: ReorderContentItemResponse = { item }
+        res.json(success(response))
+      } catch (err) {
+        if (handleRepoError(err, res)) return
+        throw err
+      }
     })
   )
 
   return router
+}
+
+function handleRepoError(err: unknown, res: Response): boolean {
+  if (err instanceof ContentItemNotFoundError) {
+    res.status(404).json(failure(ApiErrorCode.NOT_FOUND, err.message))
+    return true
+  }
+  if (err instanceof ContentItemInvalidParentError) {
+    res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.message))
+    return true
+  }
+  return false
 }
