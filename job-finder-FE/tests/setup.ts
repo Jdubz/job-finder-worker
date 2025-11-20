@@ -3,17 +3,13 @@
  *
  * Configuration and setup for integration tests
  *
- * NOTE: This setup file is for integration tests that need real Firebase
- * connections (or emulator). It does NOT mock Firebase like src/test/setup.ts does.
+ * Integration suite bootstrapping for GIS + Node API flows.
+ * This file keeps the unit-test mocks defined in src/test/setup.ts disabled
+ * so integration helpers can exercise the real modules.
  */
 
 import { beforeAll, afterAll, afterEach, vi } from "vitest"
 import { cleanupTestAuth } from "./utils/testHelpers"
-
-// Unmock Firebase for integration tests (override src/test/setup.ts mocks)
-vi.unmock("firebase/app")
-vi.unmock("firebase/auth")
-vi.unmock("firebase/firestore")
 
 /**
  * Global test setup
@@ -25,11 +21,10 @@ beforeAll(async () => {
   // Log test environment info
   console.log("🧪 Integration test environment initialized")
   console.log("📍 API Base URL:", process.env.VITE_API_BASE_URL || "Not configured")
-  console.log("🔥 Firebase Project:", process.env.VITE_FIREBASE_PROJECT_ID || "Not configured")
-  console.log("🔌 Use Emulators:", process.env.VITE_USE_EMULATORS || "false")
+  console.log("🔑 GIS Client ID:", process.env.VITE_GOOGLE_OAUTH_CLIENT_ID || "Not configured")
+  console.log("🛡️  Auth bypass token:", process.env.VITE_E2E_AUTH_TOKEN ? "present" : "missing")
   console.log("")
-  console.log("⚠️  NOTE: Integration tests require Firebase emulator or real Firebase project")
-  console.log("⚠️  These tests are currently SKIPPED as they need backend setup")
+  console.log("⚙️  NOTE: Integration tests rely on GIS bypass tokens and the Node API mock fetch layer.")
   console.log("")
 })
 

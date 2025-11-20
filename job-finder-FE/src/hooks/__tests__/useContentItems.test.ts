@@ -20,7 +20,7 @@ const { contentItemsClient } = await import("@/api")
 
 describe("useContentItems", () => {
   const mockUser = {
-    uid: "user-123",
+    id: "user-123",
     email: "user@example.com",
   }
 
@@ -74,7 +74,7 @@ describe("useContentItems", () => {
     await act(async () => {
       await result.current.createContentItem({
         type: "company",
-        userId: mockUser.uid,
+        userId: mockUser.id,
         parentId: null,
         order: 0,
         createdAt: new Date(),

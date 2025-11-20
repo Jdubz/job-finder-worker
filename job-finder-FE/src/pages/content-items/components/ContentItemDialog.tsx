@@ -351,7 +351,7 @@ export function ContentItemDialog({
       } else {
         // Create new item using client
         const createData = data as CreateContentItemData
-        await contentItemsClient.createContentItem(user.uid, user.email, createData)
+        await contentItemsClient.createContentItem(user.id, user.email, createData)
       }
 
       onSave()

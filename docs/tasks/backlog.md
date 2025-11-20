@@ -15,6 +15,7 @@
 | MIG-004 | Swap frontend to consume the Node API (remove direct Firestore usage, add polling/WebSocket plan). | @frontend | 2025-12-18 | Done |
 | MIG-005 | Harden Cloudflared + Docker Compose deployment (Watchtower config, `.env` secrets, shared volumes). | @platform | 2025-12-05 | Ready for host validation (`docs/plans/deploy-hardening.md`) |
 | MIG-007 | Execute cutover checklist: point FE/worker to Cloudflared URL, monitor metrics, keep Firebase read-only fallback. | @migration-team | 2025-12-20 | Planning complete (`docs/plans/cutover-checklist.md`) |
-| MIG-008 | Remove residual Firebase deployments/emulator scripts once cutover is stable. | @backend | 2026-01-05 | Planning complete (`docs/plans/firebase-cleanup.md`) |
+| MIG-008 | Remove residual Firebase deployments/emulator scripts once cutover is stable. | @backend | 2026-01-05 | In Progress – backend artifacts removed; frontend GIS swap tracked in `MIG-008A` |
+| MIG-008A | Frontend GIS migration (replace Firebase Auth/App Check, drop SDK + emulator docs). | @frontend | 2025-12-20 | In Progress – AuthContext/Base client now GIS (`docs/plans/frontend-gis-migration.md`) |
 
 > Add new entries instead of sprinkling TODOs in docs. When a task is completed, update the status (`In Progress`, `Blocked`, `Done`) and link to the PR or doc that resolved it.

@@ -19,7 +19,7 @@ const { useAuth } = await import("@/contexts/AuthContext")
 const { queueClient } = await import("@/api")
 
 describe("useQueueItems", () => {
-  const mockUser = { uid: "user-123", email: "user@example.com" }
+  const mockUser = { id: "user-123", uid: "user-123", email: "user@example.com" }
   const mockQueueItems = [
     {
       id: "queue-1",

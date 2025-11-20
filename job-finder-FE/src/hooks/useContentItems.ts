@@ -31,7 +31,7 @@ export function useContentItems(): UseContentItemsResult {
   )
 
   const fetchItems = useCallback(async () => {
-    if (!user?.uid) {
+    if (!user?.id) {
       setContentItems([])
       setLoading(false)
       setError(null)
@@ -48,7 +48,7 @@ export function useContentItems(): UseContentItemsResult {
     } finally {
       setLoading(false)
     }
-  }, [normalizeContentItem, user?.uid])
+  }, [normalizeContentItem, user?.id])
 
   useEffect(() => {
     fetchItems()
@@ -56,14 +56,14 @@ export function useContentItems(): UseContentItemsResult {
 
   const createContentItem = useCallback(
     async (data: EditableContentItem) => {
-      if (!user?.uid) {
+      if (!user?.id) {
         throw new Error("User must be authenticated to create content items")
       }
       if (!user.email) {
         throw new Error("Account email is required to create content items")
       }
 
-      const created = await contentItemsClient.createContentItem(user.uid, user.email, data)
+      const created = await contentItemsClient.createContentItem(user.id, user.email, data)
       const normalized = normalizeContentItem(created)
       setContentItems((prev) =>
         [...prev.filter((item) => item.id !== normalized.id), normalized].sort(
@@ -72,12 +72,12 @@ export function useContentItems(): UseContentItemsResult {
       )
       return normalized.id
     },
-    [normalizeContentItem, user?.email, user?.uid]
+    [normalizeContentItem, user?.email, user?.id]
   )
 
   const updateContentItem = useCallback(
     async (id: string, data: Partial<ContentItem>) => {
-      if (!user?.uid) {
+      if (!user?.id) {
         throw new Error("User must be authenticated to update content items")
       }
       if (!user.email) {
@@ -89,7 +89,7 @@ export function useContentItems(): UseContentItemsResult {
         prev.map((item) => (item.id === id ? normalizeContentItem(updated) : item))
       )
     },
-    [normalizeContentItem, user?.email, user?.uid]
+    [normalizeContentItem, user?.email, user?.id]
   )
 
   const deleteContentItem = useCallback(async (id: string) => {

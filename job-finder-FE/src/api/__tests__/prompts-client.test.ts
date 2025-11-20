@@ -1,16 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { PromptsClient } from "../prompts-client"
 import { DEFAULT_PROMPTS } from "@shared/types"
-import { auth } from "@/config/firebase"
+import { getStoredAuthToken } from "@/lib/auth-storage"
 
 declare global {
   // eslint-disable-next-line no-var
   var fetch: ReturnType<typeof vi.fn>
 }
 
-vi.mock("@/config/firebase", () => ({
-  auth: { currentUser: null },
-  appCheck: null,
+vi.mock("@/lib/auth-storage", () => ({
+  getStoredAuthToken: vi.fn(() => null),
+  storeAuthToken: vi.fn(),
+  clearStoredAuthToken: vi.fn(),
 }))
 
 global.fetch = vi.fn()

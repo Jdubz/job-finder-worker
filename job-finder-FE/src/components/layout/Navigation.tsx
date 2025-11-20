@@ -15,7 +15,7 @@ import {
 } from "lucide-react"
 import { useState } from "react"
 import { AuthIcon } from "@/components/auth/AuthIcon"
-import { AuthModalDebug as AuthModal } from "@/components/auth/AuthModalDebug"
+import { AuthModal } from "@/components/auth/AuthModal"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"

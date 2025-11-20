@@ -44,7 +44,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   }, [])
 
   const fetchQueueItems = useCallback(async () => {
-    if (!user?.uid) {
+    if (!user?.id) {
       setQueueItems([])
       setLoading(false)
       setError(null)
@@ -61,7 +61,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     } finally {
       setLoading(false)
     }
-  }, [limit, normalizeQueueItem, status, user?.uid])
+  }, [limit, normalizeQueueItem, status, user?.id])
 
   useEffect(() => {
     fetchQueueItems()
@@ -69,14 +69,14 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
 
   const submitJob = useCallback(
     async (url: string, companyName?: string, generationId?: string): Promise<string> => {
-      if (!user?.uid) {
+      if (!user?.id) {
         throw new Error("User must be authenticated to submit jobs")
       }
 
       const queueItem = await queueClient.submitJob({
         url,
         companyName,
-        userId: user.uid,
+        userId: user.id,
         generationId,
         source: "user_submission",
         metadata: generationId
@@ -91,7 +91,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       setQueueItems((prev) => [normalized, ...prev])
       return normalized.id ?? queueItem.id
     },
-    [normalizeQueueItem, user?.uid]
+    [normalizeQueueItem, user?.id]
   )
 
   const updateQueueItem = useCallback(

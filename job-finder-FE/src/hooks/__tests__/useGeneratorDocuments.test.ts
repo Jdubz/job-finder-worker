@@ -16,7 +16,7 @@ vi.mock("@/api", () => ({
 }))
 
 describe("useGeneratorDocuments", () => {
-  const mockUser = { uid: "user-123" }
+  const mockUser = { id: "user-123", uid: "user-123" }
 
   beforeEach(() => {
     vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any)

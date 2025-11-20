@@ -4,13 +4,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { BaseApiClient, ApiError } from "../base-client"
-import { auth } from "@/config/firebase"
+import { getStoredAuthToken } from "@/lib/auth-storage"
 
-// Mock Firebase auth
-vi.mock("@/config/firebase", () => ({
-  auth: {
-    currentUser: null,
-  },
+vi.mock("@/lib/auth-storage", () => ({
+  storeAuthToken: vi.fn(),
+  clearStoredAuthToken: vi.fn(),
+  getStoredAuthToken: vi.fn(),
 }))
 
 // Mock fetch
@@ -22,6 +21,7 @@ describe("BaseApiClient", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(getStoredAuthToken).mockReturnValue(null)
     client = new BaseApiClient(baseUrl)
   })
 
@@ -53,33 +53,20 @@ describe("BaseApiClient", () => {
   })
 
   describe("getAuthToken", () => {
-    it("should return null when no user is logged in", async () => {
-      ;(auth as any).currentUser = null
+    it("should return null when no token stored", async () => {
+      vi.mocked(getStoredAuthToken).mockReturnValue(null)
 
       const token = await client.getAuthToken()
 
       expect(token).toBeNull()
     })
 
-    it("should return token when user is logged in", async () => {
-      const mockToken = "mock-token-123"
-      ;(auth as any).currentUser = {
-        getIdToken: vi.fn().mockResolvedValue(mockToken),
-      }
+    it("should return stored token when available", async () => {
+      vi.mocked(getStoredAuthToken).mockReturnValue("stored-token")
 
       const token = await client.getAuthToken()
 
-      expect(token).toBe(mockToken)
-    })
-
-    it("should return null when token retrieval fails", async () => {
-      ;(auth as any).currentUser = {
-        getIdToken: vi.fn().mockRejectedValue(new Error("Token failed")),
-      }
-
-      const token = await client.getAuthToken()
-
-      expect(token).toBeNull()
+      expect(token).toBe("stored-token")
     })
   })
 
@@ -110,9 +97,7 @@ describe("BaseApiClient", () => {
 
     it("should include auth token when user is logged in", async () => {
       const mockToken = "mock-token-123"
-      ;(auth as any).currentUser = {
-        getIdToken: vi.fn().mockResolvedValue(mockToken),
-      }
+      vi.mocked(getStoredAuthToken).mockReturnValue(mockToken)
       ;(global.fetch as any).mockResolvedValue({
         ok: true,
         headers: {

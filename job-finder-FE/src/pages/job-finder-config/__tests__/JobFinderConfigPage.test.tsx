@@ -29,16 +29,12 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
     isEditor: true,
     user: {
+      id: "test-user-123",
       uid: "test-user-123",
       email: "test@example.com",
       displayName: "Test User",
     },
   }),
-}))
-
-// Mock Firebase
-vi.mock("@/config/firebase", () => ({
-  db: {},
 }))
 
 // Helper function to render with router
@@ -109,6 +105,7 @@ describe("JobFinderConfigPage", () => {
       vi.mocked(require("@/contexts/AuthContext").useAuth).mockReturnValue({
         isEditor: false,
         user: {
+          id: "test-user-123",
           uid: "test-user-123",
           email: "test@example.com",
           displayName: "Test User",

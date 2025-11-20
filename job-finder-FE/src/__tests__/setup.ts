@@ -104,15 +104,10 @@ afterEach(() => {
 // Mock environment variables
 vi.mock("@/config/env", () => ({
   API_BASE_URL: "https://test-api.example.com",
-  FIREBASE_PROJECT_ID: "test-project",
-  FIREBASE_API_KEY: "test-api-key",
-  FIREBASE_AUTH_DOMAIN: "test-project.firebaseapp.com",
-  FIREBASE_STORAGE_BUCKET: "test-project.appspot.com",
-  FIREBASE_MESSAGING_SENDER_ID: "123456789",
-  FIREBASE_APP_ID: "test-app-id",
+  GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
 }))
 
-// Mock Firebase services
+// Mock Auth context hooks
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: vi.fn(),
 }))
@@ -263,6 +258,7 @@ logMemoryUsage("Test Setup Complete")
 
 // Export test utilities
 export const mockUser = {
+  id: "test-user-123",
   uid: "test-user-123",
   email: "test@example.com",
   displayName: "Test User",

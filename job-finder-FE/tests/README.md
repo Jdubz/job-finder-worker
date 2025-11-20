@@ -79,10 +79,9 @@ npm run test:coverage
 Tests use environment variables from `.env.test`:
 
 ```env
-# Firebase Configuration
-VITE_FIREBASE_API_KEY=test-api-key
-VITE_FIREBASE_PROJECT_ID=demo-test-project
-VITE_USE_EMULATORS=true
+# Auth Configuration
+VITE_GOOGLE_OAUTH_CLIENT_ID=demo-test-client-id.apps.googleusercontent.com
+VITE_AUTH_BYPASS=false
 
 # Test User Credentials
 VITE_TEST_USER_EMAIL=test@example.com
@@ -91,26 +90,9 @@ VITE_TEST_EDITOR_EMAIL=editor@example.com
 VITE_TEST_EDITOR_PASSWORD=editorpassword123
 ```
 
-### Firebase Emulator Setup
+### Authentication Helpers
 
-For full integration testing with Firebase:
-
-1. Install Firebase CLI:
-
-   ```bash
-   npm install -g firebase-tools
-   ```
-
-2. Start Firebase emulators:
-
-   ```bash
-   firebase emulators:start
-   ```
-
-3. Run tests:
-   ```bash
-   npm run test:integration
-   ```
+Integration tests now rely on Google Identity Services (GIS). When running locally, provide a test client ID via `.env.test` and allow the mocked GIS helpers (see `src/test/setup.ts`) to simulate login flows—no Firebase CLI, emulators, or service accounts are required.
 
 ## Test Results
 
@@ -121,44 +103,34 @@ For full integration testing with Firebase:
 - **Skipped**: 119 (conditional tests requiring backend)
 - **Failing**: 23 (network calls requiring backend)
 
-### With Firebase Emulator
+### With GIS Token Helpers
 
-All tests should pass when Firebase emulator is running, as they can:
+All tests should pass once the GIS helpers are configured in `src/test/setup.ts`, because they can:
 
-- Authenticate test users
-- Make actual API calls
-- Test real-time data synchronization
-- Validate end-to-end workflows
+- Authenticate mock users via test credentials
+- Make actual API calls against the Node API (or mocked fetch responses)
+- Validate end-to-end workflows without spinning up external emulators
 
 ## Writing New Tests
 
 ### Basic Integration Test Template
 
 ```typescript
-import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest"
+import { describe, it, expect } from "vitest"
 import { yourClient } from "@/api/your-client"
-import { signInTestUser, cleanupTestAuth } from "../utils/testHelpers"
-import { auth } from "@/config/firebase"
+import { signInTestUser } from "../utils/testHelpers"
+import { useAuth } from "@/contexts/AuthContext"
 
-// Skip if Firebase is mocked
-const isFirebaseMocked = typeof vi !== "undefined" && vi.isMockFunction(auth.currentUser as never)
-const describeIntegration = isFirebaseMocked ? describe.skip : describe
+describe("Your API Integration", () => {
+  const { authenticateWithGoogle } = useAuth()
 
-describeIntegration("Your API Integration", () => {
   beforeAll(async () => {
-    await signInTestUser("regular")
+    await signInTestUser("regular", authenticateWithGoogle)
   })
 
-  beforeEach(async () => {
-    await cleanupTestAuth()
-    await signInTestUser("regular")
-  })
-
-  describe("Your Test Suite", () => {
-    it("should test something", async () => {
-      // Your test code
-      expect(true).toBe(true)
-    })
+  it("should test something", async () => {
+    const result = await yourClient.getSomething()
+    expect(result).toBeDefined()
   })
 })
 ```
@@ -222,20 +194,20 @@ import {
 
 ### Tests Failing with Network Errors
 
-**Problem**: Tests fail with `auth/network-request-failed`
+**Problem**: Tests fail with network/auth errors
 
-**Solution**: These tests require Firebase emulator or real backend:
+**Solution**: These tests require the Node API (or mocked fetch responses):
 
 ```bash
-firebase emulators:start
-npm run test:integration
+npm run dev --workspace job-finder-BE/server
+npm run test:integration --workspace job-finder-FE
 ```
 
 ### Tests Skipped
 
 **Problem**: Tests are skipped with `describe.skip`
 
-**Reason**: Firebase is mocked (unit test mode). These tests are designed for integration testing with real Firebase connections.
+**Reason**: GIS/auth helpers are mocked (unit test mode). Integration tests are designed for real API calls rather than the mocked context.
 
 ### Authentication Errors
 
@@ -243,9 +215,9 @@ npm run test:integration
 
 **Solution**:
 
-1. Check `.env.test` has correct credentials
-2. Ensure Firebase emulator is running
-3. Verify test users exist in emulator
+1. Check `.env.test` has correct GIS client ID and bypass settings
+2. Ensure the backend server is running
+3. Verify test users exist in the local SQLite database
 
 ### Timeout Errors
 
@@ -261,23 +233,23 @@ npm run test:integration
 
 ### GitHub Actions
 
-Tests can be run in CI/CD with Firebase emulators:
+Tests can run in CI/CD without any emulators—just export the expected `.env` values and invoke the integration suite:
 
 ```yaml
-- name: Setup Firebase Emulators
-  run: npm install -g firebase-tools
+- name: Install dependencies
+  run: npm install
 
-- name: Start Firebase Emulators
-  run: firebase emulators:start --only auth,firestore &
-
-- name: Run Integration Tests
-  run: npm run test:integration
+- name: Run integration tests
+  env:
+    VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}
+    VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+  run: npm run test:integration --workspace job-finder-FE
 ```
 
 ## Additional Resources
 
 - [Vitest Documentation](https://vitest.dev/)
-- [Firebase Testing Guide](https://firebase.google.com/docs/rules/unit-tests)
+- [Google Identity Services Docs](https://developers.google.com/identity/gsi/web)
 - [Testing Best Practices](https://kentcdodds.com/blog/write-tests)
 
 ## Contributing

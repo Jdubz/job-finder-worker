@@ -83,7 +83,7 @@ export function useGeneratorDocuments(): UseGeneratorDocumentsResult {
   const [error, setError] = useState<Error | null>(null)
 
   const fetchDocuments = useCallback(async () => {
-    if (!user?.uid) {
+    if (!user?.id) {
       setDocuments([])
       setLoading(false)
       return
@@ -101,7 +101,7 @@ export function useGeneratorDocuments(): UseGeneratorDocumentsResult {
     } finally {
       setLoading(false)
     }
-  }, [user?.uid])
+  }, [user?.id])
 
   useEffect(() => {
     fetchDocuments()

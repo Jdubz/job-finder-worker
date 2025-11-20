@@ -4,14 +4,17 @@ Utility workspace for exporting legacy Firestore collections into JSON snapshots
 
 ## Usage
 
-1. Ensure you have a Firebase service account JSON accessible via `FIREBASE_SERVICE_ACCOUNT_PATH` (absolute path) and set `FIREBASE_PROJECT_ID`.
-2. Run the exporter with the env file used on the host:
+1. Ensure you have a Firebase service account JSON accessible via `FIREBASE_SERVICE_ACCOUNT_PATH`. Locally, drop the key from 1Password into the gitignored `job-finder-FE/.firebase/serviceAccountKey.json` (the same file Firebase Hosting uses) or point to a temporary path, then set `FIREBASE_PROJECT_ID`.
+2. Run the exporter with the same env vars that power the host:
 
 ```bash
-op run --env-file ../.env -- npm run --workspace infra/sqlite/seeders export:firestore
+set -a
+source ../.env
+set +a
+npm run --workspace infra/sqlite/seeders export:firestore
 ```
 
-The command writes one JSON file per collection into `infra/sqlite/seeders/output/`. Copy the resulting files to `/srv/job-finder/backups/firestore-exports/` before running `sqlite-migrator`.
+The command writes one JSON file per collection into `infra/sqlite/seeders/output/`. Zip that directory and attach it to the migration log before running `sqlite-migrator` (no host-level backup share needed).
 
 ## Collections
 

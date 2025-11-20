@@ -2,8 +2,8 @@ version: "3.9"
 
 # Unified production stack (API + worker + SQLite) for the on-host deployment.
 # Usage:
-#   docker compose -f infra/docker-compose.yml --env-file ../.env up -d
-# Ensure /srv/job-finder/{data,backups,secrets,cloudflared} exist on the host.
+#   docker compose -f infra/docker-compose.yml up -d
+# Ensure /srv/job-finder/{data,secrets,config,logs,worker-data,cloudflared} exist on the host.
 
 services:
   api:
@@ -16,20 +16,10 @@ services:
       NODE_ENV: production
       PORT: 8080
       DATABASE_PATH: /data/sqlite/jobfinder.db
-      FIREBASE_PROJECT_ID: portfolio
-      FIREBASE_SERVICE_ACCOUNT_PATH: /run/secrets/firebase-admin.json
-      JOBFINDER_DB_BACKUP_DIR: /data/backups
     volumes:
       - type: bind
         source: /srv/job-finder/data
         target: /data/sqlite
-      - type: bind
-        source: /srv/job-finder/backups
-        target: /data/backups
-      - type: bind
-        source: /srv/job-finder/secrets/firebase-admin.json
-        target: /run/secrets/firebase-admin.json
-        read_only: true
     depends_on:
       sqlite-migrator:
         condition: service_completed_successfully
@@ -51,7 +41,6 @@ services:
       ENABLE_CLOUD_LOGGING: "false"
       SQLITE_DB_PATH: /data/sqlite/jobfinder.db
       CONFIG_PATH: /app/config/config.production.yaml
-      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-admin.json
     volumes:
       - type: bind
         source: /srv/job-finder/data
@@ -65,10 +54,6 @@ services:
       - type: bind
         source: /srv/job-finder/worker-data
         target: /app/data
-      - type: bind
-        source: /srv/job-finder/secrets/firebase-admin.json
-        target: /run/secrets/firebase-admin.json
-        read_only: true
     depends_on:
       sqlite-migrator:
         condition: service_completed_successfully
@@ -122,6 +107,7 @@ services:
     command: --label-enable --interval 300 --cleanup
     environment:
       TZ: America/Los_Angeles
+      DOCKER_API_VERSION: 1.44
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

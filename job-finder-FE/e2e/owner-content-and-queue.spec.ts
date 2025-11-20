@@ -7,7 +7,7 @@ test.describe("Content and queue management", () => {
     await applyAuthState(page, ownerAuthState())
   })
 
-test("renders content editing flow and queue management UI", async ({ page, request }) => {
+  test("renders content editing flow and queue management UI", async ({ page, request }) => {
     const contentTitle = `E2E Experience ${Date.now()}`
     const contentId = await seedContentItem(request, {
       itemData: {
@@ -17,7 +17,7 @@ test("renders content editing flow and queue management UI", async ({ page, requ
     })
 
     const queueCompany = `Queue Ops ${Date.now()}`
-    const queueId = await seedQueueJob(request, {
+    await seedQueueJob(request, {
       companyName: queueCompany,
       metadata: {
         title: "Queue ingestion test",
@@ -36,9 +36,9 @@ test("renders content editing flow and queue management UI", async ({ page, requ
     await expect(contentCard.getByLabel(/Summary/)).toHaveValue("Updated via E2E")
     await contentCard.getByRole("button", { name: "Cancel" }).click()
 
-  await page.goto("/queue-management")
-  await expect(page.getByRole("heading", { name: "Queue Management" })).toBeVisible()
-  await expect(page.getByText("Total Items")).toBeVisible()
-  await expect(page.getByText("Pending")).toBeVisible()
-})
+    await page.goto("/queue-management")
+    await expect(page.getByRole("heading", { name: "Queue Management" })).toBeVisible()
+    await expect(page.getByText("Total Items")).toBeVisible()
+    await expect(page.getByText("Pending")).toBeVisible()
+  })
 })

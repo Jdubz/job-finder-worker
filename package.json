@@ -5,7 +5,6 @@
   "version": "0.1.0",
   "workspaces": [
     "shared",
-    "job-finder-BE/functions",
     "job-finder-BE/server",
     "job-finder-FE",
     "infra/sqlite/seeders"
@@ -14,17 +13,14 @@
     "prepare": "husky",
     "lint": "npm run --workspaces lint",
     "lint:server": "npm run lint --workspace job-finder-BE/server",
-    "lint:functions": "npm run lint --workspace job-finder-BE/functions",
     "lint:frontend": "npm run lint --workspace job-finder-FE",
     "typecheck": "npm run --workspaces type-check || true",
     "tests:staged": "node scripts/run-staged-tests.js",
     "docs:audit": "node scripts/audit-docs.js",
-    "build": "npm run build:shared && npm run build:server:raw && npm run build:functions:raw && npm run build:frontend:raw",
+    "build": "npm run build:shared && npm run build:server:raw && npm run build:frontend:raw",
     "build:shared": "npm run build --workspace shared",
     "build:server": "npm run build:shared && npm run build:server:raw",
     "build:server:raw": "npm run build --workspace job-finder-BE/server",
-    "build:functions": "npm run build:shared && npm run build:functions:raw",
-    "build:functions:raw": "npm run build --workspace job-finder-BE/functions",
     "build:frontend": "npm run build:shared && npm run build:frontend:raw",
     "build:frontend:raw": "npm run build --workspace job-finder-FE",
     "test:e2e": "vitest run --config vitest.config.e2e.ts"

@@ -49,7 +49,7 @@ export function JobApplicationsPage() {
       "started",
       "JobApplicationsPage: Subscribing to job matches for all users",
       {
-        details: { userId: user.uid },
+        details: { userId: user.id },
       }
     )
 

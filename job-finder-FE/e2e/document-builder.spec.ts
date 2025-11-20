@@ -12,7 +12,7 @@ test("document builder surfaces job matches and hydrates the form", async ({ pag
   })
 
   const jobTitle = `Document Builder Role ${Date.now()}`
-  const matchId = await seedJobMatch(request, {
+  await seedJobMatch(request, {
     queueItemId: queueId,
     jobTitle,
     companyName: "Doc Builder Co",

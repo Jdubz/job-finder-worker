@@ -3,7 +3,6 @@
 This repository now hosts every service that powers Job Finder:
 
 - `job-finder-FE`: Vite/React frontend deployed to Firebase Hosting
-- `job-finder-BE/functions`: legacy Firebase Functions (still around until the Node server replacement is finished)
 - `job-finder-BE/server`: new Express + SQLite API served via Docker
 - `shared`: the canonical TypeScript types shared by all packages
 - `docs`: consolidated documentation (backend/frontend/worker/shared)
@@ -18,7 +17,6 @@ npm install              # installs workspace dependencies
 npm run build:server     # Build shared types + Node API
 npm run build:frontend   # Build shared types + React app
 npm run lint:server      # Lint the Node API
-npm run lint:functions   # Lint Firebase Functions
 npm run lint:frontend    # Lint the frontend
 npm run test:e2e        # Run cross-system end-to-end tests
 ```
@@ -44,7 +42,7 @@ Import shared definitions via the local `@shared/types` workspace package. Add i
 
 Git hooks live at the repo root and run automatically when Husky is installed:
 
-- `pre-commit`: runs `npm run lint:server`, `npm run lint:functions`, `npm run lint:frontend`, and `npm run docs:audit`
+- `pre-commit`: runs `npm run lint:server`, `npm run lint:frontend`, and `npm run docs:audit`
 - `pre-push`: runs `npm run tests:staged` which finds every workspace with changes (including the Python worker) and executes its `test:unit`/`test:integration` scripts or `make test`
 
 After cloning, point Git hooks at `.husky` and install dependencies:

@@ -77,14 +77,44 @@ app = Flask(__name__)
 
 def load_config() -> Dict[str, Any]:
     """Load configuration from YAML file."""
-    config_path = Path(__file__).parent.parent / "config" / "config.dev.yaml"
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+
+    override_path = os.getenv("CONFIG_PATH") or os.getenv("WORKER_CONFIG_PATH")
+    search_paths = []
+
+    if override_path:
+        search_paths.append(Path(override_path).expanduser())
+
+    # Default to the repo-level config directory baked into the image.
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    search_paths.extend(
+        [
+            repo_root / "config" / "config.production.yaml",
+            repo_root / "config" / "config.yaml",
+            repo_root / "config" / "config.dev.yaml",
+        ]
+    )
+
+    for candidate in search_paths:
+        if candidate.exists():
+            slogger.worker_status("config_loaded", {"path": str(candidate)})
+            with open(candidate, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f)
+
+    searched = ", ".join(str(path) for path in search_paths)
+    raise FileNotFoundError(f"Worker config not found. Paths tried: {searched}")
 
 
 def initialize_components(config: Dict[str, Any]) -> tuple:
     """Initialize all worker components."""
-    db_path = os.getenv("JF_SQLITE_DB_PATH")
+    db_path = (
+        os.getenv("JF_SQLITE_DB_PATH")
+        or os.getenv("JOB_FINDER_SQLITE_PATH")
+        or os.getenv("SQLITE_DB_PATH")
+        or os.getenv("DATABASE_PATH")
+    )
+
+    if db_path:
+        slogger.worker_status("sqlite_path_selected", {"path": db_path})
 
     storage = JobStorage(db_path)
     companies_manager = CompaniesManager(db_path)
@@ -107,7 +137,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     queue_manager = QueueManager(db_path)
     processor = QueueItemProcessor(
         queue_manager=queue_manager,
-        config_loader=ConfigLoader(),
+        config_loader=ConfigLoader(db_path),
         job_storage=storage,
         companies_manager=companies_manager,
         sources_manager=job_sources_manager,

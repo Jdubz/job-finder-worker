@@ -1,6 +1,6 @@
 # Contributing Guide
 
-Thanks for helping improve Job Finder! This monorepo contains every service (frontend, Node API, Firebase Functions, shared types, worker). To keep things safe and predictable:
+Thanks for helping improve Job Finder! This monorepo contains every service (frontend, Node API, shared types, worker). To keep things safe and predictable:
 
 ## Branching & PRs
 
@@ -19,7 +19,6 @@ npm run prepare                   # verifies hooks are executable
 Workspaces:
 
 - `shared`
-- `job-finder-BE/functions`
 - `job-finder-BE/server`
 - `job-finder-FE`
 - `infra/sqlite/seeders`
@@ -28,7 +27,6 @@ Workspaces:
 
 ```bash
 npm run lint:server       # eslint for Node API
-npm run lint:functions    # eslint for Firebase Functions
 npm run lint:frontend     # eslint for frontend
 npm run build:server      # shared types + Node API build
 npm run build:frontend    # shared types + Vite app build

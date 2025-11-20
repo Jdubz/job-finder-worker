@@ -1,28 +1,56 @@
 import type { NextFunction, Request, Response } from "express"
-import type { DecodedIdToken } from "firebase-admin/auth"
-import { getAuth } from "../config/firebase"
 import { env } from "../config/env"
 import { verifyGoogleIdToken, type GoogleUser } from "../config/google-oauth"
+import { UserRepository, type UserRole } from "../modules/users/user.repository"
 import { logger } from "../logger"
 
-interface AuthenticatedRequest extends Request {
-  user?: DecodedIdToken | GoogleUser
+interface AuthenticatedUser extends GoogleUser {
+  roles: UserRole[]
 }
 
-const adminAllowlist = env.ADMIN_EMAIL_ALLOWLIST
-  ? env.ADMIN_EMAIL_ALLOWLIST.split(",").map((email) => email.trim().toLowerCase()).filter(Boolean)
-  : []
+interface AuthenticatedRequest extends Request {
+  user?: AuthenticatedUser
+}
 
-const defaultBypassEmail = adminAllowlist[0] ?? "test-user@example.com"
+const userRepository = new UserRepository()
+let cachedBypassEmail: string | null = null
 
-function isEmailAllowed(email?: string | null): boolean {
-  if (!adminAllowlist.length) {
-    return true
+function resolveBypassEmail(): string | undefined {
+  if (cachedBypassEmail !== null) {
+    return cachedBypassEmail || undefined
   }
-  if (!email) {
-    return false
+  const admin = userRepository.findFirstAdmin()
+  cachedBypassEmail = admin?.email ?? ""
+  return cachedBypassEmail || undefined
+}
+
+function buildAuthorizedUser(profile: GoogleUser): AuthenticatedUser | null {
+  if (!profile.email) {
+    logger.warn("Auth token missing email claim")
+    return null
   }
-  return adminAllowlist.includes(email.toLowerCase())
+
+  const record = userRepository.findByEmail(profile.email)
+  if (!record) {
+    logger.warn({ email: profile.email }, "User not found in roles table")
+    return null
+  }
+
+  if (!record.roles.includes("admin")) {
+    logger.warn({ email: record.email, roles: record.roles }, "User lacks admin role")
+    return null
+  }
+
+  userRepository.touchLastLogin(record.id)
+
+  return {
+    uid: profile.uid ?? record.id,
+    email: record.email,
+    emailVerified: profile.emailVerified ?? true,
+    name: profile.name ?? record.displayName ?? undefined,
+    picture: profile.picture ?? record.avatarUrl ?? undefined,
+    roles: record.roles
+  }
 }
 
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
@@ -34,33 +62,29 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   const token = authHeader.slice("Bearer ".length)
 
   if (env.TEST_AUTH_BYPASS_TOKEN && token === env.TEST_AUTH_BYPASS_TOKEN) {
-    const bypassUser: GoogleUser = {
-      uid: "test-user",
-      email: defaultBypassEmail,
-      emailVerified: true
+    const email = resolveBypassEmail()
+    if (!email) {
+      logger.error("Bypass token used but no admin user is defined in the users table")
+      return res.status(403).json({ message: "User is not authorized" })
+    }
+    const bypassUser = buildAuthorizedUser({ uid: "test-user", email, emailVerified: true })
+    if (!bypassUser) {
+      return res.status(403).json({ message: "User is not authorized" })
     }
     ;(req as AuthenticatedRequest).user = bypassUser
     return next()
   }
 
   const googleUser = await verifyGoogleIdToken(token)
-  if (googleUser) {
-    if (!isEmailAllowed(googleUser.email)) {
-      return res.status(403).json({ message: "User is not authorized" })
-    }
-    ;(req as AuthenticatedRequest).user = googleUser
-    return next()
-  }
-
-  try {
-    const decoded = await getAuth().verifyIdToken(token, true)
-    if (!isEmailAllowed(decoded.email ?? undefined)) {
-      return res.status(403).json({ message: "User is not authorized" })
-    }
-    ;(req as AuthenticatedRequest).user = decoded
-    return next()
-  } catch (error) {
-    logger.warn({ err: error }, "Failed to verify auth token")
+  if (!googleUser) {
     return res.status(401).json({ message: "Invalid auth token" })
   }
+
+  const authorizedUser = buildAuthorizedUser(googleUser)
+  if (!authorizedUser) {
+    return res.status(403).json({ message: "User is not authorized" })
+  }
+
+  ;(req as AuthenticatedRequest).user = authorizedUser
+  return next()
 }
