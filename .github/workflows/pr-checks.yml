@@ -76,7 +76,6 @@ jobs:
       - name: Run pytest subset
         working-directory: job-finder-worker
         env:
-          JF_SQLITE_DB_PATH: ${{ github.workspace }}/infra/sqlite/jobfinder.db
           PYTHONPATH: src
         run: |
           pytest \
