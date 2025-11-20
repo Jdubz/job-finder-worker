@@ -77,7 +77,9 @@ class JobStorage:
                     return fallback
         return fallback
 
-    def _find_existing_id(self, conn: sqlite3.Connection, url: str, user_id: Optional[str]) -> Optional[str]:
+    def _find_existing_id(
+        self, conn: sqlite3.Connection, url: str, user_id: Optional[str]
+    ) -> Optional[str]:
         if not url:
             return None
 
@@ -87,7 +89,9 @@ class JobStorage:
                 (url, user_id),
             ).fetchone()
         else:
-            row = conn.execute("SELECT id FROM job_matches WHERE url = ? LIMIT 1", (url,)).fetchone()
+            row = conn.execute(
+                "SELECT id FROM job_matches WHERE url = ? LIMIT 1", (url,)
+            ).fetchone()
 
         if row:
             return row["id"]

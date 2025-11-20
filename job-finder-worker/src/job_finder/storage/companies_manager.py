@@ -212,9 +212,7 @@ class CompaniesManager:
         stub_data["id"] = company_id
         return stub_data
 
-    def get_or_create_company(
-        self, company_name: str, company_website: str = ""
-    ) -> Dict[str, Any]:
+    def get_or_create_company(self, company_name: str, company_website: str = "") -> Dict[str, Any]:
         existing = self.get_company(company_name)
         if existing:
             return existing

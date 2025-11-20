@@ -13,7 +13,12 @@ from job_finder.utils.job_type_filter import FilterDecision
 def mock_config():
     """Create a mock configuration dictionary."""
     return {
-        "profile": {"source": "sqlite", "user_id": None, "name": "Test User", "email": "test@example.com"},
+        "profile": {
+            "source": "sqlite",
+            "user_id": None,
+            "name": "Test User",
+            "email": "test@example.com",
+        },
         "ai": {
             "enabled": True,
             "provider": "claude",

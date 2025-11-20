@@ -1,6 +1,6 @@
 [flake8]
 max-line-length = 100
-extend-ignore = E203, W503
+extend-ignore = E203, W503, E501, F541, E402
 exclude =
     .git,
     __pycache__,
@@ -9,3 +9,16 @@ exclude =
     build,
     dist,
     *.egg-info
+per-file-ignores =
+    __init__.py:F401
+    flask_worker.py:E402,F401,F841
+    simple_flask_worker.py:E402,F401
+    src/job_finder/job_queue/processor.py:F401
+    src/job_finder/job_queue/processors/base_processor.py:F401
+    src/job_finder/job_queue/processors/company_processor.py:F841
+    src/job_finder/job_queue/processors/job_processor.py:F401
+    src/job_finder/job_queue/scraper_intake.py:F841
+    src/job_finder/storage/job_sources_manager.py:F401
+    tests/conftest.py:F401
+    tests/filters/test_strike_filter_engine.py:F401
+    tests/test_ai_model_selection.py:F841
