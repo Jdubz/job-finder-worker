@@ -68,12 +68,44 @@ export const router = createBrowserRouter([
     path: "/",
     element: <MainLayout />,
     children: [
-      // Public routes
+      // Public routes (accessible to everyone, including unauthenticated users)
       {
         path: ROUTES.HOME,
         element: (
           <LazyPage>
             <HowItWorksPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.CONTENT_ITEMS,
+        element: (
+          <LazyPage>
+            <ContentItemsPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.DOCUMENT_BUILDER,
+        element: (
+          <LazyPage>
+            <DocumentBuilderPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.JOB_APPLICATIONS,
+        element: (
+          <LazyPage>
+            <JobApplicationsPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.JOB_FINDER,
+        element: (
+          <LazyPage>
+            <JobFinderPage />
           </LazyPage>
         ),
       },
@@ -118,38 +150,7 @@ export const router = createBrowserRouter([
         ),
       },
 
-      // Protected routes (require authentication)
-      {
-        element: <ProtectedRoute />,
-        children: [
-          {
-            path: ROUTES.CONTENT_ITEMS,
-            element: (
-              <LazyPage>
-                <ContentItemsPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: ROUTES.DOCUMENT_BUILDER,
-            element: (
-              <LazyPage>
-                <DocumentBuilderPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: ROUTES.SETTINGS,
-            element: (
-              <LazyPage>
-                <SettingsPage />
-              </LazyPage>
-            ),
-          },
-        ],
-      },
-
-      // Editor-only protected routes (require editor role)
+      // Admin-only routes (require owner/admin role)
       {
         element: <ProtectedRoute requireOwner />,
         children: [
@@ -158,22 +159,6 @@ export const router = createBrowserRouter([
             element: (
               <LazyPage>
                 <AIPromptsPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: ROUTES.JOB_APPLICATIONS,
-            element: (
-              <LazyPage>
-                <JobApplicationsPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: ROUTES.JOB_FINDER,
-            element: (
-              <LazyPage>
-                <JobFinderPage />
               </LazyPage>
             ),
           },
@@ -190,6 +175,14 @@ export const router = createBrowserRouter([
             element: (
               <LazyPage>
                 <JobFinderConfigPage />
+              </LazyPage>
+            ),
+          },
+          {
+            path: ROUTES.SETTINGS,
+            element: (
+              <LazyPage>
+                <SettingsPage />
               </LazyPage>
             ),
           },
