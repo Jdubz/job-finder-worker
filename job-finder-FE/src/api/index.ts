@@ -9,7 +9,7 @@ export { jobMatchesClient, JobMatchesClient } from "./job-matches-client"
 export { generatorClient, GeneratorClient } from "./generator-client"
 export { configClient, ConfigClient } from "./config-client"
 export { promptsClient, PromptsClient } from "./prompts-client"
-export { contentItemsClient, ContentItemsClient } from "./content-items-client"
+export { contentItemsClient, ContentItemsClient, type CreateContentItemInput } from "./content-items-client"
 export { queueClient, QueueClient } from "./queue-client"
 export { generatorDocumentsClient, GeneratorDocumentsClient } from "./generator-documents-client"
 

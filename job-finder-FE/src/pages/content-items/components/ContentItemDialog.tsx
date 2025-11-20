@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import { contentItemsClient } from "@/api"
+import { contentItemsClient, type CreateContentItemInput } from "@/api"
 import type {
   ContentItem,
   ContentItemType,
@@ -350,8 +350,7 @@ export function ContentItemDialog({
         await contentItemsClient.updateContentItem(item.id, user.email, data)
       } else {
         // Create new item using client
-        const createData = data as CreateContentItemData
-        await contentItemsClient.createContentItem(user.id, user.email, createData)
+        await contentItemsClient.createContentItem(user.id, user.email, data as CreateContentItemInput)
       }
 
       onSave()

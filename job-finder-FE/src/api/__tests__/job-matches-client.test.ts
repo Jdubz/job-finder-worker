@@ -9,12 +9,8 @@ vi.mock("@/lib/auth-storage", () => ({
   clearStoredAuthToken: vi.fn(),
 }))
 
-declare global {
-  // eslint-disable-next-line no-var
-  var fetch: ReturnType<typeof vi.fn>
-}
-
-global.fetch = vi.fn()
+const mockFetch = vi.fn()
+global.fetch = mockFetch as any
 
 describe("JobMatchesClient", () => {
   const baseUrl = "https://api.example.com"
@@ -51,18 +47,18 @@ describe("JobMatchesClient", () => {
         applicationPriority: "High",
         customizationRecommendations: [],
         resumeIntakeData: undefined,
-        analyzedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
+        analyzedAt: new Date(),
+        createdAt: new Date(),
         submittedBy: null,
         queueItemId: "queue-1",
       },
     ]
 
-    global.fetch.mockResolvedValue({
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, data: { matches: mockMatches, count: 1 } }),
       headers: { get: () => 'application/json' },
-    } as Response)
+    } as unknown as Response)
 
     const matches = await client.getMatches({ minScore: 80 })
 
@@ -95,25 +91,25 @@ describe("JobMatchesClient", () => {
         applicationPriority: "Medium",
         customizationRecommendations: [],
         resumeIntakeData: undefined,
-        analyzedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
+        analyzedAt: new Date(),
+        createdAt: new Date(),
         submittedBy: null,
         queueItemId: "queue-2",
       },
     ]
 
-    global.fetch.mockResolvedValue({
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ matches: mockMatches, count: 1 }),
       headers: { get: () => "application/json" },
-    } as Response)
+    } as unknown as Response)
 
     const matches = await client.getMatches()
     expect(matches).toEqual(mockMatches)
   })
 
   it("returns null when match fetch fails", async () => {
-    global.fetch.mockRejectedValue(new Error("network"))
+    mockFetch.mockRejectedValue(new Error("network"))
 
     const result = await client.getMatch("missing")
 
@@ -159,11 +155,11 @@ describe("JobMatchesClient", () => {
       applicationPriority: "High",
     } as JobMatch
 
-    global.fetch.mockResolvedValue({
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ match: mockMatch }),
       headers: { get: () => "application/json" },
-    } as Response)
+    } as unknown as Response)
 
     const result = await client.getMatch("legacy-match")
     expect(result).toEqual(mockMatch)

@@ -3,18 +3,14 @@ import { PromptsClient } from "../prompts-client"
 import { DEFAULT_PROMPTS } from "@shared/types"
 import { getStoredAuthToken } from "@/lib/auth-storage"
 
-declare global {
-  // eslint-disable-next-line no-var
-  var fetch: ReturnType<typeof vi.fn>
-}
-
 vi.mock("@/lib/auth-storage", () => ({
   getStoredAuthToken: vi.fn(() => null),
   storeAuthToken: vi.fn(),
   clearStoredAuthToken: vi.fn(),
 }))
 
-global.fetch = vi.fn()
+const mockFetch = vi.fn()
+global.fetch = mockFetch as any
 
 describe("PromptsClient", () => {
   const baseUrl = "https://api.example.com"
@@ -26,7 +22,7 @@ describe("PromptsClient", () => {
   })
 
   it("returns prompts from API", async () => {
-    global.fetch.mockResolvedValue({
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, data: { prompts: { ...DEFAULT_PROMPTS, resumeGeneration: "test" } } }),
       headers: { get: () => "application/json" },
@@ -42,7 +38,7 @@ describe("PromptsClient", () => {
   })
 
   it("falls back to defaults when request fails", async () => {
-    global.fetch.mockRejectedValue(new Error("network"))
+    mockFetch.mockRejectedValue(new Error("network"))
 
     const prompts = await client.getPrompts()
 
@@ -50,7 +46,7 @@ describe("PromptsClient", () => {
   })
 
   it("saves prompts via PUT", async () => {
-    global.fetch.mockResolvedValue({
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, data: { prompts: DEFAULT_PROMPTS } }),
       headers: { get: () => "application/json" },
@@ -65,7 +61,7 @@ describe("PromptsClient", () => {
   })
 
   it("resets prompts via POST", async () => {
-    global.fetch.mockResolvedValue({
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, data: { prompts: DEFAULT_PROMPTS } }),
       headers: { get: () => "application/json" },

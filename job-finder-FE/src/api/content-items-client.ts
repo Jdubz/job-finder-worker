@@ -9,9 +9,19 @@ import type {
   GetContentItemResponse,
   ListContentItemsRequest,
   ListContentItemsResponse,
-  ContentItem
+  ContentItem,
+  CreateContentItemData
 } from "@shared/types"
 import type { ApiSuccessResponse } from "@shared/types"
+
+// Type for content item data before userId is added by the client
+// This applies Omit to each member of the union
+export type CreateContentItemInput = CreateContentItemData extends infer U
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ? U extends any
+    ? Omit<U, 'userId'>
+    : never
+  : never
 
 export class ContentItemsClient extends BaseApiClient {
   constructor(baseUrl = API_CONFIG.baseUrl) {
@@ -45,13 +55,13 @@ export class ContentItemsClient extends BaseApiClient {
   async createContentItem(
     userId: string,
     userEmail: string,
-    data: CreateContentItemRequest["itemData"]
+    data: CreateContentItemInput
   ): Promise<ContentItem> {
     const payload: CreateContentItemRequest = {
       itemData: {
         ...data,
         userId,
-      },
+      } as CreateContentItemData,
       userEmail,
     }
 

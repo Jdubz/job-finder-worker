@@ -4,7 +4,7 @@
  * Verifies the GIS-based helper utilities that power integration/E2E flows.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from "vitest"
 import {
   signInTestUser,
   cleanupTestAuth,
@@ -94,7 +94,7 @@ describe("Authentication Helpers", () => {
         }),
       })
     )
-    const [, options] = (global.fetch as vi.Mock).mock.calls[0]
+    const [, options] = (global.fetch as Mock).mock.calls[0]
     expect(options.headers.Authorization).toBeUndefined()
   })
 })
