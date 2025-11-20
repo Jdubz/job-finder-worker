@@ -8,6 +8,14 @@ import {
   TEST_AUTH_STATE_KEY,
   TEST_AUTH_TOKEN_KEY,
 } from "@/config/testing"
+import adminConfig from "@/config/admins.json"
+
+// Create a Set for O(1) admin email lookup
+const adminEmailSet = new Set(
+  Array.isArray(adminConfig.adminEmails) ? adminConfig.adminEmails : []
+)
+
+const BYPASS_ADMIN_EMAIL = "owner@jobfinder.dev"
 
 interface AuthUser {
   id: string
@@ -32,7 +40,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [isOwner, setIsOwner] = useState(false)
-  const ownerEmail = import.meta.env.VITE_OWNER_EMAIL || ""
   const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
 
   useEffect(() => {
@@ -45,9 +52,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (AUTH_BYPASS_ENABLED && typeof window !== "undefined") {
       const bypassState = readBypassState()
       if (bypassState) {
-        const bypassUser = buildBypassUser(bypassState, ownerEmail)
+        const bypassUser = buildBypassUser(bypassState, BYPASS_ADMIN_EMAIL)
         setUser(bypassUser)
-        setIsOwner(bypassState.isOwner ?? bypassUser.email === ownerEmail)
+        setIsOwner(bypassState.isOwner ?? adminEmailSet.has(bypassUser.email))
       } else {
         setUser(null)
         setIsOwner(false)
@@ -60,10 +67,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (storedToken) {
       const restoredUser = buildUserFromToken(storedToken)
       setUser(restoredUser)
-      setIsOwner(restoredUser?.email === ownerEmail)
+      setIsOwner(restoredUser?.email ? adminEmailSet.has(restoredUser.email) : false)
     }
     setLoading(false)
-  }, [ownerEmail])
+  }, [])
 
   const authenticateWithGoogle = (credential: string) => {
     const nextUser = buildUserFromToken(credential)
@@ -74,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     storeAuthToken(credential)
     setUser(nextUser)
-    setIsOwner(nextUser.email === ownerEmail)
+    setIsOwner(adminEmailSet.has(nextUser.email))
     setLoading(false)
   }
 
