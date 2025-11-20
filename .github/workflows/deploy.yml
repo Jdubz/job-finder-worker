@@ -85,10 +85,13 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Build shared types
+        run: npm run build:shared
       - name: Build frontend
+        working-directory: job-finder-FE
         env:
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}
-        run: npm run build:frontend
+        run: tsc -b && vite build --mode production
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
