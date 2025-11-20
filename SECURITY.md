@@ -7,7 +7,7 @@ Job Finder is an actively developed monorepo that contains the frontend, API, wo
 | Branch | Status |
 | --- | --- |
 | `main` | Supported / receives fixes |
-| `staging` | Protected branch that feeds `main`; treated the same as `main` |
+| `development` | Internal dev/test environment (non-deploying); used for pre-release validation |
 
 All other branches are considered experimental and may not receive security patches.
 

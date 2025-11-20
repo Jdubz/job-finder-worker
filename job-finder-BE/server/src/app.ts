@@ -1,5 +1,4 @@
 import express, { type Request, type Response, type NextFunction } from 'express'
-import { Buffer } from 'node:buffer'
 import cors from 'cors'
 import helmet from 'helmet'
 import { httpLogger, logger } from './logger'
@@ -11,12 +10,10 @@ import { buildConfigRouter } from './modules/config/config.routes'
 import { buildContactRouter } from './modules/contact/contact.routes'
 import { buildGeneratorRouter } from './modules/generator/generator.routes'
 import { buildGeneratorApiRouter } from './modules/generator/generator.api'
-import { buildGeneratorProxyRouter } from './modules/generator/generator.proxy'
 import { buildGeneratorWorkflowRouter } from './modules/generator/generator.workflow.routes'
 import { buildGeneratorArtifactsRouter } from './modules/generator/generator.artifacts.routes'
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
 import { verifyFirebaseAuth } from './middleware/firebase-auth'
-import { env } from './config/env'
 
 export function buildApp() {
   const app = express()

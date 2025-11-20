@@ -1,65 +1,91 @@
-import { Router } from 'express'
+import { Router, type Response } from 'express'
 import { z } from 'zod'
 import { ApiErrorCode } from '@shared/types'
 import type {
+  ContentItem,
+  ContentItemNode,
   CreateContentItemRequest,
   CreateContentItemResponse,
   DeleteContentItemResponse,
   GetContentItemResponse,
   ListContentItemsResponse,
+  ReorderContentItemResponse,
   UpdateContentItemRequest,
   UpdateContentItemResponse
 } from '@shared/types'
-import { ContentItemRepository } from './content-item.repository'
+import { ContentItemRepository, ContentItemInvalidParentError, ContentItemNotFoundError } from './content-item.repository'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 
-const contentItemTypes = ['company', 'project', 'skill-group', 'education', 'profile-section', 'accomplishment'] as const
 const visibilityValues = ['published', 'draft', 'archived'] as const
 
-const listQuerySchema = z.object({
-  type: z.enum(contentItemTypes).optional(),
-  parentId: z.string().optional(),
-  visibility: z.enum(visibilityValues).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-  tags: z.string().optional(),
-  search: z.string().optional(),
-  sortBy: z.enum(['order', 'createdAt', 'updatedAt']).optional(),
-  sortOrder: z.enum(['asc', 'desc']).optional()
+const nullableIdSchema = z.string().min(1).or(z.literal(null)).optional()
+const monthSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}$/, 'Date must be in YYYY-MM format')
+  .optional()
+
+const itemFieldsSchema = z.object({
+  parentId: nullableIdSchema,
+  order: z.number().int().min(0).optional(),
+  title: z.string().min(1).optional(),
+  role: z.string().min(1).optional(),
+  location: z.string().min(1).optional(),
+  website: z.string().url().optional(),
+  startDate: monthSchema,
+  endDate: monthSchema,
+  description: z.string().min(1).optional(),
+  skills: z.array(z.string().min(1)).optional(),
+  visibility: z.enum(visibilityValues).optional()
 })
 
-const contentItemDataSchema = z
-  .object({
-    type: z.enum(contentItemTypes),
-    userId: z.string().min(1),
-    parentId: z.string().nullable().optional(),
-    order: z.number().int().optional(),
-    visibility: z.enum(visibilityValues).optional(),
-    tags: z.array(z.string()).optional(),
-    aiContext: z.record(z.unknown()).optional()
-  })
-  .passthrough()
-
-const updateDataSchema = z
-  .object({
-    parentId: z.string().nullable().optional(),
-    order: z.number().int().optional(),
-    visibility: z.enum(visibilityValues).optional(),
-    tags: z.array(z.string()).optional(),
-    aiContext: z.record(z.unknown()).optional()
-  })
-  .passthrough()
-
 const createRequestSchema = z.object({
-  itemData: contentItemDataSchema,
+  itemData: itemFieldsSchema.extend({
+    userId: z.string().min(1)
+  }),
   userEmail: z.string().email()
 })
 
 const updateRequestSchema = z.object({
-  itemData: updateDataSchema,
+  itemData: itemFieldsSchema.partial(),
   userEmail: z.string().email()
 })
+
+const reorderRequestSchema = z.object({
+  parentId: nullableIdSchema,
+  orderIndex: z.number().int().min(0),
+  userEmail: z.string().email()
+})
+
+const ROOT_PARENT_SENTINEL = '__root__'
+
+const listQuerySchema = z.object({
+  userId: z.string().min(1),
+  parentId: nullableIdSchema,
+  visibility: z.enum(visibilityValues).optional(),
+  includeDrafts: z.coerce.boolean().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+  offset: z.coerce.number().int().min(0).default(0)
+})
+
+function buildTree(items: ContentItem[]): ContentItemNode[] {
+  const map = new Map<string, ContentItemNode>()
+  const roots: ContentItemNode[] = []
+
+  items.forEach((item) => {
+    map.set(item.id, { ...item, children: [] })
+  })
+
+  map.forEach((node) => {
+    if (node.parentId && map.has(node.parentId)) {
+      map.get(node.parentId)?.children?.push(node)
+    } else {
+      roots.push(node)
+    }
+  })
+
+  return roots
+}
 
 export function buildContentItemRouter() {
   const router = Router()
@@ -70,22 +96,23 @@ export function buildContentItemRouter() {
     asyncHandler((req, res) => {
       const query = listQuerySchema.parse(req.query)
       const items = repo.list({
-        type: query.type,
-        parentId: query.parentId === undefined ? undefined : query.parentId || null,
+        userId: query.userId,
+        parentId:
+          query.parentId === undefined
+            ? undefined
+            : query.parentId === '' || query.parentId === ROOT_PARENT_SENTINEL
+              ? null
+              : query.parentId,
         visibility: query.visibility,
+        includeDrafts: query.includeDrafts,
         limit: query.limit,
-        offset: query.offset,
-        tags: query.tags ? query.tags.split(',').map((tag) => tag.trim()).filter(Boolean) : undefined
+        offset: query.offset
       })
 
       const response: ListContentItemsResponse = {
-        items,
-        pagination: {
-          limit: query.limit,
-          offset: query.offset,
-          total: items.length,
-          hasMore: items.length === query.limit
-        }
+        items: buildTree(items),
+        total: items.length,
+        hasMore: items.length === query.limit
       }
 
       res.json(success(response))
@@ -118,26 +145,62 @@ export function buildContentItemRouter() {
   router.patch(
     '/:id',
     asyncHandler((req, res) => {
-      const payload = updateRequestSchema.parse(req.body) as UpdateContentItemRequest
-      const item = repo.update(req.params.id, { ...payload.itemData, userEmail: payload.userEmail })
-      const response: UpdateContentItemResponse = { item, message: 'Content item updated' }
-      res.json(success(response))
+      try {
+        const payload = updateRequestSchema.parse(req.body) as UpdateContentItemRequest
+        const item = repo.update(req.params.id, { ...payload.itemData, userEmail: payload.userEmail })
+        const response: UpdateContentItemResponse = { item, message: 'Content item updated' }
+        res.json(success(response))
+      } catch (err) {
+        if (handleRepoError(err, res)) return
+        throw err
+      }
     })
   )
 
   router.delete(
     '/:id',
     asyncHandler((req, res) => {
-      repo.delete(req.params.id)
-      const response: DeleteContentItemResponse = {
-        itemId: req.params.id,
-        deleted: true,
-        permanent: true,
-        message: 'Content item deleted'
+      try {
+        repo.delete(req.params.id)
+        const response: DeleteContentItemResponse = {
+          itemId: req.params.id,
+          deleted: true,
+          message: 'Content item deleted'
+        }
+        res.json(success(response))
+      } catch (err) {
+        if (handleRepoError(err, res)) return
+        throw err
       }
-      res.json(success(response))
+    })
+  )
+
+  router.post(
+    '/:id/reorder',
+    asyncHandler((req, res) => {
+      try {
+        const payload = reorderRequestSchema.parse(req.body)
+        const item = repo.reorder(req.params.id, payload.parentId ?? null, payload.orderIndex, payload.userEmail)
+        const response: ReorderContentItemResponse = { item }
+        res.json(success(response))
+      } catch (err) {
+        if (handleRepoError(err, res)) return
+        throw err
+      }
     })
   )
 
   return router
+}
+
+function handleRepoError(err: unknown, res: Response): boolean {
+  if (err instanceof ContentItemNotFoundError) {
+    res.status(404).json(failure(ApiErrorCode.NOT_FOUND, err.message))
+    return true
+  }
+  if (err instanceof ContentItemInvalidParentError) {
+    res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.message))
+    return true
+  }
+  return false
 }

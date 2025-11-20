@@ -154,17 +154,17 @@ describe("CloudLogger", () => {
   it("should log component lifecycle", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {})
 
-    await logger.logComponentLifecycle("ContentItemDialog", "mounted", {
+    await logger.logComponentLifecycle("ContentItemCard", "mounted", {
       itemType: "company",
     })
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("[INFO] [database]"),
-      "Component ContentItemDialog mounted",
+      "Component ContentItemCard mounted",
       expect.objectContaining({
         action: "mounted",
         details: {
-          component: "ContentItemDialog",
+        component: "ContentItemCard",
           itemType: "company",
         },
       })

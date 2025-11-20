@@ -78,6 +78,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: ROUTES.HOW_IT_WORKS,
+        element: (
+          <LazyPage>
+            <HowItWorksPage />
+          </LazyPage>
+        ),
+      },
+      {
         path: ROUTES.CONTENT_ITEMS,
         element: (
           <LazyPage>

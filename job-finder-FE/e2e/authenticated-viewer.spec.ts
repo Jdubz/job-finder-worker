@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
+import { getAuthIcon, openAuthModal, openNavigationDrawer } from './utils/ui'
 
 const TEST_AUTH_STATE_KEY = '__JF_E2E_AUTH_STATE__'
 const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
@@ -72,15 +73,12 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
 
   test('shows viewer role in user profile', async ({ page }) => {
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
+    const authDialog = await openAuthModal(page, 'viewer')
 
-    // Look for user profile/menu
-    const userButton = page.getByRole('button', { name: /viewer@example.com|Test Viewer|profile|account/i }).first()
-    if (await userButton.isVisible({ timeout: 15000 }).catch(() => false)) {
-      await userButton.click({ timeout: 10000 })
+    await expect(authDialog.getByText(/viewer@example.com/i)).toBeVisible({ timeout: 15000 })
+    await expect(authDialog.getByText(/role:\s*viewer/i)).toBeVisible({ timeout: 15000 })
 
-      // Should show viewer role
-      await expect(page.getByText(/role.*viewer|viewer.*access/i).first()).toBeVisible({ timeout: 10000 })
-    }
+    await page.keyboard.press('Escape')
   })
 
   test('can submit job applications', async ({ page }) => {
@@ -138,48 +136,28 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
   })
 
   test('can sign out', async ({ page }) => {
-    await page.goto(ROUTES.HOME)
+    await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
+    const authDialog = await openAuthModal(page, 'viewer')
 
-    // Look for sign out button
-    const userButton = page.getByRole('button', { name: /viewer@example.com|Test Viewer|profile|account/i }).first()
-    if (await userButton.isVisible()) {
-      await userButton.click()
+    const signOutButton = authDialog.getByRole('button', { name: /sign out|log out/i }).first()
+    await expect(signOutButton).toBeVisible({ timeout: 10000 })
+    await signOutButton.click()
 
-      const signOutButton = page.getByRole('button', { name: /sign out|log out/i }).first()
-      if (await signOutButton.isVisible()) {
-        await signOutButton.click()
-
-        // Auth state should be cleared
-        const authCleared = await page.evaluate((stateKey) => {
-          return !localStorage.getItem(stateKey)
-        }, TEST_AUTH_STATE_KEY)
-        expect(authCleared).toBe(true)
-      }
-    }
+    const authCleared = await page.evaluate(
+      ({ stateKey, tokenKey }) => !localStorage.getItem(stateKey) && !localStorage.getItem(tokenKey),
+      { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY }
+    )
+    expect(authCleared).toBe(true)
+    await expect(getAuthIcon(page, 'anonymous')).toBeVisible({ timeout: 10000 })
   })
 
   test('admin-only navigation links are hidden', async ({ page }) => {
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
+    await openNavigationDrawer(page)
 
-    // Wait for page to fully load
-    await page.waitForTimeout(2000)
-
-    // These links should not appear in navigation for viewers
-    const aiPromptsLink = page.getByRole('link', { name: /ai prompts/i })
-    const queueLink = page.getByRole('link', { name: /queue/i })
-    const configLink = page.getByRole('link', { name: /config/i })
-    const settingsLink = page.getByRole('link', { name: /settings/i })
-
-    // Check if visible - if any are visible, the test should fail
-    const linksVisible = await Promise.all([
-      aiPromptsLink.isVisible({ timeout: 1000 }).catch(() => false),
-      queueLink.isVisible({ timeout: 1000 }).catch(() => false),
-      configLink.isVisible({ timeout: 1000 }).catch(() => false),
-      settingsLink.isVisible({ timeout: 1000 }).catch(() => false)
-    ])
-
-    // None of these should be visible to a viewer
-    expect(linksVisible.some(visible => visible)).toBe(false)
+    await expect(page.getByRole('link', { name: /ai prompts/i })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: /queue management/i })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: /configuration/i })).toHaveCount(0)
   })
 
   test('viewer has access to legal pages', async ({ page }) => {

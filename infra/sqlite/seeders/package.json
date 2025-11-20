@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "export:firestore": "tsx src/export-firestore.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "type-check": "npm run typecheck"
   },
   "dependencies": {
     "firebase-admin": "^13.6.0",

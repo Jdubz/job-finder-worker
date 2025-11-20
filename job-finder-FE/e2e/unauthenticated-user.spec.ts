@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
+import { openAuthModal, openNavigationDrawer } from './utils/ui'
 
 test.describe('Unauthenticated User Access', () => {
   test.beforeEach(async ({ page }) => {
@@ -82,14 +83,15 @@ test.describe('Unauthenticated User Access', () => {
 
   test('navigation links work correctly', async ({ page }) => {
     const linksToTest = [
-      { name: /content items/i, route: ROUTES.CONTENT_ITEMS },
-      { name: /document builder/i, route: ROUTES.DOCUMENT_BUILDER },
-      { name: /job applications/i, route: ROUTES.JOB_APPLICATIONS },
-      { name: /job finder/i, route: ROUTES.JOB_FINDER }
+      { name: /home/i, route: ROUTES.HOME },
+      { name: /how it works/i, route: ROUTES.HOW_IT_WORKS },
+      { name: /experience/i, route: ROUTES.CONTENT_ITEMS },
+      { name: /document builder/i, route: ROUTES.DOCUMENT_BUILDER }
     ]
 
     for (const link of linksToTest) {
       await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
+      await openNavigationDrawer(page)
       await page.getByRole('link', { name: link.name }).first().click()
       await expect(page).toHaveURL(link.route, { timeout: 10000 })
     }
@@ -113,14 +115,11 @@ test.describe('Unauthenticated User Access', () => {
   test('auth modal appears when clicking sign in button', async ({ page }) => {
     await page.goto(ROUTES.HOME)
 
-    // Look for sign in button in header/nav
-    const signInButton = page.getByRole('button', { name: /sign in|log in/i }).first()
-    if (await signInButton.isVisible()) {
-      await signInButton.click()
-
-      // Should see Google Sign In button in modal
-      await expect(page.getByText(/continue with google/i)).toBeVisible({ timeout: 5000 })
-    }
+    const authDialog = await openAuthModal(page, 'anonymous')
+    await expect(authDialog.getByText(/sign in/i).first()).toBeVisible({ timeout: 5000 })
+    await expect(
+      authDialog.getByRole('button', { name: /continue with google/i }).first()
+    ).toBeVisible({ timeout: 5000 })
   })
 
   test('legal pages are accessible', async ({ page }) => {

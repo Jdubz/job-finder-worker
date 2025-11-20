@@ -11,8 +11,9 @@ test.describe("Content and queue management", () => {
     const contentTitle = `E2E Experience ${Date.now()}`
     const contentId = await seedContentItem(request, {
       itemData: {
-        company: contentTitle,
-        summary: "Original summary",
+        title: contentTitle,
+        description: "Original summary",
+        role: "Automation Lead",
       },
     })
 
@@ -29,12 +30,9 @@ test.describe("Content and queue management", () => {
     await expect(contentCard.getByText(contentTitle)).toBeVisible()
 
     await contentCard.getByRole("button", { name: "Edit" }).click()
-    await contentCard.getByLabel(/Summary/).fill("Updated via E2E")
-    await contentCard.getByRole("button", { name: "Save" }).click()
-    await expect(page.getByText(/Item updated successfully/i)).toBeVisible()
-    await contentCard.getByRole("button", { name: "Edit" }).click()
-    await expect(contentCard.getByLabel(/Summary/)).toHaveValue("Updated via E2E")
-    await contentCard.getByRole("button", { name: "Cancel" }).click()
+    await contentCard.getByLabel("Description (Markdown supported)").fill("Updated via E2E")
+    await contentCard.getByRole("button", { name: "Update Item" }).click()
+    await expect(contentCard.getByText("Updated via E2E")).toBeVisible()
 
     await page.goto("/queue-management")
     await expect(page.getByRole("heading", { name: "Queue Management" })).toBeVisible()

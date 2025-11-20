@@ -248,16 +248,9 @@ Type guards provide runtime type checking for validating data structures. These 
 - `isProjectRecommendation(value)` - Validates ProjectRecommendation structure
 - `isGapMitigation(value)` - Validates GapMitigation structure
 
-#### Content Item Types
-- `isContentItemType(value)` - Validates ContentItemType enum
+#### Content Items
 - `isContentItemVisibility(value)` - Validates ContentItemVisibility enum
-- `isContentItem(value)` - Validates any ContentItem (union type)
-- `isCompanyItem(value)` - Validates CompanyItem specifically
-- `isProjectItem(value)` - Validates ProjectItem specifically
-- `isSkillGroupItem(value)` - Validates SkillGroupItem specifically
-- `isEducationItem(value)` - Validates EducationItem specifically
-- `isProfileSectionItem(value)` - Validates ProfileSectionItem specifically
-- `isAccomplishmentItem(value)` - Validates AccomplishmentItem specifically
+- `isContentItem(value)` - Validates the unified ContentItem payload
 
 ### Usage Examples
 
@@ -407,7 +400,7 @@ class JobQueueItem(BaseModel):
 4. **Update job-finder-FE:** `npm update @jdubz/job-finder-shared-types`
 5. **Update Python models** in job-finder to mirror changes
 6. **Test both projects** together
-7. **Deploy to staging** and verify integration
+7. **Deploy from `main`** (production-only) after verifying locally/in CI
 
 ### Version Management
 

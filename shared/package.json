@@ -21,6 +21,7 @@
     "clean": "rimraf dist",
     "build": "npm run clean && tsup src/index.ts --dts --format esm,cjs --out-dir dist",
     "typecheck": "tsc --noEmit",
+    "type-check": "npm run typecheck",
     "dev": "tsup src/index.ts --watch --dts --format esm,cjs --out-dir dist",
     "prepare": "npm run build"
   },

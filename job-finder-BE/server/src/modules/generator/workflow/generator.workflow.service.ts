@@ -106,7 +106,7 @@ export class GeneratorWorkflowService {
     }
   }
 
-  async runNextStep(requestId: string, payload?: GenerateDocumentPayload) {
+  async runNextStep(requestId: string, _payload?: GenerateDocumentPayload) {
     const request = this.workflowRepo.getRequest(requestId)
     if (!request) {
       return null

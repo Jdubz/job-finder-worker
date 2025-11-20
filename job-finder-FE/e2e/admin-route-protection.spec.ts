@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
 import adminConfig from '../src/config/admins.json' with { type: 'json' }
+import { openNavigationDrawer } from './utils/ui'
 
 const TEST_AUTH_STATE_KEY = '__JF_E2E_AUTH_STATE__'
 const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
@@ -78,23 +79,13 @@ test.describe('Admin Route Protection', () => {
     })
 
     test('admin navigation links are visible', async ({ page }) => {
-      await page.goto(ROUTES.HOME)
+      await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
+      await openNavigationDrawer(page)
 
-      // Admin links should be visible in navigation
-      const aiPromptsLink = page.getByRole('link', { name: /ai prompts/i })
-      const queueLink = page.getByRole('link', { name: /queue/i })
-      const configLink = page.getByRole('link', { name: /config/i })
-      const settingsLink = page.getByRole('link', { name: /settings/i })
-
-      // All admin links should be visible
-      const linksVisible = await Promise.all([
-        aiPromptsLink.isVisible().catch(() => false),
-        queueLink.isVisible().catch(() => false),
-        configLink.isVisible().catch(() => false),
-        settingsLink.isVisible().catch(() => false)
-      ])
-
-      expect(linksVisible.every((visible) => visible)).toBe(true)
+      await expect(page.getByRole('link', { name: /ai prompts/i })).toBeVisible()
+      await expect(page.getByRole('link', { name: /queue management/i })).toBeVisible()
+      await expect(page.getByRole('link', { name: /configuration/i })).toBeVisible()
+      await expect(page.getByRole('link', { name: /settings/i })).toBeVisible()
     })
   })
 

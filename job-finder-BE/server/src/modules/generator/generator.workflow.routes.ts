@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { ApiErrorCode } from '@shared/types'
-import { GeneratorWorkflowService, type GenerateDocumentPayload } from './workflow/generator.workflow.service'
+import { GeneratorWorkflowService } from './workflow/generator.workflow.service'
 import { GeneratorWorkflowRepository, type GeneratorRequestRecord } from './generator.workflow.repository'
 
 const generateSchema = z.object({
