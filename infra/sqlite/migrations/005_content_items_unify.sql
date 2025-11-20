@@ -159,4 +159,4 @@ CREATE INDEX idx_content_items_parent_order ON content_items(parent_id, order_in
 CREATE INDEX idx_content_items_visibility ON content_items(visibility);
 
 PRAGMA foreign_keys=ON;
-E
+
