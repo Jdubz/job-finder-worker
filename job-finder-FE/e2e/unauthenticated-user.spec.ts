@@ -1,9 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
 
-const TEST_AUTH_STATE_KEY = '__JF_E2E_AUTH_STATE__'
-const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
-
 test.describe('Unauthenticated User Access', () => {
   test.beforeEach(async ({ page }) => {
     // Ensure we're not authenticated

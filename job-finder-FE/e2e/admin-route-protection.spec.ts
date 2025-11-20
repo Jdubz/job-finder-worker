@@ -183,7 +183,7 @@ test.describe('Admin Route Protection', () => {
       })
     })
 
-    test('both configured admins are recognized', async ({ page, context }) => {
+    test('both configured admins are recognized', async ({ context }) => {
       for (const adminEmail of adminConfig.adminEmails) {
         // Create new page with fresh context for each email
         const testPage = await context.newPage()
