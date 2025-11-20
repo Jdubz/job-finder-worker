@@ -37,7 +37,7 @@ jobs:
       - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
-          context: ./job-finder-BE/server
+          context: .
           file: ./job-finder-BE/server/Dockerfile
           push: true
           platforms: linux/amd64
