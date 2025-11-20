@@ -1,8 +1,8 @@
 # AI CLI Integration Plan
 
-Status: Draft
-Owner: @jdubz
-Last Updated: 2025-11-18
+> Status: Draft
+> Owner: @jdubz
+> Last Updated: 2025-11-18
 
 ## Goal
 Run Claude, Codex, and Gemini CLIs inside the existing backend Docker image (one image for the whole stack) so generator/worker processes can call AI agents without embedding API keys.
