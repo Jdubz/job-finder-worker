@@ -470,7 +470,7 @@ class StructuredLogger:
 
         Args:
             operation: Database operation (create, update, delete, query)
-            collection: Firestore collection name
+            collection: Table or collection name
             status: Operation status
             details: Optional additional details
         """

@@ -1,103 +1,91 @@
-/**
- * Content Items API Client
- *
- * Handles all content-items collection operations using FirestoreService
- */
+import { BaseApiClient } from "./base-client"
+import { API_CONFIG } from "@/config/api"
+import type {
+  CreateContentItemRequest,
+  CreateContentItemResponse,
+  UpdateContentItemRequest,
+  UpdateContentItemResponse,
+  DeleteContentItemResponse,
+  GetContentItemResponse,
+  ListContentItemsRequest,
+  ListContentItemsResponse,
+  ContentItem
+} from "@shared/types"
+import type { ApiSuccessResponse } from "@shared/types"
 
-import { firestoreService } from "@/services/firestore"
-import { createUpdateMetadata, createDocumentMetadata } from "@/services/firestore/utils"
-import type { ContentItemDocument } from "@/services/firestore/types"
-
-export const CONTENT_ITEMS_COLLECTION = "content-items" as const
-
-/**
- * Content Items Client
- *
- * Provides CRUD operations for content items using the centralized FirestoreService
- */
-class ContentItemsClient {
-  /**
-   * Create a new content item
-   */
-  async createContentItem(userId: string, data: Record<string, unknown>): Promise<string> {
-    const docData = {
-      ...data,
-      userId,
-      ...createDocumentMetadata(userId),
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return firestoreService.createDocument(CONTENT_ITEMS_COLLECTION, docData as any)
+export class ContentItemsClient extends BaseApiClient {
+  constructor(baseUrl = API_CONFIG.baseUrl) {
+    super(baseUrl)
   }
 
-  /**
-   * Update an existing content item
-   */
+  async list(params: Partial<ListContentItemsRequest> = {}): Promise<ContentItem[]> {
+    const search = new URLSearchParams()
+    if (params.type) search.append("type", params.type)
+    if (params.parentId !== undefined) {
+      search.append("parentId", params.parentId === null ? "null" : params.parentId)
+    }
+    if (params.visibility) search.append("visibility", params.visibility)
+    if (params.limit) search.append("limit", params.limit.toString())
+    if (params.offset) search.append("offset", params.offset.toString())
+
+    const query = search.toString()
+    const response = await this.get<ApiSuccessResponse<ListContentItemsResponse>>(
+      `/content-items${query ? `?${query}` : ""}`
+    )
+    return response.data.items
+  }
+
+  async getContentItem(id: string): Promise<ContentItem | null> {
+    const response = await this.get<ApiSuccessResponse<GetContentItemResponse>>(
+      `/content-items/${id}`
+    )
+    return response.data.item
+  }
+
+  async createContentItem(
+    userId: string,
+    userEmail: string,
+    data: CreateContentItemRequest["itemData"]
+  ): Promise<ContentItem> {
+    const payload: CreateContentItemRequest = {
+      itemData: {
+        ...data,
+        userId,
+      },
+      userEmail,
+    }
+
+    const response = await this.post<ApiSuccessResponse<CreateContentItemResponse>>(
+      `/content-items`,
+      payload
+    )
+    return response.data.item
+  }
+
   async updateContentItem(
     id: string,
-    userId: string,
-    data: Record<string, unknown>
-  ): Promise<void> {
-    const updateData = {
-      ...data,
-      ...createUpdateMetadata(userId),
+    userEmail: string,
+    data: UpdateContentItemRequest["itemData"]
+  ): Promise<ContentItem> {
+    const payload: UpdateContentItemRequest = {
+      itemId: id,
+      itemData: data,
+      userEmail,
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await firestoreService.updateDocument(CONTENT_ITEMS_COLLECTION, id, updateData as any)
-  }
-
-  /**
-   * Delete a content item
-   */
-  async deleteContentItem(id: string): Promise<void> {
-    await firestoreService.deleteDocument(CONTENT_ITEMS_COLLECTION, id)
-  }
-
-  /**
-   * Get a single content item by ID
-   */
-  async getContentItem(id: string): Promise<ContentItemDocument | null> {
-    return firestoreService.getDocument(CONTENT_ITEMS_COLLECTION, id)
-  }
-
-  /**
-   * Get all content items for a user
-   */
-  async getContentItems(userId?: string): Promise<ContentItemDocument[]> {
-    const constraints = userId
-      ? {
-          where: [{ field: "userId" as const, operator: "==" as const, value: userId }],
-          orderBy: [{ field: "order" as const, direction: "asc" as const }],
-        }
-      : { orderBy: [{ field: "order" as const, direction: "asc" as const }] }
-
-    return firestoreService.getDocuments(CONTENT_ITEMS_COLLECTION, constraints)
-  }
-
-  /**
-   * Subscribe to content items changes
-   */
-  subscribeToContentItems(
-    onUpdate: (items: ContentItemDocument[]) => void,
-    onError: ((error: Error) => void) | undefined = undefined,
-    userId?: string
-  ) {
-    const constraints = userId
-      ? {
-          where: [{ field: "userId" as const, operator: "==" as const, value: userId }],
-          orderBy: [{ field: "order" as const, direction: "asc" as const }],
-        }
-      : { orderBy: [{ field: "order" as const, direction: "asc" as const }] }
-
-    return firestoreService.subscribeToCollection(
-      CONTENT_ITEMS_COLLECTION,
-      onUpdate,
-      onError || (() => {}),
-      constraints
+    const response = await this.patch<ApiSuccessResponse<UpdateContentItemResponse>>(
+      `/content-items/${id}`,
+      payload
     )
+    return response.data.item
+  }
+
+  async deleteContentItem(id: string): Promise<DeleteContentItemResponse> {
+    const response = await this.delete<ApiSuccessResponse<DeleteContentItemResponse>>(
+      `/content-items/${id}`
+    )
+    return response.data
   }
 }
 
 export const contentItemsClient = new ContentItemsClient()
-export { ContentItemsClient }

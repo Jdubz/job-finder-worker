@@ -1,9 +1,0 @@
-{
-  "projectInfo": {
-    "name": "Job Finder Frontend",
-    "description": "React application for job search automation and AI-powered resume generation",
-    "version": "0.1.0"
-  },
-  "buildCommand": "npm run build",
-  "testCommand": "npm test"
-}

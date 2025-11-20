@@ -6,7 +6,8 @@ import type {
   QueueStatus,
   QueueSource,
   JobSubTask,
-  CompanySubTask
+  CompanySubTask,
+  SourceTier
 } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
@@ -29,8 +30,17 @@ type QueueItemRow = {
   source_discovery_config: string | null
   sub_task: JobSubTask | null
   pipeline_state: string | null
+  pipeline_stage: string | null
   parent_item_id: string | null
   company_sub_task: CompanySubTask | null
+  source_id: string | null
+  source_type: string | null
+  source_config: string | null
+  source_tier: SourceTier | null
+  tracking_id: string | null
+  ancestry_chain: string | null
+  spawn_depth: number
+  max_spawn_depth: number
   created_at: string
   updated_at: string
   processed_at: string | null
@@ -99,8 +109,17 @@ const buildQueueItem = (row: QueueItemRow): QueueItem => {
     source_discovery_config: parseJson(row.source_discovery_config) ?? undefined,
     sub_task: row.sub_task ?? undefined,
     pipeline_state: parseJson(row.pipeline_state) ?? undefined,
+    pipeline_stage: row.pipeline_stage ?? undefined,
     parent_item_id: row.parent_item_id ?? undefined,
-    company_sub_task: row.company_sub_task ?? undefined
+    company_sub_task: row.company_sub_task ?? undefined,
+    source_id: row.source_id ?? undefined,
+    source_type: row.source_type ?? undefined,
+    source_config: parseJson(row.source_config) ?? undefined,
+    source_tier: row.source_tier ?? undefined,
+    tracking_id: row.tracking_id && row.tracking_id.length > 0 ? row.tracking_id : undefined,
+    ancestry_chain: parseJson(row.ancestry_chain) ?? undefined,
+    spawn_depth: typeof row.spawn_depth === 'number' ? row.spawn_depth : undefined,
+    max_spawn_depth: typeof row.max_spawn_depth === 'number' ? row.max_spawn_depth : undefined
   }
 
   return item
@@ -115,6 +134,10 @@ export class JobQueueRepository {
 
   enqueue(data: NewQueueItem): QueueItem {
     const id = randomUUID()
+    const trackingId = data.tracking_id ?? id
+    const ancestryChain = data.ancestry_chain ?? [id]
+    const spawnDepth = data.spawn_depth ?? 0
+    const maxSpawnDepth = data.max_spawn_depth ?? 10
     const now = new Date().toISOString()
 
     const createdAt = toISOString(data.created_at) ?? now
@@ -126,10 +149,17 @@ export class JobQueueRepository {
       INSERT INTO job_queue (
         id, type, status, url, company_name, source, retry_count, max_retries,
         submitted_by, company_id, metadata, scrape_config, scraped_data,
-        source_discovery_config, sub_task, pipeline_state, parent_item_id,
-        company_sub_task, created_at, updated_at, processed_at, completed_at,
+        source_discovery_config, sub_task, pipeline_state, pipeline_stage, parent_item_id,
+        company_sub_task, source_id, source_type, source_config, source_tier,
+        tracking_id, ancestry_chain, spawn_depth, max_spawn_depth,
+        created_at, updated_at, processed_at, completed_at,
         result_message, error_details
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
     `)
 
     stmt.run(
@@ -149,8 +179,17 @@ export class JobQueueRepository {
       serializeJson(data.source_discovery_config),
       data.sub_task ?? null,
       serializeJson(data.pipeline_state),
+      data.pipeline_stage ?? null,
       data.parent_item_id ?? null,
       data.company_sub_task ?? null,
+      data.source_id ?? null,
+      data.source_type ?? null,
+      serializeJson(data.source_config),
+      data.source_tier ?? null,
+      trackingId,
+      serializeJson(ancestryChain),
+      spawnDepth,
+      maxSpawnDepth,
       createdAt,
       updatedAt,
       processedAt,
@@ -171,6 +210,49 @@ export class JobQueueRepository {
     const rows = this.db
       .prepare('SELECT * FROM job_queue WHERE status = ? ORDER BY created_at ASC LIMIT ?')
       .all(status, limit) as QueueItemRow[]
+    return rows.map(buildQueueItem)
+  }
+
+  list(options: {
+    status?: QueueStatus | QueueStatus[]
+    type?: QueueItem['type']
+    source?: QueueSource
+    limit?: number
+    offset?: number
+  } = {}): QueueItem[] {
+    let sql = 'SELECT * FROM job_queue WHERE 1 = 1'
+    const params: Array<string | number> = []
+
+    if (options.status) {
+      const statuses = Array.isArray(options.status) ? options.status : [options.status]
+      const placeholders = statuses.map(() => '?').join(', ')
+      sql += ` AND status IN (${placeholders})`
+      params.push(...statuses)
+    }
+
+    if (options.type) {
+      sql += ' AND type = ?'
+      params.push(options.type)
+    }
+
+    if (options.source) {
+      sql += ' AND source = ?'
+      params.push(options.source)
+    }
+
+    sql += ' ORDER BY datetime(created_at) DESC'
+
+    if (typeof options.limit === 'number') {
+      sql += ' LIMIT ?'
+      params.push(options.limit)
+    }
+
+    if (typeof options.offset === 'number') {
+      sql += ' OFFSET ?'
+      params.push(options.offset)
+    }
+
+    const rows = this.db.prepare(sql).all(...params) as QueueItemRow[]
     return rows.map(buildQueueItem)
   }
 
@@ -204,10 +286,19 @@ export class JobQueueRepository {
       assign('source_discovery_config', serializeJson(updates.source_discovery_config))
     if (updates.sub_task !== undefined) assign('sub_task', updates.sub_task ?? null)
     if (updates.pipeline_state !== undefined) assign('pipeline_state', serializeJson(updates.pipeline_state))
+    if (updates.pipeline_stage !== undefined) assign('pipeline_stage', updates.pipeline_stage ?? null)
     if (updates.parent_item_id !== undefined) assign('parent_item_id', updates.parent_item_id ?? null)
     if (updates.company_sub_task !== undefined) assign('company_sub_task', updates.company_sub_task ?? null)
     if (updates.company_id !== undefined) assign('company_id', updates.company_id ?? null)
     if (updates.submitted_by !== undefined) assign('submitted_by', updates.submitted_by ?? null)
+    if (updates.source_id !== undefined) assign('source_id', updates.source_id ?? null)
+    if (updates.source_type !== undefined) assign('source_type', updates.source_type ?? null)
+    if (updates.source_config !== undefined) assign('source_config', serializeJson(updates.source_config))
+    if (updates.source_tier !== undefined) assign('source_tier', updates.source_tier ?? null)
+    if (updates.tracking_id !== undefined) assign('tracking_id', updates.tracking_id ?? null)
+    if (updates.ancestry_chain !== undefined) assign('ancestry_chain', serializeJson(updates.ancestry_chain))
+    if (updates.spawn_depth !== undefined) assign('spawn_depth', updates.spawn_depth)
+    if (updates.max_spawn_depth !== undefined) assign('max_spawn_depth', updates.max_spawn_depth)
 
     assign('updated_at', nextUpdatedAt)
 

@@ -15,7 +15,7 @@ from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import ConfigurationError
 from job_finder.profile.schema import Profile
 from job_finder.scrapers.greenhouse_scraper import GreenhouseScraper
-from job_finder.storage import FirestoreJobStorage
+from job_finder.storage import JobStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.utils.job_type_filter import filter_job, FilterDecision
@@ -33,7 +33,7 @@ class ScrapeRunner:
     def __init__(
         self,
         ai_matcher: AIJobMatcher,
-        job_storage: FirestoreJobStorage,
+        job_storage: JobStorage,
         companies_manager: CompaniesManager,
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
@@ -290,7 +290,7 @@ class ScrapeRunner:
         Scrape a single source and analyze jobs.
 
         Args:
-            source: Source document from Firestore
+            source: Source document from SQLite
 
         Returns:
             Dictionary with scraping stats
@@ -398,7 +398,7 @@ class ScrapeRunner:
             stats["jobs_matched"] += 1
             stats["jobs_saved"] += 1
 
-            # Save to Firestore
+            # Save to SQLite
             doc_id = self.job_storage.save_job_match(job, result)
             logger.info(
                 f"  ✓ MATCH: {job.get('title')} at {company_name} "

@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # Security Runbooks
 
 Authoritative security documentation for the backend lives in this directory.

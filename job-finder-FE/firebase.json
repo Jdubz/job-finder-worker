@@ -46,7 +46,7 @@
             },
             {
               "key": "Content-Security-Policy",
-              "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://www.google.com https://www.gstatic.com https://apis.google.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://www.google-analytics.com https://www.google.com https://apis.google.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://firebase.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseremoteconfig.googleapis.com https://firebaselogging.googleapis.com https://content-firebaseappcheck.googleapis.com https://firestore.googleapis.com https://storage.googleapis.com https://us-central1-static-sites-257923.cloudfunctions.net https://cloudflareinsights.com wss://*.firebaseio.com; frame-ancestors 'none'; frame-src 'self' https://www.google.com https://accounts.google.com https://storage.googleapis.com;"
+              "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://www.google.com https://www.gstatic.com https://apis.google.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://www.google-analytics.com https://www.google.com https://apis.google.com https://accounts.google.com https://cloudflareinsights.com https://job-finder-api.joshwentworth.com; frame-ancestors 'none'; frame-src 'self' https://www.google.com https://accounts.google.com;"
             }
           ]
         },
@@ -103,7 +103,7 @@
             },
             {
               "key": "Content-Security-Policy",
-              "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://www.google.com https://www.gstatic.com https://apis.google.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://www.google-analytics.com https://www.google.com https://apis.google.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://firebase.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseremoteconfig.googleapis.com https://firebaselogging.googleapis.com https://content-firebaseappcheck.googleapis.com https://firestore.googleapis.com https://storage.googleapis.com https://us-central1-static-sites-257923.cloudfunctions.net https://cloudflareinsights.com wss://*.firebaseio.com; frame-ancestors 'none'; frame-src 'self' https://www.google.com https://accounts.google.com https://storage.googleapis.com;"
+              "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://www.google.com https://www.gstatic.com https://apis.google.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://www.google-analytics.com https://www.google.com https://apis.google.com https://accounts.google.com https://cloudflareinsights.com https://job-finder-api.joshwentworth.com; frame-ancestors 'none'; frame-src 'self' https://www.google.com https://accounts.google.com;"
             }
           ]
         },
@@ -145,20 +145,5 @@
         }
       ]
     }
-  ],
-  "emulators": {
-    "firestore": {
-      "port": 8080
-    },
-    "auth": {
-      "port": 9099
-    },
-    "functions": {
-      "port": 5001
-    },
-    "ui": {
-      "enabled": true,
-      "port": 4000
-    }
-  }
+  ]
 }

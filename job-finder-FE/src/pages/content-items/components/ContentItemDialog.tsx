@@ -341,14 +341,17 @@ export function ContentItemDialog({
       if (!user) {
         throw new Error("User must be authenticated")
       }
+      if (!user.email) {
+        throw new Error("User email is required to manage content items")
+      }
 
       if (item) {
         // Update existing item using client
-        await contentItemsClient.updateContentItem(item.id, user.uid, data)
+        await contentItemsClient.updateContentItem(item.id, user.email, data)
       } else {
         // Create new item using client
         const createData = data as CreateContentItemData
-        await contentItemsClient.createContentItem(user.uid, createData)
+        await contentItemsClient.createContentItem(user.id, user.email, createData)
       }
 
       onSave()

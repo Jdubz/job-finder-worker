@@ -9,11 +9,11 @@ from job_finder.ai import AIJobMatcher
 from job_finder.ai.providers import create_provider
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import InitializationError
-from job_finder.profile import FirestoreProfileLoader
+from job_finder.profile import SQLiteProfileLoader
 from job_finder.profile.schema import Profile
 from job_finder.scrapers.greenhouse_scraper import GreenhouseScraper
 from job_finder.scrapers.rss_scraper import RSSJobScraper
-from job_finder.storage import FirestoreJobStorage, JobSourcesManager
+from job_finder.storage import JobStorage, JobSourcesManager
 from job_finder.storage.companies_manager import CompaniesManager
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class JobSearchOrchestrator:
         self.config = config
         self.profile: Optional[Profile] = None
         self.ai_matcher: Optional[AIJobMatcher] = None
-        self.job_storage: Optional[FirestoreJobStorage] = None
+        self.job_storage: Optional[JobStorage] = None
         self.sources_manager: Optional[JobSourcesManager] = None
         self.companies_manager: Optional[CompaniesManager] = None
         self.company_info_fetcher: Optional[CompanyInfoFetcher] = None
@@ -61,7 +61,7 @@ class JobSearchOrchestrator:
         logger.info("✓ AI matcher initialized")
 
         # Step 3: Initialize storage
-        logger.info("\n💾 STEP 3: Initializing Firestore storage...")
+        logger.info("\n💾 STEP 3: Initializing SQLite storage...")
         self._initialize_storage()
         logger.info("✓ Storage initialized")
 
@@ -123,7 +123,7 @@ class JobSearchOrchestrator:
         logger.info(f"  Duplicates skipped: {stats['duplicates_skipped']}")
         logger.info(f"  New jobs analyzed: {stats['jobs_analyzed']}")
         logger.info(f"  Jobs matched (>= threshold): {stats['jobs_matched']}")
-        logger.info(f"  Jobs saved to Firestore: {stats['jobs_saved']}")
+        logger.info(f"  Jobs saved to SQLite: {stats['jobs_saved']}")
 
         if stats["errors"]:
             logger.warning(f"\n⚠️  Errors encountered: {len(stats['errors'])}")
@@ -135,27 +135,17 @@ class JobSearchOrchestrator:
     def _load_profile(self) -> Profile:
         """Load user profile from configured source."""
         profile_config = self.config.get("profile", {})
-        source = profile_config.get("source", "json")
+        source = profile_config.get("source", "sqlite")
 
-        if source == "firestore":
-            firestore_config = profile_config.get("firestore", {})
+        if source != "sqlite":
+            raise NotImplementedError(f"Unsupported profile source: {source}")
 
-            # Allow environment variable override for database name
-            database_name = os.getenv(
-                "PROFILE_DATABASE_NAME", firestore_config.get("database_name", "portfolio")
-            )
-
-            loader = FirestoreProfileLoader(database_name=database_name)
-            profile = loader.load_profile(
-                user_id=firestore_config.get("user_id"),
-                name=firestore_config.get("name"),
-                email=firestore_config.get("email"),
-            )
-        else:
-            # JSON profile loading not yet implemented
-            raise NotImplementedError("JSON profile loading not yet implemented")
-
-        return profile
+        loader = SQLiteProfileLoader(os.getenv("JF_SQLITE_DB_PATH"))
+        return loader.load_profile(
+            user_id=profile_config.get("user_id"),
+            name=profile_config.get("name"),
+            email=profile_config.get("email"),
+        )
 
     def _initialize_ai(self) -> AIJobMatcher:
         """Initialize AI job matcher."""
@@ -181,17 +171,12 @@ class JobSearchOrchestrator:
         return matcher
 
     def _initialize_storage(self):
-        """Initialize Firestore storage for job matches, sources, and companies."""
-        storage_config = self.config.get("storage", {})
+        """Initialize storage for job matches, sources, and companies."""
+        db_path = os.getenv("JF_SQLITE_DB_PATH")
 
-        # Allow environment variable override for database name
-        database_name = os.getenv(
-            "STORAGE_DATABASE_NAME", storage_config.get("database_name", "portfolio-staging")
-        )
-
-        self.job_storage = FirestoreJobStorage(database_name=database_name)
-        self.sources_manager = JobSourcesManager(database_name=database_name)
-        self.companies_manager = CompaniesManager(database_name=database_name)
+        self.job_storage = JobStorage(db_path)
+        self.sources_manager = JobSourcesManager(db_path)
+        self.companies_manager = CompaniesManager(db_path)
 
         # Initialize company info fetcher with AI provider and config (shares same provider as AI matcher)
         self.company_info_fetcher = CompanyInfoFetcher(
@@ -200,7 +185,7 @@ class JobSearchOrchestrator:
         )
 
     def _get_active_sources(self) -> List[Dict[str, Any]]:
-        """Get active job sources from Firestore with linked company data.
+        """Get active job sources from SQLite with linked company data.
 
         Returns sources with company data joined in, sorted by priority:
         - Sources with companyId will have company data attached
@@ -620,7 +605,7 @@ class JobSearchOrchestrator:
                     if company_id:
                         job["companyId"] = company_id
 
-                    # Save to Firestore
+                    # Save to SQLite
                     doc_id = self.job_storage.save_job_match(job, result)
                     stats["jobs_matched"] += 1
                     stats["jobs_saved"] += 1

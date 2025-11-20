@@ -525,10 +525,10 @@ export function HowItWorksPage() {
           <Card>
             <CardHeader>
               <Shield className="h-8 w-8 mb-2 text-primary" />
-              <CardTitle>Firebase Backend</CardTitle>
+              <CardTitle>Node + SQLite Backend</CardTitle>
               <CardDescription>
-                Cloud Functions for serverless API, Firestore for data persistence, and Firebase
-                Auth for secure authentication
+                Express API and Python worker share a single SQLite database on the edge host, fronted by a
+                Cloudflared tunnel for secure ingress.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -582,8 +582,8 @@ export function HowItWorksPage() {
               <Shield className="h-8 w-8 mb-2 text-primary" />
               <CardTitle>Secure & Private</CardTitle>
               <CardDescription>
-                Your data is encrypted, stored securely in Firebase, and never shared. Role-based
-                access control protects sensitive features
+                GIS + role-based access control guard the admin tools, while Cloudflare tunnels and on-host
+                encryption keep SQLite data isolated from the public internet.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -706,7 +706,7 @@ export function HowItWorksPage() {
               <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90 md:rotate-0" />
               <div className="text-center p-4 border rounded-lg flex-1">
                 <Database className="h-6 w-6 mx-auto mb-2 text-primary" />
-                <p className="font-medium">Queued in Firestore</p>
+                <p className="font-medium">Queued in SQLite</p>
                 <p className="text-xs text-muted-foreground mt-1">job-queue collection</p>
               </div>
               <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90 md:rotate-0" />

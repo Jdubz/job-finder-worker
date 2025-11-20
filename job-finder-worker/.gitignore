@@ -38,7 +38,8 @@ ENV/
 .coverage
 htmlcov/
 .tox/
-test_results/
+test_results/*
+!test_results/.gitkeep
 
 # Data and Logs
 data/*.json
@@ -81,9 +82,6 @@ Thumbs.db
 # Debug and test scripts in root (local development)
 /debug_*.py
 /test_*.py
-
-# Smoke test results
-test_results/
 
 # Prevent --no-verify bypass scripts
 git-bypass-*

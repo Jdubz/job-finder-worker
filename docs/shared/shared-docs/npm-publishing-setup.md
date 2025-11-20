@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-10-05
+
 # NPM Publishing Setup for job-finder-shared-types (Archived)
 
 > **Note:** The shared type definitions now live directly in the monorepo under `shared/src` and are no longer published to npm. This document remains for historical context.

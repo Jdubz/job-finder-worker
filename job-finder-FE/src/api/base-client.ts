@@ -7,8 +7,8 @@
  * - Request/response logging
  */
 
-import { auth, appCheck } from "@/config/firebase"
-import { getToken } from "firebase/app-check"
+import { DEFAULT_E2E_AUTH_TOKEN, TEST_AUTH_TOKEN_KEY, AUTH_BYPASS_ENABLED } from "@/config/testing"
+import { getStoredAuthToken } from "@/lib/auth-storage"
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"
@@ -55,17 +55,12 @@ export class BaseApiClient {
    * Get current user's auth token
    */
   async getAuthToken(): Promise<string | null> {
-    const user = auth.currentUser
-    if (!user) {
-      return null
+    const bypassToken = getBypassTokenOverride()
+    if (bypassToken) {
+      return bypassToken
     }
 
-    try {
-      return await user.getIdToken()
-    } catch (error) {
-      console.error("Failed to get auth token:", error)
-      return null
-    }
+    return getStoredAuthToken()
   }
 
   /**
@@ -84,10 +79,7 @@ export class BaseApiClient {
     const url = `${this.baseUrl}${endpoint}`
 
     // Get auth token
-    const [token, appCheckToken] = await Promise.all([
-      this.getAuthToken(),
-      this.getAppCheckToken(),
-    ])
+    const token = await this.getAuthToken()
 
     // Build headers
     const requestHeaders: Record<string, string> = {
@@ -99,9 +91,6 @@ export class BaseApiClient {
       requestHeaders["Authorization"] = `Bearer ${token}`
     }
 
-    if (appCheckToken) {
-      requestHeaders["X-Firebase-AppCheck"] = appCheckToken
-    }
 
     // Build request options
     const fetchOptions: RequestInit = {
@@ -198,25 +187,18 @@ export class BaseApiClient {
     return this.request<T>(endpoint, { ...options, method: "PATCH", body })
   }
 
-  private async getAppCheckToken(): Promise<string | null> {
-    if (!appCheck) {
-      return null
-    }
+}
 
-    try {
-      const { token } = await getToken(appCheck, false)
-      return token
-    } catch (error) {
-      console.error("Failed to get App Check token:", error)
-
-      if (["production", "staging"].includes(import.meta.env.MODE)) {
-        throw new ApiError(
-          "App integrity verification failed. Please refresh the page and try again.",
-          401
-        )
-      }
-
-      return null
+function getBypassTokenOverride(): string | null {
+  if (!AUTH_BYPASS_ENABLED) {
+    return null
+  }
+  if (typeof window !== "undefined") {
+    const stored = window.localStorage.getItem(TEST_AUTH_TOKEN_KEY)
+    if (stored) {
+      return stored
     }
   }
+
+  return DEFAULT_E2E_AUTH_TOKEN || null
 }

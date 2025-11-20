@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # BE-CICD-1 — Repair job-finder-BE CI/CD (PR #15)
 
 - **Status**: Todo

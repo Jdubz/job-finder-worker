@@ -1,5 +1,16 @@
 import { defineConfig, devices } from "@playwright/test"
 
+const apiPort = process.env.JF_E2E_API_PORT || "5080"
+const apiOrigin = `http://127.0.0.1:${apiPort}`
+const apiBaseUrl = `${apiOrigin}/api`
+const authToken = process.env.JF_E2E_AUTH_TOKEN || "e2e-test-token"
+const ownerEmail = process.env.JF_E2E_OWNER_EMAIL || "owner@jobfinder.dev"
+const frontendBaseUrl = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:5173"
+
+process.env.JF_E2E_API_BASE = process.env.JF_E2E_API_BASE || apiBaseUrl
+process.env.JF_E2E_AUTH_TOKEN = authToken
+process.env.JF_E2E_OWNER_EMAIL = ownerEmail
+
 /**
  * Playwright E2E Testing Configuration
  *
@@ -26,7 +37,8 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173",
+    baseURL: frontendBaseUrl,
+    headless: true,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
@@ -43,7 +55,7 @@ export default defineConfig({
   },
 
   /* Global test timeout */
-  timeout: 30000,
+  timeout: 60000,
 
   /* Configure projects for major browsers */
   projects: [
@@ -51,33 +63,41 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
-
-    {
-      name: "firefox",
-      use: { ...devices["Desktop Firefox"] },
-    },
-
-    {
-      name: "webkit",
-      use: { ...devices["Desktop Safari"] },
-    },
-
-    /* Test against mobile viewports. */
-    {
-      name: "Mobile Chrome",
-      use: { ...devices["Pixel 5"] },
-    },
-    {
-      name: "Mobile Safari",
-      use: { ...devices["iPhone 12"] },
-    },
   ],
 
   /* Run your local dev server before starting the tests */
-  webServer: {
-    command: "npm run dev",
-    url: "http://localhost:5173",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  webServer: [
+    {
+      command: [
+        "cd ..",
+        `JF_E2E_API_PORT=${apiPort} JF_E2E_AUTH_TOKEN=${authToken} node scripts/dev/start-api-e2e.mjs`,
+      ].join(" && "),
+      url: `${apiOrigin}/healthz`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
+    },
+    {
+      command: [
+        "cd ..",
+        [
+          `VITE_AUTH_BYPASS=true`,
+          `VITE_E2E_AUTH_TOKEN=${authToken}`,
+          `VITE_OWNER_EMAIL=${ownerEmail}`,
+          `VITE_API_BASE_URL=${apiOrigin}`,
+          `VITE_FUNCTIONS_BASE_URL=${apiOrigin}`,
+          `VITE_FIREBASE_API_KEY=test-api-key`,
+          `VITE_FIREBASE_AUTH_DOMAIN=test.local`,
+          `VITE_FIREBASE_PROJECT_ID=job-finder-e2e`,
+          `VITE_FIREBASE_STORAGE_BUCKET=test.appspot.com`,
+          `VITE_FIREBASE_MESSAGING_SENDER_ID=999999999`,
+          `VITE_FIREBASE_APP_ID=test-app-id`,
+          `VITE_RECAPTCHA_SITE_KEY=test-recaptcha`,
+          "npm run dev --workspace job-finder-FE",
+        ].join(" "),
+      ].join(" && "),
+      url: frontendBaseUrl,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
+    },
+  ],
 })

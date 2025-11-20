@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # GAP-SEC-AUTH-1 — No API Authentication on Backend Cloud Functions
 
 ## Issue Metadata

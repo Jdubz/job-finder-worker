@@ -21,7 +21,7 @@ from job_finder.job_queue.models import JobQueueItem, QueueStatus
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrape_runner import ScrapeRunner
 from job_finder.storage.companies_manager import CompaniesManager
-from job_finder.storage.firestore_storage import FirestoreJobStorage
+from job_finder.storage.job_storage import JobStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class BaseProcessor:
         self,
         queue_manager: QueueManager,
         config_loader: ConfigLoader,
-        job_storage: FirestoreJobStorage,
+        job_storage: JobStorage,
         companies_manager: CompaniesManager,
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
@@ -47,7 +47,7 @@ class BaseProcessor:
         Args:
             queue_manager: Queue manager for updating item status
             config_loader: Configuration loader for stop lists and filters
-            job_storage: Firestore job storage
+            job_storage: Job storage implementation
             companies_manager: Company data manager
             sources_manager: Job sources manager
             company_info_fetcher: Company info scraper

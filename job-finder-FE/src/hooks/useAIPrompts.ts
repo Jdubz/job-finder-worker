@@ -6,8 +6,9 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import { useFirestore } from "@/contexts/FirestoreContext"
-import { promptsClient, type PromptConfig, DEFAULT_PROMPTS } from "@/api"
+import { promptsClient } from "@/api"
+import type { PromptConfig } from "@shared/types"
+import { DEFAULT_PROMPTS } from "@shared/types"
 
 interface UseAIPromptsResult {
   prompts: PromptConfig
@@ -23,7 +24,6 @@ interface UseAIPromptsResult {
  */
 export function useAIPrompts(): UseAIPromptsResult {
   const { user } = useAuth()
-  const { service } = useFirestore()
   const [prompts, setPrompts] = useState<PromptConfig>(DEFAULT_PROMPTS)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
@@ -38,20 +38,13 @@ export function useAIPrompts(): UseAIPromptsResult {
       setError(null)
 
       try {
-        const result = await service.getDocument("job-finder-config", "ai-prompts")
-
+        const result = await promptsClient.getPrompts()
         if (mounted) {
-          if (result) {
-            setPrompts(result as unknown as PromptConfig)
-          } else {
-            // Document doesn't exist, use defaults
-            setPrompts(DEFAULT_PROMPTS)
-          }
+          setPrompts(result ?? DEFAULT_PROMPTS)
         }
       } catch (err) {
         if (mounted) {
           setError(err as Error)
-          // Use defaults on error
           setPrompts(DEFAULT_PROMPTS)
         }
       } finally {
@@ -66,10 +59,10 @@ export function useAIPrompts(): UseAIPromptsResult {
     return () => {
       mounted = false
     }
-  }, [service])
+  }, [])
 
   /**
-   * Save prompts to Firestore
+   * Save prompts via API
    */
   const savePrompts = useCallback(
     async (newPrompts: Omit<PromptConfig, "updatedAt" | "updatedBy">) => {

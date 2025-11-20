@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # BE-CLEANUP-1 — Deprecate and Remove Obsolete Cloud Functions
 
 - **Status**: Todo

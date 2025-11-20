@@ -13,7 +13,6 @@ import {
   mockLowScoreJobMatch,
   mockAppliedJobMatch,
 } from "../fixtures/mockData"
-import { auth } from "@/config/firebase"
 
 // Skip integration tests if Firebase is mocked (unit test mode)
 const describeIntegration = getIntegrationDescribe()
@@ -269,23 +268,13 @@ describeIntegration("Job Matches API Integration", () => {
       expect(jobMatchesClient).toBeDefined()
       expect(typeof jobMatchesClient).toBe("object")
     })
-
-    // Note: JobMatchesClient uses Firestore SDK directly, so it doesn't have
-    // HTTP-related properties like baseUrl, timeout, or retry settings.
-    // Those are handled by the Firebase SDK internally.
   })
 
   describe("Authentication", () => {
     it("should be able to query matches when authenticated", async () => {
-      // Auth is handled by Firebase SDK internally
-      // This test validates that the client can be used when a user is authenticated
       await signInTestUser("regular")
       expect(jobMatchesClient).toBeDefined()
     })
-
-    // Note: JobMatchesClient uses Firebase Auth via SDK, which handles tokens internally.
-    // We don't need to expose getAuthToken() since Firestore queries automatically
-    // use the current auth state.
   })
 
   describe("Filter Validation", () => {

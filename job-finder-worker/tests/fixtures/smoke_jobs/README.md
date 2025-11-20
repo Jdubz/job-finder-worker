@@ -106,7 +106,7 @@ These fixtures are loaded by `scripts/smoke/queue_pipeline_smoke.py` and submitt
 - **Scraping**: Can we extract job data correctly?
 - **Filtering**: Does the strike-based filter work as expected?
 - **Analysis**: Does AI matching produce valid scores and insights?
-- **Storage**: Are results properly saved to Firestore?
+- **Storage**: Are results properly persisted to SQLite?
 - **Data Quality**: Are all required fields present and valid?
 
 ## Maintenance

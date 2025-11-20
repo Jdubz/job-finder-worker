@@ -1,0 +1,14 @@
+# Default owner
+* @Jdubz
+
+# Backend / server
+job-finder-BE/ @Jdubz
+
+# Frontend
+job-finder-FE/ @Jdubz
+
+# Worker
+job-finder-worker/ @Jdubz
+
+# Shared types
+shared/ @Jdubz

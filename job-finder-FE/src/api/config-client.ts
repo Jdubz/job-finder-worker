@@ -1,207 +1,127 @@
-/**
- * Config API Client
- *
- * Handles job-finder configuration management.
- * Manages stop lists, queue settings, and AI settings in Firestore.
- */
+import { BaseApiClient } from "./base-client"
+import { API_CONFIG } from "@/config/api"
+import type {
+  StopList,
+  QueueSettings,
+  AISettings,
+  ListConfigEntriesResponse,
+  GetConfigEntryResponse,
+  UpsertConfigEntryResponse,
+  ApiSuccessResponse,
+  PersonalInfo,
+} from "@shared/types"
 
-import { firestoreService } from "@/services/firestore"
-import { createUpdateMetadata } from "@/services/firestore/utils"
-import type { StopList, QueueSettings, AISettings } from "@shared/types"
+export class ConfigClient extends BaseApiClient {
+  constructor(baseUrl = API_CONFIG.baseUrl) {
+    super(baseUrl)
+  }
 
-export class ConfigClient {
-  private collectionName = "job-finder-config" as const
+  private async getConfigEntry<T>(id: string): Promise<T | null> {
+    try {
+      const response = await this.get<ApiSuccessResponse<GetConfigEntryResponse>>(
+        `/config/${id}`
+      )
+      return response.data.config.payload as T
+    } catch (error) {
+      console.warn(`Failed to fetch config entry ${id}:`, error)
+      return null
+    }
+  }
 
-  /**
-   * Get stop list configuration
-   */
+  private async updateConfigEntry(id: string, payload: unknown) {
+    const response = await this.put<ApiSuccessResponse<UpsertConfigEntryResponse>>(`/config/${id}`, {
+      payload,
+    })
+    return response.data.config
+  }
+
   async getStopList(): Promise<StopList | null> {
-    return (await firestoreService.getDocument(this.collectionName, "stop-list")) as StopList | null
+    return this.getConfigEntry<StopList>("stop-list")
   }
 
-  /**
-   * Update stop list configuration
-   */
-  async updateStopList(stopList: Partial<StopList>, userEmail: string): Promise<void> {
-    const existing = await this.getStopList()
-
-    const data = {
-      // Default values if creating new
+  async updateStopList(stopList: Partial<StopList>): Promise<void> {
+    const existing = (await this.getStopList()) ?? {
       excludedCompanies: [],
-      excludedKeywords: [],
       excludedDomains: [],
-      // Merge with existing
+      excludedKeywords: [],
+    }
+    await this.updateConfigEntry("stop-list", {
       ...existing,
-      // Apply updates
       ...stopList,
-      // Add metadata
-      ...createUpdateMetadata(userEmail),
-    }
-
-    await firestoreService.setDocument(this.collectionName, "stop-list", data)
+    })
   }
 
-  /**
-   * Add company to stop list
-   */
-  async addExcludedCompany(companyName: string, userEmail: string): Promise<void> {
-    const stopList = await this.getStopList()
-    const excludedCompanies = stopList?.excludedCompanies || []
-
-    if (!excludedCompanies.includes(companyName)) {
-      await this.updateStopList(
-        {
-          excludedCompanies: [...excludedCompanies, companyName],
-        },
-        userEmail
-      )
-    }
-  }
-
-  /**
-   * Remove company from stop list
-   */
-  async removeExcludedCompany(companyName: string, userEmail: string): Promise<void> {
-    const stopList = await this.getStopList()
-    const excludedCompanies = stopList?.excludedCompanies || []
-
-    await this.updateStopList(
-      {
-        excludedCompanies: excludedCompanies.filter((c) => c !== companyName),
-      },
-      userEmail
-    )
-  }
-
-  /**
-   * Add keyword to stop list
-   */
-  async addExcludedKeyword(keyword: string, userEmail: string): Promise<void> {
-    const stopList = await this.getStopList()
-    const excludedKeywords = stopList?.excludedKeywords || []
-
-    if (!excludedKeywords.includes(keyword)) {
-      await this.updateStopList(
-        {
-          excludedKeywords: [...excludedKeywords, keyword],
-        },
-        userEmail
-      )
-    }
-  }
-
-  /**
-   * Remove keyword from stop list
-   */
-  async removeExcludedKeyword(keyword: string, userEmail: string): Promise<void> {
-    const stopList = await this.getStopList()
-    const excludedKeywords = stopList?.excludedKeywords || []
-
-    await this.updateStopList(
-      {
-        excludedKeywords: excludedKeywords.filter((k) => k !== keyword),
-      },
-      userEmail
-    )
-  }
-
-  /**
-   * Add domain to stop list
-   */
-  async addExcludedDomain(domain: string, userEmail: string): Promise<void> {
-    const stopList = await this.getStopList()
-    const excludedDomains = stopList?.excludedDomains || []
-
-    if (!excludedDomains.includes(domain)) {
-      await this.updateStopList(
-        {
-          excludedDomains: [...excludedDomains, domain],
-        },
-        userEmail
-      )
-    }
-  }
-
-  /**
-   * Remove domain from stop list
-   */
-  async removeExcludedDomain(domain: string, userEmail: string): Promise<void> {
-    const stopList = await this.getStopList()
-    const excludedDomains = stopList?.excludedDomains || []
-
-    await this.updateStopList(
-      {
-        excludedDomains: excludedDomains.filter((d) => d !== domain),
-      },
-      userEmail
-    )
-  }
-
-  /**
-   * Get queue settings
-   */
   async getQueueSettings(): Promise<QueueSettings | null> {
-    return (await firestoreService.getDocument(
-      this.collectionName,
-      "queue-settings"
-    )) as QueueSettings | null
+    return this.getConfigEntry<QueueSettings>("queue-settings")
   }
 
-  /**
-   * Update queue settings
-   */
-  async updateQueueSettings(settings: Partial<QueueSettings>, userEmail: string): Promise<void> {
-    const existing = await this.getQueueSettings()
-
-    const data = {
-      // Default values if creating new
+  async updateQueueSettings(settings: Partial<QueueSettings>): Promise<void> {
+    const existing = (await this.getQueueSettings()) ?? {
       maxRetries: 3,
       retryDelaySeconds: 300,
       processingTimeout: 600,
-      // Merge with existing
-      ...existing,
-      // Apply updates
-      ...settings,
-      // Add metadata
-      ...createUpdateMetadata(userEmail),
     }
-
-    await firestoreService.setDocument(this.collectionName, "queue-settings", data)
+    await this.updateConfigEntry("queue-settings", {
+      ...existing,
+      ...settings,
+    })
   }
 
-  /**
-   * Get AI settings
-   */
   async getAISettings(): Promise<AISettings | null> {
-    return (await firestoreService.getDocument(
-      this.collectionName,
-      "ai-settings"
-    )) as AISettings | null
+    return this.getConfigEntry<AISettings>("ai-settings")
   }
 
-  /**
-   * Update AI settings
-   */
-  async updateAISettings(settings: Partial<AISettings>, userEmail: string): Promise<void> {
-    const existing = await this.getAISettings()
-
-    const data = {
-      // Default values if creating new
+  async updateAISettings(settings: Partial<AISettings>): Promise<void> {
+    const existing = (await this.getAISettings()) ?? {
       provider: "claude",
       model: "claude-sonnet-4",
       minMatchScore: 70,
-      costBudgetDaily: 10.0,
-      // Merge with existing
+      costBudgetDaily: 10,
+    }
+    await this.updateConfigEntry("ai-settings", {
       ...existing,
-      // Apply updates
       ...settings,
-      // Add metadata
-      ...createUpdateMetadata(userEmail),
+    })
+  }
+
+  async getPersonalInfo(): Promise<PersonalInfo | null> {
+    return this.getConfigEntry<PersonalInfo>("personal-info")
+  }
+
+  async updatePersonalInfo(
+    updates: Partial<PersonalInfo>,
+    userEmail: string
+  ): Promise<PersonalInfo> {
+    const existing = (await this.getPersonalInfo()) ?? {
+      name: "",
+      email: userEmail,
+      accentColor: "#3b82f6",
     }
 
-    await firestoreService.setDocument(this.collectionName, "ai-settings", data)
+    const payload: PersonalInfo = {
+      ...existing,
+      ...updates,
+      email: updates.email ?? existing.email ?? userEmail,
+    }
+
+    await this.updateConfigEntry("personal-info", payload)
+    return payload
+  }
+
+  async listEntries(): Promise<ListConfigEntriesResponse["configs"]> {
+    const response = await this.get<ApiSuccessResponse<ListConfigEntriesResponse>>(`/config`)
+    return response.data.configs
+  }
+
+  async getEntry(id: string): Promise<GetConfigEntryResponse["config"] | null> {
+    try {
+      const response = await this.get<ApiSuccessResponse<GetConfigEntryResponse>>(`/config/${id}`)
+      return response.data.config
+    } catch (error) {
+      console.warn(`Failed to fetch config entry ${id}`, error)
+      return null
+    }
   }
 }
 
-// Export singleton instance
 export const configClient = new ConfigClient()

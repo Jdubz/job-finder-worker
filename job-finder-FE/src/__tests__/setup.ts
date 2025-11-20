@@ -104,21 +104,12 @@ afterEach(() => {
 // Mock environment variables
 vi.mock("@/config/env", () => ({
   API_BASE_URL: "https://test-api.example.com",
-  FIREBASE_PROJECT_ID: "test-project",
-  FIREBASE_API_KEY: "test-api-key",
-  FIREBASE_AUTH_DOMAIN: "test-project.firebaseapp.com",
-  FIREBASE_STORAGE_BUCKET: "test-project.appspot.com",
-  FIREBASE_MESSAGING_SENDER_ID: "123456789",
-  FIREBASE_APP_ID: "test-app-id",
+  GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
 }))
 
-// Mock Firebase services
+// Mock Auth context hooks
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: vi.fn(),
-}))
-
-vi.mock("@/contexts/FirestoreContext", () => ({
-  useFirestore: vi.fn(),
 }))
 
 // Mock API clients
@@ -134,14 +125,18 @@ vi.mock("@/api/generator-client", () => ({
   },
 }))
 
-vi.mock("@/api/job-matches-client", () => ({
-  jobMatchesClient: {
-    getMatches: vi.fn(),
-    getMatch: vi.fn(),
-    updateMatch: vi.fn(),
-    deleteMatch: vi.fn(),
-  },
-}))
+vi.mock("@/api/job-matches-client", async () => {
+  const actual = await vi.importActual<typeof import("@/api/job-matches-client")>("@/api/job-matches-client")
+  return {
+    ...actual,
+    jobMatchesClient: {
+      getMatches: vi.fn(),
+      getMatch: vi.fn(),
+      subscribeToMatches: vi.fn(() => vi.fn()),
+      getMatchStats: vi.fn(),
+    },
+  }
+})
 
 // Mock React Router
 vi.mock("react-router-dom", async () => {
@@ -263,6 +258,7 @@ logMemoryUsage("Test Setup Complete")
 
 // Export test utilities
 export const mockUser = {
+  id: "test-user-123",
   uid: "test-user-123",
   email: "test@example.com",
   displayName: "Test User",

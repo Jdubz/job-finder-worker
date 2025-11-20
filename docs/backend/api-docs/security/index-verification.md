@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-11-18
+
 # Firestore Security Rules & Index Verification
 
 This document describes how to verify and manage Firestore security rules and indexes for the Job Finder backend.

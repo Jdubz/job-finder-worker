@@ -28,18 +28,6 @@ export PYTHONPATH="${PWD}/src:${PYTHONPATH}"
 # Create logs directory
 mkdir -p logs
 
-# Check required environment variables
-if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
-    echo "❌ GOOGLE_APPLICATION_CREDENTIALS not set!"
-    echo "   Set this to the path of your Firebase service account key"
-    exit 1
-fi
-
-if [ ! -f "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
-    echo "❌ Firebase credentials file not found: $GOOGLE_APPLICATION_CREDENTIALS"
-    exit 1
-fi
-
 echo "📋 Configuration:"
 echo "   Environment: PRODUCTION"
 echo "   Port: $WORKER_PORT"

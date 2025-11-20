@@ -103,11 +103,6 @@ class ScraperIntake:
 
                 # Add to queue
                 doc_id = self.queue_manager.add_item(queue_item)
-                # Set tracking_id as first item in ancestry chain
-                queue_item.ancestry_chain = [doc_id]
-                self.queue_manager.db.collection("job-queue").document(doc_id).update(
-                    {"ancestry_chain": [doc_id]}
-                )
                 added_count += 1
 
             except Exception as e:
@@ -183,10 +178,6 @@ class ScraperIntake:
 
             # Add to queue
             doc_id = self.queue_manager.add_item(queue_item)
-            # Set doc_id as first item in ancestry chain
-            self.queue_manager.db.collection("job-queue").document(doc_id).update(
-                {"ancestry_chain": [doc_id]}
-            )
             logger.info(
                 f"Submitted company to granular pipeline: {company_name} (ID: {doc_id}, tracking_id: {tracking_id})"
             )

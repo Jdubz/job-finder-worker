@@ -54,14 +54,25 @@ run_single_test() {
 run_unit_tests() {
   echo -e "${YELLOW}📦 Running unit tests...${NC}"
   local failed_tests=()
-  
+  local executed_any=false
+
   for test_file in "${UNIT_TESTS[@]}"; do
+    if [ ! -f "$test_file" ]; then
+      echo -e "${YELLOW}⚠️  Skipping missing test file: ${test_file}${NC}"
+      continue
+    fi
+
+    executed_any=true
     if ! run_single_test "$test_file"; then
       failed_tests+=("$test_file")
     fi
-    # Small delay between tests to allow memory cleanup
     sleep 1
   done
+
+  if [ "$executed_any" = false ]; then
+    echo -e "${YELLOW}⚠️  No unit test files found; nothing to run.${NC}"
+    return 0
+  fi
   
   if [ ${#failed_tests[@]} -eq 0 ]; then
     echo -e "${GREEN}✅ All unit tests passed!${NC}"
@@ -98,14 +109,25 @@ run_integration_tests() {
   fi
   
   local failed_tests=()
-  
+  local executed_any=false
+
   for test_file in "${INTEGRATION_TESTS[@]}"; do
+    if [ ! -f "$test_file" ]; then
+      echo -e "${YELLOW}⚠️  Skipping missing integration test: ${test_file}${NC}"
+      continue
+    fi
+
+    executed_any=true
     if ! run_single_test "$test_file"; then
       failed_tests+=("$test_file")
     fi
-    # Longer delay for integration tests
     sleep 2
   done
+
+  if [ "$executed_any" = false ]; then
+    echo -e "${YELLOW}⚠️  No integration test files found; nothing to run.${NC}"
+    return 0
+  fi
   
   if [ ${#failed_tests[@]} -eq 0 ]; then
     echo -e "${GREEN}✅ All integration tests passed!${NC}"

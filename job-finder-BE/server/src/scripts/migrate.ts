@@ -1,40 +1,30 @@
-import fs from 'node:fs'
 import path from 'node:path'
-import { env } from '../config/env'
-import { getDb, closeDb } from '../db/sqlite'
-import { logger } from '../logger'
+import sqlite3 from 'better-sqlite3'
+import { runMigrations } from '../db/migrations.js'
 
-function resolveSchemaFile(): string {
-  const candidates = [
-    process.env.SCHEMA_FILE,
-    path.resolve(process.cwd(), 'schema.sql'),
-    path.resolve(process.cwd(), '../../infra/sqlite/schema.sql'),
-    '/migrations/schema.sql'
-  ].filter(Boolean) as string[]
+const DB_PATH =
+  process.env.JF_SQLITE_DB_PATH ??
+  process.env.DATABASE_PATH ??
+  path.resolve(process.cwd(), '../../infra/sqlite/jobfinder.db')
 
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate
+const MIGRATIONS_DIR =
+  process.env.JF_SQLITE_MIGRATIONS_DIR ??
+  process.env.SCHEMA_DIR ??
+  (process.env.SCHEMA_FILE ? path.dirname(process.env.SCHEMA_FILE) : undefined) ??
+  path.resolve(process.cwd(), 'infra/sqlite/migrations')
+
+function main() {
+  const db = sqlite3(DB_PATH)
+  const applied = runMigrations(db, MIGRATIONS_DIR)
+  if (!applied.length) {
+    console.log('[migrate] database already up to date')
+  } else {
+    console.log(`[migrate] applied ${applied.length} migration(s) to ${DB_PATH}`)
+    for (const name of applied) {
+      console.log(`[migrate] -> ${name}`)
     }
   }
-  throw new Error('No schema.sql file found. Set SCHEMA_FILE or mount /migrations/schema.sql')
+  db.close()
 }
 
-async function runMigrations() {
-  const db = getDb()
-  const schemaFile = resolveSchemaFile()
-
-  logger.info({ schemaFile, database: env.DATABASE_PATH }, 'Applying SQLite schema')
-  const sql = fs.readFileSync(schemaFile, 'utf-8')
-  db.exec(sql)
-  logger.info('SQLite schema applied successfully')
-}
-
-runMigrations()
-  .catch((error) => {
-    logger.error({ error }, 'Migration failed')
-    process.exit(1)
-  })
-  .finally(() => {
-    closeDb()
-  })
+main()

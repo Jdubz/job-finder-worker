@@ -1,107 +1,105 @@
-/**
- * Content Items Hook
- *
- * Hook for managing content items with type safety
- */
-
-import { useCallback } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import { useFirestore } from "@/contexts/FirestoreContext"
-import { useFirestoreCollection } from "./useFirestoreCollection"
-import type { ContentItemDocument, DocumentWithId } from "@/services/firestore/types"
+import { contentItemsClient } from "@/api"
+import type { ContentItem } from "@shared/types"
+
+type EditableContentItem = Omit<ContentItem, "id" | "userId" | "createdAt" | "updatedAt" | "createdBy" | "updatedBy">
 
 interface UseContentItemsResult {
-  contentItems: DocumentWithId<ContentItemDocument>[]
+  contentItems: ContentItem[]
   loading: boolean
   error: Error | null
-  createContentItem: (
-    data: Omit<
-      ContentItemDocument,
-      "id" | "userId" | "createdAt" | "updatedAt" | "createdBy" | "updatedBy"
-    >
-  ) => Promise<string>
-  updateContentItem: (id: string, data: Partial<ContentItemDocument>) => Promise<void>
+  createContentItem: (data: EditableContentItem) => Promise<string>
+  updateContentItem: (id: string, data: Partial<ContentItem>) => Promise<void>
   deleteContentItem: (id: string) => Promise<void>
   refetch: () => Promise<void>
 }
 
-/**
- * Hook to manage content items for all users (editors see everything)
- */
 export function useContentItems(): UseContentItemsResult {
   const { user } = useAuth()
-  const { service } = useFirestore()
 
-  // Subscribe to ALL content items (no userId filter - editors see everything)
-  const {
-    data: contentItems,
-    loading,
-    error,
-    refetch,
-  } = useFirestoreCollection({
-    collectionName: "content-items",
-    constraints: user?.uid
-      ? {
-          orderBy: [{ field: "order", direction: "asc" }],
-        }
-      : undefined,
-    enabled: !!user?.uid,
-  })
+  const [contentItems, setContentItems] = useState<ContentItem[]>([])
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<Error | null>(null)
 
-  /**
-   * Create a new content item
-   */
+  const normalizeContentItem = useCallback((item: ContentItem): ContentItem => ({
+      ...item,
+      createdAt: coerceDate(item.createdAt),
+      updatedAt: coerceDate(item.updatedAt),
+    }),
+    []
+  )
+
+  const fetchItems = useCallback(async () => {
+    if (!user?.id) {
+      setContentItems([])
+      setLoading(false)
+      setError(null)
+      return
+    }
+
+    setLoading(true)
+    try {
+      const items = await contentItemsClient.list()
+      setContentItems(items.map(normalizeContentItem))
+      setError(null)
+    } catch (err) {
+      setError(err as Error)
+    } finally {
+      setLoading(false)
+    }
+  }, [normalizeContentItem, user?.id])
+
+  useEffect(() => {
+    fetchItems()
+  }, [fetchItems])
+
   const createContentItem = useCallback(
-    async (
-      data: Omit<
-        ContentItemDocument,
-        "id" | "userId" | "createdAt" | "updatedAt" | "createdBy" | "updatedBy"
-      >
-    ) => {
-      if (!user?.uid) {
+    async (data: EditableContentItem) => {
+      if (!user?.id) {
         throw new Error("User must be authenticated to create content items")
       }
-
-      const itemData: Omit<ContentItemDocument, "id" | "createdAt" | "updatedAt"> = {
-        ...data,
-        userId: user.uid, // For querying/filtering (matches existing indexes)
-        createdBy: user.uid, // For audit trail
-        updatedBy: user.uid,
+      if (!user.email) {
+        throw new Error("Account email is required to create content items")
       }
 
-      return service.createDocument("content-items", itemData)
+      const created = await contentItemsClient.createContentItem(user.id, user.email, data)
+      const normalized = normalizeContentItem(created)
+      setContentItems((prev) =>
+        [...prev.filter((item) => item.id !== normalized.id), normalized].sort(
+          (a, b) => (a.order ?? 0) - (b.order ?? 0)
+        )
+      )
+      return normalized.id
     },
-    [service, user?.uid]
+    [normalizeContentItem, user?.email, user?.id]
   )
 
-  /**
-   * Update an existing content item
-   */
   const updateContentItem = useCallback(
-    async (id: string, data: Partial<ContentItemDocument>) => {
-      if (!user?.uid) {
+    async (id: string, data: Partial<ContentItem>) => {
+      if (!user?.id) {
         throw new Error("User must be authenticated to update content items")
       }
-
-      const updateData = {
-        ...data,
-        updatedBy: user.uid,
+      if (!user.email) {
+        throw new Error("Account email is required to update content items")
       }
 
-      await service.updateDocument("content-items", id, updateData)
+      const updated = await contentItemsClient.updateContentItem(id, user.email, data)
+      setContentItems((prev) =>
+        prev.map((item) => (item.id === id ? normalizeContentItem(updated) : item))
+      )
     },
-    [service, user?.uid]
+    [normalizeContentItem, user?.email, user?.id]
   )
 
-  /**
-   * Delete a content item
-   */
-  const deleteContentItem = useCallback(
-    async (id: string) => {
-      await service.deleteDocument("content-items", id)
-    },
-    [service]
-  )
+  const deleteContentItem = useCallback(async (id: string) => {
+    await contentItemsClient.deleteContentItem(id)
+    setContentItems((prev) => prev.filter((item) => item.id !== id))
+  }, [])
+
+  const refetch = useCallback(async () => {
+    await fetchItems()
+  }, [fetchItems])
 
   return {
     contentItems,
@@ -112,4 +110,10 @@ export function useContentItems(): UseContentItemsResult {
     deleteContentItem,
     refetch,
   }
+}
+
+function coerceDate(value: unknown): Date {
+  if (value instanceof Date) return value
+  if (typeof value === "string" || typeof value === "number") return new Date(value)
+  return new Date()
 }

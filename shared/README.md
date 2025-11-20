@@ -1,9 +1,6 @@
 # Job Finder Shared Types
 
-[![npm version](https://badge.fury.io/js/%40jdubz%2Fjob-finder-shared-types.svg)](https://www.npmjs.com/package/@jdubz/job-finder-shared-types)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-Shared TypeScript type definitions for the job-finder (Python) and portfolio (TypeScript) projects. This package ensures type consistency across both projects by providing a single source of truth for data structures.
+Shared TypeScript definitions that live inside the `job-finder-worker` monorepo. They are shipped as a local workspace package (`@shared/types`) that emits both ESM and CJS bundles plus `.d.ts` files via `tsup`. Add `@shared/types` as a dependency (e.g., `"@shared/types": "file:../shared"`) and run `npm run build --workspace shared` whenever you change the schemas.
 
 ## Overview
 
@@ -11,17 +8,37 @@ This package contains TypeScript type definitions that are:
 - **Used directly** by the job-finder-FE project (TypeScript/Firebase)
 - **Mirrored** in Pydantic models by the job-finder project (Python)
 
-## Installation
+## Usage
 
-### For TypeScript Projects (job-finder-FE)
+### TypeScript Projects
 
-```bash
-npm install @jdubz/job-finder-shared-types
+1. Declare the dependency in the workspace that needs it:
+
+```json
+{
+  "devDependencies": {
+    "@shared/types": "file:../shared"
+  }
+}
 ```
 
-### For Python Projects (job-finder)
+2. Build (or watch) the shared package:
 
-Python projects should mirror these types using Pydantic models. See the [Type Mapping](#type-mapping) section below.
+```bash
+npm run build --workspace shared
+# or
+npm run dev --workspace shared
+```
+
+3. Import from the package:
+
+```ts
+import type { JobMatch } from "@shared/types"
+```
+
+### Python Projects
+
+Mirror the schemas using Pydantic models. The `shared/src` directory is the source of truth for the Firestore schema and queue/job payloads.
 
 ## Usage
 
@@ -37,7 +54,7 @@ import {
   StopList,
   AISettings,
   QueueSettings
-} from '@jdubz/job-finder-shared-types'
+} from "@shared/types"
 
 // Use types in your code
 const queueItem: QueueItem = {
@@ -69,7 +86,7 @@ from typing import Optional, Literal
 from datetime import datetime
 
 class JobQueueItem(BaseModel):
-    """Mirrors QueueItem from @jdubz/job-finder-shared-types"""
+    """Mirrors QueueItem from shared/src"""
     type: Literal["job", "company"]
     status: Literal["pending", "processing", "success", "failed", "skipped"]
     url: str

@@ -5,14 +5,11 @@
  * Hook for managing generated documents (resume/cover letter history)
  */
 
-import { useCallback, useMemo } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import { useFirestore } from "@/contexts/FirestoreContext"
-import { useFirestoreCollection } from "./useFirestoreCollection"
-import type { GeneratorRequest, GeneratorResponse } from "@shared/types"
-
-// Union type for generator documents
-export type GeneratorDocument = GeneratorRequest | GeneratorResponse
+import { generatorDocumentsClient } from "@/api"
+import type { GeneratorRequest } from "@shared/types"
+import type { GeneratorDocumentRecord } from "@shared/types"
 
 // Simplified document interface for UI display
 export interface DocumentHistoryItem {
@@ -34,50 +31,44 @@ interface UseGeneratorDocumentsResult {
   refetch: () => Promise<void>
 }
 
-/**
- * Transform raw Firestore documents into UI-friendly format
- */
-function transformDocuments(rawDocuments: GeneratorDocument[]): DocumentHistoryItem[] {
-  return rawDocuments
-    .filter((doc): doc is GeneratorRequest => doc.type === "request")
-    .map((doc) => {
-      // Extract job information
-      const jobTitle = doc.job.role
-      const companyName = doc.job.company
+function transformDocuments(records: GeneratorDocumentRecord[]): DocumentHistoryItem[] {
+  return records
+    .map((record) => ({ id: record.id, payload: record.payload as GeneratorRequest, createdAt: record.createdAt }))
+    .filter((entry): entry is { id: string; payload: GeneratorRequest; createdAt: string } => entry.payload.type === 'request')
+    .map(({ id, payload, createdAt }) => {
+      const jobTitle = payload.job.role
+      const companyName = payload.job.company
 
-      // Determine document type based on generateType
-      let documentType: "resume" | "cover_letter" | "both" = "resume"
-      if (doc.generateType === "coverLetter") {
-        documentType = "cover_letter"
-      } else if (doc.generateType === "both") {
-        documentType = "both"
+      let documentType: 'resume' | 'cover_letter' | 'both' = 'resume'
+      if (payload.generateType === 'coverLetter') {
+        documentType = 'cover_letter'
+      } else if (payload.generateType === 'both') {
+        documentType = 'both'
       }
 
-      // Get document URL from files if available
       let documentUrl: string | undefined
-
-      // Try to get URL from the response document if it exists
-      // The response document should have files with signed URLs
-      if (doc.files?.resume?.signedUrl) {
-        documentUrl = doc.files.resume.signedUrl
-      } else if (doc.files?.coverLetter?.signedUrl) {
-        documentUrl = doc.files.coverLetter.signedUrl
+      if (payload.files?.resume?.signedUrl) {
+        documentUrl = payload.files.resume.signedUrl
+      } else if (payload.files?.coverLetter?.signedUrl) {
+        documentUrl = payload.files.coverLetter.signedUrl
       }
+
+      const createdAtValue = payload.createdAt ?? createdAt
+      const normalizedCreatedAt = createdAtValue instanceof Date
+        ? createdAtValue
+        : typeof createdAtValue === 'object' && createdAtValue && 'seconds' in createdAtValue
+          ? new Date((createdAtValue as { seconds: number }).seconds * 1000)
+          : new Date(createdAtValue as string | number)
 
       return {
-        id: doc.id,
+        id,
         type: documentType,
         jobTitle,
         companyName,
         documentUrl,
-        createdAt:
-          doc.createdAt instanceof Date
-            ? doc.createdAt
-            : typeof doc.createdAt === "object" && "seconds" in doc.createdAt
-              ? new Date(doc.createdAt.seconds * 1000)
-              : new Date(doc.createdAt as string | number),
-        status: doc.status,
-        jobMatchId: doc.jobMatchId,
+        createdAt: normalizedCreatedAt,
+        status: payload.status,
+        jobMatchId: payload.jobMatchId,
       }
     })
 }
@@ -87,38 +78,41 @@ function transformDocuments(rawDocuments: GeneratorDocument[]): DocumentHistoryI
  */
 export function useGeneratorDocuments(): UseGeneratorDocumentsResult {
   const { user } = useAuth()
-  const { service } = useFirestore()
+  const [documents, setDocuments] = useState<DocumentHistoryItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
 
-  // Subscribe to ALL generator documents (no userId filter - editors see everything)
-  const {
-    data: rawDocuments,
-    loading,
-    error,
-    refetch,
-  } = useFirestoreCollection({
-    collectionName: "generator-documents",
-    constraints: user?.uid
-      ? {
-          orderBy: [{ field: "createdAt", direction: "desc" }],
-        }
-      : undefined,
-    enabled: !!user?.uid,
-  })
+  const fetchDocuments = useCallback(async () => {
+    if (!user?.id) {
+      setDocuments([])
+      setLoading(false)
+      return
+    }
 
-  // Transform documents for UI display (memoized to prevent infinite loops)
-  const documents = useMemo(
-    () => transformDocuments(rawDocuments as unknown as GeneratorDocument[]),
-    [rawDocuments]
-  )
+    try {
+      setLoading(true)
+      setError(null)
+      const records = await generatorDocumentsClient.listDocuments()
+      setDocuments(transformDocuments(records))
+    } catch (err) {
+      console.error('Error loading generator documents:', err)
+      setError(err as Error)
+      setDocuments([])
+    } finally {
+      setLoading(false)
+    }
+  }, [user?.id])
 
-  /**
-   * Delete a generator document
-   */
+  useEffect(() => {
+    fetchDocuments()
+  }, [fetchDocuments])
+
   const deleteDocument = useCallback(
     async (id: string) => {
-      await service.deleteDocument("generator-documents", id)
+      await generatorDocumentsClient.deleteDocument(id)
+      await fetchDocuments()
     },
-    [service]
+    [fetchDocuments]
   )
 
   return {
@@ -126,6 +120,6 @@ export function useGeneratorDocuments(): UseGeneratorDocumentsResult {
     loading,
     error,
     deleteDocument,
-    refetch,
+    refetch: fetchDocuments,
   }
 }

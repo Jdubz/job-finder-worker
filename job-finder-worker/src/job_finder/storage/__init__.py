@@ -1,6 +1,6 @@
 """Job storage modules."""
 
-from job_finder.storage.firestore_storage import FirestoreJobStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
+from job_finder.storage.job_storage import JobStorage
 
-__all__ = ["FirestoreJobStorage", "JobSourcesManager"]
+__all__ = ["JobStorage", "JobSourcesManager"]

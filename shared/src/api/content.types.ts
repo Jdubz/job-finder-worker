@@ -8,7 +8,7 @@
  * and by job-finder-BE to implement the endpoints.
  */
 
-import type { ApiResponse, PaginationParams, PaginatedApiResponse } from "../api.types"
+import type { ApiResponse, PaginationParams } from "../api.types"
 import type {
   ContentItem,
   ContentItemType,
@@ -23,6 +23,7 @@ import type {
  */
 export interface CreateContentItemRequest {
   itemData: CreateContentItemData
+  userEmail: string
 }
 
 /**
@@ -41,6 +42,7 @@ export interface CreateContentItemResponse {
 export interface UpdateContentItemRequest {
   itemId: string
   itemData: UpdateContentItemData
+  userEmail: string
 }
 
 /**
@@ -111,8 +113,8 @@ export interface ListContentItemsResponse {
   pagination: {
     limit: number
     offset: number
-    total: number
-    hasMore: boolean
+    total?: number
+    hasMore?: boolean
   }
 }
 

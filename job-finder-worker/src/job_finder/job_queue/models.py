@@ -1,16 +1,11 @@
 """
-Pydantic models for queue items.
+Pydantic models for queue items backed by SQLite.
 
-These models are derived from TypeScript definitions in @jdubz/job-finder-shared-types.
-See: https://github.com/Jdubz/job-finder-shared-types/blob/main/src/queue.types.ts
-
-IMPORTANT: TypeScript types are the source of truth. When modifying queue schema:
-1. Update TypeScript first in shared-types GitHub repository
-2. Create PR, merge, and publish new npm version
-3. Update these Python models to match
-4. Test compatibility with portfolio project
+The TypeScript definitions in @shared/types are the source of truth; this file mirrors
+those contracts for the Python worker.
 """
 
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
@@ -68,7 +63,7 @@ class CompanySubTask(str, Enum):
     1. FETCH: Fetch website HTML content (cheap AI if needed)
     2. EXTRACT: Extract company info using AI (expensive AI)
     3. ANALYZE: Tech stack detection, job board discovery, priority scoring (rule-based)
-    4. SAVE: Save to Firestore, spawn source_discovery if job board found (no AI)
+    4. SAVE: Save to SQLite, spawn source_discovery if job board found (no AI)
 
     TypeScript equivalent: CompanySubTask in queue.types.ts
     """
@@ -81,7 +76,7 @@ class CompanySubTask(str, Enum):
 
 class CompanyStatus(str, Enum):
     """
-    Status for company records in Firestore.
+    Status for company records in SQLite.
 
     Tracks the analysis state of a company.
 
@@ -96,7 +91,7 @@ class CompanyStatus(str, Enum):
 
 class SourceStatus(str, Enum):
     """
-    Status for job source records in Firestore.
+    Status for job source records in SQLite.
 
     Tracks the validation and operational state of a scraping source.
 
@@ -160,8 +155,16 @@ class QueueStatus(str, Enum):
 
 
 # QueueSource type - matches TypeScript literal type
-# TypeScript: "user_submission" | "automated_scan" | "scraper" | "webhook" | "email"
-QueueSource = Literal["user_submission", "automated_scan", "scraper", "webhook", "email"]
+# TypeScript: "user_submission" | "automated_scan" | "scraper" | "webhook" | "email" | "manual_submission" | "user_request"
+QueueSource = Literal[
+    "user_submission",
+    "automated_scan",
+    "scraper",
+    "webhook",
+    "email",
+    "manual_submission",
+    "user_request",
+]
 
 
 class ScrapeConfig(BaseModel):
@@ -250,15 +253,15 @@ class JobQueueItem(BaseModel):
     Queue item representing a job or company to be processed.
 
     TypeScript equivalent: QueueItem interface in queue.types.ts
-    This model represents items in the job-queue Firestore collection.
-    Items are processed in FIFO order (oldest created_at first).
+    This model represents rows in the job_queue table. Items are processed
+    in FIFO order (oldest created_at first).
 
     IMPORTANT: This model must match the TypeScript QueueItem interface exactly.
     See: https://github.com/Jdubz/job-finder-shared-types/blob/main/src/queue.types.ts
     """
 
     # Identity
-    id: Optional[str] = None  # Set by Firestore
+    id: Optional[str] = None
     type: QueueItemType = Field(description="Type of item (job or company)")
 
     # Status tracking
@@ -277,7 +280,7 @@ class JobQueueItem(BaseModel):
         default="", description="URL to scrape (job posting or company page, empty for SCRAPE type)"
     )
     company_name: str = Field(default="", description="Company name (empty for SCRAPE type)")
-    company_id: Optional[str] = Field(default=None, description="Firestore company document ID")
+    company_id: Optional[str] = Field(default=None, description="Company record ID")
     source: QueueSource = Field(
         default="scraper",
         description="Source of submission: scraper, user_submission, webhook, email",
@@ -316,7 +319,7 @@ class JobQueueItem(BaseModel):
     # Scrape source fields (only used when type is SCRAPE_SOURCE)
     source_id: Optional[str] = Field(
         default=None,
-        description="Reference to job-sources Firestore document (for SCRAPE_SOURCE type)",
+        description="Reference to job-sources table entry (for SCRAPE_SOURCE type)",
     )
     source_type: Optional[str] = Field(
         default=None, description="Type of source: greenhouse, rss, workday, lever, api, scraper"
@@ -347,6 +350,12 @@ class JobQueueItem(BaseModel):
         description="Company pipeline step (fetch/extract/analyze/save). None = legacy monolithic processing",
     )
 
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional metadata blob")
+
+    pipeline_stage: Optional[str] = Field(
+        default=None, description="Current pipeline stage (scrape/filter/analyze/save/etc.)"
+    )
+
     # Loop prevention fields (auto-generated if not provided)
     tracking_id: str = Field(
         default_factory=lambda: str(__import__("uuid").uuid4()),
@@ -367,26 +376,113 @@ class JobQueueItem(BaseModel):
 
     model_config = ConfigDict(use_enum_values=True)
 
-    def to_firestore(self) -> Dict[str, Any]:
-        """
-        Convert to Firestore document format.
+    def to_record(self) -> Dict[str, Any]:
+        """Convert the queue item into a SQLite-ready dictionary."""
 
-        Excludes None values and converts datetimes to Firestore timestamps.
-        """
-        data = self.model_dump(exclude_none=True, exclude={"id"})
-        return data
+        def serialize(value: Optional[Dict[str, Any]] | Optional[List[Any]]) -> Optional[str]:
+            if value is None:
+                return None
+            return json.dumps(value)
+
+        def dt(value: Optional[datetime]) -> Optional[str]:
+            return value.isoformat() if value else None
+
+        return {
+            "id": self.id,
+            "type": self.type.value,
+            "status": self.status.value,
+            "url": self.url,
+            "company_name": self.company_name,
+            "company_id": self.company_id,
+            "source": self.source,
+            "submitted_by": self.submitted_by,
+            "retry_count": self.retry_count,
+            "max_retries": self.max_retries,
+            "created_at": dt(self.created_at),
+            "updated_at": dt(self.updated_at),
+            "processed_at": dt(self.processed_at),
+            "completed_at": dt(self.completed_at),
+            "scraped_data": serialize(self.scraped_data),
+            "scrape_config": serialize(self.scrape_config.model_dump() if self.scrape_config else None),
+            "source_discovery_config": serialize(
+                self.source_discovery_config.model_dump() if self.source_discovery_config else None
+            ),
+            "source_id": self.source_id,
+            "source_type": self.source_type,
+            "source_config": serialize(self.source_config),
+            "source_tier": self.source_tier.value if self.source_tier else None,
+            "sub_task": self.sub_task.value if self.sub_task else None,
+            "pipeline_state": serialize(self.pipeline_state),
+            "parent_item_id": self.parent_item_id,
+            "company_sub_task": self.company_sub_task.value if self.company_sub_task else None,
+            "tracking_id": self.tracking_id,
+            "ancestry_chain": serialize(self.ancestry_chain),
+            "spawn_depth": self.spawn_depth,
+            "max_spawn_depth": self.max_spawn_depth,
+            "result_message": self.result_message,
+            "error_details": self.error_details,
+            "metadata": serialize(self.metadata),
+            "pipeline_stage": self.pipeline_stage,
+        }
 
     @classmethod
-    def from_firestore(cls, doc_id: str, data: Dict[str, Any]) -> "JobQueueItem":
-        """
-        Create JobQueueItem from Firestore document.
+    def from_record(cls, record: Dict[str, Any]) -> "JobQueueItem":
+        """Hydrate an item from a SQLite row."""
 
-        Args:
-            doc_id: Firestore document ID
-            data: Document data
+        def parse_json(value: Optional[str]) -> Optional[Dict[str, Any]]:
+            if not value:
+                return None
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                return None
 
-        Returns:
-            JobQueueItem instance
-        """
-        data["id"] = doc_id
-        return cls(**data)
+        def parse_list(value: Optional[str]) -> List[str]:
+            if not value:
+                return []
+            try:
+                parsed = json.loads(value)
+                return parsed if isinstance(parsed, list) else []
+            except json.JSONDecodeError:
+                return []
+
+        def parse_dt(value: Optional[str]) -> Optional[datetime]:
+            return datetime.fromisoformat(value) if value else None
+
+        return cls(
+            id=record["id"],
+            type=QueueItemType(record["type"]),
+            status=QueueStatus(record["status"]),
+            url=record["url"],
+            company_name=record.get("company_name", ""),
+            company_id=record.get("company_id"),
+            source=record.get("source", "scraper"),
+            submitted_by=record.get("submitted_by"),
+            retry_count=record.get("retry_count", 0),
+            max_retries=record.get("max_retries", 3),
+            created_at=parse_dt(record.get("created_at")),
+            updated_at=parse_dt(record.get("updated_at")),
+            processed_at=parse_dt(record.get("processed_at")),
+            completed_at=parse_dt(record.get("completed_at")),
+            scraped_data=parse_json(record.get("scraped_data")),
+            scrape_config=parse_json(record.get("scrape_config")),
+            source_discovery_config=parse_json(record.get("source_discovery_config")),
+            source_id=record.get("source_id"),
+            source_type=record.get("source_type"),
+            source_config=parse_json(record.get("source_config")),
+            source_tier=SourceTier(record["source_tier"]) if record.get("source_tier") else None,
+            sub_task=JobSubTask(record["sub_task"]) if record.get("sub_task") else None,
+            pipeline_state=parse_json(record.get("pipeline_state")),
+            parent_item_id=record.get("parent_item_id"),
+            company_sub_task=CompanySubTask(record["company_sub_task"])
+            if record.get("company_sub_task")
+            else None,
+            tracking_id=record.get("tracking_id", ""),
+            ancestry_chain=parse_list(record.get("ancestry_chain")),
+            spawn_depth=record.get("spawn_depth", 0),
+            max_spawn_depth=record.get("max_spawn_depth", 10),
+            result_message=record.get("result_message"),
+            error_details=record.get("error_details"),
+            metadata=parse_json(record.get("metadata")),
+            pipeline_stage=record.get("pipeline_stage"),
+        )

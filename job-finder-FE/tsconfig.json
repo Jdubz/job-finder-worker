@@ -2,8 +2,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@shared/types/*": ["../shared/src/*"]
+      "@/*": ["./src/*"]
     },
     "strict": true,
     "forceConsistentCasingInFileNames": true

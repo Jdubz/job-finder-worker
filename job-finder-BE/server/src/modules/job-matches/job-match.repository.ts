@@ -81,6 +81,17 @@ const toIsoString = (value: TimestampLike | string | Date | undefined): string =
   return new Date().toISOString()
 }
 
+interface JobMatchListOptions {
+  limit?: number
+  offset?: number
+  minScore?: number
+  maxScore?: number
+  companyName?: string
+  priority?: JobMatch['applicationPriority']
+  sortBy?: 'score' | 'date' | 'company'
+  sortOrder?: 'asc' | 'desc'
+}
+
 export class JobMatchRepository {
   private db: Database.Database
 
@@ -88,10 +99,51 @@ export class JobMatchRepository {
     this.db = getDb()
   }
 
-  list(limit = 50): JobMatch[] {
+  list(options: JobMatchListOptions = {}): JobMatch[] {
+    const {
+      limit = 50,
+      offset = 0,
+      minScore,
+      maxScore,
+      companyName,
+      priority,
+      sortBy = 'date',
+      sortOrder = 'desc'
+    } = options
+
+    const conditions: string[] = []
+    const params: unknown[] = []
+
+    if (typeof minScore === 'number') {
+      conditions.push('match_score >= ?')
+      params.push(minScore)
+    }
+
+    if (typeof maxScore === 'number') {
+      conditions.push('match_score <= ?')
+      params.push(maxScore)
+    }
+
+    if (companyName) {
+      conditions.push('LOWER(company_name) LIKE ?')
+      params.push(`%${companyName.toLowerCase()}%`)
+    }
+
+    if (priority) {
+      conditions.push('application_priority = ?')
+      params.push(priority)
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    const orderColumn = sortBy === 'score' ? 'match_score' : sortBy === 'company' ? 'company_name' : 'created_at'
+    const orderDirection = (sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+
     const rows = this.db
-      .prepare('SELECT * FROM job_matches ORDER BY created_at DESC LIMIT ?')
-      .all(limit) as JobMatchRow[]
+      .prepare(
+        `SELECT * FROM job_matches ${whereClause} ORDER BY ${orderColumn} ${orderDirection} LIMIT ? OFFSET ?`
+      )
+      .all(...params, limit, offset) as JobMatchRow[]
+
     return rows.map(buildJobMatch)
   }
 

@@ -1,42 +1,99 @@
 import React, { createContext, useContext, useEffect, useState } from "react"
-import { type User, onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth"
-import { auth } from "@/config/firebase"
+import { googleLogout } from "@react-oauth/google"
+import { decodeJwt } from "@/lib/jwt"
+import { clearStoredAuthToken, getStoredAuthToken, storeAuthToken } from "@/lib/auth-storage"
+import {
+  AUTH_BYPASS_ENABLED,
+  DEFAULT_E2E_AUTH_TOKEN,
+  TEST_AUTH_STATE_KEY,
+  TEST_AUTH_TOKEN_KEY,
+} from "@/config/testing"
+
+interface AuthUser {
+  id: string
+  uid?: string
+  email: string
+  name?: string
+  picture?: string
+  emailVerified: boolean
+}
 
 interface AuthContextType {
-  user: User | null
+  user: AuthUser | null
   loading: boolean
   isOwner: boolean
   signOut: () => Promise<void>
+  authenticateWithGoogle: (credential: string) => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [isOwner, setIsOwner] = useState(false)
+  const ownerEmail = import.meta.env.VITE_OWNER_EMAIL || ""
+  const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser)
+    if (!AUTH_BYPASS_ENABLED && !googleClientId) {
+      console.error("VITE_GOOGLE_OAUTH_CLIENT_ID is required for authentication.")
+    }
+  }, [googleClientId])
 
-      if (firebaseUser) {
-        // Check if user is the owner (single-owner architecture)
-        // Require email verification to prevent unauthorized access
-        const ownerEmail = import.meta.env.VITE_OWNER_EMAIL
-        setIsOwner(firebaseUser.email === ownerEmail && firebaseUser.emailVerified)
+  useEffect(() => {
+    if (AUTH_BYPASS_ENABLED && typeof window !== "undefined") {
+      const bypassState = readBypassState()
+      if (bypassState) {
+        const bypassUser = buildBypassUser(bypassState, ownerEmail)
+        setUser(bypassUser)
+        setIsOwner(bypassState.isOwner ?? bypassUser.email === ownerEmail)
       } else {
+        setUser(null)
         setIsOwner(false)
       }
-
       setLoading(false)
-    })
+      return
+    }
 
-    return () => unsubscribe()
-  }, [])
+    const storedToken = getStoredAuthToken()
+    if (storedToken) {
+      const restoredUser = buildUserFromToken(storedToken)
+      setUser(restoredUser)
+      setIsOwner(restoredUser?.email === ownerEmail)
+    }
+    setLoading(false)
+  }, [ownerEmail])
+
+  const authenticateWithGoogle = (credential: string) => {
+    const nextUser = buildUserFromToken(credential)
+    if (!nextUser) {
+      console.error("Failed to decode Google credential.")
+      return
+    }
+
+    storeAuthToken(credential)
+    setUser(nextUser)
+    setIsOwner(nextUser.email === ownerEmail)
+    setLoading(false)
+  }
 
   const signOut = async () => {
-    await firebaseSignOut(auth)
+    if (AUTH_BYPASS_ENABLED && typeof window !== "undefined") {
+      window.localStorage.removeItem(TEST_AUTH_STATE_KEY)
+      window.localStorage.removeItem(TEST_AUTH_TOKEN_KEY)
+      setUser(null)
+      setIsOwner(false)
+      return
+    }
+
+    try {
+      googleLogout()
+    } catch (error) {
+      console.warn("Failed to sign out of Google Identity Services", error)
+    }
+
+    clearStoredAuthToken()
     setUser(null)
     setIsOwner(false)
   }
@@ -46,9 +103,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     isOwner,
     signOut,
+    authenticateWithGoogle,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+interface BypassAuthState {
+  uid?: string
+  email?: string
+  displayName?: string
+  isOwner?: boolean
+  emailVerified?: boolean
+  token?: string
+}
+
+function readBypassState(): BypassAuthState | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+  try {
+    const raw = window.localStorage.getItem(TEST_AUTH_STATE_KEY)
+    return raw ? (JSON.parse(raw) as BypassAuthState) : null
+  } catch {
+    return null
+  }
+}
+
+function resolveBypassToken(state?: BypassAuthState): string {
+  if (state?.token) {
+    return state.token
+  }
+  if (typeof window !== "undefined") {
+    const stored = window.localStorage.getItem(TEST_AUTH_TOKEN_KEY)
+    if (stored) {
+      return stored
+    }
+  }
+  return DEFAULT_E2E_AUTH_TOKEN
+}
+
+function buildBypassUser(state: BypassAuthState, fallbackEmail: string): AuthUser {
+  const token = resolveBypassToken(state)
+  const email = state.email ?? fallbackEmail ?? "owner@jobfinder.dev"
+
+  storeAuthToken(token)
+
+  return {
+    id: state.uid ?? "e2e-bypass-user",
+    uid: state.uid ?? "e2e-bypass-user",
+    email,
+    name: state.displayName ?? "E2E Owner",
+    picture: undefined,
+    emailVerified: state.emailVerified ?? true,
+  }
+}
+
+function buildUserFromToken(token: string): AuthUser | null {
+  const payload = decodeJwt(token)
+  if (!payload.email) {
+    return null
+  }
+  storeAuthToken(token)
+  const id = payload.sub ?? payload.email
+  return {
+    id,
+    uid: id,
+    email: payload.email,
+    name: typeof payload.name === "string" ? payload.name : undefined,
+    picture: typeof payload.picture === "string" ? payload.picture : undefined,
+    emailVerified: payload.email_verified ?? true,
+  }
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

@@ -27,10 +27,10 @@ from job_finder.ai import AIJobMatcher
 from job_finder.ai.providers import create_provider
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.logging_config import get_structured_logger, setup_logging
-from job_finder.profile import FirestoreProfileLoader
+from job_finder.profile import SQLiteProfileLoader
 from job_finder.job_queue import ConfigLoader, QueueManager
 from job_finder.job_queue.processor import QueueItemProcessor
-from job_finder.storage import FirestoreJobStorage
+from job_finder.storage import JobStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
@@ -77,27 +77,48 @@ app = Flask(__name__)
 
 def load_config() -> Dict[str, Any]:
     """Load configuration from YAML file."""
-    config_path = Path(__file__).parent.parent / "config" / "config.dev.yaml"
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+
+    override_path = os.getenv("CONFIG_PATH") or os.getenv("WORKER_CONFIG_PATH")
+    search_paths = []
+
+    if override_path:
+        search_paths.append(Path(override_path).expanduser())
+
+    # Default to the repo-level config directory baked into the image.
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    search_paths.extend(
+        [
+            repo_root / "config" / "config.production.yaml",
+            repo_root / "config" / "config.yaml",
+            repo_root / "config" / "config.dev.yaml",
+        ]
+    )
+
+    for candidate in search_paths:
+        if candidate.exists():
+            slogger.worker_status("config_loaded", {"path": str(candidate)})
+            with open(candidate, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f)
+
+    searched = ", ".join(str(path) for path in search_paths)
+    raise FileNotFoundError(f"Worker config not found. Paths tried: {searched}")
 
 
 def initialize_components(config: Dict[str, Any]) -> tuple:
     """Initialize all worker components."""
-    # Load environment variables
-    profile_db = os.getenv(
-        "PROFILE_DATABASE_NAME",
-        config.get("profile", {}).get("firestore", {}).get("database_name", "portfolio"),
-    )
-    storage_db = os.getenv(
-        "STORAGE_DATABASE_NAME", config.get("storage", {}).get("database_name", "portfolio-staging")
+    db_path = (
+        os.getenv("JF_SQLITE_DB_PATH")
+        or os.getenv("JOB_FINDER_SQLITE_PATH")
+        or os.getenv("SQLITE_DB_PATH")
+        or os.getenv("DATABASE_PATH")
     )
 
-    # Initialize storage
-    profile_storage = FirestoreJobStorage(profile_db)
-    storage = FirestoreJobStorage(storage_db)
-    companies_manager = CompaniesManager(storage)
-    job_sources_manager = JobSourcesManager(storage)
+    if db_path:
+        slogger.worker_status("sqlite_path_selected", {"path": db_path})
+
+    storage = JobStorage(db_path)
+    companies_manager = CompaniesManager(db_path)
+    job_sources_manager = JobSourcesManager(db_path)
 
     # Initialize AI components
     ai_config = config.get("ai", {})
@@ -111,12 +132,12 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     )
 
     # Initialize other components
-    profile_loader = FirestoreProfileLoader(profile_storage)
+    profile_loader = SQLiteProfileLoader(db_path)
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
-    queue_manager = QueueManager(storage)
+    queue_manager = QueueManager(db_path)
     processor = QueueItemProcessor(
         queue_manager=queue_manager,
-        config_loader=ConfigLoader(),
+        config_loader=ConfigLoader(db_path),
         job_storage=storage,
         companies_manager=companies_manager,
         sources_manager=job_sources_manager,

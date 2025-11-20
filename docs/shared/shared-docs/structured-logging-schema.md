@@ -1,3 +1,7 @@
+> Status: Archived
+> Owner: @jdubz
+> Last Updated: 2025-10-15
+
 # Structured Logging Schema Reference
 
 **Location:** `src/logging.types.ts`  

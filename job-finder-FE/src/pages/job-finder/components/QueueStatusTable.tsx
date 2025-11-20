@@ -16,7 +16,7 @@ interface QueueStatusTableProps {
 }
 
 export function QueueStatusTable({ userId: _userId, maxItems = 10 }: QueueStatusTableProps) {
-  // Use the new Firestore hook
+  // Use the queue API hook
   const { queueItems: items, loading } = useQueueItems({ limit: maxItems })
 
   const getStatusBadge = (status: string) => {

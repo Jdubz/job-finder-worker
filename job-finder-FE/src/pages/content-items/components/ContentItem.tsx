@@ -101,7 +101,7 @@ export const ContentItem: React.FC<ContentItemProps> = ({
 
   if (isEditing) {
     return (
-      <Card className="border-2 border-primary">
+      <Card data-testid={`content-item-${item.id}`} className="border-2 border-primary">
         <div className="p-6 space-y-6">
           {/* Render generic edit component */}
           <GenericContentEdit data={editData} onChange={setEditData} type={item.type} />
@@ -130,7 +130,7 @@ export const ContentItem: React.FC<ContentItemProps> = ({
   }
 
   return (
-    <Card>
+    <Card data-testid={`content-item-${item.id}`}>
       <div className="p-6 space-y-4">
         {/* Render generic view component */}
         <GenericContentView item={item} />

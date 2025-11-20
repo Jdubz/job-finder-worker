@@ -250,8 +250,8 @@ export class CloudLogger {
     }
 
     try {
-      // Use Firebase Functions to send logs to Google Cloud Logging
-      // This avoids needing to configure Google Cloud credentials in the frontend
+      // Forward logs to the Node API `/api/logs` endpoint which relays them to Cloud Logging.
+      // This keeps Google Cloud credentials on the server and out of the browser bundle.
       const response = await fetch("/api/logs", {
         method: "POST",
         headers: {

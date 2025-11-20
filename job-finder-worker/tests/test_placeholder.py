@@ -1,10 +1,10 @@
 """Placeholder test to ensure CI passes.
 
 TODO: Add comprehensive tests for:
-- Profile loading from Firestore
+- Profile loading from SQLite
 - AI job matching
 - RSS feed scraping
-- Firestore storage operations
+- SQLite storage operations
 - Job search orchestration
 """
 

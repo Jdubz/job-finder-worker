@@ -2,123 +2,76 @@
 /**
  * Test Helper Utilities
  *
- * Shared utilities for integration and E2E tests
+ * Shared utilities for integration and E2E tests that now rely on GIS bypass tokens
+ * instead of Firebase-specific SDKs.
  */
 
-import { signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "firebase/auth"
-import { auth } from "@/config/firebase"
 import { describe } from "vitest"
+import { DEFAULT_E2E_AUTH_TOKEN } from "@/config/testing"
 
-/**
- * Check if Firebase is mocked (running in unit test mode)
- * Uses environment variable for configuration instead of runtime type checking
- */
-export function isFirebaseMocked(): boolean {
-  return process.env.FIREBASE_MOCKED === "true"
+type TestUser = {
+  id: string
+  email: string
+  name: string
+  roles: string[]
 }
 
-/**
- * Get the appropriate describe function for integration tests
- * Returns describe.skip if Firebase is mocked, otherwise returns describe
- */
-export function getIntegrationDescribe(): typeof describe {
-  return isFirebaseMocked() ? describe.skip : describe
-}
-
-/**
- * Test user credentials
- */
-export const TEST_USERS = {
+const TEST_USERS: Record<"regular" | "editor", TestUser> = {
   regular: {
+    id: "test-regular-user",
     email: process.env.VITE_TEST_USER_EMAIL || "test@example.com",
-    password: process.env.VITE_TEST_USER_PASSWORD || "testpassword123",
+    name: "Regular Tester",
+    roles: ["admin"],
   },
   editor: {
+    id: "test-editor-user",
     email: process.env.VITE_TEST_EDITOR_EMAIL || "editor@example.com",
-    password: process.env.VITE_TEST_EDITOR_PASSWORD || "editorpassword123",
+    name: "Editor Tester",
+    roles: ["admin"],
   },
 }
 
+const AUTH_BYPASS_TOKEN =
+  process.env.VITE_E2E_AUTH_TOKEN ||
+  process.env.TEST_AUTH_BYPASS_TOKEN ||
+  DEFAULT_E2E_AUTH_TOKEN
+
+let currentUser: TestUser | null = null
+
+export { TEST_USERS }
+
 /**
- * Get authentication token for test user
+ * Integration tests now always run because GIS helpers do not depend on emulators.
+ */
+export function getIntegrationDescribe(): typeof describe {
+  return describe
+}
+
+/**
+ * Sign in a synthetic test user and record the active session.
+ */
+export async function signInTestUser(userType: "regular" | "editor" = "regular") {
+  currentUser = TEST_USERS[userType]
+  return currentUser
+}
+
+/**
+ * Resolve the auth token that the backend bypass flow accepts.
  */
 export async function getTestAuthToken(
   userType: "regular" | "editor" = "regular"
 ): Promise<string> {
-  const { email, password } = TEST_USERS[userType]
-
-  if (!email || !password) {
-    throw new Error("Test credentials not configured")
+  if (!currentUser || currentUser !== TEST_USERS[userType]) {
+    await signInTestUser(userType)
   }
-
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password)
-    return await userCredential.user.getIdToken()
-  } catch (error) {
-    const errorCode = (error as { code?: string }).code
-
-    // If user doesn't exist in emulator, create it
-    if (errorCode === "auth/user-not-found" || errorCode === "auth/invalid-credential") {
-      try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-        return await userCredential.user.getIdToken()
-      } catch (createError) {
-        const createErrorCode = (createError as { code?: string }).code
-
-        // If user was created between our check and create attempt, try signing in again
-        if (createErrorCode === "auth/email-already-in-use") {
-          const userCredential = await signInWithEmailAndPassword(auth, email, password)
-          return await userCredential.user.getIdToken()
-        }
-        throw createError
-      }
-    }
-    throw error
-  }
+  return AUTH_BYPASS_TOKEN
 }
 
 /**
- * Sign in test user and return auth token
- */
-export async function signInTestUser(userType: "regular" | "editor" = "regular") {
-  const { email, password } = TEST_USERS[userType]
-
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password)
-    return userCredential.user
-  } catch (error) {
-    const errorCode = (error as { code?: string }).code
-
-    // If user doesn't exist in emulator, create it
-    if (errorCode === "auth/user-not-found" || errorCode === "auth/invalid-credential") {
-      try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-        return userCredential.user
-      } catch (createError) {
-        const createErrorCode = (createError as { code?: string }).code
-
-        // If user was created between our check and create attempt, try signing in again
-        if (createErrorCode === "auth/email-already-in-use") {
-          const userCredential = await signInWithEmailAndPassword(auth, email, password)
-          return userCredential.user
-        }
-        throw createError
-      }
-    }
-    throw error
-  }
-}
-
-/**
- * Clean up test authentication
+ * Clear any synthetic auth state between tests.
  */
 export async function cleanupTestAuth() {
-  try {
-    await signOut(auth)
-  } catch (error) {
-    // Ignore errors during cleanup
-    console.warn("Failed to sign out during cleanup:", error)
-  }
+  currentUser = null
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { QueueItem, QueueSource, QueueStats } from '@shared/types'
+import type { QueueItem, QueueSource, QueueStats, QueueStatus, ScrapeConfig } from '@shared/types'
 import { JobQueueRepository, type NewQueueItem, type QueueItemUpdate } from './job-queue.repository'
 
 const DEFAULT_MAX_RETRIES = 3
@@ -6,6 +6,7 @@ const DEFAULT_MAX_RETRIES = 3
 export type SubmitJobInput = {
   url: string
   companyName?: string
+  companyUrl?: string
   source?: QueueSource
   userId?: string | null
   companyId?: string | null
@@ -22,15 +23,31 @@ export type SubmitCompanyInput = {
 
 export type SubmitScrapeInput = {
   userId?: string | null
-  scrapeConfig?: Record<string, unknown>
+  scrapeConfig?: ScrapeConfig
+}
+
+type ListQueueOptions = {
+  status?: QueueStatus | QueueStatus[]
+  type?: QueueItem['type']
+  source?: QueueSource
+  limit?: number
+  offset?: number
 }
 
 export class JobQueueService {
   constructor(private readonly repo = new JobQueueRepository()) {}
 
+  list(options: ListQueueOptions = {}): QueueItem[] {
+    return this.repo.list(options)
+  }
+
   submitJob(input: SubmitJobInput): QueueItem {
     const now = new Date()
     const hasPrebuiltDocs = Boolean(input.generationId)
+    const metadata = {
+      ...(input.metadata ?? {}),
+      ...(input.companyUrl ? { companyUrl: input.companyUrl } : {})
+    }
 
     const item: NewQueueItem = {
       type: 'job',
@@ -44,7 +61,7 @@ export class JobQueueService {
       max_retries: DEFAULT_MAX_RETRIES,
       created_at: now,
       updated_at: now,
-      metadata: input.metadata,
+      metadata: Object.keys(metadata).length ? metadata : undefined,
       result_message: hasPrebuiltDocs ? 'Generated via document builder' : undefined,
       completed_at: hasPrebuiltDocs ? now : undefined
     }

@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+set -e
+
+npm run lint:server
+npm run lint:frontend
+npm run docs:audit

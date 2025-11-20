@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select"
 
 export function JobFinderConfigPage() {
-  const { isOwner, user } = useAuth()
+  const { isOwner } = useAuth()
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -71,14 +71,14 @@ export function JobFinderConfigPage() {
   }
 
   const handleSaveStopList = async () => {
-    if (!user?.email || !stopList) return
+    if (!stopList) return
 
     setIsSaving(true)
     setError(null)
     setSuccess(null)
 
     try {
-      await configClient.updateStopList(stopList, user.email)
+      await configClient.updateStopList(stopList)
       setOriginalStopList(stopList)
       setSuccess("Stop list saved successfully!")
       setTimeout(() => setSuccess(null), 3000)
@@ -91,14 +91,14 @@ export function JobFinderConfigPage() {
   }
 
   const handleSaveQueueSettings = async () => {
-    if (!user?.email || !queueSettings) return
+    if (!queueSettings) return
 
     setIsSaving(true)
     setError(null)
     setSuccess(null)
 
     try {
-      await configClient.updateQueueSettings(queueSettings, user.email)
+      await configClient.updateQueueSettings(queueSettings)
       setOriginalQueueSettings(queueSettings)
       setSuccess("Queue settings saved successfully!")
       setTimeout(() => setSuccess(null), 3000)
@@ -111,14 +111,14 @@ export function JobFinderConfigPage() {
   }
 
   const handleSaveAISettings = async () => {
-    if (!user?.email || !aiSettings) return
+    if (!aiSettings) return
 
     setIsSaving(true)
     setError(null)
     setSuccess(null)
 
     try {
-      await configClient.updateAISettings(aiSettings, user.email)
+      await configClient.updateAISettings(aiSettings)
       setOriginalAISettings(aiSettings)
       setSuccess("AI settings saved successfully!")
       setTimeout(() => setSuccess(null), 3000)
@@ -303,12 +303,13 @@ export function JobFinderConfigPage() {
                 <Label>Companies</Label>
                 <div className="flex gap-2">
                   <Input
+                    data-testid="stoplist-company-input"
                     placeholder="Enter company name..."
                     value={newCompany}
                     onChange={(e) => setNewCompany(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleAddCompany()}
                   />
-                  <Button onClick={handleAddCompany} size="sm">
+                  <Button data-testid="stoplist-company-add" onClick={handleAddCompany} size="sm">
                     <Plus className="h-4 w-4 mr-1" />
                     Add
                   </Button>
@@ -336,12 +337,13 @@ export function JobFinderConfigPage() {
                 <Label>Keywords</Label>
                 <div className="flex gap-2">
                   <Input
+                    data-testid="stoplist-keyword-input"
                     placeholder="Enter keyword..."
                     value={newKeyword}
                     onChange={(e) => setNewKeyword(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleAddKeyword()}
                   />
-                  <Button onClick={handleAddKeyword} size="sm">
+                  <Button data-testid="stoplist-keyword-add" onClick={handleAddKeyword} size="sm">
                     <Plus className="h-4 w-4 mr-1" />
                     Add
                   </Button>
@@ -369,12 +371,13 @@ export function JobFinderConfigPage() {
                 <Label>Domains</Label>
                 <div className="flex gap-2">
                   <Input
+                    data-testid="stoplist-domain-input"
                     placeholder="Enter domain (e.g., example.com)..."
                     value={newDomain}
                     onChange={(e) => setNewDomain(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleAddDomain()}
                   />
-                  <Button onClick={handleAddDomain} size="sm">
+                  <Button data-testid="stoplist-domain-add" onClick={handleAddDomain} size="sm">
                     <Plus className="h-4 w-4 mr-1" />
                     Add
                   </Button>

@@ -10,6 +10,14 @@
 
 import type { TimestampLike } from "./firestore.types"
 
+export interface GeneratorDocumentRecord {
+  id: string
+  documentType: string
+  payload: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
 /**
  * Generation type - what to generate
  */
@@ -17,9 +25,9 @@ export type GenerationType = "resume" | "coverLetter" | "both"
 
 /**
  * AI Provider type
- * NOTE: Only OpenAI supported initially, Gemini temporarily removed
+ * NOTE: OpenAI is the primary provider; legacy Gemini hooks remain in Cloud Functions.
  */
-export type AIProviderType = "openai"
+export type AIProviderType = "openai" | "gemini"
 
 /**
  * Token usage tracking for AI generation
@@ -41,6 +49,7 @@ export interface PersonalInfo {
   website?: string
   github?: string
   linkedin?: string
+  summary?: string
   avatar?: string
   logo?: string
   accentColor?: string

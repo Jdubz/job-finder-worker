@@ -1,10 +1,52 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import type { JobMatch } from '@shared/types'
+import { ApiErrorCode } from '@shared/types'
+import type {
+  ListJobMatchesResponse,
+  GetJobMatchResponse,
+  SaveJobMatchRequest,
+  SaveJobMatchResponse,
+  DeleteJobMatchResponse,
+  ResumeIntakeData
+} from '@shared/types'
 import { JobMatchRepository } from './job-match.repository'
 import { asyncHandler } from '../../utils/async-handler'
+import { success, failure } from '../../utils/api-response'
 
-const createSchema = z.object({
+const resumeIntakeDataSchema: z.ZodType<ResumeIntakeData> = z.object({
+  jobId: z.string(),
+  jobTitle: z.string(),
+  company: z.string(),
+  targetSummary: z.string(),
+  skillsPriority: z.array(z.string()),
+  experienceHighlights: z.array(
+    z.object({
+      company: z.string(),
+      title: z.string(),
+      pointsToEmphasize: z.array(z.string())
+    })
+  ),
+  projectsToInclude: z.array(
+    z.object({
+      name: z.string(),
+      whyRelevant: z.string(),
+      pointsToHighlight: z.array(z.string())
+    })
+  ),
+  achievementAngles: z.array(z.string()),
+  atsKeywords: z.array(z.string()),
+  gapMitigation: z
+    .array(
+      z.object({
+        missingSkill: z.string(),
+        mitigationStrategy: z.string(),
+        coverLetterPoint: z.string()
+      })
+    )
+    .optional()
+})
+
+const jobMatchSchema = z.object({
   id: z.string().optional(),
   url: z.string().url(),
   companyName: z.string(),
@@ -23,11 +65,30 @@ const createSchema = z.object({
   experienceMatch: z.number().min(0).max(100),
   applicationPriority: z.enum(['High', 'Medium', 'Low']),
   customizationRecommendations: z.array(z.string()).optional(),
-  resumeIntakeData: z.record(z.unknown()).optional(),
-  analyzedAt: z.string().optional(),
-  createdAt: z.string().optional(),
+  resumeIntakeData: resumeIntakeDataSchema.optional(),
+  analyzedAt: z.union([z.string(), z.date()]).optional(),
+  createdAt: z.union([z.string(), z.date()]).optional(),
   submittedBy: z.string().nullable().optional(),
   queueItemId: z.string().optional()
+})
+
+function toTimestamp(value?: string | Date) {
+  if (!value) {
+    return new Date()
+  }
+  return value instanceof Date ? value : new Date(value)
+}
+
+const limitSchema = z.coerce.number().int().min(1).max(200).default(50)
+const listQuerySchema = z.object({
+  limit: limitSchema,
+  offset: z.coerce.number().int().min(0).default(0),
+  minScore: z.coerce.number().int().min(0).max(100).optional(),
+  maxScore: z.coerce.number().int().min(0).max(100).optional(),
+  companyName: z.string().min(1).optional(),
+  priority: z.enum(['High', 'Medium', 'Low']).optional(),
+  sortBy: z.enum(['score', 'date', 'company']).optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional()
 })
 
 export function buildJobMatchRouter() {
@@ -37,9 +98,10 @@ export function buildJobMatchRouter() {
   router.get(
     '/',
     asyncHandler((req, res) => {
-      const limit = req.query.limit ? Number(req.query.limit) : 50
-      const items = repo.list(isNaN(limit) ? 50 : limit)
-      res.json({ items, count: items.length })
+      const filters = listQuerySchema.parse(req.query)
+      const matches = repo.list(filters)
+      const response: ListJobMatchesResponse = { matches, count: matches.length }
+      res.json(success(response))
     })
   )
 
@@ -48,33 +110,35 @@ export function buildJobMatchRouter() {
     asyncHandler((req, res) => {
       const match = repo.getById(req.params.id)
       if (!match) {
-        res.status(404).json({ message: 'Job match not found' })
+        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Job match not found'))
         return
       }
-      res.json({ match })
+      const response: GetJobMatchResponse = { match }
+      res.json(success(response))
     })
   )
 
   router.post(
     '/',
     asyncHandler((req, res) => {
-      const payload = createSchema.parse(req.body)
-      const now = new Date()
-      const match = repo.upsert({
+      const payload = jobMatchSchema.parse(req.body)
+      const matchRequest: SaveJobMatchRequest = {
         ...payload,
         matchedSkills: payload.matchedSkills ?? [],
         missingSkills: payload.missingSkills ?? [],
         matchReasons: payload.matchReasons ?? [],
+        analyzedAt: toTimestamp(payload.analyzedAt),
+        createdAt: toTimestamp(payload.createdAt),
         keyStrengths: payload.keyStrengths ?? [],
         potentialConcerns: payload.potentialConcerns ?? [],
         customizationRecommendations: payload.customizationRecommendations ?? [],
-        resumeIntakeData: payload.resumeIntakeData as JobMatch['resumeIntakeData'],
-        analyzedAt: payload.analyzedAt ? new Date(payload.analyzedAt) : now,
-        createdAt: payload.createdAt ? new Date(payload.createdAt) : now,
         submittedBy: payload.submittedBy ?? null,
         queueItemId: payload.queueItemId ?? payload.id ?? 'manual'
-      })
-      res.status(201).json({ match })
+      }
+
+      const match = repo.upsert(matchRequest)
+      const response: SaveJobMatchResponse = { match }
+      res.status(201).json(success(response))
     })
   )
 
@@ -82,7 +146,8 @@ export function buildJobMatchRouter() {
     '/:id',
     asyncHandler((req, res) => {
       repo.delete(req.params.id)
-      res.status(204).end()
+      const response: DeleteJobMatchResponse = { matchId: req.params.id, deleted: true }
+      res.json(success(response))
     })
   )
 

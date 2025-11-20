@@ -199,7 +199,7 @@ export function SettingsPage() {
             </div>
             <div>
               <Label className="text-sm text-gray-600">User ID</Label>
-              <p className="font-mono text-xs text-gray-600">{user?.uid || "Not available"}</p>
+              <p className="font-mono text-xs text-gray-600">{user?.id || "Not available"}</p>
             </div>
             <div>
               <Label className="text-sm text-gray-600">Role</Label>

@@ -5,7 +5,7 @@
  *
  * IMPORTANT: When modifying these types, also update:
  * - Python models in job-finder/src/job_finder/queue/models.py
- * - Firestore schema expectations in both projects
+ * - SQLite schema expectations (infra/sqlite/migrations/*) so contracts stay aligned
  */
 
 import type { TimestampLike } from "./firestore.types"
@@ -26,7 +26,7 @@ export type QueueStatus = "pending" | "processing" | "success" | "failed" | "ski
 /**
  * Queue item types
  */
-export type QueueItemType = "job" | "company" | "scrape" | "source_discovery"
+export type QueueItemType = "job" | "company" | "scrape" | "source_discovery" | "scrape_source"
 
 /**
  * Granular sub-tasks for job processing pipeline.
@@ -96,6 +96,11 @@ export interface ScrapeConfig {
 export type SourceTypeHint = "auto" | "greenhouse" | "workday" | "rss" | "generic"
 
 /**
+ * Source priority tier for scheduling.
+ */
+export type SourceTier = "S" | "A" | "B" | "C" | "D"
+
+/**
  * Configuration for source discovery requests
  *
  * Used when QueueItemType is "source_discovery" to discover and configure a new job source.
@@ -118,7 +123,7 @@ export interface SourceDiscoveryConfig {
 }
 
 /**
- * Queue item in Firestore (job-queue collection)
+ * Queue item stored in SQLite (job_queue table)
  *
  * Python equivalent: job_finder.queue.models.JobQueueItem
  */
@@ -147,6 +152,10 @@ export interface QueueItem {
   scrape_config?: ScrapeConfig | null // Configuration for scrape requests (only used when type is "scrape")
   scraped_data?: Record<string, any> | null // Pre-scraped job or company data
   source_discovery_config?: SourceDiscoveryConfig | null // Configuration for source discovery (only used when type is "source_discovery")
+  source_id?: string | null // job_sources row reference when spawned from source scheduler
+  source_type?: string | null // greenhouse, workday, rss, lever, api, scraper
+  source_config?: Record<string, unknown> | null // Serialized source configuration blob
+  source_tier?: SourceTier | null // Priority tier for scheduling
 
   // Granular pipeline fields (only used when type is "job" with sub_task)
   sub_task?: JobSubTask | null // Granular pipeline step (scrape/filter/analyze/save). null = legacy monolithic processing
@@ -158,6 +167,13 @@ export interface QueueItem {
 
   // Additional metadata (for pre-generated documents or other contextual data)
   metadata?: Record<string, any> | null
+  pipeline_stage?: string | null // High-level pipeline stage (scrape/filter/analyze/save/etc.)
+
+  // Loop-prevention / provenance fields
+  tracking_id?: string // Stable identifier shared by all spawned children
+  ancestry_chain?: string[] // Ordered chain of parent IDs from root -> current
+  spawn_depth?: number // Depth within ancestry (root = 0)
+  max_spawn_depth?: number // Safety guard to prevent runaway spawning
 }
 
 /**
@@ -226,7 +242,6 @@ export interface JobMatchLegacy {
 }
 
 /**
->>>>>>> main
  * Stop list validation result
  */
 export interface StopListCheckResult {
@@ -254,7 +269,11 @@ export interface SubmitJobRequest {
   url: string
   companyName?: string
   companyUrl?: string // Company website/careers page URL for intake pipeline
+  companyId?: string | null
+  userId?: string | null
   generationId?: string // Optional: Link to portfolio generation request ID
+  source?: QueueSource
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -272,6 +291,9 @@ export interface SubmitJobResponse {
  * Scrape submission request body (API)
  */
 export interface SubmitScrapeRequest {
+  userId?: string | null
+  scrapeConfig?: ScrapeConfig
+  /** @deprecated Use `scrapeConfig` */
   scrape_config?: ScrapeConfig
 }
 
@@ -291,7 +313,8 @@ export interface SubmitScrapeResponse {
 export interface SubmitCompanyRequest {
   companyName: string
   websiteUrl: string
-  source: "manual_submission" | "user_request" | "automated_scan"
+  source?: "manual_submission" | "user_request" | "automated_scan"
+  userId?: string | null
 }
 
 /**
@@ -310,7 +333,7 @@ export function isQueueStatus(status: string): status is QueueStatus {
 }
 
 export function isQueueItemType(type: string): type is QueueItemType {
-  return ["job", "company", "scrape", "source_discovery"].includes(type)
+  return ["job", "company", "scrape", "source_discovery", "scrape_source"].includes(type)
 }
 
 export function isSourceTypeHint(hint: string): hint is SourceTypeHint {

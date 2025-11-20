@@ -102,7 +102,7 @@ def test_submit_jobs_handles_errors(scraper_intake, mock_queue_manager):
     # First add succeeds, second fails
     mock_queue_manager.add_item.side_effect = [
         "doc-id-1",
-        Exception("Firestore error"),
+        Exception("database error"),
     ]
 
     # Should continue and add first job
@@ -146,7 +146,7 @@ def test_submit_company_duplicate(scraper_intake, mock_queue_manager):
 def test_submit_company_error(scraper_intake, mock_queue_manager):
     """Test company submission with error."""
     mock_queue_manager.url_exists_in_queue.return_value = False
-    mock_queue_manager.add_item.side_effect = Exception("Firestore error")
+    mock_queue_manager.add_item.side_effect = Exception("database error")
 
     result = scraper_intake.submit_company(
         company_name="Test Corp", company_website="https://testcorp.com", source="scraper"

@@ -33,8 +33,7 @@ COPY --from=builder /root/.local /root/.local
 COPY src/ ./src/
 COPY config/ ./config/
 COPY run_job_search.py .
-COPY scripts/workers/queue_worker.py .
-COPY src/job_finder/simple_flask_worker.py .
+COPY scripts/ ./scripts/
 
 # Copy cron configuration, entrypoint, and helper scripts
 COPY docker/crontab /etc/cron.d/job-finder-cron
