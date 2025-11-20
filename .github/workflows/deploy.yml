@@ -19,8 +19,9 @@ jobs:
       packages: write
     env:
       REGISTRY: ghcr.io
-      API_IMAGE: ghcr.io/${{ github.repository_owner }}/job-finder-api:latest
-      WORKER_IMAGE: ghcr.io/${{ github.repository_owner }}/job-finder-worker:latest
+      OWNER: ${{ github.repository_owner }}
+      API_IMAGE: ghcr.io/jdubz/job-finder-api:latest
+      WORKER_IMAGE: ghcr.io/jdubz/job-finder-worker:latest
     steps:
       - uses: actions/checkout@v4
       - name: Set up QEMU
