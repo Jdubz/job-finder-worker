@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { JobMatchesClient } from "../job-matches-client"
-import { auth } from "@/config/firebase"
 import type { JobMatch } from "@shared/types"
+import { getStoredAuthToken } from "@/lib/auth-storage"
 
-vi.mock("@/config/firebase", () => ({
-  auth: {
-    currentUser: null,
-  },
-  appCheck: null,
+vi.mock("@/lib/auth-storage", () => ({
+  getStoredAuthToken: vi.fn(() => null),
+  storeAuthToken: vi.fn(),
+  clearStoredAuthToken: vi.fn(),
 }))
 
 declare global {
@@ -27,7 +26,7 @@ describe("JobMatchesClient", () => {
   })
 
   afterEach(() => {
-    (auth as any).currentUser = null
+    vi.mocked(getStoredAuthToken).mockReturnValue(null)
   })
 
   it("fetches matches with query parameters", async () => {
@@ -74,6 +73,45 @@ describe("JobMatchesClient", () => {
     expect(matches).toEqual(mockMatches)
   })
 
+  it("handles legacy responses without a data wrapper", async () => {
+    const mockMatches: JobMatch[] = [
+      {
+        id: "match-2",
+        url: "https://example.com/job-2",
+        companyName: "LegacyCo",
+        companyId: "co-2",
+        jobTitle: "Analyst",
+        location: "Remote",
+        salaryRange: null,
+        jobDescription: "Analyze things",
+        companyInfo: null,
+        matchScore: 75,
+        matchedSkills: [],
+        missingSkills: [],
+        matchReasons: [],
+        keyStrengths: [],
+        potentialConcerns: [],
+        experienceMatch: 70,
+        applicationPriority: "Medium",
+        customizationRecommendations: [],
+        resumeIntakeData: undefined,
+        analyzedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        submittedBy: null,
+        queueItemId: "queue-2",
+      },
+    ]
+
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ matches: mockMatches, count: 1 }),
+      headers: { get: () => "application/json" },
+    } as Response)
+
+    const matches = await client.getMatches()
+    expect(matches).toEqual(mockMatches)
+  })
+
   it("returns null when match fetch fails", async () => {
     global.fetch.mockRejectedValue(new Error("network"))
 
@@ -109,5 +147,25 @@ describe("JobMatchesClient", () => {
     expect(stats.highPriority).toBe(1)
     expect(stats.mediumPriority).toBe(1)
     expect(stats.lowPriority).toBe(1)
+  })
+
+  it("unwraps legacy responses without data when fetching a single match", async () => {
+    const mockMatch = {
+      id: "legacy-match",
+      url: "https://example.com/legacy",
+      companyName: "LegacyCo",
+      jobTitle: "Legacy Engineer",
+      matchScore: 90,
+      applicationPriority: "High",
+    } as JobMatch
+
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ match: mockMatch }),
+      headers: { get: () => "application/json" },
+    } as Response)
+
+    const result = await client.getMatch("legacy-match")
+    expect(result).toEqual(mockMatch)
   })
 })

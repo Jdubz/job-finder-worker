@@ -18,6 +18,11 @@ export interface JobMatchFilters {
   sortOrder?: "asc" | "desc"
 }
 
+type JobMatchesResponseShape =
+  | ApiSuccessResponse<ListJobMatchesResponse>
+  | ListJobMatchesResponse
+type JobMatchResponseShape = ApiSuccessResponse<GetJobMatchResponse> | GetJobMatchResponse
+
 export class JobMatchesClient extends BaseApiClient {
   constructor(baseUrl = API_CONFIG.baseUrl) {
     super(baseUrl)
@@ -36,20 +41,28 @@ export class JobMatchesClient extends BaseApiClient {
     return params.toString()
   }
 
+  private unwrapMatches(response: JobMatchesResponseShape): JobMatch[] {
+    const payload = "data" in response ? response.data : response
+    return payload?.matches ?? []
+  }
+
+  private unwrapMatch(response: JobMatchResponseShape): JobMatch | null {
+    const payload = "data" in response ? response.data : response
+    return payload?.match ?? null
+  }
+
   async getMatches(filters: JobMatchFilters = {}): Promise<JobMatch[]> {
     const query = this.buildQuery(filters)
-    const response = await this.get<ApiSuccessResponse<ListJobMatchesResponse>>(
+    const response = await this.get<JobMatchesResponseShape>(
       `/job-matches${query ? `?${query}` : ""}`
     )
-    return response.data.matches
+    return this.unwrapMatches(response)
   }
 
   async getMatch(matchId: string): Promise<JobMatch | null> {
     try {
-      const response = await this.get<ApiSuccessResponse<GetJobMatchResponse>>(
-        `/job-matches/${matchId}`
-      )
-      return response.data.match
+      const response = await this.get<JobMatchResponseShape>(`/job-matches/${matchId}`)
+      return this.unwrapMatch(response)
     } catch (error) {
       console.warn(`Failed to fetch job match ${matchId}`, error)
       return null
