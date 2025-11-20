@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { GeneratorWorkflowService, type GenerateDocumentPayload } from '../workflow/generator.workflow.service'
-import type { GeneratorWorkflowRepository } from '../generator.workflow.repository'
-import type { PersonalInfoStore } from '../personal-info.store'
+import { GeneratorWorkflowRepository, type GeneratorRequestRecord, type GeneratorArtifactRecord } from '../generator.workflow.repository'
+import { PersonalInfoStore } from '../personal-info.store'
 import type { PDFService } from '../workflow/services/pdf.service'
 import { storageService } from '../workflow/services/storage.service'
 import type { GenerationStep, PersonalInfo } from '@shared/types'
@@ -36,77 +36,82 @@ vi.mock('../workflow/services/storage.service', () => {
   }
 })
 
-class InMemoryRepo {
-  requests = new Map<string, any>()
-  steps = new Map<string, GenerationStep[]>()
-  artifacts: any[] = []
-  db: any = null
+class InMemoryRepo extends GeneratorWorkflowRepository {
+  mockRequests = new Map<string, GeneratorRequestRecord>()
+  mockSteps = new Map<string, GenerationStep[]>()
+  mockArtifacts: GeneratorArtifactRecord[] = []
 
-  createRequest(record: any): any {
+  createRequest(record: Omit<GeneratorRequestRecord, 'createdAt' | 'updatedAt'>): GeneratorRequestRecord {
     const now = new Date().toISOString()
-    const created = { ...record, createdAt: now, updatedAt: now }
-    this.requests.set(record.id, created)
+    const created: GeneratorRequestRecord = {
+      id: record.id,
+      generateType: record.generateType,
+      job: record.job,
+      preferences: record.preferences ?? null,
+      personalInfo: record.personalInfo ?? null,
+      status: record.status,
+      resumeUrl: record.resumeUrl ?? null,
+      coverLetterUrl: record.coverLetterUrl ?? null,
+      jobMatchId: record.jobMatchId ?? null,
+      createdBy: record.createdBy ?? null,
+      createdAt: now,
+      updatedAt: now
+    }
+    this.mockRequests.set(record.id, created)
     return created
   }
 
-  saveSteps(id: string, steps: GenerationStep[]): void {
-    this.steps.set(id, steps)
+  saveSteps(requestId: string, steps: GenerationStep[]): void {
+    this.mockSteps.set(requestId, steps)
   }
 
-  listSteps(id: string): GenerationStep[] {
-    return this.steps.get(id) ?? []
+  listSteps(requestId: string): GenerationStep[] {
+    return this.mockSteps.get(requestId) ?? []
   }
 
-  getRequest(id: string): any {
-    return this.requests.get(id) ?? null
+  getRequest(id: string): GeneratorRequestRecord | null {
+    return this.mockRequests.get(id) ?? null
   }
 
-  updateRequest(id: string, updates: any): any {
-    const existing = this.requests.get(id)
+  updateRequest(
+    id: string,
+    updates: Partial<Omit<GeneratorRequestRecord, 'id' | 'generateType' | 'job'> & { job?: Record<string, unknown> }>
+  ): GeneratorRequestRecord | null {
+    const existing = this.mockRequests.get(id)
     if (!existing) return null
-    const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() }
-    this.requests.set(id, updated)
+    const updated: GeneratorRequestRecord = { ...existing, ...updates, updatedAt: new Date().toISOString() }
+    this.mockRequests.set(id, updated)
     return updated
   }
 
-  addArtifact(record: any): any {
-    const artifact = {
-      ...record,
-      id: `artifact-${Date.now()}`,
-      createdAt: new Date().toISOString()
-    }
-    this.artifacts.push(artifact)
-    return artifact
+  addArtifact(record: GeneratorArtifactRecord): GeneratorArtifactRecord {
+    this.mockArtifacts.push(record)
+    return record
   }
 
-  listArtifacts(requestId: string): any[] {
-    return this.artifacts.filter((artifact) => artifact.requestId === requestId)
+  listArtifacts(requestId: string): GeneratorArtifactRecord[] {
+    return this.mockArtifacts.filter((artifact) => artifact.requestId === requestId)
   }
 
-  listRequests(): any[] {
-    return Array.from(this.requests.values())
-  }
-
-  mapRequest(doc: any): any {
-    return doc
+  listRequests(): GeneratorRequestRecord[] {
+    return Array.from(this.mockRequests.values())
   }
 }
 
-class FakePersonalInfoStore {
-  private repo: any = null
-
-  data: PersonalInfo = {
+class FakePersonalInfoStore extends PersonalInfoStore {
+  private mockData: PersonalInfo = {
     name: 'Test User',
     email: 'test@example.com',
     accentColor: '#123456'
   }
 
-  async get() {
-    return this.data
+  async get(): Promise<PersonalInfo | null> {
+    return this.mockData
   }
 
-  async update() {
-    return this.data
+  async update(updates: Partial<PersonalInfo>): Promise<PersonalInfo> {
+    this.mockData = { ...this.mockData, ...updates }
+    return this.mockData
   }
 }
 
@@ -128,9 +133,9 @@ const pdfService: PDFService = {
 const storageMock = vi.mocked(storageService)
 
   beforeEach(() => {
-    repo.requests.clear()
-    repo.steps.clear()
-    repo.artifacts = []
+    repo.mockRequests.clear()
+    repo.mockSteps.clear()
+    repo.mockArtifacts = []
     storageMock.saveArtifact.mockClear()
     storageMock.createPublicUrl.mockClear()
   })

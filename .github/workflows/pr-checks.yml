@@ -233,20 +233,6 @@ jobs:
         working-directory: job-finder-worker
         run: mypy src --ignore-missing-imports
 
-  # Combined frontend tests status (for legacy required checks)
-  frontend-tests:
-    name: Frontend Tests
-    runs-on: ubuntu-latest
-    needs: [frontend-unit-tests, frontend-integration-tests]
-    if: always()
-    steps:
-      - name: Check test results
-        run: |
-          if [ "${{ needs.frontend-unit-tests.result }}" != "success" ] || [ "${{ needs.frontend-integration-tests.result }}" != "success" ]; then
-            echo "One or more frontend test jobs failed"
-            exit 1
-          fi
-
   # E2E tests (commented out but ready to enable)
   # e2e:
   #   name: E2E Tests
