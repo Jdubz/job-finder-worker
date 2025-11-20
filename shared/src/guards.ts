@@ -42,17 +42,7 @@ import type {
   ProjectRecommendation,
   GapMitigation,
 } from "./job.types"
-import type {
-  ContentItem,
-  ContentItemType,
-  ContentItemVisibility,
-  CompanyItem,
-  ProjectItem,
-  SkillGroupItem,
-  EducationItem,
-  ProfileSectionItem,
-  AccomplishmentItem,
-} from "./content-item.types"
+import type { ContentItem, ContentItemVisibility } from "./content-item.types"
 import type {
   GenerationType,
   AIProviderType,
@@ -361,217 +351,35 @@ export function isCompany(value: unknown): value is Company {
 }
 
 // ============================================
-// Content Item Types Guards
+// Content Item Guards
 // ============================================
 
-/**
- * Type guard for ContentItemType
- */
-export function isContentItemType(value: unknown): value is ContentItemType {
-  return (
-    typeof value === "string" &&
-    [
-      "company",
-      "project",
-      "skill-group",
-      "education",
-      "profile-section",
-      "accomplishment",
-    ].includes(value)
-  )
-}
-
-/**
- * Type guard for ContentItemVisibility
- */
 export function isContentItemVisibility(value: unknown): value is ContentItemVisibility {
-  return typeof value === "string" && ["published", "draft", "archived"].includes(value)
+  return value === "published" || value === "draft" || value === "archived"
 }
 
-/**
- * Type guard for base ContentItem fields (used by specific type guards)
- */
-function hasBaseContentItemFields(value: Record<string, unknown>): boolean {
-  // Validate optional visibility field if present
-  if (value.visibility !== undefined && !isContentItemVisibility(value.visibility)) {
-    return false
-  }
-
-  // Validate optional tags field if present
-  if (value.tags !== undefined && !isStringArray(value.tags)) {
-    return false
-  }
-
-  // Validate optional aiContext field if present
-  if (value.aiContext !== undefined) {
-    if (!isObject(value.aiContext)) return false
-    const aiContext = value.aiContext as Record<string, unknown>
-    if (aiContext.emphasize !== undefined && typeof aiContext.emphasize !== "boolean") {
-      return false
-    }
-    if (aiContext.omitFromResume !== undefined && typeof aiContext.omitFromResume !== "boolean") {
-      return false
-    }
-    if (aiContext.keywords !== undefined && !isStringArray(aiContext.keywords)) {
-      return false
-    }
-  }
-
-  return (
-    typeof value.id === "string" &&
-    isContentItemType(value.type) &&
-    typeof value.userId === "string" &&
-    (value.parentId === null || typeof value.parentId === "string") &&
-    typeof value.order === "number" &&
-    isDateLike(value.createdAt) &&
-    isDateLike(value.updatedAt) &&
-    typeof value.createdBy === "string" &&
-    typeof value.updatedBy === "string"
-  )
-}
-
-/**
- * Type guard for CompanyItem
- */
-export function isCompanyItem(value: unknown): value is CompanyItem {
-  if (!isObject(value)) return false
-  if (!hasBaseContentItemFields(value)) return false
-
-  const item = value as Partial<CompanyItem>
-
-  // Validate optional fields if present
-  if (item.role !== undefined && typeof item.role !== "string") return false
-  if (item.location !== undefined && typeof item.location !== "string") return false
-  if (item.website !== undefined && typeof item.website !== "string") return false
-  if (item.endDate !== undefined && item.endDate !== null && typeof item.endDate !== "string") return false
-  if (item.summary !== undefined && typeof item.summary !== "string") return false
-  if (item.accomplishments !== undefined && !isStringArray(item.accomplishments)) return false
-  if (item.technologies !== undefined && !isStringArray(item.technologies)) return false
-  if (item.notes !== undefined && typeof item.notes !== "string") return false
-
-  return (
-    item.type === "company" &&
-    typeof item.company === "string" &&
-    typeof item.startDate === "string"
-  )
-}
-
-/**
- * Type guard for ProjectItem
- */
-export function isProjectItem(value: unknown): value is ProjectItem {
-  if (!isObject(value)) return false
-  if (!hasBaseContentItemFields(value)) return false
-
-  const item = value as Partial<ProjectItem>
-
-  // Validate optional fields if present
-  if (item.role !== undefined && typeof item.role !== "string") return false
-  if (item.startDate !== undefined && typeof item.startDate !== "string") return false
-  if (item.endDate !== undefined && item.endDate !== null && typeof item.endDate !== "string") return false
-  if (item.accomplishments !== undefined && !isStringArray(item.accomplishments)) return false
-  if (item.technologies !== undefined && !isStringArray(item.technologies)) return false
-  if (item.challenges !== undefined && !isStringArray(item.challenges)) return false
-  if (item.context !== undefined && typeof item.context !== "string") return false
-  if (item.links !== undefined) {
-    if (!Array.isArray(item.links)) return false
-    for (const link of item.links) {
-      if (!isObject(link) || typeof link.label !== "string" || typeof link.url !== "string") {
-        return false
-      }
-    }
-  }
-
-  return item.type === "project" && typeof item.name === "string" && typeof item.description === "string"
-}
-
-/**
- * Type guard for SkillGroupItem
- */
-export function isSkillGroupItem(value: unknown): value is SkillGroupItem {
-  if (!isObject(value)) return false
-  if (!hasBaseContentItemFields(value)) return false
-
-  const item = value as Partial<SkillGroupItem>
-
-  return (
-    item.type === "skill-group" &&
-    typeof item.category === "string" &&
-    isStringArray(item.skills)
-  )
-}
-
-/**
- * Type guard for EducationItem
- */
-export function isEducationItem(value: unknown): value is EducationItem {
-  if (!isObject(value)) return false
-  if (!hasBaseContentItemFields(value)) return false
-
-  const item = value as Partial<EducationItem>
-
-  // Validate optional fields if present
-  if (item.degree !== undefined && typeof item.degree !== "string") return false
-  if (item.field !== undefined && typeof item.field !== "string") return false
-  if (item.location !== undefined && typeof item.location !== "string") return false
-  if (item.startDate !== undefined && typeof item.startDate !== "string") return false
-  if (item.endDate !== undefined && item.endDate !== null && typeof item.endDate !== "string") return false
-  if (item.honors !== undefined && typeof item.honors !== "string") return false
-  if (item.description !== undefined && typeof item.description !== "string") return false
-  if (item.relevantCourses !== undefined && !isStringArray(item.relevantCourses)) return false
-  if (item.credentialId !== undefined && typeof item.credentialId !== "string") return false
-  if (item.credentialUrl !== undefined && typeof item.credentialUrl !== "string") return false
-  if (item.expiresAt !== undefined && typeof item.expiresAt !== "string") return false
-
-  return item.type === "education" && typeof item.institution === "string"
-}
-
-/**
- * Type guard for ProfileSectionItem
- */
-export function isProfileSectionItem(value: unknown): value is ProfileSectionItem {
-  if (!isObject(value)) return false
-  if (!hasBaseContentItemFields(value)) return false
-
-  const item = value as Partial<ProfileSectionItem>
-
-  return (
-    item.type === "profile-section" &&
-    typeof item.heading === "string" &&
-    typeof item.content === "string"
-  )
-}
-
-/**
- * Type guard for AccomplishmentItem
- */
-export function isAccomplishmentItem(value: unknown): value is AccomplishmentItem {
-  if (!isObject(value)) return false
-  if (!hasBaseContentItemFields(value)) return false
-
-  const item = value as Partial<AccomplishmentItem>
-
-  // Validate optional fields if present
-  if (item.context !== undefined && typeof item.context !== "string") return false
-  if (item.impact !== undefined && typeof item.impact !== "string") return false
-  if (item.technologies !== undefined && !isStringArray(item.technologies)) return false
-  if (item.date !== undefined && typeof item.date !== "string") return false
-
-  return item.type === "accomplishment" && typeof item.description === "string"
-}
-
-/**
- * Type guard for ContentItem (union type)
- * Checks if value is any valid ContentItem type
- */
 export function isContentItem(value: unknown): value is ContentItem {
+  if (!isObject(value)) return false
+  const item = value as Partial<ContentItem>
+
   return (
-    isCompanyItem(value) ||
-    isProjectItem(value) ||
-    isSkillGroupItem(value) ||
-    isEducationItem(value) ||
-    isProfileSectionItem(value) ||
-    isAccomplishmentItem(value)
+    typeof item.id === "string" &&
+    typeof item.userId === "string" &&
+    (item.parentId === undefined || item.parentId === null || typeof item.parentId === "string") &&
+    typeof item.order === "number" &&
+    (item.title === undefined || typeof item.title === "string") &&
+    (item.role === undefined || typeof item.role === "string") &&
+    (item.location === undefined || typeof item.location === "string") &&
+    (item.website === undefined || typeof item.website === "string") &&
+    (item.startDate === undefined || typeof item.startDate === "string") &&
+    (item.endDate === undefined || item.endDate === null || typeof item.endDate === "string") &&
+    (item.description === undefined || typeof item.description === "string") &&
+    (item.skills === undefined || item.skills === null || isStringArray(item.skills)) &&
+    isContentItemVisibility(item.visibility) &&
+    isDateLike(item.createdAt) &&
+    isDateLike(item.updatedAt) &&
+    typeof item.createdBy === "string" &&
+    typeof item.updatedBy === "string"
   )
 }
 
@@ -726,7 +534,6 @@ export {
   isQueueItemDocument,
   isCompanyTier,
   isCompanyDocument,
-  isContentItemType as isContentItemDocumentType,
   isContentItemVisibility as isContentItemDocumentVisibility,
   isContentItemDocument,
   isContactSubmissionDocument,

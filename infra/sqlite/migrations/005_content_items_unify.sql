@@ -6,6 +6,7 @@ ALTER TABLE content_items RENAME TO content_items_legacy;
 
 CREATE TABLE content_items (
   id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
   parent_id TEXT REFERENCES content_items(id) ON DELETE SET NULL,
   order_index INTEGER NOT NULL DEFAULT 0,
   title TEXT,
@@ -25,6 +26,7 @@ CREATE TABLE content_items (
 
 INSERT INTO content_items (
   id,
+  user_id,
   parent_id,
   order_index,
   title,
@@ -43,6 +45,7 @@ INSERT INTO content_items (
 )
 SELECT
   id,
+  user_id,
   parent_id,
   order_index,
   COALESCE(

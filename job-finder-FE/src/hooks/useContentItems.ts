@@ -1,35 +1,35 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import { contentItemsClient, type CreateContentItemInput } from "@/api"
-import type { ContentItem } from "@shared/types"
+import { contentItemsClient } from "@/api"
+import type {
+  ContentItemNode,
+  CreateContentItemData,
+  UpdateContentItemData
+} from "@shared/types"
 
 interface UseContentItemsResult {
-  contentItems: ContentItem[]
+  contentItems: ContentItemNode[]
   loading: boolean
   error: Error | null
-  createContentItem: (data: CreateContentItemInput) => Promise<string>
-  updateContentItem: (id: string, data: Partial<ContentItem>) => Promise<void>
+  createContentItem: (data: CreateContentItemData) => Promise<void>
+  updateContentItem: (id: string, data: UpdateContentItemData) => Promise<void>
   deleteContentItem: (id: string) => Promise<void>
+  reorderContentItem: (id: string, parentId: string | null, orderIndex: number) => Promise<void>
   refetch: () => Promise<void>
 }
 
 export function useContentItems(): UseContentItemsResult {
   const { user } = useAuth()
 
-  const [contentItems, setContentItems] = useState<ContentItem[]>([])
+  const [contentItems, setContentItems] = useState<ContentItemNode[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<Error | null>(null)
 
-  const normalizeContentItem = useCallback((item: ContentItem): ContentItem => ({
-      ...item,
-      createdAt: coerceDate(item.createdAt),
-      updatedAt: coerceDate(item.updatedAt),
-    }),
-    []
-  )
+  const userId = user?.id ?? null
+  const userEmail = user?.email ?? null
 
   const fetchItems = useCallback(async () => {
-    if (!user?.id) {
+    if (!userId) {
       setContentItems([])
       setLoading(false)
       setError(null)
@@ -38,62 +38,65 @@ export function useContentItems(): UseContentItemsResult {
 
     setLoading(true)
     try {
-      const items = await contentItemsClient.list()
-      setContentItems(items.map(normalizeContentItem))
+      const items = await contentItemsClient.list(userId, { includeDrafts: true })
+      setContentItems(items)
       setError(null)
     } catch (err) {
       setError(err as Error)
     } finally {
       setLoading(false)
     }
-  }, [normalizeContentItem, user?.id])
+  }, [userId])
 
   useEffect(() => {
     fetchItems()
   }, [fetchItems])
 
-  const createContentItem = useCallback(
-    async (data: CreateContentItemInput) => {
-      if (!user?.id) {
-        throw new Error("User must be authenticated to create content items")
-      }
-      if (!user.email) {
-        throw new Error("Account email is required to create content items")
-      }
+  const ensureAuth = useCallback(() => {
+    if (!userId || !userEmail) {
+      throw new Error("User authentication required")
+    }
+    return { userId, userEmail }
+  }, [userEmail, userId])
 
-      const created = await contentItemsClient.createContentItem(user.id, user.email, data)
-      const normalized = normalizeContentItem(created)
-      setContentItems((prev) =>
-        [...prev.filter((item) => item.id !== normalized.id), normalized].sort(
-          (a, b) => (a.order ?? 0) - (b.order ?? 0)
-        )
-      )
-      return normalized.id
+  const createContentItem = useCallback(
+    async (data: CreateContentItemData) => {
+      const auth = ensureAuth()
+      await contentItemsClient.createContentItem(auth.userEmail, {
+        ...data,
+        userId: data.userId ?? auth.userId
+      })
+      await fetchItems()
     },
-    [normalizeContentItem, user?.email, user?.id]
+    [ensureAuth, fetchItems]
   )
 
   const updateContentItem = useCallback(
-    async (id: string, data: Partial<ContentItem>) => {
-      if (!user?.id) {
-        throw new Error("User must be authenticated to update content items")
-      }
-      if (!user.email) {
-        throw new Error("Account email is required to update content items")
-      }
-
-      const updated = await contentItemsClient.updateContentItem(id, user.email, data)
-      setContentItems((prev) =>
-        prev.map((item) => (item.id === id ? normalizeContentItem(updated) : item))
-      )
+    async (id: string, data: UpdateContentItemData) => {
+      const auth = ensureAuth()
+      await contentItemsClient.updateContentItem(id, auth.userEmail, data)
+      await fetchItems()
     },
-    [normalizeContentItem, user?.email, user?.id]
+    [ensureAuth, fetchItems]
   )
 
-  const deleteContentItem = useCallback(async (id: string) => {
-    await contentItemsClient.deleteContentItem(id)
-    setContentItems((prev) => prev.filter((item) => item.id !== id))
-  }, [])
+  const deleteContentItem = useCallback(
+    async (id: string) => {
+      ensureAuth()
+      await contentItemsClient.deleteContentItem(id)
+      await fetchItems()
+    },
+    [ensureAuth, fetchItems]
+  )
+
+  const reorderContentItem = useCallback(
+    async (id: string, parentId: string | null, orderIndex: number) => {
+      const auth = ensureAuth()
+      await contentItemsClient.reorderContentItem(id, auth.userEmail, parentId, orderIndex)
+      await fetchItems()
+    },
+    [ensureAuth, fetchItems]
+  )
 
   const refetch = useCallback(async () => {
     await fetchItems()
@@ -106,12 +109,7 @@ export function useContentItems(): UseContentItemsResult {
     createContentItem,
     updateContentItem,
     deleteContentItem,
-    refetch,
+    reorderContentItem,
+    refetch
   }
-}
-
-function coerceDate(value: unknown): Date {
-  if (value instanceof Date) return value
-  if (typeof value === "string" || typeof value === "number") return new Date(value)
-  return new Date()
 }

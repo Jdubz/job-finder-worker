@@ -119,3 +119,4 @@ No other free-form `body_json` or `type` discriminator is required. Child conten
 
 ## Progress Log
 - **2025-11-20** — Added SQLite migration `005_content_items_unify.sql` to reshape the `content_items` table into the new schema (title/role/location/etc.), copy legacy data with `json_extract`, and recreate indexes.
+- **2025-11-20** — Replaced shared content item types/API definitions with the unified fields and refactored the backend repository + routes to drop legacy unions, validate the new schema, and return nested data.

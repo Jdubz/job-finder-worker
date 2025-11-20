@@ -91,55 +91,33 @@ export function isCompanyDocument(value: unknown): value is CompanyDocument {
 }
 
 // ============================================================================
-// Content Item Types Guards
+// Content Item Document Guards
 // ============================================================================
 
-export function isContentItemType(value: unknown): value is ContentItemDocumentType {
-  return (
-    typeof value === 'string' &&
-    [
-      'company',
-      'project',
-      'skill-group',
-      'text-section',
-      'profile-section',
-      'education',
-      'accomplishment',
-    ].includes(value)
-  )
-}
-
-export function isContentItemVisibility(
-  value: unknown
-): value is ContentItemDocumentVisibility {
-  return (
-    typeof value === 'string' &&
-    ['published', 'draft', 'archived'].includes(value)
-  )
-}
-
-export function isContentItemDocument(
-  value: unknown
-): value is ContentItemDocument {
+export function isContentItemDocument(value: unknown): boolean {
   if (typeof value !== 'object' || value === null) return false
 
   const doc = value as Record<string, unknown>
 
   return (
-    isContentItemType(doc.type) &&
     typeof doc.order === 'number' &&
-    isContentItemVisibility(doc.visibility) &&
-    (doc.parentId === null || typeof doc.parentId === 'string') &&
+    (doc.parentId === undefined || doc.parentId === null || typeof doc.parentId === 'string') &&
+    (doc.title === undefined || typeof doc.title === 'string') &&
+    (doc.role === undefined || typeof doc.role === 'string') &&
+    (doc.location === undefined || typeof doc.location === 'string') &&
+    (doc.website === undefined || typeof doc.website === 'string') &&
+    (doc.startDate === undefined || typeof doc.startDate === 'string') &&
+    (doc.endDate === undefined || doc.endDate === null || typeof doc.endDate === 'string') &&
+    (doc.description === undefined || typeof doc.description === 'string') &&
+    (doc.skills === undefined || doc.skills === null || Array.isArray(doc.skills)) &&
+    typeof doc.userId === 'string' &&
+    (doc.visibility === 'published' || doc.visibility === 'draft' || doc.visibility === 'archived') &&
     (doc.createdAt instanceof Date || typeof doc.createdAt === 'object') &&
     (doc.updatedAt instanceof Date || typeof doc.updatedAt === 'object') &&
     typeof doc.createdBy === 'string' &&
     typeof doc.updatedBy === 'string'
   )
 }
-
-// ============================================================================
-// Contact Submission Types Guards
-// ============================================================================
 
 export function isContactSubmissionDocument(
   value: unknown

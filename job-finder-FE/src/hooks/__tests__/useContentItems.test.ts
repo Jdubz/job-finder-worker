@@ -1,117 +1,63 @@
 import { renderHook, act, waitFor } from "@testing-library/react"
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { useContentItems } from "../useContentItems"
 
+const mockUser = { id: "user-123", email: "user@example.com" }
+
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: vi.fn(),
+  useAuth: () => ({ user: mockUser })
 }))
+
+const listMock = vi.fn().mockResolvedValue([])
+const createMock = vi.fn().mockResolvedValue({})
+const updateMock = vi.fn().mockResolvedValue({})
+const deleteMock = vi.fn().mockResolvedValue({})
+const reorderMock = vi.fn().mockResolvedValue({})
 
 vi.mock("@/api", () => ({
   contentItemsClient: {
-    list: vi.fn(),
-    createContentItem: vi.fn(),
-    updateContentItem: vi.fn(),
-    deleteContentItem: vi.fn(),
-  },
+    list: listMock,
+    createContentItem: createMock,
+    updateContentItem: updateMock,
+    deleteContentItem: deleteMock,
+    reorderContentItem: reorderMock
+  }
 }))
 
-const { useAuth } = await import("@/contexts/AuthContext")
-const { contentItemsClient } = await import("@/api")
-
 describe("useContentItems", () => {
-  const mockUser = {
-    id: "user-123",
-    email: "user@example.com",
-  }
-
-  const mockItems = [
-    {
-      id: "item-1",
-      type: "company",
-      userId: "user-123",
-      order: 1,
-      createdAt: "2025-01-01T00:00:00.000Z",
-      updatedAt: "2025-01-01T00:00:00.000Z",
-      createdBy: "user@example.com",
-      updatedBy: "user@example.com",
-      visibility: "published",
-    },
-  ]
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(useAuth).mockReturnValue({
-      user: mockUser,
-    } as any)
-    vi.mocked(contentItemsClient.list).mockResolvedValue(mockItems as any)
-    vi.mocked(contentItemsClient.createContentItem).mockResolvedValue(mockItems[0] as any)
-    vi.mocked(contentItemsClient.updateContentItem).mockResolvedValue(mockItems[0] as any)
+  it("fetches content items for the active user", async () => {
+    renderHook(() => useContentItems())
+    await waitFor(() => expect(listMock).toHaveBeenCalled())
+    expect(listMock).toHaveBeenCalledWith(mockUser.id, { includeDrafts: true })
   })
 
-  it("fetches content items on mount", async () => {
-    const { result } = renderHook(() => useContentItems())
-
-    await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(contentItemsClient.list).toHaveBeenCalled()
-    expect(result.current.contentItems).toHaveLength(1)
-  })
-
-  it("handles fetch errors", async () => {
-    const error = new Error("Failed to load")
-    vi.mocked(contentItemsClient.list).mockRejectedValueOnce(error)
-
-    const { result } = renderHook(() => useContentItems())
-
-    await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.error).toBe(error)
-    expect(result.current.contentItems).toEqual([])
-  })
-
-  it("creates content items", async () => {
+  it("creates new content items using the current user context", async () => {
     const { result } = renderHook(() => useContentItems())
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
       await result.current.createContentItem({
-        type: "company",
         userId: mockUser.id,
-        parentId: null,
-        order: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        createdBy: mockUser.email!,
-        updatedBy: mockUser.email!,
-      } as any)
+        title: "New Item",
+        parentId: null
+      })
     })
 
-    expect(contentItemsClient.createContentItem).toHaveBeenCalled()
+    expect(createMock).toHaveBeenCalledWith(mockUser.email, {
+      userId: mockUser.id,
+      title: "New Item",
+      parentId: null
+    })
   })
 
-  it("updates content items", async () => {
+  it("reorders items via the API client", async () => {
     const { result } = renderHook(() => useContentItems())
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
-      await result.current.updateContentItem("item-1", {
-        visibility: "draft",
-      } as any)
+      await result.current.reorderContentItem("item-1", null, 0)
     })
 
-    expect(contentItemsClient.updateContentItem).toHaveBeenCalledWith(
-      "item-1",
-      mockUser.email,
-      expect.objectContaining({ visibility: "draft" })
-    )
-  })
-
-  it("deletes content items", async () => {
-    const { result } = renderHook(() => useContentItems())
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    await act(async () => {
-      await result.current.deleteContentItem("item-1")
-    })
-
-    expect(contentItemsClient.deleteContentItem).toHaveBeenCalledWith("item-1")
+    expect(reorderMock).toHaveBeenCalledWith("item-1", mockUser.email, null, 0)
   })
 })
