@@ -86,7 +86,7 @@ test.describe('Admin Route Protection', () => {
       const configLink = page.getByRole('link', { name: /config/i })
       const settingsLink = page.getByRole('link', { name: /settings/i })
 
-      // At least some admin links should be visible
+      // All admin links should be visible
       const linksVisible = await Promise.all([
         aiPromptsLink.isVisible().catch(() => false),
         queueLink.isVisible().catch(() => false),
@@ -94,7 +94,7 @@ test.describe('Admin Route Protection', () => {
         settingsLink.isVisible().catch(() => false)
       ])
 
-      expect(linksVisible.some(visible => visible)).toBe(true)
+      expect(linksVisible.every((visible) => visible)).toBe(true)
     })
   })
 

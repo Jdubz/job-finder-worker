@@ -81,34 +81,17 @@ test.describe('Unauthenticated User Access', () => {
   })
 
   test('navigation links work correctly', async ({ page }) => {
-    await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
+    const linksToTest = [
+      { name: /content items/i, route: ROUTES.CONTENT_ITEMS },
+      { name: /document builder/i, route: ROUTES.DOCUMENT_BUILDER },
+      { name: /job applications/i, route: ROUTES.JOB_APPLICATIONS },
+      { name: /job finder/i, route: ROUTES.JOB_FINDER }
+    ]
 
-    // Wait for navigation to load
-    await page.waitForTimeout(2000)
-
-    // Test navigation to public pages
-    const contentItemsLink = page.getByRole('link', { name: /content items/i }).first()
-    if (await contentItemsLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await contentItemsLink.click()
-      await expect(page).toHaveURL(ROUTES.CONTENT_ITEMS, { timeout: 10000 })
-    }
-
-    const documentBuilderLink = page.getByRole('link', { name: /document builder/i }).first()
-    if (await documentBuilderLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await documentBuilderLink.click()
-      await expect(page).toHaveURL(ROUTES.DOCUMENT_BUILDER, { timeout: 10000 })
-    }
-
-    const jobApplicationsLink = page.getByRole('link', { name: /job applications/i }).first()
-    if (await jobApplicationsLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await jobApplicationsLink.click()
-      await expect(page).toHaveURL(ROUTES.JOB_APPLICATIONS, { timeout: 10000 })
-    }
-
-    const jobFinderLink = page.getByRole('link', { name: /job finder/i }).first()
-    if (await jobFinderLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await jobFinderLink.click()
-      await expect(page).toHaveURL(ROUTES.JOB_FINDER, { timeout: 10000 })
+    for (const link of linksToTest) {
+      await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
+      await page.getByRole('link', { name: link.name }).first().click()
+      await expect(page).toHaveURL(link.route, { timeout: 10000 })
     }
   })
 
@@ -141,21 +124,18 @@ test.describe('Unauthenticated User Access', () => {
   })
 
   test('legal pages are accessible', async ({ page }) => {
-    await page.goto(ROUTES.TERMS_OF_USE, { waitUntil: 'domcontentloaded' })
-    await expect(page).toHaveURL(ROUTES.TERMS_OF_USE)
-    await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15000 })
+    const legalRoutes = [
+      ROUTES.TERMS_OF_USE,
+      ROUTES.PRIVACY_POLICY,
+      ROUTES.COOKIE_POLICY,
+      ROUTES.DISCLAIMER
+    ]
 
-    await page.goto(ROUTES.PRIVACY_POLICY, { waitUntil: 'domcontentloaded' })
-    await expect(page).toHaveURL(ROUTES.PRIVACY_POLICY)
-    await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15000 })
-
-    await page.goto(ROUTES.COOKIE_POLICY, { waitUntil: 'domcontentloaded' })
-    await expect(page).toHaveURL(ROUTES.COOKIE_POLICY)
-    await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15000 })
-
-    await page.goto(ROUTES.DISCLAIMER, { waitUntil: 'domcontentloaded' })
-    await expect(page).toHaveURL(ROUTES.DISCLAIMER)
-    await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15000 })
+    for (const route of legalRoutes) {
+      await page.goto(route, { waitUntil: 'domcontentloaded' })
+      await expect(page).toHaveURL(route)
+      await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15000 })
+    }
   })
 
   test('invalid routes redirect to home', async ({ page }) => {

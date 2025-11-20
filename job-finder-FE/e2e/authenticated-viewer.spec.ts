@@ -25,21 +25,17 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
   })
 
   test('can access all public pages', async ({ page }) => {
-    // Content Items
-    await page.goto(ROUTES.CONTENT_ITEMS)
-    await expect(page).toHaveURL(ROUTES.CONTENT_ITEMS)
+    const publicRoutes = [
+      ROUTES.CONTENT_ITEMS,
+      ROUTES.DOCUMENT_BUILDER,
+      ROUTES.JOB_APPLICATIONS,
+      ROUTES.JOB_FINDER
+    ]
 
-    // Document Builder
-    await page.goto(ROUTES.DOCUMENT_BUILDER)
-    await expect(page).toHaveURL(ROUTES.DOCUMENT_BUILDER)
-
-    // Job Applications
-    await page.goto(ROUTES.JOB_APPLICATIONS)
-    await expect(page).toHaveURL(ROUTES.JOB_APPLICATIONS)
-
-    // Job Finder
-    await page.goto(ROUTES.JOB_FINDER)
-    await expect(page).toHaveURL(ROUTES.JOB_FINDER)
+    for (const route of publicRoutes) {
+      await page.goto(route)
+      await expect(page).toHaveURL(route)
+    }
   })
 
   test('cannot access AI Prompts page (admin only)', async ({ page }) => {
@@ -187,16 +183,16 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
   })
 
   test('viewer has access to legal pages', async ({ page }) => {
-    await page.goto(ROUTES.TERMS_OF_USE)
-    await expect(page).toHaveURL(ROUTES.TERMS_OF_USE)
+    const legalRoutes = [
+      ROUTES.TERMS_OF_USE,
+      ROUTES.PRIVACY_POLICY,
+      ROUTES.COOKIE_POLICY,
+      ROUTES.DISCLAIMER
+    ]
 
-    await page.goto(ROUTES.PRIVACY_POLICY)
-    await expect(page).toHaveURL(ROUTES.PRIVACY_POLICY)
-
-    await page.goto(ROUTES.COOKIE_POLICY)
-    await expect(page).toHaveURL(ROUTES.COOKIE_POLICY)
-
-    await page.goto(ROUTES.DISCLAIMER)
-    await expect(page).toHaveURL(ROUTES.DISCLAIMER)
+    for (const route of legalRoutes) {
+      await page.goto(route)
+      await expect(page).toHaveURL(route)
+    }
   })
 })

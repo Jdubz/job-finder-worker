@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
+import adminConfig from '../src/config/admins.json' with { type: 'json' }
 
 const TEST_AUTH_STATE_KEY = '__JF_E2E_AUTH_STATE__'
 const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
@@ -103,12 +104,14 @@ test.describe('Google OAuth Authentication Flow', () => {
   })
 
   test('successful authentication with admin email grants admin access', async ({ context }) => {
+    const adminEmail = adminConfig.adminEmails[0] ?? 'contact@joshwentworth.com'
+
     // Create new page with admin auth state
     const page = await context.newPage()
-    await page.addInitScript(({ stateKey, tokenKey }) => {
+    await page.addInitScript(({ stateKey, tokenKey, email }) => {
       const adminAuthState = {
         uid: 'test-admin-123',
-        email: 'contact@joshwentworth.com', // Admin email from config
+        email,
         displayName: 'Test Admin User',
         isOwner: true,
         emailVerified: true,
@@ -117,12 +120,12 @@ test.describe('Google OAuth Authentication Flow', () => {
 
       window.localStorage.setItem(stateKey, JSON.stringify(adminAuthState))
       window.localStorage.setItem(tokenKey, 'mock-google-token-admin')
-    }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
+    }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY, email: adminEmail })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
 
     // Should show user as signed in
-    await expect(page.getByText(/contact@joshwentworth.com/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText(new RegExp(adminEmail, 'i')).first()).toBeVisible({ timeout: 15000 })
 
     // Should be able to access admin pages
     await page.goto(ROUTES.AI_PROMPTS, { waitUntil: 'domcontentloaded' })
