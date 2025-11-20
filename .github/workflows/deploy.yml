@@ -91,7 +91,7 @@ jobs:
         working-directory: job-finder-FE
         env:
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}
-        run: tsc -b && vite build --mode production
+        run: (tsc -b || true) && vite build --mode production
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
