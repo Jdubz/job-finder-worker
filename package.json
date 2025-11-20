@@ -23,6 +23,7 @@
     "build:server:raw": "npm run build --workspace job-finder-BE/server",
     "build:frontend": "npm run build:shared && npm run build:frontend:raw",
     "build:frontend:raw": "npm run build --workspace job-finder-FE",
+    "build:frontend:deploy": "npm run build:shared && npm run build:deploy --workspace job-finder-FE",
     "test:e2e": "vitest run --config vitest.config.e2e.ts"
   },
   "devDependencies": {

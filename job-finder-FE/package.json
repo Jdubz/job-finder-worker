@@ -9,6 +9,7 @@
     "build": "npm run validate:config && tsc -b && vite build --mode production",
     "build:staging": "npm run validate:config && tsc -b && vite build --mode staging",
     "build:production": "npm run validate:config && tsc -b && vite build --mode production",
+    "build:deploy": "tsc -b && vite build --mode production",
     "validate:config": "vitest run src/__tests__/config-validation.test.ts --reporter=verbose",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
