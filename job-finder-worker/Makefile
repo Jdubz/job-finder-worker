@@ -4,6 +4,7 @@
 PYTHON := python3
 VENV_DIR := venv
 WORKER_PORT := 5555
+export PYTHONPATH := $(shell pwd)/src
 
 CYAN := \033[0;36m
 GREEN := \033[0;32m
