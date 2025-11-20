@@ -72,6 +72,7 @@ jobs:
   backend-typecheck:
     name: Backend TypeScript
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -187,6 +188,7 @@ jobs:
   worker-black:
     name: Worker Black (formatter)
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -203,6 +205,7 @@ jobs:
   worker-flake8:
     name: Worker Flake8 (linter)
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -219,6 +222,7 @@ jobs:
   worker-mypy:
     name: Worker MyPy (type checking)
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

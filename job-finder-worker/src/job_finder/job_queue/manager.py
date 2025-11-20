@@ -284,9 +284,7 @@ class QueueManager:
             return None
 
         new_item_data.setdefault("tracking_id", current_item.tracking_id)
-        new_item_data.setdefault(
-            "ancestry_chain", current_item.ancestry_chain + [current_item.id]
-        )
+        new_item_data.setdefault("ancestry_chain", current_item.ancestry_chain + [current_item.id])
         new_item_data.setdefault("spawn_depth", current_item.spawn_depth + 1)
         new_item_data.setdefault("parent_item_id", current_item.id)
 

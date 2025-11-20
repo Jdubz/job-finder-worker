@@ -403,7 +403,9 @@ class JobQueueItem(BaseModel):
             "processed_at": dt(self.processed_at),
             "completed_at": dt(self.completed_at),
             "scraped_data": serialize(self.scraped_data),
-            "scrape_config": serialize(self.scrape_config.model_dump() if self.scrape_config else None),
+            "scrape_config": serialize(
+                self.scrape_config.model_dump() if self.scrape_config else None
+            ),
             "source_discovery_config": serialize(
                 self.source_discovery_config.model_dump() if self.source_discovery_config else None
             ),
@@ -474,9 +476,11 @@ class JobQueueItem(BaseModel):
             sub_task=JobSubTask(record["sub_task"]) if record.get("sub_task") else None,
             pipeline_state=parse_json(record.get("pipeline_state")),
             parent_item_id=record.get("parent_item_id"),
-            company_sub_task=CompanySubTask(record["company_sub_task"])
-            if record.get("company_sub_task")
-            else None,
+            company_sub_task=(
+                CompanySubTask(record["company_sub_task"])
+                if record.get("company_sub_task")
+                else None
+            ),
             tracking_id=record.get("tracking_id", ""),
             ancestry_chain=parse_list(record.get("ancestry_chain")),
             spawn_depth=record.get("spawn_depth", 0),

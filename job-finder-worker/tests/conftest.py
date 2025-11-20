@@ -65,4 +65,3 @@ def mock_profile():
     profile.get_current_role = Mock(return_value=None)
     profile.get_all_skills = Mock(return_value=[])
     return profile
-
