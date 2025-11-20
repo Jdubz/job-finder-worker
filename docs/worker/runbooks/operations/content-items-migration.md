@@ -74,7 +74,7 @@ This document describes how to migrate legacy content items (from the pre-SQLite
 ---
 
 ## 5. Deployment
-1. Commit the migration + schema changes on `staging`, open a PR into `main`, and wait for CI to pass.
+1. Commit the migration + schema changes on your feature branch, open a PR into `main`, and wait for CI to pass (there is no staging environment).
 2. After merging to `main`, monitor the `Deploy` GitHub Action (push-to-main trigger) to ensure backend + frontend redeploy.
 3. If the workflow fails to trigger:
    - Manually dispatch the workflow from the Actions tab.

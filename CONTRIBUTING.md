@@ -4,8 +4,8 @@ Thanks for helping improve Job Finder! This monorepo contains every service (fro
 
 ## Branching & PRs
 
-- Work from `staging` (branch protections require PRs into `main`).
-- Force pushes are disabled on `main`; create feature branches off `staging` and open PRs targeting `staging`.
+- Work from `main`; there is no staging environment.
+- Force pushes are disabled on `main`; create feature branches off `main` and open PRs targeting `main`.
 - Keep commits focused (code, docs, infra in the same change is fine if they are related).
 
 ## Installation

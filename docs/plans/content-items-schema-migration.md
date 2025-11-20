@@ -112,7 +112,7 @@ No other free-form `body_json` or `type` discriminator is required. Child conten
 
 ### 7. Rollout Steps
 1. Land the schema + shared types change behind a feature branch (`content-items-redux`).
-2. Update backend API + tests, deploy to staging docker instance.
+2. Update backend API + tests, validate against the local/dev docker instance (no staging environment).
 3. Update frontend UI + tests, deploy preview, run all e2e suites.
 4. Execute migration SQL + data import on production host (Watchtower-managed stack) during scheduled maintenance.
 5. Remove legacy docs and mark new plan complete.
