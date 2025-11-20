@@ -12,7 +12,9 @@ permissions:
   contents: read
 
 jobs:
-  docs:
+  # Documentation checks
+  docs-audit:
+    name: Documentation Audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +25,22 @@ jobs:
       - run: npm ci
       - run: npm run docs:audit
 
-  lint:
+  # Frontend linting
+  frontend-lint:
+    name: Frontend Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint:frontend
+
+  # Backend linting
+  backend-lint:
+    name: Backend Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,9 +50,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint:server
-      - run: npm run lint:frontend
 
-  build:
+  # Frontend TypeScript type checking
+  frontend-typecheck:
+    name: Frontend TypeScript
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,12 +62,48 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Build all workspaces
+      - name: Build shared types
+        run: npm run build:shared
+      - name: TypeScript check
+        working-directory: job-finder-FE
+        run: npx tsc --noEmit
+
+  # Backend TypeScript type checking
+  backend-typecheck:
+    name: Backend TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build shared types
+        run: npm run build:shared
+      - name: TypeScript check
+        working-directory: job-finder-BE/server
+        run: npx tsc --noEmit
+
+  # Frontend build
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build frontend
         env:
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID || 'test-client-id-for-ci' }}
-        run: npm run build
+        run: npm run build:frontend
 
-  frontend-tests:
+  # Backend build
+  backend-build:
+    name: Backend Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,10 +112,55 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run test:unit --workspace job-finder-FE
-      - run: npm run test:integration --workspace job-finder-FE
+      - name: Build backend
+        run: npm run build:server
 
-  worker-tests:
+  # Frontend unit tests
+  frontend-unit-tests:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run unit tests
+        run: npm run test:unit --workspace job-finder-FE
+
+  # Frontend integration tests
+  frontend-integration-tests:
+    name: Frontend Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run integration tests
+        run: npm run test:integration --workspace job-finder-FE
+
+  # Backend unit tests
+  backend-unit-tests:
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run unit tests
+        working-directory: job-finder-BE/server
+        run: npm run test
+
+  # Worker unit tests
+  worker-unit-tests:
+    name: Worker Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,7 +172,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-test.txt
-      - name: Run pytest subset
+      - name: Run pytest
         working-directory: job-finder-worker
         env:
           PYTHONPATH: src
@@ -84,7 +183,59 @@ jobs:
             tests/queue/test_job_pipeline_comprehensive.py \
             tests/queue/test_scraper_intake.py
 
+  # Worker Python linting - Black
+  worker-black:
+    name: Worker Black (formatter)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Black
+        working-directory: job-finder-worker
+        run: pip install black
+      - name: Run Black check
+        working-directory: job-finder-worker
+        run: black --check src tests
+
+  # Worker Python linting - Flake8
+  worker-flake8:
+    name: Worker Flake8 (linter)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Flake8
+        working-directory: job-finder-worker
+        run: pip install flake8
+      - name: Run Flake8
+        working-directory: job-finder-worker
+        run: flake8 src tests
+
+  # Worker Python type checking - MyPy
+  worker-mypy:
+    name: Worker MyPy (type checking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: job-finder-worker
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-test.txt
+      - name: Run MyPy
+        working-directory: job-finder-worker
+        run: mypy src --ignore-missing-imports
+
+  # E2E tests (commented out but ready to enable)
   # e2e:
+  #   name: E2E Tests
   #   runs-on: ubuntu-latest
   #   steps:
   #     - uses: actions/checkout@v4
