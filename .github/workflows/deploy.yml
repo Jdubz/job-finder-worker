@@ -51,7 +51,7 @@ jobs:
           platforms: linux/amd64
           tags: ${{ env.WORKER_IMAGE }}
 
-  deploy:
+  deploy-backend:
     needs: build-images
     runs-on: ubuntu-latest
     environment: production
@@ -72,3 +72,30 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
         run: ./scripts/deploy.sh
+
+  deploy-frontend:
+    needs: build-images
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build frontend
+        working-directory: job-finder-FE
+        env:
+          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}
+        run: npm run build
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: static-sites-257923
+          channelId: live
+          target: production
+          entryPoint: job-finder-FE
