@@ -72,19 +72,23 @@ test.describe("Content items administration", () => {
       await childForm.getByRole("button", { name: "Create Child" }).click()
       const createChildResponse = await createChildResponsePromise
       const createChildBody = await createChildResponse.text()
-      let childJson: unknown = createChildBody
+      type CreateChildResponseBody = {
+        data?: {
+          item?: {
+            id?: string | null
+          }
+        }
+      }
+      let childJson: CreateChildResponseBody | null = null
       try {
-        childJson = JSON.parse(createChildBody)
+        childJson = JSON.parse(createChildBody) as CreateChildResponseBody
       } catch {
         // ignore parse errors
       }
       console.log("content-items child response", createChildResponse.status(), childJson)
       expect(createChildResponse.ok()).toBe(true)
       await waitForCardSpinner(page, parentAlpha)
-      const childId =
-        typeof childJson === "object" && childJson && "data" in childJson
-          ? (childJson as any).data?.item?.id
-          : null
+      const childId = childJson?.data?.item?.id ?? null
       const flatItems = await listContentItems(request)
       const childRecord = flatItems.find((item) =>
         childId ? item.id === childId : item.title?.includes(childTitle)
