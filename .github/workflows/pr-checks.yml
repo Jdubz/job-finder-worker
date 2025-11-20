@@ -77,7 +77,7 @@ jobs:
         working-directory: job-finder-worker
         env:
           JF_SQLITE_DB_PATH: ${{ github.workspace }}/infra/sqlite/jobfinder.db
-          PYTHONPATH: ${{ github.workspace }}/job-finder-worker/src
+          PYTHONPATH: src
         run: |
           pytest \
             tests/test_search_orchestrator.py \
