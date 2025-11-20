@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { GeneratorWorkflowService, type GenerateDocumentPayload } from '../workflow/generator.workflow.service'
-import { GeneratorWorkflowRepository, type GeneratorRequestRecord, type GeneratorArtifactRecord } from '../generator.workflow.repository'
-import { PersonalInfoStore } from '../personal-info.store'
+import type { GeneratorWorkflowRepository, GeneratorRequestRecord, GeneratorArtifactRecord } from '../generator.workflow.repository'
+import type { PersonalInfoStore } from '../personal-info.store'
 import type { PDFService } from '../workflow/services/pdf.service'
 import { storageService } from '../workflow/services/storage.service'
 import type { GenerationStep, PersonalInfo } from '@shared/types'
@@ -36,7 +36,7 @@ vi.mock('../workflow/services/storage.service', () => {
   }
 })
 
-class InMemoryRepo extends GeneratorWorkflowRepository {
+class InMemoryRepo {
   mockRequests = new Map<string, GeneratorRequestRecord>()
   mockSteps = new Map<string, GenerationStep[]>()
   mockArtifacts: GeneratorArtifactRecord[] = []
@@ -98,7 +98,7 @@ class InMemoryRepo extends GeneratorWorkflowRepository {
   }
 }
 
-class FakePersonalInfoStore extends PersonalInfoStore {
+class FakePersonalInfoStore {
   private mockData: PersonalInfo = {
     name: 'Test User',
     email: 'test@example.com',
