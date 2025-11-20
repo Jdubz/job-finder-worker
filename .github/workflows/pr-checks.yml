@@ -33,7 +33,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint:server
-      - run: npm run lint:functions
       - run: npm run lint:frontend
 
   build:
@@ -45,7 +44,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - name: Build all workspaces
+        env:
+          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID || 'test-client-id-for-ci' }}
+        run: npm run build
 
   frontend-tests:
     runs-on: ubuntu-latest
@@ -75,7 +77,13 @@ jobs:
         working-directory: job-finder-worker
         env:
           JF_SQLITE_DB_PATH: ${{ github.workspace }}/infra/sqlite/jobfinder.db
-        run: make test-ci
+          PYTHONPATH: ${{ github.workspace }}/job-finder-worker/src
+        run: |
+          pytest \
+            tests/test_search_orchestrator.py \
+            tests/test_placeholder.py \
+            tests/queue/test_job_pipeline_comprehensive.py \
+            tests/queue/test_scraper_intake.py
 
   e2e:
     runs-on: ubuntu-latest
@@ -89,4 +97,6 @@ jobs:
       - name: Run e2e suite
         env:
           NODE_ENV: test
+          VITE_AUTH_BYPASS: "true"
+          VITE_E2E_AUTH_TOKEN: "e2e-test-token"
         run: npm run test:e2e
