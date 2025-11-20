@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({
   requireOwner = false,
-  redirectTo = ROUTES.HOME,
+  redirectTo = ROUTES.UNAUTHORIZED,
 }: ProtectedRouteProps) {
   const { user, loading, isOwner } = useAuth()
 
@@ -22,11 +22,12 @@ export function ProtectedRoute({
   }
 
   if (!user) {
-    // Redirect to home instead of login page (auth modal handles login)
+    // Redirect to unauthorized page when not authenticated
     return <Navigate to={redirectTo} replace />
   }
 
   if (requireOwner && !isOwner) {
+    // Redirect to unauthorized page when not an owner
     return <Navigate to={ROUTES.UNAUTHORIZED} replace />
   }
 

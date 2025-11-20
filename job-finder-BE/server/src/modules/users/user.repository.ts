@@ -79,7 +79,7 @@ export class UserRepository {
         [
           "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at",
           "FROM users",
-          "WHERE instr(lower(ifnull(roles, ''), 'admin')) > 0",
+          "WHERE instr(lower(ifnull(roles, '')), 'admin') > 0",
           "ORDER BY created_at ASC",
           "LIMIT 1"
         ].join(" ")
