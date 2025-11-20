@@ -13,6 +13,19 @@ export default defineConfig({
     hookTimeout: 60000,
     maxConcurrency: 1,
     globals: true,
+    fileParallelism: false,
+    sequence: {
+      concurrent: false,
+    },
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        maxForks: 1,
+        minForks: 1,
+      },
+    },
+    isolate: false,
+    allowOnly: false,
   },
   resolve: {
     alias: {
