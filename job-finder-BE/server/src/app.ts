@@ -21,7 +21,12 @@ import { env } from './config/env'
 export function buildApp() {
   const app = express()
 
-  app.use(helmet())
+  app.use(
+    helmet({
+      // Google Identity Services relies on popup postMessage, so loosen COOP accordingly.
+      crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }
+    })
+  )
   app.use(cors())
   app.use(httpLogger)
 
