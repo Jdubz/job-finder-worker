@@ -7,7 +7,7 @@ version: "3.9"
 
 services:
   api:
-    image: ghcr.io/jdubz/job-finder-api:latest
+    image: ghcr.io/jdubz/job-finder-worker/api:latest
     container_name: job-finder-api
     restart: unless-stopped
     env_file:
@@ -29,7 +29,7 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
 
   worker:
-    image: ghcr.io/jdubz/job-finder-worker:latest
+    image: ghcr.io/jdubz/job-finder-worker/worker:latest
     container_name: job-finder-worker
     restart: unless-stopped
     env_file:
@@ -63,7 +63,7 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
 
   sqlite-migrator:
-    image: ghcr.io/jdubz/job-finder-api:latest
+    image: ghcr.io/jdubz/job-finder-worker/api:latest
     container_name: job-finder-sqlite-migrator
     restart: "no"
     env_file:
