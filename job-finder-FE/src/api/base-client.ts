@@ -84,6 +84,8 @@ export class BaseApiClient {
     // Build headers
     const requestHeaders: Record<string, string> = {
       "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
       ...headers,
     }
 
@@ -96,6 +98,7 @@ export class BaseApiClient {
     const fetchOptions: RequestInit = {
       method,
       headers: requestHeaders,
+      cache: "no-store",
       signal: AbortSignal.timeout(timeout),
     }
 

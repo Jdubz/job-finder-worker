@@ -88,7 +88,7 @@ describe("content-items helpers", () => {
         id: "parent",
         name: "Legacy Parent",
         order: 2,
-        visibility: "draft",
+        visibility: "published",
         createdAt: "2024-02-01T00:00:00.000Z"
       },
       {

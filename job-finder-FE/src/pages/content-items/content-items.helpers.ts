@@ -229,7 +229,7 @@ function coerceOrder(record: Record<string, unknown>, fallback: number): number 
 }
 
 function coerceVisibility(value: unknown): ContentItemVisibility | undefined {
-  if (value === "published" || value === "draft" || value === "archived") {
+  if (value === "published" || value === "archived") {
     return value
   }
   return undefined

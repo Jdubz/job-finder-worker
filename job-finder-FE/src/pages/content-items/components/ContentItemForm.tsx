@@ -21,7 +21,7 @@ const defaultValues: ContentItemFormValues = {
   endDate: "",
   description: "",
   skills: [],
-  visibility: "draft"
+  visibility: "published"
 }
 
 export function ContentItemForm({
@@ -166,7 +166,7 @@ export function ContentItemForm({
         <select
           id="visibility"
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
-          value={formValues.visibility ?? "draft"}
+          value={formValues.visibility ?? "published"}
           onChange={(event) =>
             setFormValues((prev) => ({
               ...prev,
@@ -174,7 +174,6 @@ export function ContentItemForm({
             }))
           }
         >
-          <option value="draft">Draft</option>
           <option value="published">Published</option>
           <option value="archived">Archived</option>
         </select>
