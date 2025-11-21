@@ -110,16 +110,16 @@ export function normalizeImportNodes(data: unknown): NormalizedImportNode[] {
   }
   nodes.forEach((node) => {
     const parentId = node.parentLegacyId
-    if (parentId && map.has(parentId) && !createsCycle(parentId, node.legacyId)) {
-      map.get(parentId)?.children.push(node)
-      return
+    if (parentId && map.has(parentId)) {
+      if (createsCycle(parentId, node.legacyId)) {
+        node.parentLegacyId = null
+        roots.push(node)
+      } else {
+        map.get(parentId)?.children.push(node)
+      }
+    } else {
+      roots.push(node)
     }
-
-    if (parentId && createsCycle(parentId, node.legacyId)) {
-      node.parentLegacyId = null
-    }
-
-    roots.push(node)
   })
 
   const sortRecursive = (items: NormalizedImportNode[], ancestors: Set<string>) => {

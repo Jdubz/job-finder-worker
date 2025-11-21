@@ -1,0 +1,35 @@
+{
+  "collection": "job-queue",
+  "count": 1,
+  "exportedAt": "2025-11-21T16:25:10.399Z",
+  "documents": [
+    {
+      "id": "noFDH51Tb9Bf8R82fXWA",
+      "url": "https://example.com/test-job",
+      "source": "user_submission",
+      "max_retries": 3,
+      "type": "job",
+      "company_name": "Test Company",
+      "created_at": {
+        "_seconds": 1760762049,
+        "_nanoseconds": 882000000
+      },
+      "processed_at": {
+        "_seconds": 1760762199,
+        "_nanoseconds": 611000000
+      },
+      "retry_count": 3,
+      "completed_at": {
+        "_seconds": 1760762199,
+        "_nanoseconds": 935000000
+      },
+      "result_message": "Failed after 3 retries: Job items must have sub_task set. Legacy monolithic pipeline has been removed. Use submit_job() which creates granular pipeline items (JOB_SCRAPE).",
+      "updated_at": {
+        "_seconds": 1760762199,
+        "_nanoseconds": 935000000
+      },
+      "error_details": "Queue Item: noFDH51Tb9Bf8R82fXWA\nType: job\nURL: https://example.com/test-job\nCompany: Test Company\nRetry Count: 3/3\n\nError: Job items must have sub_task set. Legacy monolithic pipeline has been removed. Use submit_job() which creates granular pipeline items (JOB_SCRAPE).\n\nMax retries (3) exceeded. Manual intervention may be required.\n\nTroubleshooting:\n1. Check if the URL is still valid\n2. Review error details below for specific issues\n3. Verify network connectivity and API credentials\n4. Check if the source website has changed structure\n\nStack Trace:\nTraceback (most recent call last):\n  File \"/app/src/job_finder/queue/processor.py\", line 130, in process_item\n    raise ValueError(\nValueError: Job items must have sub_task set. Legacy monolithic pipeline has been removed. Use submit_job() which creates granular pipeline items (JOB_SCRAPE).\n",
+      "status": "failed"
+    }
+  ]
+}

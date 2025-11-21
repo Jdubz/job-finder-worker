@@ -33,7 +33,6 @@ export function ContentItemsPage() {
     createContentItem,
     updateContentItem,
     deleteContentItem,
-    reorderContentItem,
     refetch
   } = useContentItems()
 
@@ -64,7 +63,39 @@ export function ContentItemsPage() {
   }
 
   const handleReorder = async (id: string, parentId: string | null, orderIndex: number) => {
-    await reorderContentItem(id, parentId, orderIndex)
+    // Reorder on the client then persist via PATCH updates. This avoids depending on the
+    // dedicated reorder endpoint (which can 404 in some prod environments).
+    const siblings = flattenContentItems(contentItems).filter(
+      (node) => (node.parentId ?? null) === (parentId ?? null)
+    )
+
+    if (siblings.length <= 1) return
+
+    const currentIdx = siblings.findIndex((sibling) => sibling.id === id)
+    if (currentIdx === -1) return
+
+    const targetIdx = Math.max(0, Math.min(orderIndex, siblings.length - 1))
+    if (currentIdx === targetIdx) return
+
+    const reordered = [...siblings]
+    const [moved] = reordered.splice(currentIdx, 1)
+    reordered.splice(targetIdx, 0, moved)
+
+    try {
+      await Promise.all(
+        reordered.map((item, idx) =>
+          updateContentItem(item.id, {
+            parentId: parentId ?? null,
+            order: idx,
+          })
+        )
+      )
+      // Refresh to pick up any server-side normalization
+      await refetch()
+    } catch (error) {
+      console.error("Failed to reorder content items", error)
+      setAlert({ type: "error", message: "Unable to reorder items. Please refresh and try again." })
+    }
   }
 
   const handleExport = () => {

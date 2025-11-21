@@ -1,0 +1,595 @@
+{
+  "collection": "job-sources",
+  "count": 25,
+  "exportedAt": "2025-11-21T16:25:22.102Z",
+  "documents": [
+    {
+      "id": "4OEPmUgiNuARe5bMBYdZ",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": null,
+      "updatedAt": "2025-10-17 01:20:04.865000+00:00",
+      "createdAt": "2025-10-17 01:20:04.865000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "rss",
+      "name": "We Work Remotely - Full Stack",
+      "companyName": null,
+      "config": {
+        "parse_format": "standard",
+        "link_field": "link",
+        "title_field": "title",
+        "url": "https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss",
+        "company_extraction": "from_title",
+        "description_field": "description"
+      },
+      "tags": [
+        "remote",
+        "full-stack",
+        "rss"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "4aW2gqO7hbyoQCxYW2cV",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "h25gAAoksHfCyUH8olzQ",
+      "updatedAt": "2025-10-17 01:20:00.789000+00:00",
+      "createdAt": "2025-10-17 01:20:00.789000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Coinbase Careers",
+      "companyName": "Coinbase Careers",
+      "config": {
+        "board_token": "coinbase"
+      },
+      "tags": [
+        "crypto",
+        "fintech",
+        "remote-friendly"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "8mHc0LHS9jitG4uoEEGh",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "loOVn7sxKgNj7ScI4mRp",
+      "updatedAt": "2025-10-17 01:20:03.259000+00:00",
+      "createdAt": "2025-10-17 01:20:03.259000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Databricks Careers",
+      "companyName": "Databricks Careers",
+      "config": {
+        "board_token": "databricks"
+      },
+      "tags": [],
+      "enabled": true
+    },
+    {
+      "id": "9177UxFLfeQWOur5QJco",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "HPE6hjXuQIrcky7nrKEC",
+      "updatedAt": "2025-10-17 01:20:00.270000+00:00",
+      "createdAt": "2025-10-17 01:20:00.270000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "company-page",
+      "name": "Netflix Careers",
+      "companyName": "Netflix Careers",
+      "config": {
+        "api_params": {
+          "team": "Engineering",
+          "location": "Remote"
+        },
+        "careers_url": "https://explore.jobs.netflix.net/careers",
+        "method": "api",
+        "api_endpoint": "https://explore.jobs.netflix.net/api/careers"
+      },
+      "tags": [
+        "company-page",
+        "remote",
+        "big-tech"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "E7uv1gwXIDEppWoAJUM1",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "BQR1HJtJ7OaQ3rB7au9X",
+      "updatedAt": "2025-10-17 01:20:03.706000+00:00",
+      "createdAt": "2025-10-17 01:20:03.706000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Datadog Careers",
+      "companyName": "Datadog Careers",
+      "config": {
+        "board_token": "datadog"
+      },
+      "tags": [],
+      "enabled": true
+    },
+    {
+      "id": "EfG76efhvhnx7fSzj4vS",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": null,
+      "updatedAt": "2025-10-17 01:20:00.435000+00:00",
+      "createdAt": "2025-10-17 01:20:00.435000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "rss",
+      "name": "We Work Remotely - Programming",
+      "companyName": null,
+      "config": {
+        "parse_format": "standard",
+        "link_field": "link",
+        "title_field": "title",
+        "url": "https://weworkremotely.com/categories/remote-programming-jobs.rss",
+        "company_extraction": "from_title",
+        "description_field": "description"
+      },
+      "tags": [
+        "remote",
+        "programming",
+        "rss"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "IdgMB8yusnP3IouEoze3",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "I8FOX9s9py4rEmUYfp2r",
+      "updatedAt": "2025-10-17 01:20:02.680000+00:00",
+      "createdAt": "2025-10-17 01:20:02.680000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Cloudflare Careers",
+      "companyName": "Cloudflare Careers",
+      "config": {
+        "board_token": "cloudflare"
+      },
+      "tags": [],
+      "enabled": true
+    },
+    {
+      "id": "QeGcR4l4MNkZnDqBt8wR",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "upuoStcFFrWQrfx1akDH",
+      "updatedAt": "2025-10-17 01:20:04.056000+00:00",
+      "createdAt": "2025-10-17 01:20:04.056000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Scale AI Careers",
+      "companyName": "Scale AI Careers",
+      "config": {
+        "board_token": "scaleai"
+      },
+      "tags": [],
+      "enabled": true
+    },
+    {
+      "id": "S9HM09qTV6mfJ7VmVwtY",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "RklkO5WP2KfrmOW2M3Kp",
+      "updatedAt": "2025-10-17 01:20:01.517000+00:00",
+      "createdAt": "2025-10-17 01:20:01.517000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Deepgram Careers",
+      "companyName": "Deepgram Careers",
+      "config": {
+        "board_token": ""
+      },
+      "tags": [
+        "ai",
+        "speech-recognition",
+        "remote-friendly"
+      ],
+      "enabled": false
+    },
+    {
+      "id": "WbFmNnCN3KPESNLGdKW9",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "1e1YrqHMwlZvAgmsMchU",
+      "updatedAt": "2025-10-17 01:20:01.221000+00:00",
+      "createdAt": "2025-10-17 01:20:01.221000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "MongoDB Careers",
+      "companyName": "MongoDB Careers",
+      "config": {
+        "board_token": "mongodb"
+      },
+      "tags": [],
+      "enabled": true
+    },
+    {
+      "id": "XorDoL2CoTcm0tNB0ozG",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "9Cp4YW6ZG8dOoC6W95tW",
+      "updatedAt": "2025-10-17 01:20:04.748000+00:00",
+      "createdAt": "2025-10-17 01:20:04.748000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Brex Careers",
+      "companyName": "Brex Careers",
+      "config": {
+        "board_token": "brex"
+      },
+      "tags": [],
+      "enabled": false
+    },
+    {
+      "id": "YyHhNHJMrzMolZ6T9zCd",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "G9xhZcvKKdB3qbXfRknI",
+      "updatedAt": "2025-10-17 01:19:59.508000+00:00",
+      "createdAt": "2025-10-17 01:19:59.508000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "company-page",
+      "name": "Shopify Careers",
+      "companyName": "Shopify Careers",
+      "config": {
+        "filters": {
+          "department": "Engineering",
+          "location": "Remote"
+        },
+        "careers_url": "https://www.shopify.com/careers",
+        "selectors": {
+          "job_list": ".job-listing",
+          "department": ".job-department",
+          "link": "a.job-link",
+          "title": ".job-title",
+          "location": ".job-location"
+        },
+        "method": "scraper"
+      },
+      "tags": [
+        "company-page",
+        "remote",
+        "ecommerce"
+      ],
+      "enabled": false
+    },
+    {
+      "id": "ZHvDI60Su6P5bpIKFBDR",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "bgF2sA14CGD3pUhnlUhL",
+      "updatedAt": "2025-10-17 01:20:02.400000+00:00",
+      "createdAt": "2025-10-17 01:20:02.400000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Waymo Careers",
+      "companyName": "Waymo Careers",
+      "config": {
+        "board_token": "waymo"
+      },
+      "tags": [],
+      "enabled": false
+    },
+    {
+      "id": "Zf46MVaGK2t7cSrSU0Fo",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "dhiH8Qn1nnvdpEXNv8Ap",
+      "updatedAt": "2025-10-17 01:20:05.850000+00:00",
+      "createdAt": "2025-10-17 01:20:05.850000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "company-page",
+      "name": "Stripe Careers",
+      "companyName": "Stripe Careers",
+      "config": {
+        "api_params": {
+          "remote": "true"
+        },
+        "careers_url": "https://stripe.com/jobs",
+        "method": "api",
+        "api_endpoint": "https://stripe.com/jobs/search"
+      },
+      "tags": [
+        "company-page",
+        "remote",
+        "fintech"
+      ],
+      "enabled": false
+    },
+    {
+      "id": "amcObzhegiSbAaISsvO2",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": null,
+      "updatedAt": "2025-10-17 01:19:59.620000+00:00",
+      "createdAt": "2025-10-17 01:19:59.620000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "api",
+      "name": "RemoteOK API",
+      "companyName": null,
+      "config": {
+        "auth_type": "none",
+        "filters": {
+          "tags": [
+            "dev",
+            "engineering",
+            "full-stack"
+          ]
+        },
+        "rate_limit": "300/day",
+        "response_format": "json",
+        "params": {},
+        "base_url": "https://remoteok.com/api",
+        "endpoints": {
+          "jobs": "/"
+        }
+      },
+      "tags": [
+        "remote",
+        "api"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "avp2eslMU15nQRbeQSuM",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": null,
+      "updatedAt": "2025-10-17 01:20:05.981000+00:00",
+      "createdAt": "2025-10-17 01:20:05.981000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "api",
+      "name": "Adzuna Job Search API",
+      "companyName": null,
+      "config": {
+        "rate_limit": "free tier",
+        "response_format": "json",
+        "base_url": "https://api.adzuna.com/v1/api/jobs/us/search",
+        "auth_type": "api_key",
+        "api_key_env": "ADZUNA_APP_ID",
+        "endpoints": {
+          "search": "/1"
+        },
+        "params": {
+          "where": "remote",
+          "content-type": "application/json",
+          "what": "software engineer"
+        },
+        "api_secret_env": "ADZUNA_API_KEY"
+      },
+      "tags": [
+        "remote",
+        "api",
+        "requires-key"
+      ],
+      "enabled": false
+    },
+    {
+      "id": "cjD6piPzI0juRZoHadBR",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": null,
+      "updatedAt": "2025-10-17 01:20:06.077000+00:00",
+      "createdAt": "2025-10-17 01:20:06.077000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "unknown",
+      "name": "Atlassian Careers",
+      "companyName": null,
+      "config": {},
+      "tags": [
+        "saas",
+        "collaboration",
+        "remote-friendly"
+      ],
+      "enabled": false
+    },
+    {
+      "id": "d4IxtTXbteIqY4F0qPSG",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": null,
+      "updatedAt": "2025-10-17 01:20:03.369000+00:00",
+      "createdAt": "2025-10-17 01:20:03.369000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "rss",
+      "name": "Remotive - Software Development",
+      "companyName": null,
+      "config": {
+        "parse_format": "standard",
+        "link_field": "link",
+        "title_field": "title",
+        "url": "https://remotive.com/remote-jobs/software-dev/feed",
+        "description_field": "description"
+      },
+      "tags": [
+        "remote",
+        "software",
+        "rss"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "jnQOjPi7xlDGPFgxXQDY",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "9aLli49lQYKNbcyNNTZ7",
+      "updatedAt": "2025-10-17 01:19:59.928000+00:00",
+      "createdAt": "2025-10-17 01:19:59.928000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Redis Careers",
+      "companyName": "Redis Careers",
+      "config": {
+        "board_token": "redis"
+      },
+      "tags": [],
+      "enabled": true
+    },
+    {
+      "id": "m1HYIMZbIzoPsuXCtpUU",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "zE7nLexHlSRq4ttzhu4b",
+      "updatedAt": "2025-10-17 01:20:04.447000+00:00",
+      "createdAt": "2025-10-17 01:20:04.447000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "PagerDuty Careers",
+      "companyName": "PagerDuty Careers",
+      "config": {
+        "board_token": "pagerduty"
+      },
+      "tags": [],
+      "enabled": false
+    },
+    {
+      "id": "mTQahw7klUHojgifmHMg",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "GlxjASUOpgQxsin95ylT",
+      "updatedAt": "2025-10-17 01:20:05.168000+00:00",
+      "createdAt": "2025-10-17 01:20:05.168000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "New Relic Careers",
+      "companyName": "New Relic Careers",
+      "config": {
+        "board_token": ""
+      },
+      "tags": [
+        "observability",
+        "saas",
+        "remote-friendly"
+      ],
+      "enabled": false
+    },
+    {
+      "id": "uJFoTdZ3V9pmKTUdhAvH",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "pgNXy4xeS4CXXu4sbXpZ",
+      "updatedAt": "2025-10-17 01:19:59.204000+00:00",
+      "createdAt": "2025-10-17 01:19:59.204000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Grammarly Careers",
+      "companyName": "Grammarly Careers",
+      "config": {
+        "board_token": "grammarly"
+      },
+      "tags": [],
+      "enabled": false
+    },
+    {
+      "id": "yYHxDp3wG2QgHiT0DhYm",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "OYmo1AZpVj48lpJ6htNW",
+      "updatedAt": "2025-10-17 01:20:05.469000+00:00",
+      "createdAt": "2025-10-17 01:20:05.469000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "GitLab Careers",
+      "companyName": "GitLab Careers",
+      "config": {
+        "board_token": "gitlab"
+      },
+      "tags": [
+        "devtools",
+        "remote-first",
+        "saas"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "ydgxqz2AixEz4FBiXSwD",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "hbzGBnfyfsM7K9SMIzuK",
+      "updatedAt": "2025-10-17 01:20:02.962000+00:00",
+      "createdAt": "2025-10-17 01:20:02.962000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "HashiCorp Careers",
+      "companyName": "HashiCorp Careers",
+      "config": {
+        "board_token": "hashicorp"
+      },
+      "tags": [],
+      "enabled": true
+    },
+    {
+      "id": "ze4gV43bSYIUgcUUHZDa",
+      "lastScrapedError": null,
+      "totalJobsFound": 0,
+      "lastScrapedAt": null,
+      "companyId": "BlIbLPHSy2mKvanlruMr",
+      "updatedAt": "2025-10-17 01:20:01.949000+00:00",
+      "createdAt": "2025-10-17 01:20:01.949000+00:00",
+      "totalJobsMatched": 0,
+      "lastScrapedStatus": null,
+      "sourceType": "greenhouse",
+      "name": "Twilio Careers",
+      "companyName": "Twilio Careers",
+      "config": {
+        "board_token": "twilio"
+      },
+      "tags": [],
+      "enabled": true
+    }
+  ]
+}
