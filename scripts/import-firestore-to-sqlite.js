@@ -2,6 +2,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const { DEFAULT_PROMPTS } = require('../shared/dist/index.cjs')
 
 const DB_PATH = path.resolve('infra/sqlite/jobfinder.db')
 const EXPORT_BASE = path.resolve('infra/sqlite/seeders/output')
@@ -345,6 +349,14 @@ function main() {
   const companies = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'companies')))
   const jobSources = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'job-sources')))
   const jobFinderConfig = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'job-finder-config')))
+  if (!jobFinderConfig.find((d) => d.id === 'ai-prompts')) {
+    jobFinderConfig.push({
+      id: 'ai-prompts',
+      ...DEFAULT_PROMPTS,
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'import-script'
+    })
+  }
   const contentItems = loadCollection('portfolio', 'content-items') // staging duplicates; keep prod canonical
   const jobMatches = loadCollection('portfolio-staging', 'job-matches') // prod has none
 
