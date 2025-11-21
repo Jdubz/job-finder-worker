@@ -13,32 +13,37 @@ type TestContext = Awaited<ReturnType<typeof setupTestServer>>
 
 let ctx: TestContext | null = null
 
+let sharedLocalStorage: Map<string, string> | null = null
+
 function ensureWindowAuth(token: string) {
-  const store = new Map<string, string>()
-  const localStorage = {
-    getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
-    setItem: (key: string, value: string) => {
-      store.set(key, value)
-    },
-    removeItem: (key: string) => {
-      store.delete(key)
-    },
-    clear: () => {
-      store.clear()
-    },
-    key: (index: number) => Array.from(store.keys())[index] ?? null,
-    get length() {
-      return store.size
-    },
+  const store = sharedLocalStorage ?? (sharedLocalStorage = new Map<string, string>())
+
+  if (!globalThis.window || typeof globalThis.window.localStorage?.setItem !== "function") {
+    const localStorage = {
+      getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
+      setItem: (key: string, value: string) => {
+        store.set(key, value)
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+      clear: () => {
+        store.clear()
+      },
+      key: (index: number) => Array.from(store.keys())[index] ?? null,
+      get length() {
+        return store.size
+      },
+    }
+
+    if (!globalThis.window) {
+      ;(globalThis as any).window = { localStorage }
+    } else {
+      globalThis.window.localStorage = localStorage
+    }
   }
 
-  if (!globalThis.window) {
-    ;(globalThis as any).window = { localStorage }
-  } else if (!globalThis.window.localStorage) {
-    globalThis.window.localStorage = localStorage
-  }
-
-  globalThis.window.localStorage.setItem(TEST_AUTH_TOKEN_KEY, token)
+  globalThis.window!.localStorage!.setItem(TEST_AUTH_TOKEN_KEY, token)
 }
 
 function requireCtx(): TestContext {

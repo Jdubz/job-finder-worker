@@ -218,7 +218,6 @@ function buildUserFromToken(token: string, payload?: JwtPayload): AuthUser | nul
   if (!claims.email) {
     return null
   }
-  storeAuthToken(token)
   const id = claims.sub ?? claims.email
   return {
     id,
