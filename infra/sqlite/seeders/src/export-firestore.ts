@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { cert, initializeApp } from "firebase-admin/app"
+import { cert, initializeApp, type App } from "firebase-admin/app"
 import { getFirestore } from "firebase-admin/firestore"
 import type { ServiceAccount } from "firebase-admin"
 import { z } from "zod"
@@ -22,6 +22,7 @@ type CollectionName = (typeof COLLECTIONS)[number]
 
 const envSchema = z.object({
   FIREBASE_PROJECT_ID: z.string().min(1, "Set FIREBASE_PROJECT_ID"),
+  FIRESTORE_DATABASE_ID: z.string().min(1).optional(),
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().min(1).optional(),
   GOOGLE_APPLICATION_CREDENTIALS: z.string().min(1).optional(),
   EXPORT_OUTPUT_DIR: z.string().optional()
@@ -33,8 +34,8 @@ async function loadServiceAccount(filePath: string): Promise<ServiceAccount> {
   return JSON.parse(raw)
 }
 
-async function exportCollection(name: CollectionName, outputDir: string) {
-  const db = getFirestore()
+async function exportCollection(name: CollectionName, outputDir: string, databaseId: string, app: App) {
+  const db = getFirestore(app, databaseId)
   const snapshot = await db.collection(name).get()
   const docs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
   const filePath = path.join(outputDir, `${name}.json`)
@@ -52,6 +53,7 @@ async function exportCollection(name: CollectionName, outputDir: string) {
 async function main() {
   const parsedEnv = envSchema.parse({
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
+    FIRESTORE_DATABASE_ID: process.env.FIRESTORE_DATABASE_ID,
     FIREBASE_SERVICE_ACCOUNT_PATH: process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
     GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS,
     EXPORT_OUTPUT_DIR: process.env.EXPORT_OUTPUT_DIR
@@ -62,20 +64,22 @@ async function main() {
     throw new Error("Set FIREBASE_SERVICE_ACCOUNT_PATH or GOOGLE_APPLICATION_CREDENTIALS to a service account JSON file")
   }
 
+  const databaseId = parsedEnv.FIRESTORE_DATABASE_ID ?? "(default)"
+
   const outputDir = parsedEnv.EXPORT_OUTPUT_DIR
     ? path.resolve(parsedEnv.EXPORT_OUTPUT_DIR)
-    : path.resolve(process.cwd(), "output")
+    : path.resolve(process.cwd(), "output", databaseId)
   await mkdir(outputDir, { recursive: true })
 
   const serviceAccount = await loadServiceAccount(serviceAccountPath)
-  initializeApp({
+  const app = initializeApp({
     credential: cert(serviceAccount),
     projectId: parsedEnv.FIREBASE_PROJECT_ID
   })
 
   const summaries = []
   for (const name of COLLECTIONS) {
-    const summary = await exportCollection(name, outputDir)
+    const summary = await exportCollection(name, outputDir, databaseId, app)
     summaries.push(summary)
   }
 
@@ -86,6 +90,7 @@ async function main() {
       {
         exportedAt: new Date().toISOString(),
         projectId: parsedEnv.FIREBASE_PROJECT_ID,
+        databaseId,
         collections: summaries
       },
       null,

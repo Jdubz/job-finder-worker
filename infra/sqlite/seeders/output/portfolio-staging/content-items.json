@@ -1,0 +1,754 @@
+{
+  "collection": "content-items",
+  "count": 24,
+  "exportedAt": "2025-11-21T16:25:20.416Z",
+  "documents": [
+    {
+      "id": "3vffcZnsEpcGIv6UanG8",
+      "type": "project",
+      "name": "Dialogflow & McDonalds",
+      "description": "I was on a team that implemented McDonald's entire menu into a chat application for customer ordering. This allowed for substitutions and order modifications, as well as coupons and special codes.",
+      "technologies": [
+        "Dialogflow",
+        "Node",
+        "Express"
+      ],
+      "parentId": "c1N5A55jjUkcq7fkY6QE",
+      "order": 2,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "5mFhLn1JNz8vUFzYVY30",
+      "type": "company",
+      "company": "BriteLite Immersive",
+      "role": "Technical Director",
+      "location": "San Francisco, CA",
+      "startDate": "2013-02",
+      "endDate": "2015-09",
+      "accomplishments": [
+        "Design, program and maintain interactive multimedia display systems for events and permanent installations",
+        "Implemented tools for broadcast including many used on the red carpet for awards shows.",
+        "Built and maintained BSO's (Bright Shiny Objects) for marketing initiatives.",
+        "Clients included: Facebook, Instagram, Salesforce, Pinterest, Twitter"
+      ],
+      "technologies": [
+        "Python",
+        "GLSL",
+        "Touch Designer",
+        "Javascript"
+      ],
+      "notes": "Imported from LinkedIn - 665 chestnut st, 2nd flr · 2 yrs 8 mos",
+      "parentId": null,
+      "order": 4,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "6NfsCBMIhFCIDlS1ckvH",
+      "type": "project",
+      "name": "Digital Promise",
+      "description": "Designed and implemented the micro-credential builder for Digital Promise. Used by the National Education Association, National Geographic, and many other national education programs.",
+      "parentId": "MreJNtDTWLACNyLETLVQ",
+      "order": 0,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "FdbZ1Cx9Vfrx1qCuWRSX",
+      "type": "project",
+      "name": "Game servers",
+      "description": "In a multiplayer video game context you cannot simply scale containers up and down to react to load like a normal application. Game servers is a GCP product that allows you to select a set of users for a \"match\" and assign them to a specific instance. the container is then automatically spun up and down for the duration of the match.",
+      "technologies": [
+        "Python",
+        "gRPC",
+        "Docker"
+      ],
+      "parentId": "c1N5A55jjUkcq7fkY6QE",
+      "order": 3,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "IhaE2yKyOOobi3ZiL9PF",
+      "type": "profile-section",
+      "heading": "Overview",
+      "content": "## Senior Full-Stack & Platform Engineer\nI design and ship production systems where product velocity and platform reliability meet. Recent work spans low-latency messaging, partner integrations, and shared tooling that standardizes observability and security across services.\n\n**Primary stack**: TypeScript/React • Node.js • Python • Postgres/MySQL/Redis • Kubernetes • GCP\n\n**Quick links**: [GitHub](https://github.com/Jdubz) • [LinkedIn](https://www.linkedin.com/in/joshwentworth/) • [Email](mailto:contact@joshwentworth.com)\n\n*I build user-facing features on top of solid platforms—measurable reliability, happy developers, faster product cycles.*",
+      "structuredData": {
+        "role": "Senior Full-Stack & Platform Engineer",
+        "summary": "I design and ship production systems where product velocity and platform reliability meet. Recent work spans low-latency messaging, partner integrations, and shared tooling that standardizes observability and security across services.",
+        "primaryStack": [
+          "TypeScript/React",
+          "Node.js",
+          "Python",
+          "Postgres/MySQL/Redis",
+          "Kubernetes",
+          "GCP"
+        ],
+        "links": [
+          {
+            "label": "GitHub",
+            "url": "https://github.com/Jdubz"
+          },
+          {
+            "label": "LinkedIn",
+            "url": "https://www.linkedin.com/in/joshwentworth/"
+          },
+          {
+            "label": "Email",
+            "url": "mailto:contact@joshwentworth.com"
+          }
+        ],
+        "tagline": "I build user-facing features on top of solid platforms—measurable reliability, happy developers, faster product cycles."
+      },
+      "parentId": null,
+      "order": 7,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "InQv3NFSAHctRnllRQQv",
+      "type": "project",
+      "name": "Bartendro",
+      "description": "An open source cocktail mixing machine. We rebuilt the UI and implemented a containerized server that communicated with the hardware. We added observability, remote updates, remote monitoring, and cloud menu management.",
+      "technologies": [
+        "Docker",
+        "Django",
+        "Python",
+        "React",
+        "Raspberry Pi"
+      ],
+      "parentId": "c1N5A55jjUkcq7fkY6QE",
+      "order": 4,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "MreJNtDTWLACNyLETLVQ",
+      "type": "company",
+      "company": "Contractor",
+      "role": "Software Engineer",
+      "location": "San Francisco - Bay Area, CA",
+      "startDate": "2015-08",
+      "endDate": "2017-06",
+      "accomplishments": [
+        "Built applications across enterprise software and embedded systems; worked in JavaScript, Python, and real-time system design."
+      ],
+      "notes": "Imported from LinkedIn - San Francisco Bay Area · 1 yr 11 mos",
+      "parentId": null,
+      "order": 3,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "NsE3TizIVgf8FeFxfmum",
+      "type": "company",
+      "company": "Fulfil Solutions",
+      "role": "Senior Software Engineer",
+      "location": "Mountain View, CA - Remote (Portland, OR)",
+      "startDate": "2021-12",
+      "endDate": "2025-03",
+      "accomplishments": [
+        "Scaled the platform from stealth to powering three automated grocery stores (DoorDash DashMart, Whole Foods).",
+        "Integrated partners (Amazon, DoorDash, Uber Eats, Stripe, TaxJar, Twilio, SendGrid, PagerDuty, Slack) to unlock new fulfillment and comms flows.",
+        "Architected & delivered APIs and automation for Amazon Fresh/Whole Foods delivery systems; operationalized with dashboards/alerts.",
+        "Built async job pipelines (BullMQ / queues) and cache patterns that stabilized workloads under bursty demand."
+      ],
+      "technologies": [
+        "Angular",
+        "Node.js (TypeScript)",
+        "MySQL",
+        "Redis",
+        "MongoDB",
+        "BullMQ",
+        "Pub/Sub",
+        "Kubernetes",
+        "Grafana/Loki",
+        "Elastic",
+        "Google Cloud Platform (GCP)",
+        "Firebase",
+        "GitHub"
+      ],
+      "notes": "Imported from LinkedIn - Full-time · Remote",
+      "parentId": null,
+      "order": 0,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "VP0Fa9ijFmGaTHJ9enFZ",
+      "type": "text-section",
+      "heading": "Selected Projects",
+      "content": "## Profile website\nThis website is a full stack application meant to demonstrate some of my skills.\n**Stack**: React • Gatsby • Theme UI • Nodejs • Express • Firebase • Google Cloud Functions • Firebase Auth • Firestore \n[Source Code](https://github.com/Jdubz/portfolio)\n\n## Audio-Reactive LED Fire-Totem\nReal-time mic/IMU pipeline (C++/Arduino) with adaptive gain, serial console, and 16×8 WS2812 flame visualization. Emphasizes DSP, performance under constraints, and param UX.\n**Stack**: C++ • Arduino • Rhino Cad • AI electrical advice from ChatGPT\n[Source Code](https://github.com/Jdubz/blinky_time)",
+      "format": "markdown",
+      "parentId": null,
+      "order": 8,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "VbHz9d2orqUOxDeKdzjG",
+      "type": "project",
+      "name": "Intuit",
+      "description": "Intuit's marketing team often needed widgets implemented into their product quickly and efficiently. These widgets had to use vanilla JS as we were not allowed access to their dependency library, and had to have excellent text coverage.",
+      "technologies": [
+        "Vanilla JS",
+        "unit testing"
+      ],
+      "parentId": "c1N5A55jjUkcq7fkY6QE",
+      "order": 0,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "Vg59Ndxgny1iuZKs4fSK",
+      "type": "text-section",
+      "heading": "Biography",
+      "content": "As a lifelong type 1 diabetic (diagnosed at 18 months), I’ve always had a distinct perspective on risk and responsibility. Confronting mortality so young meant learning to enjoy life and pursue goals, playing on sports teams, traveling, without compromising my ability to manage my condition. Living with continual frustrations taught me to stay calm where others might panic; I make sound decisions under pressure and handle situations appropriately.\n\nI studied music at UCSC after being awarded the Regents Scholarship (a full ride for grades and test scores). I originally started as a dual major in Physics and Chemistry, but quickly realized that, during a period of growth and experimentation, music was more engaging than mathematics. In the electronic music program, I discovered computers as a creative medium for music, video, and interactivity. That exploration led me to build a Max/MSP program that triggered lighting and video changes based on musical events, using an adaptive listening algorithm informed by music theory. That project launched my tech career.\n\nAs I developed the tool further, I adopted TouchDesigner, extending the system with GLSL and Python. I began building installations for large social media companies, bridging the gap between their online following and live events. The goal was to create a feedback loop between celebrities and their followers (moderated by a marketing team). These experiences reinforced my ability to perform under pressure: live broadcasts that depended on my tools reached millions of viewers and allowed no delays. I had to deliver zero-tolerance software with no room for error.\n\nThroughout my career, I’ve enjoyed applying professional skills to artistic endeavors, especially those that build community. I grew up working in my father’s CNC machine shop, and it has never occurred to me that there’s anything I can’t create (which has also led to many valuable learning opportunities). Trying, adapting, and overcoming new challenges has been part of my personality for as long as I can remember. Not knowing exactly how to do something is a powerful motivator; learning is a reward beyond the success of any single project.\n\nUsing technology to foster connection is a big part of my life. Professionally, that meant strengthening relationships between a brand and its customers, and later between users and the tools I built. In personal projects, I focused on bringing people together, sometimes by crafting fun, engaging environments, and other times by proposing playful icebreakers and ways to interact that go beyond small talk without being intrusive.\n\nAs a creative technologist and community leader, I thrive in social environments where teams work toward a common goal. I handle pressure well and even enjoy it in moderation. Wherever life leads me, I plan to keep living these ideals in both my professional and personal life.",
+      "format": "markdown",
+      "parentId": null,
+      "order": 11,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "Yf12fl5avnJ1POfSeUOK",
+      "type": "company",
+      "company": "Wentworth Precision Machining",
+      "role": "CNC machinist",
+      "location": "Sonora, CA",
+      "startDate": "2004-09",
+      "endDate": "2010-08",
+      "summary": "CNC Mill operator",
+      "notes": "Imported from LinkedIn · 6 yrs",
+      "parentId": null,
+      "order": 6,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "ZLICf6XoDbizqsGd2HMj",
+      "type": "project",
+      "name": "Amazon Fresh / Whole Foods",
+      "description": "I was on the team engaged on a year-long project to build the cloud infrastructure and API to integrate with Amazon. We worked closely with Amazon's team to translate their business requirements into feasible requirements that would work with our system, which was built with a different architecture in mind. The project was a success, and now Fulfil's robotics are being implemented in whole foods across the US.",
+      "parentId": "NsE3TizIVgf8FeFxfmum",
+      "order": 0,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "bmH7051gQdhTx8nIjsep",
+      "type": "text-section",
+      "heading": "Closing Notes",
+      "content": "Open to Senior/Staff Full-Stack roles at the app/infra boundary. I love pairing, mentoring, and raising the quality bar.\nContact: contact@joshwentworth.com\n • Portland, OR / Remote",
+      "format": "markdown",
+      "parentId": null,
+      "order": 12,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "c1N5A55jjUkcq7fkY6QE",
+      "type": "company",
+      "company": "OPNA dev",
+      "role": "Co-Founder & Lead Engineer",
+      "location": "San Francisco - Bay Area, CA",
+      "startDate": "2017-06",
+      "endDate": "2021-12",
+      "accomplishments": [
+        "Delivered custom web apps, integrations, and internal tools for Intuit, McDonald's, Google and others.",
+        "Built full-stack solutions with React, Node.js, Python; designed GCP deployments for production scale.",
+        "Implemented featured GCP products as part of Google's partner program: Enterprise apps on Dialogflow (natural language pipeline) and Game Servers for a large mobile gaming company.",
+        "Partnered cross-functionally to design user-focused products and streamline ops workflows."
+      ],
+      "notes": "Imported from LinkedIn - Oakland, CA · 5 yrs 9 mos",
+      "parentId": null,
+      "order": 2,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "gU6A60KGpwogyOGo4xQ6",
+      "type": "company",
+      "company": "Madrone Studios",
+      "role": "Interactive Developer",
+      "location": "San Francisco, CA",
+      "startDate": "2012-09",
+      "endDate": "2013-02",
+      "accomplishments": [
+        "Wrote custom, controllable lighting and video applications for an immersive corporate venue including a 15 projector stitch."
+      ],
+      "technologies": [
+        "Python",
+        "GLSL",
+        "Touch Designer"
+      ],
+      "notes": "Imported from LinkedIn · 6 mos",
+      "parentId": null,
+      "order": 5,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "nEJZbBcKiyA6Yykssz9a",
+      "type": "project",
+      "name": "Order Management Web Apps",
+      "description": "My team was responsible for building and maintaining the end-user facing web (mobile) application and the kiosk application for order pickup.",
+      "parentId": "NsE3TizIVgf8FeFxfmum",
+      "order": 1,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "ne4WpF19GyujiI3yP8kl",
+      "type": "project",
+      "name": "Marketplace Support",
+      "description": "My team was responsible for integrating with marketplaces including Doordash and Uber eats. This meant communicating inventory, order status and lifecycle events, and customer support. We used Doordash Drive for last mile delivery.",
+      "parentId": "NsE3TizIVgf8FeFxfmum",
+      "order": 2,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "qeMFB1FKprFl5OypKg2W",
+      "type": "project",
+      "name": "Driver's Benefits",
+      "description": "The client had a massive HIPAA compliant Salesforce instance for case management. Their goal was to help gig workers, specifically drivers, obtain health care through government assistance. We helped them update their workflow to adhere to software best practices, like IAC and unit testing, while maintaining HIPAA compliance.",
+      "technologies": [
+        "Salesforce",
+        "Java (Apex)"
+      ],
+      "parentId": "c1N5A55jjUkcq7fkY6QE",
+      "order": 5,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "sSAqRlp6IStZMISxebpO",
+      "type": "project",
+      "name": "Instagram Instastop / Twitter Golden Screen",
+      "description": "One of the primary pieces I created at Britelite was a touch screen interface that pulled content from a moderated social media stream and allowed celebrities at the event to record responses live on broadcast that would then be pushed to the moderation and marketing team to re-post as contractually allowed.",
+      "accomplishments": [
+        "live on the air - no mistakes.",
+        "calibrating color temperature for the cameras.",
+        "the touch screens were IR grids that were sensitive to the flood lights, causing ghost touches.",
+        "Super high pressure environment. FB / Instagram / Twitter would pay millions for their 30 second spot so it had to be perfect."
+      ],
+      "parentId": "5mFhLn1JNz8vUFzYVY30",
+      "order": 0,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "uON2wfasF9RzQlN3u1bo",
+      "type": "project",
+      "name": "Dialogflow & JLL",
+      "description": "I was brought on to create a massive microservice architecture that sat behind an NLP interface. The app was a simple chat with a bot, but could do everything from schedule corporate meetings to order take out. The most requested feature was managing facilities requests. Namely temperature control.",
+      "technologies": [
+        "Dialogflow",
+        "App Engine",
+        "GCP",
+        "StackTrace",
+        "GraphQL",
+        "Apollo",
+        "CircleCI",
+        "React",
+        "CodeClimate"
+      ],
+      "parentId": "c1N5A55jjUkcq7fkY6QE",
+      "order": 1,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "v4Rv5PZFs5eOUlagpSis",
+      "type": "skill-group",
+      "category": "Skills & Technologies",
+      "skills": [],
+      "subcategories": [
+        {
+          "name": "Frontend",
+          "skills": [
+            "Angular",
+            "React",
+            "Mobx",
+            "Sentry",
+            "tailwind",
+            "shadcn",
+            "bootstrap",
+            "themeui",
+            "materialui",
+            "styled components"
+          ]
+        },
+        {
+          "name": "Backend",
+          "skills": [
+            "nodejs",
+            "express",
+            "apollo",
+            "python",
+            "Flask",
+            "C++"
+          ]
+        },
+        {
+          "name": "Platform",
+          "skills": [
+            "GCP",
+            "Linux",
+            "Docker"
+          ]
+        },
+        {
+          "name": "Integrations",
+          "skills": [
+            "Doordash Marketplce",
+            "Doordash Drive",
+            "Uber Eats Marketplace",
+            "Stripe",
+            "Taxjar",
+            "Contentful",
+            "Twilio",
+            "SendGrid",
+            "PagerDuty",
+            "Slack"
+          ]
+        },
+        {
+          "name": "Messaging / queues",
+          "skills": [
+            "BullMQ",
+            "RabbitMQ",
+            "Pub/Sub"
+          ]
+        },
+        {
+          "name": "Performance",
+          "skills": [
+            "Lighthouse"
+          ]
+        },
+        {
+          "name": "Reliability",
+          "skills": [
+            "SLAs",
+            "incident response",
+            "error budgets"
+          ]
+        },
+        {
+          "name": "Observability",
+          "skills": [
+            "Sentry",
+            "Promethius",
+            "Elasctic",
+            "Google Stacktrace",
+            "PagerDuty"
+          ]
+        },
+        {
+          "name": "Security",
+          "skills": [
+            "redaction/PII",
+            "authN/Z patterns",
+            "signatures"
+          ]
+        },
+        {
+          "name": "Payments / tax",
+          "skills": [
+            "Stripe",
+            "TaxJar",
+            "reconciliation",
+            "audits"
+          ]
+        },
+        {
+          "name": "UX / AB testing",
+          "skills": [
+            "funnels",
+            "flags",
+            "experimentation"
+          ]
+        },
+        {
+          "name": "GCP / Kubernetes / Redis / Postgres / Typescript",
+          "skills": [
+            "technology anchors"
+          ]
+        },
+        {
+          "name": "Unit / Regression Testing",
+          "skills": [
+            "Jest",
+            "Mocha",
+            "Chai",
+            "Playwright",
+            "Cypress"
+          ]
+        },
+        {
+          "name": "Authentication",
+          "skills": [
+            "JWT",
+            "Oauth2.0"
+          ]
+        }
+      ],
+      "parentId": null,
+      "order": 9,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "x7MqiZrmwllwRN85U92l",
+      "type": "text-section",
+      "heading": "Education & Certificates",
+      "content": "### **Google Cloud Professional Cloud Developer** (2019–2021)\n\n### **Hack Reactor**\nSoftware Engineering Bootcamp (Completed May 2016)\n\n### **UCSC — B.A. in Classical Western Music** (May 2009)\nminors in Electronic Music & Jazz  \n**Regents scholar** - top 1% of incoming freshmen, 4.5 GPA from high school with top SAT scores.",
+      "format": "markdown",
+      "parentId": null,
+      "order": 10,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    },
+    {
+      "id": "xBeiWyq1yJzeXutkvL7W",
+      "type": "company",
+      "company": "Meow Wolf",
+      "role": "Front End Software Developer",
+      "location": "Denver, CO - Remote",
+      "startDate": "2021-03",
+      "endDate": "2021-07",
+      "summary": "I worked on multiple web applications, as well as their component library, and integrated with the docker system for fleet management. These applications had a complex pub/sub architecture to view who was using the installation (if logged in) and update their profile based on completing puzzles.",
+      "technologies": [
+        "Docker",
+        "React",
+        "Styled Components",
+        "Bootstrap",
+        "MaterialUI",
+        "Pub/Sub"
+      ],
+      "parentId": null,
+      "order": 1,
+      "visibility": "published",
+      "createdAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "updatedAt": {
+        "_seconds": 1760655160,
+        "_nanoseconds": 130000000
+      },
+      "createdBy": "migration-script",
+      "updatedBy": "migration-script"
+    }
+  ]
+}
