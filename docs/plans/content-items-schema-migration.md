@@ -1,5 +1,9 @@
 # Content Items Unified Schema Migration
 
+> Status: Draft
+> Owner: @jdubz
+> Last Updated: 2025-11-20
+
 ## Context
 - The current SQLite table () mirrors the legacy Firestore union schema with a  discriminator and arbitrary . Frontend code (e.g., , ) still assumes per-type fields and renders large swaths of optional UI that no longer align with the desired resume model.
 - The exported legacy data () contains inconsistent properties (, , , etc.) that no longer map to the simplified structure the business now needs (Title, Role, Location, Website, Start/End dates, Markdown description, Skills, Parent relationship, ordering, visibility).
