@@ -177,9 +177,13 @@ vi.mock("@/api/queue-client", async () => {
 
 // Mock React Router
 vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual("react-router-dom")
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom")
   return {
     ...actual,
+    BrowserRouter: actual.BrowserRouter,
+    Link: actual.Link,
+    Route: actual.Route,
+    Routes: actual.Routes,
     useLocation: () => ({
       pathname: "/document-builder",
       search: "",
@@ -282,6 +286,11 @@ vi.mock("@shared/types", () => ({
   ContentItem: {},
   GeneratorRequest: {},
   GeneratorResponse: {},
+  DEFAULT_PROMPTS: {
+    resumeGeneration: "test resume prompt",
+    coverLetterGeneration: "test cover letter prompt",
+    jobMatching: "test job matching prompt",
+  },
 }))
 
 // Setup test cleanup and memory monitoring

@@ -89,7 +89,11 @@ describe("DisclaimerPage", () => {
       screen.getByText(/The information on this website is provided on an "as is" basis/)
     ).toBeInTheDocument()
     expect(screen.getByText(/We make no warranties, expressed or implied/)).toBeInTheDocument()
-    expect(screen.getByText(/We do not guarantee/)).toBeInTheDocument()
+
+    // Multiple elements contain "We do not guarantee", so check that at least one exists
+    const guaranteeElements = screen.getAllByText(/We do not guarantee/)
+    expect(guaranteeElements.length).toBeGreaterThan(0)
+
     expect(screen.getByText(/Users are responsible for/)).toBeInTheDocument()
   })
 

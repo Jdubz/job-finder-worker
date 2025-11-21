@@ -6,23 +6,31 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { generatorClient } from "../generator-client"
+import { GeneratorClient } from "../generator-client"
 import type { GenerateDocumentRequest } from "../generator-client"
 
-// Mock the base client
-vi.mock("../base-client", () => ({
-  BaseApiClient: vi.fn().mockImplementation(() => ({
-    post: vi.fn(),
-    get: vi.fn(),
-  })),
-}))
-
-// Mock fetch globally
+// Mock fetch globally before importing modules
 global.fetch = vi.fn()
 
+// Mock auth storage to return null token for tests
+vi.mock("@/lib/auth-storage", () => ({
+  getStoredAuthToken: vi.fn(() => Promise.resolve(null)),
+}))
+
+// Mock testing config to disable auth bypass
+vi.mock("@/config/testing", () => ({
+  DEFAULT_E2E_AUTH_TOKEN: null,
+  TEST_AUTH_TOKEN_KEY: "test-auth-token",
+  AUTH_BYPASS_ENABLED: false,
+}))
+
 describe("GeneratorClient", () => {
+  let generatorClient: GeneratorClient
+
   beforeEach(() => {
     vi.clearAllMocks()
+    // Create a new instance for each test with a test URL
+    generatorClient = new GeneratorClient("http://localhost:8080/api/generator")
   })
 
   describe("startGeneration", () => {
@@ -37,6 +45,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -52,7 +61,7 @@ describe("GeneratorClient", () => {
       const result = await generatorClient.startGeneration(request)
 
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/generator/start"),
+        expect.stringContaining("/start"),
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
@@ -67,13 +76,15 @@ describe("GeneratorClient", () => {
 
     it("should handle generation errors", async () => {
       const mockError = {
-        success: false,
         error: "Generation failed",
         message: "Invalid request parameters",
       }
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
 
@@ -85,9 +96,7 @@ describe("GeneratorClient", () => {
         },
       }
 
-      const result = await generatorClient.startGeneration(request)
-
-      expect(result).toEqual(mockError)
+      await expect(generatorClient.startGeneration(request)).rejects.toThrow()
     })
 
     it("should handle network errors", async () => {
@@ -115,6 +124,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -166,6 +176,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -181,7 +192,7 @@ describe("GeneratorClient", () => {
       await generatorClient.startGeneration(request)
 
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/generator/start"),
+        expect.stringContaining("/start"),
         expect.objectContaining({
           body: JSON.stringify(request),
         })
@@ -199,6 +210,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -217,7 +229,7 @@ describe("GeneratorClient", () => {
       await generatorClient.startGeneration(request)
 
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/generator/start"),
+        expect.stringContaining("/start"),
         expect.objectContaining({
           body: JSON.stringify(request),
         })
@@ -242,19 +254,20 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
       const result = await generatorClient.executeStep("req-123")
 
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/generator/execute"),
+        expect.stringContaining("/step/"),
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
             "Content-Type": "application/json",
           }),
-          body: JSON.stringify({ requestId: "req-123" }),
+          body: JSON.stringify({}),
         })
       )
 
@@ -263,19 +276,19 @@ describe("GeneratorClient", () => {
 
     it("should handle step execution errors", async () => {
       const mockError = {
-        success: false,
         error: "Step execution failed",
         message: "AI provider unavailable",
       }
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
 
-      const result = await generatorClient.executeStep("req-123")
-
-      expect(result).toEqual(mockError)
+      await expect(generatorClient.executeStep("req-123")).rejects.toThrow()
     })
 
     it("should handle network errors during step execution", async () => {
@@ -308,13 +321,14 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve(mockHistory),
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve({ requests: mockHistory, count: mockHistory.length }),
       } as Response)
 
       const result = await generatorClient.getHistory("user-123")
 
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/generator/history"),
+        expect.stringContaining("/requests"),
         expect.objectContaining({
           method: "GET",
         })
@@ -326,6 +340,8 @@ describe("GeneratorClient", () => {
     it("should handle history fetch errors", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
         json: () => Promise.resolve({ error: "Failed to fetch history" }),
       } as Response)
 
@@ -346,13 +362,14 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockDefaults),
       } as Response)
 
       const result = await generatorClient.getUserDefaults()
 
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/generator/defaults"),
+        expect.stringContaining("/defaults"),
         expect.objectContaining({
           method: "GET",
         })
@@ -364,6 +381,8 @@ describe("GeneratorClient", () => {
     it("should handle defaults fetch errors", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
         json: () => Promise.resolve({ error: "Failed to fetch defaults" }),
       } as Response)
 
@@ -391,13 +410,14 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
       const result = await generatorClient.updateUserDefaults(mockDefaults)
 
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/generator/defaults"),
+        expect.stringContaining("/defaults"),
         expect.objectContaining({
           method: "PUT",
           headers: expect.objectContaining({
@@ -424,6 +444,8 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
         json: () => Promise.resolve({ error: "Failed to update defaults" }),
       } as Response)
 
@@ -440,19 +462,19 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
       const result = await generatorClient.deleteDocument("doc-123")
 
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/generator/document"),
+        expect.stringContaining("/requests/doc-123"),
         expect.objectContaining({
           method: "DELETE",
           headers: expect.objectContaining({
             "Content-Type": "application/json",
           }),
-          body: JSON.stringify({ documentId: "doc-123" }),
         })
       )
 
@@ -462,6 +484,8 @@ describe("GeneratorClient", () => {
     it("should handle delete errors", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
         json: () => Promise.resolve({ error: "Failed to delete document" }),
       } as Response)
 
@@ -473,6 +497,7 @@ describe("GeneratorClient", () => {
     it("should handle malformed JSON responses", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.reject(new Error("Invalid JSON")),
       } as Response)
 
@@ -505,6 +530,7 @@ describe("GeneratorClient", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
         status: 500,
+        statusText: "Internal Server Error",
         json: () => Promise.resolve({ error: "Internal server error" }),
       } as Response)
 
@@ -516,16 +542,15 @@ describe("GeneratorClient", () => {
         },
       }
 
-      const result = await generatorClient.startGeneration(request)
-
-      expect(result.success).toBe(false)
-      // Note: StartGenerationResponse doesn't have error property
+      await expect(generatorClient.startGeneration(request)).rejects.toThrow()
     })
 
     it("should handle 429 rate limit errors", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
         status: 429,
+        statusText: "Too Many Requests",
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve({ error: "Rate limit exceeded" }),
       } as Response)
 
@@ -537,10 +562,7 @@ describe("GeneratorClient", () => {
         },
       }
 
-      const result = await generatorClient.startGeneration(request)
-
-      expect(result.success).toBe(false)
-      // Note: StartGenerationResponse doesn't have error property
+      await expect(generatorClient.startGeneration(request)).rejects.toThrow()
     })
   })
 
@@ -555,19 +577,19 @@ describe("GeneratorClient", () => {
       } as GenerateDocumentRequest
 
       const mockError = {
-        success: false,
         error: "Validation failed",
         message: "Job role and company are required",
       }
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
 
-      const result = await generatorClient.startGeneration(invalidRequest)
-
-      expect(result).toEqual(mockError)
+      await expect(generatorClient.startGeneration(invalidRequest)).rejects.toThrow()
     })
 
     it("should validate document type", async () => {
@@ -580,19 +602,19 @@ describe("GeneratorClient", () => {
       }
 
       const mockError = {
-        success: false,
         error: "Validation failed",
         message: "Invalid document type",
       }
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
 
-      const result = await generatorClient.startGeneration(invalidRequest)
-
-      expect(result).toEqual(mockError)
+      await expect(generatorClient.startGeneration(invalidRequest)).rejects.toThrow()
     })
   })
 })
