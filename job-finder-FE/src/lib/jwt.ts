@@ -4,6 +4,8 @@ export interface JwtPayload {
   email_verified?: boolean
   name?: string
   picture?: string
+  exp?: number
+  aud?: string
   [key: string]: unknown
 }
 

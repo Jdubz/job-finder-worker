@@ -3,7 +3,7 @@ import type { CreateJobMatchInput } from '../job-match.repository'
 export const buildJobMatchInput = (
   overrides: Partial<CreateJobMatchInput> = {}
 ): CreateJobMatchInput => {
-  const counter = overrides.queueItemId?.split('-').pop() ?? Math.floor(Math.random() * 1000).toString()
+  const counter = overrides.queueItemId?.split('-').pop() ?? '0'
   const baseCompany = overrides.companyName ?? `Company ${counter}`
   const analyzedDate = new Date(2025, 0, (Number(counter) % 28) + 1)
 
