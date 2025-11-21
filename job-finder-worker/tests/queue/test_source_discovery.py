@@ -123,7 +123,10 @@ class TestQueueRouting:
 
         mocked.assert_called_once_with(item)
         # First status update should move item to PROCESSING
-        assert mock_dependencies["queue_manager"].update_status.call_args_list[0][0][1] == QueueStatus.PROCESSING
+        assert (
+            mock_dependencies["queue_manager"].update_status.call_args_list[0][0][1]
+            == QueueStatus.PROCESSING
+        )
 
     def test_missing_config_only_sets_processing_status(
         self, processor: QueueItemProcessor, mock_dependencies
@@ -141,9 +144,7 @@ class TestQueueRouting:
 
 class TestGreenhouseDiscovery:
     @patch("requests.get")
-    def test_discovers_greenhouse_source(
-        self, mock_get, source_processor, mock_dependencies
-    ):
+    def test_discovers_greenhouse_source(self, mock_get, source_processor, mock_dependencies):
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"jobs": [{"id": 1}, {"id": 2}]}
@@ -204,6 +205,7 @@ class TestRSSDiscovery:
         mock_dependencies["queue_manager"].add_item.assert_called_once()
         queue_item_arg = mock_dependencies["queue_manager"].add_item.call_args.args[0]
         assert queue_item_arg.type == QueueItemType.SCRAPE_SOURCE
+        assert queue_item_arg.source == "automated_scan"
 
     @patch("feedparser.parse")
     def test_handles_invalid_rss_source(self, mock_parse, source_processor, mock_dependencies):
@@ -248,6 +250,7 @@ class TestGenericDiscovery:
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
         mock_dependencies["queue_manager"].add_item.assert_called_once()
+
     @patch("job_finder.ai.selector_discovery.SelectorDiscovery")
     @patch("requests.get")
     def test_generic_selector_failure_marks_failed(

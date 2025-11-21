@@ -47,7 +47,7 @@ class SmokeTestRunner:
 
         for file in sorted(self.fixtures_path.glob("*.json")):
             try:
-                data = json.loads(file.read_text())
+                data = json.loads(file.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 continue  # Skip malformed files
 

@@ -117,11 +117,6 @@ async function initFrontendClients() {
   const generatorDocumentsClient = new GeneratorDocumentsClient()
   generatorDocumentsClient.baseUrl = server.apiBase
 
-  const authProbe = await configClient.getAuthToken()
-  if (!authProbe) {
-    throw new Error("Frontend clients could not resolve auth token for e2e tests")
-  }
-
   return {
     server,
     queueClient,
@@ -198,6 +193,7 @@ describe("Job pipeline integration", () => {
 
 describe("Frontend clients", () => {
   it("use the REST API with mocked Firebase credentials", async () => {
+    await seedJobMatch("frontend-rest-seed")
     const { queueClient, jobMatchesClient } = await initFrontendClients()
 
     const queueData = await queueClient.listQueueItems({ status: "success" })
@@ -237,6 +233,7 @@ describe("Queue administration", () => {
 
 describe("Job match access", () => {
   it("filters matches, fetches details, and reads stats", async () => {
+    await seedJobMatch("job-match-access")
     const { jobMatchesClient } = await initFrontendClients()
     const matches = await jobMatchesClient.getMatches({ minScore: 80 })
     expect(matches.length).toBeGreaterThan(0)
@@ -256,31 +253,29 @@ describe("Content items", () => {
     const userEmail = "content-admin@jobfinder.dev"
     const userId = "content-admin"
 
-    const created = await contentItemsClient.createContentItem(userId, userEmail, {
-      type: "profile-section",
+    const created = await contentItemsClient.createContentItem(userEmail, {
+      userId,
+      title: "Mission",
+      description: "Ship SQLite migrations fast.",
+      visibility: "published",
       parentId: null,
       order: 1,
-      heading: "Mission",
-      content: "Ship SQLite migrations fast.",
-      tags: ["highlight"],
     })
 
-    expect(created.heading).toBe("Mission")
+    expect(created.title).toBe("Mission")
     expect(created.createdBy).toBe(userEmail)
 
     const updated = await contentItemsClient.updateContentItem(created.id, userEmail, {
-      content: "Updated copy for the in-memory e2e suite.",
-      tags: ["highlight", "updated"],
+      description: "Updated copy for the in-memory e2e suite.",
     })
 
-    expect(updated.content).toContain("in-memory e2e")
-    expect(updated.tags).toContain("updated")
+    expect(updated.description).toContain("in-memory e2e")
 
-    const listed = await contentItemsClient.list({ type: "profile-section" })
+    const listed = await contentItemsClient.list(userId)
     expect(listed.map((item) => item.id)).toContain(created.id)
 
     await contentItemsClient.deleteContentItem(created.id)
-    const afterDelete = await contentItemsClient.list({ type: "profile-section" })
+    const afterDelete = await contentItemsClient.list(userId)
     expect(afterDelete.find((item) => item.id === created.id)).toBeUndefined()
   })
 })

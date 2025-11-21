@@ -5,7 +5,7 @@ export const buildJobMatchInput = (
 ): CreateJobMatchInput => {
   const counter = overrides.queueItemId?.split('-').pop() ?? Math.floor(Math.random() * 1000).toString()
   const baseCompany = overrides.companyName ?? `Company ${counter}`
-  const isoTimestamp = new Date(2025, 0, Number(counter) % 28 + 1).toISOString()
+  const analyzedDate = new Date(2025, 0, (Number(counter) % 28) + 1)
 
   return {
     url: overrides.url ?? `https://example.com/jobs/${counter}`,
@@ -50,8 +50,8 @@ export const buildJobMatchInput = (
         achievementAngles: ['Scales developer tooling'],
         atsKeywords: ['TypeScript', 'React'],
       },
-    analyzedAt: overrides.analyzedAt ?? isoTimestamp,
-    createdAt: overrides.createdAt ?? isoTimestamp,
+    analyzedAt: overrides.analyzedAt ?? analyzedDate,
+    createdAt: overrides.createdAt ?? analyzedDate,
     submittedBy: overrides.submittedBy ?? 'user-123',
     queueItemId: overrides.queueItemId ?? `queue-${counter}`,
     id: overrides.id,

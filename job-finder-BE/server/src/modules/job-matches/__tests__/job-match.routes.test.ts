@@ -47,7 +47,8 @@ describe('job match routes', () => {
 
   it('creates matches via POST', async () => {
     const payload = buildJobMatchInput({ queueItemId: 'queue-13', companyName: 'NewCo' })
-    const { id, ...body } = payload
+    const body = { ...payload }
+    delete body.id
 
     const res = await request(app).post('/job-matches').send(body)
 
