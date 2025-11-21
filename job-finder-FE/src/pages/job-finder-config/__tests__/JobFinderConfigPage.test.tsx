@@ -10,23 +10,19 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { BrowserRouter } from "react-router-dom"
 import { JobFinderConfigPage } from "../JobFinderConfigPage"
-import { configClient } from "@/api"
+import { configClient } from "@/api/config-client"
 
-// Mock the config client - must mock @/api since that's what the component imports
-vi.mock("@/api", async () => {
-  const actual = await vi.importActual<typeof import("@/api")>("@/api")
-  return {
-    ...actual,
-    configClient: {
-      getStopList: vi.fn(),
-      getQueueSettings: vi.fn(),
-      getAISettings: vi.fn(),
-      updateStopList: vi.fn(),
-      updateQueueSettings: vi.fn(),
-      updateAISettings: vi.fn(),
-    },
-  }
-})
+// Mock the config client
+vi.mock("@/api/config-client", () => ({
+  configClient: {
+    getStopList: vi.fn(),
+    getQueueSettings: vi.fn(),
+    getAISettings: vi.fn(),
+    updateStopList: vi.fn(),
+    updateQueueSettings: vi.fn(),
+    updateAISettings: vi.fn(),
+  },
+}))
 
 // Mock auth state that can be modified per test
 const mockAuthState = {
