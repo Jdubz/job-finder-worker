@@ -30,56 +30,57 @@ describe("QueueManagementPage", () => {
   const mockQueueItems = [
     {
       id: "queue-1",
+      user_id: "test-user-123",
       type: "linkedin-job",
       status: "pending",
       url: "https://linkedin.com/jobs/123",
-      title: "Software Engineer",
-      company: "Tech Corp",
-      location: "San Francisco, CA",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      company_name: "Tech Corp",
+      created_at: new Date(),
+      updated_at: new Date(),
       priority: 1,
-      retryCount: 0,
+      retry_count: 0,
+      source: "linkedin",
     },
     {
       id: "queue-2",
+      user_id: "test-user-123",
       type: "linkedin-job",
       status: "processing",
       url: "https://linkedin.com/jobs/456",
-      title: "Senior Developer",
-      company: "StartupCo",
-      location: "Remote",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      company_name: "StartupCo",
+      created_at: new Date(),
+      updated_at: new Date(),
       priority: 2,
-      retryCount: 0,
+      retry_count: 0,
+      source: "linkedin",
     },
     {
       id: "queue-3",
+      user_id: "test-user-123",
       type: "linkedin-job",
       status: "success",
       url: "https://linkedin.com/jobs/789",
-      title: "Full Stack Engineer",
-      company: "BigCorp",
-      location: "New York, NY",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      company_name: "BigCorp",
+      created_at: new Date(),
+      updated_at: new Date(),
       priority: 1,
-      retryCount: 0,
+      retry_count: 0,
+      source: "linkedin",
+      result_message: "Successfully processed",
     },
     {
       id: "queue-4",
+      user_id: "test-user-123",
       type: "linkedin-job",
       status: "failed",
       url: "https://linkedin.com/jobs/999",
-      title: "Backend Developer",
-      company: "FailCorp",
-      location: "Austin, TX",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      company_name: "FailCorp",
+      created_at: new Date(),
+      updated_at: new Date(),
       priority: 1,
-      retryCount: 3,
-      error: "Failed to parse job description",
+      retry_count: 3,
+      source: "linkedin",
+      result_message: "Failed to parse job description",
     },
   ]
 
@@ -117,9 +118,9 @@ describe("QueueManagementPage", () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Software Engineer")).toBeInTheDocument()
-        expect(screen.getByText("Senior Developer")).toBeInTheDocument()
-        expect(screen.getByText("Full Stack Engineer")).toBeInTheDocument()
+        expect(screen.getByText("Tech Corp")).toBeInTheDocument()
+        expect(screen.getByText("StartupCo")).toBeInTheDocument()
+        expect(screen.getByText("BigCorp")).toBeInTheDocument()
       })
     })
 
@@ -185,13 +186,16 @@ describe("QueueManagementPage", () => {
           ...mockQueueItems,
           {
             id: "queue-5",
+            user_id: "test-user-123",
             type: "linkedin-job",
             status: "pending",
             url: "https://linkedin.com/jobs/111",
-            title: "New Job",
-            company: "NewCorp",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            company_name: "NewCorp",
+            created_at: new Date(),
+            updated_at: new Date(),
+            priority: 1,
+            retry_count: 0,
+            source: "linkedin",
           },
         ] as any,
         loading: false,
