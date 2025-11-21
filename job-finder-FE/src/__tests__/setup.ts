@@ -275,14 +275,11 @@ vi.mock("@/types/generator", () => ({
   UserDefaults: {},
 }))
 
-// Mock shared types
-vi.mock("@shared/types", () => ({
-  JobMatch: {},
-  QueueItem: {},
-  ContentItem: {},
-  GeneratorRequest: {},
-  GeneratorResponse: {},
-}))
+// Mock shared types - passthrough real exports so constants (e.g., DEFAULT_PROMPTS) stay available
+vi.mock("@shared/types", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@shared/types")>()
+  return { ...actual }
+})
 
 // Setup test cleanup and memory monitoring
 setupTestCleanup()

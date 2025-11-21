@@ -13,6 +13,7 @@ const COLLECTIONS = [
   "job-queue",
   "job-matches",
   "generator-documents",
+  "generator",
   "job-finder-config",
   "job-sources",
   "contact-submissions"
