@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from "react"
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react"
 import { googleLogout } from "@react-oauth/google"
 import { decodeJwt, type JwtPayload } from "@/lib/jwt"
 import { clearStoredAuthToken, getStoredAuthToken, storeAuthToken } from "@/lib/auth-storage"
@@ -44,21 +44,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logoutTimerRef = useRef<number | null>(null)
   const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
 
-  const clearLogoutTimer = () => {
+  const clearLogoutTimer = useCallback(() => {
     if (logoutTimerRef.current !== null) {
       window.clearTimeout(logoutTimerRef.current)
       logoutTimerRef.current = null
     }
-  }
+  }, [])
 
-  const handleTokenExpired = () => {
+  const handleTokenExpired = useCallback(() => {
     clearStoredAuthToken()
     clearLogoutTimer()
     setUser(null)
     setIsOwner(false)
-  }
+  }, [clearLogoutTimer])
 
-  const scheduleTokenExpiry = (expiryMs: number | null | undefined) => {
+  const scheduleTokenExpiry = useCallback((expiryMs: number | null | undefined) => {
     if (typeof window === "undefined") return
     clearLogoutTimer()
     if (!expiryMs) return
@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
     logoutTimerRef.current = window.setTimeout(handleTokenExpired, delay)
-  }
+  }, [clearLogoutTimer, handleTokenExpired])
 
   useEffect(() => {
     if (!AUTH_BYPASS_ENABLED && !googleClientId) {
@@ -107,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setLoading(false)
-  }, [])
+  }, [handleTokenExpired, scheduleTokenExpiry])
 
   const authenticateWithGoogle = (credential: string) => {
     const payload = decodeJwt(credential)
