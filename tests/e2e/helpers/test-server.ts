@@ -1,4 +1,6 @@
 import http from "node:http"
+import os from "node:os"
+import path from "node:path"
 
 const TEST_AUTH_TOKEN = "e2e-test-token"
 
@@ -11,7 +13,7 @@ export interface TestServerContext {
 }
 
 export async function setupTestServer(): Promise<TestServerContext> {
-  const dbPath = `file:jobfinder-e2e-${process.pid}-${Date.now()}?mode=memory&cache=shared`
+  const dbPath = `file:${path.join(os.tmpdir(), `jobfinder-e2e-${process.pid}-${Date.now()}`)}?mode=memory&cache=shared`
 
   process.env.NODE_ENV = "test"
   process.env.PORT = "0"
