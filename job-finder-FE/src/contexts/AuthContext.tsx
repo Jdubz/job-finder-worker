@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useState } from "react"
+import React, { createContext, useContext, useEffect, useRef, useState } from "react"
 import { googleLogout } from "@react-oauth/google"
-import { decodeJwt } from "@/lib/jwt"
+import { decodeJwt, type JwtPayload } from "@/lib/jwt"
 import { clearStoredAuthToken, getStoredAuthToken, storeAuthToken } from "@/lib/auth-storage"
 import {
   AUTH_BYPASS_ENABLED,
@@ -16,6 +16,7 @@ const adminEmailSet = new Set(
 )
 
 const BYPASS_FALLBACK_EMAIL = "owner@jobfinder.dev"
+const TOKEN_EXPIRY_BUFFER_MS = 60_000 // refresh a minute early to avoid 401 loops
 
 interface AuthUser {
   id: string
@@ -40,7 +41,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [isOwner, setIsOwner] = useState(false)
+  const logoutTimerRef = useRef<number | null>(null)
   const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
+
+  const clearLogoutTimer = () => {
+    if (logoutTimerRef.current !== null) {
+      window.clearTimeout(logoutTimerRef.current)
+      logoutTimerRef.current = null
+    }
+  }
+
+  const handleTokenExpired = () => {
+    clearStoredAuthToken()
+    clearLogoutTimer()
+    setUser(null)
+    setIsOwner(false)
+  }
+
+  const scheduleTokenExpiry = (expiryMs: number | null | undefined) => {
+    if (typeof window === "undefined") return
+    clearLogoutTimer()
+    if (!expiryMs) return
+    const delay = expiryMs - Date.now() - TOKEN_EXPIRY_BUFFER_MS
+    if (delay <= 0) {
+      handleTokenExpired()
+      return
+    }
+    logoutTimerRef.current = window.setTimeout(handleTokenExpired, delay)
+  }
 
   useEffect(() => {
     if (!AUTH_BYPASS_ENABLED && !googleClientId) {
@@ -55,6 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const bypassUser = buildBypassUser(bypassState)
         setUser(bypassUser)
         setIsOwner(bypassState.isOwner ?? adminEmailSet.has(bypassUser.email))
+        // Bypass tokens are long-lived test tokens; no expiry timer needed
       } else {
         setUser(null)
         setIsOwner(false)
@@ -65,15 +94,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const storedToken = getStoredAuthToken()
     if (storedToken) {
-      const restoredUser = buildUserFromToken(storedToken)
-      setUser(restoredUser)
-      setIsOwner(restoredUser?.email ? adminEmailSet.has(restoredUser.email) : false)
+      const payload = decodeJwt(storedToken)
+      const expiryMs = getTokenExpiryMs(payload)
+
+      if (expiryMs && expiryMs <= Date.now()) {
+        handleTokenExpired()
+      } else {
+        const restoredUser = buildUserFromToken(storedToken, payload)
+        setUser(restoredUser)
+        setIsOwner(restoredUser?.email ? adminEmailSet.has(restoredUser.email) : false)
+        scheduleTokenExpiry(expiryMs)
+      }
     }
     setLoading(false)
   }, [])
 
   const authenticateWithGoogle = (credential: string) => {
-    const nextUser = buildUserFromToken(credential)
+    const payload = decodeJwt(credential)
+    const expiryMs = getTokenExpiryMs(payload)
+
+    if (expiryMs && expiryMs <= Date.now()) {
+      console.error("Received expired Google credential")
+      return
+    }
+
+    const nextUser = buildUserFromToken(credential, payload)
     if (!nextUser) {
       console.error("Failed to decode Google credential.")
       return
@@ -82,6 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     storeAuthToken(credential)
     setUser(nextUser)
     setIsOwner(adminEmailSet.has(nextUser.email))
+    scheduleTokenExpiry(expiryMs)
     setLoading(false)
   }
 
@@ -101,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     clearStoredAuthToken()
+    clearLogoutTimer()
     setUser(null)
     setIsOwner(false)
   }
@@ -166,21 +213,26 @@ function buildBypassUser(state: BypassAuthState): AuthUser {
   }
 }
 
-function buildUserFromToken(token: string): AuthUser | null {
-  const payload = decodeJwt(token)
-  if (!payload.email) {
+function buildUserFromToken(token: string, payload?: JwtPayload): AuthUser | null {
+  const claims = payload ?? decodeJwt(token)
+  if (!claims.email) {
     return null
   }
   storeAuthToken(token)
-  const id = payload.sub ?? payload.email
+  const id = claims.sub ?? claims.email
   return {
     id,
     uid: id,
-    email: payload.email,
-    name: typeof payload.name === "string" ? payload.name : undefined,
-    picture: typeof payload.picture === "string" ? payload.picture : undefined,
-    emailVerified: payload.email_verified ?? true,
+    email: claims.email,
+    name: typeof claims.name === "string" ? claims.name : undefined,
+    picture: typeof claims.picture === "string" ? claims.picture : undefined,
+    emailVerified: claims.email_verified ?? true,
   }
+}
+
+function getTokenExpiryMs(payload: JwtPayload): number | null {
+  if (typeof payload.exp !== "number") return null
+  return payload.exp * 1000
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
