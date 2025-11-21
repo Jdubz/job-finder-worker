@@ -24,17 +24,20 @@ vi.mock("@/api/config-client", () => ({
   },
 }))
 
+// Mock auth state that can be modified per test
+const mockAuthState = {
+  isOwner: true,
+  user: {
+    id: "test-user-123",
+    uid: "test-user-123",
+    email: "test@example.com",
+    displayName: "Test User",
+  },
+}
+
 // Mock the auth context
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({
-    isEditor: true,
-    user: {
-      id: "test-user-123",
-      uid: "test-user-123",
-      email: "test@example.com",
-      displayName: "Test User",
-    },
-  }),
+  useAuth: () => mockAuthState,
 }))
 
 // Helper function to render with router
@@ -101,16 +104,8 @@ describe("JobFinderConfigPage", () => {
     })
 
     it("should show permission error for non-editor users", () => {
-      // Mock non-editor user
-      vi.mocked(require("@/contexts/AuthContext").useAuth).mockReturnValue({
-        isEditor: false,
-        user: {
-          id: "test-user-123",
-          uid: "test-user-123",
-          email: "test@example.com",
-          displayName: "Test User",
-        },
-      })
+      // Modify mock auth state to simulate non-owner
+      mockAuthState.isOwner = false
 
       renderWithRouter(<JobFinderConfigPage />)
 
@@ -119,6 +114,9 @@ describe("JobFinderConfigPage", () => {
           "You do not have permission to access job finder configuration. Editor role required."
         )
       ).toBeInTheDocument()
+
+      // Reset for other tests
+      mockAuthState.isOwner = true
     })
   })
 
