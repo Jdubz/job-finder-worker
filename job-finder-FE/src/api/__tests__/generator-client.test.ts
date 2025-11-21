@@ -20,6 +20,9 @@ describe("GeneratorClient", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     client = new GeneratorClient(baseUrl)
+    // Speed up tests: avoid exponential backoff on mocked failures
+    ;(client as any).defaultRetryAttempts = 1
+    ;(client as any).defaultRetryDelay = 0
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       headers: new Headers({ "content-type": "application/json" }),
