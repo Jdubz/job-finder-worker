@@ -2,6 +2,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const { DEFAULT_PROMPTS } = require('../shared/dist/index.cjs')
 
 const DB_PATH = path.resolve('infra/sqlite/jobfinder.db')
 const EXPORT_BASE = path.resolve('infra/sqlite/seeders/output')
@@ -345,7 +349,27 @@ function main() {
   const companies = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'companies')))
   const jobSources = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'job-sources')))
   const jobFinderConfig = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'job-finder-config')))
-  const contentItems = loadCollection('portfolio', 'content-items') // avoid staging duplicates
+  const generatorDocs = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'generator')))
+  const personalInfo = generatorDocs.find((d) => d.id === 'personal-info')
+
+  const extractedPrompts =
+    personalInfo?.aiPrompts && typeof personalInfo.aiPrompts === 'object' ? personalInfo.aiPrompts : null
+
+  const aiPromptsPayload = extractedPrompts ?? DEFAULT_PROMPTS
+  const aiPromptsEntry = {
+    id: 'ai-prompts',
+    payload: aiPromptsPayload,
+    updatedAt: (personalInfo?.updatedAt && toIso(personalInfo.updatedAt)) || new Date().toISOString(),
+    updatedBy: personalInfo?.updatedBy ?? 'import-script'
+  }
+
+  const existingAiPromptsIndex = jobFinderConfig.findIndex((d) => d.id === 'ai-prompts')
+  if (existingAiPromptsIndex >= 0) {
+    jobFinderConfig[existingAiPromptsIndex] = aiPromptsEntry
+  } else {
+    jobFinderConfig.push(aiPromptsEntry)
+  }
+  const contentItems = loadCollection('portfolio', 'content-items') // staging duplicates; keep prod canonical
   const jobMatches = loadCollection('portfolio-staging', 'job-matches') // prod has none
 
   console.log('Importing...')

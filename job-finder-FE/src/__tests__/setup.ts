@@ -107,10 +107,9 @@ vi.mock("@/config/env", () => ({
   GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
 }))
 
-// Mock Auth context for most tests (AuthContext.test.tsx overrides this completely)
+// Mock Auth context hooks
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: vi.fn(),
-  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 
 function cloneApiClient<T extends object>(client: T): T {
@@ -178,13 +177,9 @@ vi.mock("@/api/queue-client", async () => {
 
 // Mock React Router
 vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom")
+  const actual = await vi.importActual("react-router-dom")
   return {
     ...actual,
-    BrowserRouter: actual.BrowserRouter,
-    Link: actual.Link,
-    Route: actual.Route,
-    Routes: actual.Routes,
     useLocation: () => ({
       pathname: "/document-builder",
       search: "",
@@ -280,19 +275,11 @@ vi.mock("@/types/generator", () => ({
   UserDefaults: {},
 }))
 
-// Mock shared types
-vi.mock("@shared/types", () => ({
-  JobMatch: {},
-  QueueItem: {},
-  ContentItem: {},
-  GeneratorRequest: {},
-  GeneratorResponse: {},
-  DEFAULT_PROMPTS: {
-    resumeGeneration: "test resume prompt",
-    coverLetterGeneration: "test cover letter prompt",
-    jobMatching: "test job matching prompt",
-  },
-}))
+// Mock shared types - passthrough real exports so constants (e.g., DEFAULT_PROMPTS) stay available
+vi.mock("@shared/types", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@shared/types")>()
+  return { ...actual }
+})
 
 // Setup test cleanup and memory monitoring
 setupTestCleanup()

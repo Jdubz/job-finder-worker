@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2025-11-21T16:25:12.102Z",
+  "exportedAt": "2025-11-21T20:26:38.913Z",
   "projectId": "static-sites-257923",
   "databaseId": "portfolio",
   "collections": [
@@ -37,6 +37,11 @@
       "name": "generator-documents",
       "count": 0,
       "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/generator-documents.json"
+    },
+    {
+      "name": "generator",
+      "count": 24,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/generator.json"
     },
     {
       "name": "job-finder-config",
