@@ -6,6 +6,15 @@ import React from "react"
 vi.stubEnv("VITE_OWNER_EMAIL", "owner@test.dev")
 vi.stubEnv("VITE_GOOGLE_OAUTH_CLIENT_ID", "test-client-id")
 
+// Unmock AuthContext first (it's mocked globally in setup.ts)
+vi.unmock("@/contexts/AuthContext")
+
+vi.mock("@/config/admins.json", () => ({
+  default: {
+    adminEmails: ["owner@test.dev"],
+  },
+}))
+
 vi.mock("@react-oauth/google", () => {
   const googleLogout = vi.fn()
   const GoogleOAuthProvider = ({ children }: { children: React.ReactNode }) => (

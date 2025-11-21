@@ -33,7 +33,7 @@ export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
 
   // Use the queue items hook (will show all items since editors can see all)
-  const { queueItems, loading, error, updateQueueItem } = useQueueItems({ limit: 1000 })
+  const { queueItems, loading, error, updateQueueItem } = useQueueItems({ limit: 100 })
 
   const [filteredItems, setFilteredItems] = useState<QueueItem[]>([])
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null)

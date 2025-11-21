@@ -17,7 +17,7 @@ vi.mock("@/api", () => ({
 }))
 
 describe("usePersonalInfo", () => {
-  const mockUser = { uid: "user-1", email: "user@example.com" }
+  const mockUser = { id: "user-1", uid: "user-1", email: "user@example.com" }
   const mockInfo: PersonalInfo = {
     name: "Test User",
     email: "user@example.com",

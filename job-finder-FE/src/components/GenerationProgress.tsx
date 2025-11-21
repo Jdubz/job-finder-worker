@@ -113,7 +113,7 @@ export function GenerationProgress({ steps }: GenerationProgressProps) {
               data-step-id={step.id}
             >
               {/* Icon */}
-              <div className="pt-0.5" data-testid={`${step.status}-icon`}>
+              <div className="pt-0.5">
                 {getStepIcon(step.status)}
               </div>
 

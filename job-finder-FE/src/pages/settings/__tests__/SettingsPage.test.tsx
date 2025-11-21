@@ -25,7 +25,7 @@ describe("SettingsPage", () => {
         uid: "test-user-id",
         email: "test@example.com",
       },
-      isEditor: true,
+      isOwner: true,
     })
 
     mockUsePersonalInfo.mockReturnValue({
@@ -57,13 +57,13 @@ describe("SettingsPage", () => {
   it("should render settings page", () => {
     renderSettingsPage()
 
-    expect(screen.getByText(/Settings/i)).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /Settings/i })).toBeInTheDocument()
   })
 
   it("should display user profile section", () => {
     renderSettingsPage()
 
-    expect(screen.getByText(/Profile Information/i)).toBeInTheDocument()
+    expect(screen.getByText(/Account Information/i)).toBeInTheDocument()
   })
 
   it("should show loading state", () => {
@@ -82,8 +82,8 @@ describe("SettingsPage", () => {
   it("should display personal info fields", () => {
     renderSettingsPage()
 
-    expect(screen.getByLabelText(/Name/i)).toHaveValue("John Doe")
-    expect(screen.getByLabelText(/Email/i)).toHaveValue("john@example.com")
+    expect(screen.getByLabelText(/Full Name/i)).toHaveValue("John Doe")
+    expect(screen.getByLabelText(/^Email$/i)).toHaveValue("john@example.com")
     expect(screen.getByLabelText(/Phone/i)).toHaveValue("123-456-7890")
   })
 
@@ -91,7 +91,7 @@ describe("SettingsPage", () => {
     const user = userEvent.setup()
     renderSettingsPage()
 
-    const nameInput = screen.getByLabelText(/Name/i)
+    const nameInput = screen.getByLabelText(/Full Name/i)
     await user.clear(nameInput)
     await user.type(nameInput, "Jane Doe")
 
@@ -101,7 +101,7 @@ describe("SettingsPage", () => {
   it("should show save button", () => {
     renderSettingsPage()
 
-    expect(screen.getByRole("button", { name: /Save/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Save Changes/i })).toBeInTheDocument()
   })
 
   it("should display editor badge for editor users", () => {
@@ -139,11 +139,11 @@ describe("SettingsPage", () => {
     const user = userEvent.setup()
     renderSettingsPage()
 
-    const nameInput = screen.getByLabelText(/Name/i)
+    const nameInput = screen.getByLabelText(/Full Name/i)
     await user.clear(nameInput)
     await user.type(nameInput, "Jane Doe")
 
-    const saveButton = screen.getByRole("button", { name: /Save/i })
+    const saveButton = screen.getByRole("button", { name: /Save Changes/i })
     await user.click(saveButton)
 
     await waitFor(() => {
@@ -154,7 +154,7 @@ describe("SettingsPage", () => {
   it("should show theme selection", () => {
     renderSettingsPage()
 
-    expect(screen.getByText(/Theme/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Theme/i)).toBeInTheDocument()
   })
 
   it("should display all social profile fields", () => {
@@ -175,6 +175,6 @@ describe("SettingsPage", () => {
 
     renderSettingsPage()
 
-    expect(screen.getByLabelText(/Name/i)).toHaveValue("")
+    expect(screen.getByLabelText(/Full Name/i)).toHaveValue("")
   })
 })
