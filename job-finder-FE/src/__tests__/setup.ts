@@ -107,9 +107,10 @@ vi.mock("@/config/env", () => ({
   GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
 }))
 
-// Mock Auth context hooks
+// Mock Auth context for most tests (AuthContext.test.tsx overrides this completely)
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: vi.fn(),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 
 function cloneApiClient<T extends object>(client: T): T {
