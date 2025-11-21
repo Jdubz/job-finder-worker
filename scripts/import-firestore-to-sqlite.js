@@ -345,7 +345,7 @@ function main() {
   const companies = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'companies')))
   const jobSources = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'job-sources')))
   const jobFinderConfig = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'job-finder-config')))
-  const contentItems = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'content-items')))
+  const contentItems = loadCollection('portfolio', 'content-items') // staging duplicates; keep prod canonical
   const jobMatches = loadCollection('portfolio-staging', 'job-matches') // prod has none
 
   console.log('Importing...')
