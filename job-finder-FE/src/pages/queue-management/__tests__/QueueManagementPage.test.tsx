@@ -91,7 +91,7 @@ describe("QueueManagementPage", () => {
     vi.mocked(useAuth).mockReturnValue({
       user: mockUser as any,
       loading: false,
-      isEditor: true,
+      isOwner: true,
       signOut: vi.fn(),
       signInWithGoogle: vi.fn(),
     } as any)
