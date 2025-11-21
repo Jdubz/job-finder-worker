@@ -94,12 +94,32 @@ export function normalizeImportNodes(data: unknown): NormalizedImportNode[] {
   nodes.forEach((node) => map.set(node.legacyId, node))
 
   const roots: NormalizedImportNode[] = []
-  nodes.forEach((node) => {
-    if (node.parentLegacyId && map.has(node.parentLegacyId)) {
-      map.get(node.parentLegacyId)?.children.push(node)
-    } else {
-      roots.push(node)
+  const createsCycle = (parentId: string, childId: string): boolean => {
+    let current: string | null = parentId
+    while (current) {
+      if (current === childId) {
+        return true
+      }
+      const ancestor = map.get(current)
+      if (!ancestor || !ancestor.parentLegacyId) {
+        break
+      }
+      current = ancestor.parentLegacyId
     }
+    return false
+  }
+  nodes.forEach((node) => {
+    const parentId = node.parentLegacyId
+    if (parentId && map.has(parentId) && !createsCycle(parentId, node.legacyId)) {
+      map.get(parentId)?.children.push(node)
+      return
+    }
+
+    if (parentId && createsCycle(parentId, node.legacyId)) {
+      node.parentLegacyId = null
+    }
+
+    roots.push(node)
   })
 
   const sortRecursive = (items: NormalizedImportNode[], ancestors: Set<string>) => {

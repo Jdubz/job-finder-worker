@@ -16,30 +16,13 @@ export function setupTestCleanup() {
       // Clear localStorage and sessionStorage
       localStorage.clear()
       sessionStorage.clear()
-
-      // Clear any global variables that might accumulate
-      if (window.location) {
-        window.location.href = "about:blank"
-      }
     }
   })
 
   afterEach(() => {
     // Cleanup after each test
-    if (typeof window !== "undefined") {
-      // Clear timers
-      const highestTimeoutId = setTimeout(() => {}, 0)
-      for (let i = 0; i < Number(highestTimeoutId); i++) {
-        clearTimeout(i)
-        clearInterval(i)
-      }
-
-      // Clear any event listeners
-      if (window.removeEventListener) {
-        window.removeEventListener("beforeunload", () => {})
-        window.removeEventListener("unload", () => {})
-      }
-    }
+    // Note: Vitest and jsdom handle timer cleanup automatically
+    // Aggressive manual cleanup can cause hangs in CI environments
 
     // Force garbage collection if available
     if (global.gc) {

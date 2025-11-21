@@ -112,29 +112,66 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: vi.fn(),
 }))
 
+function cloneApiClient<T extends object>(client: T): T {
+  return Object.assign(Object.create(Object.getPrototypeOf(client)), client)
+}
+
 // Mock API clients
-vi.mock("@/api/generator-client", () => ({
-  generatorClient: {
-    generateDocument: vi.fn(),
-    startGeneration: vi.fn(),
-    executeStep: vi.fn(),
-    getHistory: vi.fn(),
-    getUserDefaults: vi.fn(),
-    updateUserDefaults: vi.fn(),
-    deleteDocument: vi.fn(),
-  },
-}))
+vi.mock("@/api/generator-client", async () => {
+  const actual = await vi.importActual<typeof import("@/api/generator-client")>("@/api/generator-client")
+  const instance = actual.generatorClient
+  const subclassed = Object.assign(Object.create(Object.getPrototypeOf(instance)), instance)
+  subclassed.generateDocument = vi.fn()
+  subclassed.startGeneration = vi.fn()
+  subclassed.executeStep = vi.fn()
+  subclassed.getHistory = vi.fn()
+  subclassed.getUserDefaults = vi.fn()
+  subclassed.updateUserDefaults = vi.fn()
+  subclassed.deleteDocument = vi.fn()
+  return {
+    ...actual,
+    generatorClient: subclassed,
+  }
+})
 
 vi.mock("@/api/job-matches-client", async () => {
   const actual = await vi.importActual<typeof import("@/api/job-matches-client")>("@/api/job-matches-client")
+  const subclassed = cloneApiClient(actual.jobMatchesClient)
+  subclassed.getMatches = vi.fn().mockResolvedValue([])
+  subclassed.getMatch = vi.fn().mockResolvedValue(null)
+  subclassed.subscribeToMatches = vi.fn(() => vi.fn())
+  subclassed.getMatchStats = vi.fn().mockResolvedValue({
+    total: 0,
+    highPriority: 0,
+    mediumPriority: 0,
+    lowPriority: 0,
+    averageScore: 0,
+  })
   return {
     ...actual,
-    jobMatchesClient: {
-      getMatches: vi.fn(),
-      getMatch: vi.fn(),
-      subscribeToMatches: vi.fn(() => vi.fn()),
-      getMatchStats: vi.fn(),
-    },
+    jobMatchesClient: subclassed,
+  }
+})
+
+vi.mock("@/api/queue-client", async () => {
+  const actual = await vi.importActual<typeof import("@/api/queue-client")>("@/api/queue-client")
+  const subclassed = cloneApiClient(actual.queueClient)
+  subclassed.listQueueItems = vi.fn().mockResolvedValue({
+    items: [],
+    pagination: { limit: 0, offset: 0, total: 0, hasMore: false },
+  })
+  subclassed.getStats = vi.fn().mockResolvedValue({
+    total: 0,
+    pending: 0,
+    processing: 0,
+    success: 0,
+    failed: 0,
+    skipped: 0,
+    filtered: 0,
+  })
+  return {
+    ...actual,
+    queueClient: subclassed,
   }
 })
 

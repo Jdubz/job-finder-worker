@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "prepare": "husky",
-    "lint": "npm run --workspaces lint",
+    "lint": "npm run lint --workspace job-finder-BE/server && npm run lint --workspace job-finder-FE",
     "lint:server": "npm run lint --workspace job-finder-BE/server",
     "lint:frontend": "npm run lint --workspace job-finder-FE",
     "typecheck": "npm run --workspaces type-check || true",

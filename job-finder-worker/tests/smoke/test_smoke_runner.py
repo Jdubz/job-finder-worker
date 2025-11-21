@@ -7,8 +7,11 @@ from pathlib import Path
 
 import pytest
 
-# Add src to path for imports - noqa: E402
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+ROOT_DIR = Path(__file__).parent.parent.parent
+
+# Ensure both src/ and repository root are importable - noqa: E402
+sys.path.insert(0, str(ROOT_DIR / "src"))
+sys.path.insert(0, str(ROOT_DIR))
 
 from scripts.smoke.queue_pipeline_smoke import SmokeTestRunner  # noqa: E402
 

@@ -19,6 +19,7 @@
     "test": "bash scripts/run-tests-safely.sh all",
     "test:unit": "bash scripts/run-tests-safely.sh unit",
     "test:integration": "bash scripts/run-tests-safely.sh integration",
+    "test:smoke": "bash scripts/run-tests-safely.sh smoke",
     "test:watch": "bash scripts/run-tests-safely.sh all",
     "test:ui": "bash scripts/run-tests-safely.sh all",
     "test:coverage": "bash scripts/run-tests-safely.sh all",

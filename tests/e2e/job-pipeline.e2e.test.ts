@@ -2,6 +2,7 @@ import { beforeAll, afterAll, describe, expect, it, vi } from "vitest"
 import { DEFAULT_PROMPTS } from "@shared/types"
 import { setupTestServer } from "./helpers/test-server"
 import { runMockWorker } from "./helpers/mock-worker"
+import { TEST_AUTH_TOKEN_KEY } from "../../job-finder-FE/src/config/testing"
 
 interface ApiSuccess<T> {
   success: true
@@ -12,6 +13,34 @@ type TestContext = Awaited<ReturnType<typeof setupTestServer>>
 
 let ctx: TestContext | null = null
 
+function ensureWindowAuth(token: string) {
+  const store = new Map<string, string>()
+  const localStorage = {
+    getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
+    setItem: (key: string, value: string) => {
+      store.set(key, value)
+    },
+    removeItem: (key: string) => {
+      store.delete(key)
+    },
+    clear: () => {
+      store.clear()
+    },
+    key: (index: number) => Array.from(store.keys())[index] ?? null,
+    get length() {
+      return store.size
+    },
+  }
+
+  if (!globalThis.window) {
+    ;(globalThis as any).window = { localStorage }
+  } else if (!globalThis.window.localStorage) {
+    globalThis.window.localStorage = localStorage
+  }
+
+  globalThis.window.localStorage.setItem(TEST_AUTH_TOKEN_KEY, token)
+}
+
 function requireCtx(): TestContext {
   if (!ctx) {
     throw new Error("Test server did not initialize")
@@ -19,8 +48,23 @@ function requireCtx(): TestContext {
   return ctx
 }
 
+async function seedJobMatch(title: string) {
+  await authorizedRequest<{ queueItemId: string }>("/queue/jobs", {
+    method: "POST",
+    body: JSON.stringify({
+      url: `https://example.com/jobs/${title}`,
+      companyName: "E2E Seed Co",
+      metadata: { title },
+      source: "manual_submission",
+    }),
+  })
+  const server = requireCtx()
+  await runMockWorker(server.apiBase, server.authToken)
+}
+
 async function initFrontendClients() {
   const server = requireCtx()
+  ensureWindowAuth(server.authToken)
   vi.resetModules()
   vi.doMock("@/config/firebase", () => ({
     auth: {
@@ -35,6 +79,9 @@ async function initFrontendClients() {
   }))
 
   globalThis.__E2E_API_BASE__ = server.origin
+
+  const { BaseApiClient } = await import("../../job-finder-FE/src/api/base-client")
+  vi.spyOn(BaseApiClient.prototype, "getAuthToken").mockImplementation(async () => server.authToken)
 
   const [
     { QueueClient },
@@ -146,6 +193,7 @@ describe("Job pipeline integration", () => {
 
 describe("Frontend clients", () => {
   it("use the REST API with mocked Firebase credentials", async () => {
+    await seedJobMatch("frontend-rest-seed")
     const { queueClient, jobMatchesClient } = await initFrontendClients()
 
     const queueData = await queueClient.listQueueItems({ status: "success" })
@@ -185,6 +233,7 @@ describe("Queue administration", () => {
 
 describe("Job match access", () => {
   it("filters matches, fetches details, and reads stats", async () => {
+    await seedJobMatch("job-match-access")
     const { jobMatchesClient } = await initFrontendClients()
     const matches = await jobMatchesClient.getMatches({ minScore: 80 })
     expect(matches.length).toBeGreaterThan(0)
@@ -204,31 +253,29 @@ describe("Content items", () => {
     const userEmail = "content-admin@jobfinder.dev"
     const userId = "content-admin"
 
-    const created = await contentItemsClient.createContentItem(userId, userEmail, {
-      type: "profile-section",
+    const created = await contentItemsClient.createContentItem(userEmail, {
+      userId,
+      title: "Mission",
+      description: "Ship SQLite migrations fast.",
+      visibility: "published",
       parentId: null,
       order: 1,
-      heading: "Mission",
-      content: "Ship SQLite migrations fast.",
-      tags: ["highlight"],
     })
 
-    expect(created.heading).toBe("Mission")
+    expect(created.title).toBe("Mission")
     expect(created.createdBy).toBe(userEmail)
 
     const updated = await contentItemsClient.updateContentItem(created.id, userEmail, {
-      content: "Updated copy for the in-memory e2e suite.",
-      tags: ["highlight", "updated"],
+      description: "Updated copy for the in-memory e2e suite.",
     })
 
-    expect(updated.content).toContain("in-memory e2e")
-    expect(updated.tags).toContain("updated")
+    expect(updated.description).toContain("in-memory e2e")
 
-    const listed = await contentItemsClient.list({ type: "profile-section" })
+    const listed = await contentItemsClient.list(userId)
     expect(listed.map((item) => item.id)).toContain(created.id)
 
     await contentItemsClient.deleteContentItem(created.id)
-    const afterDelete = await contentItemsClient.list({ type: "profile-section" })
+    const afterDelete = await contentItemsClient.list(userId)
     expect(afterDelete.find((item) => item.id === created.id)).toBeUndefined()
   })
 })

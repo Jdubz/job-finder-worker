@@ -45,6 +45,7 @@ python_files = "test_*.py"               # Only collect files starting with test
 python_classes = "Test*"                 # Only collect classes starting with Test (capital T)
 python_functions = "test_*"              # Only collect functions starting with test_
 addopts = "-v --maxfail=1 --cov=src/job_finder --cov-report=html --cov-report=term"
+pythonpath = ["src"]
 
 [tool.mypy]
 python_version = "3.9"

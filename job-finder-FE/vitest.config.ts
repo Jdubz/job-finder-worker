@@ -44,36 +44,17 @@ export default defineConfig({
       "**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build}.config.*",
     ],
 
-    // Force sequential execution to prevent memory issues
-    pool: "forks", // Use forks for better isolation
-    poolOptions: {
-      forks: {
-        maxForks: 1, // Only one process at a time
-        minForks: 1,
-      },
-    },
-
-    // Disable all parallelism
-    fileParallelism: false,
-    sequence: {
-      concurrent: false, // Force sequential execution
-    },
-
     // Test timeout configuration
     testTimeout: 30000,
     hookTimeout: 30000,
 
     // Memory optimization settings
-    isolate: false, // Disable isolation to reduce memory overhead
     passWithNoTests: true, // Don't fail if no tests are found
-    
-    // Reduce memory usage by limiting concurrent operations
-    maxConcurrency: 1,
 
     // Coverage configuration
     coverage: {
       provider: "v8",
-      reporter: ["text", "json", "html"],
+      reporter: ["text-summary", "json", "html"],
       exclude: [
         "**/node_modules/**",
         "**/dist/**",

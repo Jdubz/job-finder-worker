@@ -7,7 +7,8 @@
  */
 
 import { describe } from "vitest"
-import { DEFAULT_E2E_AUTH_TOKEN } from "@/config/testing"
+import { DEFAULT_E2E_AUTH_TOKEN, TEST_AUTH_TOKEN_KEY } from "@/config/testing"
+import { storeAuthToken, clearStoredAuthToken } from "@/lib/auth-storage"
 
 type TestUser = {
   id: string
@@ -38,6 +39,24 @@ const AUTH_BYPASS_TOKEN =
 
 let currentUser: TestUser | null = null
 
+function setAuthBypassToken(token: string | null) {
+  if (typeof window === "undefined" || !window.localStorage) {
+    if (token) {
+      storeAuthToken(token)
+    } else {
+      clearStoredAuthToken()
+    }
+    return
+  }
+  if (token) {
+    window.localStorage.setItem(TEST_AUTH_TOKEN_KEY, token)
+    storeAuthToken(token)
+  } else {
+    window.localStorage.removeItem(TEST_AUTH_TOKEN_KEY)
+    clearStoredAuthToken()
+  }
+}
+
 export { TEST_USERS }
 
 /**
@@ -52,6 +71,7 @@ export function getIntegrationDescribe(): typeof describe {
  */
 export async function signInTestUser(userType: "regular" | "editor" = "regular") {
   currentUser = TEST_USERS[userType]
+  setAuthBypassToken(AUTH_BYPASS_TOKEN)
   return currentUser
 }
 
@@ -72,6 +92,7 @@ export async function getTestAuthToken(
  */
 export async function cleanupTestAuth() {
   currentUser = null
+  setAuthBypassToken(null)
 }
 
 /**
