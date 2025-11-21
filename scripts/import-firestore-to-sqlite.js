@@ -28,10 +28,10 @@ function dedupeById(collections) {
 }
 
 function toIso(value) {
-  if (!value) return new Date().toISOString()
+  if (!value) return null
   if (typeof value === 'string') return value
   if (value._seconds) return new Date(value._seconds * 1000).toISOString()
-  return new Date().toISOString()
+  return null
 }
 
 function insertCompanies(db, docs) {
@@ -84,8 +84,8 @@ function insertCompanies(db, docs) {
     priority_score: d.priorityScore ?? null,
     analysis_status: d.analysis_status ?? d.analysisStatus ?? null,
     funding_stage: null,
-    created_at: toIso(d.createdAt),
-    updated_at: toIso(d.updatedAt)
+    created_at: toIso(d.createdAt) ?? new Date().toISOString(),
+    updated_at: toIso(d.updatedAt) ?? new Date().toISOString()
   }))
 
   const tx = db.transaction((rows) => rows.forEach((r) => stmt.run(r)))
@@ -180,15 +180,14 @@ function insertContentItems(db, docs) {
       description: description ?? null,
       skills: normalizeSkills(skills),
       visibility: d.visibility ?? 'draft',
-      created_at: toIso(d.createdAt),
-      updated_at: toIso(d.updatedAt),
+      created_at: toIso(d.createdAt) ?? new Date().toISOString(),
+      updated_at: toIso(d.updatedAt) ?? new Date().toISOString(),
       created_by: d.createdBy ?? DEFAULT_ACTOR,
       updated_by: d.updatedBy ?? d.createdBy ?? DEFAULT_ACTOR
     }
   })
 
   // insert roots first, then children level-order to satisfy FK
-  const byId = new Map(mapped.map((m) => [m.id, m]))
   const childrenMap = new Map()
   mapped.forEach((m) => {
     if (m.parent_id) {
@@ -254,8 +253,8 @@ function insertJobSources(db, docs) {
     total_jobs_found: d.totalJobsFound ?? 0,
     total_jobs_matched: d.totalJobsMatched ?? 0,
     consecutive_failures: d.consecutiveFailures ?? 0,
-    created_at: toIso(d.createdAt),
-    updated_at: toIso(d.updatedAt)
+    created_at: toIso(d.createdAt) ?? new Date().toISOString(),
+    updated_at: toIso(d.updatedAt) ?? new Date().toISOString()
   }))
 
   const tx = db.transaction((rows) => rows.forEach((r) => stmt.run(r)))
@@ -272,7 +271,7 @@ function insertJobFinderConfig(db, docs) {
     id: d.id,
     name: d.id,
     payload_json: JSON.stringify(d),
-    updated_at: toIso(d.updatedAt)
+    updated_at: toIso(d.updatedAt) ?? new Date().toISOString()
   }))
 
   const tx = db.transaction((rows) => rows.forEach((r) => stmt.run(r)))
@@ -330,8 +329,8 @@ function insertJobMatches(db, docs) {
     analyzed_at: toIso(d.documentGeneratedAt ?? d.analyzedAt ?? d.updatedAt),
     submitted_by: d.submittedBy ?? null,
     queue_item_id: d.queueItemId ?? null,
-    created_at: toIso(d.createdAt),
-    updated_at: toIso(d.updatedAt)
+    created_at: toIso(d.createdAt) ?? new Date().toISOString(),
+    updated_at: toIso(d.updatedAt) ?? new Date().toISOString()
   }))
 
   const tx = db.transaction((rows) => rows.forEach((r) => stmt.run(r)))
@@ -343,9 +342,9 @@ function main() {
   const db = new Database(DB_PATH)
   db.pragma('foreign_keys = ON')
 
-  const companies = dedupeById(['portfolio','portfolio-staging'].flatMap((env) => loadCollection(env, 'companies')))
-  const jobSources = dedupeById(['portfolio','portfolio-staging'].flatMap((env) => loadCollection(env, 'job-sources')))
-  const jobFinderConfig = dedupeById(['portfolio','portfolio-staging'].flatMap((env) => loadCollection(env, 'job-finder-config')))
+  const companies = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'companies')))
+  const jobSources = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'job-sources')))
+  const jobFinderConfig = dedupeById(['portfolio', 'portfolio-staging'].flatMap((env) => loadCollection(env, 'job-finder-config')))
   const contentItems = loadCollection('portfolio', 'content-items') // avoid staging duplicates
   const jobMatches = loadCollection('portfolio-staging', 'job-matches') // prod has none
 

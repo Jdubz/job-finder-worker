@@ -21,3 +21,6 @@ job-finder-worker/htmlcov/
 # Firebase Hosting deploy credentials (frontend stores its service account in job-finder-FE/.firebase/serviceAccountKey.json)
 job-finder-FE/.firebase/
 **/.firebase/
+infra/sqlite/seeders/output/*/contact-submissions.json
+infra/sqlite/seeders/output/*/summary.json
+infra/sqlite/seeders/output/*/generator-documents.json
