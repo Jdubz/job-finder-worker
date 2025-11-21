@@ -27,7 +27,7 @@ vi.mock("@/api/config-client", () => ({
 // Mock the auth context
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
-    isEditor: true,
+    isOwner: true,
     user: {
       id: "test-user-123",
       uid: "test-user-123",
@@ -103,7 +103,7 @@ describe("JobFinderConfigPage", () => {
     it("should show permission error for non-editor users", () => {
       // Mock non-editor user
       vi.mocked(require("@/contexts/AuthContext").useAuth).mockReturnValue({
-        isEditor: false,
+        isOwner: false,
         user: {
           id: "test-user-123",
           uid: "test-user-123",
