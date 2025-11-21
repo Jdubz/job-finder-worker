@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Save, RotateCcw, Plus, X } from "lucide-react"
-import { configClient } from "@/api"
+import { configClient } from "@/api/config-client"
 import type { StopList, QueueSettings, AISettings } from "@shared/types"
 import {
   Select,

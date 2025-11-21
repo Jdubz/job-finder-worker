@@ -1,15 +1,18 @@
 import { render, screen } from "@testing-library/react"
 import { BrowserRouter } from "react-router-dom"
 import { MainLayout } from "../components/layout/MainLayout"
-import { vi } from "vitest"
+import { vi, beforeEach, describe, it, expect } from "vitest"
 
 // Mock the router to capture navigation
 const mockNavigate = vi.fn()
-vi.mock("react-router-dom", () => ({
-  ...vi.importActual("react-router-dom"),
-  useNavigate: () => mockNavigate,
-  Outlet: () => <div data-testid="page-content">Page Content</div>,
-}))
+vi.mock("react-router-dom", async () => {
+  const actual = (await vi.importActual("react-router-dom")) as any
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+    Outlet: () => <div data-testid="page-content">Page Content</div>,
+  }
+})
 
 // Mock the Navigation component
 vi.mock("../components/layout/Navigation", () => ({
@@ -192,10 +195,10 @@ describe("Footer Integration", () => {
       </BrowserRouter>
     )
 
-    const container = screen.getByTestId("navigation").closest("div")
+    const container = screen.getByTestId("navigation").parentElement
     expect(container).toHaveClass("min-h-screen", "bg-background", "flex", "flex-col")
 
-    const main = screen.getByTestId("page-content").closest("main")
+    const main = screen.getByTestId("page-content").parentElement
     expect(main).toHaveClass("flex-1")
   })
 

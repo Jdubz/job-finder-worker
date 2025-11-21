@@ -1,6 +1,7 @@
 import { renderHook, act, waitFor } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, beforeEach } from "vitest"
 import { useContentItems } from "../useContentItems"
+import { contentItemsClient } from "@/api"
 
 const mockUser = { id: "user-123", email: "user@example.com" }
 
@@ -8,27 +9,26 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: mockUser })
 }))
 
-const listMock = vi.fn().mockResolvedValue([])
-const createMock = vi.fn().mockResolvedValue({})
-const updateMock = vi.fn().mockResolvedValue({})
-const deleteMock = vi.fn().mockResolvedValue({})
-const reorderMock = vi.fn().mockResolvedValue({})
-
+// Mock functions must be defined inside the factory to avoid hoisting issues
 vi.mock("@/api", () => ({
   contentItemsClient: {
-    list: listMock,
-    createContentItem: createMock,
-    updateContentItem: updateMock,
-    deleteContentItem: deleteMock,
-    reorderContentItem: reorderMock
+    list: vi.fn().mockResolvedValue([]),
+    createContentItem: vi.fn().mockResolvedValue({}),
+    updateContentItem: vi.fn().mockResolvedValue({}),
+    deleteContentItem: vi.fn().mockResolvedValue({}),
+    reorderContentItem: vi.fn().mockResolvedValue({})
   }
 }))
 
 describe("useContentItems", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it("fetches content items for the active user", async () => {
     renderHook(() => useContentItems())
-    await waitFor(() => expect(listMock).toHaveBeenCalled())
-    expect(listMock).toHaveBeenCalledWith(mockUser.id, { includeDrafts: true })
+    await waitFor(() => expect(contentItemsClient.list).toHaveBeenCalled())
+    expect(contentItemsClient.list).toHaveBeenCalledWith(mockUser.id, { includeDrafts: true })
   })
 
   it("creates new content items using the current user context", async () => {
@@ -43,7 +43,7 @@ describe("useContentItems", () => {
       })
     })
 
-    expect(createMock).toHaveBeenCalledWith(mockUser.email, {
+    expect(contentItemsClient.createContentItem).toHaveBeenCalledWith(mockUser.email, {
       userId: mockUser.id,
       title: "New Item",
       parentId: null
@@ -58,6 +58,6 @@ describe("useContentItems", () => {
       await result.current.reorderContentItem("item-1", null, 0)
     })
 
-    expect(reorderMock).toHaveBeenCalledWith("item-1", mockUser.email, null, 0)
+    expect(contentItemsClient.reorderContentItem).toHaveBeenCalledWith("item-1", mockUser.email, null, 0)
   })
 })
