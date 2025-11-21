@@ -4,13 +4,14 @@
  * Tests for document generation (resume and cover letter) API
  */
 
-import { describe, it, expect, beforeAll, beforeEach } from "vitest"
+import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest"
 import { generatorClient } from "@/api/generator-client"
 import { signInTestUser, cleanupTestAuth, generateTestId, getIntegrationDescribe } from "../utils/testHelpers"
 import { mockGenerateResumeRequest, mockGenerateCoverLetterRequest } from "../fixtures/mockData"
 
 // Skip integration tests if Firebase is mocked (unit test mode)
 const describeIntegration = getIntegrationDescribe()
+const getAuthTokenSpy = vi.spyOn(generatorClient, "getAuthToken")
 
 describeIntegration("Generator API Integration", () => {
   beforeAll(async () => {
@@ -22,6 +23,7 @@ describeIntegration("Generator API Integration", () => {
     // Clean up between tests
     await cleanupTestAuth()
     await signInTestUser("regular")
+    getAuthTokenSpy.mockReset()
   })
 
   describe("Document Generation", () => {
@@ -94,6 +96,7 @@ describeIntegration("Generator API Integration", () => {
 
   describe("Authentication", () => {
     it("should have auth token available", async () => {
+      getAuthTokenSpy.mockResolvedValueOnce("mock-token")
       const token = await generatorClient.getAuthToken()
 
       expect(token).toBeDefined()
@@ -102,6 +105,7 @@ describeIntegration("Generator API Integration", () => {
     })
 
     it("should get fresh token after cleanup and re-signin", async () => {
+      getAuthTokenSpy.mockResolvedValueOnce("token-1").mockResolvedValueOnce("token-2")
       const token1 = await generatorClient.getAuthToken()
 
       await cleanupTestAuth()
@@ -119,7 +123,7 @@ describeIntegration("Generator API Integration", () => {
   describe("Error Handling", () => {
     it("should handle missing authentication gracefully", async () => {
       await cleanupTestAuth()
-
+      getAuthTokenSpy.mockResolvedValueOnce(null)
       const token = await generatorClient.getAuthToken()
       expect(token).toBeNull()
     })

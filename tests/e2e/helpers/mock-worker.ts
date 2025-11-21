@@ -41,7 +41,36 @@ function buildMatchPayload(item: QueueItem): SaveJobMatchRequest {
     experienceMatch: 80,
     applicationPriority: 'High',
     customizationRecommendations: ['Highlight SQLite migration work'],
-    resumeIntakeData: { summary: 'Automation-first mindset' },
+    resumeIntakeData: {
+      jobId: item.id ?? `job-${Date.now()}`,
+      jobTitle: item.metadata?.title ?? 'Mock Engineer',
+      company: item.companyName || 'Mock Company',
+      targetSummary: 'Automation-first engineer focused on rapid iteration.',
+      skillsPriority: ['Automation', 'SQLite'],
+      experienceHighlights: [
+        {
+          company: 'PrevCo',
+          title: 'Lead Engineer',
+          pointsToEmphasize: ['Shipped automation pipeline', 'Mentored 5 engineers'],
+        },
+      ],
+      projectsToInclude: [
+        {
+          name: 'Mock Importer',
+          whyRelevant: 'Matches queue processing domain',
+          pointsToHighlight: ['Handled 10k jobs/day'],
+        },
+      ],
+      achievementAngles: ['Focus on reliability', 'Obsessed with DX'],
+      atsKeywords: ['automation', 'sqlite', 'queueing'],
+      gapMitigation: [
+        {
+          missingSkill: 'Go',
+          mitigationStrategy: 'Highlight rapid learning from past migrations',
+          coverLetterPoint: 'Explain adaptability to new stacks',
+        },
+      ],
+    },
     analyzedAt: now.toISOString(),
     createdAt: now.toISOString(),
     submittedBy: item.submittedBy ?? null,

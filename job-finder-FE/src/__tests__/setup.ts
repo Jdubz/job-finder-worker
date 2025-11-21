@@ -113,17 +113,22 @@ vi.mock("@/contexts/AuthContext", () => ({
 }))
 
 // Mock API clients
-vi.mock("@/api/generator-client", () => ({
-  generatorClient: {
-    generateDocument: vi.fn(),
-    startGeneration: vi.fn(),
-    executeStep: vi.fn(),
-    getHistory: vi.fn(),
-    getUserDefaults: vi.fn(),
-    updateUserDefaults: vi.fn(),
-    deleteDocument: vi.fn(),
-  },
-}))
+vi.mock("@/api/generator-client", async () => {
+  const actual = await vi.importActual<typeof import("@/api/generator-client")>("@/api/generator-client")
+  const instance = actual.generatorClient
+  const subclassed = Object.assign(Object.create(Object.getPrototypeOf(instance)), instance)
+  subclassed.generateDocument = vi.fn()
+  subclassed.startGeneration = vi.fn()
+  subclassed.executeStep = vi.fn()
+  subclassed.getHistory = vi.fn()
+  subclassed.getUserDefaults = vi.fn()
+  subclassed.updateUserDefaults = vi.fn()
+  subclassed.deleteDocument = vi.fn()
+  return {
+    ...actual,
+    generatorClient: subclassed,
+  }
+})
 
 vi.mock("@/api/job-matches-client", async () => {
   const actual = await vi.importActual<typeof import("@/api/job-matches-client")>("@/api/job-matches-client")

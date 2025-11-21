@@ -2,6 +2,7 @@ import { beforeAll, afterAll, describe, expect, it, vi } from "vitest"
 import { DEFAULT_PROMPTS } from "@shared/types"
 import { setupTestServer } from "./helpers/test-server"
 import { runMockWorker } from "./helpers/mock-worker"
+import { TEST_AUTH_TOKEN_KEY } from "../../job-finder-FE/src/config/testing"
 
 interface ApiSuccess<T> {
   success: true
@@ -12,6 +13,34 @@ type TestContext = Awaited<ReturnType<typeof setupTestServer>>
 
 let ctx: TestContext | null = null
 
+function ensureWindowAuth(token: string) {
+  const store = new Map<string, string>()
+  const localStorage = {
+    getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
+    setItem: (key: string, value: string) => {
+      store.set(key, value)
+    },
+    removeItem: (key: string) => {
+      store.delete(key)
+    },
+    clear: () => {
+      store.clear()
+    },
+    key: (index: number) => Array.from(store.keys())[index] ?? null,
+    get length() {
+      return store.size
+    },
+  }
+
+  if (!globalThis.window) {
+    ;(globalThis as any).window = { localStorage }
+  } else if (!globalThis.window.localStorage) {
+    globalThis.window.localStorage = localStorage
+  }
+
+  globalThis.window.localStorage.setItem(TEST_AUTH_TOKEN_KEY, token)
+}
+
 function requireCtx(): TestContext {
   if (!ctx) {
     throw new Error("Test server did not initialize")
@@ -19,8 +48,23 @@ function requireCtx(): TestContext {
   return ctx
 }
 
+async function seedJobMatch(title: string) {
+  await authorizedRequest<{ queueItemId: string }>("/queue/jobs", {
+    method: "POST",
+    body: JSON.stringify({
+      url: `https://example.com/jobs/${title}`,
+      companyName: "E2E Seed Co",
+      metadata: { title },
+      source: "manual_submission",
+    }),
+  })
+  const server = requireCtx()
+  await runMockWorker(server.apiBase, server.authToken)
+}
+
 async function initFrontendClients() {
   const server = requireCtx()
+  ensureWindowAuth(server.authToken)
   vi.resetModules()
   vi.doMock("@/config/firebase", () => ({
     auth: {
@@ -35,6 +79,9 @@ async function initFrontendClients() {
   }))
 
   globalThis.__E2E_API_BASE__ = server.origin
+
+  const { BaseApiClient } = await import("../../job-finder-FE/src/api/base-client")
+  vi.spyOn(BaseApiClient.prototype, "getAuthToken").mockImplementation(async () => server.authToken)
 
   const [
     { QueueClient },
@@ -69,6 +116,11 @@ async function initFrontendClients() {
 
   const generatorDocumentsClient = new GeneratorDocumentsClient()
   generatorDocumentsClient.baseUrl = server.apiBase
+
+  const authProbe = await configClient.getAuthToken()
+  if (!authProbe) {
+    throw new Error("Frontend clients could not resolve auth token for e2e tests")
+  }
 
   return {
     server,

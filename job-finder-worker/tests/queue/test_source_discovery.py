@@ -1,5 +1,8 @@
-"""Integration tests for source discovery processor."""
+"""Tests for the source discovery pipeline."""
 
+from __future__ import annotations
+
+from typing import Any, Dict
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -14,668 +17,254 @@ from job_finder.job_queue.models import (
 from job_finder.job_queue.processor import QueueItemProcessor
 
 
+def _default_stop_list() -> Dict[str, list[str]]:
+    return {"excludedCompanies": [], "excludedDomains": [], "excludedKeywords": []}
+
+
 @pytest.fixture
-def mock_dependencies():
-    """Create mocked dependencies for processor."""
+def mock_dependencies() -> Dict[str, Any]:
+    """Provide fully configured dependencies for the processor graph."""
+    queue_manager = MagicMock()
+    queue_manager.update_status = MagicMock()
+    queue_manager.add_item = MagicMock(return_value="scrape-001")
+
+    config_loader = MagicMock()
+    config_loader.get_job_filters.return_value = {
+        "enabled": False,
+        "hardRejections": {
+            "excludedJobTypes": [],
+            "excludedSeniority": [],
+            "excludedCompanies": [],
+            "excludedKeywords": [],
+        },
+        "remotePolicy": {},
+        "salaryStrike": {},
+        "experienceStrike": {},
+        "seniorityStrikes": {},
+        "qualityStrikes": {},
+        "ageStrike": {},
+    }
+    config_loader.get_technology_ranks.return_value = {"technologies": {}, "strikes": {}}
+    config_loader.get_stop_list.return_value = _default_stop_list()
+
+    job_storage = MagicMock()
+    job_storage.job_exists.return_value = False
+
+    companies_manager = MagicMock()
+    sources_manager = MagicMock()
+    sources_manager.create_from_discovery.return_value = "source-123"
+
+    company_info_fetcher = MagicMock()
+    ai_matcher = MagicMock()
+    profile = MagicMock()
+
     return {
-        "queue_manager": MagicMock(),
-        "config_loader": MagicMock(),
-        "job_storage": MagicMock(),
-        "companies_manager": MagicMock(),
-        "sources_manager": MagicMock(),
-        "company_info_fetcher": MagicMock(),
-        "ai_matcher": MagicMock(),
-        "profile": MagicMock(),
+        "queue_manager": queue_manager,
+        "config_loader": config_loader,
+        "job_storage": job_storage,
+        "companies_manager": companies_manager,
+        "sources_manager": sources_manager,
+        "company_info_fetcher": company_info_fetcher,
+        "ai_matcher": ai_matcher,
+        "profile": profile,
     }
 
 
 @pytest.fixture
-def processor(mock_dependencies):
-    """Create processor with mocked dependencies."""
-    # Create processor with correct constructor signature
-    return QueueItemProcessor(
-        queue_manager=mock_dependencies["queue_manager"],
-        config_loader=mock_dependencies["config_loader"],
-        job_storage=mock_dependencies["job_storage"],
-        companies_manager=mock_dependencies["companies_manager"],
-        sources_manager=mock_dependencies["sources_manager"],
-        company_info_fetcher=mock_dependencies["company_info_fetcher"],
-        ai_matcher=mock_dependencies["ai_matcher"],
-        profile=mock_dependencies["profile"],
+def processor(mock_dependencies: Dict[str, Any]) -> QueueItemProcessor:
+    """Instantiate a QueueItemProcessor wired with mocked dependencies."""
+    return QueueItemProcessor(**mock_dependencies)
+
+
+@pytest.fixture
+def source_processor(processor: QueueItemProcessor):
+    """Expose the specialized SourceProcessor from the main processor."""
+    return processor.source_processor
+
+
+def make_discovery_item(
+    *,
+    url: str,
+    type_hint: SourceTypeHint = SourceTypeHint.AUTO,
+    company_name: str = "Example Corp",
+    auto_enable: bool = True,
+    validation_required: bool = False,
+) -> JobQueueItem:
+    """Build a SOURCE_DISCOVERY queue item for tests."""
+    config = SourceDiscoveryConfig(
+        url=url,
+        type_hint=type_hint,
+        company_id="company-123",
+        company_name=company_name,
+        auto_enable=auto_enable,
+        validation_required=validation_required,
+    )
+    return JobQueueItem(
+        id="queue-123",
+        type=QueueItemType.SOURCE_DISCOVERY,
+        url=url,
+        company_name=company_name,
+        source="user_submission",
+        submitted_by="tester",
+        retry_count=0,
+        max_retries=3,
+        source_discovery_config=config,
     )
 
 
-class TestSourceDiscoveryRouting:
-    """Test that SOURCE_DISCOVERY items are routed correctly."""
+class TestQueueRouting:
+    def test_routes_source_discovery_items(self, processor: QueueItemProcessor, mock_dependencies):
+        item = make_discovery_item(url="https://boards.greenhouse.io/stripe")
 
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    def test_routes_source_discovery_type(self, processor, mock_dependencies):
-        """Should route SOURCE_DISCOVERY type to discovery processor."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://boards.greenhouse.io/stripe",
-                type_hint=SourceTypeHint.AUTO,
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
-
-        # Mock the discovery method to avoid actual HTTP requests
         with patch.object(
-            processor, "_process_source_discovery", return_value=None
-        ) as mock_discovery:
+            processor.source_processor, "process_source_discovery", return_value=None
+        ) as mocked:
             processor.process_item(item)
 
-            # Should have called discovery processor
-            mock_discovery.assert_called_once_with(item)
+        mocked.assert_called_once_with(item)
+        # First status update should move item to PROCESSING
+        assert mock_dependencies["queue_manager"].update_status.call_args_list[0][0][1] == QueueStatus.PROCESSING
 
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    def test_requires_source_discovery_config(self, processor, mock_dependencies):
-        """Should fail if source_discovery_config is missing."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=None,  # Missing config
-        )
+    def test_missing_config_only_sets_processing_status(
+        self, processor: QueueItemProcessor, mock_dependencies
+    ):
+        item = make_discovery_item(url="https://boards.greenhouse.io/stripe")
+        item.source_discovery_config = None
 
         processor.process_item(item)
 
-        # Should not have updated to processing (early return)
-        mock_dependencies["queue_manager"].update_status.assert_not_called()
+        calls = mock_dependencies["queue_manager"].update_status.call_args_list
+        assert len(calls) == 1
+        assert calls[0][0][0] == item.id
+        assert calls[0][0][1] == QueueStatus.PROCESSING
 
 
 class TestGreenhouseDiscovery:
-    """Test Greenhouse source discovery."""
-
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
     @patch("requests.get")
-    def test_discovers_greenhouse_source_successfully(self, mock_get, processor, mock_dependencies):
-        """Should discover and create Greenhouse source."""
-        # Setup
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            submitted_by="user-456",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://boards.greenhouse.io/stripe",
-                type_hint=SourceTypeHint.AUTO,
-                company_name="Stripe",
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
-
-        # Mock successful Greenhouse API response
+    def test_discovers_greenhouse_source(
+        self, mock_get, source_processor, mock_dependencies
+    ):
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"jobs": [{"id": 1}, {"id": 2}]}
         mock_get.return_value = mock_response
 
-        # Mock source creation
-        mock_dependencies["sources_manager"].create_from_discovery.return_value = "source-789"
+        item = make_discovery_item(url="https://boards.greenhouse.io/stripe")
+        source_processor.process_source_discovery(item)
 
-        # Execute
-        processor.process_item(item)
-
-        # Verify API was called
         mock_get.assert_called_once()
-        assert "boards-api.greenhouse.io/v1/boards/stripe/jobs" in mock_get.call_args[0][0]
-
-        # Verify source was created
         mock_dependencies["sources_manager"].create_from_discovery.assert_called_once()
-        call_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args[1]
-        assert call_kwargs["name"] == "Stripe Greenhouse"
-        assert call_kwargs["source_type"] == "greenhouse"
-        assert call_kwargs["config"]["board_token"] == "stripe"
-        assert call_kwargs["discovery_confidence"] == "high"
-        assert call_kwargs["enabled"] is True
-
-        # Verify queue item updated to success
-        mock_dependencies["queue_manager"].update_status.assert_called()
-        status_call = mock_dependencies["queue_manager"].update_status.call_args
-        assert status_call[0][0] == "test-123"  # item_id
+        # Last update should mark the queue item as SUCCESS with the created source id
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        assert status_call[0][0] == item.id
         assert status_call[0][1] == QueueStatus.SUCCESS
-        assert status_call[0][2] == "source-789"  # source_id in result_message
+        assert status_call[0][2] == "source-123"
+        mock_dependencies["queue_manager"].add_item.assert_called_once()
 
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    @patch("job_finder.job_queue.processor.requests")
-    def test_handles_greenhouse_404(self, mock_requests, processor, mock_dependencies):
-        """Should fail gracefully when Greenhouse board not found."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://boards.greenhouse.io/nonexistent",
-                type_hint=SourceTypeHint.AUTO,
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
-
-        # Mock 404 response
+    @patch("requests.get")
+    def test_handles_greenhouse_404(self, mock_get, source_processor, mock_dependencies):
         mock_response = Mock()
         mock_response.status_code = 404
-        mock_requests.get.return_value = mock_response
+        mock_get.return_value = mock_response
 
-        # Execute
-        processor.process_item(item)
+        item = make_discovery_item(url="https://boards.greenhouse.io/unknown")
+        source_processor.process_source_discovery(item)
 
-        # Should not create source
-        mock_dependencies["sources_manager"].create_from_discovery.assert_not_called()
-
-        # Should mark as failed
-        mock_dependencies["queue_manager"].update_status.assert_called()
-        status_call = mock_dependencies["queue_manager"].update_status.call_args
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.FAILED
-        assert "404" in status_call[0][2]  # Error message contains 404
+        assert "Greenhouse" in status_call[0][2]
 
 
 class TestWorkdayDiscovery:
-    """Test Workday source discovery."""
+    def test_requires_manual_validation(self, source_processor, mock_dependencies):
+        item = make_discovery_item(url="https://netflix.wd1.myworkdayjobs.com/External")
 
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    def test_discovers_workday_source_with_validation_required(self, processor, mock_dependencies):
-        """Should create Workday source but require manual validation."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            submitted_by="user-456",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://netflix.wd1.myworkdayjobs.com/External",
-                type_hint=SourceTypeHint.AUTO,
-                company_name="Netflix",
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
+        source_processor.process_source_discovery(item)
 
-        # Mock source creation
-        mock_dependencies["sources_manager"].create_from_discovery.return_value = "source-789"
-
-        # Execute
-        processor.process_item(item)
-
-        # Verify source was created with correct settings
-        mock_dependencies["sources_manager"].create_from_discovery.assert_called_once()
-        call_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args[1]
-        assert call_kwargs["name"] == "Netflix Workday"
-        assert call_kwargs["source_type"] == "workday"
-        assert call_kwargs["config"]["company_id"] == "netflix"
-        assert "netflix.wd1.myworkdayjobs.com" in call_kwargs["config"]["base_url"]
-        assert call_kwargs["discovery_confidence"] == "medium"
-        assert call_kwargs["enabled"] is False  # Workday requires validation
-        assert call_kwargs["validation_required"] is True
-
-        # Verify success status
-        status_call = mock_dependencies["queue_manager"].update_status.call_args
-        assert status_call[0][1] == QueueStatus.SUCCESS
-        assert "requires manual validation" in status_call[0][2]
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["source_type"] == "workday"
+        assert create_kwargs["enabled"] is False
+        assert create_kwargs["validation_required"] is True
 
 
 class TestRSSDiscovery:
-    """Test RSS feed discovery."""
+    @patch("feedparser.parse")
+    def test_discovers_rss_source(self, mock_parse, source_processor, mock_dependencies):
+        feed = Mock()
+        feed.bozo = False
+        feed.entries = [{"title": "Job"}]
+        mock_parse.return_value = feed
 
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    @patch("job_finder.job_queue.processor.feedparser")
-    def test_discovers_rss_source_successfully(self, mock_feedparser, processor, mock_dependencies):
-        """Should discover and validate RSS feed."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://example.com/jobs.xml",
-                type_hint=SourceTypeHint.AUTO,
-                company_name="Example Corp",
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
+        item = make_discovery_item(url="https://example.com/jobs.xml")
+        source_processor.process_source_discovery(item)
 
-        # Mock valid RSS feed
-        mock_feed = Mock()
-        mock_feed.bozo = False  # No parse errors
-        mock_feed.entries = [{"title": "Job 1"}, {"title": "Job 2"}]
-        mock_feedparser.parse.return_value = mock_feed
-
-        # Mock source creation
-        mock_dependencies["sources_manager"].create_from_discovery.return_value = "source-789"
-
-        # Execute
-        processor.process_item(item)
-
-        # Verify feed was parsed
-        mock_feedparser.parse.assert_called_once_with("https://example.com/jobs.xml")
-
-        # Verify source was created
         mock_dependencies["sources_manager"].create_from_discovery.assert_called_once()
-        call_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args[1]
-        assert call_kwargs["name"] == "Example Corp Feed"
-        assert call_kwargs["source_type"] == "rss"
-        assert call_kwargs["config"]["url"] == "https://example.com/jobs.xml"
-        assert call_kwargs["discovery_confidence"] == "high"
-        assert call_kwargs["enabled"] is True
-
-        # Verify success
-        status_call = mock_dependencies["queue_manager"].update_status.call_args
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
-        assert "2 entries" in status_call[0][2]
+        mock_dependencies["queue_manager"].add_item.assert_called_once()
+        queue_item_arg = mock_dependencies["queue_manager"].add_item.call_args.args[0]
+        assert queue_item_arg.type == QueueItemType.SCRAPE_SOURCE
 
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    @patch("job_finder.job_queue.processor.feedparser")
-    def test_handles_invalid_rss_feed(self, mock_feedparser, processor, mock_dependencies):
-        """Should fail when RSS feed is invalid."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://example.com/invalid.xml",
-                type_hint=SourceTypeHint.AUTO,
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
+    @patch("feedparser.parse")
+    def test_handles_invalid_rss_source(self, mock_parse, source_processor, mock_dependencies):
+        feed = Mock()
+        feed.bozo = True
+        feed.bozo_exception = ValueError("bad feed")
+        mock_parse.return_value = feed
 
-        # Mock invalid RSS feed
-        mock_feed = Mock()
-        mock_feed.bozo = True  # Parse errors
-        mock_feed.bozo_exception = Exception("Invalid XML")
-        mock_feedparser.parse.return_value = mock_feed
+        item = make_discovery_item(url="https://example.com/rss")
+        source_processor.process_source_discovery(item)
 
-        # Execute
-        processor.process_item(item)
-
-        # Should not create source
-        mock_dependencies["sources_manager"].create_from_discovery.assert_not_called()
-
-        # Should mark as failed
-        status_call = mock_dependencies["queue_manager"].update_status.call_args
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.FAILED
-        assert "Invalid RSS feed" in status_call[0][2]
-
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    @patch("job_finder.job_queue.processor.feedparser")
-    def test_handles_empty_rss_feed(self, mock_feedparser, processor, mock_dependencies):
-        """Should fail when RSS feed has no entries."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://example.com/empty.xml",
-                type_hint=SourceTypeHint.AUTO,
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
-
-        # Mock empty RSS feed
-        mock_feed = Mock()
-        mock_feed.bozo = False
-        mock_feed.entries = []  # No entries
-        mock_feedparser.parse.return_value = mock_feed
-
-        # Execute
-        processor.process_item(item)
-
-        # Should not create source
-        mock_dependencies["sources_manager"].create_from_discovery.assert_not_called()
-
-        # Should mark as failed
-        status_call = mock_dependencies["queue_manager"].update_status.call_args
-        assert status_call[0][1] == QueueStatus.FAILED
-        assert "empty" in status_call[0][2].lower()
+        assert "Invalid RSS" in status_call[0][2]
 
 
 class TestGenericDiscovery:
-    """Test generic HTML source discovery with AI."""
-
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    @patch("job_finder.job_queue.processor.SelectorDiscovery")
-    @patch("job_finder.job_queue.processor.requests")
-    def test_discovers_generic_source_with_high_confidence(
-        self, mock_requests, mock_selector_discovery, processor, mock_dependencies
+    @patch("job_finder.ai.selector_discovery.SelectorDiscovery")
+    @patch("requests.get")
+    def test_discovers_generic_source(
+        self, mock_get, mock_selector, source_processor, mock_dependencies
     ):
-        """Should discover generic source with AI selectors."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://example.com/careers",
-                type_hint=SourceTypeHint.AUTO,
-                company_name="Example Corp",
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
+        response = Mock()
+        response.text = "<html></html>"
+        response.raise_for_status = Mock()
+        mock_get.return_value = response
 
-        # Mock HTTP response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = "<html>Job listings here</html>"
-        mock_response.raise_for_status = Mock()
-        mock_requests.get.return_value = mock_response
-
-        # Mock AI selector discovery
-        mock_discovery_instance = Mock()
-        mock_discovery_instance.discover_selectors.return_value = {
-            "selectors": {
-                "title": ".job-title",
-                "company": ".company-name",
-                "description": ".job-desc",
-            },
-            "confidence": "high",
-        }
-        mock_selector_discovery.return_value = mock_discovery_instance
-
-        # Mock source creation
-        mock_dependencies["sources_manager"].create_from_discovery.return_value = "source-789"
-
-        # Execute
-        processor.process_item(item)
-
-        # Verify HTML was fetched
-        mock_requests.get.assert_called_once_with("https://example.com/careers", timeout=30)
-
-        # Verify AI was used
-        mock_discovery_instance.discover_selectors.assert_called_once()
-
-        # Verify source was created
-        mock_dependencies["sources_manager"].create_from_discovery.assert_called_once()
-        call_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args[1]
-        assert call_kwargs["name"] == "Example Corp Careers"
-        assert call_kwargs["source_type"] == "scraper"
-        assert call_kwargs["config"]["url"] == "https://example.com/careers"
-        assert call_kwargs["config"]["selectors"]["title"] == ".job-title"
-        assert call_kwargs["discovery_confidence"] == "high"
-        assert call_kwargs["enabled"] is True  # High confidence = auto-enabled
-
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    @patch("job_finder.job_queue.processor.SelectorDiscovery")
-    @patch("job_finder.job_queue.processor.requests")
-    def test_requires_validation_for_medium_confidence(
-        self, mock_requests, mock_selector_discovery, processor, mock_dependencies
-    ):
-        """Should require validation for medium confidence discoveries."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://example.com/jobs",
-                type_hint=SourceTypeHint.AUTO,
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
-
-        # Mock HTTP response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = "<html>Job listings</html>"
-        mock_response.raise_for_status = Mock()
-        mock_requests.get.return_value = mock_response
-
-        # Mock AI discovery with medium confidence
-        mock_discovery_instance = Mock()
-        mock_discovery_instance.discover_selectors.return_value = {
-            "selectors": {"title": ".maybe-title"},
+        selector_instance = Mock()
+        selector_instance.discover_selectors.return_value = {
+            "selectors": {"title": ".job"},
             "confidence": "medium",
         }
-        mock_selector_discovery.return_value = mock_discovery_instance
+        mock_selector.return_value = selector_instance
 
-        # Mock source creation
-        mock_dependencies["sources_manager"].create_from_discovery.return_value = "source-789"
+        item = make_discovery_item(url="https://example.com/careers")
+        source_processor.process_source_discovery(item)
 
-        # Execute
-        processor.process_item(item)
-
-        # Verify source requires validation
-        call_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args[1]
-        assert call_kwargs["discovery_confidence"] == "medium"
-        assert call_kwargs["enabled"] is False  # Medium = not auto-enabled
-        assert call_kwargs["validation_required"] is True
-
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    @patch("job_finder.job_queue.processor.SelectorDiscovery")
-    @patch("job_finder.job_queue.processor.requests")
-    def test_handles_ai_discovery_failure(
-        self, mock_requests, mock_selector_discovery, processor, mock_dependencies
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["source_type"] == "scraper"
+        assert create_kwargs["config"]["discovered_by_ai"] is True
+        assert create_kwargs["enabled"] is False  # medium confidence -> manual validation
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        assert status_call[0][1] == QueueStatus.SUCCESS
+        mock_dependencies["queue_manager"].add_item.assert_called_once()
+    @patch("job_finder.ai.selector_discovery.SelectorDiscovery")
+    @patch("requests.get")
+    def test_generic_selector_failure_marks_failed(
+        self, mock_get, mock_selector, source_processor, mock_dependencies
     ):
-        """Should fail when AI cannot discover selectors."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://example.com/careers",
-                type_hint=SourceTypeHint.AUTO,
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
+        response = Mock()
+        response.text = "<html></html>"
+        response.raise_for_status = Mock()
+        mock_get.return_value = response
 
-        # Mock HTTP response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = "<html>No job listings</html>"
-        mock_response.raise_for_status = Mock()
-        mock_requests.get.return_value = mock_response
+        selector_instance = Mock()
+        selector_instance.discover_selectors.return_value = None
+        mock_selector.return_value = selector_instance
 
-        # Mock AI discovery failure
-        mock_discovery_instance = Mock()
-        mock_discovery_instance.discover_selectors.return_value = None
-        mock_selector_discovery.return_value = mock_discovery_instance
+        item = make_discovery_item(url="https://example.com/careers")
+        source_processor.process_source_discovery(item)
 
-        # Execute
-        processor.process_item(item)
-
-        # Should not create source
-        mock_dependencies["sources_manager"].create_from_discovery.assert_not_called()
-
-        # Should mark as failed
-        status_call = mock_dependencies["queue_manager"].update_status.call_args
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.FAILED
         assert "AI selector discovery failed" in status_call[0][2]
-
-
-class TestInvalidURLHandling:
-    """Test handling of invalid URLs."""
-
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    def test_rejects_invalid_url(self, processor, mock_dependencies):
-        """Should fail for invalid URL format."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="not a valid url",
-                type_hint=SourceTypeHint.AUTO,
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
-
-        # Execute
-        processor.process_item(item)
-
-        # Should not create source
-        mock_dependencies["sources_manager"].create_from_discovery.assert_not_called()
-
-        # Should mark as failed
-        status_call = mock_dependencies["queue_manager"].update_status.call_args
-        assert status_call[0][1] == QueueStatus.FAILED
-        assert "Invalid URL" in status_call[0][2]
-
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    def test_rejects_url_without_scheme(self, processor, mock_dependencies):
-        """Should fail for URLs without http/https."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="example.com/careers",
-                type_hint=SourceTypeHint.AUTO,
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
-
-        # Execute
-        processor.process_item(item)
-
-        # Should mark as failed
-        status_call = mock_dependencies["queue_manager"].update_status.call_args
-        assert status_call[0][1] == QueueStatus.FAILED
-
-
-class TestCompanyAssociation:
-    """Test company ID and name association."""
-
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    @patch("job_finder.job_queue.processor.requests")
-    def test_associates_company_id(self, mock_requests, processor, mock_dependencies):
-        """Should associate source with provided company ID."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="Stripe",
-            company_id="company-456",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://boards.greenhouse.io/stripe",
-                type_hint=SourceTypeHint.AUTO,
-                company_id="company-456",
-                company_name="Stripe",
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
-
-        # Mock Greenhouse API
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"jobs": []}
-        mock_requests.get.return_value = mock_response
-
-        # Mock source creation
-        mock_dependencies["sources_manager"].create_from_discovery.return_value = "source-789"
-
-        # Execute
-        processor.process_item(item)
-
-        # Verify company association
-        call_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args[1]
-        assert call_kwargs["company_id"] == "company-456"
-        assert call_kwargs["company_name"] == "Stripe"
-
-    @pytest.mark.skip(reason="Integration test - needs proper HTTP mocking")
-    def test_infers_company_name_from_url(self, processor, mock_dependencies):
-        """Should infer company name from URL if not provided."""
-        item = JobQueueItem(
-            id="test-123",
-            type=QueueItemType.SOURCE_DISCOVERY,
-            url="",
-            company_name="",
-            source="user_submission",
-            retry_count=0,
-            max_retries=3,
-            status=QueueStatus.PENDING,
-            source_discovery_config=SourceDiscoveryConfig(
-                url="https://netflix.wd1.myworkdayjobs.com/External",
-                type_hint=SourceTypeHint.AUTO,
-                company_name=None,  # Not provided
-                auto_enable=True,
-                validation_required=False,
-            ),
-        )
-
-        # Mock source creation
-        mock_dependencies["sources_manager"].create_from_discovery.return_value = "source-789"
-
-        # Execute
-        processor.process_item(item)
-
-        # Verify company name was inferred
-        call_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args[1]
-        assert call_kwargs["company_name"] == "Netflix"

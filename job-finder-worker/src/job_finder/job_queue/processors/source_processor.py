@@ -99,7 +99,7 @@ class SourceProcessor(BaseProcessor):
                     type=QueueItemType.SCRAPE_SOURCE,
                     url="",  # Not used for SCRAPE_SOURCE
                     company_name=company_name or "Unknown",
-                    source="automated_discovery",
+                    source="automated_scan",
                     scraped_data={"source_id": source_id},
                     tracking_id=str(uuid.uuid4()),  # Required for loop prevention
                 )
