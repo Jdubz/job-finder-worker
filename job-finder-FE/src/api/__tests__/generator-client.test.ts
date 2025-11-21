@@ -22,7 +22,7 @@ describe("GeneratorClient", () => {
     client = new GeneratorClient(baseUrl)
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
-      headers: { get: () => "application/json" } as Headers,
+      headers: new Headers({ "content-type": "application/json" }),
       json: async () => ({}),
     } as Response)
   })
@@ -39,7 +39,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -68,7 +68,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
 
@@ -108,7 +108,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -160,7 +160,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -188,7 +188,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -226,7 +226,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -256,7 +256,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
 
@@ -295,7 +295,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockPayload),
       } as Response)
 
@@ -318,7 +318,7 @@ describe("GeneratorClient", () => {
     it("should handle history fetch errors", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         status: 500,
         statusText: "Failed to fetch history",
         json: () => Promise.resolve({ error: "Failed to fetch history" }),
@@ -341,7 +341,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockDefaults),
       } as Response)
 
@@ -364,7 +364,7 @@ describe("GeneratorClient", () => {
     it("should handle defaults fetch errors", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve({ error: "Failed to fetch defaults" }),
       } as Response)
 
@@ -392,7 +392,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -427,7 +427,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve({ error: "Failed to update defaults" }),
       } as Response)
 
@@ -444,7 +444,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockResponse),
       } as Response)
 
@@ -467,7 +467,7 @@ describe("GeneratorClient", () => {
     it("should handle delete errors", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve({ error: "Failed to delete document" }),
       } as Response)
 
@@ -479,7 +479,7 @@ describe("GeneratorClient", () => {
     it("should handle malformed JSON responses", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.reject(new Error("Invalid JSON")),
       } as Response)
 
@@ -513,7 +513,7 @@ describe("GeneratorClient", () => {
         ok: false,
         status: 500,
         statusText: "Internal server error",
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve({ error: "Internal server error" }),
       } as Response)
 
@@ -534,7 +534,7 @@ describe("GeneratorClient", () => {
         ok: false,
         status: 429,
         statusText: "Rate limit exceeded",
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve({ error: "Rate limit exceeded" }),
       } as Response)
 
@@ -569,7 +569,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
 
@@ -593,7 +593,7 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
-        headers: { get: () => "application/json" } as Headers,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
 
