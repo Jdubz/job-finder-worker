@@ -132,9 +132,11 @@ describe("QueueManagementPage", () => {
         updateQueueItem: mockUpdateQueueItem,
       } as any)
 
-      render(<QueueManagementPage />)
+      const { container } = render(<QueueManagementPage />)
 
-      expect(screen.getByText(/loading/i)).toBeInTheDocument()
+      // Component shows skeleton loaders when loading
+      const skeletons = container.querySelectorAll('[class*="skeleton"]')
+      expect(skeletons.length).toBeGreaterThan(0)
     })
 
     it("should display error state", async () => {
