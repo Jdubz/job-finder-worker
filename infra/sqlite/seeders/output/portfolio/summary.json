@@ -1,0 +1,57 @@
+{
+  "exportedAt": "2025-11-21T16:25:12.102Z",
+  "projectId": "static-sites-257923",
+  "databaseId": "portfolio",
+  "collections": [
+    {
+      "name": "content-items",
+      "count": 24,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/content-items.json"
+    },
+    {
+      "name": "experience-entries",
+      "count": 0,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/experience-entries.json"
+    },
+    {
+      "name": "experience-blurbs",
+      "count": 0,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/experience-blurbs.json"
+    },
+    {
+      "name": "companies",
+      "count": 19,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/companies.json"
+    },
+    {
+      "name": "job-queue",
+      "count": 1,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/job-queue.json"
+    },
+    {
+      "name": "job-matches",
+      "count": 0,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/job-matches.json"
+    },
+    {
+      "name": "generator-documents",
+      "count": 0,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/generator-documents.json"
+    },
+    {
+      "name": "job-finder-config",
+      "count": 6,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/job-finder-config.json"
+    },
+    {
+      "name": "job-sources",
+      "count": 25,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/job-sources.json"
+    },
+    {
+      "name": "contact-submissions",
+      "count": 14,
+      "filePath": "/home/jdubz/Development/job-finder-bot/infra/sqlite/seeders/output/portfolio/contact-submissions.json"
+    }
+  ]
+}

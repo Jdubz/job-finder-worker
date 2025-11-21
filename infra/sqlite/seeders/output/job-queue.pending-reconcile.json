@@ -1,0 +1,1150 @@
+{
+  "note": "Do not import until schema reconciled with job-finder-worker. Source = Firestore job-queue exports.",
+  "count": 26,
+  "documents": [
+    {
+      "env": "portfolio",
+      "id": "noFDH51Tb9Bf8R82fXWA",
+      "url": "https://example.com/test-job",
+      "source": "user_submission",
+      "max_retries": 3,
+      "type": "job",
+      "company_name": "Test Company",
+      "created_at": {
+        "_seconds": 1760762049,
+        "_nanoseconds": 882000000
+      },
+      "processed_at": {
+        "_seconds": 1760762199,
+        "_nanoseconds": 611000000
+      },
+      "retry_count": 3,
+      "completed_at": {
+        "_seconds": 1760762199,
+        "_nanoseconds": 935000000
+      },
+      "result_message": "Failed after 3 retries: Job items must have sub_task set. Legacy monolithic pipeline has been removed. Use submit_job() which creates granular pipeline items (JOB_SCRAPE).",
+      "updated_at": {
+        "_seconds": 1760762199,
+        "_nanoseconds": 935000000
+      },
+      "error_details": "Queue Item: noFDH51Tb9Bf8R82fXWA\nType: job\nURL: https://example.com/test-job\nCompany: Test Company\nRetry Count: 3/3\n\nError: Job items must have sub_task set. Legacy monolithic pipeline has been removed. Use submit_job() which creates granular pipeline items (JOB_SCRAPE).\n\nMax retries (3) exceeded. Manual intervention may be required.\n\nTroubleshooting:\n1. Check if the URL is still valid\n2. Review error details below for specific issues\n3. Verify network connectivity and API credentials\n4. Check if the source website has changed structure\n\nStack Trace:\nTraceback (most recent call last):\n  File \"/app/src/job_finder/queue/processor.py\", line 130, in process_item\n    raise ValueError(\nValueError: Job items must have sub_task set. Legacy monolithic pipeline has been removed. Use submit_job() which creates granular pipeline items (JOB_SCRAPE).\n",
+      "status": "failed"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "0fi486vMhdQj59xpxDtg",
+      "company_sub_task": "fetch",
+      "type": "company",
+      "company_name": "Uber",
+      "source": "scraper",
+      "tracking_id": "ce303b87-d926-433d-88f7-4da90ba8ab81",
+      "retry_count": 0,
+      "max_retries": 3,
+      "max_spawn_depth": 10,
+      "spawn_depth": 0,
+      "url": "https://www.uber.com/us/en/careers",
+      "created_at": {
+        "_seconds": 1761161131,
+        "_nanoseconds": 844000000
+      },
+      "ancestry_chain": [
+        "0fi486vMhdQj59xpxDtg"
+      ],
+      "processed_at": {
+        "_seconds": 1761161193,
+        "_nanoseconds": 907000000
+      },
+      "completed_at": {
+        "_seconds": 1761161194,
+        "_nanoseconds": 856000000
+      },
+      "result_message": "Could not fetch any content from company website",
+      "updated_at": {
+        "_seconds": 1761161194,
+        "_nanoseconds": 856000000
+      },
+      "error_details": "Tried pages: https://www.uber.com/us/en/careers/about, https://www.uber.com/us/en/careers/about-us, https://www.uber.com/us/en/careers/company, https://www.uber.com/us/en/careers/careers, https://www.uber.com/us/en/careers",
+      "status": "failed"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "1byYrDXMEXRMw6BDYV45",
+      "pipeline_state": {
+        "company_website": "https://www.dropbox.com/jobs",
+        "html_content": {
+          "jobs": "Join Us - Jobs - Dropbox Your impact STARTS HERE At Dropbox, you'll find more than a job. You'll find the freedom to experiment boldly, master your craft, and truly be yourself. Here, you own your impact to make work more intuitive, joyful, and human—for you as a Dropboxer and for hundreds of millions of people worldwide. Join us Own Your Impact Your browser does not support the video tag. Be who you are. Become who you're meant to be. At Dropbox, we don’t just connect workflows. We connect teams and ideas, work and life, artificial intelligence and human brilliance. With the flexibility of a start-up and the opportunities of a global enterprise, you’re expected to push boundaries– and yourself– to shape the future of work. EXPERIMENTATION Redefine possibility. A lab for distributed work where bold ideas become reality. CRAFT Unlock your potential. An opportunity to grow, personally and professionally. COMMUNITY Build connections. A culture that puts humans at the core of what we do. Image in Individual Container VIRTUAL FIRST We're shaping the future of distributed work because we're living it. We believe you do your best work when empowered to be your best self. Our Virtual First model mixes the autonomy of remote work with the connection of in-person collaboration. It’s the best of both worlds: a distributed workplace anchored in community. See how A lab for distributed work We're making an impact from everywhere. Dropboxers collaborate across time zones and continents, while our Studios in San Francisco, Seattle, and Dublin serve as creative hubs where our community comes together to connect, create, and reimagine the future of work. ❮ ❯ Our values Be worthy of trust Millions of teams trust us with their most important information. But this trust can vanish in an instant. That’s why integrity is the foundation of our culture. We do the right thing, even when nobody’s looking. We’re honest—even when it’s uncomfortable. They win, we win Our customers come first. So we put in the work to deeply understand them. We ask, “Who’s the customer?” and “What do they really need?” When they succeed, our business (and everything else) falls into place. Keep it simple Simple things work better—and make more sense. So we build products that do a few things really well. And we don’t overcomplicate life at Dropbox, whether it’s a plan or a process. Getting to simple isn’t always easy, but it’s worth the effort. Own it We take responsibility for our work, from start to finish. When we get stuck, we unblock ourselves. When something goes wrong, we don’t ask, “What did they screw up?” but “What could I do better?” We learn from our mistakes and keep going—until we have real impact. Make work human Our mission is to design a more enlightened way of working, for Dropboxers and the world. So we make products that prioritize our needs as humans. And we build a compassionate culture where you can do your best work—no matter who you are or where you’re from. OWN YOUR IMPACT AT JOBS.DROPBOX.COM #LIFEINSIDEDROPBOX"
+        },
+        "company_name": "Dropbox"
+      },
+      "parent_item_id": "Ak0lVOEAyZvKfHWReRkA",
+      "ancestry_chain": [
+        "Ak0lVOEAyZvKfHWReRkA",
+        "Ak0lVOEAyZvKfHWReRkA"
+      ],
+      "spawn_depth": 1,
+      "company_name": "Dropbox",
+      "company_sub_task": "extract",
+      "tracking_id": "4c809341-96d9-4b86-ad14-6da4569d8b32",
+      "max_retries": 3,
+      "url": "https://www.dropbox.com/jobs",
+      "max_spawn_depth": 10,
+      "type": "company",
+      "retry_count": 0,
+      "source": "scraper",
+      "created_at": {
+        "_seconds": 1761161217,
+        "_nanoseconds": 863000000
+      },
+      "processed_at": {
+        "_seconds": 1761161282,
+        "_nanoseconds": 96000000
+      },
+      "completed_at": {
+        "_seconds": 1761161285,
+        "_nanoseconds": 65000000
+      },
+      "result_message": "Company information extracted successfully",
+      "updated_at": {
+        "_seconds": 1761161285,
+        "_nanoseconds": 65000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "4Bsze2rL7e8JQ208HxMY",
+      "retry_count": 0,
+      "pipeline_state": {
+        "company_website": "https://www.cloudflare.com",
+        "html_content": {
+          "careers": "Cloudflare Careers | Cloudflare Cloudflare Careers We believe that with our talented team, smart technology and engaged users we can join in helping build a better Internet We believe that with our talented team, smart technology and engaged users we can solve some of the biggest problems on the Internet.At Cloudflare, we strive to create and uphold an inclusive culture and a workplace where employees feel comfortable and empowered to bring their genuine selves to work so they can do their best work. We are now hiring for hybrid, distributed and in-office opportunities across the Americas, Europe and Asia. See Open Positions Cloudflare Capabilities The Cloudflare Capabilities outline the behaviors we value and reference when measuring success, giving feedback, and rewarding performance. They serve as the building blocks of an inclusive company culture. PERFORMANCE = RESULTS + BEHAVIORS When we evaluate performance, we review “what” the outcome is, the results . However, we also consider “how” we work and what good looks like, the behaviors . It doesn’t just matter what you do, but how you do it. How & Where We Work We empower our employees to do their best work, wherever they are. We are committed to developing a global team that is distributed with a flexible working approach. Doing this equitably and inclusively is essential to our success. We have decided on two ways in which our employees will work. These approaches give teams the opportunity to establish their optimal working arrangements that fits with their objectives and enables collaboration. Life at Cloudflare Cloudflare employees come from all walks of life. Our team is energized by a collaborative , creative environment that celebrates our differences and fosters new ways to grow together. Explore Life at Cloudflare Stay up to date and learn more about us The Cloudflare Blog GETTING STARTED Free plans Small business plans For enterprises Get a recommendation Request a demo Contact sales SOLUTIONS Connectivity cloud Application services SASE and workspace security Network services Developer platform SUPPORT Help center Customer support Community forum Developers Discord Lost account access? Cloudflare status COMPLIANCE Compliance resources Trust GDPR Responsible AI Transparency report Report abuse PUBLIC INTEREST Project Galileo Athenian Project Cloudflare for Campaigns Project Fairshot COMPANY About Cloudflare Network map Our team Logos & press kit Diversity, equity, & inclusion Impact/ESG © 2025 Cloudflare, Inc. Privacy Policy Terms of Use Report Security Issues Cookie Preferences Trademark",
+          "www.cloudflare.com": "Connect, protect, and build everywhere | Cloudflare Connect, protect, and build everywhere We make websites, apps, AI agents, and networks faster and more secure. Our developer platform is the best place to build modern apps and deliver AI initiatives. Start for free Introducing Cloudflare AI Security Suite Secure generative and agentic AI everywhere Learn more 2025 Cloudflare Signals Security report Five security trends that demand a C-suite response Download report Our connectivity cloud is the best place to connect your users, apps, clouds, and networks protect everything you connect to the Internet build and scale applications Over 60 cloud services on one unified platform, uniquely powered by a global cloud network. We call it the connectivity cloud. Connect your people, apps and AI agents Modernize your network and secure your workspace against unauthorized access, web browsing attacks and phishing. Accelerate your journey to Zero Trust with our SASE platform today. Contact sales Learn more Related Interactive Zero Trust demo 10-step SASE journey Protect and accelerate websites and AI-enabled apps Use our industry-leading WAF, DDoS, and bot protection to protect your websites, apps, APIs, and AI workloads while accelerating performance with our ultra-fast CDN. Get started in 5 minutes. Start for free Compare plans Related Cloudflare named a Leader in Forrester Wave for WAF for 2025 Build and secure AI agents Agents are the future of AI, and Cloudflare is the best place to get started. Use our agents framework and orchestration tools to run the models you choose and deliver new agents quickly. Build, deploy, and secure access for remote MCP servers so agents can access the features of your apps. Start building now Developer docs Related Build AI apps quickly Build AI Agents One global cloud network unlike any other Only Cloudflare offers an intelligent, global cloud network built from the ground up for security, speed, and reliability. 60+ cloud services available globally 190B cyber threats blocked each day 20% of all websites are protected by Cloudflare 330+ cities in 125+ countries, including mainland China Leading companies rely on Cloudflare Connect Protect Build Connect users and apps securely Keep your people safe and productive on any device, in any location with unified SASE and SSE solutions. Sign up for demo Learn more \"Discord is where the world builds relationships. Cloudflare helps us deliver on that mission, connecting our internal engineering team to the tools they need. With Cloudflare, we can rest easy knowing every request to our critical apps is evaluated for identity and context — a true Zero Trust approach.\" Mark Smith Director of Infrastructure, Discord Protect and accelerate websites Place a global cloud network in front of websites, apps, and APIs to insulate users from Internet-borne threats and accelerate performance. Sign up for demo Learn more \"Like Zendesk, innovation is in Cloudflare’s DNA — it mirrors our beautifully simple development ethos with the connectivity cloud, a powerful, yet simple-to-implement, end-to-end solution that does all the heavy lifting, so we don’t need to.\" Nan Guo Senior Vice President of Engineering, Zendesk Build and scale applications The computing power, databases, storage, media, and AI inference you need to build without operational overhead. Learn more View plans \"The Cloudflare Developer Platform and Workers are central to our ability to provide user-programmable functionality. It is just one example of how we leverage Cloudflare capabilities to enhance our technology and deliver value to our clients.\" Christopher Naidoo Head of Digital IT Operations, Investec How Cloudflare can help Accelerate website performance Accelerate website performance Supercharge your site performance and improve reliability with traffic intelligence from our global network. Block bot traffic Block bot traffic Stop bot attacks in real time by harnessing data from millions of websites protected by Cloudflare. Optimize video experiences Optimize video experiences Easily upload, store, encode, and deliver live and on-demand video. Deploy serverless code Deploy serverless code Build serverless applications and deploy instantly across the globe for speed, reliability, and scale. Deploy AI on the edge Deploy AI on the edge Build and deploy ambitious AI applications to Cloudflare's global network. Eliminate egress fee for object storage Eliminate egress fee for object storage Ingest, store, and query data with S3-compatible object storage. Show more News and resources What's new Insights Library Events Report Cloudflare named a Challenger in 2025 Gartner® Magic Quadrant™ for CNAP Read report Report Cloudflare named a Visionary in 2025 Gartner® Magic Quadrant™ for SASE Platforms Read report Announcement Announcing Cloudflare's pay per crawl beta Learn more Webinar Join our expert-led webinar on simplifying cloud migration and security Register Insight A C-suite responsibility matrix for app modernization Read Webinar From complexity to clarity: The SASE roadmap to security & network unification Register Report Cloudflare named a Strong Performer in Forrester Wave™ for Email, Messaging, And Collaboration Security Solutions for 2025 Read report Blog Cloudflare named in Gartner® Magic Quadrant™ for SSE for 3rd consecutive year Read blog Report Cloudflare named a Strong Performer in Forrester Wave™ for Serverless Development Platforms for 2025 Read report Report Cloudflare named a Leader in Forrester Wave™ for WAF for 2025 Read report Insight Rethink what cyber resilience really means Read Insight NCR Voyix on how a service mindset delivers better security outcomes Read Insight CSO Grant Bourzikas shares strategies to curb AI misinformation Read Insight Cloudflare CIO, Mike Hamilton on how AI is disrupting software purchases Read eBook Protect modern organizations from threats without stifling innovation Read Whitepaper 3 challenges of securing and connecting application services Read eBook Explore more ebooks in Cloudflare's Resource Hub Read eBook Increase developer velocity with a connectivity cloud Read Event Registration is now open for Cloudflare Connect 2025 Learn more Webinar Join our solutions engineering team for a weekly application services demo Register Event Learn more about Cloudflare and meet our team at an upcoming event near you Register Webinar Enhance your knowledge and gain new skills with a live or on-demand webinar Register Event Security builders workshop series Register Event Security leaders forum series Register Event Architecture Workshop Series Learn more Get started with the connectivity cloud Get started for free Get easy, instant access to Cloudflare security and performance services. Start for free Need help choosing? Get a personalized product recommendation for your specific needs. Find the right plan Talk to an expert Have questions or want to get a demo? Get in touch with one of our experts. Contact us"
+        },
+        "company_name": "Cloudflare"
+      },
+      "source": "automated_scan",
+      "max_spawn_depth": 10,
+      "company_sub_task": "extract",
+      "ancestry_chain": [
+        "ML5QQI1bDCYAJLQrFEl3"
+      ],
+      "company_name": "Cloudflare",
+      "max_retries": 3,
+      "url": "https://www.cloudflare.com",
+      "tracking_id": "919bab15-70e3-4535-b8bd-282846924bb0",
+      "type": "company",
+      "parent_item_id": "ML5QQI1bDCYAJLQrFEl3",
+      "spawn_depth": 1,
+      "created_at": {
+        "_seconds": 1761082409,
+        "_nanoseconds": 426000000
+      },
+      "processed_at": {
+        "_seconds": 1761082469,
+        "_nanoseconds": 954000000
+      },
+      "completed_at": {
+        "_seconds": 1761082473,
+        "_nanoseconds": 765000000
+      },
+      "result_message": "Company information extracted successfully",
+      "updated_at": {
+        "_seconds": 1761082473,
+        "_nanoseconds": 765000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "6EsAtOu5Didwsf4wrdWY",
+      "type": "source_discovery",
+      "retry_count": 0,
+      "ancestry_chain": [],
+      "max_retries": 3,
+      "source_discovery_config": {
+        "type_hint": "auto",
+        "company_id": "UMFtQzTChBEcprAKzgrC",
+        "url": "https://www.dropbox.com/jobs/jobs",
+        "validation_required": false,
+        "auto_enable": true,
+        "company_name": "Dropbox"
+      },
+      "company_name": "Dropbox",
+      "spawn_depth": 0,
+      "tracking_id": "16de9a4d-a11f-4701-b0f1-326134ff6f64",
+      "company_id": "UMFtQzTChBEcprAKzgrC",
+      "max_spawn_depth": 10,
+      "url": "",
+      "source": "automated_scan",
+      "created_at": {
+        "_seconds": 1761161410,
+        "_nanoseconds": 179000000
+      },
+      "processed_at": {
+        "_seconds": 1761161470,
+        "_nanoseconds": 775000000
+      },
+      "completed_at": {
+        "_seconds": 1761161473,
+        "_nanoseconds": 550000000
+      },
+      "result_message": "Error discovering selectors: 404 Client Error: Not Found for url: https://jobs.dropbox.com/jobs",
+      "updated_at": {
+        "_seconds": 1761161473,
+        "_nanoseconds": 550000000
+      },
+      "error_details": "Source: https://www.dropbox.com/jobs/jobs",
+      "status": "failed"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "6KoLIHNmzbJ9z4fSVID0",
+      "retry_count": 0,
+      "max_spawn_depth": 10,
+      "company_sub_task": "fetch",
+      "company_name": "Stripe Careers",
+      "max_retries": 3,
+      "tracking_id": "6a6918cc-d60c-4d7c-aaff-84a30378dee6",
+      "spawn_depth": 0,
+      "source": "user_submission",
+      "url": "https://stripe.com",
+      "type": "company",
+      "created_at": {
+        "_seconds": 1761156214,
+        "_nanoseconds": 624000000
+      },
+      "ancestry_chain": [
+        "6KoLIHNmzbJ9z4fSVID0"
+      ],
+      "processed_at": {
+        "_seconds": 1761156246,
+        "_nanoseconds": 178000000
+      },
+      "completed_at": {
+        "_seconds": 1761156249,
+        "_nanoseconds": 168000000
+      },
+      "result_message": "Fetched 3 pages from company website",
+      "updated_at": {
+        "_seconds": 1761156249,
+        "_nanoseconds": 168000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "9T5TtgoqFwkd63RJODRc",
+      "company_sub_task": "extract",
+      "ancestry_chain": [
+        "l9TlRaQBOM39SQl2MQl9",
+        "l9TlRaQBOM39SQl2MQl9"
+      ],
+      "company_name": "Lyft Careers",
+      "max_spawn_depth": 10,
+      "source": "user_submission",
+      "type": "company",
+      "url": "https://www.lyft.com",
+      "pipeline_state": {
+        "company_name": "Lyft Careers",
+        "company_website": "https://www.lyft.com",
+        "html_content": {
+          "www.lyft.com": "Ride or drive with Lyft Skip to main content New riders: get 50% off your first ride with code 50OFF1WB (up to $10 off). Terms apply* The world awaits No matter where you’re headed, we’ll help you get there. On-demand, scheduled ahead, late night, or morning commute. Plus, earn rewards on every ride. Sign up to ride Shift into earnings mode With Lyft, you can be your own boss, set your own schedule, and drive when it makes sense for you. You keep 100% of your tips, and can cash out instantly whenever you want. Apply to drive Learn more about earnings RIDE WITH LYFT A few quick taps, one great trip RIDE WITH LYFT A few quick taps, one great trip No matter your destination, we’ll get you where you need to go Get a reliable ride in minutes Schedule your ride in advance Earn rewards on every ride Sign up to ride Learn more about riding with Lyft Your ride, refined Your ride, refined Join Lyft Pink to enjoy complimentary upgrades on Priority Pickup, exclusive savings, and preferential pricing on XL, Extra Comfort, Black, and Black SUV rides. Members save an average of $23/month. Free Priority Pickup upgrades Get picked up faster and save $3-4 per ride on average Exclusive savings Enjoy 5% off on Extra Comfort and Lyft XL rides Cancellation forgiveness Cancel up to 3x/month for free Free Grubhub+ for a year $0 restaurant delivery fees Join now Subject to the Lyft Pink Terms & Conditions and Lyft Terms of Service . How you get there is up to you We’ve got options to get you where you’re going. Choose a ride that suits your mood and budget.* Wait & Save Budget-friendly Private Standard Efficient Private Priority Pickup Efficient Private BIKETOWN bikes Efficient Eco-friendly BIKETOWN scooters Efficient Eco-friendly Extra Comfort Nicer cars Top drivers Black Luxury cars Top drivers XL Spacious SUVs Room for up to 6 *Availability of bikes, scooters, and ride types varies by region. Helping your business go places, literally Provide reliable rides for the people who matter to your business. Whether it’s team members heading into work or traveling to client meetings, conferences or training sessions. Get started today Explore solutions Safety never takes a backseat We want to level up every single ride—and it starts with safety. With always-on protection from before you ride and customizable tools for added peace of mind, we’re a community built on putting safety first. Learn more Community guidelines Making rides more accessible A ride is more than just transportation: It’s access to job opportunities, community events, and essentials like groceries and healthcare. Lyft Up makes rides more accessible, bringing communities closer. Learn more about our Lyft Up programs Download the apps and go Scan the QR code to download. Download the rider app Scan the QR code to download. Download the driver app * By clicking “50OFF1WB” you agree to Lyft's Terms of Service and acknowledge you have read our Privacy Policy . New users only. Limited quantity available. 50% off your first ride. You have 1 ride remaining. Max savings of $10 per ride. Discount applies to the fare, Service fee, tolls, and taxes only. Offer valid until 14 days after activation. VoIP phone numbers cannot be used to redeem coupons, credits, discounts, or other promotions. Cannot be combined with other offers. Subject to Lyft's Terms of Service."
+        }
+      },
+      "tracking_id": "4d65dcf9-d3d1-493f-bd98-ff7d6169cc56",
+      "retry_count": 0,
+      "parent_item_id": "l9TlRaQBOM39SQl2MQl9",
+      "spawn_depth": 1,
+      "max_retries": 3,
+      "created_at": {
+        "_seconds": 1761156254,
+        "_nanoseconds": 210000000
+      },
+      "result_message": "Company information extracted successfully",
+      "processed_at": {
+        "_seconds": 1761156321,
+        "_nanoseconds": 746000000
+      },
+      "completed_at": {
+        "_seconds": 1761156324,
+        "_nanoseconds": 836000000
+      },
+      "updated_at": {
+        "_seconds": 1761156324,
+        "_nanoseconds": 836000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "AiExlOSUVdEojcotKLdA",
+      "test_run_id": "e2e_test_88600edb",
+      "created_at": {
+        "_seconds": 1761081976,
+        "_nanoseconds": 206959000
+      },
+      "sub_task": "scrape",
+      "type": "job",
+      "company_name": "Cloudflare",
+      "source": "automated_scan",
+      "url": "https://boards.greenhouse.io/cloudflare/jobs/7270583",
+      "processed_at": {
+        "_seconds": 1761081983,
+        "_nanoseconds": 972000000
+      },
+      "completed_at": {
+        "_seconds": 1761081984,
+        "_nanoseconds": 598000000
+      },
+      "result_message": "Could not scrape job details from URL",
+      "updated_at": {
+        "_seconds": 1761081984,
+        "_nanoseconds": 598000000
+      },
+      "error_details": "Failed to extract data from: https://boards.greenhouse.io/cloudflare/jobs/7270583",
+      "status": "failed"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "Ak0lVOEAyZvKfHWReRkA",
+      "company_sub_task": "fetch",
+      "type": "company",
+      "company_name": "Dropbox",
+      "source": "scraper",
+      "tracking_id": "4c809341-96d9-4b86-ad14-6da4569d8b32",
+      "retry_count": 0,
+      "max_retries": 3,
+      "max_spawn_depth": 10,
+      "spawn_depth": 0,
+      "url": "https://www.dropbox.com/jobs",
+      "created_at": {
+        "_seconds": 1761161132,
+        "_nanoseconds": 350000000
+      },
+      "ancestry_chain": [
+        "Ak0lVOEAyZvKfHWReRkA"
+      ],
+      "processed_at": {
+        "_seconds": 1761161194,
+        "_nanoseconds": 964000000
+      },
+      "completed_at": {
+        "_seconds": 1761161217,
+        "_nanoseconds": 460000000
+      },
+      "result_message": "Fetched 1 pages from company website",
+      "updated_at": {
+        "_seconds": 1761161217,
+        "_nanoseconds": 460000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "B8lrxouzoLWOht4qENmC",
+      "pipeline_state": {
+        "extracted_info": {
+          "size": "",
+          "culture": "Dropbox values experimentation, personal growth, and human-centric work, with a Virtual First model that combines remote work autonomy and in-person collaboration.",
+          "mission": "To design a more enlightened way of working, for Dropboxers and the world.",
+          "founded": "",
+          "industry": "SaaS",
+          "about": "Dropbox is a cloud storage and file synchronization service that helps teams collaborate and manage workflows across different locations and devices."
+        },
+        "company_website": "https://www.dropbox.com/jobs",
+        "html_content": {
+          "jobs": "Join Us - Jobs - Dropbox Your impact STARTS HERE At Dropbox, you'll find more than a job. You'll find the freedom to experiment boldly, master your craft, and truly be yourself. Here, you own your impact to make work more intuitive, joyful, and human—for you as a Dropboxer and for hundreds of millions of people worldwide. Join us Own Your Impact Your browser does not support the video tag. Be who you are. Become who you're meant to be. At Dropbox, we don’t just connect workflows. We connect teams and ideas, work and life, artificial intelligence and human brilliance. With the flexibility of a start-up and the opportunities of a global enterprise, you’re expected to push boundaries– and yourself– to shape the future of work. EXPERIMENTATION Redefine possibility. A lab for distributed work where bold ideas become reality. CRAFT Unlock your potential. An opportunity to grow, personally and professionally. COMMUNITY Build connections. A culture that puts humans at the core of what we do. Image in Individual Container VIRTUAL FIRST We're shaping the future of distributed work because we're living it. We believe you do your best work when empowered to be your best self. Our Virtual First model mixes the autonomy of remote work with the connection of in-person collaboration. It’s the best of both worlds: a distributed workplace anchored in community. See how A lab for distributed work We're making an impact from everywhere. Dropboxers collaborate across time zones and continents, while our Studios in San Francisco, Seattle, and Dublin serve as creative hubs where our community comes together to connect, create, and reimagine the future of work. ❮ ❯ Our values Be worthy of trust Millions of teams trust us with their most important information. But this trust can vanish in an instant. That’s why integrity is the foundation of our culture. We do the right thing, even when nobody’s looking. We’re honest—even when it’s uncomfortable. They win, we win Our customers come first. So we put in the work to deeply understand them. We ask, “Who’s the customer?” and “What do they really need?” When they succeed, our business (and everything else) falls into place. Keep it simple Simple things work better—and make more sense. So we build products that do a few things really well. And we don’t overcomplicate life at Dropbox, whether it’s a plan or a process. Getting to simple isn’t always easy, but it’s worth the effort. Own it We take responsibility for our work, from start to finish. When we get stuck, we unblock ourselves. When something goes wrong, we don’t ask, “What did they screw up?” but “What could I do better?” We learn from our mistakes and keep going—until we have real impact. Make work human Our mission is to design a more enlightened way of working, for Dropboxers and the world. So we make products that prioritize our needs as humans. And we build a compassionate culture where you can do your best work—no matter who you are or where you’re from. OWN YOUR IMPACT AT JOBS.DROPBOX.COM #LIFEINSIDEDROPBOX"
+        },
+        "company_name": "Dropbox"
+      },
+      "parent_item_id": "1byYrDXMEXRMw6BDYV45",
+      "ancestry_chain": [
+        "Ak0lVOEAyZvKfHWReRkA",
+        "Ak0lVOEAyZvKfHWReRkA",
+        "1byYrDXMEXRMw6BDYV45"
+      ],
+      "spawn_depth": 2,
+      "company_name": "Dropbox",
+      "company_sub_task": "analyze",
+      "tracking_id": "4c809341-96d9-4b86-ad14-6da4569d8b32",
+      "max_retries": 3,
+      "url": "https://www.dropbox.com/jobs",
+      "max_spawn_depth": 10,
+      "type": "company",
+      "retry_count": 0,
+      "source": "scraper",
+      "created_at": {
+        "_seconds": 1761161285,
+        "_nanoseconds": 606000000
+      },
+      "processed_at": {
+        "_seconds": 1761161348,
+        "_nanoseconds": 711000000
+      },
+      "completed_at": {
+        "_seconds": 1761161348,
+        "_nanoseconds": 827000000
+      },
+      "result_message": "Company analyzed (Tier D, Score: 0)",
+      "updated_at": {
+        "_seconds": 1761161348,
+        "_nanoseconds": 827000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "FSE3g6wVmk1NDQlK9Ppk",
+      "company_sub_task": "fetch",
+      "type": "company",
+      "company_name": "Airbnb",
+      "source": "scraper",
+      "tracking_id": "cb546b5d-ed58-49f8-8880-b808b47004c5",
+      "max_retries": 3,
+      "max_spawn_depth": 10,
+      "spawn_depth": 0,
+      "url": "https://careers.airbnb.com/",
+      "created_at": {
+        "_seconds": 1761161131,
+        "_nanoseconds": 357000000
+      },
+      "ancestry_chain": [
+        "FSE3g6wVmk1NDQlK9Ppk"
+      ],
+      "processed_at": {
+        "_seconds": 1761161346,
+        "_nanoseconds": 220000000
+      },
+      "retry_count": 3,
+      "completed_at": {
+        "_seconds": 1761161348,
+        "_nanoseconds": 600000000
+      },
+      "result_message": "Failed after 3 retries: One or more components is not a string or is empty.",
+      "updated_at": {
+        "_seconds": 1761161348,
+        "_nanoseconds": 600000000
+      },
+      "error_details": "Queue Item: FSE3g6wVmk1NDQlK9Ppk\nType: company\nURL: https://careers.airbnb.com/\nCompany: Airbnb\nRetry Count: 3/3\n\nError: One or more components is not a string or is empty.\n\nMax retries (3) exceeded. Manual intervention may be required.\n\nTroubleshooting:\n1. Check if the URL is still valid\n2. Review error details below for specific issues\n3. Verify network connectivity and API credentials\n4. Check if the source website has changed structure\n\nStack Trace:\nTraceback (most recent call last):\n  File \"/app/src/job_finder/queue/processor.py\", line 139, in process_item\n    self._process_granular_company(item)\n  File \"/app/src/job_finder/queue/processor.py\", line 1209, in _process_granular_company\n    self._process_company_fetch(item)\n  File \"/app/src/job_finder/queue/processor.py\", line 1288, in _process_company_fetch\n    self.queue_manager.spawn_next_pipeline_step(\n  File \"/app/src/job_finder/queue/manager.py\", line 492, in spawn_next_pipeline_step\n    doc_id = self.spawn_item_safely(current_item, new_item_data)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/app/src/job_finder/queue/manager.py\", line 782, in spawn_item_safely\n    item_id = self.add_item(new_item)\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/app/src/job_finder/queue/manager.py\", line 66, in add_item\n    doc_ref = self.db.collection(self.collection_name).add(data)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/.local/lib/python3.12/site-packages/google/cloud/firestore_v1/collection.py\", line 132, in add\n    write_result = document_ref.create(document_data, **kwargs)\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/.local/lib/python3.12/site-packages/google/cloud/firestore_v1/document.py\", line 98, in create\n    batch, kwargs = self._prep_create(document_data, retry, timeout)\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/.local/lib/python3.12/site-packages/google/cloud/firestore_v1/base_document.py\", line 205, in _prep_create\n    batch.create(self, document_data)\n  File \"/root/.local/lib/python3.12/site-packages/google/cloud/firestore_v1/base_batch.py\", line 82, in create\n    write_pbs = _helpers.pbs_for_create(reference._document_path, document_data)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/.local/lib/python3.12/site-packages/google/cloud/firestore_v1/_helpers.py\", line 696, in pbs_for_create\n    extractor = DocumentExtractor(document_data)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/.local/lib/python3.12/site-packages/google/cloud/firestore_v1/_helpers.py\", line 522, in __init__\n    for field_path, value in iterator:\n                             ^^^^^^^^\n  File \"/root/.local/lib/python3.12/site-packages/google/cloud/firestore_v1/_helpers.py\", line 469, in extract_fields\n    for s_path, s_value in extract_fields(value, field_path):\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/.local/lib/python3.12/site-packages/google/cloud/firestore_v1/_helpers.py\", line 469, in extract_fields\n    for s_path, s_value in extract_fields(value, field_path):\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/.local/lib/python3.12/site-packages/google/cloud/firestore_v1/_helpers.py\", line 464, in extract_fields\n    sub_key = FieldPath(key)\n              ^^^^^^^^^^^^^^\n  File \"/root/.local/lib/python3.12/site-packages/google/cloud/firestore_v1/field_path.py\", line 270, in __init__\n    raise ValueError(error)\nValueError: One or more components is not a string or is empty.\n",
+      "status": "failed"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "GOKoiv6WuTbDrl6LZkuJ",
+      "company_sub_task": "save",
+      "ancestry_chain": [
+        "l9TlRaQBOM39SQl2MQl9",
+        "l9TlRaQBOM39SQl2MQl9",
+        "9T5TtgoqFwkd63RJODRc",
+        "eFZVGLOAiritGR323XQk"
+      ],
+      "company_name": "Lyft Careers",
+      "max_spawn_depth": 10,
+      "source": "user_submission",
+      "type": "company",
+      "url": "https://www.lyft.com",
+      "pipeline_state": {
+        "extracted_info": {
+          "industry": "Transportation Technology",
+          "about": "Lyft is a ride-sharing platform that provides on-demand transportation services, allowing users to get rides through a mobile app and offering opportunities for drivers to earn money by providing transportation.",
+          "culture": "Lyft emphasizes flexibility for drivers, allowing them to be their own boss and set their own schedules, while also prioritizing safety and community accessibility.",
+          "mission": "",
+          "founded": "",
+          "size": ""
+        },
+        "analysis_result": {
+          "job_board_url": null,
+          "tier": "D",
+          "tech_stack": [
+            "javascript",
+            "go",
+            "machine learning"
+          ],
+          "priority_score": 0
+        },
+        "company_name": "Lyft Careers",
+        "company_website": "https://www.lyft.com",
+        "html_content": {
+          "www.lyft.com": "Ride or drive with Lyft Skip to main content New riders: get 50% off your first ride with code 50OFF1WB (up to $10 off). Terms apply* The world awaits No matter where you’re headed, we’ll help you get there. On-demand, scheduled ahead, late night, or morning commute. Plus, earn rewards on every ride. Sign up to ride Shift into earnings mode With Lyft, you can be your own boss, set your own schedule, and drive when it makes sense for you. You keep 100% of your tips, and can cash out instantly whenever you want. Apply to drive Learn more about earnings RIDE WITH LYFT A few quick taps, one great trip RIDE WITH LYFT A few quick taps, one great trip No matter your destination, we’ll get you where you need to go Get a reliable ride in minutes Schedule your ride in advance Earn rewards on every ride Sign up to ride Learn more about riding with Lyft Your ride, refined Your ride, refined Join Lyft Pink to enjoy complimentary upgrades on Priority Pickup, exclusive savings, and preferential pricing on XL, Extra Comfort, Black, and Black SUV rides. Members save an average of $23/month. Free Priority Pickup upgrades Get picked up faster and save $3-4 per ride on average Exclusive savings Enjoy 5% off on Extra Comfort and Lyft XL rides Cancellation forgiveness Cancel up to 3x/month for free Free Grubhub+ for a year $0 restaurant delivery fees Join now Subject to the Lyft Pink Terms & Conditions and Lyft Terms of Service . How you get there is up to you We’ve got options to get you where you’re going. Choose a ride that suits your mood and budget.* Wait & Save Budget-friendly Private Standard Efficient Private Priority Pickup Efficient Private BIKETOWN bikes Efficient Eco-friendly BIKETOWN scooters Efficient Eco-friendly Extra Comfort Nicer cars Top drivers Black Luxury cars Top drivers XL Spacious SUVs Room for up to 6 *Availability of bikes, scooters, and ride types varies by region. Helping your business go places, literally Provide reliable rides for the people who matter to your business. Whether it’s team members heading into work or traveling to client meetings, conferences or training sessions. Get started today Explore solutions Safety never takes a backseat We want to level up every single ride—and it starts with safety. With always-on protection from before you ride and customizable tools for added peace of mind, we’re a community built on putting safety first. Learn more Community guidelines Making rides more accessible A ride is more than just transportation: It’s access to job opportunities, community events, and essentials like groceries and healthcare. Lyft Up makes rides more accessible, bringing communities closer. Learn more about our Lyft Up programs Download the apps and go Scan the QR code to download. Download the rider app Scan the QR code to download. Download the driver app * By clicking “50OFF1WB” you agree to Lyft's Terms of Service and acknowledge you have read our Privacy Policy . New users only. Limited quantity available. 50% off your first ride. You have 1 ride remaining. Max savings of $10 per ride. Discount applies to the fare, Service fee, tolls, and taxes only. Offer valid until 14 days after activation. VoIP phone numbers cannot be used to redeem coupons, credits, discounts, or other promotions. Cannot be combined with other offers. Subject to Lyft's Terms of Service."
+        }
+      },
+      "tracking_id": "4d65dcf9-d3d1-493f-bd98-ff7d6169cc56",
+      "retry_count": 0,
+      "parent_item_id": "eFZVGLOAiritGR323XQk",
+      "spawn_depth": 3,
+      "max_retries": 3,
+      "created_at": {
+        "_seconds": 1761156384,
+        "_nanoseconds": 717000000
+      },
+      "processed_at": {
+        "_seconds": 1761156386,
+        "_nanoseconds": 439000000
+      },
+      "completed_at": {
+        "_seconds": 1761156387,
+        "_nanoseconds": 16000000
+      },
+      "result_message": "Company saved successfully (ID: HhPdJz9WYiBHCqafo3wj)",
+      "updated_at": {
+        "_seconds": 1761156387,
+        "_nanoseconds": 16000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "HvlzY5kODTzAW8yjBcWF",
+      "max_spawn_depth": 10,
+      "retry_count": 0,
+      "source": "user_submission",
+      "company_sub_task": "fetch",
+      "company_name": "Netflix Careers",
+      "type": "company",
+      "url": "https://www.netflix.com",
+      "tracking_id": "272023a9-52b4-4c0d-91e7-24df68666f43",
+      "max_retries": 3,
+      "spawn_depth": 0,
+      "created_at": {
+        "_seconds": 1761153493,
+        "_nanoseconds": 301000000
+      },
+      "ancestry_chain": [
+        "HvlzY5kODTzAW8yjBcWF"
+      ],
+      "processed_at": {
+        "_seconds": 1761153539,
+        "_nanoseconds": 478000000
+      },
+      "completed_at": {
+        "_seconds": 1761153544,
+        "_nanoseconds": 168000000
+      },
+      "result_message": "Fetched 5 pages from company website",
+      "updated_at": {
+        "_seconds": 1761153544,
+        "_nanoseconds": 168000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "LEWSDF0A3yZLylnNo6Ug",
+      "company_sub_task": "analyze",
+      "ancestry_chain": [
+        "Sic16UtQScwf7ggU4Icq",
+        "Sic16UtQScwf7ggU4Icq",
+        "y4ZxW7B8qnlgxb5gA9Pc"
+      ],
+      "company_name": "Square Careers",
+      "max_spawn_depth": 10,
+      "source": "user_submission",
+      "type": "company",
+      "url": "https://squareup.com",
+      "pipeline_state": {
+        "extracted_info": {
+          "industry": "Fintech",
+          "about": "Square is a financial services and digital payments platform that helps businesses manage payments, point of sale, team management, marketing, and business operations across multiple industries.",
+          "culture": "Square believes businesses are unique and aims to provide individualized solutions to help entrepreneurs succeed.",
+          "mission": "",
+          "founded": "",
+          "size": ""
+        },
+        "company_name": "Square Careers",
+        "company_website": "https://squareup.com",
+        "html_content": {
+          "careers": "Power your entire business | Square Please update your browser. Download the latest version of a supported browser below to get the most out of this website: Google Chrome Mozilla Firefox Microsoft Edge I understand. Proceed anyway Hardware Smooth checkout, every time Choose from a range of sleek options for however you do business. All equally easy to use. Browse all Square Register The sleek, dual-screen system $799 or $39/mo. over 24 months ¹ Square Handheld The POS that moves with you $399 or $37/mo. over 12 months¹ Square Terminal The receipt-printing POS $299 or $27/mo. over 12 months ¹ Square Stand The intuitive, swiveling iPad POS $149 or $14/mo. over 12 months¹ Square Reader for contactless and chip The portable reader for every tap and dip $59 Point of sale See your whole business click into place Take payments Sell anything in person and online with a point of sale platform that works for whatever you sell. Learn more Manage your team Run payroll, schedule shifts, and take care of admin — so your team can focus on performing their best. Learn more Grow your customer base Set up the right marketing campaigns and loyalty program to welcome new customers and keep them coming back for more. Learn more Control your cash flow² Bring your revenue under one roof. Instantly access your funds, save for future expenses, and get quicker access to loans. Learn more Connect your favorite apps Square partners with hundreds of apps so you can manage your entire business without jumping between. Learn more Food & Beverage 450,000+ food and beverage sellers using Square globally Learn more Retail $39 billion+ generated by retailers using Square annually Learn more Beauty 15 million+ appointments booked through Square every month Learn more Services $93 billion+ paid with invoices globally Learn more Square AI Make smart decisions, fast Ask Square AI anything about your business to get immediate insights. Learn more Pricing Run your entire business with one plan No hidden fees or locked-in contracts. Cancel or switch plans anytime. Get started Best value Try free for {{sub2_api.num_free_trial_days}} days Try free for {{sub2_api.num_free_trial_days}} days Get the latest updates from Square Submit *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close Nice to meet you. We think businesses are as unique as the people who run them. Get individualized content on the topics you care about most by telling us a little more about yourself. First name Last name Phone +1 United States +44 United Kingdom +61 Australia +1 Canada +81 Japan +353 Ireland +34 Spain +33 France Business name Industry Select... Select... Beauty Charities, Education and Membership Fitness Food and Drink Health Home and Repair Leisure and Entertainment Professional Services Retail Transportation Wellness Estimated annual revenue Select... Select... 0 - $10k $10k - $50k $50k - $100k $100k - $250k $250k - $500k $500k - $1M $1M - $5M $5M - $10M $10M - $20M $20M - $30M $30M - $50M > $50M By checking the box, you agree to receive automated informational and marketing calls and texts via the phone number you provided above. Signing up is not a condition of purchase. You certify that you are at least 18 years of age.* Update profile *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close 1 All credit sale plans are issued by Block, Inc. Not available to merchants in AL, DE, MO, MS, NH, and TN. Purchase amounts must be from $49 to $10,000. APR is 15%. Available plan lengths vary from 3, 6, 12, and/or 24 month installments, depending on purchase amount. Sales tax, where applicable, will be due at checkout. All plans subject to credit approval and other factors. 2 Block, Inc. is a financial services platform and not an FDIC-insured bank. FDIC deposit insurance coverage only protects against the failure of an FDIC-insured deposit institution. If you have a Square Checking account, up to $250,000 of your balance may be covered by FDIC insurance on a pass-through basis through Sutton Bank, Member FDIC, subject to aggregation of the account holder’s funds held at Sutton Bank and if certain conditions have been met. Square Debit Card is issued by Sutton Bank, Member FDIC, pursuant to a license from Mastercard. Funds generated through Square’s payment processing services are generally available in the Square Checking account balance immediately after a payment is processed. Fund availability times may vary due to technical issues. Square, the Square logo, Square Financial Services, Square Capital, and others are trademarks of Block, Inc. and/or its subsidiaries. Square Financial Services, Inc. is a wholly owned subsidiary of Block, Inc. All loans are issued by Square Financial Services, Inc. Actual fee depends upon payment card processing history, loan amount and other eligibility factors. A minimum payment of 1/18th of the initial loan balance is required every 60 days and full loan repayment is required within 18 months. Loan eligibility is not guaranteed. All loans are subject to credit approval.",
+          "about": "About Square JavaScript is required for full functionality of this site. Learn how to enable JavaScript in your web browser Powering businesses the world over More than four million sellers * run on Square, the only platform of its kind designed for solo entrepreneurs and the largest international chains. About Square Fifteen years ago, not all businesses could accept credit cards. Square set out to change that — inventing the first mobile card reader of its kind. This allowed businesses to take payments anywhere and keep thriving in the economy. It also completely disrupted how the financial system thinks about small businesses. With this shift, Square’s journey took off — moving far beyond its origins as a payment processor to building new tools and solutions for the future. Today, Square is the largest business technology platform serving all kinds of businesses. The Square operating system allows business owners to sell anywhere, work more efficiently, manage inventory, communicate with customers, book appointments, course meals, order online, and so much more. These tools unlock endless possibilities and countless opportunities for any operation from global chains to mom-and-pop shops. 36+ products 8 countries served 4B individual sales transactions processed in 2023* $209.6B in payments processed in 2023* * Source: 2023 10-K Annual Report Read the latest Square news Square Newsroom Get in-depth business insights and exclusive interviews The Bottom Line Learn about our hardware and software Square products An endless evolution Square came to life in 2009 with a card reader for mobile devices — the first of its kind. That one opportunity helped grow Square from a single product to a whole suite for people to run every side of their businesses, including hardware, software, and so much more. 2025 Square Handheld launches, giving businesses a portable, powerful point of sale that fits in a pocket. 2023 Square Go launches, our first client-facing app for booking personal care services. 2022 Tap to Pay on iPhone launches, letting sellers accept card payments with no additional hardware needed. - Square arrives to Spain and, later, also available in Catalan. - Square Stand gets a redesign, integrating tap and chip payments and transforming the buyer experience. 2021 Square, Inc. changes to Block, Inc., setting the foundation for the future of Square and our ecosystem of partner companies. - Square Banking launches, giving businesses a full suite of financial products to manage cash flow, savings, capital, and more. - Square expands to France. - Square expands to Ireland. - Square acquires Afterpay, opening up a new way for businesses to accept payments. 2019 Square Photo Studio launches, giving businesses access to lower-cost, high-quality online photography. 2018 Square for Restaurants launches, bringing innovation from front to back of house. - Square acquires Weebly, powering Square Online to make eCommerce more accessible to businesses. - Square Terminal launches, giving businesses an all-in-one payment device. 2017 Square expands to the U.K. - Square Register launches, giving businesses an end-to-end integrated point of sale with a buyer-facing display. - Square for Retail launches, our first vertical software that covers all corners of retail businesses. 2016 Square expands to Australia. 2015 Square Appointments launches, allowing service-based businesses to book and manage clients with ease. 2014 Square Capital launches, giving entrepreneurs access to funds that help grow their businesses. 2013 Square expands to Japan. - Square Stand launches, revolutionizing the register for iPad use. 2012 Square expands to Canada. 2009 Original card reader launches, allowing people to take payments on the go. Helping businesses do more “As we’ve expanded our business and the different verticals we’re in, and the complexity of our business grew, Square matched exactly what we required. Since onboarding with Square, we’ve probably tripled the business.” Mat Pond owner, The Epicurean Trader Watch now “Square has been with us every step of the way, since we started selling arepas at pop-up fairs to running a restaurant with nine revenue streams.” Isabella Bertorelli and Kenzie Benesh co-owners, Yo También Cantina Watch now “With Square, we’ve gone through an evolution. We started with the original Square Stand. Every time a new product comes out, it’s great because we get to test out better software or better hardware.” Wally Sadat CMO, The Kebab Shop Watch now “As we’ve expanded our business and the different verticals we’re in, and the complexity of our business grew, Square matched exactly what we required. Since onboarding with Square, we’ve probably tripled the business.” Mat Pond owner, The Epicurean Trader Watch now “Square has been with us every step of the way, since we started selling arepas at pop-up fairs to running a restaurant with nine revenue streams.” Isabella Bertorelli and Kenzie Benesh co-owners, Yo También Cantina Watch now “With Square, we’ve gone through an evolution. We started with the original Square Stand. Every time a new product comes out, it’s great because we get to test out better software or better hardware.” Wally Sadat CMO, The Kebab Shop Watch now *These businesses were paid for their time by Square. Awards & recognition Voted Adweek’s best POS system 2022 Afterpay voted among Best Buy Now, Pay Later Apps by the Wall Street Journal 2022 Voted Fast Company’s Brands that Matter 2021 All change-makers welcome Square innovates, collaborates, and learns for businesses that use Square and for each other. Its global presence, industry-leading distributed workforce, and high standards for personal excellence have made it among the best places to work. Learn about opportunities at Square The future of business starts with you. Revolutionize your counter — and everywhere you sell — with custom tools to help you meet any goal. Get started -> Contact sales -> Choose your region and language Australia (English) Canada (English) Canada (Français) France (Français) Ireland (English) 日本 (日本語) España (Español) Espanya (Català) United Kingdom (English) United States (English) Estados Unidos (Español) Australia (English) Canada (English) Canada (Français) France (Français) Ireland (English) 日本 (日本語) España (Español) Espanya (Català) United Kingdom (English) United States (English) Estados Unidos (Español)",
+          "squareup.com": "Power your entire business | Square Please update your browser. Download the latest version of a supported browser below to get the most out of this website: Google Chrome Mozilla Firefox Microsoft Edge I understand. Proceed anyway Hardware Smooth checkout, every time Choose from a range of sleek options for however you do business. All equally easy to use. Browse all Square Register The sleek, dual-screen system $799 or $39/mo. over 24 months ¹ Square Handheld The POS that moves with you $399 or $37/mo. over 12 months¹ Square Terminal The receipt-printing POS $299 or $27/mo. over 12 months ¹ Square Stand The intuitive, swiveling iPad POS $149 or $14/mo. over 12 months¹ Square Reader for contactless and chip The portable reader for every tap and dip $59 Point of sale See your whole business click into place Take payments Sell anything in person and online with a point of sale platform that works for whatever you sell. Learn more Manage your team Run payroll, schedule shifts, and take care of admin — so your team can focus on performing their best. Learn more Grow your customer base Set up the right marketing campaigns and loyalty program to welcome new customers and keep them coming back for more. Learn more Control your cash flow² Bring your revenue under one roof. Instantly access your funds, save for future expenses, and get quicker access to loans. Learn more Connect your favorite apps Square partners with hundreds of apps so you can manage your entire business without jumping between. Learn more Food & Beverage 450,000+ food and beverage sellers using Square globally Learn more Retail $39 billion+ generated by retailers using Square annually Learn more Beauty 15 million+ appointments booked through Square every month Learn more Services $93 billion+ paid with invoices globally Learn more Square AI Make smart decisions, fast Ask Square AI anything about your business to get immediate insights. Learn more Pricing Run your entire business with one plan No hidden fees or locked-in contracts. Cancel or switch plans anytime. Get started Best value Try free for {{sub2_api.num_free_trial_days}} days Try free for {{sub2_api.num_free_trial_days}} days Get the latest updates from Square Submit *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close Nice to meet you. We think businesses are as unique as the people who run them. Get individualized content on the topics you care about most by telling us a little more about yourself. First name Last name Phone +1 United States +44 United Kingdom +61 Australia +1 Canada +81 Japan +353 Ireland +34 Spain +33 France Business name Industry Select... Select... Beauty Charities, Education and Membership Fitness Food and Drink Health Home and Repair Leisure and Entertainment Professional Services Retail Transportation Wellness Estimated annual revenue Select... Select... 0 - $10k $10k - $50k $50k - $100k $100k - $250k $250k - $500k $500k - $1M $1M - $5M $5M - $10M $10M - $20M $20M - $30M $30M - $50M > $50M By checking the box, you agree to receive automated informational and marketing calls and texts via the phone number you provided above. Signing up is not a condition of purchase. You certify that you are at least 18 years of age.* Update profile *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close 1 All credit sale plans are issued by Block, Inc. Not available to merchants in AL, DE, MO, MS, NH, and TN. Purchase amounts must be from $49 to $10,000. APR is 15%. Available plan lengths vary from 3, 6, 12, and/or 24 month installments, depending on purchase amount. Sales tax, where applicable, will be due at checkout. All plans subject to credit approval and other factors. 2 Block, Inc. is a financial services platform and not an FDIC-insured bank. FDIC deposit insurance coverage only protects against the failure of an FDIC-insured deposit institution. If you have a Square Checking account, up to $250,000 of your balance may be covered by FDIC insurance on a pass-through basis through Sutton Bank, Member FDIC, subject to aggregation of the account holder’s funds held at Sutton Bank and if certain conditions have been met. Square Debit Card is issued by Sutton Bank, Member FDIC, pursuant to a license from Mastercard. Funds generated through Square’s payment processing services are generally available in the Square Checking account balance immediately after a payment is processed. Fund availability times may vary due to technical issues. Square, the Square logo, Square Financial Services, Square Capital, and others are trademarks of Block, Inc. and/or its subsidiaries. Square Financial Services, Inc. is a wholly owned subsidiary of Block, Inc. All loans are issued by Square Financial Services, Inc. Actual fee depends upon payment card processing history, loan amount and other eligibility factors. A minimum payment of 1/18th of the initial loan balance is required every 60 days and full loan repayment is required within 18 months. Loan eligibility is not guaranteed. All loans are subject to credit approval."
+        }
+      },
+      "tracking_id": "4973ccac-f105-4997-8977-17759b4dd505",
+      "retry_count": 0,
+      "parent_item_id": "y4ZxW7B8qnlgxb5gA9Pc",
+      "spawn_depth": 2,
+      "max_retries": 3,
+      "created_at": {
+        "_seconds": 1761156318,
+        "_nanoseconds": 310000000
+      },
+      "processed_at": {
+        "_seconds": 1761156382,
+        "_nanoseconds": 870000000
+      },
+      "completed_at": {
+        "_seconds": 1761156383,
+        "_nanoseconds": 28000000
+      },
+      "result_message": "Company analyzed (Tier D, Score: 10)",
+      "updated_at": {
+        "_seconds": 1761156383,
+        "_nanoseconds": 28000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "ML5QQI1bDCYAJLQrFEl3",
+      "test_run_id": "e2e_test_5276bdc4",
+      "created_at": {
+        "_seconds": 1761082347,
+        "_nanoseconds": 26362000
+      },
+      "company_sub_task": "fetch",
+      "type": "company",
+      "company_name": "Cloudflare",
+      "source": "automated_scan",
+      "url": "https://www.cloudflare.com",
+      "processed_at": {
+        "_seconds": 1761082406,
+        "_nanoseconds": 498000000
+      },
+      "completed_at": {
+        "_seconds": 1761082408,
+        "_nanoseconds": 737000000
+      },
+      "result_message": "Fetched 2 pages from company website",
+      "updated_at": {
+        "_seconds": 1761082408,
+        "_nanoseconds": 737000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "Sic16UtQScwf7ggU4Icq",
+      "retry_count": 0,
+      "max_spawn_depth": 10,
+      "company_sub_task": "fetch",
+      "company_name": "Square Careers",
+      "max_retries": 3,
+      "tracking_id": "4973ccac-f105-4997-8977-17759b4dd505",
+      "spawn_depth": 0,
+      "source": "user_submission",
+      "url": "https://squareup.com",
+      "type": "company",
+      "created_at": {
+        "_seconds": 1761156215,
+        "_nanoseconds": 119000000
+      },
+      "ancestry_chain": [
+        "Sic16UtQScwf7ggU4Icq"
+      ],
+      "processed_at": {
+        "_seconds": 1761156250,
+        "_nanoseconds": 70000000
+      },
+      "result_message": "Fetched 3 pages from company website",
+      "status": "success",
+      "completed_at": {
+        "_seconds": 1761156251,
+        "_nanoseconds": 672000000
+      },
+      "updated_at": {
+        "_seconds": 1761156251,
+        "_nanoseconds": 672000000
+      }
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "SqZhpmVJcwHF9F4sRn4e",
+      "pipeline_state": {
+        "extracted_info": {
+          "size": "",
+          "culture": "Dropbox values experimentation, personal growth, and human-centric work, with a Virtual First model that combines remote work autonomy and in-person collaboration.",
+          "mission": "To design a more enlightened way of working, for Dropboxers and the world.",
+          "founded": "",
+          "industry": "SaaS",
+          "about": "Dropbox is a cloud storage and file synchronization service that helps teams collaborate and manage workflows across different locations and devices."
+        },
+        "company_website": "https://www.dropbox.com/jobs",
+        "html_content": {
+          "jobs": "Join Us - Jobs - Dropbox Your impact STARTS HERE At Dropbox, you'll find more than a job. You'll find the freedom to experiment boldly, master your craft, and truly be yourself. Here, you own your impact to make work more intuitive, joyful, and human—for you as a Dropboxer and for hundreds of millions of people worldwide. Join us Own Your Impact Your browser does not support the video tag. Be who you are. Become who you're meant to be. At Dropbox, we don’t just connect workflows. We connect teams and ideas, work and life, artificial intelligence and human brilliance. With the flexibility of a start-up and the opportunities of a global enterprise, you’re expected to push boundaries– and yourself– to shape the future of work. EXPERIMENTATION Redefine possibility. A lab for distributed work where bold ideas become reality. CRAFT Unlock your potential. An opportunity to grow, personally and professionally. COMMUNITY Build connections. A culture that puts humans at the core of what we do. Image in Individual Container VIRTUAL FIRST We're shaping the future of distributed work because we're living it. We believe you do your best work when empowered to be your best self. Our Virtual First model mixes the autonomy of remote work with the connection of in-person collaboration. It’s the best of both worlds: a distributed workplace anchored in community. See how A lab for distributed work We're making an impact from everywhere. Dropboxers collaborate across time zones and continents, while our Studios in San Francisco, Seattle, and Dublin serve as creative hubs where our community comes together to connect, create, and reimagine the future of work. ❮ ❯ Our values Be worthy of trust Millions of teams trust us with their most important information. But this trust can vanish in an instant. That’s why integrity is the foundation of our culture. We do the right thing, even when nobody’s looking. We’re honest—even when it’s uncomfortable. They win, we win Our customers come first. So we put in the work to deeply understand them. We ask, “Who’s the customer?” and “What do they really need?” When they succeed, our business (and everything else) falls into place. Keep it simple Simple things work better—and make more sense. So we build products that do a few things really well. And we don’t overcomplicate life at Dropbox, whether it’s a plan or a process. Getting to simple isn’t always easy, but it’s worth the effort. Own it We take responsibility for our work, from start to finish. When we get stuck, we unblock ourselves. When something goes wrong, we don’t ask, “What did they screw up?” but “What could I do better?” We learn from our mistakes and keep going—until we have real impact. Make work human Our mission is to design a more enlightened way of working, for Dropboxers and the world. So we make products that prioritize our needs as humans. And we build a compassionate culture where you can do your best work—no matter who you are or where you’re from. OWN YOUR IMPACT AT JOBS.DROPBOX.COM #LIFEINSIDEDROPBOX"
+        },
+        "company_name": "Dropbox",
+        "analysis_result": {
+          "tier": "D",
+          "priority_score": 0,
+          "tech_stack": [
+            "javascript",
+            "rust",
+            "docker",
+            "machine learning"
+          ],
+          "job_board_url": "https://www.dropbox.com/jobs/jobs"
+        }
+      },
+      "parent_item_id": "B8lrxouzoLWOht4qENmC",
+      "ancestry_chain": [
+        "Ak0lVOEAyZvKfHWReRkA",
+        "Ak0lVOEAyZvKfHWReRkA",
+        "1byYrDXMEXRMw6BDYV45",
+        "B8lrxouzoLWOht4qENmC"
+      ],
+      "spawn_depth": 3,
+      "company_name": "Dropbox",
+      "company_sub_task": "save",
+      "tracking_id": "4c809341-96d9-4b86-ad14-6da4569d8b32",
+      "max_retries": 3,
+      "url": "https://www.dropbox.com/jobs",
+      "max_spawn_depth": 10,
+      "type": "company",
+      "retry_count": 0,
+      "source": "scraper",
+      "created_at": {
+        "_seconds": 1761161349,
+        "_nanoseconds": 335000000
+      },
+      "processed_at": {
+        "_seconds": 1761161409,
+        "_nanoseconds": 796000000
+      },
+      "completed_at": {
+        "_seconds": 1761161410,
+        "_nanoseconds": 293000000
+      },
+      "result_message": "Company saved successfully (ID: UMFtQzTChBEcprAKzgrC)",
+      "updated_at": {
+        "_seconds": 1761161410,
+        "_nanoseconds": 293000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "e4aAgYzavmKMLLuMaSi6",
+      "source_discovery_config": {
+        "type_hint": "auto",
+        "auto_enable": true,
+        "company_id": "qIizoyUSqrIDZTVMRxgN",
+        "company_name": "Square Careers",
+        "validation_required": false,
+        "url": "https://squareup.com/careers"
+      },
+      "source": "automated_scan",
+      "max_spawn_depth": 10,
+      "retry_count": 0,
+      "ancestry_chain": [],
+      "company_name": "Square Careers",
+      "max_retries": 3,
+      "company_id": "qIizoyUSqrIDZTVMRxgN",
+      "tracking_id": "922463fc-7237-4c0a-9147-ff12fa81ce13",
+      "url": "",
+      "type": "source_discovery",
+      "spawn_depth": 0,
+      "created_at": {
+        "_seconds": 1761156386,
+        "_nanoseconds": 84000000
+      },
+      "processed_at": {
+        "_seconds": 1761156445,
+        "_nanoseconds": 324000000
+      },
+      "completed_at": {
+        "_seconds": 1761156452,
+        "_nanoseconds": 518000000
+      },
+      "result_message": "AI selector discovery failed (could not find job listings)",
+      "updated_at": {
+        "_seconds": 1761156452,
+        "_nanoseconds": 518000000
+      },
+      "error_details": "Source: https://squareup.com/careers",
+      "status": "failed"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "eFZVGLOAiritGR323XQk",
+      "company_sub_task": "analyze",
+      "ancestry_chain": [
+        "l9TlRaQBOM39SQl2MQl9",
+        "l9TlRaQBOM39SQl2MQl9",
+        "9T5TtgoqFwkd63RJODRc"
+      ],
+      "company_name": "Lyft Careers",
+      "max_spawn_depth": 10,
+      "source": "user_submission",
+      "type": "company",
+      "url": "https://www.lyft.com",
+      "pipeline_state": {
+        "extracted_info": {
+          "industry": "Transportation Technology",
+          "about": "Lyft is a ride-sharing platform that provides on-demand transportation services, allowing users to get rides through a mobile app and offering opportunities for drivers to earn money by providing transportation.",
+          "culture": "Lyft emphasizes flexibility for drivers, allowing them to be their own boss and set their own schedules, while also prioritizing safety and community accessibility.",
+          "mission": "",
+          "founded": "",
+          "size": ""
+        },
+        "company_name": "Lyft Careers",
+        "company_website": "https://www.lyft.com",
+        "html_content": {
+          "www.lyft.com": "Ride or drive with Lyft Skip to main content New riders: get 50% off your first ride with code 50OFF1WB (up to $10 off). Terms apply* The world awaits No matter where you’re headed, we’ll help you get there. On-demand, scheduled ahead, late night, or morning commute. Plus, earn rewards on every ride. Sign up to ride Shift into earnings mode With Lyft, you can be your own boss, set your own schedule, and drive when it makes sense for you. You keep 100% of your tips, and can cash out instantly whenever you want. Apply to drive Learn more about earnings RIDE WITH LYFT A few quick taps, one great trip RIDE WITH LYFT A few quick taps, one great trip No matter your destination, we’ll get you where you need to go Get a reliable ride in minutes Schedule your ride in advance Earn rewards on every ride Sign up to ride Learn more about riding with Lyft Your ride, refined Your ride, refined Join Lyft Pink to enjoy complimentary upgrades on Priority Pickup, exclusive savings, and preferential pricing on XL, Extra Comfort, Black, and Black SUV rides. Members save an average of $23/month. Free Priority Pickup upgrades Get picked up faster and save $3-4 per ride on average Exclusive savings Enjoy 5% off on Extra Comfort and Lyft XL rides Cancellation forgiveness Cancel up to 3x/month for free Free Grubhub+ for a year $0 restaurant delivery fees Join now Subject to the Lyft Pink Terms & Conditions and Lyft Terms of Service . How you get there is up to you We’ve got options to get you where you’re going. Choose a ride that suits your mood and budget.* Wait & Save Budget-friendly Private Standard Efficient Private Priority Pickup Efficient Private BIKETOWN bikes Efficient Eco-friendly BIKETOWN scooters Efficient Eco-friendly Extra Comfort Nicer cars Top drivers Black Luxury cars Top drivers XL Spacious SUVs Room for up to 6 *Availability of bikes, scooters, and ride types varies by region. Helping your business go places, literally Provide reliable rides for the people who matter to your business. Whether it’s team members heading into work or traveling to client meetings, conferences or training sessions. Get started today Explore solutions Safety never takes a backseat We want to level up every single ride—and it starts with safety. With always-on protection from before you ride and customizable tools for added peace of mind, we’re a community built on putting safety first. Learn more Community guidelines Making rides more accessible A ride is more than just transportation: It’s access to job opportunities, community events, and essentials like groceries and healthcare. Lyft Up makes rides more accessible, bringing communities closer. Learn more about our Lyft Up programs Download the apps and go Scan the QR code to download. Download the rider app Scan the QR code to download. Download the driver app * By clicking “50OFF1WB” you agree to Lyft's Terms of Service and acknowledge you have read our Privacy Policy . New users only. Limited quantity available. 50% off your first ride. You have 1 ride remaining. Max savings of $10 per ride. Discount applies to the fare, Service fee, tolls, and taxes only. Offer valid until 14 days after activation. VoIP phone numbers cannot be used to redeem coupons, credits, discounts, or other promotions. Cannot be combined with other offers. Subject to Lyft's Terms of Service."
+        }
+      },
+      "tracking_id": "4d65dcf9-d3d1-493f-bd98-ff7d6169cc56",
+      "retry_count": 0,
+      "parent_item_id": "9T5TtgoqFwkd63RJODRc",
+      "spawn_depth": 2,
+      "max_retries": 3,
+      "created_at": {
+        "_seconds": 1761156322,
+        "_nanoseconds": 187000000
+      },
+      "processed_at": {
+        "_seconds": 1761156383,
+        "_nanoseconds": 942000000
+      },
+      "completed_at": {
+        "_seconds": 1761156384,
+        "_nanoseconds": 51000000
+      },
+      "result_message": "Company analyzed (Tier D, Score: 0)",
+      "updated_at": {
+        "_seconds": 1761156384,
+        "_nanoseconds": 51000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "gDUhVHk8NytdSfMehDeZ",
+      "max_spawn_depth": 10,
+      "retry_count": 0,
+      "source": "user_submission",
+      "company_sub_task": "fetch",
+      "company_name": "MongoDB Careers",
+      "type": "company",
+      "url": "https://www.mongodb.com",
+      "tracking_id": "43e3034f-0068-405e-a021-e53ccf26c250",
+      "max_retries": 3,
+      "spawn_depth": 0,
+      "created_at": {
+        "_seconds": 1761153487,
+        "_nanoseconds": 612000000
+      },
+      "ancestry_chain": [
+        "gDUhVHk8NytdSfMehDeZ"
+      ],
+      "processed_at": {
+        "_seconds": 1761153537,
+        "_nanoseconds": 434000000
+      },
+      "completed_at": {
+        "_seconds": 1761153539,
+        "_nanoseconds": 264000000
+      },
+      "result_message": "Fetched 4 pages from company website",
+      "updated_at": {
+        "_seconds": 1761153539,
+        "_nanoseconds": 264000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "jqsfQNhecBBLPa6p0l7i",
+      "company_sub_task": "extract",
+      "ancestry_chain": [
+        "6KoLIHNmzbJ9z4fSVID0",
+        "6KoLIHNmzbJ9z4fSVID0"
+      ],
+      "company_name": "Stripe Careers",
+      "max_spawn_depth": 10,
+      "source": "user_submission",
+      "type": "company",
+      "url": "https://stripe.com",
+      "pipeline_state": {
+        "company_name": "Stripe Careers",
+        "company_website": "https://stripe.com",
+        "html_content": {
+          "stripe.com": "Stripe | Financial Infrastructure to Grow Your Revenue Join the millions of companies that use Stripe to accept payments online and in person, embed financial services, power custom revenue models, and build a more profitable business. Rocket Rides Search Today Net volume $3,528,198.72 2:00 PM Yesterday $2,931,556.34 12:00 AM Now, 2:00 PM 11:59 PM USD Balance $553,257.51 Available to pay out View Payouts $102,633.07 Expected today View Net volume from sales +32.8% $39,274.29 $29,573.54 Apr 20 Today Updated today 7:50 AM New customers +32.1% 37 28 Apr 20 Today Updated today 7:50 AM Invoices Paid $25,000.00 Open $20,000.00 Past due $1,000.00 Updated today 7:50 AM Abstraction Magazine $19 per month Or pay with card Email Card Information Number MM / YY CVC Country or region United States ZIP Pay Cancel Chase Freedom (•••• 1234) 27 Fredrick Ave Brothers OR Billing John Appleseed 27 Fredrick Ave Brothers, OR 97712 United States Contact j.appleseed@example.com +1 (458) 555-2863 Pay total $65.00 OpenAI logo Amazon logo Google logo Anthropic logo Marriott logo Shopify logo Airbnb logo URBN logo Mousedown/⌘ FF/Rewind Right/left Stretch Up/down Amplitude -/+ Zoom P Pause/play 1 Red on/off 2 Blue on/off 3 Yellow on/off 4 Purple on/off Reduce costs, grow revenue, and run your business more efficiently on a fully integrated, AI-powered platform. Use Stripe to handle all of your payments-related needs, manage revenue operations, and launch (or invent) new business models. Atlas Billing Capital Checkout Climate Connect Elements Identity Invoicing Issuing Payments Radar Sigma Tax Terminal Treasury Payments Tax Radar Terminal Wood Chair 001 $149 €135.00 ¥199.00 €135.00 $149 Pay $149 €135.00 zahlen 支付 ¥199.00 Betaal €135.00 Pay $149 Billing Invoicing RevRec Sigma Quantum Abstraction Typographic Quantum Products Pricing Contact Standard Up to 5 users $49 /month Subscribe This includes: 12 months historical data 4 hr data refresh 500+ third party integrations Professional Popular! Up to 25 users $149 /month Subscribe This includes: 24 months historical data 1 hr data refresh 1,000+ third party integrations Simple reporting Enterprise Unlimited users $299 /month Subscribe This includes: Unlimited historical data 15 min data refresh 2,000+ third party integrations Advanced reporting Priority support Basic Digital access $9 /month Subscribe This includes: Unlimited access to web content Exclusive subscriber content Premium Popular! Digital and print access $19 /month Subscribe This includes: Unlimited access to web content Monthly print issues Exclusive subscriber content Web 50-499 users $99 /month Subscribe This includes: Up to 3 fonts 50k requests 5 domains Unlimited seats Connect Payouts Terminal Elements #9125 Hanako Yamada Processing Completed $150.00 #9124 Jacques Muller Processing Completed $200.00 #9125 Hanako Yamada Processing Completed $150.00 #9124 Jacques Muller Processing Completed $200.00 $150.00 $200.00 $145.50 $194.00 $4.50 $6.00 Buyers Platform Sellers or service providers Orders Today Yesterday Older than 2 days #9125 Hanako Yamada Processing $150.00 #9124 Jacques Muller Processing $200.00 #9123 John Appleseed On Hold $178.00 #9122 Jane Diaz Completed $200.00 #9121 Anna Nowak Completed $200.00 #9120 Wei Qing Completed $156.00 My store Orders Products Reviews Issuing Connect Treasury Capital Atlas Billing Capital Checkout Climate Connect Elements Identity Invoicing Issuing Payments Radar Sigma Tax Terminal Treasury Increase authorization rates, offer local payment methods to boost conversion, and reduce fraud using AI. Payments Tax Radar Terminal Wood Chair 001 $149 €135.00 ¥199.00 €135.00 $149 Pay $149 €135.00 zahlen 支付 ¥199.00 Betaal €135.00 Pay $149 Manage flat rate, usage-based, and hybrid pricing models, minimize churn, and automate finance operations. Billing Invoicing RevRec Sigma Quantum Abstraction Typographic Quantum Products Pricing Contact Standard Up to 5 users $49 /month Subscribe This includes: 12 months historical data 4 hr data refresh 500+ third party integrations Professional Popular! Up to 25 users $149 /month Subscribe This includes: 24 months historical data 1 hr data refresh 1,000+ third party integrations Simple reporting Enterprise Unlimited users $299 /month Subscribe This includes: Unlimited historical data 15 min data refresh 2,000+ third party integrations Advanced reporting Priority support Basic Digital access $9 /month Subscribe This includes: Unlimited access to web content Exclusive subscriber content Premium Popular! Digital and print access $19 /month Subscribe This includes: Unlimited access to web content Monthly print issues Exclusive subscriber content Web 50-499 users $99 /month Subscribe This includes: Up to 3 fonts 50k requests 5 domains Unlimited seats Integrate payments into your platform or marketplace for end-to-end payments experiences. Connect Payouts Terminal Elements #9125 Hanako Yamada Processing Completed $150.00 #9124 Jacques Muller Processing Completed $200.00 #9125 Hanako Yamada Processing Completed $150.00 #9124 Jacques Muller Processing Completed $200.00 $150.00 $200.00 $145.50 $194.00 $4.50 $6.00 Buyers Platform Sellers or service providers Orders Today Yesterday Older than 2 days #9125 Hanako Yamada Processing $150.00 #9124 Jacques Muller Processing $200.00 #9123 John Appleseed On Hold $178.00 #9122 Jane Diaz Completed $200.00 #9121 Anna Nowak Completed $200.00 #9120 Wei Qing Completed $156.00 My store Orders Products Reviews Launch, manage, and scale a commercial card program without any setup fees. Issuing Connect Treasury Capital Stripe makes moving money as easy and programmable as moving data. Our teams are based in offices around the world and we process hundreds of billions of dollars each year for ambitious businesses of all sizes. API requests per day, peaking at 13,000 requests a second. historical uptime for Stripe services . of U.S. adults have bought from businesses using Stripe. currencies and payment methods supported. From global AI companies to category-defining marketplaces, successful businesses across industries grow and scale with Stripe. Stripe supports businesses across the AI ecosystem—from usage-based billing for AI assistants like Perplexity to premium subscriptions for infrastructure providers like OpenAI. OpenAI logo CursorAlt logo Anthropic logo Quickly launch and grow recurring revenue with a unified platform for payments, subscriptions, invoicing, tax, accounting, and more. Slack logo Twilio logo Linear logo Get everything you need to onboard service providers, manage multiparty payments, and send payouts, all in one place. BloomNation logo Instacart logo Deliveroo logo Distribute financial accounts, commercial cards, and lending to create tailored in-product experiences for your customers. Karat logo Shopify logo Persona logo Access an optimized suite of tools to accept payments online and in person from customers around the world. Glossier logo Dermalogica logo Indochino logo Embed crypto purchases directly into your checkout flow—with fraud prevention and authorization optimization built in. BlockchainCom logo Braintrust logo Magic logo Quickly onboard and pay out creators globally with prebuilt UIs, or build your own custom solution. Twitter logo Spotify logo Substack logo Quickly build great payments experiences, improve performance, expand into new markets, and engage customers with subscriptions and marketplaces. Get expert integration guidance from our professional services team and certified partners , and connect Stripe to Salesforce, SAP, and more through the Stripe App Marketplace . BMW owners using ConnectedDrive Store US dealerships Amazon businesses on Stripe including Prime, Audible, and Amazon Pay. Payment methods available on Stripe Countries in logistics network Billion worth of goods moved around the world each year Uplift from Stripe's Global Payments Infrastructure Uplift from Adaptive Acceptance BMW logo Read story Learn why BMW chose Stripe to power ecommerce and payments Amazon logo Read story See how Amazon simplified cross-border payments with Stripe Maersk logo Read story See how Maersk tapped into new technology to make it easier to ship around the world Twilio logo Read story See how Twilio increased authorization rates by 10% with Stripe BMW logo Amazon logo Maersk logo Twilio logo Startups build on Stripe to launch faster, adapt as they grow, and automate workflows to do more with less. Build your own API-based integration or use our low- to no-code solutions, which are simple enough for easy implementation and powerful enough to scale as fast and as far as you need. Atlas Atlas Form a legal entity, issue stock, and start accepting payments. Learn about Atlas Email jane.diaz@example.com Card information 1234 1234 1234 1234 MM/YY CVC Name on card Jane Diaz Country or region United States Checkout Checkout Launch a business with a prebuilt payment page that’s optimized for conversion. Start with Checkout 👋 anything I can help with today? Hey, can I buy a license just for myself? Sure, in that case I'd recommend our starter plan. buy.stripe.com/Ae93Jis $19.99 per item Scan to pay Payment Links Test your product idea by launching payments with little to no code. Try Payment Links Cloud token Previous period 80,250,068 Current period 68,491,224 Apr 24 Apr 25 Apr 26 Apr 27 Apr 28 Apr 29 Apr 30 Billing Billing Offer usage-based billing to charge customers based on how much they use. Explore billing Save engineering time with unified payments functionality. We obsess over the maze of gateways, payments rails, and financial institutions that make up the global economic landscape so that your teams can build what you need on one platform. ~ NORMAL server.js 100% ☰ 0/1 ln : 1 $ We offer client and server libraries in everything from React and PHP to .NET and iOS. Create agents that can manage money and handle support tasks using the Stripe API. Connect Stripe to over a hundred tools including Adobe, Salesforce, and Xero. Create an app just for your team or for the millions of businesses on Stripe. If you’d like to use Stripe for your business but don’t have developers on staff, no problem. We have a few options depending on your needs. Explore our directory to find out-of-the-box solutions that connect with Stripe, such as Squarespace and Lightspeed . See directory Work with a Stripe consulting partner that can integrate and deploy Stripe solutions for you. View partners Brand elements Customize how your brand appears globally across the Stripe products your customers use. Icon Logo Brand color F5F0EA Accent color 262627 Set up usage-based billing , accept an in-person payment with your phone, or share a payment link directly from your Dashboard to start generating revenue in minutes—no code required. Explore no-code Create an account instantly to get started or contact us to design a custom package for your business. Integrated per-transaction pricing with no hidden fees. Get up and running with Stripe in as little as 10 minutes. Start now Contact sales",
+          "about": "Stripe | Financial Infrastructure to Grow Your Revenue Join the millions of companies that use Stripe to accept payments online and in person, embed financial services, power custom revenue models, and build a more profitable business. Rocket Rides Search Today Net volume $3,528,198.72 2:00 PM Yesterday $2,931,556.34 12:00 AM Now, 2:00 PM 11:59 PM USD Balance $553,257.51 Available to pay out View Payouts $102,633.07 Expected today View Net volume from sales +32.8% $39,274.29 $29,573.54 Apr 20 Today Updated today 7:50 AM New customers +32.1% 37 28 Apr 20 Today Updated today 7:50 AM Invoices Paid $25,000.00 Open $20,000.00 Past due $1,000.00 Updated today 7:50 AM Abstraction Magazine $19 per month Or pay with card Email Card Information Number MM / YY CVC Country or region United States ZIP Pay Cancel Chase Freedom (•••• 1234) 27 Fredrick Ave Brothers OR Billing John Appleseed 27 Fredrick Ave Brothers, OR 97712 United States Contact j.appleseed@example.com +1 (458) 555-2863 Pay total $65.00 OpenAI logo Amazon logo Google logo Anthropic logo Marriott logo Shopify logo Airbnb logo URBN logo Mousedown/⌘ FF/Rewind Right/left Stretch Up/down Amplitude -/+ Zoom P Pause/play 1 Red on/off 2 Blue on/off 3 Yellow on/off 4 Purple on/off Reduce costs, grow revenue, and run your business more efficiently on a fully integrated, AI-powered platform. Use Stripe to handle all of your payments-related needs, manage revenue operations, and launch (or invent) new business models. Atlas Billing Capital Checkout Climate Connect Elements Identity Invoicing Issuing Payments Radar Sigma Tax Terminal Treasury Payments Tax Radar Terminal Wood Chair 001 $149 €135.00 ¥199.00 €135.00 $149 Pay $149 €135.00 zahlen 支付 ¥199.00 Betaal €135.00 Pay $149 Billing Invoicing RevRec Sigma Quantum Abstraction Typographic Quantum Products Pricing Contact Standard Up to 5 users $49 /month Subscribe This includes: 12 months historical data 4 hr data refresh 500+ third party integrations Professional Popular! Up to 25 users $149 /month Subscribe This includes: 24 months historical data 1 hr data refresh 1,000+ third party integrations Simple reporting Enterprise Unlimited users $299 /month Subscribe This includes: Unlimited historical data 15 min data refresh 2,000+ third party integrations Advanced reporting Priority support Basic Digital access $9 /month Subscribe This includes: Unlimited access to web content Exclusive subscriber content Premium Popular! Digital and print access $19 /month Subscribe This includes: Unlimited access to web content Monthly print issues Exclusive subscriber content Web 50-499 users $99 /month Subscribe This includes: Up to 3 fonts 50k requests 5 domains Unlimited seats Connect Payouts Terminal Elements #9125 Hanako Yamada Processing Completed $150.00 #9124 Jacques Muller Processing Completed $200.00 #9125 Hanako Yamada Processing Completed $150.00 #9124 Jacques Muller Processing Completed $200.00 $150.00 $200.00 $145.50 $194.00 $4.50 $6.00 Buyers Platform Sellers or service providers Orders Today Yesterday Older than 2 days #9125 Hanako Yamada Processing $150.00 #9124 Jacques Muller Processing $200.00 #9123 John Appleseed On Hold $178.00 #9122 Jane Diaz Completed $200.00 #9121 Anna Nowak Completed $200.00 #9120 Wei Qing Completed $156.00 My store Orders Products Reviews Issuing Connect Treasury Capital Atlas Billing Capital Checkout Climate Connect Elements Identity Invoicing Issuing Payments Radar Sigma Tax Terminal Treasury Increase authorization rates, offer local payment methods to boost conversion, and reduce fraud using AI. Payments Tax Radar Terminal Wood Chair 001 $149 €135.00 ¥199.00 €135.00 $149 Pay $149 €135.00 zahlen 支付 ¥199.00 Betaal €135.00 Pay $149 Manage flat rate, usage-based, and hybrid pricing models, minimize churn, and automate finance operations. Billing Invoicing RevRec Sigma Quantum Abstraction Typographic Quantum Products Pricing Contact Standard Up to 5 users $49 /month Subscribe This includes: 12 months historical data 4 hr data refresh 500+ third party integrations Professional Popular! Up to 25 users $149 /month Subscribe This includes: 24 months historical data 1 hr data refresh 1,000+ third party integrations Simple reporting Enterprise Unlimited users $299 /month Subscribe This includes: Unlimited historical data 15 min data refresh 2,000+ third party integrations Advanced reporting Priority support Basic Digital access $9 /month Subscribe This includes: Unlimited access to web content Exclusive subscriber content Premium Popular! Digital and print access $19 /month Subscribe This includes: Unlimited access to web content Monthly print issues Exclusive subscriber content Web 50-499 users $99 /month Subscribe This includes: Up to 3 fonts 50k requests 5 domains Unlimited seats Integrate payments into your platform or marketplace for end-to-end payments experiences. Connect Payouts Terminal Elements #9125 Hanako Yamada Processing Completed $150.00 #9124 Jacques Muller Processing Completed $200.00 #9125 Hanako Yamada Processing Completed $150.00 #9124 Jacques Muller Processing Completed $200.00 $150.00 $200.00 $145.50 $194.00 $4.50 $6.00 Buyers Platform Sellers or service providers Orders Today Yesterday Older than 2 days #9125 Hanako Yamada Processing $150.00 #9124 Jacques Muller Processing $200.00 #9123 John Appleseed On Hold $178.00 #9122 Jane Diaz Completed $200.00 #9121 Anna Nowak Completed $200.00 #9120 Wei Qing Completed $156.00 My store Orders Products Reviews Launch, manage, and scale a commercial card program without any setup fees. Issuing Connect Treasury Capital Stripe makes moving money as easy and programmable as moving data. Our teams are based in offices around the world and we process hundreds of billions of dollars each year for ambitious businesses of all sizes. API requests per day, peaking at 13,000 requests a second. historical uptime for Stripe services . of U.S. adults have bought from businesses using Stripe. currencies and payment methods supported. From global AI companies to category-defining marketplaces, successful businesses across industries grow and scale with Stripe. Stripe supports businesses across the AI ecosystem—from usage-based billing for AI assistants like Perplexity to premium subscriptions for infrastructure providers like OpenAI. OpenAI logo CursorAlt logo Anthropic logo Quickly launch and grow recurring revenue with a unified platform for payments, subscriptions, invoicing, tax, accounting, and more. Slack logo Twilio logo Linear logo Get everything you need to onboard service providers, manage multiparty payments, and send payouts, all in one place. BloomNation logo Instacart logo Deliveroo logo Distribute financial accounts, commercial cards, and lending to create tailored in-product experiences for your customers. Karat logo Shopify logo Persona logo Access an optimized suite of tools to accept payments online and in person from customers around the world. Glossier logo Dermalogica logo Indochino logo Embed crypto purchases directly into your checkout flow—with fraud prevention and authorization optimization built in. BlockchainCom logo Braintrust logo Magic logo Quickly onboard and pay out creators globally with prebuilt UIs, or build your own custom solution. Twitter logo Spotify logo Substack logo Quickly build great payments experiences, improve performance, expand into new markets, and engage customers with subscriptions and marketplaces. Get expert integration guidance from our professional services team and certified partners , and connect Stripe to Salesforce, SAP, and more through the Stripe App Marketplace . BMW owners using ConnectedDrive Store US dealerships Amazon businesses on Stripe including Prime, Audible, and Amazon Pay. Payment methods available on Stripe Countries in logistics network Billion worth of goods moved around the world each year Uplift from Stripe's Global Payments Infrastructure Uplift from Adaptive Acceptance BMW logo Read story Learn why BMW chose Stripe to power ecommerce and payments Amazon logo Read story See how Amazon simplified cross-border payments with Stripe Maersk logo Read story See how Maersk tapped into new technology to make it easier to ship around the world Twilio logo Read story See how Twilio increased authorization rates by 10% with Stripe BMW logo Amazon logo Maersk logo Twilio logo Startups build on Stripe to launch faster, adapt as they grow, and automate workflows to do more with less. Build your own API-based integration or use our low- to no-code solutions, which are simple enough for easy implementation and powerful enough to scale as fast and as far as you need. Atlas Atlas Form a legal entity, issue stock, and start accepting payments. Learn about Atlas Email jane.diaz@example.com Card information 1234 1234 1234 1234 MM/YY CVC Name on card Jane Diaz Country or region United States Checkout Checkout Launch a business with a prebuilt payment page that’s optimized for conversion. Start with Checkout 👋 anything I can help with today? Hey, can I buy a license just for myself? Sure, in that case I'd recommend our starter plan. buy.stripe.com/Ae93Jis $19.99 per item Scan to pay Payment Links Test your product idea by launching payments with little to no code. Try Payment Links Cloud token Previous period 80,250,068 Current period 68,491,224 Apr 24 Apr 25 Apr 26 Apr 27 Apr 28 Apr 29 Apr 30 Billing Billing Offer usage-based billing to charge customers based on how much they use. Explore billing Save engineering time with unified payments functionality. We obsess over the maze of gateways, payments rails, and financial institutions that make up the global economic landscape so that your teams can build what you need on one platform. ~ NORMAL server.js 100% ☰ 0/1 ln : 1 $ We offer client and server libraries in everything from React and PHP to .NET and iOS. Create agents that can manage money and handle support tasks using the Stripe API. Connect Stripe to over a hundred tools including Adobe, Salesforce, and Xero. Create an app just for your team or for the millions of businesses on Stripe. If you’d like to use Stripe for your business but don’t have developers on staff, no problem. We have a few options depending on your needs. Explore our directory to find out-of-the-box solutions that connect with Stripe, such as Squarespace and Lightspeed . See directory Work with a Stripe consulting partner that can integrate and deploy Stripe solutions for you. View partners Brand elements Customize how your brand appears globally across the Stripe products your customers use. Icon Logo Brand color F5F0EA Accent color 262627 Set up usage-based billing , accept an in-person payment with your phone, or share a payment link directly from your Dashboard to start generating revenue in minutes—no code required. Explore no-code Create an account instantly to get started or contact us to design a custom package for your business. Integrated per-transaction pricing with no hidden fees. Get up and running with Stripe in as little as 10 minutes. Start now Contact sales",
+          "careers": "Stripe: Jobs Stripe builds financial infrastructure that ambitious companies use to launch their boldest products. Our customers range from hours-old startups to complex global businesses. Collectively, they are growing the GDP of the internet. You can help. Hear from our leadership Watch video We focus on the details of everything we do, so businesses around the world can focus on what’s most important to them. So Ford can focus on building a global digital dealership , rather than processing payments. So Le Monde can expand its digital offering globally , not reinvent subscription billing. So truckers can focus on getting supply chains moving , not invoicing paper trails. We take pride in freeing up others to work in the spotlight. 14 min read The Collison Brothers Built Stripe Into A $95 Billion Unicorn With Eye-Popping Financials Read on forbes.com 2 min read Ford signs five-year payments deal with Stripe for e-commerce drive Read on cnbc.com 2 min read French Newspaper Le Monde Teams With Stripe to Expand Subscriptions Globally Read on pymnts.com 3 min read Digital Payments Underscore Trucking’s Makeover Read on pymnts.com The leaders in any field make their success look easy. But beneath the surface they’re in constant motion, critiquing their own performance, setting new goals, and continually reevaluating the most basic assumptions about how they approach their work. We’re still in the early stages of our growth and many of our biggest challenges lie ahead. You might think that Stripe has things figured out. While we’re proud of what we’ve built so far, we spend our time thinking about everything we haven’t done yet. Planning means sacrifice: we have great ambitions but limited resources over short time horizons. We are happy that we can support more than 50 payment methods (and accelerate rollout of new ones), incorporate more than 20,000 startups , and galvanize responses to climate change . But every quarter there are many important projects we want to undertake, but can’t. 20 min read A guide to payment methods Read on stripe.com 3 min read Stripe Atlas: the first five years and 20,000 startups Read on stripe.com/blog 2 min read Stripe is paying companies to pull carbon out of the atmosphere Read on fastcompany.com The stack that got us here won’t get us there. We are constantly retooling to keep more than 8,000 Stripes productive, stay resilient to risks, and provide category-leading products at payment volumes higher on any given day than they used to be over an entire year. 5 min read Migrating millions of lines of code to TypeScript Read on stripe.com/blog 2 min read Stripe received top scores in more criteria than any other vendor evaluated in The Forrester Wave™ Read on the report Every project exposes us to challenges that are beyond our current capabilities. This motivates us to bring in people like you—people who have knowledge and experiences we don’t, and who can quickly bring their talents to bear on hard problems. Stripe is not a pay-your-dues culture; we will train you quickly and then give you substantial responsibility. We often have surprisingly small teams accomplish strikingly important work. The pace of change and velocity of the product force you to pick up new skills, experiment with new tactics, and walk in a variety of users’ shoes. We have to be able to build things quickly to support the fastest growing startups and platforms in the world, while also being reliable, trustworthy, and sometimes profoundly boring. We need to get projects done today, while building infrastructure that the internet will rely upon for decades . We also need to balance an intense work environment against the need to support fulfilling and sustainable careers. 9 min read Stripe: Platform of Platforms Read on stratechery.com 10 min read Stripe: Thinking Like a Civilization Read on readthegeneralist.com 10 min read What Working At Stripe Has Been Like Read on kalzumeus.com Stripe is a team, not a place. We have two headquarters (San Francisco and Dublin), but we belong to the internet. We speak more than 30 languages with our customers and even more with our families. More than 8,000 Stripes build products and support our users from offices in Amsterdam, Bangalore, Barcelona, Berlin, Chicago, Dubai, Dublin, Hyderabad, London, Melbourne, Mexico City, New York, Paris, Prague, São Paulo, San Francisco, Singapore, Stockholm, Sydney, Tallinn, Tokyo, Toronto, Warsaw, and Zurich—as well as all the homes and coworking spaces of our remote colleagues . We aspire to make internet payments as ubiquitous and effortless as email. This isn’t simply a matter of ignoring borders; it also requires respectful dialogue with governments, embracing cultural differences, and building products that work in local contexts. That’s why we try to be physically close to our users, too. We want to share cabs with them in Singapore and buy food together in the darshinis of Bangalore. We are grappling with the challenges of operating at an organizational scale that few tech companies reach. We care about our culture and want to preserve the important parts while evolving to meet the needs of new Stripes and our changing business context. We continuously listen to our employees to understand where Stripe truly excels and listen for opportunities to further enhance the way we work as a company and as individuals. I can see the relationship between what I do and the overall mission and priorities of Stripe I feel connected to my team Stripe is in a position to be successful over the next three years My location is not a barrier to my having an impact at Stripe Favorable Neutral Unfavorable Many companies can offer you attractive benefits and compensation. We offer that plus something a bit rarer: the opportunity to work with speed and agility on a platform that has an impact across the entire internet. When you start at Stripe you will go through at least two weeks of in-depth onboarding. We will pair you with experienced team members to show you the ropes. And then you learn by doing. It is common for Stripes to work on things outside their domain of expertise, so we encourage people to regularly attend hands-on classes led by internal and external experts on everything from Learning to Code to Thinking Like a Lawyer. 33 min podcast SaaStr Podcast: Claire Hughes Johnson, COO @ Stripe Listen on saastr.com 4 min read How Stripe teaches employees to code Read on stripe.com/blog Q Kuhns, Internal Communications Before joining the Internal Communications team at Stripe, I headed up a forensic anthropology lab. Stripe is much more lively. Sarah Heck, New Markets Before joining the Entrepreneurship team at Stripe, I was responsible for entrepreneurship, youth, and global civilian outreach policy for the National Security Council. Valerie Williams, Inclusion and Diversity Before joining the People team at Stripe, I had a career in supply chain management. Alia Gurtov, Deployment Strategist Before joining the User Ops team at Stripe and discovering solutions for our users, I worked as a paleoanthropologist and discovered a new hominin species. Meka Asonye, New Business Before joining the Startup & SMB Sales team at Stripe, I managed development and operations for a major league baseball team. Catherine David, Connect Accounts Prior to joining the Connect Accounts team at Stripe, I worked in a physics lab building a system to do quantum measurement and fast-reset of superconducting qubits. Joe Moon, Dashboard Platform Before joining the Dashboard Platform team at Stripe, I served as an Infantry Rifleman in the United States Marine Corps. I served in Iraq and the West Pacific. Jaclyn Schoof, Payments Infrastructure Before joining the Payments team at Stripe, I handled crisis intervention in a group home for teenage girls reintegrating from the Juvenile Justice System. David Edelson, Technical Operations Before joining the User Ops team at Stripe, I worked my way up from Cashier to maintaining the codebase as Operations Manager at an independent bookstore chain in NYC. I built everything from bookcases to their very own point of sale system. Eirini Asprouda, Special Handling Specialization Before joining the User Ops team, I worked as an architect designing things like the masterplan for Chicago as a candidate city for the Olympic Games and pedestrian bridges in Dubai. Stripes come from all sorts of professional backgrounds like engineering, design, operations, consulting, government, finance, healthcare, and education. We strive for humility as individuals and as an organization. We know that we can do great things alone, but even greater things together. We have a transparent internal culture. If you are curious about engineering, running startups, corporate strategy, or the global economy, you’ll have experts to learn from. And they’ll be eager to learn from you. There is no magic to working with banking partners in Japan, moving billions of dollars around the world, or pushing the limits of browser animations on our product pages. We have smart people who sweat the details—who start with a blank screen, work until a product is ready, and polish until it is exceptional. You will be able to point to specific, high-impact things that didn’t exist until you created them. Everyone at Stripe thinks about creating the best user experience first, then works backward from there. You came to this page for a reason. Now we hope you’ll take the next step and come talk to us about whether one of our open roles is a good fit. We’re hiring talented people like you all the time. We hope you’re next. Do your best work among people who support, refine, and amplify every piece of it. Stripe hosts undergraduate and graduate interns from around the globe. We have an opinionated set of principles, and we’re happy to be warts-and-all honest about them. We embrace diverse perspectives, ideas, and backgrounds at Stripe. We’re committed to providing equal employment opportunities for all applicants and employees. Stripe doesn’t discriminate on the basis of any protected characteristic, including race, color, ancestry, national origin, religion (including religious dress), creed, age, disability (mental and physical), sex, gender (including pregnancy, childbirth, breastfeeding, or related medical conditions), sexual orientation, gender identity, gender expression, medical condition, genetic information, family care or medical leave status, marital status, domestic partner status, military and veteran status (including military spouse status), or any other characteristic protected by US federal, state or local laws, or the laws of the country or jurisdiction where you work. This commitment is also reflected in our candidate experience. We will work with your needs and provide any assistance we can. If you are a nursing mother or have individual needs related to a disability, please reach out to accommodations@stripe.com . If you’re having trouble submitting an application or experiencing other technical difficulties with this site, please reach out to candidatefeedback-applications@stripe.com ."
+        }
+      },
+      "tracking_id": "6a6918cc-d60c-4d7c-aaff-84a30378dee6",
+      "retry_count": 0,
+      "parent_item_id": "6KoLIHNmzbJ9z4fSVID0",
+      "spawn_depth": 1,
+      "max_retries": 3,
+      "created_at": {
+        "_seconds": 1761156249,
+        "_nanoseconds": 898000000
+      },
+      "processed_at": {
+        "_seconds": 1761156314,
+        "_nanoseconds": 223000000
+      },
+      "completed_at": {
+        "_seconds": 1761156317,
+        "_nanoseconds": 649000000
+      },
+      "result_message": "Company information extracted successfully",
+      "updated_at": {
+        "_seconds": 1761156317,
+        "_nanoseconds": 649000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "l9TlRaQBOM39SQl2MQl9",
+      "retry_count": 0,
+      "max_spawn_depth": 10,
+      "company_sub_task": "fetch",
+      "company_name": "Lyft Careers",
+      "max_retries": 3,
+      "tracking_id": "4d65dcf9-d3d1-493f-bd98-ff7d6169cc56",
+      "spawn_depth": 0,
+      "source": "user_submission",
+      "url": "https://www.lyft.com",
+      "type": "company",
+      "created_at": {
+        "_seconds": 1761156215,
+        "_nanoseconds": 785000000
+      },
+      "ancestry_chain": [
+        "l9TlRaQBOM39SQl2MQl9"
+      ],
+      "processed_at": {
+        "_seconds": 1761156252,
+        "_nanoseconds": 343000000
+      },
+      "error_details": "Tried pages: https://www.lyft.com/about, https://www.lyft.com/about-us, https://www.lyft.com/company, https://www.lyft.com/careers, https://www.lyft.com",
+      "completed_at": {
+        "_seconds": 1761156253,
+        "_nanoseconds": 622000000
+      },
+      "result_message": "Fetched 1 pages from company website",
+      "updated_at": {
+        "_seconds": 1761156253,
+        "_nanoseconds": 622000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "oPOnbfbcbngxHwaDN4oz",
+      "company_sub_task": "save",
+      "ancestry_chain": [
+        "Sic16UtQScwf7ggU4Icq",
+        "Sic16UtQScwf7ggU4Icq",
+        "y4ZxW7B8qnlgxb5gA9Pc",
+        "LEWSDF0A3yZLylnNo6Ug"
+      ],
+      "company_name": "Square Careers",
+      "max_spawn_depth": 10,
+      "source": "user_submission",
+      "type": "company",
+      "url": "https://squareup.com",
+      "pipeline_state": {
+        "extracted_info": {
+          "industry": "Fintech",
+          "about": "Square is a financial services and digital payments platform that helps businesses manage payments, point of sale, team management, marketing, and business operations across multiple industries.",
+          "culture": "Square believes businesses are unique and aims to provide individualized solutions to help entrepreneurs succeed.",
+          "mission": "",
+          "founded": "",
+          "size": ""
+        },
+        "analysis_result": {
+          "job_board_url": "https://squareup.com/careers",
+          "tier": "D",
+          "tech_stack": [
+            "javascript",
+            "java",
+            "go",
+            "machine learning"
+          ],
+          "priority_score": 10
+        },
+        "company_name": "Square Careers",
+        "company_website": "https://squareup.com",
+        "html_content": {
+          "careers": "Power your entire business | Square Please update your browser. Download the latest version of a supported browser below to get the most out of this website: Google Chrome Mozilla Firefox Microsoft Edge I understand. Proceed anyway Hardware Smooth checkout, every time Choose from a range of sleek options for however you do business. All equally easy to use. Browse all Square Register The sleek, dual-screen system $799 or $39/mo. over 24 months ¹ Square Handheld The POS that moves with you $399 or $37/mo. over 12 months¹ Square Terminal The receipt-printing POS $299 or $27/mo. over 12 months ¹ Square Stand The intuitive, swiveling iPad POS $149 or $14/mo. over 12 months¹ Square Reader for contactless and chip The portable reader for every tap and dip $59 Point of sale See your whole business click into place Take payments Sell anything in person and online with a point of sale platform that works for whatever you sell. Learn more Manage your team Run payroll, schedule shifts, and take care of admin — so your team can focus on performing their best. Learn more Grow your customer base Set up the right marketing campaigns and loyalty program to welcome new customers and keep them coming back for more. Learn more Control your cash flow² Bring your revenue under one roof. Instantly access your funds, save for future expenses, and get quicker access to loans. Learn more Connect your favorite apps Square partners with hundreds of apps so you can manage your entire business without jumping between. Learn more Food & Beverage 450,000+ food and beverage sellers using Square globally Learn more Retail $39 billion+ generated by retailers using Square annually Learn more Beauty 15 million+ appointments booked through Square every month Learn more Services $93 billion+ paid with invoices globally Learn more Square AI Make smart decisions, fast Ask Square AI anything about your business to get immediate insights. Learn more Pricing Run your entire business with one plan No hidden fees or locked-in contracts. Cancel or switch plans anytime. Get started Best value Try free for {{sub2_api.num_free_trial_days}} days Try free for {{sub2_api.num_free_trial_days}} days Get the latest updates from Square Submit *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close Nice to meet you. We think businesses are as unique as the people who run them. Get individualized content on the topics you care about most by telling us a little more about yourself. First name Last name Phone +1 United States +44 United Kingdom +61 Australia +1 Canada +81 Japan +353 Ireland +34 Spain +33 France Business name Industry Select... Select... Beauty Charities, Education and Membership Fitness Food and Drink Health Home and Repair Leisure and Entertainment Professional Services Retail Transportation Wellness Estimated annual revenue Select... Select... 0 - $10k $10k - $50k $50k - $100k $100k - $250k $250k - $500k $500k - $1M $1M - $5M $5M - $10M $10M - $20M $20M - $30M $30M - $50M > $50M By checking the box, you agree to receive automated informational and marketing calls and texts via the phone number you provided above. Signing up is not a condition of purchase. You certify that you are at least 18 years of age.* Update profile *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close 1 All credit sale plans are issued by Block, Inc. Not available to merchants in AL, DE, MO, MS, NH, and TN. Purchase amounts must be from $49 to $10,000. APR is 15%. Available plan lengths vary from 3, 6, 12, and/or 24 month installments, depending on purchase amount. Sales tax, where applicable, will be due at checkout. All plans subject to credit approval and other factors. 2 Block, Inc. is a financial services platform and not an FDIC-insured bank. FDIC deposit insurance coverage only protects against the failure of an FDIC-insured deposit institution. If you have a Square Checking account, up to $250,000 of your balance may be covered by FDIC insurance on a pass-through basis through Sutton Bank, Member FDIC, subject to aggregation of the account holder’s funds held at Sutton Bank and if certain conditions have been met. Square Debit Card is issued by Sutton Bank, Member FDIC, pursuant to a license from Mastercard. Funds generated through Square’s payment processing services are generally available in the Square Checking account balance immediately after a payment is processed. Fund availability times may vary due to technical issues. Square, the Square logo, Square Financial Services, Square Capital, and others are trademarks of Block, Inc. and/or its subsidiaries. Square Financial Services, Inc. is a wholly owned subsidiary of Block, Inc. All loans are issued by Square Financial Services, Inc. Actual fee depends upon payment card processing history, loan amount and other eligibility factors. A minimum payment of 1/18th of the initial loan balance is required every 60 days and full loan repayment is required within 18 months. Loan eligibility is not guaranteed. All loans are subject to credit approval.",
+          "about": "About Square JavaScript is required for full functionality of this site. Learn how to enable JavaScript in your web browser Powering businesses the world over More than four million sellers * run on Square, the only platform of its kind designed for solo entrepreneurs and the largest international chains. About Square Fifteen years ago, not all businesses could accept credit cards. Square set out to change that — inventing the first mobile card reader of its kind. This allowed businesses to take payments anywhere and keep thriving in the economy. It also completely disrupted how the financial system thinks about small businesses. With this shift, Square’s journey took off — moving far beyond its origins as a payment processor to building new tools and solutions for the future. Today, Square is the largest business technology platform serving all kinds of businesses. The Square operating system allows business owners to sell anywhere, work more efficiently, manage inventory, communicate with customers, book appointments, course meals, order online, and so much more. These tools unlock endless possibilities and countless opportunities for any operation from global chains to mom-and-pop shops. 36+ products 8 countries served 4B individual sales transactions processed in 2023* $209.6B in payments processed in 2023* * Source: 2023 10-K Annual Report Read the latest Square news Square Newsroom Get in-depth business insights and exclusive interviews The Bottom Line Learn about our hardware and software Square products An endless evolution Square came to life in 2009 with a card reader for mobile devices — the first of its kind. That one opportunity helped grow Square from a single product to a whole suite for people to run every side of their businesses, including hardware, software, and so much more. 2025 Square Handheld launches, giving businesses a portable, powerful point of sale that fits in a pocket. 2023 Square Go launches, our first client-facing app for booking personal care services. 2022 Tap to Pay on iPhone launches, letting sellers accept card payments with no additional hardware needed. - Square arrives to Spain and, later, also available in Catalan. - Square Stand gets a redesign, integrating tap and chip payments and transforming the buyer experience. 2021 Square, Inc. changes to Block, Inc., setting the foundation for the future of Square and our ecosystem of partner companies. - Square Banking launches, giving businesses a full suite of financial products to manage cash flow, savings, capital, and more. - Square expands to France. - Square expands to Ireland. - Square acquires Afterpay, opening up a new way for businesses to accept payments. 2019 Square Photo Studio launches, giving businesses access to lower-cost, high-quality online photography. 2018 Square for Restaurants launches, bringing innovation from front to back of house. - Square acquires Weebly, powering Square Online to make eCommerce more accessible to businesses. - Square Terminal launches, giving businesses an all-in-one payment device. 2017 Square expands to the U.K. - Square Register launches, giving businesses an end-to-end integrated point of sale with a buyer-facing display. - Square for Retail launches, our first vertical software that covers all corners of retail businesses. 2016 Square expands to Australia. 2015 Square Appointments launches, allowing service-based businesses to book and manage clients with ease. 2014 Square Capital launches, giving entrepreneurs access to funds that help grow their businesses. 2013 Square expands to Japan. - Square Stand launches, revolutionizing the register for iPad use. 2012 Square expands to Canada. 2009 Original card reader launches, allowing people to take payments on the go. Helping businesses do more “As we’ve expanded our business and the different verticals we’re in, and the complexity of our business grew, Square matched exactly what we required. Since onboarding with Square, we’ve probably tripled the business.” Mat Pond owner, The Epicurean Trader Watch now “Square has been with us every step of the way, since we started selling arepas at pop-up fairs to running a restaurant with nine revenue streams.” Isabella Bertorelli and Kenzie Benesh co-owners, Yo También Cantina Watch now “With Square, we’ve gone through an evolution. We started with the original Square Stand. Every time a new product comes out, it’s great because we get to test out better software or better hardware.” Wally Sadat CMO, The Kebab Shop Watch now “As we’ve expanded our business and the different verticals we’re in, and the complexity of our business grew, Square matched exactly what we required. Since onboarding with Square, we’ve probably tripled the business.” Mat Pond owner, The Epicurean Trader Watch now “Square has been with us every step of the way, since we started selling arepas at pop-up fairs to running a restaurant with nine revenue streams.” Isabella Bertorelli and Kenzie Benesh co-owners, Yo También Cantina Watch now “With Square, we’ve gone through an evolution. We started with the original Square Stand. Every time a new product comes out, it’s great because we get to test out better software or better hardware.” Wally Sadat CMO, The Kebab Shop Watch now *These businesses were paid for their time by Square. Awards & recognition Voted Adweek’s best POS system 2022 Afterpay voted among Best Buy Now, Pay Later Apps by the Wall Street Journal 2022 Voted Fast Company’s Brands that Matter 2021 All change-makers welcome Square innovates, collaborates, and learns for businesses that use Square and for each other. Its global presence, industry-leading distributed workforce, and high standards for personal excellence have made it among the best places to work. Learn about opportunities at Square The future of business starts with you. Revolutionize your counter — and everywhere you sell — with custom tools to help you meet any goal. Get started -> Contact sales -> Choose your region and language Australia (English) Canada (English) Canada (Français) France (Français) Ireland (English) 日本 (日本語) España (Español) Espanya (Català) United Kingdom (English) United States (English) Estados Unidos (Español) Australia (English) Canada (English) Canada (Français) France (Français) Ireland (English) 日本 (日本語) España (Español) Espanya (Català) United Kingdom (English) United States (English) Estados Unidos (Español)",
+          "squareup.com": "Power your entire business | Square Please update your browser. Download the latest version of a supported browser below to get the most out of this website: Google Chrome Mozilla Firefox Microsoft Edge I understand. Proceed anyway Hardware Smooth checkout, every time Choose from a range of sleek options for however you do business. All equally easy to use. Browse all Square Register The sleek, dual-screen system $799 or $39/mo. over 24 months ¹ Square Handheld The POS that moves with you $399 or $37/mo. over 12 months¹ Square Terminal The receipt-printing POS $299 or $27/mo. over 12 months ¹ Square Stand The intuitive, swiveling iPad POS $149 or $14/mo. over 12 months¹ Square Reader for contactless and chip The portable reader for every tap and dip $59 Point of sale See your whole business click into place Take payments Sell anything in person and online with a point of sale platform that works for whatever you sell. Learn more Manage your team Run payroll, schedule shifts, and take care of admin — so your team can focus on performing their best. Learn more Grow your customer base Set up the right marketing campaigns and loyalty program to welcome new customers and keep them coming back for more. Learn more Control your cash flow² Bring your revenue under one roof. Instantly access your funds, save for future expenses, and get quicker access to loans. Learn more Connect your favorite apps Square partners with hundreds of apps so you can manage your entire business without jumping between. Learn more Food & Beverage 450,000+ food and beverage sellers using Square globally Learn more Retail $39 billion+ generated by retailers using Square annually Learn more Beauty 15 million+ appointments booked through Square every month Learn more Services $93 billion+ paid with invoices globally Learn more Square AI Make smart decisions, fast Ask Square AI anything about your business to get immediate insights. Learn more Pricing Run your entire business with one plan No hidden fees or locked-in contracts. Cancel or switch plans anytime. Get started Best value Try free for {{sub2_api.num_free_trial_days}} days Try free for {{sub2_api.num_free_trial_days}} days Get the latest updates from Square Submit *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close Nice to meet you. We think businesses are as unique as the people who run them. Get individualized content on the topics you care about most by telling us a little more about yourself. First name Last name Phone +1 United States +44 United Kingdom +61 Australia +1 Canada +81 Japan +353 Ireland +34 Spain +33 France Business name Industry Select... Select... Beauty Charities, Education and Membership Fitness Food and Drink Health Home and Repair Leisure and Entertainment Professional Services Retail Transportation Wellness Estimated annual revenue Select... Select... 0 - $10k $10k - $50k $50k - $100k $100k - $250k $250k - $500k $500k - $1M $1M - $5M $5M - $10M $10M - $20M $20M - $30M $30M - $50M > $50M By checking the box, you agree to receive automated informational and marketing calls and texts via the phone number you provided above. Signing up is not a condition of purchase. You certify that you are at least 18 years of age.* Update profile *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close 1 All credit sale plans are issued by Block, Inc. Not available to merchants in AL, DE, MO, MS, NH, and TN. Purchase amounts must be from $49 to $10,000. APR is 15%. Available plan lengths vary from 3, 6, 12, and/or 24 month installments, depending on purchase amount. Sales tax, where applicable, will be due at checkout. All plans subject to credit approval and other factors. 2 Block, Inc. is a financial services platform and not an FDIC-insured bank. FDIC deposit insurance coverage only protects against the failure of an FDIC-insured deposit institution. If you have a Square Checking account, up to $250,000 of your balance may be covered by FDIC insurance on a pass-through basis through Sutton Bank, Member FDIC, subject to aggregation of the account holder’s funds held at Sutton Bank and if certain conditions have been met. Square Debit Card is issued by Sutton Bank, Member FDIC, pursuant to a license from Mastercard. Funds generated through Square’s payment processing services are generally available in the Square Checking account balance immediately after a payment is processed. Fund availability times may vary due to technical issues. Square, the Square logo, Square Financial Services, Square Capital, and others are trademarks of Block, Inc. and/or its subsidiaries. Square Financial Services, Inc. is a wholly owned subsidiary of Block, Inc. All loans are issued by Square Financial Services, Inc. Actual fee depends upon payment card processing history, loan amount and other eligibility factors. A minimum payment of 1/18th of the initial loan balance is required every 60 days and full loan repayment is required within 18 months. Loan eligibility is not guaranteed. All loans are subject to credit approval."
+        }
+      },
+      "tracking_id": "4973ccac-f105-4997-8977-17759b4dd505",
+      "retry_count": 0,
+      "parent_item_id": "LEWSDF0A3yZLylnNo6Ug",
+      "spawn_depth": 3,
+      "max_retries": 3,
+      "created_at": {
+        "_seconds": 1761156383,
+        "_nanoseconds": 790000000
+      },
+      "processed_at": {
+        "_seconds": 1761156385,
+        "_nanoseconds": 607000000
+      },
+      "completed_at": {
+        "_seconds": 1761156386,
+        "_nanoseconds": 293000000
+      },
+      "result_message": "Company saved successfully (ID: qIizoyUSqrIDZTVMRxgN)",
+      "updated_at": {
+        "_seconds": 1761156386,
+        "_nanoseconds": 293000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "pjGVoNpo7VyqVpQUZmK8",
+      "test_run_id": "e2e_test_93b8ede5",
+      "created_at": {
+        "_seconds": 1761082286,
+        "_nanoseconds": 767039000
+      },
+      "sub_task": "filter",
+      "type": "job",
+      "company_name": "Test Filter Company",
+      "source": "automated_scan",
+      "url": "https://www.linkedin.com/jobs/view/test-job",
+      "pipeline_state": {
+        "job_data": {
+          "location": "New York, NY (On-site)",
+          "company": "Test Filter Company",
+          "url": "https://www.linkedin.com/jobs/view/test-job",
+          "title": "Senior Sales Manager",
+          "posted_date": "2025-10-17",
+          "description": "We are looking for an experienced sales manager..."
+        }
+      },
+      "processed_at": {
+        "_seconds": 1761082345,
+        "_nanoseconds": 634000000
+      },
+      "scraped_data": {
+        "job_data": {
+          "title": "Senior Sales Manager",
+          "posted_date": "2025-10-17",
+          "location": "New York, NY (On-site)",
+          "description": "We are looking for an experienced sales manager...",
+          "url": "https://www.linkedin.com/jobs/view/test-job",
+          "company": "Test Filter Company"
+        },
+        "filter_result": {
+          "strike_threshold": 5,
+          "total_strikes": 0,
+          "rejection_summary": "On-site jobs not allowed",
+          "rejections": [
+            {
+              "filter_category": "hard_reject",
+              "detail": "Remote: False, Hybrid: False, Portland: False, Onsite: True",
+              "reason": "On-site jobs not allowed",
+              "filter_name": "remote_policy",
+              "points": 0,
+              "severity": "hard_reject"
+            }
+          ],
+          "strikes": [],
+          "hard_rejections": [
+            {
+              "filter_category": "hard_reject",
+              "detail": "Remote: False, Hybrid: False, Portland: False, Onsite: True",
+              "reason": "On-site jobs not allowed",
+              "filter_name": "remote_policy",
+              "points": 0,
+              "severity": "hard_reject"
+            }
+          ],
+          "passed": false
+        }
+      },
+      "completed_at": {
+        "_seconds": 1761082346,
+        "_nanoseconds": 47000000
+      },
+      "result_message": "Rejected by filters: On-site jobs not allowed",
+      "updated_at": {
+        "_seconds": 1761082346,
+        "_nanoseconds": 47000000
+      },
+      "status": "filtered"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "sXgWdTa9KU8xDbudY5sb",
+      "max_spawn_depth": 10,
+      "retry_count": 0,
+      "source": "user_submission",
+      "company_sub_task": "fetch",
+      "company_name": "Coinbase Careers",
+      "type": "company",
+      "url": "https://www.coinbase.com",
+      "tracking_id": "25c86b88-8de8-492a-9b98-ff03df55f479",
+      "max_retries": 3,
+      "spawn_depth": 0,
+      "created_at": {
+        "_seconds": 1761153481,
+        "_nanoseconds": 798000000
+      },
+      "ancestry_chain": [
+        "sXgWdTa9KU8xDbudY5sb"
+      ],
+      "processed_at": {
+        "_seconds": 1761153535,
+        "_nanoseconds": 289000000
+      },
+      "completed_at": {
+        "_seconds": 1761153537,
+        "_nanoseconds": 160000000
+      },
+      "result_message": "Fetched 2 pages from company website",
+      "updated_at": {
+        "_seconds": 1761153537,
+        "_nanoseconds": 160000000
+      },
+      "status": "success"
+    },
+    {
+      "env": "portfolio-staging",
+      "id": "y4ZxW7B8qnlgxb5gA9Pc",
+      "company_sub_task": "extract",
+      "ancestry_chain": [
+        "Sic16UtQScwf7ggU4Icq",
+        "Sic16UtQScwf7ggU4Icq"
+      ],
+      "company_name": "Square Careers",
+      "max_spawn_depth": 10,
+      "source": "user_submission",
+      "type": "company",
+      "url": "https://squareup.com",
+      "pipeline_state": {
+        "company_name": "Square Careers",
+        "company_website": "https://squareup.com",
+        "html_content": {
+          "careers": "Power your entire business | Square Please update your browser. Download the latest version of a supported browser below to get the most out of this website: Google Chrome Mozilla Firefox Microsoft Edge I understand. Proceed anyway Hardware Smooth checkout, every time Choose from a range of sleek options for however you do business. All equally easy to use. Browse all Square Register The sleek, dual-screen system $799 or $39/mo. over 24 months ¹ Square Handheld The POS that moves with you $399 or $37/mo. over 12 months¹ Square Terminal The receipt-printing POS $299 or $27/mo. over 12 months ¹ Square Stand The intuitive, swiveling iPad POS $149 or $14/mo. over 12 months¹ Square Reader for contactless and chip The portable reader for every tap and dip $59 Point of sale See your whole business click into place Take payments Sell anything in person and online with a point of sale platform that works for whatever you sell. Learn more Manage your team Run payroll, schedule shifts, and take care of admin — so your team can focus on performing their best. Learn more Grow your customer base Set up the right marketing campaigns and loyalty program to welcome new customers and keep them coming back for more. Learn more Control your cash flow² Bring your revenue under one roof. Instantly access your funds, save for future expenses, and get quicker access to loans. Learn more Connect your favorite apps Square partners with hundreds of apps so you can manage your entire business without jumping between. Learn more Food & Beverage 450,000+ food and beverage sellers using Square globally Learn more Retail $39 billion+ generated by retailers using Square annually Learn more Beauty 15 million+ appointments booked through Square every month Learn more Services $93 billion+ paid with invoices globally Learn more Square AI Make smart decisions, fast Ask Square AI anything about your business to get immediate insights. Learn more Pricing Run your entire business with one plan No hidden fees or locked-in contracts. Cancel or switch plans anytime. Get started Best value Try free for {{sub2_api.num_free_trial_days}} days Try free for {{sub2_api.num_free_trial_days}} days Get the latest updates from Square Submit *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close Nice to meet you. We think businesses are as unique as the people who run them. Get individualized content on the topics you care about most by telling us a little more about yourself. First name Last name Phone +1 United States +44 United Kingdom +61 Australia +1 Canada +81 Japan +353 Ireland +34 Spain +33 France Business name Industry Select... Select... Beauty Charities, Education and Membership Fitness Food and Drink Health Home and Repair Leisure and Entertainment Professional Services Retail Transportation Wellness Estimated annual revenue Select... Select... 0 - $10k $10k - $50k $50k - $100k $100k - $250k $250k - $500k $500k - $1M $1M - $5M $5M - $10M $10M - $20M $20M - $30M $30M - $50M > $50M By checking the box, you agree to receive automated informational and marketing calls and texts via the phone number you provided above. Signing up is not a condition of purchase. You certify that you are at least 18 years of age.* Update profile *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close 1 All credit sale plans are issued by Block, Inc. Not available to merchants in AL, DE, MO, MS, NH, and TN. Purchase amounts must be from $49 to $10,000. APR is 15%. Available plan lengths vary from 3, 6, 12, and/or 24 month installments, depending on purchase amount. Sales tax, where applicable, will be due at checkout. All plans subject to credit approval and other factors. 2 Block, Inc. is a financial services platform and not an FDIC-insured bank. FDIC deposit insurance coverage only protects against the failure of an FDIC-insured deposit institution. If you have a Square Checking account, up to $250,000 of your balance may be covered by FDIC insurance on a pass-through basis through Sutton Bank, Member FDIC, subject to aggregation of the account holder’s funds held at Sutton Bank and if certain conditions have been met. Square Debit Card is issued by Sutton Bank, Member FDIC, pursuant to a license from Mastercard. Funds generated through Square’s payment processing services are generally available in the Square Checking account balance immediately after a payment is processed. Fund availability times may vary due to technical issues. Square, the Square logo, Square Financial Services, Square Capital, and others are trademarks of Block, Inc. and/or its subsidiaries. Square Financial Services, Inc. is a wholly owned subsidiary of Block, Inc. All loans are issued by Square Financial Services, Inc. Actual fee depends upon payment card processing history, loan amount and other eligibility factors. A minimum payment of 1/18th of the initial loan balance is required every 60 days and full loan repayment is required within 18 months. Loan eligibility is not guaranteed. All loans are subject to credit approval.",
+          "about": "About Square JavaScript is required for full functionality of this site. Learn how to enable JavaScript in your web browser Powering businesses the world over More than four million sellers * run on Square, the only platform of its kind designed for solo entrepreneurs and the largest international chains. About Square Fifteen years ago, not all businesses could accept credit cards. Square set out to change that — inventing the first mobile card reader of its kind. This allowed businesses to take payments anywhere and keep thriving in the economy. It also completely disrupted how the financial system thinks about small businesses. With this shift, Square’s journey took off — moving far beyond its origins as a payment processor to building new tools and solutions for the future. Today, Square is the largest business technology platform serving all kinds of businesses. The Square operating system allows business owners to sell anywhere, work more efficiently, manage inventory, communicate with customers, book appointments, course meals, order online, and so much more. These tools unlock endless possibilities and countless opportunities for any operation from global chains to mom-and-pop shops. 36+ products 8 countries served 4B individual sales transactions processed in 2023* $209.6B in payments processed in 2023* * Source: 2023 10-K Annual Report Read the latest Square news Square Newsroom Get in-depth business insights and exclusive interviews The Bottom Line Learn about our hardware and software Square products An endless evolution Square came to life in 2009 with a card reader for mobile devices — the first of its kind. That one opportunity helped grow Square from a single product to a whole suite for people to run every side of their businesses, including hardware, software, and so much more. 2025 Square Handheld launches, giving businesses a portable, powerful point of sale that fits in a pocket. 2023 Square Go launches, our first client-facing app for booking personal care services. 2022 Tap to Pay on iPhone launches, letting sellers accept card payments with no additional hardware needed. - Square arrives to Spain and, later, also available in Catalan. - Square Stand gets a redesign, integrating tap and chip payments and transforming the buyer experience. 2021 Square, Inc. changes to Block, Inc., setting the foundation for the future of Square and our ecosystem of partner companies. - Square Banking launches, giving businesses a full suite of financial products to manage cash flow, savings, capital, and more. - Square expands to France. - Square expands to Ireland. - Square acquires Afterpay, opening up a new way for businesses to accept payments. 2019 Square Photo Studio launches, giving businesses access to lower-cost, high-quality online photography. 2018 Square for Restaurants launches, bringing innovation from front to back of house. - Square acquires Weebly, powering Square Online to make eCommerce more accessible to businesses. - Square Terminal launches, giving businesses an all-in-one payment device. 2017 Square expands to the U.K. - Square Register launches, giving businesses an end-to-end integrated point of sale with a buyer-facing display. - Square for Retail launches, our first vertical software that covers all corners of retail businesses. 2016 Square expands to Australia. 2015 Square Appointments launches, allowing service-based businesses to book and manage clients with ease. 2014 Square Capital launches, giving entrepreneurs access to funds that help grow their businesses. 2013 Square expands to Japan. - Square Stand launches, revolutionizing the register for iPad use. 2012 Square expands to Canada. 2009 Original card reader launches, allowing people to take payments on the go. Helping businesses do more “As we’ve expanded our business and the different verticals we’re in, and the complexity of our business grew, Square matched exactly what we required. Since onboarding with Square, we’ve probably tripled the business.” Mat Pond owner, The Epicurean Trader Watch now “Square has been with us every step of the way, since we started selling arepas at pop-up fairs to running a restaurant with nine revenue streams.” Isabella Bertorelli and Kenzie Benesh co-owners, Yo También Cantina Watch now “With Square, we’ve gone through an evolution. We started with the original Square Stand. Every time a new product comes out, it’s great because we get to test out better software or better hardware.” Wally Sadat CMO, The Kebab Shop Watch now “As we’ve expanded our business and the different verticals we’re in, and the complexity of our business grew, Square matched exactly what we required. Since onboarding with Square, we’ve probably tripled the business.” Mat Pond owner, The Epicurean Trader Watch now “Square has been with us every step of the way, since we started selling arepas at pop-up fairs to running a restaurant with nine revenue streams.” Isabella Bertorelli and Kenzie Benesh co-owners, Yo También Cantina Watch now “With Square, we’ve gone through an evolution. We started with the original Square Stand. Every time a new product comes out, it’s great because we get to test out better software or better hardware.” Wally Sadat CMO, The Kebab Shop Watch now *These businesses were paid for their time by Square. Awards & recognition Voted Adweek’s best POS system 2022 Afterpay voted among Best Buy Now, Pay Later Apps by the Wall Street Journal 2022 Voted Fast Company’s Brands that Matter 2021 All change-makers welcome Square innovates, collaborates, and learns for businesses that use Square and for each other. Its global presence, industry-leading distributed workforce, and high standards for personal excellence have made it among the best places to work. Learn about opportunities at Square The future of business starts with you. Revolutionize your counter — and everywhere you sell — with custom tools to help you meet any goal. Get started -> Contact sales -> Choose your region and language Australia (English) Canada (English) Canada (Français) France (Français) Ireland (English) 日本 (日本語) España (Español) Espanya (Català) United Kingdom (English) United States (English) Estados Unidos (Español) Australia (English) Canada (English) Canada (Français) France (Français) Ireland (English) 日本 (日本語) España (Español) Espanya (Català) United Kingdom (English) United States (English) Estados Unidos (Español)",
+          "squareup.com": "Power your entire business | Square Please update your browser. Download the latest version of a supported browser below to get the most out of this website: Google Chrome Mozilla Firefox Microsoft Edge I understand. Proceed anyway Hardware Smooth checkout, every time Choose from a range of sleek options for however you do business. All equally easy to use. Browse all Square Register The sleek, dual-screen system $799 or $39/mo. over 24 months ¹ Square Handheld The POS that moves with you $399 or $37/mo. over 12 months¹ Square Terminal The receipt-printing POS $299 or $27/mo. over 12 months ¹ Square Stand The intuitive, swiveling iPad POS $149 or $14/mo. over 12 months¹ Square Reader for contactless and chip The portable reader for every tap and dip $59 Point of sale See your whole business click into place Take payments Sell anything in person and online with a point of sale platform that works for whatever you sell. Learn more Manage your team Run payroll, schedule shifts, and take care of admin — so your team can focus on performing their best. Learn more Grow your customer base Set up the right marketing campaigns and loyalty program to welcome new customers and keep them coming back for more. Learn more Control your cash flow² Bring your revenue under one roof. Instantly access your funds, save for future expenses, and get quicker access to loans. Learn more Connect your favorite apps Square partners with hundreds of apps so you can manage your entire business without jumping between. Learn more Food & Beverage 450,000+ food and beverage sellers using Square globally Learn more Retail $39 billion+ generated by retailers using Square annually Learn more Beauty 15 million+ appointments booked through Square every month Learn more Services $93 billion+ paid with invoices globally Learn more Square AI Make smart decisions, fast Ask Square AI anything about your business to get immediate insights. Learn more Pricing Run your entire business with one plan No hidden fees or locked-in contracts. Cancel or switch plans anytime. Get started Best value Try free for {{sub2_api.num_free_trial_days}} days Try free for {{sub2_api.num_free_trial_days}} days Get the latest updates from Square Submit *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close Nice to meet you. We think businesses are as unique as the people who run them. Get individualized content on the topics you care about most by telling us a little more about yourself. First name Last name Phone +1 United States +44 United Kingdom +61 Australia +1 Canada +81 Japan +353 Ireland +34 Spain +33 France Business name Industry Select... Select... Beauty Charities, Education and Membership Fitness Food and Drink Health Home and Repair Leisure and Entertainment Professional Services Retail Transportation Wellness Estimated annual revenue Select... Select... 0 - $10k $10k - $50k $50k - $100k $100k - $250k $250k - $500k $500k - $1M $1M - $5M $5M - $10M $10M - $20M $20M - $30M $30M - $50M > $50M By checking the box, you agree to receive automated informational and marketing calls and texts via the phone number you provided above. Signing up is not a condition of purchase. You certify that you are at least 18 years of age.* Update profile *This information may be transcribed, used, and stored by third parties in accordance with our Privacy Policy . Close 1 All credit sale plans are issued by Block, Inc. Not available to merchants in AL, DE, MO, MS, NH, and TN. Purchase amounts must be from $49 to $10,000. APR is 15%. Available plan lengths vary from 3, 6, 12, and/or 24 month installments, depending on purchase amount. Sales tax, where applicable, will be due at checkout. All plans subject to credit approval and other factors. 2 Block, Inc. is a financial services platform and not an FDIC-insured bank. FDIC deposit insurance coverage only protects against the failure of an FDIC-insured deposit institution. If you have a Square Checking account, up to $250,000 of your balance may be covered by FDIC insurance on a pass-through basis through Sutton Bank, Member FDIC, subject to aggregation of the account holder’s funds held at Sutton Bank and if certain conditions have been met. Square Debit Card is issued by Sutton Bank, Member FDIC, pursuant to a license from Mastercard. Funds generated through Square’s payment processing services are generally available in the Square Checking account balance immediately after a payment is processed. Fund availability times may vary due to technical issues. Square, the Square logo, Square Financial Services, Square Capital, and others are trademarks of Block, Inc. and/or its subsidiaries. Square Financial Services, Inc. is a wholly owned subsidiary of Block, Inc. All loans are issued by Square Financial Services, Inc. Actual fee depends upon payment card processing history, loan amount and other eligibility factors. A minimum payment of 1/18th of the initial loan balance is required every 60 days and full loan repayment is required within 18 months. Loan eligibility is not guaranteed. All loans are subject to credit approval."
+        }
+      },
+      "tracking_id": "4973ccac-f105-4997-8977-17759b4dd505",
+      "retry_count": 0,
+      "parent_item_id": "Sic16UtQScwf7ggU4Icq",
+      "spawn_depth": 1,
+      "max_retries": 3,
+      "created_at": {
+        "_seconds": 1761156252,
+        "_nanoseconds": 133000000
+      },
+      "result_message": "Company information extracted successfully",
+      "processed_at": {
+        "_seconds": 1761156318,
+        "_nanoseconds": 76000000
+      },
+      "completed_at": {
+        "_seconds": 1761156321,
+        "_nanoseconds": 369000000
+      },
+      "updated_at": {
+        "_seconds": 1761156321,
+        "_nanoseconds": 369000000
+      },
+      "status": "success"
+    }
+  ]
+}
