@@ -11,9 +11,7 @@ app.use('/content-items', buildContentItemRouter())
 const basePayload = {
   userEmail: 'owner@example.com',
   itemData: {
-    userId: 'route-user-1',
-    title: 'Route Root',
-    visibility: 'published'
+    title: 'Route Root'
   }
 }
 
@@ -39,9 +37,7 @@ describe('content-item routes', () => {
       })
       .expect(201)
 
-    const listResponse = await request(app)
-      .get(`/content-items?userId=${basePayload.itemData.userId}&includeDrafts=true`)
-      .expect(200)
+    const listResponse = await request(app).get(`/content-items`).expect(200)
 
     expect(listResponse.body.success).toBe(true)
     expect(listResponse.body.data.items).toHaveLength(1)
@@ -92,9 +88,7 @@ describe('content-item routes', () => {
       })
       .expect(200)
 
-    const orderedRoots = await request(app)
-      .get(`/content-items?userId=${basePayload.itemData.userId}&includeDrafts=true`)
-      .expect(200)
+    const orderedRoots = await request(app).get(`/content-items`).expect(200)
     expect(orderedRoots.body.data.items.map((item: { title: string }) => item.title)).toEqual([
       'Route Root B',
       'Route Root'
@@ -117,9 +111,7 @@ describe('content-item routes', () => {
       })
       .expect(200)
 
-    const nested = await request(app)
-      .get(`/content-items?userId=${basePayload.itemData.userId}&includeDrafts=true`)
-      .expect(200)
+    const nested = await request(app).get(`/content-items`).expect(200)
     expect(nested.body.data.items[1].children[0].title).toBe('Route Child')
   })
 })

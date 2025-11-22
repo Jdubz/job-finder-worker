@@ -17,8 +17,6 @@ import { ContentItemRepository, ContentItemInvalidParentError, ContentItemNotFou
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 
-const visibilityValues = ['published', 'draft', 'archived'] as const
-
 const nullableIdSchema = z.string().min(1).or(z.literal(null)).optional()
 const monthSchema = z
   .string()
@@ -35,14 +33,11 @@ const itemFieldsSchema = z.object({
   startDate: monthSchema,
   endDate: monthSchema,
   description: z.string().min(1).optional(),
-  skills: z.array(z.string().min(1)).optional(),
-  visibility: z.enum(visibilityValues).optional()
+  skills: z.array(z.string().min(1)).optional()
 })
 
 const createRequestSchema = z.object({
-  itemData: itemFieldsSchema.extend({
-    userId: z.string().min(1)
-  }),
+  itemData: itemFieldsSchema,
   userEmail: z.string().email()
 })
 
@@ -61,8 +56,6 @@ const ROOT_PARENT_SENTINEL = '__root__'
 
 const listQuerySchema = z.object({
   parentId: nullableIdSchema,
-  visibility: z.enum(visibilityValues).optional(),
-  includeDrafts: z.coerce.boolean().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
   offset: z.coerce.number().int().min(0).default(0)
 })
@@ -101,8 +94,6 @@ export function buildContentItemRouter() {
             : query.parentId === '' || query.parentId === ROOT_PARENT_SENTINEL
               ? null
               : query.parentId,
-        visibility: query.visibility,
-        includeDrafts: query.includeDrafts,
         limit: query.limit,
         offset: query.offset
       })

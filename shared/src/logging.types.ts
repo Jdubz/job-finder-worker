@@ -95,7 +95,6 @@ export interface StructuredLogEntry {
 
   // Correlation and tracing
   requestId?: string          // Request correlation ID (for tracing across services)
-  userId?: string             // User ID associated with the operation
   sessionId?: string          // Session ID (for frontend logs)
 
   // Context fields (optional - link to queue items and pipeline)

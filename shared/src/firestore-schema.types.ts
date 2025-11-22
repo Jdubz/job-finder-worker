@@ -172,11 +172,6 @@ export type ContentItemDocumentType =
   | 'accomplishment'
 
 /**
- * ContentItemDocumentVisibility - Visibility status of content item in Firestore
- */
-export type ContentItemDocumentVisibility = 'published' | 'draft' | 'archived'
-
-/**
  * BaseContentItemDocument - Common fields for all content items in Firestore
  */
 export interface BaseContentItemDocument {
@@ -185,9 +180,6 @@ export interface BaseContentItemDocument {
   
   /** Display order */
   order: number
-  
-  /** Visibility status */
-  visibility: ContentItemDocumentVisibility
   
   /** Parent item ID (for hierarchical content) */
   parentId: string | null
@@ -522,4 +514,3 @@ export interface FirestoreCollectionMap {
   // Note: job-matches, generator-documents, blurbs, experiences types
   // are defined in their respective type files (job.types.ts, generator.types.ts, etc.)
 }
-

@@ -32,8 +32,6 @@ export class ContentItemsClient extends BaseApiClient {
     } else if (params.parentId) {
       search.append("parentId", params.parentId)
     }
-    if (params.visibility) search.append("visibility", params.visibility)
-    // drafts are no longer used; always return all items
     if (params.limit) search.append("limit", params.limit.toString())
     if (params.offset) search.append("offset", params.offset.toString())
 

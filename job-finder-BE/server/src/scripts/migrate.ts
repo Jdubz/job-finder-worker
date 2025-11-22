@@ -11,7 +11,7 @@ const MIGRATIONS_DIR =
   process.env.JF_SQLITE_MIGRATIONS_DIR ??
   process.env.SCHEMA_DIR ??
   (process.env.SCHEMA_FILE ? path.dirname(process.env.SCHEMA_FILE) : undefined) ??
-  path.resolve(process.cwd(), 'infra/sqlite/migrations')
+  path.resolve(process.cwd(), '../../infra/sqlite/migrations')
 
 function main() {
   const db = sqlite3(DB_PATH)

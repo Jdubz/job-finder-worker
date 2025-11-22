@@ -1,10 +1,7 @@
 import type { TimestampLike } from './firestore.types'
 
-export type ContentItemVisibility = 'published' | 'draft' | 'archived'
-
 export interface ContentItem {
   id: string
-  userId: string
   parentId: string | null
   order: number
   title?: string | null
@@ -15,7 +12,6 @@ export interface ContentItem {
   endDate?: string | null
   description?: string | null
   skills?: string[] | null
-  visibility: ContentItemVisibility
   createdAt: TimestampLike
   updatedAt: TimestampLike
   createdBy: string
@@ -27,7 +23,6 @@ export type ContentItemNode = ContentItem & {
 }
 
 export type CreateContentItemData = {
-  userId: string
   parentId?: string | null
   order?: number
   title?: string | null
@@ -38,18 +33,13 @@ export type CreateContentItemData = {
   endDate?: string | null
   description?: string | null
   skills?: string[] | null
-  visibility?: ContentItemVisibility
 }
 
-export type UpdateContentItemData = Partial<Omit<CreateContentItemData, 'userId'>> & {
-  visibility?: ContentItemVisibility
+export type UpdateContentItemData = Partial<CreateContentItemData> & {
 }
 
 export interface ListContentItemsOptions {
-  userId?: string
   parentId?: string | null
-  visibility?: ContentItemVisibility
-  includeDrafts?: boolean
   limit?: number
   offset?: number
 }

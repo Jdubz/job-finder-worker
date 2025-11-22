@@ -178,7 +178,7 @@ export function JobFinderPage() {
           <CardDescription>Track the status of your submitted jobs</CardDescription>
         </CardHeader>
         <CardContent>
-          <QueueStatusTable userId={user?.id || ""} />
+          <QueueStatusTable />
         </CardContent>
       </Card>
     </div>

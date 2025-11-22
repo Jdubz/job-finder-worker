@@ -270,7 +270,6 @@ export interface SubmitJobRequest {
   companyName?: string
   companyUrl?: string // Company website/careers page URL for intake pipeline
   companyId?: string | null
-  userId?: string | null
   generationId?: string // Optional: Link to portfolio generation request ID
   source?: QueueSource
   metadata?: Record<string, unknown>
@@ -291,7 +290,6 @@ export interface SubmitJobResponse {
  * Scrape submission request body (API)
  */
 export interface SubmitScrapeRequest {
-  userId?: string | null
   scrapeConfig?: ScrapeConfig
   /** @deprecated Use `scrapeConfig` */
   scrape_config?: ScrapeConfig
@@ -314,7 +312,6 @@ export interface SubmitCompanyRequest {
   companyName: string
   websiteUrl: string
   source?: "manual_submission" | "user_request" | "automated_scan"
-  userId?: string | null
 }
 
 /**

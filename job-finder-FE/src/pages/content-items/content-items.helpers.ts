@@ -1,4 +1,4 @@
-import type { ContentItemNode, ContentItemVisibility } from "@shared/types"
+import type { ContentItemNode } from "@shared/types"
 import type { ContentItemFormValues } from "@/types/content-items"
 
 export interface NormalizedImportNode {
@@ -21,7 +21,6 @@ export interface SerializedContentItem {
   endDate?: string
   description?: string
   skills?: string[]
-  visibility: ContentItemVisibility
   children?: SerializedContentItem[]
 }
 
@@ -64,7 +63,6 @@ export function serializeForExport(nodes: ContentItemNode[]): SerializedContentI
     endDate: node.endDate ?? undefined,
     description: node.description ?? undefined,
     skills: node.skills ?? undefined,
-    visibility: node.visibility,
     children: node.children?.length ? serializeForExport(node.children) : undefined
   }))
 }
@@ -162,7 +160,6 @@ function buildNormalizedNode(record: Record<string, unknown>, index: number): No
   const legacyId = typeof expanded.id === "string" && expanded.id.trim().length ? expanded.id : `import-${index}`
   const parentLegacyId = coerceParentId(expanded)
   const order = coerceOrder(expanded, index)
-  const visibility = coerceVisibility(expanded.visibility)
   const values: ContentItemFormValues = {
     title: pickString(expanded, ["title", "name", "heading", "label"]),
     role: pickString(expanded, ["role", "position", "company", "subtitle", "category"]),
@@ -171,8 +168,7 @@ function buildNormalizedNode(record: Record<string, unknown>, index: number): No
     startDate: pickString(expanded, ["startDate", "start_date", "start"]),
     endDate: pickString(expanded, ["endDate", "end_date", "end"]),
     description: buildDescription(expanded),
-    skills: pickStringArray(expanded, ["skills", "technologies", "techStack", "stack", "keywords"]),
-    visibility
+    skills: pickStringArray(expanded, ["skills", "technologies", "techStack", "stack", "keywords"])
   }
 
   ;(Object.keys(values) as Array<keyof ContentItemFormValues>).forEach((key) => {
@@ -226,13 +222,6 @@ function coerceOrder(record: Record<string, unknown>, fallback: number): number 
     }
   }
   return fallback
-}
-
-function coerceVisibility(value: unknown): ContentItemVisibility | undefined {
-  if (value === "published" || value === "archived") {
-    return value
-  }
-  return undefined
 }
 
 function pickString(record: Record<string, unknown>, keys: string[]): string | undefined {

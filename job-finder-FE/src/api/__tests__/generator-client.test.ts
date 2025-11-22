@@ -302,18 +302,15 @@ describe("GeneratorClient", () => {
         json: () => Promise.resolve(mockPayload),
       } as Response)
 
-      const result = await client.getHistory("user-123")
+      const result = await client.getHistory()
 
-      expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/requests?userId=user-123"),
-        expect.objectContaining({
-          method: "GET",
-          headers: expect.objectContaining({
-            "Content-Type": "application/json",
-          }),
-          signal: expect.any(AbortSignal),
-        })
-      )
+      expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/requests"), expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+        }),
+        signal: expect.any(AbortSignal),
+      }))
 
       expect(result).toEqual(mockHistory)
     })

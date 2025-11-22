@@ -42,7 +42,7 @@ import type {
   ProjectRecommendation,
   GapMitigation,
 } from "./job.types"
-import type { ContentItem, ContentItemVisibility } from "./content-item.types"
+import type { ContentItem } from "./content-item.types"
 import type {
   GenerationType,
   AIProviderType,
@@ -354,16 +354,9 @@ export function isCompany(value: unknown): value is Company {
 // Content Item Guards
 // ============================================
 
-export function isContentItemVisibility(value: unknown): value is ContentItemVisibility {
-  return value === "published" || value === "draft" || value === "archived"
-}
-
 export function isContentItem(value: unknown): value is ContentItem {
   if (!isObject(value)) return false
   const item = value as Partial<ContentItem>
-  if (typeof item.visibility !== "string" || !isContentItemVisibility(item.visibility)) {
-    return false
-  }
 
   if (typeof item.skills === "string") {
     try {
@@ -379,7 +372,6 @@ export function isContentItem(value: unknown): value is ContentItem {
 
   return (
     typeof item.id === "string" &&
-    typeof item.userId === "string" &&
     (item.parentId === undefined || item.parentId === null || typeof item.parentId === "string") &&
     typeof item.order === "number" &&
     (item.title === undefined || typeof item.title === "string") &&
@@ -548,7 +540,6 @@ export {
   isQueueItemDocument,
   isCompanyTier,
   isCompanyDocument,
-  isContentItemVisibility as isContentItemDocumentVisibility,
   isContentItemDocument,
   isContactSubmissionDocument,
   isUserDocument,
