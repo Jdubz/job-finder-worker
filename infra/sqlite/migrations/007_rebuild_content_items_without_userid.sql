@@ -1,9 +1,11 @@
+PRAGMA foreign_keys=OFF;
+
 BEGIN TRANSACTION;
 
 -- Rebuild content_items without user_id and visibility columns
 CREATE TABLE content_items_new (
   id TEXT PRIMARY KEY,
-  parent_id TEXT REFERENCES content_items(id) ON DELETE SET NULL,
+  parent_id TEXT REFERENCES content_items_new(id) ON DELETE SET NULL,
   order_index INTEGER NOT NULL DEFAULT 0,
   title TEXT,
   role TEXT,
@@ -60,3 +62,5 @@ ALTER TABLE content_items_new RENAME TO content_items;
 CREATE INDEX IF NOT EXISTS idx_content_items_parent_order ON content_items(parent_id, order_index);
 
 COMMIT;
+
+PRAGMA foreign_keys=ON;

@@ -20,8 +20,7 @@ const defaultValues: ContentItemFormValues = {
   startDate: "",
   endDate: "",
   description: "",
-  skills: [],
-  visibility: "published"
+  skills: []
 }
 
 export function ContentItemForm({
@@ -159,24 +158,6 @@ export function ContentItemForm({
           onChange={(event) => setSkillsText(event.target.value)}
           placeholder="AWS, Terraform, Kubernetes"
         />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="visibility">Visibility</Label>
-        <select
-          id="visibility"
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none"
-          value={formValues.visibility ?? "published"}
-          onChange={(event) =>
-            setFormValues((prev) => ({
-              ...prev,
-              visibility: event.target.value as ContentItemFormValues["visibility"]
-            }))
-          }
-        >
-          <option value="published">Published</option>
-          <option value="archived">Archived</option>
-        </select>
       </div>
 
       <div className="flex gap-3">
