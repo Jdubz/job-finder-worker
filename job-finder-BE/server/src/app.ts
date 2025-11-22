@@ -18,6 +18,15 @@ import { verifyFirebaseAuth } from './middleware/firebase-auth'
 export function buildApp() {
   const app = express()
 
+  // Prevent weak 304/ETag caching on API responses; data changes frequently.
+  app.set('etag', false)
+  app.use((_, res, next) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate')
+    res.set('Pragma', 'no-cache')
+    res.set('Expires', '0')
+    next()
+  })
+
   app.use(
     helmet({
       // Google Identity Services relies on popup postMessage, so loosen COOP accordingly.

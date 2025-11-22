@@ -39,7 +39,7 @@ INSERT INTO content_items_new (
 SELECT
   id,
   parent_id,
-  order_index,
+  COALESCE(order_index, 0) AS order_index,
   title,
   role,
   location,
@@ -48,10 +48,10 @@ SELECT
   end_date,
   description,
   skills,
-  created_at,
-  updated_at,
-  created_by,
-  updated_by
+  COALESCE(created_at, CURRENT_TIMESTAMP) AS created_at,
+  COALESCE(updated_at, CURRENT_TIMESTAMP) AS updated_at,
+  COALESCE(created_by, 'admin') AS created_by,
+  COALESCE(updated_by, 'admin') AS updated_by
 FROM content_items;
 
 DROP TABLE content_items;
