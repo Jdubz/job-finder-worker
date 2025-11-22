@@ -10,7 +10,7 @@ import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react"
 import { QueueStatusTable } from "./components/QueueStatusTable"
 
 export function JobFinderPage() {
-  const { user, isOwner } = useAuth()
+  const { isOwner } = useAuth()
   const { submitJob: submitJobToQueue } = useQueueItems()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -178,7 +178,7 @@ export function JobFinderPage() {
           <CardDescription>Track the status of your submitted jobs</CardDescription>
         </CardHeader>
         <CardContent>
-          <QueueStatusTable userId={user?.id || ""} />
+          <QueueStatusTable />
         </CardContent>
       </Card>
     </div>

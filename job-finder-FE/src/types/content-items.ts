@@ -1,17 +1,10 @@
-import type {
-  ContentItem,
-  ContentItemNode,
-  ContentItemVisibility,
-  CreateContentItemData,
-  UpdateContentItemData
-} from "@shared/types"
+import type { ContentItem, ContentItemNode, CreateContentItemData, UpdateContentItemData } from "@shared/types"
 
 export type {
   ContentItem,
   ContentItemNode,
-  ContentItemVisibility,
   CreateContentItemData,
   UpdateContentItemData
 }
 
-export type ContentItemFormValues = Omit<CreateContentItemData, "userId">
+export type ContentItemFormValues = CreateContentItemData

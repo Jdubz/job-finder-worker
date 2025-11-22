@@ -11,11 +11,9 @@ import {
 
 const baseNode: ContentItemNode = {
   id: "root",
-  userId: "user-1",
   parentId: null,
   order: 5,
   title: "Root",
-  visibility: "published",
   createdAt: new Date("2024-01-01T00:00:00.000Z"),
   updatedAt: new Date("2024-01-01T00:00:00.000Z"),
   createdBy: "seed",
@@ -88,7 +86,6 @@ describe("content-items helpers", () => {
         id: "parent",
         name: "Legacy Parent",
         order: 2,
-        visibility: "draft",
         createdAt: "2024-02-01T00:00:00.000Z"
       },
       {

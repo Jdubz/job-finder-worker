@@ -44,14 +44,12 @@ export function ContentItemsPage() {
   const totalItems = useMemo(() => countNodes(sortedContentItems), [sortedContentItems])
 
   const handleCreateRoot = async (values: ContentItemFormValues) => {
-    if (!user?.id) return
-    await createContentItem({ ...values, userId: user.id, parentId: null })
+    await createContentItem({ ...values, parentId: null })
     setShowRootForm(false)
   }
 
   const handleCreateChild = async (parentId: string, values: ContentItemFormValues) => {
-    if (!user?.id) return
-    await createContentItem({ ...values, userId: user.id, parentId })
+    await createContentItem({ ...values, parentId })
   }
 
   const handleSaveItem = async (id: string, values: ContentItemFormValues) => {
@@ -123,7 +121,7 @@ export function ContentItemsPage() {
   }
 
   const handleImportClick = () => {
-    if (!user?.id || !user?.email) {
+    if (!user?.email) {
       setAlert({ type: "error", message: "You must be signed in to import content items." })
       return
     }
@@ -133,7 +131,7 @@ export function ContentItemsPage() {
   const handleImportChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (!user?.id || !user?.email) {
+    if (!user?.email) {
       setAlert({ type: "error", message: "You must be signed in to import content items." })
       event.target.value = ""
       return
@@ -153,7 +151,6 @@ export function ContentItemsPage() {
       const createdCount = await replaceContentItems({
         roots: normalized,
         currentItems: sortedContentItems,
-        userId: user.id,
         userEmail: user.email
       })
 
@@ -266,12 +263,10 @@ export function ContentItemsPage() {
 async function replaceContentItems({
   roots,
   currentItems,
-  userId,
   userEmail
 }: {
   roots: NormalizedImportNode[]
   currentItems: ContentItemNode[]
-  userId: string
   userEmail: string
 }): Promise<number> {
   const allExisting = flattenContentItems(currentItems)
@@ -283,7 +278,6 @@ async function replaceContentItems({
     for (const node of nodes) {
       const payload = {
         ...node.values,
-        userId,
         parentId,
         order: Number.isFinite(node.order) ? node.order : undefined
       }

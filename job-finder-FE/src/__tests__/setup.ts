@@ -300,7 +300,6 @@ export const mockUser = {
 
 export const mockJobMatch = {
   id: "match-1",
-  userId: "test-user-123",
   queueItemId: "queue-1",
   jobTitle: "Senior Software Engineer",
   companyName: "Tech Corp",

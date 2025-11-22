@@ -34,7 +34,6 @@ const submitJobSchema = z.object({
   companyName: z.string().optional(),
   companyId: z.string().nullable().optional(),
   companyUrl: z.string().url().optional(),
-  userId: z.string().nullable().optional(),
   generationId: z.string().optional(),
   source: z.enum(queueSources).optional(),
   metadata: z.record(z.unknown()).optional()
@@ -43,12 +42,10 @@ const submitJobSchema = z.object({
 const submitCompanySchema = z.object({
   companyName: z.string().min(1),
   websiteUrl: z.string().url(),
-  userId: z.string().nullable().optional(),
   source: z.enum(queueSources).optional()
 })
 
 const submitScrapeSchema = z.object({
-  userId: z.string().nullable().optional(),
   scrapeConfig: z.record(z.unknown()).optional(),
   scrape_config: z.record(z.unknown()).optional()
 })
@@ -165,7 +162,6 @@ export function buildJobQueueRouter() {
     asyncHandler((req, res) => {
       const payload = submitScrapeSchema.parse(req.body)
       const input: SubmitScrapeRequest = {
-        userId: payload.userId ?? null,
         scrapeConfig: payload.scrapeConfig ?? payload.scrape_config
       }
       const item = service.submitScrape(input)

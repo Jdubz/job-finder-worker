@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3'
 
 const defaultMigrationsDir = process.env.JF_SQLITE_MIGRATIONS_DIR
   ? path.resolve(process.env.JF_SQLITE_MIGRATIONS_DIR)
-  : path.resolve(process.cwd(), 'infra/sqlite/migrations')
+  : path.resolve(process.cwd(), '../../infra/sqlite/migrations')
 
 function ensureSchemaTable(db: Database.Database) {
   db.exec(`

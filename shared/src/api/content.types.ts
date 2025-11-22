@@ -1,11 +1,5 @@
 import type { ApiResponse, PaginationParams } from '../api.types'
-import type {
-  ContentItem,
-  ContentItemNode,
-  ContentItemVisibility,
-  CreateContentItemData,
-  UpdateContentItemData
-} from '../content-item.types'
+import type { ContentItem, ContentItemNode, CreateContentItemData, UpdateContentItemData } from '../content-item.types'
 
 export interface CreateContentItemRequest {
   itemData: CreateContentItemData
@@ -48,8 +42,6 @@ export interface GetContentItemResponse {
 
 export interface ListContentItemsRequest extends PaginationParams {
   parentId?: string | null
-  visibility?: ContentItemVisibility
-  includeDrafts?: boolean
 }
 
 export interface ListContentItemsResponse {

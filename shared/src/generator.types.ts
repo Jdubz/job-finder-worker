@@ -79,7 +79,6 @@ export interface ExperienceEntry {
   highlights: string[]
   technologies?: string[]
   type: "experience"
-  userId: string
   createdAt: TimestampLike
   updatedAt: TimestampLike
 }
@@ -217,7 +216,6 @@ export interface GeneratorRequest {
     model?: string
   }
   access: {
-    userId?: string
     viewerSessionId?: string
     isPublic: boolean
   }
@@ -356,7 +354,6 @@ export interface PersonalInfoDocument {
       userPromptTemplate: string
     }
   }
-  userId: string
   createdAt: TimestampLike
   updatedAt: TimestampLike
   updatedBy?: string

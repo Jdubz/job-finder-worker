@@ -15,7 +15,6 @@ import type {
   CompanyTier,
   ContentItemDocument,
   ContentItemDocumentType,
-  ContentItemDocumentVisibility,
   ContactSubmissionDocument,
   UserDocument,
   ConfigDocument,
@@ -94,12 +93,6 @@ export function isCompanyDocument(value: unknown): value is CompanyDocument {
 // Content Item Document Guards
 // ============================================================================
 
-export function isContentItemVisibility(
-  value: unknown
-): value is ContentItemDocumentVisibility {
-  return value === 'published' || value === 'draft' || value === 'archived'
-}
-
 export function isContentItemDocument(value: unknown): value is ContentItemDocument {
   if (typeof value !== 'object' || value === null) return false
 
@@ -116,8 +109,6 @@ export function isContentItemDocument(value: unknown): value is ContentItemDocum
     (doc.endDate === undefined || doc.endDate === null || typeof doc.endDate === 'string') &&
     (doc.description === undefined || typeof doc.description === 'string') &&
     (doc.skills === undefined || doc.skills === null || Array.isArray(doc.skills)) &&
-    typeof doc.userId === 'string' &&
-    (doc.visibility === 'published' || doc.visibility === 'draft' || doc.visibility === 'archived') &&
     (doc.createdAt instanceof Date || typeof doc.createdAt === 'object') &&
     (doc.updatedAt instanceof Date || typeof doc.updatedAt === 'object') &&
     typeof doc.createdBy === 'string' &&

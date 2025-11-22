@@ -11,11 +11,10 @@ import { Loader2 } from "lucide-react"
 import { useQueueItems } from "@/hooks/useQueueItems"
 
 interface QueueStatusTableProps {
-  userId: string
   maxItems?: number
 }
 
-export function QueueStatusTable({ userId: _userId, maxItems = 10 }: QueueStatusTableProps) {
+export function QueueStatusTable({ maxItems = 10 }: QueueStatusTableProps) {
   // Use the queue API hook
   const { queueItems: items, loading } = useQueueItems({ limit: maxItems })
 

@@ -49,11 +49,11 @@ export function JobApplicationsPage() {
       "started",
       "JobApplicationsPage: Subscribing to job matches for all users",
       {
-        details: { userId: user.id },
+        details: {},
       }
     )
 
-    // All authenticated users see all matches (no userId filtering)
+    // All authenticated users see all matches (no user ownership filtering)
     const unsubscribe = jobMatchesClient.subscribeToMatches(
       (updatedMatches) => {
         logger.info(

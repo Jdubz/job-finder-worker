@@ -25,19 +25,13 @@ export class ContentItemsClient extends BaseApiClient {
     super(baseUrl)
   }
 
-  async list(
-    userId: string,
-    params: Partial<Omit<ListContentItemsRequest, "userId">> = {}
-  ): Promise<ContentItemNode[]> {
+  async list(params: Partial<ListContentItemsRequest> = {}): Promise<ContentItemNode[]> {
     const search = new URLSearchParams()
-    search.append("userId", userId)
     if (params.parentId === null) {
       search.append("parentId", ROOT_PARENT_SENTINEL)
     } else if (params.parentId) {
       search.append("parentId", params.parentId)
     }
-    if (params.visibility) search.append("visibility", params.visibility)
-    if (params.includeDrafts) search.append("includeDrafts", String(params.includeDrafts))
     if (params.limit) search.append("limit", params.limit.toString())
     if (params.offset) search.append("offset", params.offset.toString())
 

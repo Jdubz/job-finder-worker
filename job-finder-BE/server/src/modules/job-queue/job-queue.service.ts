@@ -8,7 +8,6 @@ export type SubmitJobInput = {
   companyName?: string
   companyUrl?: string
   source?: QueueSource
-  userId?: string | null
   companyId?: string | null
   generationId?: string
   metadata?: Record<string, unknown>
@@ -18,11 +17,9 @@ export type SubmitCompanyInput = {
   companyName: string
   websiteUrl: string
   source?: QueueSource
-  userId?: string | null
 }
 
 export type SubmitScrapeInput = {
-  userId?: string | null
   scrapeConfig?: ScrapeConfig
 }
 
@@ -56,7 +53,7 @@ export class JobQueueService {
       company_name: input.companyName ?? '',
       company_id: input.companyId ?? null,
       source: input.source ?? 'user_submission',
-      submitted_by: input.userId ?? null,
+      submitted_by: null,
       retry_count: 0,
       max_retries: DEFAULT_MAX_RETRIES,
       created_at: now,
@@ -78,7 +75,7 @@ export class JobQueueService {
       company_name: input.companyName,
       company_id: null,
       source: input.source ?? 'manual_submission',
-      submitted_by: input.userId ?? null,
+      submitted_by: null,
       retry_count: 0,
       max_retries: DEFAULT_MAX_RETRIES,
       created_at: now,
@@ -97,8 +94,8 @@ export class JobQueueService {
       url: '',
       company_name: '',
       company_id: null,
-      source: input.userId ? 'user_request' : 'automated_scan',
-      submitted_by: input.userId ?? null,
+      source: 'automated_scan',
+      submitted_by: null,
       retry_count: 0,
       max_retries: DEFAULT_MAX_RETRIES,
       created_at: now,

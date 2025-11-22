@@ -28,7 +28,7 @@ describe("useContentItems", () => {
   it("fetches content items for the active user", async () => {
     renderHook(() => useContentItems())
     await waitFor(() => expect(contentItemsClient.list).toHaveBeenCalled())
-    expect(contentItemsClient.list).toHaveBeenCalledWith(mockUser.id, { includeDrafts: true })
+    expect(contentItemsClient.list).toHaveBeenCalledWith()
   })
 
   it("creates new content items using the current user context", async () => {
@@ -37,14 +37,12 @@ describe("useContentItems", () => {
 
     await act(async () => {
       await result.current.createContentItem({
-        userId: mockUser.id,
         title: "New Item",
         parentId: null
       })
     })
 
     expect(contentItemsClient.createContentItem).toHaveBeenCalledWith(mockUser.email, {
-      userId: mockUser.id,
       title: "New Item",
       parentId: null
     })

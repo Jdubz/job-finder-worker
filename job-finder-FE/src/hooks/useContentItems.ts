@@ -26,20 +26,12 @@ export function useContentItems(): UseContentItemsResult {
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<Error | null>(null)
 
-  const userId = user?.id ?? null
   const userEmail = user?.email ?? null
 
   const fetchItems = useCallback(async () => {
-    if (!userId) {
-      setContentItems([])
-      setLoading(false)
-      setError(null)
-      return
-    }
-
     setLoading(true)
     try {
-      const items = await contentItemsClient.list(userId, { includeDrafts: true })
+      const items = await contentItemsClient.list()
       setContentItems(items)
       setError(null)
     } catch (err) {
@@ -47,26 +39,23 @@ export function useContentItems(): UseContentItemsResult {
     } finally {
       setLoading(false)
     }
-  }, [userId])
+  }, [])
 
   useEffect(() => {
     fetchItems()
   }, [fetchItems])
 
   const ensureAuth = useCallback(() => {
-    if (!userId || !userEmail) {
+    if (!userEmail) {
       throw new Error("User authentication required")
     }
-    return { userId, userEmail }
-  }, [userEmail, userId])
+    return { userEmail }
+  }, [userEmail])
 
   const createContentItem = useCallback(
     async (data: CreateContentItemData) => {
       const auth = ensureAuth()
-      const created = await contentItemsClient.createContentItem(auth.userEmail, {
-        ...data,
-        userId: data.userId ?? auth.userId
-      })
+      const created = await contentItemsClient.createContentItem(auth.userEmail, data)
       await fetchItems()
       return created
     },
