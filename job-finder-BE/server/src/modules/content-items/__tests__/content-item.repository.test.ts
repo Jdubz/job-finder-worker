@@ -1,5 +1,5 @@
 import { describe, beforeEach, it, expect } from 'vitest'
-import { ContentItemRepository, ContentItemInvalidParentError, ContentItemNotFoundError } from '../content-item.repository'
+import { ContentItemRepository, ContentItemNotFoundError } from '../content-item.repository'
 import { getDb } from '../../../db/sqlite'
 
 const repo = new ContentItemRepository()

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react"
-import { useAuth } from "@/contexts/AuthContext"
 import { queueClient } from "@/api"
 import type { QueueItem } from "@shared/types"
 
@@ -19,7 +18,6 @@ interface UseQueueItemsResult {
 }
 
 export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItemsResult {
-  const { user } = useAuth()
   const { limit = 50, status } = options
 
   const [queueItems, setQueueItems] = useState<QueueItem[]>([])
@@ -44,13 +42,6 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   }, [])
 
   const fetchQueueItems = useCallback(async () => {
-    if (!user?.id) {
-      setQueueItems([])
-      setLoading(false)
-      setError(null)
-      return
-    }
-
     setLoading(true)
     try {
       const response = await queueClient.listQueueItems({ status, limit })
