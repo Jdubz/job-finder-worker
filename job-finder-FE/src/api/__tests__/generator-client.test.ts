@@ -324,7 +324,7 @@ describe("GeneratorClient", () => {
         json: () => Promise.resolve({ error: "Failed to fetch history" }),
       } as Response)
 
-      await expect(client.getHistory("user-123")).rejects.toThrow("Failed to fetch history")
+      await expect(client.getHistory()).rejects.toThrow("Failed to fetch history")
     })
   })
 
