@@ -57,7 +57,6 @@ export function buildGeneratorWorkflowRouter() {
     asyncHandler((_req, res) => {
       const documents = repo.listRequests().map((request: GeneratorRequestRecord) => ({
         ...request,
-        steps: repo.listSteps(request.id),
         artifacts: repo.listArtifacts(request.id)
       }))
       res.json(
@@ -78,8 +77,7 @@ export function buildGeneratorWorkflowRouter() {
       res.status(202).json(
         success({
           requestId,
-          status: request?.status ?? 'processing',
-          steps: repo.listSteps(requestId)
+          status: request?.status ?? 'processing'
         })
       )
     })
