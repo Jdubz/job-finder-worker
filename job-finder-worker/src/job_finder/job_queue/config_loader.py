@@ -68,12 +68,36 @@ class ConfigLoader:
             logger.warning("Job filters not configured; using defaults")
             return {}
 
-    def get_technology_ranks(self) -> Dict[str, int]:
+    def get_technology_ranks(self) -> Dict[str, Any]:
         try:
-            return self._get_config("technology-ranks")
+            raw = self._get_config("technology-ranks")
+            techs = raw.get("technologies", {})
+            converted = {}
+            for name, value in techs.items():
+                if isinstance(value, (int, float)):
+                    converted[name] = {"rank": "ok", "points": value}
+                elif isinstance(value, dict):
+                    rank = value.get("rank", "ok")
+                    if rank not in ["required", "ok", "strike", "fail"]:
+                        rank = "ok"
+                    converted[name] = {
+                        "rank": rank,
+                        **({"points": value["points"]} if isinstance(value.get("points"), (int, float)) else {}),
+                        **({"mentions": value["mentions"]} if isinstance(value.get("mentions"), (int, float)) else {}),
+                    }
+            strikes = raw.get("strikes", {})
+            return {
+                "technologies": converted,
+                "strikes": {
+                    "missingAllRequired": strikes.get("missingAllRequired", 1),
+                    "perBadTech": strikes.get("perBadTech", 2),
+                },
+                "version": raw.get("version"),
+                "extractedFromJobs": raw.get("extractedFromJobs"),
+            }
         except InitializationError:
             logger.warning("Technology ranks not configured; using defaults")
-            return {}
+            return {"technologies": {}, "strikes": {"missingAllRequired": 1, "perBadTech": 2}}
 
     def get_scheduler_settings(self) -> Dict[str, Any]:
         try:

@@ -7,7 +7,6 @@ import type {
   UpdatePromptsResponse,
   ResetPromptsResponse,
 } from "@shared/types"
-import { DEFAULT_PROMPTS } from "@shared/types"
 
 export class PromptsClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
@@ -15,13 +14,8 @@ export class PromptsClient extends BaseApiClient {
   }
 
   async getPrompts(): Promise<PromptConfig> {
-    try {
-      const response = await this.get<ApiSuccessResponse<GetPromptsResponse>>("/prompts")
-      return response.data.prompts
-    } catch (error) {
-      console.error("Failed to fetch prompts", error)
-      return DEFAULT_PROMPTS
-    }
+    const response = await this.get<ApiSuccessResponse<GetPromptsResponse>>("/prompts")
+    return response.data.prompts
   }
 
   async savePrompts(

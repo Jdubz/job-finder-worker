@@ -103,11 +103,20 @@ export interface JobFiltersConfig {
   updatedBy?: string | null
 }
 
+export type TechnologyRank = {
+  rank: "required" | "ok" | "strike" | "fail"
+  points?: number
+  mentions?: number
+}
+
 export interface TechnologyRanksConfig {
-  technologies: Record<string, number>
+  technologies: Record<string, TechnologyRank>
   strikes?: {
     missingAllRequired?: number
+    perBadTech?: number
   }
+  extractedFromJobs?: number
+  version?: string
   updatedAt?: TimestampLike
   updatedBy?: string | null
 }
@@ -213,7 +222,7 @@ export const DEFAULT_JOB_FILTERS: JobFiltersConfig = {
 
 export const DEFAULT_TECH_RANKS: TechnologyRanksConfig = {
   technologies: {},
-  strikes: { missingAllRequired: 1 },
+  strikes: { missingAllRequired: 1, perBadTech: 2 },
 }
 
 export const DEFAULT_SCHEDULER_SETTINGS: SchedulerSettings = {

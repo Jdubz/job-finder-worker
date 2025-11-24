@@ -9,6 +9,9 @@ import type {
   UpsertConfigEntryResponse,
   ApiSuccessResponse,
   PersonalInfo,
+  JobFiltersConfig,
+  TechnologyRanksConfig,
+  SchedulerSettings,
 } from "@shared/types"
 
 export class ConfigClient extends BaseApiClient {
@@ -88,27 +91,27 @@ export class ConfigClient extends BaseApiClient {
     })
   }
 
-  async getJobFilters<T = Record<string, unknown>>(): Promise<T | null> {
-    return this.getConfigEntry<T>("job-filters")
+  async getJobFilters(): Promise<JobFiltersConfig | null> {
+    return this.getConfigEntry<JobFiltersConfig>("job-filters")
   }
 
-  async updateJobFilters(filters: unknown): Promise<void> {
+  async updateJobFilters(filters: JobFiltersConfig): Promise<void> {
     await this.updateConfigEntry("job-filters", filters)
   }
 
-  async getTechnologyRanks<T = Record<string, unknown>>(): Promise<T | null> {
-    return this.getConfigEntry<T>("technology-ranks")
+  async getTechnologyRanks(): Promise<TechnologyRanksConfig | null> {
+    return this.getConfigEntry<TechnologyRanksConfig>("technology-ranks")
   }
 
-  async updateTechnologyRanks(ranks: unknown): Promise<void> {
+  async updateTechnologyRanks(ranks: TechnologyRanksConfig): Promise<void> {
     await this.updateConfigEntry("technology-ranks", ranks)
   }
 
-  async getSchedulerSettings<T = Record<string, unknown>>(): Promise<T | null> {
-    return this.getConfigEntry<T>("scheduler-settings")
+  async getSchedulerSettings(): Promise<SchedulerSettings | null> {
+    return this.getConfigEntry<SchedulerSettings>("scheduler-settings")
   }
 
-  async updateSchedulerSettings(settings: unknown): Promise<void> {
+  async updateSchedulerSettings(settings: SchedulerSettings): Promise<void> {
     await this.updateConfigEntry("scheduler-settings", settings)
   }
 

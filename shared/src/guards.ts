@@ -250,12 +250,30 @@ export function isJobFiltersConfig(value: unknown): value is JobFiltersConfig {
 export function isTechnologyRanksConfig(value: unknown): value is TechnologyRanksConfig {
   if (!isObject(value)) return false
   const v = value as Partial<TechnologyRanksConfig>
-  return (
-    isObject(v.technologies) &&
-    Object.values(v.technologies).every((n) => typeof n === "number") &&
-    (v.strikes === undefined || (isObject(v.strikes) &&
-      (v.strikes.missingAllRequired === undefined || typeof v.strikes.missingAllRequired === "number")))
-  )
+
+  const isTechEntry = (entry: unknown): boolean => {
+    if (!isObject(entry)) return false
+    const e = entry as Record<string, unknown>
+    return (
+      typeof e.rank === "string" &&
+      ["required", "ok", "strike", "fail"].includes(e.rank) &&
+      (e.points === undefined || typeof e.points === "number") &&
+      (e.mentions === undefined || typeof e.mentions === "number")
+    )
+  }
+
+  const technologiesValid =
+    isObject(v.technologies) && Object.values(v.technologies ?? {}).every(isTechEntry)
+
+  const strikesValid =
+    v.strikes === undefined ||
+    (isObject(v.strikes) &&
+      (v.strikes.missingAllRequired === undefined ||
+        typeof (v.strikes as Record<string, unknown>).missingAllRequired === "number") &&
+      (v.strikes.perBadTech === undefined ||
+        typeof (v.strikes as Record<string, unknown>).perBadTech === "number"))
+
+  return technologiesValid && strikesValid
 }
 
 export function isSchedulerSettings(value: unknown): value is SchedulerSettings {
