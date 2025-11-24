@@ -163,8 +163,8 @@ def test_should_not_skip_by_stop_list(processor, mock_managers):
         source="scraper",
     )
 
-    # Should not be skipped
-    assert processor._should_skip_by_stop_list(item) is False
+    # Should not be skipped (stop list logic lives on job_processor)
+    assert processor.job_processor._should_skip_by_stop_list(item) is False
 
 
 def test_process_job_already_exists(processor, mock_managers, sample_job_item):
