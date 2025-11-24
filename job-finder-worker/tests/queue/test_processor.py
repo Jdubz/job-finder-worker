@@ -121,8 +121,8 @@ def test_should_skip_by_stop_list_excluded_domain(processor, mock_managers):
         source="scraper",
     )
 
-    # Should be skipped
-    assert processor._should_skip_by_stop_list(item) is True
+    # Should be skipped (stop list logic lives on job_processor)
+    assert processor.job_processor._should_skip_by_stop_list(item) is True
 
 
 def test_should_skip_by_stop_list_excluded_keyword(processor, mock_managers):
