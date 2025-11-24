@@ -60,9 +60,10 @@ function countItems(items) {
   return count
 }
 
-function insertItems(db, items, parentId = null, userEmail = 'admin@jobfinder.dev') {
+function insertItems(db, items, userEmail = 'admin@jobfinder.dev') {
   const now = new Date().toISOString()
 
+  // Prepare statement once outside recursion for better performance
   const insertStmt = db.prepare(`
     INSERT INTO content_items (
       id,
@@ -99,47 +100,53 @@ function insertItems(db, items, parentId = null, userEmail = 'admin@jobfinder.de
     )
   `)
 
-  for (const item of items) {
-    // Use existing ID or generate new UUID
-    const itemId = item.id || randomUUID()
+  // Recursive helper that closes over insertStmt, now, and userEmail
+  function insertRecursive(items, parentId = null) {
+    for (const item of items) {
+      // Use existing ID or generate new UUID
+      const itemId = item.id || randomUUID()
 
-    // Prepare skills as JSON string if it's an array
-    const skillsJson = Array.isArray(item.skills) && item.skills.length > 0
-      ? JSON.stringify(item.skills)
-      : null
+      // Prepare skills as JSON string if it's an array
+      const skillsJson = Array.isArray(item.skills) && item.skills.length > 0
+        ? JSON.stringify(item.skills)
+        : null
 
-    // Insert the item
-    const payload = {
-      id: itemId,
-      parentId: parentId,
-      orderIndex: item.order ?? 0,
-      title: item.title || null,
-      role: item.role || null,
-      location: item.location || null,
-      website: item.website || null,
-      startDate: item.startDate || null,
-      endDate: item.endDate || null,
-      description: item.description || null,
-      skills: skillsJson,
-      createdAt: now,
-      updatedAt: now,
-      createdBy: userEmail,
-      updatedBy: userEmail
-    }
+      // Insert the item
+      const payload = {
+        id: itemId,
+        parentId: parentId,
+        orderIndex: item.order ?? 0,
+        title: item.title || null,
+        role: item.role || null,
+        location: item.location || null,
+        website: item.website || null,
+        startDate: item.startDate || null,
+        endDate: item.endDate || null,
+        description: item.description || null,
+        skills: skillsJson,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: userEmail,
+        updatedBy: userEmail
+      }
 
-    try {
-      insertStmt.run(payload)
-      console.log(`  ✓ Inserted: ${item.title || item.role || itemId}`)
-    } catch (error) {
-      console.error(`  ✗ Failed to insert ${itemId}: ${error.message}`)
-      throw error
-    }
+      try {
+        insertStmt.run(payload)
+        console.log(`  ✓ Inserted: ${item.title || item.role || itemId}`)
+      } catch (error) {
+        console.error(`  ✗ Failed to insert ${itemId}: ${error.message}`)
+        throw error
+      }
 
-    // Recursively insert children
-    if (Array.isArray(item.children) && item.children.length > 0) {
-      insertItems(db, item.children, itemId, userEmail)
+      // Recursively insert children
+      if (Array.isArray(item.children) && item.children.length > 0) {
+        insertRecursive(item.children, itemId)
+      }
     }
   }
+
+  // Start recursion with root items
+  insertRecursive(items)
 }
 
 async function main() {
@@ -188,7 +195,7 @@ async function main() {
 
       // Insert new items
       console.log('[import] Inserting new items:')
-      insertItems(db, items, null, options.userEmail)
+      insertItems(db, items, options.userEmail)
     })()
 
     console.log()
