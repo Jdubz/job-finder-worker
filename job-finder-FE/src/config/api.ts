@@ -4,21 +4,38 @@
  * Centralizes the URLs shared by the frontend API clients. The runtime stack lives
  * behind a Cloudflared tunnel (Watchtower-managed) so every environment simply points
  * to the appropriate HTTPS base via `VITE_API_BASE_URL`.
+ *
+ * In development mode, dynamically uses the current hostname so cross-device
+ * testing works without restarting the dev server.
  */
 
-const rawApiBase =
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.VITE_USE_EMULATORS === "true" ? "http://localhost:8080" : "http://localhost:8080")
-const normalizedApiBase = rawApiBase.replace(/\/$/, "")
-const restBaseUrl = `${normalizedApiBase}/api`
-const generatorBaseUrl = `${restBaseUrl}/generator`
+function getApiBaseUrl(): string {
+  // If explicitly set, use that
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "")
+  }
+
+  // In development, dynamically use current hostname for cross-device support
+  if (import.meta.env.DEV && typeof window !== "undefined") {
+    const hostname = window.location.hostname
+    const port = import.meta.env.VITE_API_PORT || "8080"
+    return `http://${hostname}:${port}`
+  }
+
+  // Fallback for SSR or when window not available
+  return "http://localhost:8080"
+}
 
 /**
- * API Configuration
+ * API Configuration - uses getters for dynamic URL resolution in development
  */
 export const API_CONFIG = {
-  baseUrl: restBaseUrl,
-  generatorBaseUrl,
+  get baseUrl() {
+    return `${getApiBaseUrl()}/api`
+  },
+  get generatorBaseUrl() {
+    return `${getApiBaseUrl()}/api/generator`
+  },
   timeout: 30000,
   retryAttempts: 3,
   retryDelay: 1000,
@@ -29,8 +46,12 @@ export const API_CONFIG = {
  * Note: Staging functions use -staging suffix, production has no suffix
  */
 export const api = {
-  baseUrl: restBaseUrl,
-  generatorBaseUrl,
+  get baseUrl() {
+    return `${getApiBaseUrl()}/api`
+  },
+  get generatorBaseUrl() {
+    return `${getApiBaseUrl()}/api/generator`
+  },
 }
 
 /**

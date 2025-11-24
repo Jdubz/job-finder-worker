@@ -143,6 +143,7 @@ function startBackend(port) {
 function startFrontend(bePort, fePort) {
   log(`Starting frontend with network exposure on port ${fePort}...`)
 
+  // Pass the backend port - the frontend will dynamically use window.location.hostname
   const frontend = spawn('npx', ['vite', '--port', String(fePort), '--strictPort'], {
     cwd: FE_DIR,
     stdio: 'inherit',
@@ -150,7 +151,7 @@ function startFrontend(bePort, fePort) {
     env: {
       ...process.env,
       NODE_ENV: 'development',
-      VITE_API_BASE_URL: `http://localhost:${bePort}`
+      VITE_API_PORT: String(bePort)
     }
   })
 
@@ -226,14 +227,17 @@ async function main() {
   const localIP = getLocalIP()
 
   // Display startup info
+  const apiBaseUrl = `http://${localIP}:${bePort}`
+
   console.log('')
   log('='.repeat(50))
   log('Development servers starting...')
   log('')
-  log(`  Frontend: http://localhost:${fePort}`)
-  log(`  Network:  http://${localIP}:${fePort}`)
-  log(`  Backend:  http://localhost:${bePort}`)
+  log(`  Frontend (local):   http://localhost:${fePort}`)
+  log(`  Frontend (network): http://${localIP}:${fePort}`)
+  log(`  Backend (network):  ${apiBaseUrl}`)
   log('')
+  log(`  VITE_API_BASE_URL=${apiBaseUrl}`)
   log(`  Using temp DB: ${TEMP_DB_PATH}`)
   log('='.repeat(50))
   console.log('')

@@ -584,22 +584,25 @@
         "id": "cof2YHJn7HSXrPjBHhpv",
         "parentId": "A5b5O0qCjZt8lvMW87mY",
         "order": 0,
-        "startDate": "2019",
-        "endDate": "2021",
+        "title": "Online Courses & Certificates",
+        "startDate": "2019-01",
+        "endDate": "2021-12",
         "visibility": "published"
       },
       {
         "id": "xltTz1r8pB2Qq5xo0MFO",
         "parentId": "A5b5O0qCjZt8lvMW87mY",
         "order": 1,
-        "startDate": "May 2016",
+        "title": "Certificate Program",
+        "startDate": "2016-05",
         "visibility": "published"
       },
       {
         "id": "FLy9A6tqYZzji2tKf0Xl",
         "parentId": "A5b5O0qCjZt8lvMW87mY",
         "order": 2,
-        "startDate": "May 2009",
+        "title": "University Degree",
+        "startDate": "2009-05",
         "visibility": "published"
       }
     ]

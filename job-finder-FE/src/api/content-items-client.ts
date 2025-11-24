@@ -21,7 +21,7 @@ import type { ApiSuccessResponse } from "@shared/types"
 export const ROOT_PARENT_SENTINEL = "__root__"
 
 export class ContentItemsClient extends BaseApiClient {
-  constructor(baseUrl = API_CONFIG.baseUrl) {
+  constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
     super(baseUrl)
   }
 
@@ -32,7 +32,9 @@ export class ContentItemsClient extends BaseApiClient {
     } else if (params.parentId) {
       search.append("parentId", params.parentId)
     }
-    if (params.limit) search.append("limit", params.limit.toString())
+    // Default to 200 (backend max) to ensure we get all items for proper tree building
+    const limit = params.limit ?? 200
+    search.append("limit", limit.toString())
     if (params.offset) search.append("offset", params.offset.toString())
 
     const query = search.toString()

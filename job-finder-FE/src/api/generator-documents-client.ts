@@ -9,7 +9,7 @@ import type {
 } from "@shared/types"
 
 export class GeneratorDocumentsClient extends BaseApiClient {
-  constructor(baseUrl = API_CONFIG.baseUrl) {
+  constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
     super(baseUrl)
   }
 
