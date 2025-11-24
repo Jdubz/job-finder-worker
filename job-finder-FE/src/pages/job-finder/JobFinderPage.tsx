@@ -10,7 +10,7 @@ import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react"
 import { QueueStatusTable } from "./components/QueueStatusTable"
 
 export function JobFinderPage() {
-  const { isOwner } = useAuth()
+  const { user } = useAuth()
   const { submitJob: submitJobToQueue } = useQueueItems()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -50,20 +50,20 @@ export function JobFinderPage() {
     }
   }
 
-  if (!isOwner) {
+  if (!user) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Job Finder</h1>
           <p className="text-muted-foreground mt-2">
-            Submit job URLs for AI analysis (Editor Only)
+            Submit job URLs for AI analysis (sign in required)
           </p>
         </div>
 
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            You need editor permissions to access this feature. Please contact an administrator.
+            Sign in to submit job URLs for analysis.
           </AlertDescription>
         </Alert>
       </div>

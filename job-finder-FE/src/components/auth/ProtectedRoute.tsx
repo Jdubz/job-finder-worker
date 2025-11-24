@@ -5,11 +5,14 @@ import { ROUTES } from "@/types/routes"
 interface ProtectedRouteProps {
   requireOwner?: boolean
   redirectTo?: string
+  /** Where to send unauthenticated users (defaults to redirectTo). */
+  unauthRedirectTo?: string
 }
 
 export function ProtectedRoute({
   requireOwner = false,
   redirectTo = ROUTES.UNAUTHORIZED,
+  unauthRedirectTo,
 }: ProtectedRouteProps) {
   const { user, loading, isOwner } = useAuth()
 
@@ -22,8 +25,7 @@ export function ProtectedRoute({
   }
 
   if (!user) {
-    // Redirect to unauthorized page when not authenticated
-    return <Navigate to={redirectTo} replace />
+    return <Navigate to={unauthRedirectTo ?? redirectTo} replace />
   }
 
   if (requireOwner && !isOwner) {

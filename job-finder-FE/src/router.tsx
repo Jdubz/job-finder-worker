@@ -160,7 +160,7 @@ export const router = createBrowserRouter([
 
       // Admin-only routes (require owner/admin role)
       {
-        element: <ProtectedRoute requireOwner />,
+        element: <ProtectedRoute requireOwner unauthRedirectTo={ROUTES.HOME} />,
         children: [
           {
             path: ROUTES.AI_PROMPTS,
