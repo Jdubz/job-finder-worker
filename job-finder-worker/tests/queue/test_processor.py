@@ -274,7 +274,9 @@ def test_build_company_info_string_partial(processor):
         "mission": None,
     }
 
-    result = processor._build_company_info_string(company_info)
+    from job_finder.utils.company_info import build_company_info_string
+
+    result = build_company_info_string(company_info)
 
     assert "About: We build great software" in result
     assert "Culture:" not in result
