@@ -5,3 +5,4 @@
 .read migrations/004_generator_workflow.sql
 .read migrations/005_content_items_slim.sql
 .read migrations/006_drop_contact_submissions.sql
+.read migrations/007_config_name_column.sql

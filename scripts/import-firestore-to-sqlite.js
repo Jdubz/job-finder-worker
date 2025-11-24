@@ -7,9 +7,8 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const { DEFAULT_PROMPTS } = require('../shared/dist/index.cjs')
 
-const DB_PATH = path.resolve('infra/sqlite/jobfinder.db')
+const DB_PATH = '/srv/job-finder/data/jobfinder.db'
 const EXPORT_BASE = path.resolve('infra/sqlite/seeders/output')
-const USER_ID = 'admin'
 const DEFAULT_ACTOR = 'admin'
 
 const SOURCE_PRIORITY = ['portfolio', 'portfolio-staging'] // earlier wins
@@ -42,11 +41,11 @@ function insertCompanies(db, docs) {
   const stmt = db.prepare(`INSERT INTO companies (
     id, name, name_lower, website, about, culture, mission, size, company_size_category,
     founded, industry, headquarters_location, has_portland_office, tech_stack, tier,
-    priority_score, analysis_status, funding_stage, created_at, updated_at
+    priority_score, analysis_status, created_at, updated_at
   ) VALUES (
     @id, @name, @name_lower, @website, @about, @culture, @mission, @size, @company_size_category,
     @founded, @industry, @headquarters_location, @has_portland_office, @tech_stack, @tier,
-    @priority_score, @analysis_status, @funding_stage, @created_at, @updated_at
+    @priority_score, @analysis_status, @created_at, @updated_at
   )
   ON CONFLICT(id) DO UPDATE SET
     name=excluded.name,
@@ -65,7 +64,6 @@ function insertCompanies(db, docs) {
     tier=excluded.tier,
     priority_score=excluded.priority_score,
     analysis_status=excluded.analysis_status,
-    funding_stage=excluded.funding_stage,
     updated_at=excluded.updated_at
   `)
 
@@ -87,7 +85,6 @@ function insertCompanies(db, docs) {
     tier: d.tier ?? null,
     priority_score: d.priorityScore ?? null,
     analysis_status: d.analysis_status ?? d.analysisStatus ?? null,
-    funding_stage: null,
     created_at: toIso(d.createdAt) ?? new Date().toISOString(),
     updated_at: toIso(d.updatedAt) ?? new Date().toISOString()
   }))
@@ -105,11 +102,11 @@ function normalizeSkills(skills) {
 
 function insertContentItems(db, docs) {
   const stmt = db.prepare(`INSERT INTO content_items (
-    id, user_id, parent_id, order_index, title, role, location, website,
-    start_date, end_date, description, skills, visibility, created_at, updated_at, created_by, updated_by
+    id, parent_id, order_index, title, role, location, website,
+    start_date, end_date, description, skills, created_at, updated_at, created_by, updated_by
   ) VALUES (
-    @id, @user_id, @parent_id, @order_index, @title, @role, @location, @website,
-    @start_date, @end_date, @description, @skills, @visibility, @created_at, @updated_at, @created_by, @updated_by
+    @id, @parent_id, @order_index, @title, @role, @location, @website,
+    @start_date, @end_date, @description, @skills, @created_at, @updated_at, @created_by, @updated_by
   )
   ON CONFLICT(id) DO UPDATE SET
     parent_id=excluded.parent_id,
@@ -122,7 +119,6 @@ function insertContentItems(db, docs) {
     end_date=excluded.end_date,
     description=excluded.description,
     skills=excluded.skills,
-    visibility=excluded.visibility,
     updated_at=excluded.updated_at,
     updated_by=excluded.updated_by
   `)
@@ -172,7 +168,6 @@ function insertContentItems(db, docs) {
 
     return {
       id: d.id,
-      user_id: USER_ID,
       parent_id,
       order_index: Number.isFinite(orderIndex) ? orderIndex : parseInt(orderIndex ?? idx, 10) || idx,
       title: title ?? null,
@@ -183,7 +178,6 @@ function insertContentItems(db, docs) {
       end_date: end ?? null,
       description: description ?? null,
       skills: normalizeSkills(skills),
-      visibility: d.visibility ?? 'draft',
       created_at: toIso(d.createdAt) ?? new Date().toISOString(),
       updated_at: toIso(d.updatedAt) ?? new Date().toISOString(),
       created_by: d.createdBy ?? DEFAULT_ACTOR,
@@ -273,7 +267,7 @@ function insertJobFinderConfig(db, docs) {
 
   const mapped = docs.map((d) => ({
     id: d.id,
-    name: d.id,
+    name: d.name ?? d.id,
     payload_json: JSON.stringify(d),
     updated_at: toIso(d.updatedAt) ?? new Date().toISOString()
   }))
