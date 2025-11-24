@@ -5,7 +5,7 @@
  * This script handles the simplified schema (migration 005) without user_id and visibility.
  *
  * Usage:
- *   node scripts/import-clean-content-items.js --input docs/content-items-clean.json \
+ *   node scripts/import-clean-content-items.js --input data/content-items/content-items-clean.json \
  *     --db infra/sqlite/jobfinder.db --user-email your@email.com [--dry-run]
  */
 
@@ -32,7 +32,7 @@ function parseArgs(argv) {
     }
   }
   return {
-    input: map.get('--input') ?? path.resolve(__dirname, '../docs/content-items-clean.json'),
+    input: map.get('--input') ?? path.resolve(__dirname, '../data/content-items/content-items-clean.json'),
     dbPath: map.get('--db') ?? path.resolve(__dirname, '../infra/sqlite/jobfinder.db'),
     userEmail: map.get('--user-email') ?? 'admin@jobfinder.dev',
     dryRun: map.has('--dry-run')

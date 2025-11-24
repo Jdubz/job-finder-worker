@@ -13,7 +13,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const DEFAULT_EXPORT_PATH = join(__dirname, '../docs/content-items-export.json')
+const DEFAULT_EXPORT_PATH = join(__dirname, '../data/content-items/content-items-export.json')
 
 const API_BASE = process.env.API_BASE || 'http://localhost:8080/api'
 const AUTH_TOKEN = 'dev-admin-token'
