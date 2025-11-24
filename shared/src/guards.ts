@@ -269,9 +269,8 @@ export function isTechnologyRanksConfig(value: unknown): value is TechnologyRank
     v.strikes === undefined ||
     (isObject(v.strikes) &&
       (v.strikes.missingAllRequired === undefined ||
-        typeof (v.strikes as Record<string, unknown>).missingAllRequired === "number") &&
-      (v.strikes.perBadTech === undefined ||
-        typeof (v.strikes as Record<string, unknown>).perBadTech === "number"))
+        typeof v.strikes.missingAllRequired === "number") &&
+      (v.strikes.perBadTech === undefined || typeof v.strikes.perBadTech === "number"))
 
   return technologiesValid && strikesValid
 }

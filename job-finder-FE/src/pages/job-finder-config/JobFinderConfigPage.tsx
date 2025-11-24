@@ -548,14 +548,12 @@ export function JobFinderConfigPage() {
     strikes: { ...DEFAULT_TECH_RANKS.strikes },
   }
   const currentScheduler = schedulerSettings ?? DEFAULT_SCHEDULER_SETTINGS
-  const hardRejections = currentJobFilters.hardRejections ?? DEFAULT_JOB_FILTERS.hardRejections
-  const remotePolicy = currentJobFilters.remotePolicy ?? DEFAULT_JOB_FILTERS.remotePolicy
-  const salaryStrike = currentJobFilters.salaryStrike ?? DEFAULT_JOB_FILTERS.salaryStrike
-  const experienceStrike =
-    currentJobFilters.experienceStrike ?? DEFAULT_JOB_FILTERS.experienceStrike
-  const qualityStrikes =
-    currentJobFilters.qualityStrikes ?? DEFAULT_JOB_FILTERS.qualityStrikes
-  const ageStrike = currentJobFilters.ageStrike ?? DEFAULT_JOB_FILTERS.ageStrike
+  const hardRejections = currentJobFilters.hardRejections
+  const remotePolicy = currentJobFilters.remotePolicy
+  const salaryStrike = currentJobFilters.salaryStrike
+  const experienceStrike = currentJobFilters.experienceStrike
+  const qualityStrikes = currentJobFilters.qualityStrikes
+  const ageStrike = currentJobFilters.ageStrike
 
   if (!isOwner) {
     return (

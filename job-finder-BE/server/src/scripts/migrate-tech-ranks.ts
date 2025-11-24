@@ -56,8 +56,18 @@ function convertTechnologyRanks(payload: Record<string, TechRankValue>) {
     perBadTech: typeof strikes.perBadTech === 'number' ? strikes.perBadTech : 2,
   }
 
+  const changedTechs = Object.entries(incomingTechs).some(([, v]) => {
+    if (typeof v === 'number') return true
+    if (typeof v === 'object' && v !== null) {
+      const rankValid = typeof (v as { rank?: unknown }).rank === 'string' &&
+        ['required', 'ok', 'strike', 'fail'].includes((v as { rank?: string }).rank ?? '')
+      return !rankValid
+    }
+    return false
+  })
+
   const changed =
-    Object.entries(incomingTechs).some(([, v]) => typeof v === 'number') ||
+    changedTechs ||
     normalizedStrikes.perBadTech !== strikes.perBadTech ||
     normalizedStrikes.missingAllRequired !== strikes.missingAllRequired
 
