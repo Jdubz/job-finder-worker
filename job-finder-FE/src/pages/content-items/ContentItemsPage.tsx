@@ -101,7 +101,6 @@ export function ContentItemsPage() {
   }
 
   const handleExport = () => {
-    if (!canEdit) return
     if (!sortedContentItems.length) {
       setAlert({ type: "error", message: "No content items available to export." })
       return
@@ -126,21 +125,12 @@ export function ContentItemsPage() {
   }
 
   const handleImportClick = () => {
-    if (!canEdit || !user?.email) {
-      setAlert({ type: "error", message: "You must be an admin to import content items." })
-      return
-    }
     fileInputRef.current?.click()
   }
 
   const handleImportChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (!canEdit || !user?.email) {
-      setAlert({ type: "error", message: "You must be an admin to import content items." })
-      event.target.value = ""
-      return
-    }
 
     setImporting(true)
     setAlert(null)

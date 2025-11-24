@@ -36,7 +36,6 @@ export function ContentItemCard({
   const canMoveDown = index < siblings.length - 1
 
   const handleSave = async (values: ContentItemFormValues) => {
-    if (!canEdit) return
     setIsProcessing(true)
     try {
       await onSave(item.id, values)
@@ -47,7 +46,6 @@ export function ContentItemCard({
   }
 
   const handleDelete = async () => {
-    if (!canEdit) return
     setIsProcessing(true)
     try {
       await onDelete(item.id)
@@ -57,7 +55,6 @@ export function ContentItemCard({
   }
 
   const handleCreateChild = async (values: ContentItemFormValues) => {
-    if (!canEdit) return
     setIsProcessing(true)
     try {
       await onCreateChild(item.id, values)
@@ -68,8 +65,6 @@ export function ContentItemCard({
   }
 
   const handleMove = async (direction: -1 | 1) => {
-    if (!canEdit) return
-
     const targetIndex = Math.min(Math.max(index + direction, 0), siblings.length - 1)
     if (targetIndex === index) return
     setIsProcessing(true)
