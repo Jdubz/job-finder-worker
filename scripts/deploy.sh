@@ -51,8 +51,9 @@ cat <<'EOF' > /tmp/deploy-commands.sh
 set -euo pipefail
 cd "$DEPLOY_PATH"
 tar -xzf job-finder.tar.gz --strip-components=1
-docker compose -f infra/docker-compose.yml pull
-docker compose -f infra/docker-compose.yml up -d --build --remove-orphans
+# Use the production docker-compose.yml in the deployment directory root
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d --build --remove-orphans
 EOF
 
 echo "[deploy] Executing remote deployment…"
