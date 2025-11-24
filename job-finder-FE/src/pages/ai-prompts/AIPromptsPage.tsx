@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Save, RotateCcw, Eye } from "lucide-react"
+import { Loader2, Save, RotateCcw, Eye, Lock } from "lucide-react"
 import { useAIPrompts } from "@/hooks/useAIPrompts"
 import type { PromptConfig } from "@/api"
 
@@ -20,6 +20,8 @@ export function AIPromptsPage() {
     savePrompts,
     resetToDefaults: resetToDefaultsServer,
   } = useAIPrompts()
+
+  const canEdit = isOwner
 
   // Local state for editing
   const [editedPrompts, setEditedPrompts] = useState<PromptConfig>(serverPrompts)
@@ -41,6 +43,11 @@ export function AIPromptsPage() {
   }, [loadError])
 
   const handleSave = async () => {
+    if (!canEdit) {
+      setError("Admin access required to edit prompts")
+      return
+    }
+
     setError(null)
     setSuccess(null)
 
@@ -57,12 +64,19 @@ export function AIPromptsPage() {
   }
 
   const handleReset = () => {
+    if (!canEdit) return
+
     setEditedPrompts(serverPrompts)
     setSuccess(null)
     setError(null)
   }
 
   const handleResetToDefaults = async () => {
+    if (!canEdit) {
+      setError("Admin access required to edit prompts")
+      return
+    }
+
     setError(null)
     setSuccess(null)
 
@@ -79,6 +93,8 @@ export function AIPromptsPage() {
   }
 
   const handlePromptChange = (key: keyof PromptConfig, value: string) => {
+    if (!canEdit) return
+
     setEditedPrompts((prev) => ({
       ...prev,
       [key]: value,
@@ -128,18 +144,6 @@ export function AIPromptsPage() {
     [editedPrompts, serverPrompts]
   )
 
-  if (!isOwner) {
-    return (
-      <div className="container mx-auto p-6">
-        <Alert variant="destructive">
-          <AlertDescription>
-            You do not have permission to access AI prompt configuration. Editor role required.
-          </AlertDescription>
-        </Alert>
-      </div>
-    )
-  }
-
   if (isLoading) {
     return (
       <div className="container mx-auto p-6 flex items-center justify-center min-h-[400px]">
@@ -153,12 +157,20 @@ export function AIPromptsPage() {
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
-      <div className="mb-6">
+      <div className="mb-6 space-y-2">
         <h1 className="text-3xl font-bold">AI Prompts Configuration</h1>
         <p className="text-gray-600 mt-2">
           Customize the AI prompts used for resume generation, cover letters, job scraping, and
           matching.
         </p>
+        {!canEdit && (
+          <Alert variant="default" className="border-amber-200 bg-amber-50 text-amber-800">
+            <AlertDescription className="flex items-center gap-2">
+              <Lock className="h-4 w-4" />
+              Viewing prompts only. Sign in as an admin to edit and save changes.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       {error && (
@@ -189,37 +201,41 @@ export function AIPromptsPage() {
                 <Eye className="h-4 w-4 mr-2" />
                 {showPreview ? "Hide" : "Show"} Variables
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleResetToDefaults}
-                disabled={isSaving}
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Reset to Defaults
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReset}
-                disabled={!hasChanges || isSaving}
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Discard Changes
-              </Button>
-              <Button onClick={handleSave} disabled={!hasChanges || isSaving}>
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Prompts
-                  </>
-                )}
-              </Button>
+              {canEdit && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetToDefaults}
+                    disabled={isSaving}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reset to Defaults
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReset}
+                    disabled={!hasChanges || isSaving}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Discard Changes
+                  </Button>
+                  <Button onClick={handleSave} disabled={!hasChanges || isSaving}>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Prompts
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -244,6 +260,7 @@ export function AIPromptsPage() {
                   onChange={(e) => handlePromptChange("resumeGeneration", e.target.value)}
                   rows={15}
                   className="mt-2 font-mono text-sm"
+                  disabled={!canEdit}
                   placeholder="Enter the AI prompt for resume generation..."
                 />
               </div>
@@ -263,6 +280,7 @@ export function AIPromptsPage() {
                   onChange={(e) => handlePromptChange("coverLetterGeneration", e.target.value)}
                   rows={15}
                   className="mt-2 font-mono text-sm"
+                  disabled={!canEdit}
                   placeholder="Enter the AI prompt for cover letter generation..."
                 />
               </div>
@@ -282,6 +300,7 @@ export function AIPromptsPage() {
                   onChange={(e) => handlePromptChange("jobScraping", e.target.value)}
                   rows={15}
                   className="mt-2 font-mono text-sm"
+                  disabled={!canEdit}
                   placeholder="Enter the AI prompt for job scraping..."
                 />
               </div>
@@ -301,6 +320,7 @@ export function AIPromptsPage() {
                   onChange={(e) => handlePromptChange("jobMatching", e.target.value)}
                   rows={15}
                   className="mt-2 font-mono text-sm"
+                  disabled={!canEdit}
                   placeholder="Enter the AI prompt for job matching analysis..."
                 />
               </div>
