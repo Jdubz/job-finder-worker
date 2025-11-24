@@ -36,6 +36,9 @@ class JobMatchResult(BaseModel):
     job_title: str
     job_company: str
     job_url: str
+    location: Optional[str] = None
+    salary_range: Optional[str] = None
+    company_info: Optional[str] = None
 
     # Match Analysis
     match_score: int = Field(..., ge=0, le=100, description="Overall match score (0-100)")
@@ -43,6 +46,7 @@ class JobMatchResult(BaseModel):
     missing_skills: List[str] = Field(default_factory=list)
     experience_match: str = ""
     key_strengths: List[str] = Field(default_factory=list)
+    match_reasons: List[str] = Field(default_factory=list)
     potential_concerns: List[str] = Field(default_factory=list)
     application_priority: str = "Medium"  # High/Medium/Low
 
@@ -278,11 +282,15 @@ class AIJobMatcher:
             job_title=job.get("title", ""),
             job_company=job.get("company", ""),
             job_url=job.get("url", ""),
+            location=job.get("location"),
+            salary_range=job.get("salary") or job.get("salary_range"),
+            company_info=job.get("company_info"),
             match_score=match_score,
             matched_skills=match_analysis.get("matched_skills", []),
             missing_skills=match_analysis.get("missing_skills", []),
             experience_match=match_analysis.get("experience_match", ""),
             key_strengths=match_analysis.get("key_strengths", []),
+            match_reasons=match_analysis.get("match_reasons", []),
             potential_concerns=match_analysis.get("potential_concerns", []),
             application_priority=match_analysis.get("application_priority", "Medium"),
             customization_recommendations=match_analysis.get("customization_recommendations", {}),
