@@ -22,7 +22,8 @@ export default defineConfig({
       projectName: "job-finder-FE"
     }),
     consoleLogger({
-      backendUrl: "http://localhost:5000",
+      backendUrl: process.env.VITE_DEV_MONITOR_URL || "http://localhost:5000",
+      enabled: !!process.env.VITE_DEV_MONITOR_URL, // Only enable if dev-monitor URL is explicitly set
     }),
     jsonLogger({
       serviceName: "job-finder-frontend",

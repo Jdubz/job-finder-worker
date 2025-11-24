@@ -140,9 +140,10 @@ function startBackend(port) {
   return backend
 }
 
-function startFrontend(bePort, fePort) {
+function startFrontend(bePort, fePort, networkIP) {
   log(`Starting frontend with network exposure on port ${fePort}...`)
 
+  // Use network IP so the frontend works from other devices on the network
   const frontend = spawn('npx', ['vite', '--port', String(fePort), '--strictPort'], {
     cwd: FE_DIR,
     stdio: 'inherit',
@@ -150,7 +151,7 @@ function startFrontend(bePort, fePort) {
     env: {
       ...process.env,
       NODE_ENV: 'development',
-      VITE_API_BASE_URL: `http://localhost:${bePort}`
+      VITE_API_BASE_URL: `http://${networkIP}:${bePort}`
     }
   })
 
@@ -230,10 +231,11 @@ async function main() {
   log('='.repeat(50))
   log('Development servers starting...')
   log('')
-  log(`  Frontend: http://localhost:${fePort}`)
-  log(`  Network:  http://${localIP}:${fePort}`)
-  log(`  Backend:  http://localhost:${bePort}`)
+  log(`  Frontend (local):   http://localhost:${fePort}`)
+  log(`  Frontend (network): http://${localIP}:${fePort}`)
+  log(`  Backend (network):  http://${localIP}:${bePort}`)
   log('')
+  log(`  API URL for frontend: http://${localIP}:${bePort}`)
   log(`  Using temp DB: ${TEMP_DB_PATH}`)
   log('='.repeat(50))
   console.log('')
@@ -244,7 +246,7 @@ async function main() {
   // Small delay to let backend start first
   await new Promise(resolve => setTimeout(resolve, 1000))
 
-  startFrontend(bePort, fePort)
+  startFrontend(bePort, fePort, localIP)
 }
 
 main().catch((err) => {
