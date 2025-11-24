@@ -22,7 +22,7 @@ import { logger } from "@/services/logging"
 import { toDate } from "@/utils/dateFormat"
 
 export function JobApplicationsPage() {
-  const { user, isOwner } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [matches, setMatches] = useState<JobMatch[]>([])
   const [filteredMatches, setFilteredMatches] = useState<JobMatch[]>([])
@@ -149,32 +149,21 @@ export function JobApplicationsPage() {
     })
   }
 
-  if (!isOwner) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Job Applications</h1>
-          <p className="text-muted-foreground mt-2">
-            AI-matched job opportunities and application tracking (Editor Only)
-          </p>
-        </div>
-
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            You need editor permissions to access this feature. Please contact an administrator.
-          </AlertDescription>
-        </Alert>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Job Applications</h1>
         <p className="text-muted-foreground mt-2">AI-matched opportunities ranked by relevance</p>
+        {!user && (
+          <Alert className="mt-3">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Sign in to see live application matches. Public viewers can explore the UI but data
+              requires a login.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       {/* Stats Overview */}

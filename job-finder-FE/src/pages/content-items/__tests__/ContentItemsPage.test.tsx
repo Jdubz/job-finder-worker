@@ -4,9 +4,11 @@ import { ContentItemsPage } from "../ContentItemsPage"
 
 const createMock = vi.fn()
 const refetchMock = vi.fn()
+const mockAuth = { user: { id: "user-1", email: "user@example.com" }, isOwner: false }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockAuth.isOwner = false
 })
 
 vi.mock("@/hooks/useContentItems", () => ({
@@ -23,22 +25,28 @@ vi.mock("@/hooks/useContentItems", () => ({
 }))
 
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "user-1", email: "user@example.com" } })
+  useAuth: () => mockAuth
 }))
 
 describe("ContentItemsPage", () => {
-  it("renders empty state and disables export when no items", () => {
+  it("renders empty state and hides admin actions for non-admins", () => {
     render(<ContentItemsPage />)
     expect(screen.getByText(/No content items yet/i)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /export/i })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: /export/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /add root item/i })).not.toBeInTheDocument()
   })
 
-  it("toggles root form visibility", () => {
+  it("shows edit controls only after admin enables edit mode", () => {
+    mockAuth.isOwner = true
     render(<ContentItemsPage />)
-    const toggleButton = screen.getByRole("button", { name: /add root item/i })
-    fireEvent.click(toggleButton)
+    const editToggle = screen.getByRole("button", { name: /enter edit mode/i })
+    fireEvent.click(editToggle)
+
+    const addRoot = screen.getByRole("button", { name: /add root item/i })
+    fireEvent.click(addRoot)
     expect(screen.getByText(/Create Root Item/i)).toBeInTheDocument()
-    fireEvent.click(toggleButton)
+
+    fireEvent.click(addRoot)
     expect(screen.queryByText(/Create Root Item/i)).not.toBeInTheDocument()
   })
 })

@@ -10,6 +10,7 @@ interface ContentItemCardProps {
   siblings: ContentItemNode[]
   index: number
   depth?: number
+  canEdit?: boolean
   onSave: (id: string, values: ContentItemFormValues) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onCreateChild: (parentId: string, values: ContentItemFormValues) => Promise<void>
@@ -21,6 +22,7 @@ export function ContentItemCard({
   siblings,
   index,
   depth = 0,
+  canEdit = false,
   onSave,
   onDelete,
   onCreateChild,
@@ -128,42 +130,44 @@ export function ContentItemCard({
             )}
           </div>
 
-          <div className="flex flex-wrap gap-2 pt-2">
-            <Button size="sm" onClick={() => setIsEditing(true)} disabled={isProcessing}>
-              <Pencil className="mr-1 h-4 w-4" /> Edit
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowChildForm((prev) => !prev)}
-              disabled={isProcessing}
-            >
-              <Plus className="mr-1 h-4 w-4" /> Add Child
-            </Button>
-            <Button size="sm" variant="destructive" onClick={handleDelete} disabled={isProcessing}>
-              <Trash2 className="mr-1 h-4 w-4" /> Delete
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleMove(-1)}
-              disabled={!canMoveUp || isProcessing}
-            >
-              <ArrowUp className="mr-1 h-4 w-4" /> Up
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleMove(1)}
-              disabled={!canMoveDown || isProcessing}
-            >
-              <ArrowDown className="mr-1 h-4 w-4" /> Down
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button size="sm" onClick={() => setIsEditing(true)} disabled={isProcessing}>
+                <Pencil className="mr-1 h-4 w-4" /> Edit
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowChildForm((prev) => !prev)}
+                disabled={isProcessing}
+              >
+                <Plus className="mr-1 h-4 w-4" /> Add Child
+              </Button>
+              <Button size="sm" variant="destructive" onClick={handleDelete} disabled={isProcessing}>
+                <Trash2 className="mr-1 h-4 w-4" /> Delete
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleMove(-1)}
+                disabled={!canMoveUp || isProcessing}
+              >
+                <ArrowUp className="mr-1 h-4 w-4" /> Up
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleMove(1)}
+                disabled={!canMoveDown || isProcessing}
+              >
+                <ArrowDown className="mr-1 h-4 w-4" /> Down
+              </Button>
+            </div>
+          )}
         </>
       )}
 
-      {showChildForm && (
+      {canEdit && showChildForm && (
         <div className="rounded-lg border bg-muted/40 p-3">
           <h4 className="mb-2 text-sm font-semibold">Add child item</h4>
           <ContentItemForm
@@ -183,6 +187,7 @@ export function ContentItemCard({
               siblings={item.children ?? []}
               index={childIndex}
               depth={depth + 1}
+              canEdit={canEdit}
               onSave={onSave}
               onDelete={onDelete}
               onCreateChild={onCreateChild}
