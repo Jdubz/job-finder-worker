@@ -17,6 +17,9 @@ const adminEmailSet = new Set(
 
 const BYPASS_FALLBACK_EMAIL = "owner@jobfinder.dev"
 const TOKEN_EXPIRY_BUFFER_MS = 60_000 // refresh a minute early to avoid 401 loops
+const IS_DEVELOPMENT = import.meta.env.VITE_ENVIRONMENT === "development"
+
+export type DevRole = "public" | "viewer" | "admin"
 
 interface AuthUser {
   id: string
@@ -31,8 +34,10 @@ interface AuthContextType {
   user: AuthUser | null
   loading: boolean
   isOwner: boolean
+  isDevelopment: boolean
   signOut: () => Promise<void>
   authenticateWithGoogle: (credential: string) => void
+  setDevRole: (role: DevRole) => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -152,12 +157,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsOwner(false)
   }
 
+  const setDevRole = (role: DevRole) => {
+    if (!IS_DEVELOPMENT) {
+      console.warn("setDevRole is only available in development mode")
+      return
+    }
+
+    if (role === "public") {
+      // Sign out - no user
+      clearStoredAuthToken()
+      clearLogoutTimer()
+      setUser(null)
+      setIsOwner(false)
+      return
+    }
+
+    const isAdmin = role === "admin"
+    const mockUser: AuthUser = {
+      id: `dev-${role}-user`,
+      uid: `dev-${role}-user`,
+      email: isAdmin ? "dev-admin@jobfinder.dev" : "dev-viewer@jobfinder.dev",
+      name: isAdmin ? "Dev Admin" : "Dev Viewer",
+      picture: undefined,
+      emailVerified: true,
+    }
+
+    // Store a mock token for API requests
+    storeAuthToken(`dev-${role}-token`)
+    setUser(mockUser)
+    setIsOwner(isAdmin)
+  }
+
   const value = {
     user,
     loading,
     isOwner,
+    isDevelopment: IS_DEVELOPMENT,
     signOut,
     authenticateWithGoogle,
+    setDevRole,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

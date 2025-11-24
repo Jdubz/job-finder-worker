@@ -10,6 +10,7 @@
     "infra/sqlite/seeders"
   ],
   "scripts": {
+    "dev": "node scripts/dev.js",
     "prepare": "husky",
     "lint": "npm run lint --workspace job-finder-BE/server && npm run lint --workspace job-finder-FE",
     "lint:server": "npm run lint --workspace job-finder-BE/server",
