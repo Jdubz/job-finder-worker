@@ -397,6 +397,7 @@ def test_process_scrape_with_none_values(processor, mock_managers):
         target_matches=None, max_sources=None, source_ids=None
     )
 
+
 def test_process_scrape_no_config(processor, mock_managers):
     """Test processing SCRAPE item without scrape_config (should use defaults)."""
     # Create scrape item without config

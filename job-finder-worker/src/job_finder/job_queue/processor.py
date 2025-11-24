@@ -104,11 +104,6 @@ class QueueItemProcessor:
             profile=profile,
         )
 
-        # Expose shared components for backward compatibility with tests
-        self.filter_engine = self.job_processor.filter_engine
-        self.scrape_runner = self.job_processor.scrape_runner
-        self.scraper_intake = self.job_processor.scraper_intake
-
     # ============================================================
     # MAIN DISPATCHER
     # ============================================================

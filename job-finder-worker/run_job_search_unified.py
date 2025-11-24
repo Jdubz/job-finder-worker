@@ -190,7 +190,7 @@ def _count_jobs(db_path: str) -> int:
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT COUNT(*) AS cnt FROM job_matches").fetchone()
             return row["cnt"] if row else 0
-    except Exception:
+    except sqlite3.Error:
         return -1
 
 

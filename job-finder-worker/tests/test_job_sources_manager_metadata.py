@@ -67,4 +67,3 @@ def test_create_from_discovery_persists_metadata(tmp_path):
     assert stored["validationRequired"] is True
     assert stored["tier"] == "B"
     assert stored["status"] == "pending_validation"
-

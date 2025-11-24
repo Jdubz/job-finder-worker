@@ -65,4 +65,3 @@ def test_health_updates_on_failure_then_success(tmp_path):
     assert src["consecutiveFailures"] == 0
     assert abs(src["health"]["healthScore"] - 1.0) < 1e-6
     assert src["status"] == SourceStatus.ACTIVE.value
-

@@ -1,9 +1,9 @@
 """Shared helpers for company info formatting and stop-list checks."""
 
-from typing import Dict, List
+from typing import Any, Dict, List
 
 
-def build_company_info_string(company_info: Dict[str, any]) -> str:
+def build_company_info_string(company_info: Dict[str, Any]) -> str:
     """Build formatted company info string."""
     company_about = company_info.get("about", "")
     company_culture = company_info.get("culture", "")

@@ -8,6 +8,7 @@ Legacy sub_task routing has been removed to keep a single pipeline.
 import logging
 from typing import Any, Dict, Optional
 
+from job_finder.utils.company_info import build_company_info_string
 from job_finder.job_queue.models import (
     CompanyStatus,
     CompanySubTask,
@@ -222,8 +223,6 @@ class JobProcessor(BaseProcessor):
                 company_id = company.get("id")
                 job_data["company_id"] = company_id
                 job_data["companyId"] = company_id  # backward compatibility
-                from job_finder.utils.company_info import build_company_info_string
-
                 job_data["company_info"] = build_company_info_string(company)
 
             # Run AI matching (uses configured model - Sonnet by default)
