@@ -40,7 +40,7 @@ def _parse_union_literals(ts_path: Path, type_name: str) -> Set[str]:
             union_text = line
             j = idx + 1
             # Capture continuation lines if the union spans multiple lines
-            while j < len(lines) and '"' in lines[j] and ';' not in union_text:
+            while j < len(lines) and '"' in lines[j] and ";" not in union_text:
                 union_text += lines[j]
                 j += 1
             break
