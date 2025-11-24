@@ -383,7 +383,8 @@ class ScrapeRunner:
                     company_website=company_website,
                     fetch_info_func=self.company_info_fetcher.fetch_company_info,
                 )
-                job["companyId"] = company.get("id")
+                job["company_id"] = company.get("id")
+                job["companyId"] = company.get("id")  # backward compatibility
                 job["company_info"] = self._build_company_info_string(company)
 
             # Step 4: AI matching

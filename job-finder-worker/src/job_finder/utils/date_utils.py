@@ -1,7 +1,8 @@
 """Date parsing and scoring utilities for job postings."""
 
 import logging
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import dateutil.parser
@@ -27,6 +28,39 @@ def parse_job_date(date_string: Optional[str]) -> Optional[datetime]:
     """
     if not date_string:
         return None
+
+    # Handle common relative strings up-front
+    lowered = date_string.strip().lower()
+    now = datetime.now(timezone.utc)
+
+    if lowered in {"today", "just posted", "posted today"}:
+        return now
+    if lowered == "yesterday":
+        return now - timedelta(days=1)
+
+    # Patterns like "2 days ago", "3 hrs ago", "5d ago", "30+ days ago"
+    rel_match = re.search(
+        r"(?P<num>\d+)\+?\s*(?P<unit>day|days|d|week|weeks|w|hour|hours|hr|hrs|minute|minutes|min|mins|month|months|mo)\s*(ago)?",
+        lowered,
+    )
+    if rel_match:
+        num = int(rel_match.group("num"))
+        unit = rel_match.group("unit")
+
+        if unit.startswith(("day", "d")):
+            delta = timedelta(days=num)
+        elif unit.startswith(("week", "w")):
+            delta = timedelta(weeks=num)
+        elif unit.startswith("hour") or unit.startswith("hr"):
+            delta = timedelta(hours=num)
+        elif unit.startswith("min"):
+            delta = timedelta(minutes=num)
+        elif unit.startswith("month") or unit == "mo":
+            delta = timedelta(days=num * 30)  # rough approximation
+        else:
+            delta = timedelta(0)
+
+        return now - delta
 
     try:
         # Use dateutil.parser for flexible parsing
