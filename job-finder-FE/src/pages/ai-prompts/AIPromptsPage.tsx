@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Save, RotateCcw, Eye, Lock } from "lucide-react"
+import { Loader2, Save, RotateCcw, Eye } from "lucide-react"
 import { useAIPrompts } from "@/hooks/useAIPrompts"
 import type { PromptConfig } from "@/api"
 
@@ -163,14 +163,6 @@ export function AIPromptsPage() {
           Customize the AI prompts used for resume generation, cover letters, job scraping, and
           matching.
         </p>
-        {!canEdit && (
-          <Alert variant="default" className="border-amber-200 bg-amber-50 text-amber-800">
-            <AlertDescription className="flex items-center gap-2">
-              <Lock className="h-4 w-4" />
-              Viewing prompts only. Sign in as an admin to edit and save changes.
-            </AlertDescription>
-          </Alert>
-        )}
       </div>
 
       {error && (
