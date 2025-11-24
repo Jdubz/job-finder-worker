@@ -16,10 +16,14 @@ services:
       NODE_ENV: production
       PORT: 8080
       DATABASE_PATH: /data/sqlite/jobfinder.db
+      JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
     volumes:
       - type: bind
         source: /srv/job-finder/data
         target: /data/sqlite
+      - type: bind
+        source: /srv/job-finder/artifacts
+        target: /data/artifacts
     depends_on:
       sqlite-migrator:
         condition: service_completed_successfully
@@ -72,6 +76,7 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_PATH: /data/sqlite/jobfinder.db
+      JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
     volumes:
       - type: bind
         source: /srv/job-finder/data

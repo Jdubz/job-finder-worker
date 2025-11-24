@@ -7,7 +7,6 @@ import { buildContentItemRouter } from './modules/content-items/content-item.rou
 import { buildJobQueueRouter } from './modules/job-queue/job-queue.routes'
 import { buildJobMatchRouter } from './modules/job-matches/job-match.routes'
 import { buildConfigRouter } from './modules/config/config.routes'
-import { buildContactRouter } from './modules/contact/contact.routes'
 import { buildGeneratorRouter } from './modules/generator/generator.routes'
 import { buildGeneratorApiRouter } from './modules/generator/generator.api'
 import { buildGeneratorWorkflowRouter } from './modules/generator/generator.workflow.routes'
@@ -53,7 +52,6 @@ export function buildApp() {
   app.use('/api/queue', buildJobQueueRouter())
   app.use('/api/job-matches', buildJobMatchRouter())
   app.use('/api/config', buildConfigRouter())
-  app.use('/api/contact-submissions', buildContactRouter())
   app.use('/api/generator-docs', buildGeneratorRouter())
   app.use('/api/prompts', buildPromptsRouter())
 
