@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS generator_documents (
 
 CREATE INDEX IF NOT EXISTS idx_generator_type ON generator_documents (document_type);
 
--- Queue + worker configuration (maps Firestore job-finder-config doc IDs to JSON blobs)
+-- Queue + worker configuration (maps job-finder-config IDs to JSON blobs)
 CREATE TABLE IF NOT EXISTS job_finder_config (
   id TEXT PRIMARY KEY,
   payload_json TEXT NOT NULL,

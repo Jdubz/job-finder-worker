@@ -12,6 +12,7 @@ import os
 import signal
 import sys
 import threading
+import concurrent.futures
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -29,6 +30,7 @@ from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.logging_config import get_structured_logger, setup_logging
 from job_finder.profile import SQLiteProfileLoader
 from job_finder.job_queue import ConfigLoader, QueueManager
+from job_finder.job_queue.models import QueueStatus
 from job_finder.job_queue.processor import QueueItemProcessor
 from job_finder.storage import JobStorage
 from job_finder.storage.companies_manager import CompaniesManager
@@ -86,24 +88,17 @@ def load_config() -> Dict[str, Any]:
     if override_path:
         search_paths.append(Path(override_path).expanduser())
 
-    # Default to the repo-level config directory baked into the image.
-    repo_root = Path(__file__).resolve().parent.parent.parent
-    search_paths.extend(
-        [
-            repo_root / "config" / "config.production.yaml",
-            repo_root / "config" / "config.yaml",
-            repo_root / "config" / "config.dev.yaml",
-        ]
-    )
-
     for candidate in search_paths:
         if candidate.exists():
             slogger.worker_status("config_loaded", {"path": str(candidate)})
             with open(candidate, "r", encoding="utf-8") as f:
                 return yaml.safe_load(f)
 
-    searched = ", ".join(str(path) for path in search_paths)
-    raise FileNotFoundError(f"Worker config not found. Paths tried: {searched}")
+    # No config file found; fall back to empty config. All runtime settings are
+    # expected from the SQLite-backed job_finder_config table.
+    if search_paths:
+        slogger.worker_status("config_missing", {"paths_tried": [str(p) for p in search_paths]})
+    return {}
 
 
 def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
@@ -172,7 +167,16 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     profile = profile_loader.load_profile()
 
     # Initialize AI components (defaults, then override with DB)
-    ai_config = config.get("ai", {})
+    ai_config = {
+        "provider": "claude",
+        "model": "claude-sonnet-4",
+        "min_match_score": 70,
+        "generate_intake_data": True,
+        "portland_office_bonus": 15,
+        "user_timezone": -8,
+        "prefer_large_companies": True,
+        **config.get("ai", {}),
+    }
     provider = create_provider(ai_config.get("provider", "openai"), model=ai_config.get("model"))
     ai_matcher = AIJobMatcher(
         provider=provider,
@@ -220,6 +224,14 @@ def worker_loop():
             # Get pending items
             items = queue_manager.get_pending_items()
 
+            # Refresh timeout from DB each loop (allows runtime changes)
+            try:
+                queue_settings = config_loader.get_queue_settings()
+                processing_timeout = max(5, int(queue_settings.get("processingTimeoutSeconds", 1800)))
+            except Exception as exc:  # pragma: no cover - defensive
+                slogger.worker_status("queue_settings_load_failed", {"error": str(exc)})
+                processing_timeout = 1800
+
             if items:
                 slogger.worker_status(
                     "processing_batch",
@@ -227,17 +239,32 @@ def worker_loop():
                 )
 
                 # Process items
-                for item in items:
-                    if worker_state["shutdown_requested"]:
-                        slogger.worker_status("shutdown_in_progress")
-                        break
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    for item in items:
+                        if worker_state["shutdown_requested"]:
+                            slogger.worker_status("shutdown_in_progress")
+                            break
 
-                    try:
-                        processor.process_item(item)
-                        worker_state["items_processed_total"] += 1
-                    except Exception as e:
-                        slogger.logger.error(f"Error processing item {item.id}: {e}", exc_info=True)
-                        worker_state["last_error"] = str(e)
+                        future = executor.submit(processor.process_item, item)
+                        try:
+                            future.result(timeout=processing_timeout)
+                            worker_state["items_processed_total"] += 1
+                        except concurrent.futures.TimeoutError:
+                            msg = f"Processing exceeded timeout ({processing_timeout}s)"
+                            slogger.worker_status(
+                                "processing_timeout",
+                                {"item_id": item.id, "timeout_seconds": processing_timeout},
+                            )
+                            queue_manager.update_status(
+                                item.id,
+                                QueueStatus.FAILED,
+                                msg,
+                                error_details=msg,
+                            )
+                            worker_state["last_error"] = msg
+                        except Exception as e:
+                            slogger.logger.error(f"Error processing item {item.id}: {e}", exc_info=True)
+                            worker_state["last_error"] = str(e)
 
                 # Get updated stats
                 stats = queue_manager.get_queue_stats()

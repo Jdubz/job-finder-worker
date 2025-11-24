@@ -8,7 +8,7 @@
  * - SQLite schema expectations (infra/sqlite/migrations/*) so contracts stay aligned
  */
 
-import type { TimestampLike } from "./firestore.types"
+import type { TimestampLike } from "./time.types"
 import type { StopList, QueueSettings, AISettings, AIProvider } from "./config.types"
 export type { StopList, QueueSettings, AISettings, AIProvider } from "./config.types"
 
@@ -56,7 +56,7 @@ export type JobSubTask = "scrape" | "filter" | "analyze" | "save"
  * 1. fetch: Fetch website HTML content (cheap AI if needed)
  * 2. extract: Extract company info using AI (expensive AI)
  * 3. analyze: Tech stack detection, job board discovery, priority scoring (rule-based)
- * 4. save: Save to Firestore, spawn source_discovery if job board found (no AI)
+ * 4. save: Persist to database, spawn source_discovery if job board found (no AI)
  */
 export type CompanySubTask = "fetch" | "extract" | "analyze" | "save"
 
@@ -198,8 +198,8 @@ export interface JobMatchLegacy {
   requirements: string[]
   location?: string | null
   salary_range?: string | null
-  analyzed_at: Date | any // FirebaseFirestore.Timestamp
-  created_at: Date | any // FirebaseFirestore.Timestamp
+  analyzed_at: Date | any
+  created_at: Date | any
   submitted_by: string | null
   queue_item_id: string
 }

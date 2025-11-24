@@ -1,4 +1,4 @@
-import type { TimestampLike } from "./firestore.types"
+import type { TimestampLike } from "./time.types"
 
 export interface JobFinderConfigEntry<TPayload = unknown> {
   id: string
@@ -30,32 +30,21 @@ export interface StopList {
 }
 
 export interface QueueSettings {
-  maxRetries: number
-  retryDelaySeconds: number
-  processingTimeout: number
+  processingTimeoutSeconds: number
   updatedAt?: TimestampLike
   updatedBy?: string | null
 }
 
 export type AIProvider = "claude" | "openai" | "gemini"
 
-export interface ModelTuning {
-  maxTokens?: number
-  temperature?: number
-}
-
 export interface AISettings {
   provider: AIProvider
   model: string
   minMatchScore: number
-  costBudgetDaily: number
   generateIntakeData?: boolean
   portlandOfficeBonus?: number
   userTimezone?: number
   preferLargeCompanies?: boolean
-  models?: Record<string, ModelTuning>
-  maxTokens?: number
-  temperature?: number
   updatedAt?: TimestampLike
   updatedBy?: string | null
 }
@@ -163,16 +152,13 @@ export const DEFAULT_STOP_LIST: StopList = {
 }
 
 export const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
-  maxRetries: 3,
-  retryDelaySeconds: 300,
-  processingTimeout: 600,
+  processingTimeoutSeconds: 1800,
 }
 
 export const DEFAULT_AI_SETTINGS: AISettings = {
   provider: "claude",
   model: "claude-sonnet-4",
   minMatchScore: 70,
-  costBudgetDaily: 10,
   generateIntakeData: true,
   portlandOfficeBonus: 15,
   userTimezone: -8,
@@ -181,7 +167,7 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
 
 export const DEFAULT_JOB_FILTERS: JobFiltersConfig = {
   enabled: true,
-  strikeThreshold: 3,
+  strikeThreshold: 5,
   hardRejections: {
     excludedJobTypes: [],
     excludedSeniority: [],

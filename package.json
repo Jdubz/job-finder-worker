@@ -6,8 +6,7 @@
   "workspaces": [
     "shared",
     "job-finder-BE/server",
-    "job-finder-FE",
-    "infra/sqlite/seeders"
+    "job-finder-FE"
   ],
   "scripts": {
     "dev": "node scripts/dev.js",

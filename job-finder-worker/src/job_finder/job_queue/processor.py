@@ -190,53 +190,30 @@ class QueueItemProcessor:
             logger.error("Cannot handle failure for item without ID")
             return
 
-        queue_settings = self.config_loader.get_queue_settings()
-        max_retries = queue_settings["maxRetries"]
-
-        # Increment retry count
-        self.queue_manager.increment_retry(item.id)
-
-        # Build context for error details
         error_context = (
             f"Queue Item: {item.id}\n"
             f"Type: {item.type}\n"
             f"URL: {item.url}\n"
-            f"Company: {item.company_name}\n"
-            f"Retry Count: {item.retry_count + 1}/{max_retries}\n\n"
+            f"Company: {item.company_name}\n\n"
         )
 
-        # Check if we should retry
-        if item.retry_count + 1 < max_retries:
-            # Reset to pending for retry
-            retry_msg = f"Processing failed. Will retry ({item.retry_count + 1}/{max_retries})"
-            retry_details = (
-                f"{error_context}"
-                f"Error: {error_message}\n\n"
-                f"This item will be automatically retried.\n\n"
-                f"{'Stack Trace:\n' + error_details if error_details else ''}"
-            )
-            self.queue_manager.update_status(
-                item.id, QueueStatus.PENDING, retry_msg, error_details=retry_details
-            )
-            logger.info(f"Item {item.id} will be retried (attempt {item.retry_count + 1})")
-        else:
-            # Max retries exceeded, mark as failed
-            failed_msg = f"Failed after {max_retries} retries: {error_message}"
-            failed_details = (
-                f"{error_context}"
-                f"Error: {error_message}\n\n"
-                f"Max retries ({max_retries}) exceeded. Manual intervention may be required.\n\n"
-                f"Troubleshooting:\n"
-                f"1. Check if the URL is still valid\n"
-                f"2. Review error details below for specific issues\n"
-                f"3. Verify network connectivity and API credentials\n"
-                f"4. Check if the source website has changed structure\n\n"
-                f"{'Stack Trace:\n' + error_details if error_details else ''}"
-            )
-            self.queue_manager.update_status(
-                item.id, QueueStatus.FAILED, failed_msg, error_details=failed_details
-            )
-            logger.error(f"Item {item.id} failed after {max_retries} retries: {error_message}")
+        failed_msg = f"Processing failed: {error_message}"
+        failed_details = (
+            f"{error_context}"
+            f"Error: {error_message}\n\n"
+            f"Retries are disabled; investigate and resubmit if appropriate.\n\n"
+            f"Troubleshooting:\n"
+            f"1. Check if the URL is still valid\n"
+            f"2. Review error details below for specific issues\n"
+            f"3. Verify network connectivity and API credentials\n"
+            f"4. Check if the source website has changed structure\n\n"
+            f"{'Stack Trace:\n' + error_details if error_details else ''}"
+        )
+
+        self.queue_manager.update_status(
+            item.id, QueueStatus.FAILED, failed_msg, error_details=failed_details
+        )
+        logger.error(f"Item {item.id} failed: {error_message}")
 
     # ============================================================
     # BACKWARD COMPATIBILITY DELEGATION METHODS

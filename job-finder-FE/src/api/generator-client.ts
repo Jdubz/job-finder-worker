@@ -27,7 +27,7 @@ function unwrapResponse<T>(payload: T | ApiEnvelope<T>): T {
  * Request payload for generating documents
  * IMPORTANT: Must match the backend schema in generator.ts (generateRequestSchema)
  *
- * The backend fetches personal info, experiences, and blurbs from Firestore automatically.
+ * The backend fetches personal info, experiences, and blurbs from SQLite automatically.
  * The frontend only needs to provide job details and preferences.
  */
 export interface GenerateDocumentRequest {

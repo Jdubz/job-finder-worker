@@ -16,7 +16,6 @@ MAX_COMPANY_INFO_TEXT_LENGTH = 1000  # Maximum length for company info text
 DEFAULT_STRIKE_THRESHOLD = 5  # Number of strikes needed to reject a job
 DEFAULT_MAX_JOB_AGE_DAYS = 7  # Default maximum job age in days
 
-FIRESTORE_BATCH_WRITE_MAX = 500  # Maximum number of writes per batch
 
 # AI/LLM Settings
 CHEAP_MODEL_COST_PER_1K = 0.001  # Cost per 1K tokens for cheap models (Haiku)

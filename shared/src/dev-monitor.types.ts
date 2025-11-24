@@ -21,7 +21,7 @@ export type DevMonitorLogLevel =
  * Local development service names
  */
 export type LocalService =
-  | 'firebase-emulators'  // Firebase Auth, Firestore, Functions, Storage
+  | 'firebase-emulators'  // Firebase Auth, Functions, Storage (legacy only)
   | 'frontend-dev'        // React/Vite dev server
   | 'python-worker'       // Job queue worker (Docker)
   | 'dev-monitor-backend' // Dev monitor backend server

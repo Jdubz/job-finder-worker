@@ -790,63 +790,25 @@ export function JobFinderConfigPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="maxRetries">Max Retries</Label>
-                  <Input
-                    id="maxRetries"
-                    type="number"
-                    min="0"
-                    max="10"
-                    value={queueSettings?.maxRetries || 3}
-                    onChange={(e) =>
-                      setQueueSettings((prev) =>
-                        prev ? { ...prev, maxRetries: parseInt(e.target.value) || 3 } : null
-                      )
-                    }
-                  />
-                  <p className="text-xs text-gray-500">
-                    Maximum number of retry attempts for failed jobs
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="retryDelay">Retry Delay (seconds)</Label>
-                  <Input
-                    id="retryDelay"
-                    type="number"
-                    min="0"
-                    max="3600"
-                    value={queueSettings?.retryDelaySeconds || 300}
-                    onChange={(e) =>
-                      setQueueSettings((prev) =>
-                        prev
-                          ? { ...prev, retryDelaySeconds: parseInt(e.target.value) || 300 }
-                          : null
-                      )
-                    }
-                  />
-                  <p className="text-xs text-gray-500">Delay before retrying a failed job</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="processingTimeout">Processing Timeout (seconds)</Label>
-                  <Input
-                    id="processingTimeout"
-                    type="number"
-                    min="0"
-                    max="3600"
-                    value={queueSettings?.processingTimeout || 600}
-                    onChange={(e) =>
-                      setQueueSettings((prev) =>
-                        prev
-                          ? { ...prev, processingTimeout: parseInt(e.target.value) || 600 }
-                          : null
-                      )
-                    }
-                  />
-                  <p className="text-xs text-gray-500">Maximum time allowed for job processing</p>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="processingTimeout">Processing Timeout (seconds)</Label>
+                <Input
+                  id="processingTimeout"
+                  type="number"
+                  min="60"
+                  max="86400"
+                  value={queueSettings?.processingTimeoutSeconds ?? 1800}
+                  onChange={(e) =>
+                    setQueueSettings((prev) =>
+                      prev
+                        ? { ...prev, processingTimeoutSeconds: parseInt(e.target.value) || 1800 }
+                        : null
+                    )
+                  }
+                />
+                <p className="text-xs text-gray-500">
+                  Maximum time allowed for job processing. Retries are disabled; choose a generous window.
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -947,25 +909,6 @@ export function JobFinderConfigPage() {
                   <p className="text-xs text-gray-500">
                     Minimum score required to create a job match (0-100)
                   </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="costBudget">Daily Cost Budget ($)</Label>
-                  <Input
-                    id="costBudget"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={aiSettings?.costBudgetDaily || 10.0}
-                    onChange={(e) =>
-                      setAISettings((prev: AISettings | null) =>
-                        prev
-                          ? { ...prev, costBudgetDaily: parseFloat(e.target.value) || 10.0 }
-                          : null
-                      )
-                    }
-                  />
-                  <p className="text-xs text-gray-500">Maximum daily AI API cost (USD)</p>
                 </div>
 
                 <div className="space-y-2">

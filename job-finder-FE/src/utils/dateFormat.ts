@@ -7,15 +7,15 @@ import type { TimestampLike } from "@shared/types"
 
 /**
  * Convert TimestampLike to Date
- * Handles both Date objects and Firestore Timestamps
- * @param timestamp TimestampLike value (Date or FirestoreTimestamp)
+ * Handles both Date objects and structured timestamps
+ * @param timestamp TimestampLike value (Date or structured timestamp)
  * @returns Date object
  */
 export function toDate(timestamp: TimestampLike): Date {
   if (timestamp instanceof Date) {
     return timestamp
   }
-  // FirestoreTimestamp has a toDate() method
+  // Structured timestamp objects usually expose a toDate() method
   return timestamp.toDate()
 }
 

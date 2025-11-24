@@ -1,4 +1,4 @@
-import type { TimestampLike } from './firestore.types'
+import type { TimestampLike } from './time.types'
 
 export interface ContentItem {
   id: string

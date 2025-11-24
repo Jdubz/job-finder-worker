@@ -241,22 +241,19 @@ export const mockUserDefaults = {
  * Mock Configuration Settings
  */
 export const mockStopList = {
-  companies: ["Bad Company Inc", "Unethical Corp"],
-  keywords: ["unpaid", "intern", "no salary"],
-  domains: ["badcompany.com"],
+  excludedCompanies: ["Bad Company Inc", "Unethical Corp"],
+  excludedKeywords: ["unpaid", "intern", "no salary"],
+  excludedDomains: ["badcompany.com"],
 }
 
 export const mockQueueSettings: QueueSettings = {
-  maxRetries: 3,
-  retryDelaySeconds: 60,
-  processingTimeout: 300,
+  processingTimeoutSeconds: 300,
 }
 
 export const mockAISettings: AISettings = {
   provider: "claude",
   model: "claude-3-5-sonnet-20241022",
   minMatchScore: 70,
-  costBudgetDaily: 10,
 }
 
 /**

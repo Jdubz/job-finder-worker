@@ -59,22 +59,19 @@ const mockStopList = {
 }
 
 const mockQueueSettings = {
-  maxRetries: 3,
-  retryDelaySeconds: 300,
-  processingTimeout: 600,
+  processingTimeoutSeconds: 600,
 }
 
 const mockAISettings = {
   provider: "claude" as const,
   model: "claude-sonnet-4",
   minMatchScore: 70,
-  costBudgetDaily: 10.0,
   generateIntakeData: true,
 }
 
 const mockJobFilters = {
   enabled: true,
-  strikeThreshold: 3,
+  strikeThreshold: 5,
   hardRejections: { excludedCompanies: [], excludedKeywords: [] },
   remotePolicy: {},
   salaryStrike: {},
@@ -339,9 +336,7 @@ describe("JobFinderConfigPage", () => {
       await user.click(screen.getByText("Queue Settings"))
 
       await waitFor(() => {
-        expect(screen.getByDisplayValue("3")).toBeInTheDocument() // maxRetries
-        expect(screen.getByDisplayValue("300")).toBeInTheDocument() // retryDelaySeconds
-        expect(screen.getByDisplayValue("600")).toBeInTheDocument() // processingTimeout
+        expect(screen.getByDisplayValue("600")).toBeInTheDocument() // processingTimeoutSeconds
       })
     })
 
@@ -356,14 +351,9 @@ describe("JobFinderConfigPage", () => {
 
       await user.click(screen.getByText("Queue Settings"))
 
-      await waitFor(() => {
-        expect(screen.getByLabelText("Max Retries")).toBeInTheDocument()
-      })
-
-      // Update max retries - use the labeled input
-      const maxRetriesInput = screen.getByLabelText("Max Retries")
-      await user.clear(maxRetriesInput)
-      await user.type(maxRetriesInput, "5")
+      const timeoutInput = await screen.findByLabelText("Processing Timeout (seconds)")
+      await user.clear(timeoutInput)
+      await user.type(timeoutInput, "900")
 
       // Save changes
       await user.click(screen.getByText("Save Changes"))
@@ -405,7 +395,6 @@ describe("JobFinderConfigPage", () => {
       await waitFor(() => {
         expect(screen.getByDisplayValue("claude-sonnet-4")).toBeInTheDocument() // model
         expect(screen.getByDisplayValue("70")).toBeInTheDocument() // minMatchScore
-        expect(screen.getByDisplayValue("10")).toBeInTheDocument() // costBudgetDaily
       })
     })
 
@@ -516,13 +505,13 @@ describe("JobFinderConfigPage", () => {
       await user.click(screen.getByText("Queue Settings"))
 
       await waitFor(() => {
-        expect(screen.getByDisplayValue("3")).toBeInTheDocument()
+        expect(screen.getByDisplayValue("600")).toBeInTheDocument()
       })
 
-      // Update max retries
-      const maxRetriesInput = screen.getByDisplayValue("3")
-      await user.clear(maxRetriesInput)
-      await user.type(maxRetriesInput, "5")
+      // Update processing timeout
+      const timeoutInput = screen.getByDisplayValue("600")
+      await user.clear(timeoutInput)
+      await user.type(timeoutInput, "900")
 
       // Save changes
       await user.click(screen.getByText("Save Changes"))
@@ -599,13 +588,13 @@ describe("JobFinderConfigPage", () => {
       await user.click(screen.getByText("Queue Settings"))
 
       await waitFor(() => {
-        expect(screen.getByDisplayValue("3")).toBeInTheDocument()
+        expect(screen.getByDisplayValue("600")).toBeInTheDocument()
       })
 
-      // Update max retries
-      const maxRetriesInput = screen.getByDisplayValue("3")
-      await user.clear(maxRetriesInput)
-      await user.type(maxRetriesInput, "5")
+      // Update processing timeout
+      const timeoutInput = screen.getByDisplayValue("600")
+      await user.clear(timeoutInput)
+      await user.type(timeoutInput, "900")
 
       // Save changes
       await user.click(screen.getByText("Save Changes"))
