@@ -96,20 +96,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     const devConfig = DEV_TOKENS[token]
     logger.info({ email: devConfig.email, roles: devConfig.roles }, "Dev token authentication")
 
-    // Dev admin token gets full access
-    if (devConfig.roles.includes("admin")) {
-      const devUser: AuthenticatedUser = {
-        uid: `dev-${devConfig.roles[0]}-user`,
-        email: devConfig.email,
-        emailVerified: true,
-        name: devConfig.name,
-        roles: devConfig.roles,
-      }
-      ;(req as AuthenticatedRequest).user = devUser
-      return next()
-    }
-
-    // Dev viewer token - authenticated but not admin (will fail admin-only routes)
+    // Create user object for dev token. Role-based access is determined by the roles array.
     const devUser: AuthenticatedUser = {
       uid: `dev-${devConfig.roles[0]}-user`,
       email: devConfig.email,
