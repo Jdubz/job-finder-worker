@@ -99,6 +99,7 @@ jobs:
       - name: Build frontend
         env:
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID || 'test-client-id-for-ci' }}
+          VITE_API_BASE_URL: http://localhost:8080
         run: npm run build:frontend
 
   # Backend build
@@ -127,6 +128,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Run unit tests
+        env:
+          VITE_GOOGLE_OAUTH_CLIENT_ID: test-client-id
+          VITE_API_BASE_URL: http://localhost:8080
         run: npm run test:unit --workspace job-finder-FE
 
   # Frontend integration tests
@@ -141,6 +145,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Run integration tests
+        env:
+          VITE_GOOGLE_OAUTH_CLIENT_ID: test-client-id
+          VITE_API_BASE_URL: http://localhost:8080
         run: npm run test:integration --workspace job-finder-FE
 
   # Backend unit tests

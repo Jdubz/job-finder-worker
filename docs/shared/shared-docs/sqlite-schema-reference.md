@@ -54,7 +54,6 @@ Contact form payloads plus tracing metadata for auditing.
 Admin roster seeded with default accounts. Worker/backends currently rely on Firebase Auth/App Check headers but this table is the base for future auth.
 
 ### Supporting Tables
-- `experience_entries` / `experience_blurbs`: maintained for resume backfills only.
 - `generator_documents` indices, `view_queue_ready`, and other helper views live in the migrations as needed.
 
 ## Adding or Modifying Columns

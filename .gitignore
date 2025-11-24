@@ -1,21 +1,15 @@
-node_modules/
 **/node_modules/
-dist/
 **/dist/
-coverage/
 **/coverage/
 
 # Environment files - all variants
-.env
 **/.env
-.env.*
 **/.env.*
 !**/.env.example
+!**/.env.*.example
 !**/.env.template
-!**/.env.test
 
 # Logs
-*.log
 **/*.log
 
 # TypeScript build info
@@ -47,23 +41,19 @@ htmlcov/
 .coverage
 
 # Test results
-test-results/
 **/test-results/
-playwright-report/
 **/playwright-report/
 
 # Firebase
-job-finder-FE/.firebase/
 **/.firebase/
 **/firebase-debug.log
 **/firestore-debug.log
 
 # Data directory - contains personal/sensitive data exports
-data/
 **/data/
-!data/README.md
+!**/data/README.md
 
-# Legacy seeder output patterns (now moved to data/)
+# Seeder output directory - Firestore export staging area
 infra/sqlite/seeders/output/*/
 infra/sqlite/seeders/output/**/*.json
 

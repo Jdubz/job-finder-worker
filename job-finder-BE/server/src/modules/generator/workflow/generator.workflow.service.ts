@@ -49,6 +49,8 @@ const DEFAULT_PERSONAL_INFO: PersonalInfo = {
 }
 
 export class GeneratorWorkflowService {
+  private readonly activeRequests = new Map<string, { steps: any[]; request: any }>()
+
   constructor(
     private readonly pdfService = new PDFService(),
     private readonly workflowRepo = new GeneratorWorkflowRepository(),
@@ -64,7 +66,7 @@ export class GeneratorWorkflowService {
   async createRequest(payload: GenerateDocumentPayload) {
     const requestId = generateRequestId()
     const steps = createInitialSteps(payload.generateType)
-    this.workflowRepo.createRequest({
+    const request = this.workflowRepo.createRequest({
       id: requestId,
       generateType: payload.generateType,
       job: payload.job,
@@ -76,18 +78,22 @@ export class GeneratorWorkflowService {
       jobMatchId: payload.jobMatchId ?? null,
       createdBy: undefined
     })
-    this.workflowRepo.saveSteps(requestId, steps)
+    // Keep steps in memory only
+    this.activeRequests.set(requestId, { steps, request })
     return requestId
   }
 
   async runAllSteps(requestId: string, payload: GenerateDocumentPayload): Promise<GenerateDocumentResult> {
     try {
-      let result = await this.runNextStep(requestId)
+      let result = await this.runNextStep(requestId, payload)
       while (result && result.steps.some((step) => step.status === 'pending')) {
         result = await this.runNextStep(requestId, payload)
       }
 
       const finalRequest = this.workflowRepo.getRequest(requestId)
+      // Clean up in-memory state
+      this.activeRequests.delete(requestId)
+
       return {
         requestId,
         resumeUrl: finalRequest?.resumeUrl ?? undefined,
@@ -98,6 +104,7 @@ export class GeneratorWorkflowService {
     } catch (error) {
       this.log.error({ err: error }, 'Generator workflow failed')
       this.workflowRepo.updateRequest(requestId, { status: 'failed' })
+      this.activeRequests.delete(requestId)
       return {
         requestId,
         success: false,
@@ -112,7 +119,12 @@ export class GeneratorWorkflowService {
       return null
     }
 
-    const steps = this.workflowRepo.listSteps(requestId)
+    const activeState = this.activeRequests.get(requestId)
+    if (!activeState) {
+      return null
+    }
+
+    const steps = activeState.steps
     const pendingStep = steps.find((step) => step.status === 'pending')
     if (!pendingStep) {
       if (request.status !== 'completed' && request.status !== 'failed') {
@@ -130,7 +142,7 @@ export class GeneratorWorkflowService {
 
     if (pendingStep.id === 'collect-data') {
       const updated = completeStep(startStep(steps, 'collect-data'), 'collect-data', 'completed')
-      this.workflowRepo.saveSteps(requestId, updated)
+      activeState.steps = updated
       return {
         requestId,
         status: request.status,
@@ -150,7 +162,7 @@ export class GeneratorWorkflowService {
       )
       this.workflowRepo.updateRequest(requestId, { resumeUrl: resumeUrl ?? null })
       const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'completed')
-      this.workflowRepo.saveSteps(requestId, updated)
+      activeState.steps = updated
       return { requestId, status: request.status, steps: updated }
     }
 
@@ -166,7 +178,7 @@ export class GeneratorWorkflowService {
       )
       this.workflowRepo.updateRequest(requestId, { coverLetterUrl: coverLetterUrl ?? null })
       const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'completed')
-      this.workflowRepo.saveSteps(requestId, updated)
+      activeState.steps = updated
       return { requestId, status: request.status, steps: updated }
     }
 

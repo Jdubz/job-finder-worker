@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react"
+import React, { createContext, useContext, useEffect, useState } from "react"
 import { googleLogout } from "@react-oauth/google"
 import { decodeJwt, type JwtPayload } from "@/lib/jwt"
 import { clearStoredAuthToken, getStoredAuthToken, storeAuthToken } from "@/lib/auth-storage"
@@ -16,7 +16,6 @@ const adminEmailSet = new Set(
 )
 
 const BYPASS_FALLBACK_EMAIL = "owner@jobfinder.dev"
-const TOKEN_EXPIRY_BUFFER_MS = 60_000 // refresh a minute early to avoid 401 loops
 const IS_DEVELOPMENT = import.meta.env.VITE_ENVIRONMENT === "development"
 
 export type DevRole = "public" | "viewer" | "admin"
@@ -46,34 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [isOwner, setIsOwner] = useState(false)
-  const logoutTimerRef = useRef<number | null>(null)
   const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
-
-  const clearLogoutTimer = useCallback(() => {
-    if (logoutTimerRef.current !== null) {
-      window.clearTimeout(logoutTimerRef.current)
-      logoutTimerRef.current = null
-    }
-  }, [])
-
-  const handleTokenExpired = useCallback(() => {
-    clearStoredAuthToken()
-    clearLogoutTimer()
-    setUser(null)
-    setIsOwner(false)
-  }, [clearLogoutTimer])
-
-  const scheduleTokenExpiry = useCallback((expiryMs: number | null | undefined) => {
-    if (typeof window === "undefined") return
-    clearLogoutTimer()
-    if (!expiryMs) return
-    const delay = expiryMs - Date.now() - TOKEN_EXPIRY_BUFFER_MS
-    if (delay <= 0) {
-      handleTokenExpired()
-      return
-    }
-    logoutTimerRef.current = window.setTimeout(handleTokenExpired, delay)
-  }, [clearLogoutTimer, handleTokenExpired])
 
   useEffect(() => {
     if (!AUTH_BYPASS_ENABLED && !googleClientId) {
@@ -88,7 +60,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const bypassUser = buildBypassUser(bypassState)
         setUser(bypassUser)
         setIsOwner(bypassState.isOwner ?? adminEmailSet.has(bypassUser.email))
-        // Bypass tokens are long-lived test tokens; no expiry timer needed
       } else {
         setUser(null)
         setIsOwner(false)
@@ -100,29 +71,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const storedToken = getStoredAuthToken()
     if (storedToken) {
       const payload = decodeJwt(storedToken)
-      const expiryMs = getTokenExpiryMs(payload)
-
-      if (expiryMs && expiryMs <= Date.now()) {
-        handleTokenExpired()
-      } else {
-        const restoredUser = buildUserFromToken(storedToken, payload)
-        setUser(restoredUser)
-        setIsOwner(restoredUser?.email ? adminEmailSet.has(restoredUser.email) : false)
-        scheduleTokenExpiry(expiryMs)
-      }
+      const restoredUser = buildUserFromToken(storedToken, payload)
+      setUser(restoredUser)
+      setIsOwner(restoredUser?.email ? adminEmailSet.has(restoredUser.email) : false)
     }
     setLoading(false)
-  }, [handleTokenExpired, scheduleTokenExpiry])
+  }, [])
 
   const authenticateWithGoogle = (credential: string) => {
     const payload = decodeJwt(credential)
-    const expiryMs = getTokenExpiryMs(payload)
-
-    if (expiryMs && expiryMs <= Date.now()) {
-      console.error("Received expired Google credential")
-      return
-    }
-
     const nextUser = buildUserFromToken(credential, payload)
     if (!nextUser) {
       console.error("Failed to decode Google credential.")
@@ -132,7 +89,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     storeAuthToken(credential)
     setUser(nextUser)
     setIsOwner(adminEmailSet.has(nextUser.email))
-    scheduleTokenExpiry(expiryMs)
     setLoading(false)
   }
 
@@ -152,7 +108,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     clearStoredAuthToken()
-    clearLogoutTimer()
     setUser(null)
     setIsOwner(false)
   }
@@ -166,7 +121,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (role === "public") {
       // Sign out - no user
       clearStoredAuthToken()
-      clearLogoutTimer()
       setUser(null)
       setIsOwner(false)
       return
@@ -265,11 +219,6 @@ function buildUserFromToken(token: string, payload?: JwtPayload): AuthUser | nul
     picture: typeof claims.picture === "string" ? claims.picture : undefined,
     emailVerified: claims.email_verified ?? true,
   }
-}
-
-function getTokenExpiryMs(payload: JwtPayload): number | null {
-  if (typeof payload.exp !== "number") return null
-  return payload.exp * 1000
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
