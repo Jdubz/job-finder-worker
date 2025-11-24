@@ -22,9 +22,6 @@ coverage/
 **/*.tsbuildinfo
 
 # SQLite databases and temporary files
-*.db
-*.db-shm
-*.db-wal
 **/*.db
 **/*.db-shm
 **/*.db-wal
@@ -34,12 +31,11 @@ file:test-*
 file:memory:*
 
 # Python cache and artifacts
-__pycache__/
 **/__pycache__/
 *.py[cod]
-*$py.class
+*.py$class
 *.so
-.Python
+.Python/
 venv/
 env/
 ENV/
