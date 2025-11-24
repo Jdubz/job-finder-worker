@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { GeneratorWorkflowService, type GenerateDocumentPayload } from '../workflow/generator.workflow.service'
 import type { GeneratorWorkflowRepository, GeneratorRequestRecord, GeneratorArtifactRecord } from '../generator.workflow.repository'
 import type { PersonalInfoStore } from '../personal-info.store'
+import type { ContentItemRepository } from '../../content-items/content-item.repository'
 import type { PDFService } from '../workflow/services/pdf.service'
 import { storageService } from '../workflow/services/storage.service'
-import type { PersonalInfo } from '@shared/types'
+import type { PersonalInfo, ContentItem } from '@shared/types'
 
 vi.mock('../workflow/services/cli-runner', () => ({
   runCliProvider: vi.fn().mockResolvedValue({
@@ -106,6 +107,32 @@ class FakePersonalInfoStore {
   }
 }
 
+class FakeContentItemRepository {
+  private mockItems: ContentItem[] = [
+    {
+      id: '1',
+      parentId: null,
+      order: 0,
+      title: 'Previous Company',
+      role: 'Senior Developer',
+      location: 'Remote',
+      website: 'https://example.com',
+      startDate: '2022-01',
+      endDate: null,
+      description: 'Worked on various projects',
+      skills: ['JavaScript', 'TypeScript', 'Node.js'],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: 'test@example.com',
+      updatedBy: 'test@example.com'
+    }
+  ]
+
+  list(): ContentItem[] {
+    return this.mockItems
+  }
+}
+
 const payload: GenerateDocumentPayload = {
   generateType: 'resume',
   job: {
@@ -117,6 +144,7 @@ const payload: GenerateDocumentPayload = {
 describe('GeneratorWorkflowService', () => {
 const repo = new InMemoryRepo()
 const personalInfoStore = new FakePersonalInfoStore()
+const contentItemRepo = new FakeContentItemRepository()
 const pdfService: PDFService = {
   generateResumePDF: vi.fn().mockResolvedValue(Buffer.from('resume')),
   generateCoverLetterPDF: vi.fn().mockResolvedValue(Buffer.from('cover'))
@@ -131,7 +159,7 @@ const storageMock = vi.mocked(storageService)
   })
 
   it('creates a request and tracks steps in memory', async () => {
-    const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore)
+    const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore, contentItemRepo as unknown as ContentItemRepository)
     const requestId = await service.createRequest(payload)
     const request = repo.getRequest(requestId)
     expect(request).toBeTruthy()
@@ -144,7 +172,7 @@ const storageMock = vi.mocked(storageService)
   })
 
   it('runNextStep completes collect-data step first', async () => {
-    const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore)
+    const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore, contentItemRepo as unknown as ContentItemRepository)
     const requestId = await service.createRequest(payload)
 
     const result = await service.runNextStep(requestId)
@@ -153,7 +181,7 @@ const storageMock = vi.mocked(storageService)
   })
 
   it('runNextStep generates resume and stores artifact/url', async () => {
-    const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore)
+    const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore, contentItemRepo as unknown as ContentItemRepository)
     const requestId = await service.createRequest(payload)
     // complete collect-data
     await service.runNextStep(requestId)

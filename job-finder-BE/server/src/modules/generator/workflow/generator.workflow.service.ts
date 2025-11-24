@@ -3,6 +3,7 @@ import type { Logger } from 'pino'
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
 import { logger } from '../../../logger'
 import { PersonalInfoStore } from '../personal-info.store'
+import { ContentItemRepository } from '../../content-items/content-item.repository'
 import { storageService } from './services/storage.service'
 import { PDFService } from './services/pdf.service'
 import { generateRequestId } from './request-id'
@@ -55,6 +56,7 @@ export class GeneratorWorkflowService {
     private readonly pdfService = new PDFService(),
     private readonly workflowRepo = new GeneratorWorkflowRepository(),
     private readonly personalInfoStore = new PersonalInfoStore(),
+    private readonly contentItemRepo = new ContentItemRepository(),
     private readonly log: Logger = logger
   ) {}
 
@@ -239,8 +241,11 @@ export class GeneratorWorkflowService {
   }
 
   private async buildResumeContent(payload: GenerateDocumentPayload, personalInfo: PersonalInfo): Promise<ResumeContent> {
-    const prompt = buildResumePrompt(payload, personalInfo)
-    const cliResult = await runCliProvider(prompt, 'gemini')
+    // Fetch content items from the database
+    const contentItems = this.contentItemRepo.list()
+
+    const prompt = buildResumePrompt(payload, personalInfo, contentItems)
+    const cliResult = await runCliProvider(prompt, 'codex')
     if (cliResult.success) {
       try {
         const parsed = JSON.parse(cliResult.output) as ResumeContent
@@ -250,6 +255,7 @@ export class GeneratorWorkflowService {
       }
     }
 
+    // Fallback: Build resume from content items if AI generation fails
     return {
       personalInfo: {
         name: personalInfo.name ?? 'Candidate',
@@ -290,8 +296,11 @@ export class GeneratorWorkflowService {
     payload: GenerateDocumentPayload,
     personalInfo: PersonalInfo
   ): Promise<CoverLetterContent> {
-    const prompt = buildCoverLetterPrompt(payload, personalInfo)
-    const cliResult = await runCliProvider(prompt, 'gemini')
+    // Fetch content items from the database
+    const contentItems = this.contentItemRepo.list()
+
+    const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems)
+    const cliResult = await runCliProvider(prompt, 'codex')
     if (cliResult.success) {
       try {
         const parsed = JSON.parse(cliResult.output) as CoverLetterContent
@@ -301,6 +310,7 @@ export class GeneratorWorkflowService {
       }
     }
 
+    // Fallback: Build cover letter if AI generation fails
     return {
       greeting: `Dear ${payload.job.company} Hiring Team,`,
       openingParagraph: `I am excited to apply for the ${payload.job.role} role at ${payload.job.company}.`,
