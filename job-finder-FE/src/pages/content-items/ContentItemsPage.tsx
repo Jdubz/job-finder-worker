@@ -143,6 +143,12 @@ export function ContentItemsPage() {
         throw new Error("The import file does not contain any content items.")
       }
 
+      // At this point canEdit ensures an admin user is present, but TypeScript
+      // cannot infer it, so guard for type safety.
+      if (!user?.email) {
+        throw new Error("You must be signed in as an admin to import content items.")
+      }
+
       const createdCount = await replaceContentItems({
         roots: normalized,
         currentItems: sortedContentItems,
