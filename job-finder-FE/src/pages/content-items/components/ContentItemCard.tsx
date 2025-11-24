@@ -116,9 +116,9 @@ export function ContentItemCard({
             {item.description && <Markdown text={item.description} />}
             {item.skills && item.skills.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-2">
-                {item.skills.map((skill) => (
+                {item.skills.map((skill, idx) => (
                   <span
-                    key={`${item.id}-${skill}`}
+                    key={`${item.id}-skill-${idx}`}
                     className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground"
                   >
                     {skill}
