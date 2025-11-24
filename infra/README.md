@@ -48,7 +48,9 @@ The `infra/` directory contains **templates and development configurations** for
    # Firebase configuration
    FIREBASE_PROJECT_ID="your-project-id"
    FIREBASE_CLIENT_EMAIL="your-service-account@project.iam.gserviceaccount.com"
-   FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+   FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
+   ...
+   -----END PRIVATE KEY-----"
 
    # Other API configuration as needed
    ```

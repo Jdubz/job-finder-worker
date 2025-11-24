@@ -35,7 +35,7 @@ export function buildApp() {
 
   // Configure CORS with explicit allowed origins from environment or default for development
   const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
-    ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+    ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
     : ['http://localhost:5173', 'http://localhost:3000']
 
   app.use(
@@ -49,7 +49,7 @@ export function buildApp() {
           callback(null, true)
         } else {
           logger.warn({ origin, allowedOrigins }, 'CORS request from disallowed origin')
-          callback(new Error('Not allowed by CORS'))
+          callback(null, false)
         }
       },
       credentials: true
