@@ -4,6 +4,22 @@ import { verifyGoogleIdToken, type GoogleUser } from "../config/google-oauth"
 import { UserRepository, type UserRole } from "../modules/users/user.repository"
 import { logger } from "../logger"
 
+const IS_DEVELOPMENT = env.NODE_ENV === "development"
+
+// Dev tokens for local development without Google OAuth
+const DEV_TOKENS: Record<string, { email: string; roles: UserRole[]; name: string }> = {
+  "dev-admin-token": {
+    email: "dev-admin@jobfinder.dev",
+    roles: ["admin"],
+    name: "Dev Admin",
+  },
+  "dev-viewer-token": {
+    email: "dev-viewer@jobfinder.dev",
+    roles: ["viewer"],
+    name: "Dev Viewer",
+  },
+}
+
 interface AuthenticatedUser extends GoogleUser {
   roles: UserRole[]
 }
@@ -72,6 +88,36 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
       return res.status(403).json({ message: "User is not authorized" })
     }
     ;(req as AuthenticatedRequest).user = bypassUser
+    return next()
+  }
+
+  // Development mode: accept dev tokens without Google OAuth
+  if (IS_DEVELOPMENT && token in DEV_TOKENS) {
+    const devConfig = DEV_TOKENS[token]
+    logger.info({ email: devConfig.email, roles: devConfig.roles }, "Dev token authentication")
+
+    // Dev admin token gets full access
+    if (devConfig.roles.includes("admin")) {
+      const devUser: AuthenticatedUser = {
+        uid: `dev-${devConfig.roles[0]}-user`,
+        email: devConfig.email,
+        emailVerified: true,
+        name: devConfig.name,
+        roles: devConfig.roles,
+      }
+      ;(req as AuthenticatedRequest).user = devUser
+      return next()
+    }
+
+    // Dev viewer token - authenticated but not admin (will fail admin-only routes)
+    const devUser: AuthenticatedUser = {
+      uid: `dev-${devConfig.roles[0]}-user`,
+      email: devConfig.email,
+      emailVerified: true,
+      name: devConfig.name,
+      roles: devConfig.roles,
+    }
+    ;(req as AuthenticatedRequest).user = devUser
     return next()
   }
 
