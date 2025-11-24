@@ -123,20 +123,30 @@ def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
             slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
 
         if "minMatchScore" in ai_settings:
-            ai_matcher.min_match_score = ai_settings.get("minMatchScore", ai_matcher.min_match_score)
+            ai_matcher.min_match_score = ai_settings.get(
+                "minMatchScore", ai_matcher.min_match_score
+            )
         if "generateIntakeData" in ai_settings:
-            ai_matcher.generate_intake = ai_settings.get("generateIntakeData", ai_matcher.generate_intake)
+            ai_matcher.generate_intake = ai_settings.get(
+                "generateIntakeData", ai_matcher.generate_intake
+            )
         if "portlandOfficeBonus" in ai_settings:
-            ai_matcher.portland_office_bonus = ai_settings.get("portlandOfficeBonus", ai_matcher.portland_office_bonus)
+            ai_matcher.portland_office_bonus = ai_settings.get(
+                "portlandOfficeBonus", ai_matcher.portland_office_bonus
+            )
         if "userTimezone" in ai_settings:
             ai_matcher.user_timezone = ai_settings.get("userTimezone", ai_matcher.user_timezone)
         if "preferLargeCompanies" in ai_settings:
-            ai_matcher.prefer_large_companies = ai_settings.get("preferLargeCompanies", ai_matcher.prefer_large_companies)
+            ai_matcher.prefer_large_companies = ai_settings.get(
+                "preferLargeCompanies", ai_matcher.prefer_large_companies
+            )
 
     try:
         scheduler_settings = config_loader.get_scheduler_settings()
         if scheduler_settings and "pollIntervalSeconds" in scheduler_settings:
-            worker_state["poll_interval"] = max(5, int(scheduler_settings.get("pollIntervalSeconds", 60)))
+            worker_state["poll_interval"] = max(
+                5, int(scheduler_settings.get("pollIntervalSeconds", 60))
+            )
     except Exception as exc:  # pragma: no cover - defensive
         slogger.worker_status("scheduler_settings_load_failed", {"error": str(exc)})
 
@@ -339,7 +349,9 @@ def reload_config():
         return jsonify({"message": "Config loader not initialized"}), 503
 
     apply_db_settings(config_loader, ai_matcher)
-    return jsonify({"message": "Reloaded config", "poll_interval": worker_state.get("poll_interval")})
+    return jsonify(
+        {"message": "Reloaded config", "poll_interval": worker_state.get("poll_interval")}
+    )
 
 
 @app.route("/config", methods=["GET", "POST"])
