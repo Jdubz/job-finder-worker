@@ -6,8 +6,6 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
 from job_finder.ai.matcher import JobMatchResult
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.filters.models import FilterResult
@@ -27,7 +25,9 @@ def _apply_migrations(db_path: Path) -> None:
             conn.executescript(sql_file.read_text())
 
 
-def _process_all(queue_manager: QueueManager, processor: QueueItemProcessor, limit: int = 25) -> int:
+def _process_all(
+    queue_manager: QueueManager, processor: QueueItemProcessor, limit: int = 25
+) -> int:
     processed = 0
     while processed < limit:
         pending = queue_manager.get_pending_items(limit=20)
@@ -98,8 +98,8 @@ def test_job_pipeline_full_path(tmp_path: Path):
     }
 
     processor.job_processor._scrape_job = lambda item: job_data  # type: ignore[attr-defined]
-    processor.job_processor.filter_engine.evaluate_job = (
-        lambda _job: FilterResult(passed=True, total_strikes=0, strike_threshold=5)
+    processor.job_processor.filter_engine.evaluate_job = lambda _job: FilterResult(
+        passed=True, total_strikes=0, strike_threshold=5
     )
     processor.company_info_fetcher.fetch_company_info = lambda *_args, **_kwargs: {
         "about": "We build pipelines",
