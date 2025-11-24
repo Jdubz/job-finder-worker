@@ -40,12 +40,27 @@ The `infra/` directory contains **templates and development configurations** for
    - Set actual tunnel IDs and hostnames
    - Configure environment variables
 
-3. Ensure all required directories exist:
+3. Create `/srv/job-finder/.env` with required environment variables:
+   ```bash
+   # CORS configuration - comma-separated list of allowed frontend origins
+   CORS_ALLOWED_ORIGINS="https://job-finder.joshwentworth.com"
+
+   # Firebase configuration
+   FIREBASE_PROJECT_ID="your-project-id"
+   FIREBASE_CLIENT_EMAIL="your-service-account@project.iam.gserviceaccount.com"
+   FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
+   ...
+   -----END PRIVATE KEY-----"
+
+   # Other API configuration as needed
+   ```
+
+4. Ensure all required directories exist:
    ```bash
    mkdir -p /srv/job-finder/{data,secrets,config,logs,worker-data,cloudflared,artifacts,backups}
    ```
 
-4. Deploy using CI/CD (see `.github/workflows/deploy.yml`)
+5. Deploy using CI/CD (see `.github/workflows/deploy.yml`)
 
 ## SQLite Workspace
 

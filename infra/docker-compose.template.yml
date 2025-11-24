@@ -21,6 +21,7 @@ services:
       PORT: 8080
       DATABASE_PATH: /data/sqlite/jobfinder.db
       JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
+      # CORS_ALLOWED_ORIGINS: "https://your-frontend-domain.com,https://another-domain.com"
     volumes:
       # Update these paths to match your production server
       - type: bind

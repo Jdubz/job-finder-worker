@@ -216,12 +216,6 @@ export function ContentItemsPage() {
         </div>
       </div>
 
-      {!isAdmin && (
-        <Alert>
-          <AlertDescription>Viewing experience in read-only mode. Sign in as an admin to edit.</AlertDescription>
-        </Alert>
-      )}
-
       {alert && (
         <Alert variant={alert.type === "error" ? "destructive" : "default"}>
           <AlertDescription>{alert.message}</AlertDescription>
