@@ -18,3 +18,9 @@ The backend docs were migrated from the Firebase Functions + Express repos and r
 
 - Keep Express/SQLite notes here; Firebase Functions content now lives only in the archive.
 - When a document only affects the new Node API, add it under `api-docs/development` and link to it from this index.
+
+## Key Environment Variables
+
+| Variable | Purpose |
+| --- | --- |
+| `WORKER_RELOAD_URL` | Optional HTTP endpoint on the Python worker that forces an in-memory config reload after the API updates a config row. Set to the worker's `/config/reload` URL in production and leave unset locally. |
