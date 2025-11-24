@@ -4,6 +4,8 @@ export interface JobFinderConfigEntry<TPayload = unknown> {
   id: string
   payload: TPayload
   updatedAt: string
+  updatedBy?: string | null
+  name?: string | null
 }
 
 export interface PromptConfig {
@@ -13,6 +15,209 @@ export interface PromptConfig {
   jobMatching: string
   updatedAt?: TimestampLike
   updatedBy?: string | null
+}
+
+// -----------------------------------------------------------
+// Core app configuration payloads
+// -----------------------------------------------------------
+
+export interface StopList {
+  excludedCompanies: string[]
+  excludedKeywords: string[]
+  excludedDomains: string[]
+  updatedAt?: TimestampLike
+  updatedBy?: string | null
+}
+
+export interface QueueSettings {
+  maxRetries: number
+  retryDelaySeconds: number
+  processingTimeout: number
+  updatedAt?: TimestampLike
+  updatedBy?: string | null
+}
+
+export type AIProvider = "claude" | "openai" | "gemini"
+
+export interface ModelTuning {
+  maxTokens?: number
+  temperature?: number
+}
+
+export interface AISettings {
+  provider: AIProvider
+  model: string
+  minMatchScore: number
+  costBudgetDaily: number
+  generateIntakeData?: boolean
+  portlandOfficeBonus?: number
+  userTimezone?: number
+  preferLargeCompanies?: boolean
+  models?: Record<string, ModelTuning>
+  maxTokens?: number
+  temperature?: number
+  updatedAt?: TimestampLike
+  updatedBy?: string | null
+}
+
+export interface JobFiltersConfig {
+  enabled: boolean
+  strikeThreshold: number
+  hardRejections: {
+    excludedJobTypes?: string[]
+    excludedSeniority?: string[]
+    excludedCompanies?: string[]
+    excludedKeywords?: string[]
+    minSalaryFloor?: number
+    rejectCommissionOnly?: boolean
+  }
+  remotePolicy: {
+    allowRemote?: boolean
+    allowHybridPortland?: boolean
+    allowOnsite?: boolean
+  }
+  salaryStrike: {
+    enabled?: boolean
+    threshold?: number
+    points?: number
+  }
+  experienceStrike: {
+    enabled?: boolean
+    minPreferred?: number
+    points?: number
+  }
+  seniorityStrikes?: Record<string, number>
+  qualityStrikes: {
+    minDescriptionLength?: number
+    shortDescriptionPoints?: number
+    buzzwords?: string[]
+    buzzwordPoints?: number
+  }
+  ageStrike: {
+    enabled?: boolean
+    strikeDays?: number
+    rejectDays?: number
+    points?: number
+  }
+  updatedAt?: TimestampLike
+  updatedBy?: string | null
+}
+
+export interface TechnologyRanksConfig {
+  technologies: Record<string, number>
+  strikes?: {
+    missingAllRequired?: number
+  }
+  updatedAt?: TimestampLike
+  updatedBy?: string | null
+}
+
+export interface SchedulerSettings {
+  pollIntervalSeconds: number
+  updatedAt?: TimestampLike
+  updatedBy?: string | null
+}
+
+// -----------------------------------------------------------
+// Config IDs and payload map
+// -----------------------------------------------------------
+
+export type JobFinderConfigId =
+  | "stop-list"
+  | "queue-settings"
+  | "ai-settings"
+  | "ai-prompts"
+  | "personal-info"
+  | "job-filters"
+  | "technology-ranks"
+  | "scheduler-settings"
+
+export type JobFinderConfigPayloadMap = {
+  "stop-list": StopList
+  "queue-settings": QueueSettings
+  "ai-settings": AISettings
+  "ai-prompts": PromptConfig
+  "personal-info": Record<string, unknown>
+  "job-filters": JobFiltersConfig
+  "technology-ranks": TechnologyRanksConfig
+  "scheduler-settings": SchedulerSettings
+}
+
+// -----------------------------------------------------------
+// Defaults (single source of truth)
+// -----------------------------------------------------------
+
+export const DEFAULT_STOP_LIST: StopList = {
+  excludedCompanies: [],
+  excludedKeywords: [],
+  excludedDomains: [],
+}
+
+export const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
+  maxRetries: 3,
+  retryDelaySeconds: 300,
+  processingTimeout: 600,
+}
+
+export const DEFAULT_AI_SETTINGS: AISettings = {
+  provider: "claude",
+  model: "claude-sonnet-4",
+  minMatchScore: 70,
+  costBudgetDaily: 10,
+  generateIntakeData: true,
+  portlandOfficeBonus: 15,
+  userTimezone: -8,
+  preferLargeCompanies: true,
+}
+
+export const DEFAULT_JOB_FILTERS: JobFiltersConfig = {
+  enabled: true,
+  strikeThreshold: 3,
+  hardRejections: {
+    excludedJobTypes: [],
+    excludedSeniority: [],
+    excludedCompanies: [],
+    excludedKeywords: [],
+    minSalaryFloor: 100000,
+    rejectCommissionOnly: true,
+  },
+  remotePolicy: {
+    allowRemote: true,
+    allowHybridPortland: true,
+    allowOnsite: false,
+  },
+  salaryStrike: {
+    enabled: true,
+    threshold: 150000,
+    points: 2,
+  },
+  experienceStrike: {
+    enabled: true,
+    minPreferred: 6,
+    points: 1,
+  },
+  seniorityStrikes: {},
+  qualityStrikes: {
+    minDescriptionLength: 200,
+    shortDescriptionPoints: 1,
+    buzzwords: [],
+    buzzwordPoints: 1,
+  },
+  ageStrike: {
+    enabled: true,
+    strikeDays: 1,
+    rejectDays: 7,
+    points: 1,
+  },
+}
+
+export const DEFAULT_TECH_RANKS: TechnologyRanksConfig = {
+  technologies: {},
+  strikes: { missingAllRequired: 1 },
+}
+
+export const DEFAULT_SCHEDULER_SETTINGS: SchedulerSettings = {
+  pollIntervalSeconds: 60,
 }
 
 export const DEFAULT_PROMPTS: PromptConfig = {

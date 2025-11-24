@@ -100,8 +100,8 @@ def test_should_skip_by_stop_list_excluded_company(processor, mock_managers):
         source="scraper",
     )
 
-    # Should be skipped
-    assert processor._should_skip_by_stop_list(item) is True
+    # Should be skipped (stop list logic lives on job_processor)
+    assert processor.job_processor._should_skip_by_stop_list(item) is True
 
 
 def test_should_skip_by_stop_list_excluded_domain(processor, mock_managers):
@@ -121,8 +121,8 @@ def test_should_skip_by_stop_list_excluded_domain(processor, mock_managers):
         source="scraper",
     )
 
-    # Should be skipped
-    assert processor._should_skip_by_stop_list(item) is True
+    # Should be skipped (stop list logic lives on job_processor)
+    assert processor.job_processor._should_skip_by_stop_list(item) is True
 
 
 def test_should_skip_by_stop_list_excluded_keyword(processor, mock_managers):
@@ -142,8 +142,8 @@ def test_should_skip_by_stop_list_excluded_keyword(processor, mock_managers):
         source="scraper",
     )
 
-    # Should be skipped
-    assert processor._should_skip_by_stop_list(item) is True
+    # Should be skipped (stop list logic lives on job_processor)
+    assert processor.job_processor._should_skip_by_stop_list(item) is True
 
 
 def test_should_not_skip_by_stop_list(processor, mock_managers):
@@ -163,8 +163,8 @@ def test_should_not_skip_by_stop_list(processor, mock_managers):
         source="scraper",
     )
 
-    # Should not be skipped
-    assert processor._should_skip_by_stop_list(item) is False
+    # Should not be skipped (stop list logic lives on job_processor)
+    assert processor.job_processor._should_skip_by_stop_list(item) is False
 
 
 def test_process_job_already_exists(processor, mock_managers, sample_job_item):
@@ -257,7 +257,9 @@ def test_build_company_info_string(processor):
         "mission": "To make work better",
     }
 
-    result = processor._build_company_info_string(company_info)
+    from job_finder.utils.company_info import build_company_info_string
+
+    result = build_company_info_string(company_info)
 
     assert "About: We build great software" in result
     assert "Culture: Remote-first, collaborative" in result
@@ -272,7 +274,9 @@ def test_build_company_info_string_partial(processor):
         "mission": None,
     }
 
-    result = processor._build_company_info_string(company_info)
+    from job_finder.utils.company_info import build_company_info_string
+
+    result = build_company_info_string(company_info)
 
     assert "About: We build great software" in result
     assert "Culture:" not in result
@@ -303,8 +307,7 @@ def test_process_scrape_with_default_config(processor, mock_managers, sample_scr
     # Mock scrape runner
     processor.scrape_runner.run_scrape.return_value = {
         "sources_scraped": 3,
-        "jobs_saved": 5,
-        "jobs_analyzed": 5,
+        "jobs_submitted": 5,
     }
 
     processor.process_item(sample_scrape_item)
@@ -345,15 +348,10 @@ def test_process_scrape_with_custom_config(processor, mock_managers):
     # Mock scrape runner
     processor.scrape_runner.run_scrape.return_value = {
         "sources_scraped": 2,
-        "jobs_saved": 8,
-        "jobs_analyzed": 10,
+        "jobs_submitted": 8,
     }
 
     processor.process_item(scrape_item)
-
-    # Should override AI matcher min score (check it was set)
-    # The ai_matcher is a mock, so we verify the attribute was assigned
-    assert hasattr(processor.ai_matcher, "min_match_score")
 
     # Should call scrape runner with custom values
     processor.scrape_runner.run_scrape.assert_called_once_with(
@@ -389,8 +387,7 @@ def test_process_scrape_with_none_values(processor, mock_managers):
     # Mock scrape runner
     processor.scrape_runner.run_scrape.return_value = {
         "sources_scraped": 100,
-        "jobs_saved": 25,
-        "jobs_analyzed": 50,
+        "jobs_submitted": 25,
     }
 
     processor.process_item(scrape_item)
@@ -398,11 +395,6 @@ def test_process_scrape_with_none_values(processor, mock_managers):
     # Should call scrape runner with None values
     processor.scrape_runner.run_scrape.assert_called_once_with(
         target_matches=None, max_sources=None, source_ids=None
-    )
-
-    # Should not override AI matcher min score
-    assert not hasattr(mock_managers["ai_matcher"], "min_match_score") or (
-        mock_managers["ai_matcher"].min_match_score != 70
     )
 
 
@@ -419,8 +411,7 @@ def test_process_scrape_no_config(processor, mock_managers):
     # Mock scrape runner
     processor.scrape_runner.run_scrape.return_value = {
         "sources_scraped": 5,
-        "jobs_saved": 3,
-        "jobs_analyzed": 5,
+        "jobs_submitted": 3,
     }
 
     processor.process_item(scrape_item)
@@ -468,8 +459,7 @@ def test_process_scrape_no_jobs_found(processor, mock_managers):
     # Mock scrape runner with no results
     processor.scrape_runner.run_scrape.return_value = {
         "sources_scraped": 3,
-        "jobs_saved": 0,
-        "jobs_analyzed": 0,
+        "jobs_submitted": 0,
     }
 
     processor.process_item(scrape_item)

@@ -9,6 +9,8 @@
  */
 
 import type { TimestampLike } from "./firestore.types"
+import type { StopList, QueueSettings, AISettings, AIProvider } from "./config.types"
+export type { StopList, QueueSettings, AISettings, AIProvider } from "./config.types"
 
 /**
  * Queue item status lifecycle:
@@ -174,45 +176,6 @@ export interface QueueItem {
   ancestry_chain?: string[] // Ordered chain of parent IDs from root -> current
   spawn_depth?: number // Depth within ancestry (root = 0)
   max_spawn_depth?: number // Safety guard to prevent runaway spawning
-}
-
-/**
- * Stop list configuration (job-finder-config/stop-list)
- */
-export interface StopList {
-  excludedCompanies: string[]
-  excludedKeywords: string[]
-  excludedDomains: string[]
-  updatedAt?: TimestampLike
-  updatedBy?: string // User email
-}
-
-/**
- * Queue settings (job-finder-config/queue-settings)
- */
-export interface QueueSettings {
-  maxRetries: number
-  retryDelaySeconds: number
-  processingTimeout: number
-  updatedAt?: TimestampLike
-  updatedBy?: string // User email
-}
-
-/**
- * AI provider options
- */
-export type AIProvider = "claude" | "openai" | "gemini"
-
-/**
- * AI settings (job-finder-config/ai-settings)
- */
-export interface AISettings {
-  provider: AIProvider
-  model: string
-  minMatchScore: number
-  costBudgetDaily: number
-  updatedAt?: TimestampLike
-  updatedBy?: string // User email
 }
 
 /**

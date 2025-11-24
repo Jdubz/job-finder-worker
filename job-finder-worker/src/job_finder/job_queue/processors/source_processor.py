@@ -78,19 +78,19 @@ class SourceProcessor(BaseProcessor):
             # Process based on detected type
             if source_type == "greenhouse":
                 success, source_id, message = self._discover_greenhouse_source(
-                    url, source_config, config, company_name, item
+                    url, source_config, config, company_name, item, source_type
                 )
             elif source_type == "workday":
                 success, source_id, message = self._discover_workday_source(
-                    url, source_config, config, company_name, item
+                    url, source_config, config, company_name, item, source_type
                 )
             elif source_type == "rss":
                 success, source_id, message = self._discover_rss_source(
-                    url, source_config, config, company_name, item
+                    url, source_config, config, company_name, item, source_type
                 )
             else:  # generic
                 success, source_id, message = self._discover_generic_source(
-                    url, source_config, config, company_name, item
+                    url, source_config, config, company_name, item, source_type
                 )
 
             if success:
@@ -132,6 +132,7 @@ class SourceProcessor(BaseProcessor):
         discovery_config: Any,
         company_name: Optional[str],
         item: "JobQueueItem",
+        source_type: str,
     ) -> tuple[bool, Optional[str], str]:
         """
         Discover and validate Greenhouse source.
@@ -178,7 +179,7 @@ class SourceProcessor(BaseProcessor):
 
             source_id = self.sources_manager.create_from_discovery(
                 name=source_name,
-                source_type="greenhouse",
+                source_type=source_type,
                 config={"board_token": board_token},
                 discovered_via=item.source or "user_submission",
                 discovered_by=item.submitted_by,
@@ -188,6 +189,7 @@ class SourceProcessor(BaseProcessor):
                 company_name=company_name,
                 enabled=discovery_config.auto_enable,
                 validation_required=discovery_config.validation_required,
+                tier="A",
             )
 
             return True, source_id, f"Greenhouse source created ({len(jobs)} jobs available)"
@@ -203,6 +205,7 @@ class SourceProcessor(BaseProcessor):
         discovery_config: Any,
         company_name: Optional[str],
         item: "JobQueueItem",
+        source_type: str,
     ) -> tuple[bool, Optional[str], str]:
         """
         Discover and validate Workday source.
@@ -231,7 +234,7 @@ class SourceProcessor(BaseProcessor):
 
             source_id = self.sources_manager.create_from_discovery(
                 name=source_name,
-                source_type="workday",
+                source_type=source_type,
                 config={"company_id": company_id, "base_url": base_url},
                 discovered_via=item.source or "user_submission",
                 discovered_by=item.submitted_by,
@@ -241,6 +244,7 @@ class SourceProcessor(BaseProcessor):
                 company_name=company_name,
                 enabled=False,  # Workday requires manual validation
                 validation_required=True,
+                tier="B",
             )
 
             return (
@@ -260,6 +264,7 @@ class SourceProcessor(BaseProcessor):
         discovery_config: Any,
         company_name: Optional[str],
         item: "JobQueueItem",
+        source_type: str,
     ) -> tuple[bool, Optional[str], str]:
         """
         Discover and validate RSS source.
@@ -293,7 +298,7 @@ class SourceProcessor(BaseProcessor):
 
             source_id = self.sources_manager.create_from_discovery(
                 name=source_name,
-                source_type="rss",
+                source_type=source_type,
                 config={"url": url, "parse_format": "standard"},
                 discovered_via=item.source or "user_submission",
                 discovered_by=item.submitted_by,
@@ -303,6 +308,7 @@ class SourceProcessor(BaseProcessor):
                 company_name=company_name,
                 enabled=discovery_config.auto_enable,
                 validation_required=discovery_config.validation_required,
+                tier="A",
             )
 
             return True, source_id, f"RSS source created ({len(feed.entries)} entries available)"
@@ -318,6 +324,7 @@ class SourceProcessor(BaseProcessor):
         discovery_config: Any,
         company_name: Optional[str],
         item: "JobQueueItem",
+        source_type: str,
     ) -> tuple[bool, Optional[str], str]:
         """
         Discover generic HTML source using AI selector discovery.
@@ -362,7 +369,7 @@ class SourceProcessor(BaseProcessor):
 
             source_id = self.sources_manager.create_from_discovery(
                 name=source_name,
-                source_type="scraper",
+                source_type=source_type,
                 config={
                     "url": url,
                     "method": "requests",
@@ -377,6 +384,7 @@ class SourceProcessor(BaseProcessor):
                 company_name=company_name,
                 enabled=auto_enable,
                 validation_required=validation_required,
+                tier="B",
             )
 
             status = "enabled" if auto_enable else "pending validation"

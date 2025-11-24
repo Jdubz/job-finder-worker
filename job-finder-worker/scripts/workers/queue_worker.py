@@ -5,10 +5,8 @@ from __future__ import annotations
 
 import logging
 import os
-import signal
-import sys
 import time
-from typing import Optional
+import signal
 
 from job_finder.flask_worker import initialize_components, load_config
 

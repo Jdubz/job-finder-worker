@@ -14,6 +14,9 @@ make test-ci
 
 # run everything (slow)
 make test
+
+# queue-first job search (enqueues SCRAPE and processes queue)
+python run_job_search_unified.py --config config/config.dev.yaml --max-jobs 20
 ```
 
 The worker now expects `JF_SQLITE_DB_PATH` (or `infra/sqlite/jobfinder.db` inside the repo) and reuses the shared queue schema/types that ship from the root `shared/` workspace. Use the root Husky hooks + CI workflows for lint/test enforcement.

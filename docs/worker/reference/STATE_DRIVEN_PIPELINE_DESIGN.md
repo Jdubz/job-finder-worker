@@ -1,6 +1,6 @@
-> Status: Archived
+> Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-18
+> Last Updated: 2025-11-24
 
 # State-Driven Pipeline Design
 

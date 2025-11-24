@@ -145,9 +145,7 @@ export class ContentItemRepository {
 
   update(id: string, data: UpdateContentItemData & { userEmail: string }): ContentItem {
     const existing = this.getById(id)
-    if (!existing) {
-      throw new Error(`Content item not found: ${id}`)
-    }
+    if (!existing) throw new ContentItemNotFoundError(`Content item not found: ${id}`)
 
     const parentId = data.parentId ?? existing.parentId
     const order = data.order ?? existing.order ?? this.nextOrderIndex(parentId ?? null)
