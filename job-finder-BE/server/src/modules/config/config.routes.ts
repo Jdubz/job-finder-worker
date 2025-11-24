@@ -26,6 +26,7 @@ import {
   isJobFiltersConfig,
   isTechnologyRanksConfig,
   isSchedulerSettings,
+  isPersonalInfo,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -78,12 +79,21 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
       return {
         ...DEFAULT_JOB_FILTERS,
         ...normalized,
-        hardRejections: { ...DEFAULT_JOB_FILTERS.hardRejections, ...normalized.hardRejections },
-        remotePolicy: { ...DEFAULT_JOB_FILTERS.remotePolicy, ...normalized.remotePolicy },
-        salaryStrike: { ...DEFAULT_JOB_FILTERS.salaryStrike, ...normalized.salaryStrike },
-        experienceStrike: { ...DEFAULT_JOB_FILTERS.experienceStrike, ...normalized.experienceStrike },
-        qualityStrikes: { ...DEFAULT_JOB_FILTERS.qualityStrikes, ...normalized.qualityStrikes },
-        ageStrike: { ...DEFAULT_JOB_FILTERS.ageStrike, ...normalized.ageStrike },
+        hardRejections: {
+          ...DEFAULT_JOB_FILTERS.hardRejections,
+          ...(normalized.hardRejections ?? {}),
+        },
+        remotePolicy: { ...DEFAULT_JOB_FILTERS.remotePolicy, ...(normalized.remotePolicy ?? {}) },
+        salaryStrike: { ...DEFAULT_JOB_FILTERS.salaryStrike, ...(normalized.salaryStrike ?? {}) },
+        experienceStrike: {
+          ...DEFAULT_JOB_FILTERS.experienceStrike,
+          ...(normalized.experienceStrike ?? {}),
+        },
+        qualityStrikes: {
+          ...DEFAULT_JOB_FILTERS.qualityStrikes,
+          ...(normalized.qualityStrikes ?? {}),
+        },
+        ageStrike: { ...DEFAULT_JOB_FILTERS.ageStrike, ...(normalized.ageStrike ?? {}) },
       }
     }
     case 'technology-ranks': {
@@ -116,8 +126,9 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
     case 'scheduler-settings':
       return isSchedulerSettings(payload)
     case 'ai-prompts':
-    case 'personal-info':
       return true
+    case 'personal-info':
+      return isPersonalInfo(payload)
     default:
       return false
   }

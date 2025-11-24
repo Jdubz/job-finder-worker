@@ -67,6 +67,33 @@ export function JobFinderConfigPage() {
   const [schedulerJson, setSchedulerJson] = useState<string>(JSON.stringify(DEFAULT_SCHEDULER_SETTINGS, null, 2))
   const [originalSchedulerJson, setOriginalSchedulerJson] = useState<string>(JSON.stringify(DEFAULT_SCHEDULER_SETTINGS, null, 2))
 
+  async function saveJsonConfig<T>(
+    jsonValue: string,
+    validator: (value: unknown) => value is T,
+    updater: (value: T) => Promise<void>,
+    setOriginal: (value: string) => void,
+    successMessage: string,
+    invalidMessage: string,
+    fallbackError: string
+  ) {
+    setIsSaving(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const parsed = JSON.parse(jsonValue)
+      if (!validator(parsed)) {
+        throw new Error(invalidMessage)
+      }
+      await updater(parsed)
+      setOriginal(jsonValue)
+      setSuccess(successMessage)
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : fallbackError)
+    } finally {
+      setIsSaving(false)
+    }
+  }
   useEffect(() => {
     loadAllSettings()
   }, [])
@@ -172,63 +199,39 @@ export function JobFinderConfigPage() {
   }
 
   const handleSaveJobFilters = async () => {
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      const parsed = JSON.parse(jobFiltersJson)
-      if (!isJobFiltersConfig(parsed)) {
-        throw new Error("Invalid job filters structure")
-      }
-      await configClient.updateJobFilters(parsed)
-      setOriginalJobFiltersJson(jobFiltersJson)
-      setSuccess("Job filters saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save job filters")
-    } finally {
-      setIsSaving(false)
-    }
+    await saveJsonConfig<JobFiltersConfig>(
+      jobFiltersJson,
+      isJobFiltersConfig,
+      (parsed) => configClient.updateJobFilters(parsed),
+      setOriginalJobFiltersJson,
+      "Job filters saved successfully!",
+      "Invalid job filters structure",
+      "Failed to save job filters"
+    )
   }
 
   const handleSaveTechRanks = async () => {
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      const parsed = JSON.parse(techRanksJson)
-      if (!isTechnologyRanksConfig(parsed)) {
-        throw new Error("Invalid technology ranks structure")
-      }
-      await configClient.updateTechnologyRanks(parsed)
-      setOriginalTechRanksJson(techRanksJson)
-      setSuccess("Technology ranks saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save technology ranks")
-    } finally {
-      setIsSaving(false)
-    }
+    await saveJsonConfig<TechnologyRanksConfig>(
+      techRanksJson,
+      isTechnologyRanksConfig,
+      (parsed) => configClient.updateTechnologyRanks(parsed),
+      setOriginalTechRanksJson,
+      "Technology ranks saved successfully!",
+      "Invalid technology ranks structure",
+      "Failed to save technology ranks"
+    )
   }
 
   const handleSaveScheduler = async () => {
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      const parsed = JSON.parse(schedulerJson)
-      if (!isSchedulerSettings(parsed)) {
-        throw new Error("Invalid scheduler settings structure")
-      }
-      await configClient.updateSchedulerSettings(parsed)
-      setOriginalSchedulerJson(schedulerJson)
-      setSuccess("Scheduler settings saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save scheduler settings")
-    } finally {
-      setIsSaving(false)
-    }
+    await saveJsonConfig<SchedulerSettings>(
+      schedulerJson,
+      isSchedulerSettings,
+      (parsed) => configClient.updateSchedulerSettings(parsed),
+      setOriginalSchedulerJson,
+      "Scheduler settings saved successfully!",
+      "Invalid scheduler settings structure",
+      "Failed to save scheduler settings"
+    )
   }
 
   const handleAddCompany = () => {

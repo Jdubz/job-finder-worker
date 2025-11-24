@@ -215,10 +215,10 @@ export function isJobFiltersConfig(value: unknown): value is JobFiltersConfig {
     typeof v.enabled === "boolean" &&
     typeof v.strikeThreshold === "number" &&
     isObject(v.hardRejections) &&
-    Array.isArray(v.hardRejections.excludedJobTypes ?? []) &&
-    Array.isArray(v.hardRejections.excludedSeniority ?? []) &&
-    Array.isArray(v.hardRejections.excludedCompanies ?? []) &&
-    Array.isArray(v.hardRejections.excludedKeywords ?? []) &&
+    (v.hardRejections.excludedJobTypes === undefined || isStringArray(v.hardRejections.excludedJobTypes)) &&
+    (v.hardRejections.excludedSeniority === undefined || isStringArray(v.hardRejections.excludedSeniority)) &&
+    (v.hardRejections.excludedCompanies === undefined || isStringArray(v.hardRejections.excludedCompanies)) &&
+    (v.hardRejections.excludedKeywords === undefined || isStringArray(v.hardRejections.excludedKeywords)) &&
     (v.hardRejections.minSalaryFloor === undefined || typeof v.hardRejections.minSalaryFloor === "number") &&
     (v.hardRejections.rejectCommissionOnly === undefined || typeof v.hardRejections.rejectCommissionOnly === "boolean") &&
     isObject(v.remotePolicy) &&
@@ -237,7 +237,7 @@ export function isJobFiltersConfig(value: unknown): value is JobFiltersConfig {
     isObject(v.qualityStrikes) &&
     (v.qualityStrikes.minDescriptionLength === undefined || typeof v.qualityStrikes.minDescriptionLength === "number") &&
     (v.qualityStrikes.shortDescriptionPoints === undefined || typeof v.qualityStrikes.shortDescriptionPoints === "number") &&
-    Array.isArray(v.qualityStrikes.buzzwords ?? []) &&
+    (v.qualityStrikes.buzzwords === undefined || isStringArray(v.qualityStrikes.buzzwords)) &&
     (v.qualityStrikes.buzzwordPoints === undefined || typeof v.qualityStrikes.buzzwordPoints === "number") &&
     isObject(v.ageStrike) &&
     (v.ageStrike.enabled === undefined || typeof v.ageStrike.enabled === "boolean") &&
