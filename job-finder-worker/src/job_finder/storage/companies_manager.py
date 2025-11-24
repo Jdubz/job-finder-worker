@@ -212,8 +212,40 @@ class CompaniesManager:
         stub_data["id"] = company_id
         return stub_data
 
-    def get_or_create_company(self, company_name: str, company_website: str = "") -> Dict[str, Any]:
+    def get_or_create_company(
+        self,
+        company_name: str,
+        company_website: str = "",
+        fetch_info_func=None,
+    ) -> Dict[str, Any]:
+        """
+        Fetch a company if it exists; otherwise create a stub and optionally
+        hydrate it using a supplied fetch function.
+
+        Args:
+            company_name: Name of the company
+            company_website: Website URL (used for stub and optional fetch)
+            fetch_info_func: Optional callable(company_name, company_website) -> dict
+                              that returns rich company data to save.
+        """
         existing = self.get_company(company_name)
         if existing:
             return existing
-        return self.create_company_stub(company_name, company_website)
+
+        # Create minimal stub first so we have an ID to hang data on
+        stub = self.create_company_stub(company_name, company_website)
+
+        # If we have a fetcher, try to enrich the stub immediately
+        if fetch_info_func:
+            try:
+                fetched = fetch_info_func(company_name, company_website) or {}
+                # Preserve ID and required fields; allow fetched data to override blanks
+                fetched.setdefault("id", stub["id"])
+                fetched.setdefault("name", company_name)
+                fetched.setdefault("website", company_website)
+                self.save_company(fetched)
+                return self.get_company(company_name) or stub
+            except Exception as exc:
+                logger.warning("Failed to fetch company info for %s: %s", company_name, exc)
+
+        return stub
