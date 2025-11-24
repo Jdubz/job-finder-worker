@@ -270,7 +270,7 @@ function pickStringArray(record: Record<string, unknown>, keys: string[]): strin
 }
 
 function buildDescription(record: Record<string, unknown>): string | undefined {
-  const base = pickString(record, ["description", "summary", "content", "body"])
+  const base = pickString(record, ["description", "summary", "content", "body", "biography", "bio", "about", "text"])
   const bulletSources = [record.accomplishments, record.bullets, record.highlights, record.points]
   const bullets = bulletSources
     .filter((source): source is string[] => Array.isArray(source) && source.every((item) => typeof item === "string"))
