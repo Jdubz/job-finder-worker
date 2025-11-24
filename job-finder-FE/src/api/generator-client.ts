@@ -121,7 +121,7 @@ export interface ExecuteStepResponse {
 }
 
 export class GeneratorClient extends BaseApiClient {
-  constructor(baseUrl = API_CONFIG.generatorBaseUrl) {
+  constructor(baseUrl: string | (() => string) = () => API_CONFIG.generatorBaseUrl) {
     super(baseUrl)
   }
 
@@ -182,5 +182,4 @@ export class GeneratorClient extends BaseApiClient {
 }
 
 // Export singleton instance
-import { api } from "@/config/api"
-export const generatorClient = new GeneratorClient(api.generatorBaseUrl)
+export const generatorClient = new GeneratorClient()

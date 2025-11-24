@@ -10,7 +10,7 @@ import type {
 import { DEFAULT_PROMPTS } from "@shared/types"
 
 export class PromptsClient extends BaseApiClient {
-  constructor(baseUrl = API_CONFIG.baseUrl) {
+  constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
     super(baseUrl)
   }
 

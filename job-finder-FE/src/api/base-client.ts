@@ -32,23 +32,28 @@ export class ApiError extends Error {
 }
 
 export class BaseApiClient {
-  baseUrl: string
+  private baseUrlResolver: () => string
   defaultTimeout: number
   defaultRetryAttempts: number
   defaultRetryDelay: number
 
   constructor(
-    baseUrl: string,
+    baseUrl: string | (() => string),
     options?: {
       timeout?: number
       retryAttempts?: number
       retryDelay?: number
     }
   ) {
-    this.baseUrl = baseUrl
+    // Support both static strings and dynamic resolvers
+    this.baseUrlResolver = typeof baseUrl === "function" ? baseUrl : () => baseUrl
     this.defaultTimeout = options?.timeout || 30000
     this.defaultRetryAttempts = options?.retryAttempts || 3
     this.defaultRetryDelay = options?.retryDelay || 1000
+  }
+
+  get baseUrl(): string {
+    return this.baseUrlResolver()
   }
 
   /**

@@ -21,7 +21,7 @@ import type { ApiSuccessResponse } from "@shared/types"
 export const ROOT_PARENT_SENTINEL = "__root__"
 
 export class ContentItemsClient extends BaseApiClient {
-  constructor(baseUrl = API_CONFIG.baseUrl) {
+  constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
     super(baseUrl)
   }
 

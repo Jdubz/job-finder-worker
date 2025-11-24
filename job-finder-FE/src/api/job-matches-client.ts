@@ -24,7 +24,7 @@ type JobMatchesResponseShape =
 type JobMatchResponseShape = ApiSuccessResponse<GetJobMatchResponse> | GetJobMatchResponse
 
 export class JobMatchesClient extends BaseApiClient {
-  constructor(baseUrl = API_CONFIG.baseUrl) {
+  constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
     super(baseUrl)
   }
 
