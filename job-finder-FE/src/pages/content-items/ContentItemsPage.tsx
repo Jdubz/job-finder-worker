@@ -25,7 +25,7 @@ interface AlertState {
 
 export function ContentItemsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { user } = useAuth()
+  const { user, isOwner } = useAuth()
   const {
     contentItems,
     loading,
@@ -37,8 +37,12 @@ export function ContentItemsPage() {
   } = useContentItems()
 
   const [showRootForm, setShowRootForm] = useState(false)
+  const [editMode, setEditMode] = useState(false)
   const [alert, setAlert] = useState<AlertState | null>(null)
   const [importing, setImporting] = useState(false)
+
+  const isAdmin = Boolean(user?.email && isOwner)
+  const canEdit = isAdmin && editMode
 
   const sortedContentItems = useMemo(() => sortNodesByOrder(contentItems), [contentItems])
   const totalItems = useMemo(() => countNodes(sortedContentItems), [sortedContentItems])
@@ -97,6 +101,7 @@ export function ContentItemsPage() {
   }
 
   const handleExport = () => {
+    if (!canEdit) return
     if (!sortedContentItems.length) {
       setAlert({ type: "error", message: "No content items available to export." })
       return
@@ -121,8 +126,8 @@ export function ContentItemsPage() {
   }
 
   const handleImportClick = () => {
-    if (!user?.email) {
-      setAlert({ type: "error", message: "You must be signed in to import content items." })
+    if (!canEdit || !user?.email) {
+      setAlert({ type: "error", message: "You must be an admin to import content items." })
       return
     }
     fileInputRef.current?.click()
@@ -131,8 +136,8 @@ export function ContentItemsPage() {
   const handleImportChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (!user?.email) {
-      setAlert({ type: "error", message: "You must be signed in to import content items." })
+    if (!canEdit || !user?.email) {
+      setAlert({ type: "error", message: "You must be an admin to import content items." })
       event.target.value = ""
       return
     }
@@ -183,29 +188,52 @@ export function ContentItemsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json"
-            className="hidden"
-            onChange={handleImportChange}
-          />
+          {canEdit && (
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={handleImportChange}
+            />
+          )}
           <Button variant="outline" onClick={handleRefresh} disabled={loading || importing}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
             Refresh
           </Button>
-          <Button variant="outline" onClick={handleExport} disabled={!totalItems || importing}>
-            <Download className="mr-2 h-4 w-4" /> Export
-          </Button>
-          <Button onClick={handleImportClick} disabled={importing}>
-            {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-            {importing ? "Importing…" : "Import"}
-          </Button>
-          <Button onClick={() => setShowRootForm((prev) => !prev)}>
-            <Plus className="mr-2 h-4 w-4" /> {showRootForm ? "Hide Root Form" : "Add Root Item"}
-          </Button>
+          {canEdit && (
+            <>
+              <Button variant="outline" onClick={handleExport} disabled={!totalItems || importing}>
+                <Download className="mr-2 h-4 w-4" /> Export
+              </Button>
+              <Button onClick={handleImportClick} disabled={importing}>
+                {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                {importing ? "Importing…" : "Import"}
+              </Button>
+              <Button onClick={() => setShowRootForm((prev) => !prev)}>
+                <Plus className="mr-2 h-4 w-4" /> {showRootForm ? "Hide Root Form" : "Add Root Item"}
+              </Button>
+            </>
+          )}
+          {isAdmin && (
+            <Button
+              variant={editMode ? "secondary" : "outline"}
+              onClick={() => {
+                setShowRootForm(false)
+                setEditMode((prev) => !prev)
+              }}
+            >
+              {editMode ? "Exit Edit Mode" : "Enter Edit Mode"}
+            </Button>
+          )}
         </div>
       </div>
+
+      {!isAdmin && (
+        <Alert>
+          <AlertDescription>Viewing experience in read-only mode. Sign in as an admin to edit.</AlertDescription>
+        </Alert>
+      )}
 
       {alert && (
         <Alert variant={alert.type === "error" ? "destructive" : "default"}>
@@ -219,7 +247,7 @@ export function ContentItemsPage() {
         </Alert>
       )}
 
-      {showRootForm && (
+      {canEdit && showRootForm && (
         <div className="rounded-lg border bg-card p-4">
           <h2 className="mb-3 text-lg font-semibold">Create Root Item</h2>
           <ContentItemForm
@@ -238,7 +266,7 @@ export function ContentItemsPage() {
 
       {!loading && !sortedContentItems.length && (
         <div className="rounded-lg border border-dashed bg-muted/40 p-6 text-center text-sm text-muted-foreground">
-          No content items yet. Use the "Add Root Item" button or import from JSON to get started.
+          No content items yet.
         </div>
       )}
 
@@ -249,6 +277,7 @@ export function ContentItemsPage() {
             item={item}
             siblings={sortedContentItems}
             index={index}
+            canEdit={canEdit}
             onSave={handleSaveItem}
             onDelete={handleDeleteItem}
             onCreateChild={handleCreateChild}
