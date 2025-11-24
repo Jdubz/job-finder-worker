@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ChangeEvent } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Loader2, Plus, RefreshCcw, Upload, Download } from "lucide-react"
+import { Loader2, Plus, Upload, Download } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useContentItems } from "@/hooks/useContentItems"
 import { contentItemsClient } from "@/api"
@@ -173,11 +173,6 @@ export function ContentItemsPage() {
     }
   }
 
-  const handleRefresh = async () => {
-    setAlert(null)
-    await refetch()
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -197,10 +192,6 @@ export function ContentItemsPage() {
               onChange={handleImportChange}
             />
           )}
-          <Button variant="outline" onClick={handleRefresh} disabled={loading || importing}>
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
-            Refresh
-          </Button>
           {canEdit && (
             <>
               <Button variant="outline" onClick={handleExport} disabled={!totalItems || importing}>
