@@ -32,7 +32,29 @@ export function buildApp() {
       crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }
     })
   )
-  app.use(cors())
+
+  // Configure CORS with explicit allowed origins from environment or default for development
+  const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+    ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+    : ['http://localhost:5173', 'http://localhost:3000']
+
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, curl, Postman)
+        if (!origin) {
+          return callback(null, true)
+        }
+        if (allowedOrigins.includes(origin)) {
+          callback(null, true)
+        } else {
+          logger.warn({ origin, allowedOrigins }, 'CORS request from disallowed origin')
+          callback(new Error('Not allowed by CORS'))
+        }
+      },
+      credentials: true
+    })
+  )
   app.use(httpLogger)
 
   const generatorPipeline = express.Router()
