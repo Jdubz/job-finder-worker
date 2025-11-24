@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate": "tsx src/scripts/migrate.ts",
+    "migrate:techranks": "tsx src/scripts/migrate-tech-ranks.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

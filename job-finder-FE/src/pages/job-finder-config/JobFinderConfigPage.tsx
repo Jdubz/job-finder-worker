@@ -53,52 +53,6 @@ function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value))
 }
 
-const coerceTechnologyRanks = (
-  raw: TechnologyRanksConfig | Record<string, unknown> | null
-): TechnologyRanksConfig => {
-  const technologies: TechnologyRanksConfig["technologies"] = {}
-  const sourceTechs = (raw as Record<string, unknown>)?.technologies ?? {}
-  Object.entries(sourceTechs as Record<string, unknown>).forEach(([name, value]) => {
-    if (typeof value === "number") {
-      technologies[name] = { rank: "ok", points: value }
-    } else if (value && typeof value === "object") {
-      const rank =
-        typeof (value as Record<string, unknown>).rank === "string" &&
-        ["required", "ok", "strike", "fail"].includes(
-          (value as Record<string, unknown>).rank as string
-        )
-          ? ((value as Record<string, unknown>).rank as TechnologyRank["rank"])
-          : "ok"
-      technologies[name] = {
-        rank,
-        ...(typeof (value as Record<string, unknown>).points === "number"
-          ? { points: (value as Record<string, unknown>).points as number }
-          : {}),
-        ...(typeof (value as Record<string, unknown>).mentions === "number"
-          ? { mentions: (value as Record<string, unknown>).mentions as number }
-          : {}),
-      }
-    }
-  })
-
-  const strikes = (raw as Record<string, unknown>)?.strikes ?? {}
-  return {
-    technologies,
-    strikes: {
-      ...DEFAULT_TECH_RANKS.strikes,
-      ...(typeof strikes === "object" && strikes !== null ? strikes : {}),
-    },
-    extractedFromJobs:
-      typeof (raw as Record<string, unknown>)?.extractedFromJobs === "number"
-        ? ((raw as Record<string, unknown>).extractedFromJobs as number)
-        : undefined,
-    version:
-      typeof (raw as Record<string, unknown>)?.version === "string"
-        ? ((raw as Record<string, unknown>).version as string)
-        : undefined,
-  }
-}
-
 type StringListEditorProps = {
   label: string
   values: string[]
@@ -308,7 +262,7 @@ export function JobFinderConfigPage() {
       setJobFilters(filtersPayload)
       setOriginalJobFilters(deepClone(filtersPayload))
 
-      const techPayload = coerceTechnologyRanks(techData ?? DEFAULT_TECH_RANKS)
+      const techPayload = deepClone(techData ?? DEFAULT_TECH_RANKS)
       setTechRanks(techPayload)
       setOriginalTechRanks(deepClone(techPayload))
 

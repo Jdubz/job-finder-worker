@@ -56,41 +56,6 @@ function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>):
   return Object.fromEntries(entries) as T
 }
 
-function normalizeTechnologyRanks(payload: Record<string, unknown>): TechnologyRanksConfig {
-  const technologies = (payload.technologies ?? {}) as Record<string, unknown>
-  const normalizedTechs: Record<string, { rank: "required" | "ok" | "strike" | "fail"; points?: number; mentions?: number }> =
-    {}
-
-  for (const [name, value] of Object.entries(technologies)) {
-    if (typeof value === 'number') {
-      normalizedTechs[name] = { rank: 'ok', points: value }
-    } else if (typeof value === 'object' && value !== null) {
-      const v = value as Record<string, unknown>
-      const rank =
-        typeof v.rank === 'string' && ['required', 'ok', 'strike', 'fail'].includes(v.rank)
-          ? (v.rank as TechnologyRanksConfig['technologies'][string]['rank'])
-          : 'ok'
-      normalizedTechs[name] = {
-        rank,
-        ...(typeof v.points === 'number' ? { points: v.points } : {}),
-        ...(typeof v.mentions === 'number' ? { mentions: v.mentions } : {}),
-      }
-    }
-  }
-
-  const strikes = payload.strikes ?? {}
-  return {
-    technologies: normalizedTechs,
-    strikes: {
-      ...DEFAULT_TECH_RANKS.strikes,
-      ...(typeof strikes === 'object' && strikes !== null ? strikes : {}),
-    },
-    extractedFromJobs:
-      typeof payload.extractedFromJobs === 'number' ? payload.extractedFromJobs : undefined,
-    version: typeof payload.version === 'string' ? payload.version : undefined,
-  }
-}
-
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
   switch (id) {
     case 'stop-list':
@@ -132,7 +97,15 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
       }
     }
     case 'technology-ranks': {
-      return normalizeTechnologyRanks(payload)
+      const normalized = normalizeKeys<TechnologyRanksConfig>(payload)
+      return {
+        ...DEFAULT_TECH_RANKS,
+        ...normalized,
+        strikes: {
+          ...DEFAULT_TECH_RANKS.strikes,
+          ...(normalized.strikes ?? {}),
+        },
+      }
     }
     case 'scheduler-settings': {
       const normalized = normalizeKeys<SchedulerSettings>(payload)
