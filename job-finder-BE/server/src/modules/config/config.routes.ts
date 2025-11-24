@@ -172,7 +172,16 @@ export function buildConfigRouter() {
   router.get(
     '/:id',
     asyncHandler((req, res) => {
-      const entry = repo.get(req.params.id)
+      const id = req.params.id as JobFinderConfigId
+      const userEmail = (req as typeof req & { user?: { email?: string } }).user?.email ?? null
+
+      let entry = repo.get(id)
+
+      // Auto-create personal-info with defaults to avoid 404s in settings UI
+      if (!entry && id === 'personal-info') {
+        entry = repo.upsert(id, { name: '', email: userEmail ?? '', accentColor: '#3b82f6' }, { updatedBy: userEmail ?? undefined, name: 'Personal Info' })
+      }
+
       if (!entry) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Config not found'))
         return
