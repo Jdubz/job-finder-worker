@@ -37,7 +37,6 @@ The new schema lives in `infra/sqlite/schema.sql`. Highlights:
 | Firestore Collection | SQLite Table | Notes |
 | --- | --- | --- |
 | `content-items` | `content_items` | Stores normalized metadata per row plus `body_json` for type-specific payloads. Hierarchies maintained via `parent_id`. |
-| `experience-entries`, `experience-blurbs` | `experience_entries`, `experience_blurbs` | Preserved for worker backfills even though the FE now favors `content-items`. |
 | `companies` | `companies` | Adds `name_lower` unique index and keeps scoring/tier fields. |
 | `job-queue` | `job_queue` | Enforces status/type enums, unique URL constraint, and metadata JSON column for worker payloads. |
 | `job-matches` | `job_matches` | Includes `resume_intake_json` (single ATS keyword source), plus indexes on company + priority. |

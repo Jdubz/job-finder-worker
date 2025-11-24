@@ -207,8 +207,13 @@ function Markdown({ text }: { text: string }) {
       {blocks.map((block, index) => {
         const trimmed = block.trim()
         if (!trimmed) return null
-        if (/^- /.test(trimmed)) {
-          const items = trimmed.split(/\n/).map((line) => line.replace(/^-+\s*/, "").trim())
+        if (/^-\s/.test(trimmed)) {
+          const items = trimmed
+            .split(/\n/)
+            .filter((line) => /^\s*-\s/.test(line))
+            .map((line) => line.replace(/^\s*-+\s*/, "").trim())
+            .filter(Boolean)
+          if (items.length === 0) return null
           return (
             <ul key={`${index}-list`} className="list-disc pl-4">
               {items.map((item, i) => (
