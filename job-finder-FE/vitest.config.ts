@@ -21,6 +21,9 @@ export default defineConfig({
     },
     conditions: ['development', 'browser'],
   },
+  // Make environment variables from process.env available to tests
+  // Fallback to .env.test values if not set in process.env
+  envDir: path.resolve(__dirname, '.'),
   test: {
     globals: true,
     environment: "jsdom",
