@@ -163,14 +163,6 @@ export const router = createBrowserRouter([
         element: <ProtectedRoute requireOwner unauthRedirectTo={ROUTES.HOME} />,
         children: [
           {
-            path: ROUTES.AI_PROMPTS,
-            element: (
-              <LazyPage>
-                <AIPromptsPage />
-              </LazyPage>
-            ),
-          },
-          {
             path: ROUTES.QUEUE_MANAGEMENT,
             element: (
               <LazyPage>
@@ -195,6 +187,16 @@ export const router = createBrowserRouter([
             ),
           },
         ],
+      },
+
+      // Publicly visible; editing handled inside page (admin-only for changes)
+      {
+        path: ROUTES.AI_PROMPTS,
+        element: (
+          <LazyPage>
+            <AIPromptsPage />
+          </LazyPage>
+        ),
       },
 
       // Catch-all redirect
