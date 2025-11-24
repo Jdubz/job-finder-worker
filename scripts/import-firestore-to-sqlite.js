@@ -146,6 +146,7 @@ function insertContentItems(db, docs) {
     const description =
       d.description ??
       d.summary ??
+      d.content ??
       (Array.isArray(d.accomplishments) ? d.accomplishments.join('\\n') : undefined) ??
       (Array.isArray(body.accomplishments) ? body.accomplishments.join('\\n') : undefined) ??
       body.description ??
