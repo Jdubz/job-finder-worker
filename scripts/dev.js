@@ -21,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = join(__dirname, '..')
 
 // Configuration
-const PROD_DB_PATH = join(ROOT_DIR, 'infra/sqlite/jobfinder.db')
+const PROD_DB_PATH = '/srv/job-finder/data/jobfinder.db'
 const TEMP_DB_DIR = join(tmpdir(), 'job-finder-dev')
 const TEMP_DB_NAME = `jobfinder-dev-${randomBytes(4).toString('hex')}.db`
 const TEMP_DB_PATH = join(TEMP_DB_DIR, TEMP_DB_NAME)

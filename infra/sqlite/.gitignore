@@ -1,0 +1,4 @@
+# Database files - prod db lives in /srv/job-finder/data/
+*.db
+*.db-shm
+*.db-wal
