@@ -9,7 +9,21 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Save, RotateCcw, Plus, X } from "lucide-react"
 import { configClient } from "@/api/config-client"
-import type { StopList, QueueSettings, AISettings } from "@shared/types"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  DEFAULT_JOB_FILTERS,
+  DEFAULT_TECH_RANKS,
+  DEFAULT_SCHEDULER_SETTINGS,
+} from "@shared/types"
+import type {
+  StopList,
+  QueueSettings,
+  AISettings,
+  JobFiltersConfig,
+  TechnologyRanksConfig,
+  SchedulerSettings,
+} from "@shared/types"
+import { isJobFiltersConfig, isTechnologyRanksConfig, isSchedulerSettings } from "@shared/types"
 import {
   Select,
   SelectContent,
@@ -24,7 +38,7 @@ export function JobFinderConfigPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<"stop-list" | "queue" | "ai">("stop-list")
+  const [activeTab, setActiveTab] = useState<"stop-list" | "queue" | "ai" | "filters" | "tech" | "scheduler">("stop-list")
 
   // Stop List state
   const [stopList, setStopList] = useState<StopList | null>(null)
@@ -41,6 +55,18 @@ export function JobFinderConfigPage() {
   const [aiSettings, setAISettings] = useState<AISettings | null>(null)
   const [originalAISettings, setOriginalAISettings] = useState<AISettings | null>(null)
 
+  // Job Filters
+  const [jobFiltersJson, setJobFiltersJson] = useState<string>(JSON.stringify(DEFAULT_JOB_FILTERS, null, 2))
+  const [originalJobFiltersJson, setOriginalJobFiltersJson] = useState<string>(JSON.stringify(DEFAULT_JOB_FILTERS, null, 2))
+
+  // Technology Ranks
+  const [techRanksJson, setTechRanksJson] = useState<string>(JSON.stringify(DEFAULT_TECH_RANKS, null, 2))
+  const [originalTechRanksJson, setOriginalTechRanksJson] = useState<string>(JSON.stringify(DEFAULT_TECH_RANKS, null, 2))
+
+  // Scheduler Settings
+  const [schedulerJson, setSchedulerJson] = useState<string>(JSON.stringify(DEFAULT_SCHEDULER_SETTINGS, null, 2))
+  const [originalSchedulerJson, setOriginalSchedulerJson] = useState<string>(JSON.stringify(DEFAULT_SCHEDULER_SETTINGS, null, 2))
+
   useEffect(() => {
     loadAllSettings()
   }, [])
@@ -50,10 +76,13 @@ export function JobFinderConfigPage() {
     setError(null)
 
     try {
-      const [stopListData, queueData, aiData] = await Promise.all([
+      const [stopListData, queueData, aiData, filtersData, techData, schedulerData] = await Promise.all([
         configClient.getStopList(),
         configClient.getQueueSettings(),
         configClient.getAISettings(),
+        configClient.getJobFilters(),
+        configClient.getTechnologyRanks(),
+        configClient.getSchedulerSettings(),
       ])
 
       setStopList(stopListData)
@@ -62,6 +91,18 @@ export function JobFinderConfigPage() {
       setOriginalQueueSettings(queueData)
       setAISettings(aiData)
       setOriginalAISettings(aiData)
+
+      const filtersPayload = (filtersData as JobFiltersConfig | null) ?? DEFAULT_JOB_FILTERS
+      setJobFiltersJson(JSON.stringify(filtersPayload, null, 2))
+      setOriginalJobFiltersJson(JSON.stringify(filtersPayload, null, 2))
+
+      const techPayload = (techData as TechnologyRanksConfig | null) ?? DEFAULT_TECH_RANKS
+      setTechRanksJson(JSON.stringify(techPayload, null, 2))
+      setOriginalTechRanksJson(JSON.stringify(techPayload, null, 2))
+
+      const schedulerPayload = (schedulerData as SchedulerSettings | null) ?? DEFAULT_SCHEDULER_SETTINGS
+      setSchedulerJson(JSON.stringify(schedulerPayload, null, 2))
+      setOriginalSchedulerJson(JSON.stringify(schedulerPayload, null, 2))
     } catch (err) {
       setError("Failed to load configuration settings")
       console.error("Error loading settings:", err)
@@ -125,6 +166,66 @@ export function JobFinderConfigPage() {
     } catch (err) {
       setError("Failed to save AI settings")
       console.error("Error saving AI settings:", err)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleSaveJobFilters = async () => {
+    setIsSaving(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const parsed = JSON.parse(jobFiltersJson)
+      if (!isJobFiltersConfig(parsed)) {
+        throw new Error("Invalid job filters structure")
+      }
+      await configClient.updateJobFilters(parsed)
+      setOriginalJobFiltersJson(jobFiltersJson)
+      setSuccess("Job filters saved successfully!")
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save job filters")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleSaveTechRanks = async () => {
+    setIsSaving(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const parsed = JSON.parse(techRanksJson)
+      if (!isTechnologyRanksConfig(parsed)) {
+        throw new Error("Invalid technology ranks structure")
+      }
+      await configClient.updateTechnologyRanks(parsed)
+      setOriginalTechRanksJson(techRanksJson)
+      setSuccess("Technology ranks saved successfully!")
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save technology ranks")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleSaveScheduler = async () => {
+    setIsSaving(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const parsed = JSON.parse(schedulerJson)
+      if (!isSchedulerSettings(parsed)) {
+        throw new Error("Invalid scheduler settings structure")
+      }
+      await configClient.updateSchedulerSettings(parsed)
+      setOriginalSchedulerJson(schedulerJson)
+      setSuccess("Scheduler settings saved successfully!")
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save scheduler settings")
     } finally {
       setIsSaving(false)
     }
@@ -208,6 +309,9 @@ export function JobFinderConfigPage() {
   const hasStopListChanges = JSON.stringify(stopList) !== JSON.stringify(originalStopList)
   const hasQueueChanges = JSON.stringify(queueSettings) !== JSON.stringify(originalQueueSettings)
   const hasAIChanges = JSON.stringify(aiSettings) !== JSON.stringify(originalAISettings)
+  const hasJobFilterChanges = jobFiltersJson !== originalJobFiltersJson
+  const hasTechRankChanges = techRanksJson !== originalTechRanksJson
+  const hasSchedulerChanges = schedulerJson !== originalSchedulerJson
 
   if (!isOwner) {
     return (
@@ -254,10 +358,13 @@ export function JobFinderConfigPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="stop-list">Stop List</TabsTrigger>
           <TabsTrigger value="queue">Queue Settings</TabsTrigger>
           <TabsTrigger value="ai">AI Settings</TabsTrigger>
+          <TabsTrigger value="filters">Job Filters</TabsTrigger>
+          <TabsTrigger value="tech">Tech Ranks</TabsTrigger>
+          <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
         </TabsList>
 
         {/* Stop List Tab */}
@@ -618,7 +725,224 @@ export function JobFinderConfigPage() {
                   />
                   <p className="text-xs text-gray-500">Maximum daily AI API cost (USD)</p>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="generateIntake">Generate Intake Data</Label>
+                  <Select
+                    value={aiSettings?.generateIntakeData ? "yes" : "no"}
+                    onValueChange={(value) =>
+                      setAISettings((prev: AISettings | null) =>
+                        prev ? { ...prev, generateIntakeData: value === "yes" } : null
+                      )
+                    }
+                  >
+                    <SelectTrigger id="generateIntake">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">Yes</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500">Toggle AI resume intake generation</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="portlandBonus">Portland Office Bonus</Label>
+                  <Input
+                    id="portlandBonus"
+                    type="number"
+                    value={aiSettings?.portlandOfficeBonus ?? 15}
+                    onChange={(e) =>
+                      setAISettings((prev: AISettings | null) =>
+                        prev
+                          ? { ...prev, portlandOfficeBonus: parseInt(e.target.value) || 0 }
+                          : null
+                      )
+                    }
+                  />
+                  <p className="text-xs text-gray-500">Bonus points for Portland offices</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="userTimezone">User Timezone Offset</Label>
+                  <Input
+                    id="userTimezone"
+                    type="number"
+                    step="0.5"
+                    value={aiSettings?.userTimezone ?? -8}
+                    onChange={(e) =>
+                      setAISettings((prev: AISettings | null) =>
+                        prev
+                          ? { ...prev, userTimezone: parseFloat(e.target.value) }
+                          : null
+                      )
+                    }
+                  />
+                  <p className="text-xs text-gray-500">Offset from UTC (e.g., -8 for PT)</p>
+                </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Job Filters Tab */}
+        <TabsContent value="filters" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Job Filters</CardTitle>
+                  <CardDescription>Strike rules and hard rejections used by the worker</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setJobFiltersJson(originalJobFiltersJson)
+                      setError(null)
+                      setSuccess(null)
+                    }}
+                    disabled={!hasJobFilterChanges || isSaving}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reset
+                  </Button>
+                  <Button onClick={handleSaveJobFilters} disabled={!hasJobFilterChanges || isSaving}>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Label htmlFor="filters-json">JSON</Label>
+              <Textarea
+                id="filters-json"
+                value={jobFiltersJson}
+                onChange={(e) => setJobFiltersJson(e.target.value)}
+                rows={16}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Edit strike/hard-rejection configuration. Payload is validated before save.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Technology Ranks Tab */}
+        <TabsContent value="tech" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Technology Ranks</CardTitle>
+                  <CardDescription>Weighting for technology importance in filtering</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setTechRanksJson(originalTechRanksJson)
+                      setError(null)
+                      setSuccess(null)
+                    }}
+                    disabled={!hasTechRankChanges || isSaving}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reset
+                  </Button>
+                  <Button onClick={handleSaveTechRanks} disabled={!hasTechRankChanges || isSaving}>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Label htmlFor="tech-json">JSON</Label>
+              <Textarea
+                id="tech-json"
+                value={techRanksJson}
+                onChange={(e) => setTechRanksJson(e.target.value)}
+                rows={12}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">Key/value pairs of technology weightings.</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Scheduler Settings Tab */}
+        <TabsContent value="scheduler" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Scheduler Settings</CardTitle>
+                  <CardDescription>Worker poll interval and scheduling knobs</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSchedulerJson(originalSchedulerJson)
+                      setError(null)
+                      setSuccess(null)
+                    }}
+                    disabled={!hasSchedulerChanges || isSaving}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reset
+                  </Button>
+                  <Button onClick={handleSaveScheduler} disabled={!hasSchedulerChanges || isSaving}>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Label htmlFor="scheduler-json">JSON</Label>
+              <Textarea
+                id="scheduler-json"
+                value={schedulerJson}
+                onChange={(e) => setSchedulerJson(e.target.value)}
+                rows={6}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">Set pollIntervalSeconds and related knobs.</p>
             </CardContent>
           </Card>
         </TabsContent>
