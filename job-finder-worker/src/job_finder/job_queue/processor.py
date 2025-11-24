@@ -251,10 +251,6 @@ class QueueItemProcessor:
     # ============================================================
 
     # Job processor delegations
-    def _build_company_info_string(self, company_info: Dict[str, Any]) -> str:
-        """Delegate to job processor."""
-        return self.job_processor._build_company_info_string(company_info)
-
     def _process_scrape(self, item: JobQueueItem) -> None:
         """Delegate to job processor."""
         return self.job_processor.process_scrape(item)

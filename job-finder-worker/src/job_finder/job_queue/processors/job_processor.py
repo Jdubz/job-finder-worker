@@ -222,7 +222,9 @@ class JobProcessor(BaseProcessor):
                 company_id = company.get("id")
                 job_data["company_id"] = company_id
                 job_data["companyId"] = company_id  # backward compatibility
-                job_data["company_info"] = self._build_company_info_string(company)
+                from job_finder.utils.company_info import build_company_info_string
+
+                job_data["company_info"] = build_company_info_string(company)
 
             # Run AI matching (uses configured model - Sonnet by default)
             result = self.ai_matcher.analyze_job(job_data)
@@ -621,30 +623,6 @@ class JobProcessor(BaseProcessor):
         # For job boards, try to find actual company domain in the content
         # For now, just return the job board domain
         return f"https://{domain}"
-
-    def _build_company_info_string(self, company_info: Dict[str, Any]) -> str:
-        """
-        Build formatted company info string.
-
-        Args:
-            company_info: Company data dictionary
-
-        Returns:
-            Formatted company info string
-        """
-        company_about = company_info.get("about", "")
-        company_culture = company_info.get("culture", "")
-        company_mission = company_info.get("mission", "")
-
-        company_info_parts = []
-        if company_about:
-            company_info_parts.append(f"About: {company_about}")
-        if company_culture:
-            company_info_parts.append(f"Culture: {company_culture}")
-        if company_mission:
-            company_info_parts.append(f"Mission: {company_mission}")
-
-        return "\n\n".join(company_info_parts)
 
     # ============================================================
     # SCRAPE REQUESTS (enqueue-only)

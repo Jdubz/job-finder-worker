@@ -89,37 +89,11 @@ class BaseProcessor:
     # ============================================================
 
     def _should_skip_by_stop_list(self, item: JobQueueItem) -> bool:
-        """
-        Check if item should be skipped based on stop list.
+        """Check if item should be skipped based on stop list."""
+        from job_finder.utils.company_info import should_skip_by_stop_list
 
-        Args:
-            item: Queue item to check
-
-        Returns:
-            True if item should be skipped, False otherwise
-        """
         stop_list = self.config_loader.get_stop_list()
-
-        # Check excluded companies
-        if item.company_name:
-            for excluded in stop_list["excludedCompanies"]:
-                if excluded.lower() in item.company_name.lower():
-                    logger.info(f"Skipping due to excluded company: {item.company_name}")
-                    return True
-
-        # Check excluded domains
-        for excluded_domain in stop_list["excludedDomains"]:
-            if excluded_domain.lower() in item.url.lower():
-                logger.info(f"Skipping due to excluded domain: {excluded_domain}")
-                return True
-
-        # Check excluded keywords in URL
-        for keyword in stop_list["excludedKeywords"]:
-            if keyword.lower() in item.url.lower():
-                logger.info(f"Skipping due to excluded keyword in URL: {keyword}")
-                return True
-
-        return False
+        return should_skip_by_stop_list(item.url, item.company_name or "", stop_list)
 
     def _update_item_status(
         self,
