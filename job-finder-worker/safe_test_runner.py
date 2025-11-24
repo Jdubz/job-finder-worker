@@ -9,7 +9,6 @@ This is the ONLY way to run tests in this repository.
 
 import json
 import os
-import signal
 import subprocess
 import sys
 import threading

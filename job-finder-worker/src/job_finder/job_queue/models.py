@@ -379,6 +379,12 @@ class JobQueueItem(BaseModel):
     def to_record(self) -> Dict[str, Any]:
         """Convert the queue item into a SQLite-ready dictionary."""
 
+        def enum_val(value: Any) -> Any:
+            """Return the raw value for Enum-like inputs."""
+            if value is None:
+                return None
+            return getattr(value, "value", value)
+
         def serialize(value: Optional[Dict[str, Any]] | Optional[List[Any]]) -> Optional[str]:
             if value is None:
                 return None
@@ -389,8 +395,8 @@ class JobQueueItem(BaseModel):
 
         return {
             "id": self.id,
-            "type": self.type.value,
-            "status": self.status.value,
+            "type": enum_val(self.type),
+            "status": enum_val(self.status),
             "url": self.url,
             "company_name": self.company_name,
             "company_id": self.company_id,
@@ -412,11 +418,11 @@ class JobQueueItem(BaseModel):
             "source_id": self.source_id,
             "source_type": self.source_type,
             "source_config": serialize(self.source_config),
-            "source_tier": self.source_tier.value if self.source_tier else None,
-            "sub_task": self.sub_task.value if self.sub_task else None,
+            "source_tier": enum_val(self.source_tier),
+            "sub_task": enum_val(self.sub_task),
             "pipeline_state": serialize(self.pipeline_state),
             "parent_item_id": self.parent_item_id,
-            "company_sub_task": self.company_sub_task.value if self.company_sub_task else None,
+            "company_sub_task": enum_val(self.company_sub_task),
             "tracking_id": self.tracking_id,
             "ancestry_chain": serialize(self.ancestry_chain),
             "spawn_depth": self.spawn_depth,

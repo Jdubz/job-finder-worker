@@ -55,6 +55,13 @@ class JobSourcesManager:
             "consecutiveFailures": row.get("consecutive_failures", 0),
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
+            "discoveryConfidence": row.get("discovery_confidence"),
+            "discoveredVia": row.get("discovered_via"),
+            "discoveredBy": row.get("discovered_by"),
+            "discoveryQueueItemId": row.get("discovery_queue_item_id"),
+            "validationRequired": bool(row.get("validation_required", 0)),
+            "tier": row.get("tier", "D"),
+            "health": parse_json(row.get("health_json"), {}),
         }
 
     # ------------------------------------------------------------------ #
@@ -70,8 +77,19 @@ class JobSourcesManager:
         company_id: Optional[str] = None,
         company_name: Optional[str] = None,
         tags: Optional[List[str]] = None,
+        validation_required: bool = False,
+        discovery_confidence: Optional[str] = None,
+        discovered_via: Optional[str] = None,
+        discovered_by: Optional[str] = None,
+        discovery_queue_item_id: Optional[str] = None,
+        tier: str = "D",
+        health: Optional[Dict[str, Any]] = None,
     ) -> str:
-        status = SourceStatus.ACTIVE.value if enabled else SourceStatus.DISABLED.value
+        if validation_required:
+            status = SourceStatus.PENDING_VALIDATION.value
+        else:
+            status = SourceStatus.ACTIVE.value if enabled else SourceStatus.DISABLED.value
+
         source_id = str(uuid4())
         now = _utcnow_iso()
 
@@ -83,8 +101,11 @@ class JobSourcesManager:
                     company_id, company_name,
                     last_scraped_at, last_scraped_status, last_scraped_error,
                     total_jobs_found, total_jobs_matched, consecutive_failures,
+                    discovery_confidence, discovered_via, discovered_by, discovery_queue_item_id,
+                    validation_required, tier, health_json,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, 0, 0, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, 0, 0,
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     source_id,
@@ -95,6 +116,13 @@ class JobSourcesManager:
                     json.dumps(tags or []),
                     company_id,
                     company_name,
+                    discovery_confidence,
+                    discovered_via,
+                    discovered_by,
+                    discovery_queue_item_id,
+                    1 if validation_required else 0,
+                    tier,
+                    json.dumps(health or {}),
                     now,
                     now,
                 ),
@@ -166,7 +194,33 @@ class JobSourcesManager:
         jobs_matched: int = 0,
         error: Optional[str] = None,
     ) -> None:
+        """Update scrape status and recompute health."""
         now = _utcnow_iso()
+
+        # Normalize status into SourceStatus
+        status_lower = status.lower()
+        if status_lower in ("success", "active"):
+            normalized_status = SourceStatus.ACTIVE.value
+        elif status_lower in ("error", "failed", SourceStatus.FAILED.value):
+            normalized_status = SourceStatus.FAILED.value
+        elif status_lower == SourceStatus.PENDING_VALIDATION.value:
+            normalized_status = SourceStatus.PENDING_VALIDATION.value
+        elif status_lower == SourceStatus.DISABLED.value:
+            normalized_status = SourceStatus.DISABLED.value
+        else:
+            normalized_status = status
+
+        # Read current consecutive failures to compute health
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT consecutive_failures FROM job_sources WHERE id = ?", (source_id,)
+            ).fetchone()
+            current_failures = row["consecutive_failures"] if row else 0
+
+        new_failures = current_failures + 1 if normalized_status == SourceStatus.FAILED.value else 0
+        health_score = max(0.1, 1.0 - 0.1 * new_failures)
+        health = {"healthScore": health_score, "consecutiveFailures": new_failures}
+
         with sqlite_connection(self.db_path) as conn:
             conn.execute(
                 """
@@ -176,21 +230,21 @@ class JobSourcesManager:
                     last_scraped_error = ?,
                     total_jobs_found = total_jobs_found + ?,
                     total_jobs_matched = total_jobs_matched + ?,
-                    consecutive_failures = CASE
-                        WHEN ? = ? THEN consecutive_failures + 1
-                        ELSE 0
-                    END,
+                    consecutive_failures = ?,
+                    health_json = ?,
+                    status = ?,
                     updated_at = ?
                 WHERE id = ?
                 """,
                 (
                     now,
-                    status,
+                    normalized_status,
                     error,
                     jobs_found,
                     jobs_matched,
-                    status,
-                    SourceStatus.FAILED.value,
+                    new_failures,
+                    json.dumps(health),
+                    normalized_status,
                     now,
                     source_id,
                 ),
@@ -215,21 +269,34 @@ class JobSourcesManager:
 
     def create_from_discovery(
         self,
-        url: str,
+        name: str,
+        source_type: str,
+        config: Dict[str, Any],
+        discovered_via: Optional[str],
+        discovered_by: Optional[str],
+        discovery_confidence: Optional[str],
+        discovery_queue_item_id: Optional[str],
         company_id: Optional[str],
         company_name: Optional[str],
+        enabled: bool,
+        validation_required: bool,
         tags: Optional[List[str]] = None,
-        auto_enable: bool = True,
+        tier: str = "D",
     ) -> str:
-        config = {"url": url}
         return self.add_source(
-            name=f"Discovered Source - {company_name or url}",
-            source_type="scraper",
+            name=name,
+            source_type=source_type,
             config=config,
-            enabled=auto_enable,
+            enabled=enabled,
             company_id=company_id,
             company_name=company_name,
             tags=tags,
+            validation_required=validation_required,
+            discovery_confidence=discovery_confidence,
+            discovered_via=discovered_via,
+            discovered_by=discovered_by,
+            discovery_queue_item_id=discovery_queue_item_id,
+            tier=tier,
         )
 
     def update_source_status(self, source_id: str, status: SourceStatus) -> None:

@@ -244,7 +244,7 @@ class TestGenericDiscovery:
         source_processor.process_source_discovery(item)
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
-        assert create_kwargs["source_type"] == "scraper"
+        assert create_kwargs["source_type"] == "generic"
         assert create_kwargs["config"]["discovered_by_ai"] is True
         assert create_kwargs["enabled"] is False  # medium confidence -> manual validation
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]

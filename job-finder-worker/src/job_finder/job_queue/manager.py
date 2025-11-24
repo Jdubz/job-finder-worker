@@ -70,7 +70,8 @@ class QueueManager:
         except Exception as exc:
             raise StorageError(f"Failed to insert queue item: {exc}") from exc
 
-        logger.info("Added queue item %s (%s)", item.id, item.type.value)
+        type_label = item.type if not hasattr(item.type, "value") else item.type.value
+        logger.info("Added queue item %s (%s)", item.id, type_label)
         return item.id
 
     def get_pending_items(self, limit: int = 10) -> List[JobQueueItem]:
