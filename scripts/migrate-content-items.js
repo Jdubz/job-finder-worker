@@ -4,7 +4,7 @@
  * Normalizes legacy content-item exports and inserts them into SQLite.
  *
  * Usage:
- *   node scripts/migrate-content-items.js --input docs/content-items-export.json \\
+ *   node scripts/migrate-content-items.js --input data/content-items/content-items-export.json \\
  *     --db infra/sqlite/jobfinder.db --user-id <uuid> --user-email someone@example.com [--dry-run]
  */
 
@@ -30,7 +30,7 @@ function parseArgs(argv) {
     }
   }
   return {
-    input: map.get("--input") ?? path.resolve(__dirname, "../docs/content-items-export.json"),
+    input: map.get("--input") ?? path.resolve(__dirname, "../data/content-items/content-items-export.json"),
     dbPath: map.get("--db") ?? path.resolve(__dirname, "../infra/sqlite/jobfinder.db"),
     userId: map.get("--user-id") ?? process.env.CONTENT_ITEMS_USER_ID,
     userEmail: map.get("--user-email") ?? process.env.CONTENT_ITEMS_USER_EMAIL,

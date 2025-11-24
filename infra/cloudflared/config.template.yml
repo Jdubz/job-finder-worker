@@ -1,0 +1,19 @@
+# Cloudflared tunnel configuration template
+#
+# INSTRUCTIONS FOR PRODUCTION:
+# 1. Copy this file to your cloudflared config directory
+# 2. Replace ${CLOUDFLARE_TUNNEL_ID} with your actual tunnel ID
+# 3. Replace ${CLOUDFLARE_TUNNEL_ID}.json with your tunnel credentials file name
+# 4. Update the hostname to match your production domain
+# 5. Ensure the tunnel credentials JSON file is in the same directory
+
+tunnel: ${CLOUDFLARE_TUNNEL_ID}
+credentials-file: /etc/cloudflared/${CLOUDFLARE_TUNNEL_ID}.json
+
+ingress:
+  - hostname: your-api-domain.example.com
+    service: http://api:8080
+  - service: http_status:404
+
+warp-routing:
+  enabled: false

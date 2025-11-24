@@ -1,9 +1,13 @@
 version: "3.9"
 
-# Unified production stack (API + worker + SQLite) for the on-host deployment.
-# Usage:
-#   docker compose -f infra/docker-compose.yml up -d
-# Ensure /srv/job-finder/{data,secrets,config,logs,worker-data,cloudflared} exist on the host.
+# Template for production deployment stack (API + worker + SQLite)
+#
+# INSTRUCTIONS FOR PRODUCTION:
+# 1. Copy this file to your production server (e.g., /srv/job-finder/docker-compose.yml)
+# 2. Update the volume paths to match your server setup
+# 3. Ensure all required directories exist on the host
+# 4. Update the .env file with production secrets
+# 5. Run: docker compose up -d
 
 services:
   api:
@@ -18,11 +22,12 @@ services:
       DATABASE_PATH: /data/sqlite/jobfinder.db
       JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
     volumes:
+      # Update these paths to match your production server
       - type: bind
-        source: /srv/job-finder/data
+        source: ./data  # Change to your data directory
         target: /data/sqlite
       - type: bind
-        source: /srv/job-finder/artifacts
+        source: ./artifacts  # Change to your artifacts directory
         target: /data/artifacts
     depends_on:
       sqlite-migrator:
@@ -46,17 +51,18 @@ services:
       SQLITE_DB_PATH: /data/sqlite/jobfinder.db
       CONFIG_PATH: /app/config/config.production.yaml
     volumes:
+      # Update these paths to match your production server
       - type: bind
-        source: /srv/job-finder/data
+        source: ./data  # Change to your data directory
         target: /data/sqlite
       - type: bind
-        source: /srv/job-finder/config
+        source: ./config  # Change to your config directory
         target: /app/config
       - type: bind
-        source: /srv/job-finder/logs
+        source: ./logs  # Change to your logs directory
         target: /app/logs
       - type: bind
-        source: /srv/job-finder/worker-data
+        source: ./worker-data  # Change to your worker-data directory
         target: /app/data
     depends_on:
       sqlite-migrator:
@@ -78,8 +84,9 @@ services:
       DATABASE_PATH: /data/sqlite/jobfinder.db
       JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
     volumes:
+      # Update these paths to match your production server
       - type: bind
-        source: /srv/job-finder/data
+        source: ./data  # Change to your data directory
         target: /data/sqlite
     networks:
       - jobfinder
@@ -96,8 +103,9 @@ services:
     depends_on:
       - api
     volumes:
+      # Update this path to your cloudflared config directory
       - type: bind
-        source: /srv/job-finder/cloudflared
+        source: ./cloudflared  # Change to your cloudflared directory
         target: /etc/cloudflared
         read_only: true
     networks:
