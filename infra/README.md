@@ -7,6 +7,7 @@ The `infra/` directory tracks deployment artifacts that used to live across mult
 | [`infra/cloudflared`](./cloudflared) | Cloudflared tunnel configuration + sample manifests for exposing the API host. |
 | [`infra/docker-compose.yml`](./docker-compose.yml) | Local compose stack that mirrors the production single-host deployment (API, worker, SQLite, Cloudflared). |
 | [`infra/sqlite`](./sqlite) | SQLite schema plus the TypeScript seed/export workspace. |
+| `/srv/job-finder/artifacts` | Bind-mounted storage for generator artifacts (PDFs, images) retained across container restarts. |
 
 ## SQLite Workspace
 

@@ -10,7 +10,8 @@ export interface UploadResult {
   size: number
 }
 
-const defaultArtifactsDir = path.resolve(process.cwd(), 'tmp', 'artifacts')
+// Default to a shared, volume-backed directory inside the container
+const defaultArtifactsDir = path.resolve('/data/artifacts')
 const artifactsRoot = env.GENERATOR_ARTIFACTS_DIR ? path.resolve(env.GENERATOR_ARTIFACTS_DIR) : defaultArtifactsDir
 const publicBasePath = env.GENERATOR_ARTIFACTS_PUBLIC_BASE ?? '/api/generator/artifacts'
 
