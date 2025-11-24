@@ -85,8 +85,11 @@ const mockJobFilters = {
 }
 
 const mockTechRanks = {
-  technologies: { react: 5, typescript: 4 },
-  strikes: { missingAllRequired: 1 },
+  technologies: {
+    react: { rank: "required" as const, points: 0 },
+    typescript: { rank: "required" as const, points: 0 },
+  },
+  strikes: { missingAllRequired: 1, perBadTech: 2 },
 }
 
 const mockScheduler = {

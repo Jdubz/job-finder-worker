@@ -37,12 +37,10 @@ describe("PromptsClient", () => {
     expect(prompts.resumeGeneration).toBe("test")
   })
 
-  it("falls back to defaults when request fails", async () => {
+  it("surfaces errors when request fails", async () => {
     mockFetch.mockRejectedValue(new Error("network"))
 
-    const prompts = await client.getPrompts()
-
-    expect(prompts).toEqual(DEFAULT_PROMPTS)
+    await expect(client.getPrompts()).rejects.toThrow("network")
   })
 
   it("saves prompts via PUT", async () => {

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -31,12 +31,12 @@ export function AIPromptsPage() {
   const [showPreview, setShowPreview] = useState(false)
 
   // Sync server prompts to local editable state when they change
-  useMemo(() => {
+  useEffect(() => {
     setEditedPrompts(serverPrompts)
   }, [serverPrompts])
 
   // Show load error if present
-  useMemo(() => {
+  useEffect(() => {
     if (loadError) {
       setError("Unable to load prompts. Using defaults.")
     }

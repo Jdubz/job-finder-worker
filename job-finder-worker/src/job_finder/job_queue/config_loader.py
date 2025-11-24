@@ -68,12 +68,12 @@ class ConfigLoader:
             logger.warning("Job filters not configured; using defaults")
             return {}
 
-    def get_technology_ranks(self) -> Dict[str, int]:
+    def get_technology_ranks(self) -> Dict[str, Any]:
         try:
             return self._get_config("technology-ranks")
         except InitializationError:
             logger.warning("Technology ranks not configured; using defaults")
-            return {}
+            return {"technologies": {}, "strikes": {"missingAllRequired": 1, "perBadTech": 2}}
 
     def get_scheduler_settings(self) -> Dict[str, Any]:
         try:
