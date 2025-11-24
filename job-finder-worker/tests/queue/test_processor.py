@@ -257,7 +257,9 @@ def test_build_company_info_string(processor):
         "mission": "To make work better",
     }
 
-    result = processor._build_company_info_string(company_info)
+    from job_finder.utils.company_info import build_company_info_string
+
+    result = build_company_info_string(company_info)
 
     assert "About: We build great software" in result
     assert "Culture: Remote-first, collaborative" in result
