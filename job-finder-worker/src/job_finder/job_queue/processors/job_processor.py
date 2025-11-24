@@ -253,7 +253,8 @@ class JobProcessor(BaseProcessor):
                     fetch_info_func=self.company_info_fetcher.fetch_company_info,
                 )
                 company_id = company.get("id")
-                job_data["companyId"] = company_id
+                job_data["company_id"] = company_id
+                job_data["companyId"] = company_id  # backward compatibility
                 job_data["company_info"] = self._build_company_info_string(company)
 
             # Run AI matching (uses configured model - Sonnet by default)
@@ -567,7 +568,8 @@ class JobProcessor(BaseProcessor):
 
                     # Use stub data for now (will have minimal info)
                     company_id = company.get("id")
-                    job_data["companyId"] = company_id
+                    job_data["company_id"] = company_id
+                    job_data["companyId"] = company_id  # backward compatibility
                     job_data["company_info"] = self._build_company_info_string(company)
 
                 elif company.get("status") in [
@@ -590,7 +592,8 @@ class JobProcessor(BaseProcessor):
                     # Company exists and has good data - use it
                     logger.info(f"Using existing company data for {company_name}")
                     company_id = company.get("id")
-                    job_data["companyId"] = company_id
+                    job_data["company_id"] = company_id
+                    job_data["companyId"] = company_id  # backward compatibility
                     job_data["company_info"] = self._build_company_info_string(company)
 
             # Run AI matching (uses configured model - Sonnet by default)

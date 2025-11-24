@@ -2,6 +2,7 @@
 """Unified job search entry point with configurable options."""
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -20,8 +21,8 @@ def main():
     parser = argparse.ArgumentParser(description="Run job finder search")
     parser.add_argument(
         "--config",
-        default="config/config.yaml",
-        help="Path to configuration file (default: config/config.yaml)",
+        default="config/config.dev.yaml",
+        help="Path to configuration file (default: config/config.dev.yaml)",
     )
     parser.add_argument(
         "--max-jobs",
@@ -46,6 +47,9 @@ def main():
     if not args.no_env:
         load_dotenv()
 
+    # Provide a safe default ENVIRONMENT for logging if not supplied
+    os.environ.setdefault("ENVIRONMENT", "development")
+
     # Configure logging
     setup_logging()
 
@@ -59,7 +63,16 @@ def main():
     if args.mode == "full":
         print(f"\n📋 Loading configuration from: {args.config}")
 
-    with open(args.config, "r") as f:
+    config_path = Path(args.config)
+    if not config_path.exists():
+        print(
+            f"\n❌ Config file not found: {config_path}\n"
+            "   Try one of: config/config.dev.yaml, config/config.local-e2e.yaml, "
+            "or copy config/config.example.yaml to config/config.yaml and customize."
+        )
+        sys.exit(1)
+
+    with config_path.open("r") as f:
         config = yaml.safe_load(f)
 
     # Override max_jobs if specified

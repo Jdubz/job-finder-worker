@@ -318,7 +318,7 @@ class JobSearchOrchestrator:
 
             if not jobs:
                 self.sources_manager.update_scrape_status(
-                    doc_id=listing["id"], status="success", jobs_found=0
+                    source_id=listing["id"], status="success", jobs_found=0
                 )
                 return stats
 
@@ -332,7 +332,7 @@ class JobSearchOrchestrator:
 
             if not remote_jobs:
                 self.sources_manager.update_scrape_status(
-                    doc_id=listing["id"], status="success", jobs_found=len(jobs)
+                    source_id=listing["id"], status="success", jobs_found=len(jobs)
                 )
                 return stats
 
@@ -342,7 +342,7 @@ class JobSearchOrchestrator:
 
             if not fresh_jobs:
                 self.sources_manager.update_scrape_status(
-                    doc_id=listing["id"], status="success", jobs_found=len(jobs)
+                    source_id=listing["id"], status="success", jobs_found=len(jobs)
                 )
                 return stats
 
@@ -353,7 +353,7 @@ class JobSearchOrchestrator:
 
             if not role_filtered_jobs:
                 self.sources_manager.update_scrape_status(
-                    doc_id=listing["id"], status="success", jobs_found=len(jobs)
+                    source_id=listing["id"], status="success", jobs_found=len(jobs)
                 )
                 return stats
 
@@ -376,7 +376,7 @@ class JobSearchOrchestrator:
 
             # Update source stats
             self.sources_manager.update_scrape_status(
-                doc_id=listing["id"],
+                source_id=listing["id"],
                 status="success",
                 jobs_found=len(jobs),
                 jobs_matched=stats["jobs_matched"],
@@ -387,7 +387,7 @@ class JobSearchOrchestrator:
         except Exception as e:
             logger.error(f"Error processing {listing_name}: {str(e)}")
             self.sources_manager.update_scrape_status(
-                doc_id=listing["id"], status="error", error=str(e)
+                source_id=listing["id"], status="error", error=str(e)
             )
             raise
 
@@ -579,12 +579,15 @@ class JobSearchOrchestrator:
         stats = {"jobs_analyzed": 0, "jobs_matched": 0, "jobs_saved": 0}
 
         processed = 0
+        from job_finder.utils.url_utils import normalize_url
+
         for i, job in enumerate(jobs, 1):
             try:
                 job_url = job.get("url", "")
 
                 # Skip if already exists
-                if existing_jobs.get(job_url, False):
+                normalized = normalize_url(job_url) if job_url else ""
+                if existing_jobs.get(normalized, False):
                     logger.debug(f"  [{i}/{len(jobs)}] Duplicate: {job.get('title')}")
                     continue
 
@@ -603,7 +606,8 @@ class JobSearchOrchestrator:
                     # Add companyId to job before saving (if source has a company link)
                     company_id = listing.get("companyId")
                     if company_id:
-                        job["companyId"] = company_id
+                        job["company_id"] = company_id
+                        job["companyId"] = company_id  # maintain backward compatibility
 
                     # Save to SQLite
                     doc_id = self.job_storage.save_job_match(job, result)

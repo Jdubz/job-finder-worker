@@ -153,7 +153,7 @@ class JobStorage:
                         job_id,
                         normalized_url or job.get("url", ""),
                         job.get("company", "") or job.get("company_name", ""),
-                        job.get("company_id"),
+                        job.get("company_id") or job.get("companyId"),
                         job.get("title", ""),
                         job.get("location"),
                         job.get("salary") or job.get("salary_range"),
