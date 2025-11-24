@@ -54,30 +54,34 @@ function deepClone<T>(value: T): T {
 }
 
 const coerceTechnologyRanks = (
-  raw: TechnologyRanksConfig | Record<string, any> | null
+  raw: TechnologyRanksConfig | Record<string, unknown> | null
 ): TechnologyRanksConfig => {
   const technologies: TechnologyRanksConfig["technologies"] = {}
-  const sourceTechs = (raw as any)?.technologies ?? {}
-  Object.entries(sourceTechs).forEach(([name, value]) => {
+  const sourceTechs = (raw as Record<string, unknown>)?.technologies ?? {}
+  Object.entries(sourceTechs as Record<string, unknown>).forEach(([name, value]) => {
     if (typeof value === "number") {
       technologies[name] = { rank: "ok", points: value }
     } else if (value && typeof value === "object") {
       const rank =
-        typeof (value as any).rank === "string" &&
-        ["required", "ok", "strike", "fail"].includes((value as any).rank)
-          ? ((value as any).rank as TechnologyRank["rank"])
+        typeof (value as Record<string, unknown>).rank === "string" &&
+        ["required", "ok", "strike", "fail"].includes(
+          (value as Record<string, unknown>).rank as string
+        )
+          ? ((value as Record<string, unknown>).rank as TechnologyRank["rank"])
           : "ok"
       technologies[name] = {
         rank,
-        ...(typeof (value as any).points === "number" ? { points: (value as any).points } : {}),
-        ...(typeof (value as any).mentions === "number"
-          ? { mentions: (value as any).mentions }
+        ...(typeof (value as Record<string, unknown>).points === "number"
+          ? { points: (value as Record<string, unknown>).points as number }
+          : {}),
+        ...(typeof (value as Record<string, unknown>).mentions === "number"
+          ? { mentions: (value as Record<string, unknown>).mentions as number }
           : {}),
       }
     }
   })
 
-  const strikes = (raw as any)?.strikes ?? {}
+  const strikes = (raw as Record<string, unknown>)?.strikes ?? {}
   return {
     technologies,
     strikes: {
@@ -85,8 +89,13 @@ const coerceTechnologyRanks = (
       ...(typeof strikes === "object" && strikes !== null ? strikes : {}),
     },
     extractedFromJobs:
-      typeof (raw as any)?.extractedFromJobs === "number" ? (raw as any).extractedFromJobs : undefined,
-    version: typeof (raw as any)?.version === "string" ? (raw as any).version : undefined,
+      typeof (raw as Record<string, unknown>)?.extractedFromJobs === "number"
+        ? ((raw as Record<string, unknown>).extractedFromJobs as number)
+        : undefined,
+    version:
+      typeof (raw as Record<string, unknown>)?.version === "string"
+        ? ((raw as Record<string, unknown>).version as string)
+        : undefined,
   }
 }
 
