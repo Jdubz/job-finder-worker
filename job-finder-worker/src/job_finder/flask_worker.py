@@ -69,6 +69,8 @@ worker_state = {
 # Global components (initialized in main)
 queue_manager: Optional[QueueManager] = None
 processor: Optional[QueueItemProcessor] = None
+config_loader: Optional[ConfigLoader] = None
+ai_matcher: Optional[AIJobMatcher] = None
 worker_thread: Optional[threading.Thread] = None
 
 # Flask app
@@ -104,6 +106,51 @@ def load_config() -> Dict[str, Any]:
     raise FileNotFoundError(f"Worker config not found. Paths tried: {searched}")
 
 
+def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
+    """Reload dynamic settings from the database into in-memory components."""
+    try:
+        ai_settings = config_loader.get_ai_settings()
+    except Exception as exc:  # pragma: no cover - defensive
+        slogger.worker_status("ai_settings_load_failed", {"error": str(exc)})
+        ai_settings = None
+
+    if ai_settings:
+        provider_type = ai_settings.get("provider", "openai")
+        model = ai_settings.get("model")
+        try:
+            ai_matcher.provider = create_provider(provider_type, model=model)
+        except Exception as exc:  # pragma: no cover - defensive
+            slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
+
+        if "minMatchScore" in ai_settings:
+            ai_matcher.min_match_score = ai_settings.get(
+                "minMatchScore", ai_matcher.min_match_score
+            )
+        if "generateIntakeData" in ai_settings:
+            ai_matcher.generate_intake = ai_settings.get(
+                "generateIntakeData", ai_matcher.generate_intake
+            )
+        if "portlandOfficeBonus" in ai_settings:
+            ai_matcher.portland_office_bonus = ai_settings.get(
+                "portlandOfficeBonus", ai_matcher.portland_office_bonus
+            )
+        if "userTimezone" in ai_settings:
+            ai_matcher.user_timezone = ai_settings.get("userTimezone", ai_matcher.user_timezone)
+        if "preferLargeCompanies" in ai_settings:
+            ai_matcher.prefer_large_companies = ai_settings.get(
+                "preferLargeCompanies", ai_matcher.prefer_large_companies
+            )
+
+    try:
+        scheduler_settings = config_loader.get_scheduler_settings()
+        if scheduler_settings and "pollIntervalSeconds" in scheduler_settings:
+            worker_state["poll_interval"] = max(
+                5, int(scheduler_settings.get("pollIntervalSeconds", 60))
+            )
+    except Exception as exc:  # pragma: no cover - defensive
+        slogger.worker_status("scheduler_settings_load_failed", {"error": str(exc)})
+
+
 def initialize_components(config: Dict[str, Any]) -> tuple:
     """Initialize all worker components."""
     db_path = (
@@ -120,24 +167,28 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     companies_manager = CompaniesManager(db_path)
     job_sources_manager = JobSourcesManager(db_path)
 
-    # Initialize AI components
+    # Initialize AI components (defaults, then override with DB)
     ai_config = config.get("ai", {})
-    provider = create_provider(ai_config.get("provider", "openai"))
+    provider = create_provider(ai_config.get("provider", "openai"), model=ai_config.get("model"))
     ai_matcher = AIJobMatcher(
         provider=provider,
-        min_match_score=ai_config.get("min_match_score", 0.7),
+        min_match_score=ai_config.get("min_match_score", 70),
         generate_intake=ai_config.get("generate_intake_data", True),
         portland_office_bonus=ai_config.get("portland_office_bonus", 15),
         profile=None,  # Will be loaded per request
+        user_timezone=ai_config.get("user_timezone", -8),
+        prefer_large_companies=ai_config.get("prefer_large_companies", True),
+        config=ai_config,
     )
 
     # Initialize other components
     profile_loader = SQLiteProfileLoader(db_path)
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
     queue_manager = QueueManager(db_path)
+    config_loader = ConfigLoader(db_path)
     processor = QueueItemProcessor(
         queue_manager=queue_manager,
-        config_loader=ConfigLoader(db_path),
+        config_loader=config_loader,
         job_storage=storage,
         companies_manager=companies_manager,
         sources_manager=job_sources_manager,
@@ -146,7 +197,9 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         profile=None,  # Will be loaded per request
     )
 
-    return queue_manager, processor, config
+    apply_db_settings(config_loader, ai_matcher)
+
+    return queue_manager, processor, config_loader, ai_matcher, config
 
 
 def worker_loop():
@@ -247,10 +300,14 @@ def status():
 @app.route("/start", methods=["POST"])
 def start_worker():
     """Start the worker."""
-    global worker_thread
+    global worker_thread, queue_manager, processor, config_loader, ai_matcher
 
     if worker_state["running"]:
         return jsonify({"message": "Worker is already running"}), 400
+
+    if queue_manager is None or processor is None or config_loader is None or ai_matcher is None:
+        config = load_config()
+        queue_manager, processor, config_loader, ai_matcher, _ = initialize_components(config)
 
     worker_state["shutdown_requested"] = False
     worker_state["start_time"] = time.time()
@@ -283,6 +340,18 @@ def restart_worker():
     stop_worker()
     time.sleep(1)  # Brief pause
     return start_worker()
+
+
+@app.route("/config/reload", methods=["POST"])
+def reload_config():
+    """Reload dynamic settings from the DB into the running worker."""
+    if not config_loader or not ai_matcher:
+        return jsonify({"message": "Config loader not initialized"}), 503
+
+    apply_db_settings(config_loader, ai_matcher)
+    return jsonify(
+        {"message": "Reloaded config", "poll_interval": worker_state.get("poll_interval")}
+    )
 
 
 @app.route("/config", methods=["GET", "POST"])
@@ -318,11 +387,18 @@ def main():
     try:
         # Load config and initialize components
         config = load_config()
-        global queue_manager, processor
-        queue_manager, processor, config = initialize_components(config)
+        global queue_manager, processor, config_loader, ai_matcher
+        queue_manager, processor, config_loader, ai_matcher, config = initialize_components(config)
 
-        # Set poll interval from config
-        worker_state["poll_interval"] = config.get("queue", {}).get("poll_interval", 60)
+        # Set poll interval from DB-backed scheduler settings if available
+        if config_loader:
+            try:
+                scheduler_settings = config_loader.get_scheduler_settings()
+                worker_state["poll_interval"] = scheduler_settings.get("pollIntervalSeconds", 60)
+            except Exception:
+                worker_state["poll_interval"] = config.get("queue", {}).get("poll_interval", 60)
+        else:
+            worker_state["poll_interval"] = config.get("queue", {}).get("poll_interval", 60)
 
         # Start worker automatically
         worker_state["start_time"] = time.time()

@@ -44,14 +44,22 @@ class ConfigLoader:
             return self._get_config("queue-settings")
         except InitializationError:
             logger.warning("Queue settings not configured; using defaults")
-            return {"maxRetries": 3, "retryDelaySeconds": 900, "processingTimeout": 600}
+            return {"maxRetries": 3, "retryDelaySeconds": 300, "processingTimeout": 600}
 
     def get_ai_settings(self) -> Dict[str, Any]:
         try:
             return self._get_config("ai-settings")
         except InitializationError:
             logger.warning("AI settings not configured; using defaults")
-            return {"provider": "claude", "model": "claude-3-haiku-20240307", "minMatchScore": 70}
+            return {
+                "provider": "claude",
+                "model": "claude-sonnet-4",
+                "minMatchScore": 70,
+                "generateIntakeData": True,
+                "portlandOfficeBonus": 15,
+                "userTimezone": -8,
+                "preferLargeCompanies": True,
+            }
 
     def get_job_filters(self) -> Dict[str, Any]:
         try:

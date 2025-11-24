@@ -77,11 +77,39 @@ export class ConfigClient extends BaseApiClient {
       model: "claude-sonnet-4",
       minMatchScore: 70,
       costBudgetDaily: 10,
+      generateIntakeData: true,
+      portlandOfficeBonus: 15,
+      userTimezone: -8,
+      preferLargeCompanies: true,
     }
     await this.updateConfigEntry("ai-settings", {
       ...existing,
       ...settings,
     })
+  }
+
+  async getJobFilters<T = Record<string, unknown>>(): Promise<T | null> {
+    return this.getConfigEntry<T>("job-filters")
+  }
+
+  async updateJobFilters(filters: unknown): Promise<void> {
+    await this.updateConfigEntry("job-filters", filters)
+  }
+
+  async getTechnologyRanks<T = Record<string, unknown>>(): Promise<T | null> {
+    return this.getConfigEntry<T>("technology-ranks")
+  }
+
+  async updateTechnologyRanks(ranks: unknown): Promise<void> {
+    await this.updateConfigEntry("technology-ranks", ranks)
+  }
+
+  async getSchedulerSettings<T = Record<string, unknown>>(): Promise<T | null> {
+    return this.getConfigEntry<T>("scheduler-settings")
+  }
+
+  async updateSchedulerSettings(settings: unknown): Promise<void> {
+    await this.updateConfigEntry("scheduler-settings", settings)
   }
 
   async getPersonalInfo(): Promise<PersonalInfo | null> {

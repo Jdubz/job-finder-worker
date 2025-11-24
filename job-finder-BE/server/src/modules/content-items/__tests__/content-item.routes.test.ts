@@ -69,6 +69,16 @@ describe('content-item routes', () => {
       .expect(404)
   })
 
+  it('returns 404 when updating a missing item instead of 500', async () => {
+    await request(app)
+      .patch(`/content-items/non-existent-id`)
+      .send({
+        userEmail: basePayload.userEmail,
+        itemData: { title: 'Will not apply' }
+      })
+      .expect(404)
+  })
+
   it('reorders root items and moves children between parents', async () => {
     const rootA = await request(app).post('/content-items').send(basePayload).expect(201)
     const rootB = await request(app)

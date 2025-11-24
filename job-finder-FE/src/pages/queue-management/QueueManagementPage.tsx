@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { RefreshCw, Search, Filter, RotateCcw, Trash2, AlertCircle, Activity } from "lucide-react"
+import { Search, Filter, RotateCcw, Trash2, AlertCircle, Activity } from "lucide-react"
 import { QueueItemCard } from "./components/QueueItemCard"
 import { QueueStatsGrid } from "./components/QueueStatsGrid"
 import { QueueFilters } from "./components/QueueFilters"
@@ -37,7 +37,6 @@ export function QueueManagementPage() {
 
   const [filteredItems, setFilteredItems] = useState<QueueItem[]>([])
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
@@ -53,7 +52,6 @@ export function QueueManagementPage() {
         type: "error",
         message: "Failed to load queue data. Please try again.",
       })
-      setRefreshing(false)
       return
     }
 
@@ -69,7 +67,6 @@ export function QueueManagementPage() {
       filtered: queueItems.filter((i) => (i as any).status === "filtered").length,
     }
     setQueueStats(stats)
-    setRefreshing(false)
     if (queueItems.length > 0) {
       setAlert(null)
     }
@@ -80,13 +77,6 @@ export function QueueManagementPage() {
     applyFilters()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queueItems, filters, sortBy, sortOrder])
-
-  const handleRefresh = () => {
-    setRefreshing(true)
-    // Real-time listener will handle the refresh
-    // Just show visual feedback that we're "refreshing"
-    setTimeout(() => setRefreshing(false), 500)
-  }
 
   const applyFilters = () => {
     let filtered = [...queueItems]
@@ -281,11 +271,6 @@ export function QueueManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-
           {selectedItems.size > 0 && (
             <>
               <Button variant="outline" size="sm" onClick={() => handleBulkAction("retry")}>

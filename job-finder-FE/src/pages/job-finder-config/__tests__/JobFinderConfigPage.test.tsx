@@ -18,9 +18,15 @@ vi.mock("@/api/config-client", () => ({
     getStopList: vi.fn(),
     getQueueSettings: vi.fn(),
     getAISettings: vi.fn(),
+    getJobFilters: vi.fn(),
+    getTechnologyRanks: vi.fn(),
+    getSchedulerSettings: vi.fn(),
     updateStopList: vi.fn(),
     updateQueueSettings: vi.fn(),
     updateAISettings: vi.fn(),
+    updateJobFilters: vi.fn(),
+    updateTechnologyRanks: vi.fn(),
+    updateSchedulerSettings: vi.fn(),
   },
 }))
 
@@ -63,6 +69,28 @@ const mockAISettings = {
   model: "claude-sonnet-4",
   minMatchScore: 70,
   costBudgetDaily: 10.0,
+  generateIntakeData: true,
+}
+
+const mockJobFilters = {
+  enabled: true,
+  strikeThreshold: 3,
+  hardRejections: { excludedCompanies: [], excludedKeywords: [] },
+  remotePolicy: {},
+  salaryStrike: {},
+  experienceStrike: {},
+  seniorityStrikes: {},
+  qualityStrikes: { buzzwords: [] },
+  ageStrike: {},
+}
+
+const mockTechRanks = {
+  technologies: { react: 5, typescript: 4 },
+  strikes: { missingAllRequired: 1 },
+}
+
+const mockScheduler = {
+  pollIntervalSeconds: 60,
 }
 
 describe("JobFinderConfigPage", () => {
@@ -75,9 +103,15 @@ describe("JobFinderConfigPage", () => {
     vi.mocked(configClient.getStopList).mockResolvedValue(mockStopList)
     vi.mocked(configClient.getQueueSettings).mockResolvedValue(mockQueueSettings)
     vi.mocked(configClient.getAISettings).mockResolvedValue(mockAISettings)
+    vi.mocked(configClient.getJobFilters).mockResolvedValue(mockJobFilters)
+    vi.mocked(configClient.getTechnologyRanks).mockResolvedValue(mockTechRanks)
+    vi.mocked(configClient.getSchedulerSettings).mockResolvedValue(mockScheduler)
     vi.mocked(configClient.updateStopList).mockResolvedValue(undefined)
     vi.mocked(configClient.updateQueueSettings).mockResolvedValue(undefined)
     vi.mocked(configClient.updateAISettings).mockResolvedValue(undefined)
+    vi.mocked(configClient.updateJobFilters).mockResolvedValue(undefined)
+    vi.mocked(configClient.updateTechnologyRanks).mockResolvedValue(undefined)
+    vi.mocked(configClient.updateSchedulerSettings).mockResolvedValue(undefined)
   })
 
   describe("rendering", () => {
@@ -92,6 +126,9 @@ describe("JobFinderConfigPage", () => {
       expect(screen.getByText("Stop List")).toBeInTheDocument()
       expect(screen.getByText("Queue Settings")).toBeInTheDocument()
       expect(screen.getByText("AI Settings")).toBeInTheDocument()
+      expect(screen.getByText("Job Filters")).toBeInTheDocument()
+      expect(screen.getByText("Tech Ranks")).toBeInTheDocument()
+      expect(screen.getByText("Scheduler")).toBeInTheDocument()
     })
 
     it("should show loading state while fetching configuration", () => {

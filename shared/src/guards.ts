@@ -22,6 +22,13 @@ import type {
   AISettings,
   AIProvider,
 } from "./queue.types"
+import type {
+  JobFiltersConfig,
+  TechnologyRanksConfig,
+  SchedulerSettings,
+  ModelTuning,
+} from "./config.types"
+import type { PersonalInfo } from "./generator.types"
 // Import and re-export type guards from queue.types for convenience
 import {
   isQueueStatus as queueStatusGuard,
@@ -176,8 +183,89 @@ export function isAISettings(value: unknown): value is AISettings {
     isAIProvider(settings.provider) &&
     typeof settings.model === "string" &&
     typeof settings.minMatchScore === "number" &&
-    typeof settings.costBudgetDaily === "number"
+    typeof settings.costBudgetDaily === "number" &&
+    (settings.generateIntakeData === undefined || typeof settings.generateIntakeData === "boolean") &&
+    (settings.portlandOfficeBonus === undefined || typeof settings.portlandOfficeBonus === "number") &&
+    (settings.userTimezone === undefined || typeof settings.userTimezone === "number") &&
+    (settings.preferLargeCompanies === undefined || typeof settings.preferLargeCompanies === "boolean") &&
+    (settings.models === undefined || isModelsMap(settings.models)) &&
+    (settings.maxTokens === undefined || typeof settings.maxTokens === "number") &&
+    (settings.temperature === undefined || typeof settings.temperature === "number")
   )
+}
+
+function isModelTuning(value: unknown): value is ModelTuning {
+  if (!isObject(value)) return false
+  const tuning = value as ModelTuning
+  return (
+    (tuning.maxTokens === undefined || typeof tuning.maxTokens === "number") &&
+    (tuning.temperature === undefined || typeof tuning.temperature === "number")
+  )
+}
+
+function isModelsMap(value: unknown): value is Record<string, ModelTuning> {
+  if (!isObject(value)) return false
+  return Object.values(value).every(isModelTuning)
+}
+
+export function isJobFiltersConfig(value: unknown): value is JobFiltersConfig {
+  if (!isObject(value)) return false
+  const v = value as Partial<JobFiltersConfig>
+  return (
+    typeof v.enabled === "boolean" &&
+    typeof v.strikeThreshold === "number" &&
+    isObject(v.hardRejections) &&
+    (v.hardRejections.excludedJobTypes === undefined || isStringArray(v.hardRejections.excludedJobTypes)) &&
+    (v.hardRejections.excludedSeniority === undefined || isStringArray(v.hardRejections.excludedSeniority)) &&
+    (v.hardRejections.excludedCompanies === undefined || isStringArray(v.hardRejections.excludedCompanies)) &&
+    (v.hardRejections.excludedKeywords === undefined || isStringArray(v.hardRejections.excludedKeywords)) &&
+    (v.hardRejections.minSalaryFloor === undefined || typeof v.hardRejections.minSalaryFloor === "number") &&
+    (v.hardRejections.rejectCommissionOnly === undefined || typeof v.hardRejections.rejectCommissionOnly === "boolean") &&
+    isObject(v.remotePolicy) &&
+    (v.remotePolicy.allowRemote === undefined || typeof v.remotePolicy.allowRemote === "boolean") &&
+    (v.remotePolicy.allowHybridPortland === undefined || typeof v.remotePolicy.allowHybridPortland === "boolean") &&
+    (v.remotePolicy.allowOnsite === undefined || typeof v.remotePolicy.allowOnsite === "boolean") &&
+    isObject(v.salaryStrike) &&
+    (v.salaryStrike.enabled === undefined || typeof v.salaryStrike.enabled === "boolean") &&
+    (v.salaryStrike.threshold === undefined || typeof v.salaryStrike.threshold === "number") &&
+    (v.salaryStrike.points === undefined || typeof v.salaryStrike.points === "number") &&
+    isObject(v.experienceStrike) &&
+    (v.experienceStrike.enabled === undefined || typeof v.experienceStrike.enabled === "boolean") &&
+    (v.experienceStrike.minPreferred === undefined || typeof v.experienceStrike.minPreferred === "number") &&
+    (v.experienceStrike.points === undefined || typeof v.experienceStrike.points === "number") &&
+    (v.seniorityStrikes === undefined || isObject(v.seniorityStrikes)) &&
+    isObject(v.qualityStrikes) &&
+    (v.qualityStrikes.minDescriptionLength === undefined || typeof v.qualityStrikes.minDescriptionLength === "number") &&
+    (v.qualityStrikes.shortDescriptionPoints === undefined || typeof v.qualityStrikes.shortDescriptionPoints === "number") &&
+    (v.qualityStrikes.buzzwords === undefined || isStringArray(v.qualityStrikes.buzzwords)) &&
+    (v.qualityStrikes.buzzwordPoints === undefined || typeof v.qualityStrikes.buzzwordPoints === "number") &&
+    isObject(v.ageStrike) &&
+    (v.ageStrike.enabled === undefined || typeof v.ageStrike.enabled === "boolean") &&
+    (v.ageStrike.strikeDays === undefined || typeof v.ageStrike.strikeDays === "number") &&
+    (v.ageStrike.rejectDays === undefined || typeof v.ageStrike.rejectDays === "number") &&
+    (v.ageStrike.points === undefined || typeof v.ageStrike.points === "number")
+  )
+}
+
+export function isTechnologyRanksConfig(value: unknown): value is TechnologyRanksConfig {
+  if (!isObject(value)) return false
+  const v = value as Partial<TechnologyRanksConfig>
+  return (
+    isObject(v.technologies) &&
+    Object.values(v.technologies).every((n) => typeof n === "number") &&
+    (v.strikes === undefined || (isObject(v.strikes) &&
+      (v.strikes.missingAllRequired === undefined || typeof v.strikes.missingAllRequired === "number")))
+  )
+}
+
+export function isSchedulerSettings(value: unknown): value is SchedulerSettings {
+  return isObject(value) && typeof (value as Partial<SchedulerSettings>).pollIntervalSeconds === "number"
+}
+
+export function isPersonalInfo(value: unknown): value is PersonalInfo {
+  if (!isObject(value)) return false
+  const v = value as Partial<PersonalInfo>
+  return typeof v.name === "string" && typeof v.email === "string"
 }
 
 // ============================================

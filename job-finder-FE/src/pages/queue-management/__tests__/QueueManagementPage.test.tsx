@@ -264,31 +264,6 @@ describe("QueueManagementPage", () => {
     })
   })
 
-  describe("Refresh", () => {
-    it("should have refresh button", async () => {
-      render(<QueueManagementPage />)
-
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /refresh/i })).toBeInTheDocument()
-      })
-    })
-
-    it("should show refreshing state when clicked", async () => {
-      const user = userEvent.setup()
-      render(<QueueManagementPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Tech Corp")).toBeInTheDocument()
-      })
-
-      const refreshButton = screen.getByRole("button", { name: /refresh/i })
-      await user.click(refreshButton)
-
-      // Button should be temporarily disabled
-      expect(refreshButton).toBeDisabled()
-    })
-  })
-
   describe("Authorization", () => {
     it("should show sign-in message for unauthenticated users", () => {
       vi.mocked(useAuth).mockReturnValue({
