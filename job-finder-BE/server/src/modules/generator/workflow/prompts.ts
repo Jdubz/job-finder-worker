@@ -1,29 +1,88 @@
 import type { GenerateDocumentPayload } from './generator.workflow.service'
-import type { PersonalInfo } from '@shared/types'
+import type { PersonalInfo, ContentItem } from '@shared/types'
+import { PromptsRepository } from '../../prompts/prompts.repository'
 
-export function buildResumePrompt(payload: GenerateDocumentPayload, personalInfo: PersonalInfo): string {
-  return [
-    'You are an AI resume assistant.',
-    `Generate a JSON resume for ${personalInfo.name ?? 'the candidate'} applying to ${payload.job.company} as ${
-      payload.job.role
-    }.`,
-    'Return an object with keys: personalInfo, professionalSummary, experience[].',
-    'Ensure experience entries highlight impact and align with the job description.',
-    payload.job.jobDescriptionText ? `Job Description:\n${payload.job.jobDescriptionText}` : ''
-  ]
-    .filter(Boolean)
-    .join('\n\n')
+const promptsRepo = new PromptsRepository()
+
+interface PromptVariables {
+  candidateName: string
+  jobTitle: string
+  companyName: string
+  jobDescription: string
+  userExperience: string
+  userSkills: string
+  additionalInstructions: string
 }
 
-export function buildCoverLetterPrompt(payload: GenerateDocumentPayload, personalInfo: PersonalInfo): string {
-  return [
-    'You are an AI career coach.',
-    `Draft a JSON cover letter for ${personalInfo.name ?? 'the candidate'} applying to ${payload.job.role} at ${
-      payload.job.company
-    }.`,
-    'Return {"greeting","openingParagraph","bodyParagraphs":[...],"closingParagraph","signature"}.',
-    payload.job.jobDescriptionText ? `Job Description:\n${payload.job.jobDescriptionText}` : ''
-  ]
-    .filter(Boolean)
-    .join('\n\n')
+function replaceVariables(template: string, variables: PromptVariables): string {
+  return template
+    .replace(/\{\{candidateName\}\}/g, variables.candidateName)
+    .replace(/\{\{jobTitle\}\}/g, variables.jobTitle)
+    .replace(/\{\{companyName\}\}/g, variables.companyName)
+    .replace(/\{\{jobDescription\}\}/g, variables.jobDescription)
+    .replace(/\{\{userExperience\}\}/g, variables.userExperience)
+    .replace(/\{\{userSkills\}\}/g, variables.userSkills)
+    .replace(/\{\{additionalInstructions\}\}/g, variables.additionalInstructions)
+}
+
+export function buildResumePrompt(
+  payload: GenerateDocumentPayload,
+  personalInfo: PersonalInfo,
+  contentItems: ContentItem[] = []
+): string {
+  const prompts = promptsRepo.getPrompts()
+
+  // Extract experience and skills from content items
+  const experience = contentItems
+    .filter(item => item.role && item.title)
+    .map(item => `${item.role} at ${item.title}${item.description ? ': ' + item.description : ''}`)
+    .join('\n')
+
+  const skills = [...new Set(contentItems.flatMap(item => item.skills || []))].join(', ')
+
+  const variables: PromptVariables = {
+    candidateName: personalInfo.name ?? 'the candidate',
+    jobTitle: payload.job.role,
+    companyName: payload.job.company,
+    jobDescription: payload.job.jobDescriptionText || 'No job description provided',
+    userExperience: experience || 'No experience data available',
+    userSkills: skills || 'No skills data available',
+    additionalInstructions: payload.preferences?.emphasize?.join(', ') || ''
+  }
+
+  const prompt = replaceVariables(prompts.resumeGeneration, variables)
+
+  // Append JSON format instruction for structured output
+  return prompt + '\n\nReturn the result as a JSON object with keys: personalInfo, professionalSummary, experience[], skills[], education[].'
+}
+
+export function buildCoverLetterPrompt(
+  payload: GenerateDocumentPayload,
+  personalInfo: PersonalInfo,
+  contentItems: ContentItem[] = []
+): string {
+  const prompts = promptsRepo.getPrompts()
+
+  // Extract experience and skills from content items
+  const experience = contentItems
+    .filter(item => item.role && item.title)
+    .map(item => `${item.role} at ${item.title}${item.description ? ': ' + item.description : ''}`)
+    .join('\n')
+
+  const skills = [...new Set(contentItems.flatMap(item => item.skills || []))].join(', ')
+
+  const variables: PromptVariables = {
+    candidateName: personalInfo.name ?? 'the candidate',
+    jobTitle: payload.job.role,
+    companyName: payload.job.company,
+    jobDescription: payload.job.jobDescriptionText || 'No job description provided',
+    userExperience: experience || 'No experience data available',
+    userSkills: skills || 'No skills data available',
+    additionalInstructions: payload.preferences?.emphasize?.join(', ') || ''
+  }
+
+  const prompt = replaceVariables(prompts.coverLetterGeneration, variables)
+
+  // Append JSON format instruction for structured output
+  return prompt + '\n\nReturn the result as a JSON object with keys: greeting, openingParagraph, bodyParagraphs[], closingParagraph, signature.'
 }

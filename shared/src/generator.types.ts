@@ -66,22 +66,7 @@ export interface JobInfo {
   jobDescriptionText?: string
 }
 
-/**
- * Experience entry for resume generation
- */
-export interface ExperienceEntry {
-  id: string
-  company: string
-  role: string
-  location?: string
-  startDate: string // YYYY-MM format
-  endDate: string | null // YYYY-MM format or null for current
-  highlights: string[]
-  technologies?: string[]
-  type: "experience"
-  createdAt: TimestampLike
-  updatedAt: TimestampLike
-}
+// Experience entries removed - use ContentItem type from content-item.types.ts instead
 
 /**
  * Job match data for AI prompt customization
@@ -199,9 +184,6 @@ export interface GeneratorRequest {
   jobMatchId?: string
   preferences?: {
     emphasize?: string[]
-  }
-  experienceData?: {
-    entries: ExperienceEntry[]
   }
   contentData?: {
     items: unknown[] // ContentItem[] - using unknown to avoid circular dependency
@@ -329,7 +311,9 @@ export interface GenerateDocumentsResponse {
 }
 
 /**
- * Personal info document (stored in Firestore as generator defaults)
+ * Personal info document (stored in job_finder_config table)
+ * Contains only user contact information and presentation preferences.
+ * AI prompts are stored separately in the ai-prompts config entry.
  */
 export interface PersonalInfoDocument {
   id: "personal-info"
@@ -344,16 +328,6 @@ export interface PersonalInfoDocument {
   avatar?: string
   logo?: string
   accentColor: string
-  aiPrompts?: {
-    resume: {
-      systemPrompt: string
-      userPromptTemplate: string
-    }
-    coverLetter: {
-      systemPrompt: string
-      userPromptTemplate: string
-    }
-  }
   createdAt: TimestampLike
   updatedAt: TimestampLike
   updatedBy?: string
@@ -373,14 +347,4 @@ export interface UpdatePersonalInfoData {
   avatar?: string
   logo?: string
   accentColor?: string
-  aiPrompts?: {
-    resume?: {
-      systemPrompt?: string
-      userPromptTemplate?: string
-    }
-    coverLetter?: {
-      systemPrompt?: string
-      userPromptTemplate?: string
-    }
-  }
 }

@@ -4,6 +4,8 @@ import path from 'node:path'
 import os from 'node:os'
 import { logger } from '../../../../logger'
 
+// Primary provider is 'codex' (OpenAI/ChatGPT)
+// Other providers are included for future support but not currently active
 export type CliProvider = 'codex' | 'gemini' | 'claude'
 
 interface CliResult {
@@ -38,15 +40,21 @@ function buildCommand(provider: CliProvider, prompt: string): { cmd: string; arg
 }
 
 export async function runCliProvider(prompt: string, preferred: CliProvider = 'codex'): Promise<CliResult> {
+  // Currently only OpenAI/Codex provider is actively supported
+  // Other providers are included in fallback chain for future implementation
   const providers: CliProvider[] =
-    preferred === 'codex' ? ['codex', 'gemini', 'claude'] : [preferred, 'codex', 'gemini', 'claude']
+    preferred === 'codex' ? ['codex'] : [preferred, 'codex']
+
   for (const provider of providers) {
     const result = await executeCommand(provider, prompt)
     if (result.success) {
       return result
     }
   }
-  return { success: false, output: '', error: 'All providers failed' }
+
+  // If all providers fail, log a warning about the current limitations
+  logger.warn('Document generation failed. Only OpenAI/Codex provider is currently supported.')
+  return { success: false, output: '', error: 'Provider failed. Currently only OpenAI/Codex is supported.' }
 }
 
 async function executeCommand(provider: CliProvider, prompt: string): Promise<CliResult> {

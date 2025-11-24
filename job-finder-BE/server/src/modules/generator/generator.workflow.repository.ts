@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import type { PersonalInfo, GenerationStep, TimestampLike } from '@shared/types'
+import type { PersonalInfo } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
 export interface GeneratorRequestRecord {
@@ -27,19 +27,7 @@ export interface GeneratorArtifactRecord {
   createdAt: string
 }
 
-function serializeTimestamp(value?: TimestampLike) {
-  if (!value) {
-    return null
-  }
-  if (value instanceof Date) {
-    return value.toISOString()
-  }
-  return value.toDate().toISOString()
-}
-
-function deserializeTimestamp(value: string | null) {
-  return value ? new Date(value) : undefined
-}
+// Timestamp serialization functions removed - were only used for generator_steps
 
 export class GeneratorWorkflowRepository {
   private db: Database.Database
@@ -171,65 +159,8 @@ export class GeneratorWorkflowRepository {
     return row ? this.mapRequest(row) : null
   }
 
-  saveSteps(requestId: string, steps: GenerationStep[]): void {
-    const tx = this.db.transaction((items: GenerationStep[]) => {
-      this.db.prepare('DELETE FROM generator_steps WHERE request_id = ?').run(requestId)
-      const insert = this.db.prepare(
-        `INSERT INTO generator_steps
-         (id, request_id, name, description, status, started_at, completed_at, duration_ms, result_json, error_json, position)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      items.forEach((step, index) => {
-        insert.run(
-          step.id,
-          requestId,
-          step.name,
-          step.description ?? '',
-          step.status,
-          serializeTimestamp(step.startedAt),
-          serializeTimestamp(step.completedAt),
-          step.duration ?? null,
-          step.result ? JSON.stringify(step.result) : null,
-          step.error ? JSON.stringify(step.error) : null,
-          index
-        )
-      })
-    })
-    tx(steps)
-  }
-
-  listSteps(requestId: string): GenerationStep[] {
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM generator_steps
-         WHERE request_id = ?
-         ORDER BY position ASC`
-      )
-      .all(requestId) as Array<{
-      id: string
-      name: string
-      description: string | null
-      status: string
-      started_at: string | null
-      completed_at: string | null
-      duration_ms: number | null
-      result_json: string | null
-      error_json: string | null
-      position: number
-    }>
-
-    return rows.map((row): GenerationStep => ({
-      id: row.id,
-      name: row.name,
-      description: row.description ?? '',
-      status: row.status as GenerationStep['status'],
-      startedAt: deserializeTimestamp(row.started_at),
-      completedAt: deserializeTimestamp(row.completed_at),
-      duration: row.duration_ms ?? undefined,
-      result: row.result_json ? (JSON.parse(row.result_json) as GenerationStep['result']) : undefined,
-      error: row.error_json ? (JSON.parse(row.error_json) as GenerationStep['error']) : undefined
-    }))
-  }
+  // Steps are now tracked in-memory only during request execution
+  // The generator_steps table has been dropped as per migration 011
 
   addArtifact(record: GeneratorArtifactRecord): GeneratorArtifactRecord {
     this.db
