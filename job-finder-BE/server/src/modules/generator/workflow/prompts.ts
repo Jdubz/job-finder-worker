@@ -1,5 +1,5 @@
 import type { GenerateDocumentPayload } from './generator.workflow.service'
-import type { PersonalInfo } from '@shared/types'
+import type { PersonalInfo, ContentItem } from '@shared/types'
 import { PromptsRepository } from '../../prompts/prompts.repository'
 
 const promptsRepo = new PromptsRepository()
@@ -28,7 +28,7 @@ function replaceVariables(template: string, variables: PromptVariables): string 
 export function buildResumePrompt(
   payload: GenerateDocumentPayload,
   personalInfo: PersonalInfo,
-  contentItems: any[] = []
+  contentItems: ContentItem[] = []
 ): string {
   const prompts = promptsRepo.getPrompts()
 
@@ -38,10 +38,7 @@ export function buildResumePrompt(
     .map(item => `${item.role} at ${item.title}${item.description ? ': ' + item.description : ''}`)
     .join('\n')
 
-  const skills = contentItems
-    .flatMap(item => item.skills || [])
-    .filter((skill, index, self) => self.indexOf(skill) === index)
-    .join(', ')
+  const skills = [...new Set(contentItems.flatMap(item => item.skills || []))].join(', ')
 
   const variables: PromptVariables = {
     candidateName: personalInfo.name ?? 'the candidate',
@@ -62,7 +59,7 @@ export function buildResumePrompt(
 export function buildCoverLetterPrompt(
   payload: GenerateDocumentPayload,
   personalInfo: PersonalInfo,
-  contentItems: any[] = []
+  contentItems: ContentItem[] = []
 ): string {
   const prompts = promptsRepo.getPrompts()
 
@@ -72,10 +69,7 @@ export function buildCoverLetterPrompt(
     .map(item => `${item.role} at ${item.title}${item.description ? ': ' + item.description : ''}`)
     .join('\n')
 
-  const skills = contentItems
-    .flatMap(item => item.skills || [])
-    .filter((skill, index, self) => self.indexOf(skill) === index)
-    .join(', ')
+  const skills = [...new Set(contentItems.flatMap(item => item.skills || []))].join(', ')
 
   const variables: PromptVariables = {
     candidateName: personalInfo.name ?? 'the candidate',
