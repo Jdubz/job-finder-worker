@@ -36,6 +36,9 @@ class JobMatchResult(BaseModel):
     job_title: str
     job_company: str
     job_url: str
+    location: Optional[str] = None
+    salary_range: Optional[str] = None
+    company_info: Optional[str] = None
 
     # Match Analysis
     match_score: int = Field(..., ge=0, le=100, description="Overall match score (0-100)")
@@ -43,6 +46,7 @@ class JobMatchResult(BaseModel):
     missing_skills: List[str] = Field(default_factory=list)
     experience_match: str = ""
     key_strengths: List[str] = Field(default_factory=list)
+    match_reasons: List[str] = Field(default_factory=list)
     potential_concerns: List[str] = Field(default_factory=list)
     application_priority: str = "Medium"  # High/Medium/Low
 
