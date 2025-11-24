@@ -189,6 +189,7 @@ class SourceProcessor(BaseProcessor):
                 company_name=company_name,
                 enabled=discovery_config.auto_enable,
                 validation_required=discovery_config.validation_required,
+                tier="A",
             )
 
             return True, source_id, f"Greenhouse source created ({len(jobs)} jobs available)"
@@ -243,6 +244,7 @@ class SourceProcessor(BaseProcessor):
                 company_name=company_name,
                 enabled=False,  # Workday requires manual validation
                 validation_required=True,
+                tier="B",
             )
 
             return (
@@ -306,6 +308,7 @@ class SourceProcessor(BaseProcessor):
                 company_name=company_name,
                 enabled=discovery_config.auto_enable,
                 validation_required=discovery_config.validation_required,
+                tier="A",
             )
 
             return True, source_id, f"RSS source created ({len(feed.entries)} entries available)"
@@ -381,6 +384,7 @@ class SourceProcessor(BaseProcessor):
                 company_name=company_name,
                 enabled=auto_enable,
                 validation_required=validation_required,
+                tier="B",
             )
 
             status = "enabled" if auto_enable else "pending validation"

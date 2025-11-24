@@ -55,7 +55,8 @@ test-ci: ## Run targeted CI/unit tests (used by git hooks)
 		tests/test_placeholder.py \
 		tests/queue/test_scraper_intake.py \
 		tests/queue/test_processor.py \
-		tests/test_job_sources_manager_metadata.py
+		tests/test_job_sources_manager_metadata.py \
+		tests/test_job_sources_manager_health.py
 
 test-fast: ## Run tests without coverage
 	@echo "$(CYAN)Running fast tests...$(RESET)"

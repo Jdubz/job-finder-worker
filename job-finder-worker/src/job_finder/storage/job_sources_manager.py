@@ -194,7 +194,33 @@ class JobSourcesManager:
         jobs_matched: int = 0,
         error: Optional[str] = None,
     ) -> None:
+        """Update scrape status and recompute health."""
         now = _utcnow_iso()
+
+        # Normalize status into SourceStatus
+        status_lower = status.lower()
+        if status_lower in ("success", "active"):
+            normalized_status = SourceStatus.ACTIVE.value
+        elif status_lower in ("error", "failed", SourceStatus.FAILED.value):
+            normalized_status = SourceStatus.FAILED.value
+        elif status_lower == SourceStatus.PENDING_VALIDATION.value:
+            normalized_status = SourceStatus.PENDING_VALIDATION.value
+        elif status_lower == SourceStatus.DISABLED.value:
+            normalized_status = SourceStatus.DISABLED.value
+        else:
+            normalized_status = status
+
+        # Read current consecutive failures to compute health
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT consecutive_failures FROM job_sources WHERE id = ?", (source_id,)
+            ).fetchone()
+            current_failures = row["consecutive_failures"] if row else 0
+
+        new_failures = current_failures + 1 if normalized_status == SourceStatus.FAILED.value else 0
+        health_score = max(0.1, 1.0 - 0.1 * new_failures)
+        health = {"healthScore": health_score, "consecutiveFailures": new_failures}
+
         with sqlite_connection(self.db_path) as conn:
             conn.execute(
                 """
@@ -204,21 +230,21 @@ class JobSourcesManager:
                     last_scraped_error = ?,
                     total_jobs_found = total_jobs_found + ?,
                     total_jobs_matched = total_jobs_matched + ?,
-                    consecutive_failures = CASE
-                        WHEN ? = ? THEN consecutive_failures + 1
-                        ELSE 0
-                    END,
+                    consecutive_failures = ?,
+                    health_json = ?,
+                    status = ?,
                     updated_at = ?
                 WHERE id = ?
                 """,
                 (
                     now,
-                    status,
+                    normalized_status,
                     error,
                     jobs_found,
                     jobs_matched,
-                    status,
-                    SourceStatus.FAILED.value,
+                    new_failures,
+                    json.dumps(health),
+                    normalized_status,
                     now,
                     source_id,
                 ),
