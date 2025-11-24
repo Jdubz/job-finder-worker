@@ -155,15 +155,6 @@ export function JobApplicationsPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Job Applications</h1>
         <p className="text-muted-foreground mt-2">AI-matched opportunities ranked by relevance</p>
-        {!user && (
-          <Alert className="mt-3">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Sign in to see live application matches. Public viewers can explore the UI but data
-              requires a login.
-            </AlertDescription>
-          </Alert>
-        )}
       </div>
 
       {/* Stats Overview */}
