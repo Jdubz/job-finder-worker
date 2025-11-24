@@ -32,8 +32,8 @@ export class ContentItemsClient extends BaseApiClient {
     } else if (params.parentId) {
       search.append("parentId", params.parentId)
     }
-    // Default to 200 (backend max) to ensure we get all items for proper tree building
-    const limit = params.limit ?? 200
+    // Default to 100 (matches backend default) to ensure we get all items for proper tree building
+    const limit = params.limit ?? 100
     search.append("limit", limit.toString())
     if (params.offset) search.append("offset", params.offset.toString())
 

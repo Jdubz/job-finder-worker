@@ -1,13 +1,51 @@
 # Infrastructure Overview
 
-The `infra/` directory tracks deployment artifacts that used to live across multiple repos. Each subfolder now has a single owner inside the monorepo:
+The `infra/` directory contains **templates and development configurations** for the job-finder stack. Production configurations with sensitive details are stored on the production server and **NOT** tracked in this public repository.
+
+## Directory Structure
 
 | Path | Purpose |
 | --- | --- |
-| [`infra/cloudflared`](./cloudflared) | Cloudflared tunnel configuration + sample manifests for exposing the API host. |
-| [`infra/docker-compose.yml`](./docker-compose.yml) | Local compose stack that mirrors the production single-host deployment (API, worker, SQLite, Cloudflared). |
-| [`infra/sqlite`](./sqlite) | SQLite schema plus the TypeScript seed/export workspace. |
-| `/srv/job-finder/artifacts` | Bind-mounted storage for generator artifacts (PDFs, images) retained across container restarts. |
+| [`infra/cloudflared/config.template.yml`](./cloudflared/config.template.yml) | **Template** for Cloudflared tunnel configuration. Production config lives in `/srv/job-finder/cloudflared/config.yml` |
+| [`infra/docker-compose.template.yml`](./docker-compose.template.yml) | **Template** for production Docker Compose stack. Production config lives in `/srv/job-finder/docker-compose.yml` |
+| [`infra/sqlite`](./sqlite) | SQLite schema, migrations, and seed/export workspace |
+
+## Production Configuration Locations
+
+**These files are NOT in the repository** for security reasons. They live on the production server:
+
+| File | Location | Contains |
+| --- | --- | --- |
+| Docker Compose | `/srv/job-finder/docker-compose.yml` | Production paths and volume mounts |
+| Cloudflared Config | `/srv/job-finder/cloudflared/config.yml` | Actual tunnel ID and production hostname |
+| Cloudflared Credentials | `/srv/job-finder/cloudflared/*.json` | Tunnel authentication credentials |
+| Production Config | `/srv/job-finder/config/config.production.yaml` | Worker configuration with production settings |
+| Database | `/srv/job-finder/data/jobfinder.db` | SQLite database file |
+| Secrets | `/srv/job-finder/secrets/` | Firebase admin credentials and other secrets |
+| Logs | `/srv/job-finder/logs/` | Application logs |
+| Worker Data | `/srv/job-finder/worker-data/` | Worker state and cache |
+| Backups | `/srv/job-finder/backups/` | Database backups |
+| Artifacts | `/srv/job-finder/artifacts/` | Generated PDFs, images, etc. |
+
+## Setting Up Production
+
+1. Copy template files to production server:
+   ```bash
+   cp infra/docker-compose.template.yml /srv/job-finder/docker-compose.yml
+   cp infra/cloudflared/config.template.yml /srv/job-finder/cloudflared/config.yml
+   ```
+
+2. Update the copied files with production values:
+   - Replace volume paths
+   - Set actual tunnel IDs and hostnames
+   - Configure environment variables
+
+3. Ensure all required directories exist:
+   ```bash
+   mkdir -p /srv/job-finder/{data,secrets,config,logs,worker-data,cloudflared,artifacts,backups}
+   ```
+
+4. Deploy using CI/CD (see `.github/workflows/deploy.yml`)
 
 ## SQLite Workspace
 
