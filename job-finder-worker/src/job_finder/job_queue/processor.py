@@ -22,8 +22,6 @@ from job_finder.job_queue.processors import (
     JobProcessor,
     SourceProcessor,
 )
-from job_finder.job_queue.scraper_intake import ScraperIntake  # For test compatibility
-from job_finder.scrape_runner import ScrapeRunner  # For test compatibility
 from job_finder.storage import JobStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
