@@ -4,7 +4,7 @@ import type { GeneratorWorkflowRepository, GeneratorRequestRecord, GeneratorArti
 import type { PersonalInfoStore } from '../personal-info.store'
 import type { PDFService } from '../workflow/services/pdf.service'
 import { storageService } from '../workflow/services/storage.service'
-import type { GenerationStep, PersonalInfo } from '@shared/types'
+import type { PersonalInfo } from '@shared/types'
 
 vi.mock('../workflow/services/cli-runner', () => ({
   runCliProvider: vi.fn().mockResolvedValue({
@@ -38,7 +38,6 @@ vi.mock('../workflow/services/storage.service', () => {
 
 class InMemoryRepo {
   mockRequests = new Map<string, GeneratorRequestRecord>()
-  mockSteps = new Map<string, GenerationStep[]>()
   mockArtifacts: GeneratorArtifactRecord[] = []
 
   createRequest(record: Omit<GeneratorRequestRecord, 'createdAt' | 'updatedAt'>): GeneratorRequestRecord {
@@ -59,14 +58,6 @@ class InMemoryRepo {
     }
     this.mockRequests.set(record.id, created)
     return created
-  }
-
-  saveSteps(requestId: string, steps: GenerationStep[]): void {
-    this.mockSteps.set(requestId, steps)
-  }
-
-  listSteps(requestId: string): GenerationStep[] {
-    return this.mockSteps.get(requestId) ?? []
   }
 
   getRequest(id: string): GeneratorRequestRecord | null {
@@ -134,29 +125,30 @@ const storageMock = vi.mocked(storageService)
 
   beforeEach(() => {
     repo.mockRequests.clear()
-    repo.mockSteps.clear()
     repo.mockArtifacts = []
     storageMock.saveArtifact.mockClear()
     storageMock.createPublicUrl.mockClear()
   })
 
-  it('creates a request with initial pending steps', async () => {
+  it('creates a request and tracks steps in memory', async () => {
     const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore)
     const requestId = await service.createRequest(payload)
     const request = repo.getRequest(requestId)
     expect(request).toBeTruthy()
-    const steps = repo.listSteps(requestId)
-    expect(steps.length).toBeGreaterThan(0)
-    expect(steps[0].status).toBe('pending')
+    expect(request?.status).toBe('processing')
+
+    // Steps are now in memory, not in DB - verify through runNextStep
+    const result = await service.runNextStep(requestId)
+    expect(result?.steps).toBeDefined()
+    expect(result?.steps.length).toBeGreaterThan(0)
   })
 
   it('runNextStep completes collect-data step first', async () => {
     const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore)
     const requestId = await service.createRequest(payload)
-    const stepsBefore = repo.listSteps(requestId)
-    expect(stepsBefore[0].status).toBe('pending')
 
     const result = await service.runNextStep(requestId)
+    expect(result?.steps[0].id).toBe('collect-data')
     expect(result?.steps[0].status).toBe('completed')
   })
 

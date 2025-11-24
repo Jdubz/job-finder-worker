@@ -73,34 +73,44 @@ class SQLiteProfileLoader:
         return dict(row)
 
     def _load_experiences(self, user_id: Optional[str]) -> List[Experience]:
-        query = "SELECT * FROM experience_entries"
+        # Query root-level content_items (no parent) that represent work experience
+        query = """
+            SELECT * FROM content_items
+            WHERE parent_id IS NULL
+            ORDER BY datetime(start_date) DESC
+        """
         params: List[Any] = []
-        if user_id:
-            query += " WHERE user_id = ?"
-            params.append(user_id)
-        query += " ORDER BY datetime(start_date) DESC"
 
         with sqlite_connection(self.db_path) as conn:
             rows = conn.execute(query, tuple(params)).fetchall()
 
         experiences: List[Experience] = []
         for row in rows:
-            achievements = _parse_json(row.get("accomplishments"), [])
-            if isinstance(achievements, str):
-                achievements = [achievements]
+            # Parse description field for bullet points (achievements)
+            description = row.get("description") or ""
+            achievements = []
+            if description:
+                # Extract bullet points from markdown description
+                lines = description.split("\n")
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped.startswith("- "):
+                        achievements.append(stripped[2:].strip())
 
-            technologies = _parse_json(row.get("technologies"), [])
+            # Parse skills JSON array
+            skills_json = row.get("skills")
+            technologies = _parse_json(skills_json, [])
             if isinstance(technologies, str):
                 technologies = [tech.strip() for tech in technologies.split(",") if tech.strip()]
 
             experiences.append(
                 Experience(
-                    company=row.get("company", ""),
-                    title=row.get("title", ""),
+                    company=row.get("title", ""),  # title field holds company name
+                    title=row.get("role", ""),  # role field holds job title
                     start_date=row.get("start_date", ""),
                     end_date=row.get("end_date"),
                     location=row.get("location"),
-                    description=row.get("summary"),
+                    description=description,
                     responsibilities=[],
                     achievements=achievements or [],
                     technologies=technologies or [],
