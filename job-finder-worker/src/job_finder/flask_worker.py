@@ -167,6 +167,10 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     companies_manager = CompaniesManager(db_path)
     job_sources_manager = JobSourcesManager(db_path)
 
+    # Initialize other components
+    profile_loader = SQLiteProfileLoader(db_path)
+    profile = profile_loader.load_profile()
+
     # Initialize AI components (defaults, then override with DB)
     ai_config = config.get("ai", {})
     provider = create_provider(ai_config.get("provider", "openai"), model=ai_config.get("model"))
@@ -175,14 +179,12 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         min_match_score=ai_config.get("min_match_score", 70),
         generate_intake=ai_config.get("generate_intake_data", True),
         portland_office_bonus=ai_config.get("portland_office_bonus", 15),
-        profile=None,  # Will be loaded per request
+        profile=profile,
         user_timezone=ai_config.get("user_timezone", -8),
         prefer_large_companies=ai_config.get("prefer_large_companies", True),
         config=ai_config,
     )
 
-    # Initialize other components
-    profile_loader = SQLiteProfileLoader(db_path)
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
     queue_manager = QueueManager(db_path)
     config_loader = ConfigLoader(db_path)
@@ -194,7 +196,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         sources_manager=job_sources_manager,
         company_info_fetcher=company_info_fetcher,
         ai_matcher=ai_matcher,
-        profile=None,  # Will be loaded per request
+        profile=profile,
     )
 
     apply_db_settings(config_loader, ai_matcher)

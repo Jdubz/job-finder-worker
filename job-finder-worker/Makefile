@@ -52,7 +52,6 @@ test: ## Run all tests
 test-ci: ## Run targeted CI/unit tests (used by git hooks)
 	@echo "$(CYAN)Running targeted CI tests...$(RESET)"
 	@. $(VENV_DIR)/bin/activate && pytest \
-		tests/test_search_orchestrator.py \
 		tests/test_placeholder.py \
 		tests/queue/test_job_pipeline_comprehensive.py \
 		tests/queue/test_scraper_intake.py

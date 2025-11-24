@@ -303,8 +303,7 @@ def test_process_scrape_with_default_config(processor, mock_managers, sample_scr
     # Mock scrape runner
     processor.scrape_runner.run_scrape.return_value = {
         "sources_scraped": 3,
-        "jobs_saved": 5,
-        "jobs_analyzed": 5,
+        "jobs_submitted": 5,
     }
 
     processor.process_item(sample_scrape_item)
@@ -345,15 +344,10 @@ def test_process_scrape_with_custom_config(processor, mock_managers):
     # Mock scrape runner
     processor.scrape_runner.run_scrape.return_value = {
         "sources_scraped": 2,
-        "jobs_saved": 8,
-        "jobs_analyzed": 10,
+        "jobs_submitted": 8,
     }
 
     processor.process_item(scrape_item)
-
-    # Should override AI matcher min score (check it was set)
-    # The ai_matcher is a mock, so we verify the attribute was assigned
-    assert hasattr(processor.ai_matcher, "min_match_score")
 
     # Should call scrape runner with custom values
     processor.scrape_runner.run_scrape.assert_called_once_with(
@@ -389,8 +383,7 @@ def test_process_scrape_with_none_values(processor, mock_managers):
     # Mock scrape runner
     processor.scrape_runner.run_scrape.return_value = {
         "sources_scraped": 100,
-        "jobs_saved": 25,
-        "jobs_analyzed": 50,
+        "jobs_submitted": 25,
     }
 
     processor.process_item(scrape_item)
@@ -399,12 +392,6 @@ def test_process_scrape_with_none_values(processor, mock_managers):
     processor.scrape_runner.run_scrape.assert_called_once_with(
         target_matches=None, max_sources=None, source_ids=None
     )
-
-    # Should not override AI matcher min score
-    assert not hasattr(mock_managers["ai_matcher"], "min_match_score") or (
-        mock_managers["ai_matcher"].min_match_score != 70
-    )
-
 
 def test_process_scrape_no_config(processor, mock_managers):
     """Test processing SCRAPE item without scrape_config (should use defaults)."""
@@ -419,8 +406,7 @@ def test_process_scrape_no_config(processor, mock_managers):
     # Mock scrape runner
     processor.scrape_runner.run_scrape.return_value = {
         "sources_scraped": 5,
-        "jobs_saved": 3,
-        "jobs_analyzed": 5,
+        "jobs_submitted": 3,
     }
 
     processor.process_item(scrape_item)
@@ -468,8 +454,7 @@ def test_process_scrape_no_jobs_found(processor, mock_managers):
     # Mock scrape runner with no results
     processor.scrape_runner.run_scrape.return_value = {
         "sources_scraped": 3,
-        "jobs_saved": 0,
-        "jobs_analyzed": 0,
+        "jobs_submitted": 0,
     }
 
     processor.process_item(scrape_item)

@@ -68,14 +68,13 @@ class BaseProcessor:
         tech_ranks = config_loader.get_technology_ranks()
         self.filter_engine = StrikeFilterEngine(filter_config, tech_ranks)
 
-        # Initialize scrape runner
+        # Initialize scrape runner (now enqueues jobs instead of analyzing inline)
         self.scrape_runner = ScrapeRunner(
-            ai_matcher=ai_matcher,
+            queue_manager=queue_manager,
             job_storage=job_storage,
             companies_manager=companies_manager,
             sources_manager=sources_manager,
             company_info_fetcher=company_info_fetcher,
-            profile=profile,
         )
 
         # Initialize scraper intake for submitting jobs to queue

@@ -1,23 +1,9 @@
 """Process queue items (jobs, companies, and scrape requests).
 
-REFACTORING COMPLETE - God Object Decomposed
-=============================================
+Coordinator for queue item processing.
 
-This file previously contained 2,456 lines of processing logic for jobs, companies,
-and sources. It has been refactored into focused processor classes:
-
-processors/
-├── base_processor.py         # ✅ Shared dependencies, utilities
-├── job_processor.py           # ✅ Job processing (scraping, filtering, AI analysis)
-├── company_processor.py       # ✅ Company processing (fetching, extraction, analysis)
-└── source_processor.py        # ✅ Source discovery and scraping
-
-This coordinator file now:
-- Initializes specialized processors
-- Dispatches queue items to appropriate processors
-- Provides shared validation and error handling
-
-Total reduction: 2,456 lines → ~250 lines (90% reduction)
+Routes queue items to specialized processors (job/company/source) and enforces
+the state-driven pipeline as the single source of truth.
 """
 
 import logging
@@ -151,7 +137,9 @@ class QueueItemProcessor:
             self.queue_manager.update_status(item.id, QueueStatus.PROCESSING)
 
             # Check stop list (skip for SCRAPE requests)
-            if item.type != QueueItemType.SCRAPE and self._should_skip_by_stop_list(item):
+            if item.type != QueueItemType.SCRAPE and self.job_processor._should_skip_by_stop_list(
+                item
+            ):
                 self.queue_manager.update_status(
                     item.id, QueueStatus.SKIPPED, "Excluded by stop list"
                 )
@@ -193,43 +181,6 @@ class QueueItemProcessor:
                 exc_info=True,
             )
             self._handle_failure(item, error_msg, error_details)
-
-    # ============================================================
-    # SHARED UTILITY METHODS
-    # ============================================================
-
-    def _should_skip_by_stop_list(self, item: JobQueueItem) -> bool:
-        """
-        Check if item should be skipped based on stop list.
-
-        Args:
-            item: Queue item to check
-
-        Returns:
-            True if item should be skipped, False otherwise
-        """
-        stop_list = self.config_loader.get_stop_list()
-
-        # Check excluded companies
-        if item.company_name:
-            for excluded in stop_list["excludedCompanies"]:
-                if excluded.lower() in item.company_name.lower():
-                    logger.info(f"Skipping due to excluded company: {item.company_name}")
-                    return True
-
-        # Check excluded domains
-        for excluded_domain in stop_list["excludedDomains"]:
-            if excluded_domain.lower() in item.url.lower():
-                logger.info(f"Skipping due to excluded domain: {excluded_domain}")
-                return True
-
-        # Check excluded keywords in URL
-        for keyword in stop_list["excludedKeywords"]:
-            if keyword.lower() in item.url.lower():
-                logger.info(f"Skipping due to excluded keyword in URL: {keyword}")
-                return True
-
-        return False
 
     def _handle_failure(
         self, item: JobQueueItem, error_message: str, error_details: Optional[str] = None
@@ -308,33 +259,7 @@ class QueueItemProcessor:
         """Delegate to job processor."""
         return self.job_processor.process_scrape(item)
 
-    def _process_job_scrape(self, item: JobQueueItem) -> None:
-        """Delegate to job processor."""
-        return self.job_processor.process_job_scrape(item)
-
-    def _process_job_filter(self, item: JobQueueItem) -> None:
-        """Delegate to job processor."""
-        return self.job_processor.process_job_filter(item)
-
-    def _process_job_analyze(self, item: JobQueueItem) -> None:
-        """Delegate to job processor."""
-        return self.job_processor.process_job_analyze(item)
-
-    def _process_job_save(self, item: JobQueueItem) -> None:
-        """Delegate to job processor."""
-        return self.job_processor.process_job_save(item)
-
-    def _process_granular_job(self, item: JobQueueItem) -> None:
-        """Delegate to job processor."""
-        return self.job_processor.process_granular_job(item)
-
-    def _scrape_job(self, item: JobQueueItem):
-        """Delegate to job processor."""
-        return self.job_processor._scrape_job(item)
-
-    def _scrape_with_source_config(self, url: str, source_config: Dict[str, Any]):
-        """Delegate to job processor."""
-        return self.job_processor._scrape_with_source_config(url, source_config)
+    # Legacy job delegation removed; state-driven pipeline is the only path.
 
     # Company processor delegations
     def _process_company_fetch(self, item: JobQueueItem) -> None:

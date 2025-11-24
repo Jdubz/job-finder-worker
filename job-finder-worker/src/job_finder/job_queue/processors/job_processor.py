@@ -1,26 +1,17 @@
-"""Job queue item processor.
+"""Job queue item processor (state-driven only).
 
-This processor handles all job-related queue items and pipeline stages:
-- Job scraping (extracting data from job URLs)
-- Job filtering (strike-based rule engine)
-- Job analysis (AI matching and resume intake generation)
-- Job saving (persist to the job_matches table)
-
-It supports both:
-1. Decision tree routing (recommended) - auto-detects next stage from pipeline_state
-2. Legacy subtask-based routing - explicit sub_task specification
+Advances a JOB item based on its pipeline_state:
+- scrape → filter → analyze → save
+Legacy sub_task routing has been removed to keep a single pipeline.
 """
 
 import logging
-import traceback
 from typing import Any, Dict, Optional
 
-from job_finder.exceptions import QueueProcessingError
 from job_finder.job_queue.models import (
     CompanyStatus,
     CompanySubTask,
     JobQueueItem,
-    JobSubTask,
     QueueItemType,
     QueueStatus,
 )
@@ -78,30 +69,6 @@ class JobProcessor(BaseProcessor):
             # Need to save
             logger.info(f"[DECISION TREE] {item.url[:50]} → SAVE (has match_result)")
             self._do_job_save(item)
-
-    def process_granular_job(self, item: JobQueueItem) -> None:
-        """
-        DEPRECATED: Route granular pipeline job to appropriate processor.
-
-        This method is kept for backward compatibility but should not be used.
-        Use process_job() instead which uses decision tree routing.
-
-        Args:
-            item: Job queue item with sub_task specified
-        """
-        if not item.sub_task:
-            raise QueueProcessingError("sub_task required for granular processing")
-
-        if item.sub_task == JobSubTask.SCRAPE:
-            self.process_job_scrape(item)
-        elif item.sub_task == JobSubTask.FILTER:
-            self.process_job_filter(item)
-        elif item.sub_task == JobSubTask.ANALYZE:
-            self.process_job_analyze(item)
-        elif item.sub_task == JobSubTask.SAVE:
-            self.process_job_save(item)
-        else:
-            raise QueueProcessingError(f"Unknown sub_task: {item.sub_task}")
 
     # ============================================================
     # DECISION TREE ACTION METHODS
@@ -375,313 +342,6 @@ class JobProcessor(BaseProcessor):
     # ============================================================
     # LEGACY SUBTASK-BASED METHODS
     # ============================================================
-
-    def process_job_scrape(self, item: JobQueueItem) -> None:
-        """
-        JOB_SCRAPE: Fetch HTML and extract basic job data.
-
-        Uses Claude Haiku (cheap, fast) for structured data extraction.
-        Spawns JOB_FILTER as next step.
-
-        Args:
-            item: Job queue item with sub_task=SCRAPE
-        """
-        if not item.id:
-            logger.error("Cannot process item without ID")
-            return
-
-        logger.info(f"JOB_SCRAPE: Extracting job data from {item.url[:50]}...")
-
-        try:
-            # Get source configuration for this URL
-            source = self.sources_manager.get_source_for_url(item.url)
-
-            if source:
-                # Use source-specific scraping method
-                job_data = self._scrape_with_source_config(item.url, source)
-            else:
-                # Fall back to generic scraping (or use AI extraction)
-                job_data = self._scrape_job(item)
-
-            if not job_data:
-                error_msg = "Could not scrape job details from URL"
-                error_details = f"Failed to extract data from: {item.url}"
-                self.queue_manager.update_status(
-                    item.id, QueueStatus.FAILED, error_msg, error_details=error_details
-                )
-                return
-
-            # Prepare pipeline state for next step
-            pipeline_state = {
-                "job_data": job_data,
-                "scrape_method": source.get("name") if source else "generic",
-            }
-
-            # Mark this step complete
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.SUCCESS,
-                "Job data scraped successfully",
-            )
-
-            # Spawn next pipeline step (FILTER)
-            self.queue_manager.spawn_next_pipeline_step(
-                current_item=item,
-                next_sub_task=JobSubTask.FILTER,
-                pipeline_state=pipeline_state,
-            )
-
-            logger.info(
-                f"JOB_SCRAPE complete: {job_data.get('title')} at {job_data.get('company')}"
-            )
-
-        except Exception as e:
-            logger.error(f"Error in JOB_SCRAPE: {e}")
-            raise
-
-    def process_job_filter(self, item: JobQueueItem) -> None:
-        """
-        JOB_FILTER: Apply strike-based filtering.
-
-        No AI used - pure rule-based filtering.
-        Spawns JOB_ANALYZE if passed, or marks FILTERED if failed.
-
-        Args:
-            item: Job queue item with sub_task=FILTER
-        """
-        if not item.id or not item.pipeline_state:
-            logger.error("Cannot process FILTER without ID or pipeline_state")
-            return
-
-        job_data = item.pipeline_state.get("job_data")
-        if not job_data:
-            logger.error("No job_data in pipeline_state")
-            return
-
-        logger.info(f"JOB_FILTER: Evaluating {job_data.get('title')} at {job_data.get('company')}")
-
-        try:
-            # Run strike-based filter
-            filter_result = self.filter_engine.evaluate_job(job_data)
-
-            if not filter_result.passed:
-                # Job rejected by filters
-                rejection_summary = filter_result.get_rejection_summary()
-                rejection_data = filter_result.to_dict()
-
-                logger.info(f"JOB_FILTER: Rejected - {rejection_summary}")
-
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.FILTERED,
-                    f"Rejected by filters: {rejection_summary}",
-                    scraped_data={"job_data": job_data, "filter_result": rejection_data},
-                )
-                return
-
-            # Filter passed - prepare for AI analysis
-            pipeline_state = {
-                **item.pipeline_state,
-                "filter_result": filter_result.to_dict(),
-            }
-
-            # Mark this step complete
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.SUCCESS,
-                "Passed filtering",
-            )
-
-            # Spawn next pipeline step (ANALYZE)
-            self.queue_manager.spawn_next_pipeline_step(
-                current_item=item,
-                next_sub_task=JobSubTask.ANALYZE,
-                pipeline_state=pipeline_state,
-            )
-
-            logger.info(f"JOB_FILTER complete: Passed with {filter_result.total_strikes} strikes")
-
-        except Exception as e:
-            logger.error(f"Error in JOB_FILTER: {e}")
-            raise
-
-    def process_job_analyze(self, item: JobQueueItem) -> None:
-        """
-        JOB_ANALYZE: Run AI matching and resume intake generation.
-
-        Uses Claude Sonnet (expensive, high quality) for detailed analysis.
-        Spawns JOB_SAVE if score meets threshold, or marks SKIPPED if below.
-
-        Args:
-            item: Job queue item with sub_task=ANALYZE
-        """
-        if not item.id or not item.pipeline_state:
-            logger.error("Cannot process ANALYZE without ID or pipeline_state")
-            return
-
-        job_data = item.pipeline_state.get("job_data")
-        if not job_data:
-            logger.error("No job_data in pipeline_state")
-            return
-
-        logger.info(f"JOB_ANALYZE: Analyzing {job_data.get('title')} at {job_data.get('company')}")
-
-        try:
-            # Ensure company exists and has good data
-            company_name = job_data.get("company", item.company_name)
-            company_website = job_data.get("company_website", "")
-
-            if company_name and company_website:
-                # Check if company exists in database
-                company = self.companies_manager.get_company(company_name)
-
-                # Handle company data quality and status
-                if not company or not self.companies_manager.has_good_company_data(company):
-                    # Company missing or has poor data - spawn COMPANY_FETCH for full analysis
-                    logger.info(
-                        f"Company {company_name} {'not found' if not company else 'has insufficient data'} "
-                        f"- spawning COMPANY_FETCH queue item"
-                    )
-
-                    # Create stub if doesn't exist
-                    if not company:
-                        company = self.companies_manager.create_company_stub(
-                            company_name=company_name,
-                            company_website=company_website,
-                        )
-
-                    # Spawn COMPANY_FETCH queue item for full analysis
-                    company_item = self.queue_manager.spawn_item_safely(
-                        current_item=item,
-                        new_item_data={
-                            "type": QueueItemType.COMPANY.value,
-                            "url": company_website,
-                            "company_name": company_name,
-                            "company_id": company.get("id"),
-                            "company_sub_task": CompanySubTask.FETCH.value,
-                            "source": "job_spawned",
-                        },
-                    )
-
-                    if company_item:
-                        logger.info(f"Spawned COMPANY_FETCH item {company_item} for {company_name}")
-
-                    # Use stub data for now (will have minimal info)
-                    company_id = company.get("id")
-                    job_data["company_id"] = company_id
-                    job_data["companyId"] = company_id  # backward compatibility
-                    job_data["company_info"] = self._build_company_info_string(company)
-
-                elif company.get("status") in [
-                    CompanyStatus.PENDING.value,
-                    CompanyStatus.ANALYZING.value,
-                ]:
-                    # Company is being analyzed - mark job as pending, will retry later
-                    logger.info(
-                        f"Company {company_name} is being analyzed (status={company.get('status')}) "
-                        f"- marking job as PENDING for retry"
-                    )
-                    self.queue_manager.update_status(
-                        item.id,
-                        QueueStatus.PENDING,
-                        f"Waiting for company analysis to complete (status={company.get('status')})",
-                    )
-                    return
-
-                else:
-                    # Company exists and has good data - use it
-                    logger.info(f"Using existing company data for {company_name}")
-                    company_id = company.get("id")
-                    job_data["company_id"] = company_id
-                    job_data["companyId"] = company_id  # backward compatibility
-                    job_data["company_info"] = self._build_company_info_string(company)
-
-            # Run AI matching (uses configured model - Sonnet by default)
-            result = self.ai_matcher.analyze_job(job_data)
-
-            if not result:
-                # Below match threshold
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.SKIPPED,
-                    f"Job score below threshold (< {self.ai_matcher.min_match_score})",
-                )
-                return
-
-            # Prepare pipeline state with analysis results
-            pipeline_state = {
-                **item.pipeline_state,
-                "match_result": result.to_dict(),
-            }
-
-            # Mark this step complete
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.SUCCESS,
-                f"AI analysis complete (score: {result.match_score})",
-            )
-
-            # Spawn next pipeline step (SAVE)
-            self.queue_manager.spawn_next_pipeline_step(
-                current_item=item,
-                next_sub_task=JobSubTask.SAVE,
-                pipeline_state=pipeline_state,
-            )
-
-            logger.info(
-                f"JOB_ANALYZE complete: Score {result.match_score}, "
-                f"Priority {result.application_priority}"
-            )
-
-        except Exception as e:
-            logger.error(f"Error in JOB_ANALYZE: {e}")
-            raise
-
-    def process_job_save(self, item: JobQueueItem) -> None:
-        """
-        JOB_SAVE: Save job match to SQLite.
-
-        Final step - no further spawning.
-
-        Args:
-            item: Job queue item with sub_task=SAVE
-        """
-        if not item.id or not item.pipeline_state:
-            logger.error("Cannot process SAVE without ID or pipeline_state")
-            return
-
-        job_data = item.pipeline_state.get("job_data")
-        match_result_dict = item.pipeline_state.get("match_result")
-
-        if not job_data or not match_result_dict:
-            logger.error("Missing job_data or match_result in pipeline_state")
-            return
-
-        logger.info(f"JOB_SAVE: Saving {job_data.get('title')} at {job_data.get('company')}")
-
-        try:
-            # Reconstruct JobMatchResult from dict
-            from job_finder.ai.matcher import JobMatchResult
-
-            result = JobMatchResult(**match_result_dict)
-
-            # Save to job-matches
-            doc_id = self.job_storage.save_job_match(job_data, result)
-
-            logger.info(
-                f"Job matched and saved: {job_data.get('title')} at {job_data.get('company')} "
-                f"(Score: {result.match_score}, ID: {doc_id})"
-            )
-
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.SUCCESS,
-                f"Job saved successfully (ID: {doc_id}, Score: {result.match_score})",
-            )
-
-        except Exception as e:
-            logger.error(f"Error in JOB_SAVE: {e}")
-            raise
 
     # ============================================================
     # JOB SCRAPING METHODS
@@ -986,71 +646,8 @@ class JobProcessor(BaseProcessor):
 
         return "\n\n".join(company_info_parts)
 
-    def handle_failure(
-        self, item: JobQueueItem, error_message: str, error_details: Optional[str] = None
-    ) -> None:
-        """
-        Handle item processing failure with retry logic.
-
-        Args:
-            item: Failed queue item
-            error_message: Brief error description (shown in UI)
-            error_details: Detailed error information including stack trace (for debugging)
-        """
-        if not item.id:
-            logger.error("Cannot handle failure for item without ID")
-            return
-
-        queue_settings = self.config_loader.get_queue_settings()
-        max_retries = queue_settings["maxRetries"]
-
-        # Increment retry count
-        self.queue_manager.increment_retry(item.id)
-
-        # Build context for error details
-        error_context = (
-            f"Queue Item: {item.id}\n"
-            f"Type: {item.type}\n"
-            f"URL: {item.url}\n"
-            f"Company: {item.company_name}\n"
-            f"Retry Count: {item.retry_count + 1}/{max_retries}\n\n"
-        )
-
-        # Check if we should retry
-        if item.retry_count + 1 < max_retries:
-            # Reset to pending for retry
-            retry_msg = f"Processing failed. Will retry ({item.retry_count + 1}/{max_retries})"
-            retry_details = (
-                f"{error_context}"
-                f"Error: {error_message}\n\n"
-                f"This item will be automatically retried.\n\n"
-                f"{'Stack Trace:\n' + error_details if error_details else ''}"
-            )
-            self.queue_manager.update_status(
-                item.id, QueueStatus.PENDING, retry_msg, error_details=retry_details
-            )
-            logger.info(f"Item {item.id} will be retried (attempt {item.retry_count + 1})")
-        else:
-            # Max retries exceeded, mark as failed
-            failed_msg = f"Failed after {max_retries} retries: {error_message}"
-            failed_details = (
-                f"{error_context}"
-                f"Error: {error_message}\n\n"
-                f"Max retries ({max_retries}) exceeded. Manual intervention may be required.\n\n"
-                f"Troubleshooting:\n"
-                f"1. Check if the URL is still valid\n"
-                f"2. Review error details below for specific issues\n"
-                f"3. Verify network connectivity and API credentials\n"
-                f"4. Check if the source website has changed structure\n\n"
-                f"{'Stack Trace:\n' + error_details if error_details else ''}"
-            )
-            self.queue_manager.update_status(
-                item.id, QueueStatus.FAILED, failed_msg, error_details=failed_details
-            )
-            logger.error(f"Item {item.id} failed after {max_retries} retries: {error_message}")
-
     # ============================================================
-    # LEGACY SCRAPE PROCESSING
+    # SCRAPE REQUESTS (enqueue-only)
     # ============================================================
 
     def process_scrape(self, item: JobQueueItem) -> None:
@@ -1077,15 +674,6 @@ class JobProcessor(BaseProcessor):
         logger.info(f"Starting scrape with config: {scrape_config.model_dump()}")
 
         try:
-            # Override AI match score if specified
-            original_min_score = self.ai_matcher.min_match_score
-            if scrape_config.min_match_score is not None:
-                logger.info(
-                    f"Overriding min_match_score: {original_min_score} -> "
-                    f"{scrape_config.min_match_score}"
-                )
-                self.ai_matcher.min_match_score = scrape_config.min_match_score
-
             # Run scrape (pass None values through, don't use defaults here)
             stats = self.scrape_runner.run_scrape(
                 target_matches=scrape_config.target_matches,
@@ -1093,12 +681,9 @@ class JobProcessor(BaseProcessor):
                 source_ids=scrape_config.source_ids,
             )
 
-            # Restore original min score
-            self.ai_matcher.min_match_score = original_min_score
-
             # Update queue item with success
             result_message = (
-                f"Scrape completed: {stats['jobs_saved']} jobs saved, "
+                f"Scrape completed: {stats['jobs_submitted']} jobs enqueued, "
                 f"{stats['sources_scraped']} sources scraped"
             )
 
