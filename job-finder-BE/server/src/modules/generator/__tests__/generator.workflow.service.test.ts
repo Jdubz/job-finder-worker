@@ -25,7 +25,7 @@ vi.mock('../workflow/services/cli-runner', () => ({
 
 vi.mock('../workflow/services/storage.service', () => {
   const saveArtifactWithMetadata = vi.fn().mockResolvedValue({
-    storagePath: '2024-01-15/acme-corp_software-engineer/test-user_acme-corp_software-engineer_resume.pdf',
+    storagePath: '2024-01-15/acme-corp_software-engineer_a1b2c3d4e5f6/test-user_acme-corp_software-engineer_resume.pdf',
     filename: 'test-user_acme-corp_software-engineer_resume.pdf',
     size: 1024
   })

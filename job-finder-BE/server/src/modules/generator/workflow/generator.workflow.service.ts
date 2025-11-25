@@ -386,8 +386,10 @@ export class GeneratorWorkflowService {
         const parsed = JSON.parse(cliResult.output) as ResumeContent
         return parsed
       } catch (error) {
-        this.log.warn({ err: error }, 'Failed to parse resume JSON')
+        this.log.warn({ err: error }, 'Failed to parse resume JSON, using fallback template')
       }
+    } else {
+      this.log.warn({ error: cliResult.error }, 'AI generation failed, using fallback template')
     }
 
     // Fallback: Build resume from content items if AI generation fails
@@ -444,8 +446,10 @@ export class GeneratorWorkflowService {
         const parsed = JSON.parse(cliResult.output) as CoverLetterContent
         return parsed
       } catch (error) {
-        this.log.warn({ err: error }, 'Failed to parse cover letter JSON')
+        this.log.warn({ err: error }, 'Failed to parse cover letter JSON, using fallback template')
       }
+    } else {
+      this.log.warn({ error: cliResult.error }, 'AI generation failed for cover letter, using fallback template')
     }
 
     // Fallback: Build cover letter if AI generation fails

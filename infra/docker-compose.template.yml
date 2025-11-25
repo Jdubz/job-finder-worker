@@ -7,7 +7,9 @@ version: "3.9"
 # 2. Update the volume paths to match your server setup
 # 3. Ensure all required directories exist on the host
 # 4. Update the .env file with production secrets
-# 5. Run: docker compose up -d
+# 5. Copy your ~/.codex folder to ./codex for AI document generation
+#    (contains auth.json with OpenAI credentials)
+# 6. Run: docker compose up -d
 
 services:
   api:
@@ -30,6 +32,10 @@ services:
       - type: bind
         source: ./artifacts  # Change to your artifacts directory
         target: /data/artifacts
+      - type: bind
+        source: ./codex  # Codex CLI config - requires auth.json with OpenAI API key
+        target: /home/node/.codex
+        read_only: true
     depends_on:
       sqlite-migrator:
         condition: service_completed_successfully
