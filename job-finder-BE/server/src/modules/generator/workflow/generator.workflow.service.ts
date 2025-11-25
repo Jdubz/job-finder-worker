@@ -242,24 +242,33 @@ export class GeneratorWorkflowService {
     return storageService.createPublicUrl(saved.storagePath)
   }
 
+  private enrichPayloadWithJobMatch(payload: GenerateDocumentPayload): JobMatch | null {
+    if (!payload.jobMatchId) {
+      return null
+    }
+
+    const jobMatch = this.jobMatchRepo.getById(payload.jobMatchId)
+    if (jobMatch) {
+      // Enrich payload with job match data
+      payload.job.jobDescriptionText = payload.job.jobDescriptionText || jobMatch.jobDescription
+      // Add additional context from job match
+      if (jobMatch.customizationRecommendations?.length) {
+        payload.preferences = payload.preferences || {}
+        payload.preferences.emphasize = [
+          ...(payload.preferences.emphasize || []),
+          ...jobMatch.customizationRecommendations
+        ]
+      }
+    }
+    return jobMatch
+  }
+
   private async buildResumeContent(payload: GenerateDocumentPayload, personalInfo: PersonalInfo): Promise<ResumeContent> {
     // Fetch content items from the database
     const contentItems = this.contentItemRepo.list()
 
-    // Fetch job match data if jobMatchId is provided
-    let jobMatch: JobMatch | null = null
-    if (payload.jobMatchId) {
-      jobMatch = this.jobMatchRepo.getById(payload.jobMatchId)
-      if (jobMatch) {
-        // Enrich payload with job match data
-        payload.job.jobDescriptionText = payload.job.jobDescriptionText || jobMatch.jobDescription
-        // Add additional context from job match
-        if (jobMatch.customizationRecommendations && jobMatch.customizationRecommendations.length > 0) {
-          payload.preferences = payload.preferences || {}
-          payload.preferences.emphasize = [...(payload.preferences.emphasize || []), ...jobMatch.customizationRecommendations]
-        }
-      }
-    }
+    // Fetch and enrich with job match data if available
+    const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
     const prompt = buildResumePrompt(payload, personalInfo, contentItems, jobMatch)
     const cliResult = await runCliProvider(prompt, 'codex')
@@ -316,20 +325,8 @@ export class GeneratorWorkflowService {
     // Fetch content items from the database
     const contentItems = this.contentItemRepo.list()
 
-    // Fetch job match data if jobMatchId is provided
-    let jobMatch: JobMatch | null = null
-    if (payload.jobMatchId) {
-      jobMatch = this.jobMatchRepo.getById(payload.jobMatchId)
-      if (jobMatch) {
-        // Enrich payload with job match data
-        payload.job.jobDescriptionText = payload.job.jobDescriptionText || jobMatch.jobDescription
-        // Add additional context from job match
-        if (jobMatch.customizationRecommendations && jobMatch.customizationRecommendations.length > 0) {
-          payload.preferences = payload.preferences || {}
-          payload.preferences.emphasize = [...(payload.preferences.emphasize || []), ...jobMatch.customizationRecommendations]
-        }
-      }
-    }
+    // Fetch and enrich with job match data if available
+    const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
     const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
     const cliResult = await runCliProvider(prompt, 'codex')

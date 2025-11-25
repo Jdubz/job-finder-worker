@@ -82,7 +82,7 @@ async function executeCommand(provider: CliProvider, prompt: string): Promise<Cl
       stderr += data.toString()
     })
 
-    child.on('error', (error: any) => {
+    child.on('error', (error: NodeJS.ErrnoException) => {
       failed = true
       logger.warn({ provider, error }, 'CLI process error')
       // Check if the command was not found
@@ -91,7 +91,7 @@ async function executeCommand(provider: CliProvider, prompt: string): Promise<Cl
         logger.error(errorMsg)
         resolve({ success: false, output: '', error: errorMsg })
       } else {
-        resolve({ success: false, output: stdout, error: error.message })
+        resolve({ success: false, output: stdout, error: error.message || 'Unknown error' })
       }
     })
 
