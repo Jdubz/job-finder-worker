@@ -11,7 +11,7 @@ from uuid import uuid4
 from job_finder.exceptions import StorageError
 from job_finder.job_queue.models import CompanyStatus
 from job_finder.storage.sqlite_client import sqlite_connection
-from job_finder.utils.company_name_utils import normalize_company_name
+from job_finder.utils.company_name_utils import clean_company_name, normalize_company_name
 
 logger = logging.getLogger(__name__)
 
@@ -110,13 +110,14 @@ class CompaniesManager:
 
     def save_company(self, company_data: Dict[str, Any]) -> str:
         name = company_data.get("name")
-        if not name:
+        if not name or not str(name).strip():
             raise StorageError("Company name is required")
 
-        normalized = self._normalize_name(name)
+        cleaned_name = clean_company_name(str(name)) or str(name).strip()
+        normalized = self._normalize_name(cleaned_name)
         company_id = company_data.get("id")
 
-        existing = self.get_company(name)
+        existing = self.get_company(cleaned_name)
         if existing and not company_id:
             company_id = existing["id"]
 
@@ -130,7 +131,7 @@ class CompaniesManager:
             tech_stack = [tech_stack]
 
         fields = {
-            "name": name,
+            "name": cleaned_name,
             "name_lower": normalized,
             "website": company_data.get("website"),
             "about": company_data.get("about"),
@@ -194,8 +195,9 @@ class CompaniesManager:
         return has_good_quality or has_minimal_quality
 
     def create_company_stub(self, company_name: str, company_website: str = "") -> Dict[str, Any]:
+        cleaned_name = clean_company_name(company_name) or company_name.strip()
         stub_data = {
-            "name": company_name,
+            "name": cleaned_name,
             "website": company_website,
             "about": "",
             "culture": "",
