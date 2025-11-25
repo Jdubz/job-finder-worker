@@ -38,3 +38,6 @@ process.env.JF_SQLITE_MIGRATIONS_DIR =
 // Keep test artifacts in a repo-local, git-ignored folder (never /srv/...)
 process.env.GENERATOR_ARTIFACTS_DIR =
   process.env.GENERATOR_ARTIFACTS_DIR ?? path.resolve(__dirname, '../../.artifacts-test')
+
+// Make the auth bypass token available before any modules load (tests share module cache)
+process.env.TEST_AUTH_BYPASS_TOKEN = process.env.TEST_AUTH_BYPASS_TOKEN ?? 'bypass-token'

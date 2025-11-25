@@ -5,6 +5,7 @@ import type { PersonalInfoStore } from '../personal-info.store'
 import type { ContentItemRepository } from '../../content-items/content-item.repository'
 import type { PdfMakeService } from '../workflow/services/pdfmake.service'
 import { storageService } from '../workflow/services/storage.service'
+import { runCliProvider } from '../workflow/services/cli-runner'
 import type { PersonalInfo, ContentItem } from '@shared/types'
 
 vi.mock('../workflow/services/cli-runner', () => {
@@ -47,20 +48,6 @@ vi.mock('../workflow/services/cli-runner', () => {
     })
   })
   return { runCliProvider }
-})
-
-vi.mock('../workflow/services/storage.service', () => {
-  const saveArtifactWithMetadata = vi.fn().mockResolvedValue({
-    storagePath: '2024-01-15/acme-corp_software-engineer_a1b2c3d4e5f6/test-user_acme-corp_software-engineer_resume.pdf',
-    filename: 'test-user_acme-corp_software-engineer_resume.pdf',
-    size: 1024
-  })
-  return {
-    storageService: {
-      saveArtifactWithMetadata,
-      createPublicUrl: vi.fn().mockReturnValue('http://example.com/resume.pdf')
-    }
-  }
 })
 
 class InMemoryRepo {
@@ -175,13 +162,86 @@ const pdfService: PdfMakeService = {
   generateResumePDF: vi.fn().mockResolvedValue(Buffer.from('resume')),
   generateCoverLetterPDF: vi.fn().mockResolvedValue(Buffer.from('cover'))
 } as unknown as PdfMakeService
-const storageMock = vi.mocked(storageService)
+
+const mockResumeContent = {
+  personalInfo: {
+    name: 'Test User',
+    title: 'Engineer',
+    summary: 'Test summary',
+    contact: { email: 'test@example.com' }
+  },
+  professionalSummary: 'Summary',
+  experience: [
+    {
+      company: 'Acme Corp',
+      role: 'Engineer',
+      startDate: '2020-01',
+      endDate: '2021-01',
+      highlights: ['Did things']
+    }
+  ],
+  skills: [{ category: 'Core', items: ['JS'] }],
+  education: []
+}
+
+const mockCoverLetterContent = {
+  greeting: 'Hello Hiring Team,',
+  openingParagraph: 'I am excited to apply.',
+  bodyParagraphs: ['Body paragraph one'],
+  closingParagraph: 'Thank you for your consideration.',
+  signature: 'Test User'
+}
 
   beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(runCliProvider).mockImplementation((prompt: string) => {
+      const isCover = /greeting|cover\s*letter|cover_letter|cover-letter/i.test(prompt)
+      if (isCover) {
+        return Promise.resolve({
+          success: true,
+          output: JSON.stringify({
+            greeting: 'Hello Hiring Team,',
+            openingParagraph: 'I am excited to apply.',
+            bodyParagraphs: ['Body paragraph one'],
+            closingParagraph: 'Thank you for your consideration.',
+            signature: 'Test User'
+          })
+        })
+      }
+      return Promise.resolve({
+        success: true,
+        output: JSON.stringify({
+          personalInfo: {
+            name: 'Test User',
+            title: 'Engineer',
+            summary: 'Test summary',
+            contact: { email: 'test@example.com' }
+          },
+          professionalSummary: 'Summary',
+          experience: [
+            {
+              company: 'Acme Corp',
+              role: 'Engineer',
+              startDate: '2020-01',
+              endDate: '2021-01',
+              highlights: ['Did things']
+            }
+          ],
+          skills: [{ category: 'Core', items: ['JS'] }],
+          education: []
+        })
+      })
+    })
+    vi.spyOn(storageService, 'saveArtifactWithMetadata').mockResolvedValue({
+      storagePath: '2024-01-15/acme-corp_software-engineer_a1b2c3d4e5f6/test-user_acme-corp_software-engineer_resume.pdf',
+      filename: 'test-user_acme-corp_software-engineer_resume.pdf',
+      size: 1024
+    })
+    vi.spyOn(storageService, 'createPublicUrl').mockReturnValue('http://example.com/resume.pdf')
+    vi.spyOn(GeneratorWorkflowService.prototype as any, 'buildResumeContent').mockResolvedValue(mockResumeContent)
+    vi.spyOn(GeneratorWorkflowService.prototype as any, 'buildCoverLetterContent').mockResolvedValue(mockCoverLetterContent)
     repo.mockRequests.clear()
     repo.mockArtifacts = []
-    storageMock.saveArtifactWithMetadata.mockClear()
-    storageMock.createPublicUrl.mockClear()
   })
 
   it('creates a request and tracks steps in memory', async () => {
@@ -230,6 +290,11 @@ const storageMock = vi.mocked(storageService)
     await service.runNextStep(requestId) // collect-data
     const coverResult = await service.runNextStep(requestId)
 
+    if (coverResult?.steps.find((s) => s.id === 'generate-cover-letter')?.status === 'failed') {
+      // Surface the underlying error in test output to debug regressions
+      // eslint-disable-next-line no-console
+      console.error('cover-letter error', coverResult?.error)
+    }
     expect(coverResult?.steps.find((s) => s.id === 'generate-cover-letter')?.status).toBe('completed')
     const request = repo.getRequest(requestId)
     expect(request?.coverLetterUrl).toBe('http://example.com/resume.pdf')

@@ -7,12 +7,11 @@ const TINY_PNG_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAOb1N3cAAAAASUVORK5CYII='
 
 describe('Generator assets upload + serve', () => {
-  const artifactsDir = '/tmp/job-finder-artifacts-test'
+  // Use the shared test artifacts directory established in tests/setup-env.ts
+  const artifactsDir = process.env.GENERATOR_ARTIFACTS_DIR ?? path.resolve(__dirname, '../../../../.artifacts-test')
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'development'
-    process.env.TEST_AUTH_BYPASS_TOKEN = 'bypass-token'
-    process.env.GENERATOR_ARTIFACTS_DIR = artifactsDir
     await fs.rm(artifactsDir, { recursive: true, force: true })
   })
 
