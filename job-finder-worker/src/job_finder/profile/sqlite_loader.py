@@ -107,11 +107,11 @@ class SQLiteProfileLoader:
 
             experiences.append(
                 Experience(
-                    company=row.get("title", ""),  # title field holds company name
-                    title=row.get("role", ""),  # role field holds job title
-                    start_date=row.get("start_date", ""),
+                    company=row.get("title") or "",  # title field holds company name
+                    title=row.get("role") or "",  # role field holds job title
+                    start_date=row.get("start_date") or "",
                     end_date=row.get("end_date"),
-                    location=row.get("location"),
+                    location=row.get("location") or "",
                     description=description,
                     responsibilities=[],
                     achievements=achievements or [],

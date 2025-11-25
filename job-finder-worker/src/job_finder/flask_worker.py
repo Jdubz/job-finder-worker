@@ -29,12 +29,14 @@ from job_finder.ai.providers import create_provider
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.logging_config import get_structured_logger, setup_logging
 from job_finder.profile import SQLiteProfileLoader
+from job_finder.profile.schema import Profile
 from job_finder.job_queue import ConfigLoader, QueueManager
 from job_finder.job_queue.models import QueueStatus
 from job_finder.job_queue.processor import QueueItemProcessor
 from job_finder.storage import JobStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
+from job_finder.exceptions import InitializationError
 
 # Load environment variables
 load_dotenv()
@@ -164,7 +166,24 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
 
     # Initialize other components
     profile_loader = SQLiteProfileLoader(db_path)
-    profile = profile_loader.load_profile()
+    try:
+        profile = profile_loader.load_profile()
+    except InitializationError as exc:
+        slogger.worker_status("profile_load_failed", {"error": str(exc)})
+        profile = Profile(
+            name="Fallback User",
+            email=None,
+            location=None,
+            summary=None,
+            years_of_experience=None,
+            skills=[],
+            experience=[],
+            education=[],
+            projects=[],
+            certifications=[],
+            languages=[],
+            preferences=None,
+        )
 
     # Initialize AI components (defaults, then override with DB)
     ai_config = {
