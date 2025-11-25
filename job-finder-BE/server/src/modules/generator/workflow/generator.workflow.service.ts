@@ -397,7 +397,13 @@ export class GeneratorWorkflowService {
     try {
       const parsed = JSON.parse(cliResult.output) as ResumeContent
 
-      const mappedExperience = contentItems.map((item) => ({
+      // Filter work experience items (new taxonomy: 'work')
+      const workItems = contentItems.filter((item) => item.aiContext === 'work')
+
+      // Filter education items
+      const educationItems = contentItems.filter((item) => item.aiContext === 'education')
+
+      const mappedExperience = workItems.map((item) => ({
         role: item.role ?? '',
         company: item.title ?? '',
         location: item.location ?? '',
@@ -409,6 +415,16 @@ export class GeneratorWorkflowService {
           .filter(Boolean),
         technologies: item.skills ?? []
       }))
+
+      const mappedEducation = educationItems
+        .filter((item) => item.title)
+        .map((item) => ({
+          institution: item.title ?? '',
+          degree: item.role ?? '',
+          field: '',
+          startDate: item.startDate ?? '',
+          endDate: item.endDate ?? ''
+        }))
 
       // Normalize and fill missing data using authoritative content items and personal info
       parsed.personalInfo = {
@@ -451,7 +467,32 @@ export class GeneratorWorkflowService {
         }))
       }
 
-      parsed.education = Array.isArray(parsed.education) ? parsed.education : []
+      // Enhance education data: use AI output but fill in missing fields from content items
+      if (Array.isArray(parsed.education) && parsed.education.length > 0) {
+        // Create a lookup map from institution name (normalized) to content item education
+        const educationLookup = new Map(
+          mappedEducation.map((edu) => [edu.institution.toLowerCase().trim(), edu])
+        )
+
+        parsed.education = parsed.education.map((aiEdu) => {
+          const instKey = (aiEdu.institution || '').toLowerCase().trim()
+          const contentEdu = educationLookup.get(instKey)
+          if (contentEdu) {
+            // Merge: use content item data as authoritative, AI data as fallback
+            return {
+              institution: contentEdu.institution || aiEdu.institution || '',
+              degree: contentEdu.degree || aiEdu.degree || '',
+              field: aiEdu.field || contentEdu.field || '',
+              startDate: contentEdu.startDate || aiEdu.startDate || '',
+              endDate: contentEdu.endDate || aiEdu.endDate || ''
+            }
+          }
+          return aiEdu
+        })
+      } else {
+        // No AI education - use content items directly
+        parsed.education = mappedEducation
+      }
       parsed.professionalSummary = parsed.professionalSummary || personalInfo.summary || ''
 
       return parsed

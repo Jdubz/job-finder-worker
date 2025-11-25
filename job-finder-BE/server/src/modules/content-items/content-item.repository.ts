@@ -29,6 +29,7 @@ type ContentItemRow = {
   end_date: string | null
   description: string | null
   skills: string | null
+  ai_context: string | null
   created_at: string
   updated_at: string
   created_by: string
@@ -48,6 +49,7 @@ function parseRow(row: ContentItemRow): ContentItem {
     endDate: row.end_date,
     description: row.description,
     skills: row.skills ? (JSON.parse(row.skills) as string[]) : undefined,
+    aiContext: row.ai_context as ContentItem['aiContext'],
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     createdBy: row.created_by,
@@ -114,11 +116,12 @@ export class ContentItemRepository {
         end_date,
         description,
         skills,
+        ai_context,
         created_at,
         updated_at,
         created_by,
         updated_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
     )
 
@@ -134,6 +137,7 @@ export class ContentItemRepository {
       data.endDate ?? null,
       data.description ?? null,
       data.skills ? JSON.stringify(data.skills) : null,
+      data.aiContext ?? null,
       now,
       now,
       data.userEmail,
@@ -165,6 +169,7 @@ export class ContentItemRepository {
         end_date = ?,
         description = ?,
         skills = ?,
+        ai_context = ?,
         updated_at = ?,
         updated_by = ?
       WHERE id = ?
@@ -182,6 +187,7 @@ export class ContentItemRepository {
       data.endDate ?? existing.endDate ?? null,
       data.description ?? existing.description ?? null,
       data.skills ? JSON.stringify(data.skills) : existing.skills ? JSON.stringify(existing.skills) : null,
+      data.aiContext !== undefined ? data.aiContext : existing.aiContext ?? null,
       now,
       data.userEmail,
       id

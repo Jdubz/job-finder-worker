@@ -3,7 +3,15 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import type { ContentItemFormValues } from "@/types/content-items"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select"
+import type { ContentItemFormValues, ContentItemAIContext } from "@/types/content-items"
+import { AI_CONTEXT_OPTIONS } from "@/types/content-items"
 
 interface ContentItemFormProps {
   initialValues?: ContentItemFormValues
@@ -20,7 +28,8 @@ const defaultValues: ContentItemFormValues = {
   startDate: "",
   endDate: "",
   description: "",
-  skills: []
+  skills: [],
+  aiContext: undefined
 }
 
 export function ContentItemForm({
@@ -158,6 +167,36 @@ export function ContentItemForm({
           onChange={(event) => setSkillsText(event.target.value)}
           placeholder="AWS, Terraform, Kubernetes"
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="aiContext">AI Context</Label>
+        <Select
+          value={formValues.aiContext ?? ""}
+          onValueChange={(value) =>
+            setFormValues((prev) => ({
+              ...prev,
+              aiContext: value ? (value as ContentItemAIContext) : undefined
+            }))
+          }
+        >
+          <SelectTrigger id="aiContext">
+            <SelectValue placeholder="Select context for document generation" />
+          </SelectTrigger>
+          <SelectContent>
+            {AI_CONTEXT_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <span className="font-medium">{option.label}</span>
+                <span className="ml-2 text-muted-foreground text-xs">
+                  {option.description}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Determines how this item appears in generated resumes and cover letters
+        </p>
       </div>
 
       <div className="flex gap-3">
