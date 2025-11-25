@@ -241,6 +241,7 @@ class ScrapeRunner:
             source="scraper",
             source_id=source.get("id"),
             source_label=source_label,
+            source_type=source_type,
             company_id=company_id,
         )
         stats["jobs_submitted"] = jobs_submitted

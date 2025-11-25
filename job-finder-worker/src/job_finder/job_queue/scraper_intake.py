@@ -44,6 +44,7 @@ class ScraperIntake:
         source: QueueSource = "scraper",
         source_id: Optional[str] = None,
         source_label: Optional[str] = None,
+        source_type: Optional[str] = None,
         company_id: Optional[str] = None,
     ) -> int:
         """
@@ -106,7 +107,7 @@ class ScraperIntake:
                     company_id=company_id,
                     source=source,
                     source_id=source_id,
-                    source_type=None,
+                    source_type=source_type,
                     scraped_data=(
                         job_payload if len(job_payload) > 2 else None
                     ),  # Include full job data if available
