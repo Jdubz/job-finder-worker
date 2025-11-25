@@ -12,7 +12,7 @@ import { buildGeneratorApiRouter } from './modules/generator/generator.api'
 import { buildGeneratorWorkflowRouter } from './modules/generator/generator.workflow.routes'
 import { buildGeneratorArtifactsRouter } from './modules/generator/generator.artifacts.routes'
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
-import { verifyFirebaseAuth } from './middleware/firebase-auth'
+import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
 
 export function buildApp() {
   const app = express()
@@ -77,7 +77,7 @@ export function buildApp() {
   app.use('/api/content-items', buildContentItemRouter())
   app.use('/api/queue', buildJobQueueRouter())
   app.use('/api/job-matches', buildJobMatchRouter())
-  app.use('/api/config', buildConfigRouter())
+  app.use('/api/config', requireRole('admin'), buildConfigRouter())
   app.use('/api/generator-docs', buildGeneratorRouter())
 
   app.get('/healthz', healthHandler)

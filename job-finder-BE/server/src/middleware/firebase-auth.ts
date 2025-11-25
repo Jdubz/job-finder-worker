@@ -10,7 +10,7 @@ const IS_DEVELOPMENT = env.NODE_ENV === "development"
 const DEV_TOKENS: Record<string, { email: string; roles: UserRole[]; name: string }> = {
   "dev-admin-token": {
     email: "dev-admin@jobfinder.dev",
-    roles: ["admin"],
+    roles: ["admin", "viewer"],
     name: "Dev Admin",
   },
   "dev-viewer-token": {
@@ -40,32 +40,42 @@ function resolveBypassEmail(): string | undefined {
   return cachedBypassEmail || undefined
 }
 
-function buildAuthorizedUser(profile: GoogleUser): AuthenticatedUser | null {
+function resolveRoles(email: string | undefined): UserRole[] {
+  if (!email) {
+    return []
+  }
+
+  const record = userRepository.findByEmail(email)
+  if (record) {
+    userRepository.touchLastLogin(record.id)
+    // Ensure viewers retain viewer access even if roles column is empty
+    return record.roles.length ? record.roles : ["viewer"]
+  }
+
+  // If the user is not in the roles table, treat them as a basic viewer by default.
+  return ["viewer"]
+}
+
+function buildAuthenticatedUser(profile: GoogleUser): AuthenticatedUser | null {
   if (!profile.email) {
     logger.warn("Auth token missing email claim")
     return null
   }
 
-  const record = userRepository.findByEmail(profile.email)
-  if (!record) {
-    logger.warn({ email: profile.email }, "User not found in roles table")
+  const roles = resolveRoles(profile.email)
+
+  if (roles.length === 0) {
+    logger.warn({ email: profile.email }, "User has no resolved roles")
     return null
   }
-
-  if (!record.roles.includes("admin")) {
-    logger.warn({ email: record.email, roles: record.roles }, "User lacks admin role")
-    return null
-  }
-
-  userRepository.touchLastLogin(record.id)
 
   return {
-    uid: profile.uid ?? record.id,
-    email: record.email,
+    uid: profile.uid ?? profile.email,
+    email: profile.email,
     emailVerified: profile.emailVerified ?? true,
-    name: profile.name ?? record.displayName ?? undefined,
-    picture: profile.picture ?? record.avatarUrl ?? undefined,
-    roles: record.roles
+    name: profile.name,
+    picture: profile.picture,
+    roles,
   }
 }
 
@@ -83,9 +93,12 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
       logger.error("Bypass token used but no admin user is defined in the users table")
       return res.status(403).json({ message: "User is not authorized" })
     }
-    const bypassUser = buildAuthorizedUser({ uid: "test-user", email, emailVerified: true })
-    if (!bypassUser) {
-      return res.status(403).json({ message: "User is not authorized" })
+    const bypassUser: AuthenticatedUser = {
+      uid: "test-user",
+      email,
+      emailVerified: true,
+      name: "Test Bypass User",
+      roles: ["admin", "viewer"],
     }
     ;(req as AuthenticatedRequest).user = bypassUser
     return next()
@@ -113,11 +126,24 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     return res.status(401).json({ message: "Invalid auth token" })
   }
 
-  const authorizedUser = buildAuthorizedUser(googleUser)
-  if (!authorizedUser) {
+  const authenticatedUser = buildAuthenticatedUser(googleUser)
+  if (!authenticatedUser) {
     return res.status(403).json({ message: "User is not authorized" })
   }
 
-  ;(req as AuthenticatedRequest).user = authorizedUser
+  ;(req as AuthenticatedRequest).user = authenticatedUser
   return next()
+}
+
+export function requireRole(role: UserRole) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as AuthenticatedRequest).user
+    if (!user) {
+      return res.status(401).json({ message: "Missing authenticated user" })
+    }
+    if (!user.roles.includes(role)) {
+      return res.status(403).json({ message: "User is not authorized" })
+    }
+    next()
+  }
 }
