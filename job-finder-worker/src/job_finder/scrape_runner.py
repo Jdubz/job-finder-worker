@@ -237,7 +237,11 @@ class ScrapeRunner:
         company_id = source.get("company_id") or source.get("companyId")
         source_label = f"{source_type}:{source_name}"
         jobs_submitted = self.scraper_intake.submit_jobs(
-            jobs=jobs, source=source_label, company_id=company_id
+            jobs=jobs,
+            source="scraper",
+            source_id=source.get("id"),
+            source_label=source_label,
+            company_id=company_id,
         )
         stats["jobs_submitted"] = jobs_submitted
         logger.info(f"  Submitted {jobs_submitted} jobs to queue from {source_name}")

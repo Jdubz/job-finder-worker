@@ -42,6 +42,8 @@ class ScraperIntake:
         self,
         jobs: List[Dict[str, Any]],
         source: QueueSource = "scraper",
+        source_id: Optional[str] = None,
+        source_label: Optional[str] = None,
         company_id: Optional[str] = None,
     ) -> int:
         """
@@ -103,12 +105,15 @@ class ScraperIntake:
                     company_name=company_name,
                     company_id=company_id,
                     source=source,
+                    source_id=source_id,
+                    source_type=None,
                     scraped_data=(
                         job_payload if len(job_payload) > 2 else None
                     ),  # Include full job data if available
                     tracking_id=tracking_id,  # Root tracking ID
                     ancestry_chain=[],  # Root has no ancestors
                     spawn_depth=0,  # Root starts at depth 0
+                    metadata={"source_label": source_label} if source_label else None,
                 )
 
                 # Add to queue
