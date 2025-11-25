@@ -25,7 +25,9 @@ def test_save_company_strips_careers_suffix(tmp_path: Path):
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT name, name_lower FROM companies WHERE id = ?", (company_id,)).fetchone()
+        row = conn.execute(
+            "SELECT name, name_lower FROM companies WHERE id = ?", (company_id,)
+        ).fetchone()
 
     assert row["name"] == "Acme"
     assert row["name_lower"] == "acme"
@@ -43,7 +45,9 @@ def test_stub_creation_returns_clean_name(tmp_path: Path):
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT name, name_lower FROM companies WHERE id = ?", (stub["id"],)).fetchone()
+        row = conn.execute(
+            "SELECT name, name_lower FROM companies WHERE id = ?", (stub["id"],)
+        ).fetchone()
 
     assert row["name"] == "Cloudflare"
     assert row["name_lower"] == "cloudflare"
