@@ -62,6 +62,8 @@ async function executeCommand(provider: CliProvider, prompt: string): Promise<Cl
     const command = buildCommand(provider, prompt)
     const logFile = path.join(os.tmpdir(), `generator-cli-${randomUUID()}.log`)
 
+    logger.info({ provider, cmd: command.cmd }, 'Executing AI generation command')
+
     const child = spawn(command.cmd, command.args, {
       env: process.env,
       shell: false,
@@ -80,10 +82,17 @@ async function executeCommand(provider: CliProvider, prompt: string): Promise<Cl
       stderr += data.toString()
     })
 
-    child.on('error', (error) => {
+    child.on('error', (error: NodeJS.ErrnoException) => {
       failed = true
       logger.warn({ provider, error }, 'CLI process error')
-      resolve({ success: false, output: stdout, error: error.message })
+      // Check if the command was not found
+      if (error.code === 'ENOENT') {
+        const errorMsg = `AI CLI tool '${command.cmd}' not found. Please ensure the ${provider} CLI is installed and available in PATH.`
+        logger.error(errorMsg)
+        resolve({ success: false, output: '', error: errorMsg })
+      } else {
+        resolve({ success: false, output: stdout, error: error.message || 'Unknown error' })
+      }
     })
 
     child.on('close', (code) => {

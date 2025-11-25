@@ -69,13 +69,16 @@ export function buildApp() {
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: true }))
 
+  // Prompts route - public GET, authenticated PUT/POST
+  app.use('/api/prompts', buildPromptsRouter())
+
+  // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)
   app.use('/api/content-items', buildContentItemRouter())
   app.use('/api/queue', buildJobQueueRouter())
   app.use('/api/job-matches', buildJobMatchRouter())
   app.use('/api/config', buildConfigRouter())
   app.use('/api/generator-docs', buildGeneratorRouter())
-  app.use('/api/prompts', buildPromptsRouter())
 
   app.get('/healthz', healthHandler)
   app.get('/readyz', healthHandler)

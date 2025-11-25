@@ -240,9 +240,6 @@ export function DocumentBuilderPage() {
         })
       }
 
-      // Refresh history
-      setRefreshHistory((prev) => prev + 1)
-
       // Reset form
       setSelectedJobMatchId("")
       setCustomJobTitle("")

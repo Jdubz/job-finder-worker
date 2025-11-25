@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import type { Logger } from 'pino'
-import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
+import type { ResumeContent, CoverLetterContent, PersonalInfo, JobMatch } from '@shared/types'
 import { logger } from '../../../logger'
 import { PersonalInfoStore } from '../personal-info.store'
 import { ContentItemRepository } from '../../content-items/content-item.repository'
+import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { storageService } from './services/storage.service'
 import { PDFService } from './services/pdf.service'
 import { generateRequestId } from './request-id'
@@ -57,6 +58,7 @@ export class GeneratorWorkflowService {
     private readonly workflowRepo = new GeneratorWorkflowRepository(),
     private readonly personalInfoStore = new PersonalInfoStore(),
     private readonly contentItemRepo = new ContentItemRepository(),
+    private readonly jobMatchRepo = new JobMatchRepository(),
     private readonly log: Logger = logger
   ) {}
 
@@ -240,11 +242,35 @@ export class GeneratorWorkflowService {
     return storageService.createPublicUrl(saved.storagePath)
   }
 
+  private enrichPayloadWithJobMatch(payload: GenerateDocumentPayload): JobMatch | null {
+    if (!payload.jobMatchId) {
+      return null
+    }
+
+    const jobMatch = this.jobMatchRepo.getById(payload.jobMatchId)
+    if (jobMatch) {
+      // Enrich payload with job match data
+      payload.job.jobDescriptionText = payload.job.jobDescriptionText || jobMatch.jobDescription
+      // Add additional context from job match
+      if (jobMatch.customizationRecommendations?.length) {
+        payload.preferences = payload.preferences || {}
+        payload.preferences.emphasize = [
+          ...(payload.preferences.emphasize || []),
+          ...jobMatch.customizationRecommendations
+        ]
+      }
+    }
+    return jobMatch
+  }
+
   private async buildResumeContent(payload: GenerateDocumentPayload, personalInfo: PersonalInfo): Promise<ResumeContent> {
     // Fetch content items from the database
     const contentItems = this.contentItemRepo.list()
 
-    const prompt = buildResumePrompt(payload, personalInfo, contentItems)
+    // Fetch and enrich with job match data if available
+    const jobMatch = this.enrichPayloadWithJobMatch(payload)
+
+    const prompt = buildResumePrompt(payload, personalInfo, contentItems, jobMatch)
     const cliResult = await runCliProvider(prompt, 'codex')
     if (cliResult.success) {
       try {
@@ -299,7 +325,10 @@ export class GeneratorWorkflowService {
     // Fetch content items from the database
     const contentItems = this.contentItemRepo.list()
 
-    const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems)
+    // Fetch and enrich with job match data if available
+    const jobMatch = this.enrichPayloadWithJobMatch(payload)
+
+    const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
     const cliResult = await runCliProvider(prompt, 'codex')
     if (cliResult.success) {
       try {

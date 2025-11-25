@@ -1,5 +1,5 @@
 import type { GenerateDocumentPayload } from './generator.workflow.service'
-import type { PersonalInfo, ContentItem } from '@shared/types'
+import type { PersonalInfo, ContentItem, JobMatch } from '@shared/types'
 import { PromptsRepository } from '../../prompts/prompts.repository'
 
 const promptsRepo = new PromptsRepository()
@@ -12,6 +12,10 @@ interface PromptVariables {
   userExperience: string
   userSkills: string
   additionalInstructions: string
+  companyInfo?: string
+  matchedSkills?: string
+  keyStrengths?: string
+  atsKeywords?: string
 }
 
 function replaceVariables(template: string, variables: PromptVariables): string {
@@ -23,12 +27,17 @@ function replaceVariables(template: string, variables: PromptVariables): string 
     .replace(/\{\{userExperience\}\}/g, variables.userExperience)
     .replace(/\{\{userSkills\}\}/g, variables.userSkills)
     .replace(/\{\{additionalInstructions\}\}/g, variables.additionalInstructions)
+    .replace(/\{\{companyInfo\}\}/g, variables.companyInfo || '')
+    .replace(/\{\{matchedSkills\}\}/g, variables.matchedSkills || '')
+    .replace(/\{\{keyStrengths\}\}/g, variables.keyStrengths || '')
+    .replace(/\{\{atsKeywords\}\}/g, variables.atsKeywords || '')
 }
 
 export function buildResumePrompt(
   payload: GenerateDocumentPayload,
   personalInfo: PersonalInfo,
-  contentItems: ContentItem[] = []
+  contentItems: ContentItem[] = [],
+  jobMatch: JobMatch | null = null
 ): string {
   const prompts = promptsRepo.getPrompts()
 
@@ -47,7 +56,11 @@ export function buildResumePrompt(
     jobDescription: payload.job.jobDescriptionText || 'No job description provided',
     userExperience: experience || 'No experience data available',
     userSkills: skills || 'No skills data available',
-    additionalInstructions: payload.preferences?.emphasize?.join(', ') || ''
+    additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
+    companyInfo: jobMatch?.companyInfo || '',
+    matchedSkills: jobMatch?.matchedSkills?.join(', ') || '',
+    keyStrengths: jobMatch?.keyStrengths?.join(', ') || '',
+    atsKeywords: jobMatch?.resumeIntakeData?.atsKeywords?.join(', ') || ''
   }
 
   const prompt = replaceVariables(prompts.resumeGeneration, variables)
@@ -59,7 +72,8 @@ export function buildResumePrompt(
 export function buildCoverLetterPrompt(
   payload: GenerateDocumentPayload,
   personalInfo: PersonalInfo,
-  contentItems: ContentItem[] = []
+  contentItems: ContentItem[] = [],
+  jobMatch: JobMatch | null = null
 ): string {
   const prompts = promptsRepo.getPrompts()
 
@@ -78,7 +92,11 @@ export function buildCoverLetterPrompt(
     jobDescription: payload.job.jobDescriptionText || 'No job description provided',
     userExperience: experience || 'No experience data available',
     userSkills: skills || 'No skills data available',
-    additionalInstructions: payload.preferences?.emphasize?.join(', ') || ''
+    additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
+    companyInfo: jobMatch?.companyInfo || '',
+    matchedSkills: jobMatch?.matchedSkills?.join(', ') || '',
+    keyStrengths: jobMatch?.keyStrengths?.join(', ') || '',
+    atsKeywords: jobMatch?.resumeIntakeData?.atsKeywords?.join(', ') || ''
   }
 
   const prompt = replaceVariables(prompts.coverLetterGeneration, variables)
