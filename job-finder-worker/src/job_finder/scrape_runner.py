@@ -14,6 +14,12 @@ from typing import Any, Dict, List, Optional
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import ConfigurationError
 from job_finder.job_queue.manager import QueueManager
+from job_finder.job_queue.models import (
+    JobQueueItem,
+    QueueItemType,
+    SourceDiscoveryConfig,
+    SourceTypeHint,
+)
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.greenhouse_scraper import GreenhouseScraper
 from job_finder.storage import JobStorage
@@ -239,7 +245,15 @@ class ScrapeRunner:
             scraper_rss = RSSJobScraper(rss_url, listing_config={})
             jobs = scraper_rss.scrape()
         else:
-            logger.warning(f"Unsupported source type: {source_type}")
+            logger.warning(
+                f"Unsupported source type: {source_type}. Spawning discovery for {source_name}"
+            )
+            self._spawn_source_discovery(
+                url=source.get("url") or config.get("url") or source_name,
+                company_id=company_id,
+                company_name=company_name,
+                discovered_via=source.get("discovered_via") or "automated_scan",
+            )
             return stats
 
         stats["jobs_found"] = len(jobs)
@@ -261,3 +275,38 @@ class ScrapeRunner:
         logger.info(f"  Submitted {jobs_submitted} jobs to queue from {source_name}")
 
         return stats
+
+    # ------------------------------------------------------------
+    # Discovery spawn helper
+    # ------------------------------------------------------------
+
+    def _spawn_source_discovery(
+        self,
+        url: str,
+        company_id: Optional[str],
+        company_name: Optional[str],
+        discovered_via: str,
+    ) -> None:
+        discovery_config = SourceDiscoveryConfig(
+            url=url,
+            company_id=company_id,
+            company_name=company_name,
+            type_hint=SourceTypeHint.AUTO,
+            validation_required=True,
+        )
+
+        discovery_item = JobQueueItem(
+            type=QueueItemType.SOURCE_DISCOVERY,
+            url=url,
+            company_name=company_name or "",
+            source=discovered_via,
+            source_discovery_config=discovery_config,
+        )
+
+        discovery_id = self.queue_manager.add_item(discovery_item)
+        logger.info(
+            "Spawned SOURCE_DISCOVERY %s for url=%s company=%s",
+            discovery_id,
+            url,
+            company_name,
+        )
