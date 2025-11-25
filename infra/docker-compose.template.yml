@@ -8,8 +8,10 @@ version: "3.9"
 # 3. Ensure all required directories exist on the host
 # 4. Update the .env file with production secrets
 # 5. Copy your ~/.codex folder to ./codex for AI document generation
-#    (contains auth.json with OpenAI credentials)
+#    This uses OAuth tokens from your ChatGPT Pro subscription
 # 6. Run: docker compose up -d
+#
+# IMPORTANT: The codex mount must be read-write so OAuth tokens can be refreshed
 
 services:
   api:
@@ -33,9 +35,8 @@ services:
         source: ./artifacts  # Change to your artifacts directory
         target: /data/artifacts
       - type: bind
-        source: ./codex  # Codex CLI config - requires auth.json with OpenAI API key
+        source: ./codex  # Codex CLI OAuth tokens (ChatGPT Pro) - must be read-write for token refresh
         target: /home/node/.codex
-        read_only: true
     depends_on:
       sqlite-migrator:
         condition: service_completed_successfully
