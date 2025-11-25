@@ -27,8 +27,17 @@ class FrontendLogger {
   constructor() {
     this.sessionId = this.generateSessionId()
 
-    // Flush logs every 5 seconds or when buffer reaches 10 items
-    this.flushTimer = window.setInterval(() => this.flush(), 5000)
+    // Use recursive setTimeout to prevent overlapping flushes
+    const scheduleNextFlush = () => {
+      this.flushTimer = window.setTimeout(async () => {
+        await this.flush()
+        // If not destroyed, schedule the next flush
+        if (this.flushTimer) {
+          scheduleNextFlush()
+        }
+      }, 5000)
+    }
+    scheduleNextFlush()
 
     // Flush on page unload
     window.addEventListener('beforeunload', () => this.flush())
@@ -112,7 +121,8 @@ class FrontendLogger {
           sessionId: this.sessionId,
           service: 'frontend',
           timestamp: new Date().toISOString()
-        })
+        }),
+        keepalive: true  // Ensure request completes even during page unload
       })
     } catch (error) {
       // Failed to send logs, put them back in the buffer for retry
@@ -123,7 +133,8 @@ class FrontendLogger {
 
   destroy(): void {
     if (this.flushTimer) {
-      clearInterval(this.flushTimer)
+      clearTimeout(this.flushTimer)
+      this.flushTimer = undefined
     }
     this.flush()
   }

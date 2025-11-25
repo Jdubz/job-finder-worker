@@ -1,5 +1,11 @@
 import type { Request, Response, NextFunction } from 'express'
 
+// Define allowed categories at module level for better performance
+const allowedCategories = new Set([
+  'worker', 'queue', 'pipeline', 'scrape', 'ai',
+  'database', 'api', 'auth', 'client', 'system'
+])
+
 export function validateLogRequest(req: Request, res: Response, next: NextFunction) {
   const { logs, service, sessionId } = req.body
 
@@ -51,12 +57,7 @@ export function validateLogRequest(req: Request, res: Response, next: NextFuncti
     }
 
     // Validate category is one of the allowed values
-    const allowedCategories = [
-      'worker', 'queue', 'pipeline', 'scrape', 'ai',
-      'database', 'api', 'auth', 'client', 'system'
-    ]
-
-    if (!allowedCategories.includes(log.category)) {
+    if (!allowedCategories.has(log.category)) {
       return res.status(400).json({
         error: 'Invalid log entry',
         message: `Log at index ${i} has invalid category: ${log.category}`,
