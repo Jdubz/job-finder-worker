@@ -92,7 +92,6 @@ def test_queue_scrape_end_to_end(temp_db):
         name="E2E RSS",
         source_type="rss",
         config={"url": "https://example.com/jobs.rss"},
-        enabled=True,
         company_id=None,
         company_name="E2E Co",
         discovery_confidence="high",

@@ -52,7 +52,6 @@ def test_create_from_discovery_persists_metadata(tmp_path):
         discovery_queue_item_id="queue-1",
         company_id="comp-1",
         company_name="Acme",
-        enabled=False,
         validation_required=True,
         tags=["gh"],
         tier="B",

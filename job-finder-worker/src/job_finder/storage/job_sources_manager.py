@@ -43,8 +43,6 @@ class JobSourcesManager:
             "name": row["name"],
             "sourceType": row["source_type"],
             "status": row["status"],
-            # Convenience flag mirroring status for callers that previously relied on `enabled`
-            "enabled": row["status"] == SourceStatus.ACTIVE.value,
             "config": parse_json(row["config_json"], {}),
             "tags": parse_json(row.get("tags"), []),
             "companyId": row.get("company_id"),
@@ -75,7 +73,6 @@ class JobSourcesManager:
         name: str,
         source_type: str,
         config: Dict[str, Any],
-        enabled: bool = True,
         company_id: Optional[str] = None,
         company_name: Optional[str] = None,
         tags: Optional[List[str]] = None,
@@ -90,7 +87,7 @@ class JobSourcesManager:
         if validation_required:
             status = SourceStatus.PENDING_VALIDATION.value
         else:
-            status = SourceStatus.ACTIVE.value if enabled else SourceStatus.DISABLED.value
+            status = SourceStatus.ACTIVE.value
 
         source_id = str(uuid4())
         now = _utcnow_iso()
@@ -280,7 +277,6 @@ class JobSourcesManager:
         discovery_queue_item_id: Optional[str],
         company_id: Optional[str],
         company_name: Optional[str],
-        enabled: bool,
         validation_required: bool,
         tags: Optional[List[str]] = None,
         tier: str = "D",
@@ -289,7 +285,6 @@ class JobSourcesManager:
             name=name,
             source_type=source_type,
             config=config,
-            enabled=enabled,
             company_id=company_id,
             company_name=company_name,
             tags=tags,
