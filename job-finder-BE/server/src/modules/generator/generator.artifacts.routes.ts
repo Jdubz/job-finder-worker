@@ -24,7 +24,14 @@ export function buildGeneratorArtifactsRouter() {
         res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Invalid asset path'))
         return
       }
-      const safe = relative.replace(/\\.\\.+/g, '').replace(/^\\//, '')
+
+      // Normalize and strip any path traversal attempts
+      let safe = path.posix.normalize(relative)
+      while (safe.startsWith('../')) {
+        safe = safe.slice(3)
+      }
+      safe = safe.replace(/^\/+/, '')
+
       const absolutePath = storageService.getAbsolutePath(path.posix.join('assets', safe))
       try {
         const fileStats = await stat(absolutePath)

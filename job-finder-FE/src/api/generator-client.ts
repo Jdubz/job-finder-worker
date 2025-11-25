@@ -169,10 +169,8 @@ export class GeneratorClient extends BaseApiClient {
   }
 
   async uploadAsset(params: { type: "avatar" | "logo"; dataUrl: string }): Promise<{ path: string; publicUrl: string }> {
-    return this.post<{ success: boolean; path: string; publicUrl: string }>("/assets/upload", params).then((r) => ({
-      path: (r as any).path,
-      publicUrl: (r as any).publicUrl,
-    }))
+    const r = await this.post<{ success: boolean; path: string; publicUrl: string }>("/assets/upload", params)
+    return { path: r.path, publicUrl: r.publicUrl }
   }
 
   /**

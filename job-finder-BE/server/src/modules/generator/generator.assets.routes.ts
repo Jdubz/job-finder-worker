@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { asyncHandler } from '../utils/async-handler'
+import { asyncHandler } from '../../utils/async-handler'
 import { storageService } from './workflow/services/storage.service'
 
 const uploadSchema = z.object({
