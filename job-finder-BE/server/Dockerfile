@@ -12,7 +12,7 @@ ENV HUSKY=0
 ENV HUSKY_SKIP_INSTALL=1
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
 # Adjust monorepo file dependency to match container layout
-RUN sed -i 's#file:../../shared#file:/shared#g' package.json package-lock.json
+RUN sed -i 's#file:../../shared#file:/shared#g; s#"../../shared"#"/shared"#g' package.json package-lock.json
 COPY --from=shared-build /shared /shared
 COPY infra/sqlite ./infra/sqlite
 RUN npm install && npm rebuild better-sqlite3
@@ -26,7 +26,7 @@ ENV NODE_ENV=production
 ENV HUSKY=0
 ENV HUSKY_SKIP_INSTALL=1
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
-RUN sed -i 's#file:../../shared#file:/shared#g' package.json package-lock.json
+RUN sed -i 's#file:../../shared#file:/shared#g; s#"../../shared"#"/shared"#g' package.json package-lock.json
 COPY --from=shared-build /shared /shared
 COPY infra/sqlite ./infra/sqlite
 RUN npm install --omit=dev && npm rebuild better-sqlite3
