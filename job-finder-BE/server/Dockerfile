@@ -30,8 +30,8 @@ ENV HUSKY_SKIP_INSTALL=1
 # Codex config directory (mount from host for auth credentials)
 ENV CODEX_HOME=/home/node/.codex
 
-# Install gosu for dropping privileges, npm update, and codex CLI
-RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+# Install gosu for dropping privileges, ca-certificates for TLS, npm update, and codex CLI
+RUN apt-get update && apt-get install -y --no-install-recommends gosu ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g npm@11.6.3 @openai/codex@0.63.0 \
     && npm cache clean --force \
