@@ -1,4 +1,4 @@
-"""Logging configuration with Google Cloud Logging JSON output."""
+"""Logging configuration with JSON output to stdout and file."""
 
 import json
 import logging
@@ -120,7 +120,7 @@ class JSONFormatter(logging.Formatter):
         Returns:
             JSON string conforming to StructuredLogEntry schema
         """
-        # Map Python log levels to Cloud Logging severity
+        # Map Python log levels to severity
         severity_map = {
             logging.DEBUG: "DEBUG",
             logging.INFO: "INFO",
@@ -167,36 +167,30 @@ class JSONFormatter(logging.Formatter):
 def setup_logging(
     log_level: str = "INFO",
     log_file: Optional[str] = None,
-    enable_cloud_logging: bool = False,
 ) -> None:
     """
-    Configure logging with JSON output and optional Google Cloud Logging integration.
+    Configure logging with JSON output to stdout and file.
 
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
         log_file: Path to log file. If None, uses centralized /logs/worker.log.
-        enable_cloud_logging: Enable Google Cloud Logging integration.
 
     Environment Variables:
-        ENABLE_CLOUD_LOGGING: Set to 'true' to enable Cloud Logging.
         LOG_LEVEL: Override log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
         LOG_FILE: Override log file path.
         ENVIRONMENT: Environment name (staging, production, development).
-        GOOGLE_APPLICATION_CREDENTIALS: Path to service account JSON (required for Cloud Logging).
     """
-    # Check environment variables
-    if os.getenv("ENABLE_CLOUD_LOGGING", "").lower() == "true":
-        enable_cloud_logging = True
-
     log_level = os.getenv("LOG_LEVEL", log_level).upper()
+
     # Default to centralized log directory
     if log_file is None and "LOG_FILE" not in os.environ:
-        # Calculate path to service logs directory
-        # File is at: .../job-finder-worker/src/job_finder/logging_config.py
-        # Logs are at: .../job-finder-worker/logs/
-        # Traversal: logging_config.py -> job_finder/ (P1) -> src/ (P2) -> job-finder-worker/ (P3) -> logs/
-        centralized_logs = Path(__file__).parent.parent.parent / "logs" / "worker.log"
-        log_file = str(centralized_logs)
+        # Production logs go to /srv/job-finder/logs
+        if os.getenv("ENVIRONMENT") == "production":
+            log_file = "/srv/job-finder/logs/worker.log"
+        else:
+            # Development/staging logs go to local logs directory
+            centralized_logs = Path(__file__).parent.parent.parent / "logs" / "worker.log"
+            log_file = str(centralized_logs)
     else:
         log_file = os.getenv("LOG_FILE", log_file)
 
@@ -215,64 +209,17 @@ def setup_logging(
     # Configure handlers
     handlers = []
 
-    # Console handler (JSON output)
+    # Console handler (JSON output to stdout)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(json_formatter)
     console_handler.setLevel(getattr(logging, log_level))
     handlers.append(console_handler)
 
-    # File handler (JSON output)
+    # File handler (JSON output to file)
     file_handler = logging.FileHandler(log_file)
     file_handler.setFormatter(json_formatter)
     file_handler.setLevel(getattr(logging, log_level))
     handlers.append(file_handler)
-
-    # Set up Cloud Logging if enabled
-    if enable_cloud_logging:
-        try:
-            import google.cloud.logging
-            from google.cloud.logging.handlers import CloudLoggingHandler
-
-            # Initialize Cloud Logging client
-            client = google.cloud.logging.Client()
-
-            # Create Cloud Logging handler with environment labels
-            labels = {
-                "environment": environment,
-                "service": "job-finder",
-                "version": "1.0.0",
-            }
-
-            cloud_handler = CloudLoggingHandler(
-                client,
-                name="job-finder",
-                labels=labels,
-            )
-            cloud_handler.setLevel(getattr(logging, log_level))
-            # Cloud handler will receive structured fields automatically
-            cloud_handler.setFormatter(json_formatter)
-            handlers.append(cloud_handler)
-
-            print(f"✅ Google Cloud Logging enabled")
-            print(f"   Project: {client.project}")
-            print(f"   Log name: job-finder")
-            print(f"   Environment: {environment}")
-            print(f"   Log level: {log_level}")
-            print(f"   Labels: {labels}")
-
-        except ImportError:
-            print(
-                "⚠️  google-cloud-logging not installed. Install with: pip install google-cloud-logging",
-                file=sys.stderr,
-            )
-            print("   Falling back to file and console logging only.", file=sys.stderr)
-
-        except Exception as e:
-            print(
-                f"⚠️  Failed to initialize Google Cloud Logging: {e}",
-                file=sys.stderr,
-            )
-            print("   Falling back to file and console logging only.", file=sys.stderr)
 
     # Configure root logger
     logging.basicConfig(
@@ -290,7 +237,6 @@ def setup_logging(
             "environment": environment,
             "level": log_level,
             "file": log_file,
-            "cloud_logging": enable_cloud_logging,
         },
     )
 

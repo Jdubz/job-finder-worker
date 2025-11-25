@@ -1,12 +1,11 @@
 /**
  * Shared Logging Types
  *
- * Used by both portfolio (TypeScript) and job-finder (Python) for Cloud Logging integration
+ * Used by frontend (TypeScript) and worker (Python) for structured logging
  *
  * IMPORTANT: When modifying these types, also update:
  * - Python type hints in job-finder/src/job_finder/logging_config.py (StructuredLogger)
- * - Cloud Logging query filters in portfolio project
- * - Documentation in job-finder/docs/CLOUD_LOGGING_DESIGN.md
+ * - Frontend logger in job-finder-FE/src/services/logging/FrontendLogger.ts
  */
 
 /**
@@ -74,18 +73,11 @@ export type LogAction =
 /**
  * Structured log entry details
  *
- * This is the jsonPayload structure in Cloud Logging.
+ * This is the JSON structure for log entries written to file.
  * All fields are optional except category, action, and message.
  *
  * TypeScript: StructuredLogEntry interface
- * Python: Dict[str, Any] passed to logger.info(..., extra={"json_fields": {...}})
- *
- * Example Cloud Logging query:
- * ```
- * jsonPayload.category="pipeline"
- * jsonPayload.queueItemId="abc123"
- * jsonPayload.pipelineStage="scrape"
- * ```
+ * Python: Dict[str, Any] passed to logger.info(..., extra={"structured_fields": {...}})
  */
 export interface StructuredLogEntry {
   // Required fields (always present)
@@ -133,57 +125,40 @@ export interface StructuredLogEntry {
 }
 
 /**
- * Cloud Logging labels
+ * Log metadata labels
  *
- * These are set at the handler level and applied to all log entries.
+ * These are metadata fields that can be included with log entries.
  *
- * TypeScript: CloudLoggingLabels interface
- * Python: Dict[str, str] passed to CloudLoggingHandler(labels=...)
- *
- * Example Cloud Logging query:
- * ```
- * labels.environment="production"
- * labels.service="job-finder"
- * ```
+ * TypeScript: LogMetadata interface
+ * Python: Dict[str, str] included in log entry
  */
-export interface CloudLoggingLabels extends Record<string, string> {
-  environment: "production" | "development"
-  service: string      // e.g., "job-finder"
+export interface LogMetadata extends Record<string, string> {
+  environment: "production" | "staging" | "development"
+  service: string      // e.g., "worker", "frontend", "backend"
   version: string      // e.g., "1.0.0"
 }
 
 /**
- * Complete Cloud Logging entry structure
+ * Complete log entry structure as stored in files
  *
- * This represents the full log entry in Cloud Logging, including
- * standard fields (severity, timestamp) and custom fields (jsonPayload, labels).
+ * This represents the full log entry as written to log files,
+ * including severity, timestamp, and structured payload.
  *
- * TypeScript: CloudLogEntry interface
- * Python: Not used directly (Cloud Logging client handles this)
- *
- * This is what job-finder-FE UI receives when querying Cloud Logging API.
+ * TypeScript: FileLogEntry interface
+ * Python: Dict written as JSON to log file
  */
-export interface CloudLogEntry {
-  // Standard Cloud Logging fields
+export interface FileLogEntry extends StructuredLogEntry {
+  // Standard fields
   severity: "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL"
   timestamp: string | Date  // ISO 8601 timestamp
-  logName: string          // e.g., "projects/static-sites-257923/logs/job-finder"
 
-  // Custom labels (set by CloudLoggingHandler)
-  labels: CloudLoggingLabels
-
-  // Structured payload (our custom fields)
-  jsonPayload: StructuredLogEntry
+  // Metadata
+  environment: string
+  service: string
+  version?: string
 
   // Additional metadata (optional)
-  resource?: {
-    type: string  // e.g., "generic_task"
-    labels: Record<string, string>
-  }
-
-  // Trace context (optional)
-  trace?: string
-  spanId?: string
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -192,7 +167,7 @@ export interface CloudLogEntry {
  * TypeScript: LogQueryOptions interface
  * Python: Not used (job-finder-FE-only)
  *
- * Used in job-finder-FE hooks/components to fetch logs from Cloud Logging.
+ * Used in job-finder-FE hooks/components to fetch logs from files.
  *
  * Example usage:
  * ```typescript
@@ -231,15 +206,15 @@ export interface LogQueryOptions {
 }
 
 /**
- * Log query result from job-finder-FE server action / Cloud Function
+ * Log query result from backend API
  *
  * TypeScript: LogQueryResult interface
  * Python: Not used (job-finder-FE-only)
  *
- * Returned by job-finder-FE server actions that query Cloud Logging.
+ * Returned by job-finder-FE server actions that query log files.
  */
 export interface LogQueryResult {
-  logs: CloudLogEntry[]
+  logs: FileLogEntry[]
   nextPageToken?: string  // For pagination
   totalCount?: number     // Total matching entries (if available)
 }
@@ -250,7 +225,7 @@ export interface LogQueryResult {
  * TypeScript: BuildFilterParams type
  * Python: Not used (job-finder-FE-only)
  *
- * Used in job-finder-FE to build Cloud Logging query filters.
+ * Used in job-finder-FE to build log query filters.
  */
 export type BuildFilterParams = {
   logName?: string

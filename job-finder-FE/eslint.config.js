@@ -18,6 +18,7 @@ export default defineConfig([
     "**/*.test.ts",
     "**/*.test.tsx",
     "docs/shared/**",
+    "coverage/**",
   ]),
   {
     files: ["**/*.{ts,tsx}"],
