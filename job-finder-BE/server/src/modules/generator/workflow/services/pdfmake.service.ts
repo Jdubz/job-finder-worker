@@ -37,6 +37,7 @@ async function fetchImageAsBase64(url: string, log: Logger): Promise<string | nu
 export class PdfMakeService {
   constructor(private readonly log: Logger = rootLogger) {}
 
+  // TODO: Implement style variants (modern, traditional, technical, executive)
   async generateResumePDF(
     content: ResumeContent,
     _style = 'modern',
@@ -491,6 +492,12 @@ export class PdfMakeService {
 
   private generatePdfBuffer(docDefinition: TDocumentDefinitions): Promise<Buffer> {
     return new Promise((resolve, reject) => {
+      const handleError = (error: unknown) => {
+        this.log.error({ err: error }, 'pdfmake PDF generation failed')
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        reject(new Error(`PDF generation failed: ${message}`))
+      }
+
       try {
         const pdfDoc = printer.createPdfKitDocument(docDefinition)
         const chunks: Buffer[] = []
@@ -505,15 +512,11 @@ export class PdfMakeService {
           resolve(result)
         })
 
-        pdfDoc.on('error', (err: Error) => {
-          this.log.error({ err }, 'pdfmake PDF generation failed')
-          reject(new Error(`PDF generation failed: ${err.message}`))
-        })
+        pdfDoc.on('error', handleError)
 
         pdfDoc.end()
       } catch (error) {
-        this.log.error({ err: error }, 'pdfmake PDF generation failed')
-        reject(new Error(`PDF generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`))
+        handleError(error)
       }
     })
   }

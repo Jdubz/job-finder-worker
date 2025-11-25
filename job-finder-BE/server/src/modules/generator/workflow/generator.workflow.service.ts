@@ -203,7 +203,10 @@ export class GeneratorWorkflowService {
         return { requestId, status: request.status, steps: updated, nextStep, resumeUrl, stepCompleted: 'generate-resume' }
       } catch (error) {
         this.log.error({ err: error, requestId }, 'Resume generation failed')
-        const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'failed')
+        const errorMessage = error instanceof Error ? error.message : 'Resume generation failed'
+        const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'failed', undefined, {
+          message: errorMessage
+        })
         activeState.steps = updated
         this.workflowRepo.updateRequest(requestId, { status: 'failed' })
         this.activeRequests.delete(requestId)
@@ -236,7 +239,10 @@ export class GeneratorWorkflowService {
         return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl, stepCompleted: 'generate-cover-letter' }
       } catch (error) {
         this.log.error({ err: error, requestId }, 'Cover letter generation failed')
-        const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'failed')
+        const errorMessage = error instanceof Error ? error.message : 'Cover letter generation failed'
+        const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'failed', undefined, {
+          message: errorMessage
+        })
         activeState.steps = updated
         this.workflowRepo.updateRequest(requestId, { status: 'failed' })
         this.activeRequests.delete(requestId)
