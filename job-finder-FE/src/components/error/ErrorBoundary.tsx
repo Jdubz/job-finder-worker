@@ -1,4 +1,5 @@
-import React, { Component, ReactNode, ErrorInfo } from 'react'
+import { Component } from 'react'
+import type { ReactNode, ErrorInfo } from 'react'
 import { logger } from '@/services/logging/FrontendLogger'
 
 interface Props {
