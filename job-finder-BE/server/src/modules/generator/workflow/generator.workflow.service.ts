@@ -71,7 +71,8 @@ export class GeneratorWorkflowService {
     private readonly log: Logger = logger
   ) {
     // Periodically clean up abandoned requests to prevent memory leaks
-    this.cleanupAbandonedRequests()
+    // Run every 15 minutes (half of TTL) to ensure timely cleanup
+    setInterval(() => this.cleanupAbandonedRequests(), REQUEST_TTL_MS / 2)
   }
 
   private cleanupAbandonedRequests(): void {
