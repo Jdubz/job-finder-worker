@@ -7,37 +7,36 @@
 ## One-Line Start
 
 ```bash
-make dev-stack
+make dev
 ```
 
 ## All Commands
 
-| Command              | Description                          |
-| -------------------- | ------------------------------------ |
-| `make dev-stack`     | 🚀 Start entire stack (all services) |
-| `make dev-frontend`  | 🎨 Start frontend only               |
-| `make dev-backend`   | ⚙️ Start backend only                |
-| `make dev-worker`    | 🐍 Start worker only                 |
-| `make dev-emulators` | 🔥 Start emulators only              |
-| `make status`        | 📊 Check what's running              |
-| `make kill-all`      | 🛑 Stop everything                   |
+| Command              | Description                     |
+|---------------------|---------------------------------|
+| `make dev`          | Start entire stack              |
+| `make dev-api`      | Start API only                  |
+| `make dev-frontend` | Start frontend only             |
+| `make dev-worker`   | Start worker only               |
+| `make status`       | Check what's running            |
+| `make stop`         | Stop everything                 |
+| `make migrate`      | Run database migrations         |
+| `make test`         | Run all tests                   |
 
 ## Service URLs
 
-| Service       | URL                   |
-| ------------- | --------------------- |
-| Frontend      | http://localhost:5173 |
-| Firebase UI   | http://localhost:4000 |
-| Auth Emulator | http://localhost:9099 |
-| Firestore     | http://localhost:8080 |
-| Functions     | http://localhost:5001 |
+| Service   | URL                   |
+|-----------|-----------------------|
+| Frontend  | http://localhost:5173 |
+| API       | http://localhost:8080 |
+| API Health| http://localhost:8080/api/healthz |
 
 ## Typical Usage
 
 ### Start Everything
 
 ```bash
-make dev-stack
+make dev
 # Press Ctrl+C to stop
 ```
 
@@ -50,40 +49,40 @@ make status
 ### Clean Stop
 
 ```bash
-make kill-all
+make stop
 ```
 
 ## Ports Used
 
-- **5173** - Vite dev server (Frontend)
-- **5001** - Cloud Functions emulator
-- **9099** - Auth emulator
-- **8080** - Firestore emulator
-- **4000** - Firebase emulator UI
+| Port | Service           |
+|------|-------------------|
+| 5173 | Vite dev server   |
+| 8080 | Express API       |
 
 ## Common Issues
 
 ### Port in use?
 
 ```bash
-make kill-all
+make stop
 make status  # Verify stopped
-make dev-stack
+make dev
 ```
 
-### Services won't start?
+### Database issues?
 
-Check prerequisites in [Development Stack Guide](./DEVELOPMENT_STACK.md)
+```bash
+make migrate
+```
 
 ### Need to restart one service?
 
 ```bash
-make kill-all
-make dev-emulators   # Just emulators
-make dev-frontend    # Just frontend
-# etc.
+make stop
+make dev-api       # Just API
+make dev-frontend  # Just frontend
 ```
 
 ## Full Documentation
 
-See [DEVELOPMENT_STACK.md](./DEVELOPMENT_STACK.md) for complete guide.
+See [development-stack.md](./development-stack.md) for complete guide.
