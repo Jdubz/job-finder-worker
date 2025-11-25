@@ -23,6 +23,7 @@
 file:jobfinder-*
 file:test-*
 file:memory:*
+.artifacts-test/
 
 # Python cache and artifacts
 **/__pycache__/

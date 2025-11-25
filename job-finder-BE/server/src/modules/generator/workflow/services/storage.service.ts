@@ -63,6 +63,13 @@ function buildRelativePath(requestId: string, artifactType: ArtifactType, filena
   return path.join(safeRequestId, artifactType, filename)
 }
 
+function detectExtension(mime: string): string {
+  if (mime === 'image/svg+xml') return '.svg'
+  if (mime === 'image/png') return '.png'
+  if (mime === 'image/jpeg' || mime === 'image/jpg') return '.jpg'
+  return ''
+}
+
 export class LocalStorageService {
   constructor(private readonly rootDir: string = artifactsRoot) {}
 
@@ -105,6 +112,26 @@ export class LocalStorageService {
   createPublicUrl(storagePath: string): string {
     const normalized = storagePath.startsWith('/') ? storagePath : `/${storagePath}`
     return `${publicBasePath}${normalized}`
+  }
+
+  /**
+   * Save an uploaded asset (avatar, logo) to the assets folder.
+   * Returns relative storage path and filename.
+   */
+  async saveAsset(buffer: Buffer, mimeType: string, kind: 'avatar' | 'logo'): Promise<UploadResult> {
+    const date = new Date().toISOString().slice(0, 10)
+    const folder = path.join('assets', date)
+    const ext = detectExtension(mimeType) || '.bin'
+    const filename = `${kind}-${generateSecureToken()}${ext}`
+    const relativePath = path.join(folder, filename)
+    const absolutePath = path.join(this.rootDir, relativePath)
+    await ensureDir(path.dirname(absolutePath))
+    await fs.writeFile(absolutePath, buffer)
+    return {
+      storagePath: relativePath.replace(/\\/g, '/'),
+      filename,
+      size: buffer.length
+    }
   }
 }
 

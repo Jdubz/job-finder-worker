@@ -376,6 +376,11 @@ export class GeneratorWorkflowService {
     // Fetch content items from the database
     const contentItems = this.contentItemRepo.list()
 
+    if (!contentItems.length) {
+      this.log.error('No content items found; cannot build resume without source experience data')
+      throw new Error('Resume generation failed: no content items available. Import profile content before generating.')
+    }
+
     // Fetch and enrich with job match data if available
     const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
@@ -387,8 +392,68 @@ export class GeneratorWorkflowService {
       throw new Error(`AI generation failed: ${cliResult.error || 'Unknown error'}`)
     }
 
+    this.log.info({ outputPreview: cliResult.output.slice(0, 400) }, 'AI resume raw output preview')
+
     try {
       const parsed = JSON.parse(cliResult.output) as ResumeContent
+
+      const mappedExperience = contentItems.map((item) => ({
+        role: item.role ?? '',
+        company: item.title ?? '',
+        location: item.location ?? '',
+        startDate: item.startDate ?? '',
+        endDate: item.endDate ?? '',
+        highlights: (item.description || '')
+          .split(/\r?\n/)
+          .map((l) => l.replace(/^[-•]\s*/, '').trim())
+          .filter(Boolean),
+        technologies: item.skills ?? []
+      }))
+
+      // Normalize and fill missing data using authoritative content items and personal info
+      parsed.personalInfo = {
+        name: personalInfo.name,
+        title: parsed.personalInfo?.title || payload.job.role,
+        summary: personalInfo.summary || parsed.personalInfo?.summary || '',
+        contact: {
+          email: personalInfo.email || parsed.personalInfo?.contact?.email || '',
+          location: personalInfo.location || parsed.personalInfo?.contact?.location || '',
+          website: personalInfo.website || parsed.personalInfo?.contact?.website || '',
+          linkedin: personalInfo.linkedin || parsed.personalInfo?.contact?.linkedin || '',
+          github: personalInfo.github || parsed.personalInfo?.contact?.github || ''
+        }
+      }
+
+      parsed.experience = (Array.isArray(parsed.experience) && parsed.experience.length > 0
+        ? parsed.experience
+        : mappedExperience
+      ).map((exp) => ({
+        role: exp.role || '',
+        company: exp.company || '',
+        location: exp.location || '',
+        startDate: exp.startDate || '',
+        endDate: exp.endDate || '',
+        highlights: Array.isArray(exp.highlights) ? exp.highlights : [],
+        technologies: Array.isArray((exp as any).technologies) ? (exp as any).technologies : []
+      }))
+
+      // Normalize skills: accept [{category, items}] or string[]
+      if (!Array.isArray(parsed.skills) || parsed.skills.length === 0) {
+        parsed.skills = parsed.experience.length
+          ? [{ category: 'Skills', items: Array.from(new Set(parsed.experience.flatMap((e) => e.technologies || []))) }]
+          : []
+      } else if (parsed.skills.length && typeof parsed.skills[0] === 'string') {
+        parsed.skills = [{ category: 'Skills', items: parsed.skills as unknown as string[] }]
+      } else {
+        parsed.skills = (parsed.skills as any[]).map((s) => ({
+          category: s.category || 'Skills',
+          items: Array.isArray(s.items) ? s.items : []
+        }))
+      }
+
+      parsed.education = Array.isArray(parsed.education) ? parsed.education : []
+      parsed.professionalSummary = parsed.professionalSummary || personalInfo.summary || ''
+
       return parsed
     } catch (error) {
       this.log.error({ err: error, output: cliResult.output.slice(0, 500) }, 'Failed to parse AI resume output as JSON')

@@ -9,3 +9,9 @@ This workspace now lives inside the monorepo and only contains the Express + SQL
 - Express API: `npm run dev --workspace job-finder-BE/server`
 
 Running lint/tests from the root automatically targets the server workspace (`npm run lint:server`). Use the root Husky hooks + CI workflows for enforcement.
+
+## Generator assets (avatar/logo)
+
+- Upload endpoint: `POST /api/generator/assets/upload` with JSON `{ type: "avatar" | "logo", dataUrl?: string, url?: string }`
+- Files are written under `GENERATOR_ARTIFACTS_DIR` (default `/data/artifacts`) inside `assets/{date}/...` and are served via `GET /api/generator/artifacts/assets/...`.
+- Personal info should store the returned `path` (e.g., `/assets/2025-11-25/avatar-xxxx.jpg`) so the PDF renderer can embed the images from the local filesystem.
