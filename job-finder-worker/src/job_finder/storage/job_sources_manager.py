@@ -43,6 +43,8 @@ class JobSourcesManager:
             "name": row["name"],
             "sourceType": row["source_type"],
             "status": row["status"],
+            # Convenience flag mirroring status for callers that previously relied on `enabled`
+            "enabled": row["status"] == SourceStatus.ACTIVE.value,
             "config": parse_json(row["config_json"], {}),
             "tags": parse_json(row.get("tags"), []),
             "companyId": row.get("company_id"),

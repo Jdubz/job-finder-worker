@@ -17,7 +17,7 @@ import uuid
 from typing import Any, Dict, Optional
 
 from job_finder.exceptions import ConfigurationError, QueueProcessingError
-from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
+from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus, SourceStatus
 
 from .base_processor import BaseProcessor
 
@@ -444,8 +444,11 @@ class SourceProcessor(BaseProcessor):
                 )
                 return
 
-            # Check if source is enabled
-            if not source.get("enabled", False):
+            # Check if source is enabled/active
+            is_active = (
+                source.get("enabled", False) or source.get("status") == SourceStatus.ACTIVE.value
+            )
+            if not is_active:
                 logger.info(f"Skipping disabled source: {source.get('name')}")
                 self.queue_manager.update_status(
                     item.id,
