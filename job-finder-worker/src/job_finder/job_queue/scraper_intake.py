@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueSource
+from job_finder.utils.company_name_utils import clean_company_name
 from job_finder.utils.url_utils import normalize_url
 
 logger = logging.getLogger(__name__)
@@ -81,20 +82,29 @@ class ScraperIntake:
                     logger.debug(f"Job already exists in job-matches: {normalized_url}")
                     continue
 
+                # Clean company label scraped from the listing (avoid storing "Acme Careers")
+                company_name_raw = job.get("company", "")
+                company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
+                company_name = clean_company_name(company_name_base) or company_name_base.strip()
+
                 # Create queue item with normalized URL
                 # Generate tracking_id for this root job (all spawned items will inherit it)
                 tracking_id = str(uuid.uuid4())
+
+                # Preserve other scraped fields but replace company name with cleaned label
+                job_payload = dict(job)
+                job_payload["company"] = company_name
 
                 # Note: State-driven processor will determine next step based on pipeline_state
                 # If scraped_data provided, it will skip scraping and go to filtering
                 queue_item = JobQueueItem(
                     type=QueueItemType.JOB,
                     url=normalized_url,
-                    company_name=job.get("company", ""),
+                    company_name=company_name,
                     company_id=company_id,
                     source=source,
                     scraped_data=(
-                        job if len(job) > 2 else None
+                        job_payload if len(job_payload) > 2 else None
                     ),  # Include full job data if available
                     tracking_id=tracking_id,  # Root tracking ID
                     ancestry_chain=[],  # Root has no ancestors
@@ -135,10 +145,13 @@ class ScraperIntake:
             Document ID if added successfully, None otherwise
         """
         try:
+            base_name = company_name if isinstance(company_name, str) else ""
+            cleaned_name = clean_company_name(base_name) or base_name.strip()
+
             # Validate URL exists and is non-empty
             url = company_website.strip()
             if not url:
-                logger.debug(f"Skipping company {company_name} with missing or empty URL")
+                logger.debug(f"Skipping company {cleaned_name} with missing or empty URL")
                 return None
 
             # Normalize URL for consistent comparison
@@ -151,10 +164,10 @@ class ScraperIntake:
 
             # Check if company already exists in companies collection
             if self.companies_manager:
-                existing_company = self.companies_manager.get_company(company_name)
+                existing_company = self.companies_manager.get_company(cleaned_name)
                 if existing_company:
                     logger.debug(
-                        f"Company already exists: {company_name} (ID: {existing_company.get('id')})"
+                        f"Company already exists: {cleaned_name} (ID: {existing_company.get('id')})"
                     )
                     return None
 
@@ -168,7 +181,7 @@ class ScraperIntake:
             queue_item = JobQueueItem(
                 type=QueueItemType.COMPANY,
                 url=normalized_url,
-                company_name=company_name,
+                company_name=cleaned_name,
                 source=source,
                 company_sub_task=CompanySubTask.FETCH,
                 tracking_id=tracking_id,  # Root tracking ID
@@ -179,7 +192,7 @@ class ScraperIntake:
             # Add to queue
             doc_id = self.queue_manager.add_item(queue_item)
             logger.info(
-                f"Submitted company to granular pipeline: {company_name} (ID: {doc_id}, tracking_id: {tracking_id})"
+                f"Submitted company to granular pipeline: {cleaned_name} (ID: {doc_id}, tracking_id: {tracking_id})"
             )
             return doc_id
 

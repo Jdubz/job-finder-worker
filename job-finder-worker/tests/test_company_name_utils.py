@@ -1,6 +1,6 @@
 """Tests for company name normalization utilities."""
 
-from job_finder.utils.company_name_utils import normalize_company_name
+from job_finder.utils.company_name_utils import clean_company_name, normalize_company_name
 
 
 class TestNormalizeCompanyName:
@@ -71,3 +71,25 @@ class TestNormalizeCompanyName:
         # All should be the same
         assert len(set(normalized_values)) == 1
         assert normalized_values[0] == "cloudflare"
+
+
+class TestCleanCompanyName:
+    """Test cleaning of display names (preserve casing)."""
+
+    def test_strips_job_board_suffixes(self):
+        assert clean_company_name("Cloudflare Careers") == "Cloudflare"
+        assert clean_company_name("Stripe - Careers") == "Stripe"
+        assert clean_company_name("GitHub | Careers") == "GitHub"
+
+    def test_preserves_legal_suffixes(self):
+        # Cleaning should only strip job-board fluff, not legal entities
+        assert clean_company_name("Netflix Inc.") == "Netflix Inc."
+        assert clean_company_name("Amazon LLC") == "Amazon LLC"
+
+    def test_handles_whitespace_and_punctuation(self):
+        assert clean_company_name("  Datadog Careers  ") == "Datadog"
+        assert clean_company_name("Canva Careers,") == "Canva"
+
+    def test_empty_input(self):
+        assert clean_company_name("") == ""
+        assert clean_company_name("   ") == ""

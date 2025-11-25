@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from job_finder.utils.company_info import build_company_info_string
+from job_finder.utils.company_name_utils import clean_company_name
 from job_finder.job_queue.models import (
     CompanyStatus,
     CompanySubTask,
@@ -211,12 +212,17 @@ class JobProcessor(BaseProcessor):
 
         try:
             # Ensure company exists
-            company_name = job_data.get("company", item.company_name)
+            company_name_raw = job_data.get("company", item.company_name)
             company_website = job_data.get("company_website", "")
 
-            if company_name and company_website:
+            # Clean up scraped labels like "Acme Careers" before persisting
+            company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
+            company_name_clean = clean_company_name(company_name_base) or company_name_base
+            job_data["company"] = company_name_clean
+
+            if company_name_clean and company_website:
                 company = self.companies_manager.get_or_create_company(
-                    company_name=company_name,
+                    company_name=company_name_clean,
                     company_website=company_website,
                     fetch_info_func=self.company_info_fetcher.fetch_company_info,
                 )
