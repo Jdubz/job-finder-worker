@@ -192,12 +192,30 @@ export class GeneratorWorkflowService {
       return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl }
     }
 
-    const nextStep = steps.find((s) => s.status === 'pending')?.id
+    // render-pdf step: PDF rendering is done within generateResume/generateCoverLetter,
+    // so just mark this step complete and finalize the request
+    if (pendingStep.id === 'render-pdf') {
+      const updated = completeStep(startStep(steps, 'render-pdf'), 'render-pdf', 'completed')
+      activeState.steps = updated
+      this.workflowRepo.updateRequest(requestId, { status: 'completed' })
+      const finalRequest = this.workflowRepo.getRequest(requestId)
+      return {
+        requestId,
+        status: 'completed',
+        steps: updated,
+        nextStep: undefined,
+        resumeUrl: finalRequest?.resumeUrl ?? undefined,
+        coverLetterUrl: finalRequest?.coverLetterUrl ?? undefined
+      }
+    }
+
+    // Unknown step - mark request as failed to prevent infinite loop
+    this.workflowRepo.updateRequest(requestId, { status: 'failed' })
     return {
       requestId,
-      status: request.status,
+      status: 'failed',
       steps,
-      nextStep
+      nextStep: undefined
     }
   }
 
