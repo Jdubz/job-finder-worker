@@ -24,6 +24,12 @@ import { QueueFilters } from "./components/QueueFilters"
 import { queueClient } from "@/api"
 import type { ScrapeConfig } from "@shared/types"
 
+type ScrapeFormState = {
+  targetMatches: string
+  maxSources: string
+  sourceIds: string
+}
+
 interface QueueFiltersType {
   status?: string
   type?: string
@@ -44,13 +50,11 @@ export function QueueManagementPage() {
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [submittingScrape, setSubmittingScrape] = useState(false)
-  const [scrapeForm, setScrapeForm] = useState<{ targetMatches: string; maxSources: string; sourceIds: string }>(
-    {
-      targetMatches: "5",
-      maxSources: "10",
-      sourceIds: "",
-    }
-  )
+  const [scrapeForm, setScrapeForm] = useState<ScrapeFormState>({
+    targetMatches: "5",
+    maxSources: "10",
+    sourceIds: "",
+  })
 
   // Filter state
   const [filters, setFilters] = useState<QueueFiltersType>({})
@@ -206,8 +210,8 @@ export function QueueManagementPage() {
           : Number.parseInt(scrapeForm.maxSources, 10),
       }
 
-      if (Number.isNaN(config.target_matches ?? undefined)) config.target_matches = null
-      if (Number.isNaN(config.max_sources ?? undefined)) config.max_sources = null
+      if (Number.isNaN(config.target_matches)) config.target_matches = null
+      if (Number.isNaN(config.max_sources)) config.max_sources = null
 
       const sourceIds = scrapeForm.sourceIds
         .split(",")
@@ -227,6 +231,11 @@ export function QueueManagementPage() {
     } finally {
       setSubmittingScrape(false)
     }
+  }
+
+  const handleScrapeFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target
+    setScrapeForm((prev) => ({ ...prev, [id]: value }))
   }
 
   if (!user) {
@@ -475,7 +484,7 @@ export function QueueManagementPage() {
                   min={1}
                   placeholder="e.g. 5"
                   value={scrapeForm.targetMatches}
-                  onChange={(e) => setScrapeForm({ ...scrapeForm, targetMatches: e.target.value })}
+                  onChange={handleScrapeFormChange}
                 />
                 <p className="text-xs text-muted-foreground">Stop after enqueuing this many jobs (leave blank for unlimited).</p>
               </div>
@@ -487,7 +496,7 @@ export function QueueManagementPage() {
                   min={1}
                   placeholder="e.g. 10"
                   value={scrapeForm.maxSources}
-                  onChange={(e) => setScrapeForm({ ...scrapeForm, maxSources: e.target.value })}
+                  onChange={handleScrapeFormChange}
                 />
                 <p className="text-xs text-muted-foreground">Limit how many sources are scraped (leave blank for all).</p>
               </div>
@@ -499,7 +508,7 @@ export function QueueManagementPage() {
                 id="sourceIds"
                 placeholder="uuid-1, uuid-2"
                 value={scrapeForm.sourceIds}
-                onChange={(e) => setScrapeForm({ ...scrapeForm, sourceIds: e.target.value })}
+                onChange={handleScrapeFormChange}
               />
               <p className="text-xs text-muted-foreground">Comma-separated list; leave empty to use rotation.</p>
             </div>
@@ -520,7 +529,13 @@ export function QueueManagementPage() {
 
 type StatTone = "default" | "amber" | "blue" | "red" | "green"
 
-function StatPill({ label, value, tone = "default" }: { label: string; value: string | number; tone?: StatTone }) {
+interface StatPillProps {
+  label: string
+  value: string | number
+  tone?: StatTone
+}
+
+function StatPill({ label, value, tone = "default" }: StatPillProps) {
   const toneClasses: Record<StatTone, string> = {
     default: "border-muted-foreground/20 text-muted-foreground",
     amber: "border-amber-200 bg-amber-50 text-amber-800",
