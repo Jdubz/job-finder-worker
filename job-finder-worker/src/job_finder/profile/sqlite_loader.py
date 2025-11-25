@@ -103,8 +103,8 @@ class SQLiteProfileLoader:
             if isinstance(technologies, str):
                 technologies = [tech.strip() for tech in technologies.split(",") if tech.strip()]
 
-           experiences.append(
-               Experience(
+            experiences.append(
+                Experience(
                     company=row.get("title") or "",  # title field holds company name
                     title=row.get("role") or "",  # role field holds job title
                     start_date=row.get("start_date") or "",
