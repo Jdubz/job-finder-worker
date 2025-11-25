@@ -63,7 +63,9 @@ export function buildApp() {
   generatorPipeline.use(express.urlencoded({ extended: true }))
   generatorPipeline.use(buildGeneratorApiRouter())
   generatorPipeline.use(buildGeneratorWorkflowRouter())
-  generatorPipeline.use('/artifacts', buildGeneratorArtifactsRouter())
+
+  // Artifacts route is public - URLs are unique/semi-secret paths for direct download
+  app.use('/api/generator/artifacts', buildGeneratorArtifactsRouter())
 
   app.use('/api/generator', verifyFirebaseAuth, generatorPipeline)
 
