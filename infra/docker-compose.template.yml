@@ -34,7 +34,7 @@ services:
         target: /data/artifacts
       - type: bind
         source: ./codex  # Codex CLI config - requires auth.json with OpenAI API key
-        target: /root/.codex
+        target: /home/node/.codex
         read_only: true
     depends_on:
       sqlite-migrator:

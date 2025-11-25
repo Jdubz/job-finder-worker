@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { randomBytes } from 'node:crypto'
 import { env } from '../../../../config/env'
 
 export type ArtifactType = 'resume' | 'cover-letter' | 'image' | 'raw'
@@ -34,15 +35,21 @@ function sanitize(value: string): string {
     .slice(0, 50)
 }
 
+function generateSecureToken(): string {
+  // Generate 6-byte random token (12 hex chars) - unpredictable but compact
+  return randomBytes(6).toString('hex')
+}
+
 function buildHumanReadablePath(metadata: ArtifactMetadata): { folder: string; filename: string } {
   const date = new Date().toISOString().slice(0, 10) // YYYY-MM-DD in UTC
   const company = sanitize(metadata.company)
   const role = sanitize(metadata.role)
   const name = sanitize(metadata.name)
   const type = metadata.type
+  const token = generateSecureToken()
 
-  // Folder: {date}/{company}_{role}/
-  const folder = path.join(date, `${company}_${role}`)
+  // Folder: {date}/{company}_{role}_{token}/ - token prevents URL guessing (IDOR)
+  const folder = path.join(date, `${company}_${role}_${token}`)
 
   // Filename: {name}_{company}_{role}_{type}.pdf
   const filename = `${name}_${company}_${role}_${type}.pdf`
