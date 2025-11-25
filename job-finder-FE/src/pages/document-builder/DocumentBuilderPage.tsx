@@ -8,6 +8,7 @@ import {
   type GenerateDocumentRequest,
   type GenerationStep,
 } from "@/api/generator-client"
+import { getAbsoluteArtifactUrl } from "@/config/api"
 import type { JobMatch } from "@shared/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -553,7 +554,7 @@ export function DocumentBuilderPage() {
             <div className="flex gap-3 justify-center">
               {resumeUrl && (
                 <Button asChild variant="outline" size="sm">
-                  <a href={resumeUrl} target="_blank" rel="noopener noreferrer">
+                  <a href={getAbsoluteArtifactUrl(resumeUrl) || "#"} target="_blank" rel="noopener noreferrer">
                     <Download className="w-4 h-4 mr-2" />
                     Download Resume
                   </a>
@@ -561,7 +562,7 @@ export function DocumentBuilderPage() {
               )}
               {coverLetterUrl && (
                 <Button asChild variant="outline" size="sm">
-                  <a href={coverLetterUrl} target="_blank" rel="noopener noreferrer">
+                  <a href={getAbsoluteArtifactUrl(coverLetterUrl) || "#"} target="_blank" rel="noopener noreferrer">
                     <Download className="w-4 h-4 mr-2" />
                     Download Cover Letter
                   </a>
