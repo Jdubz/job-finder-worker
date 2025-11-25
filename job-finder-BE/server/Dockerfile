@@ -28,7 +28,10 @@ ENV HUSKY=0
 ENV HUSKY_SKIP_INSTALL=1
 # Codex config directory (mount from host for auth credentials)
 ENV CODEX_HOME=/root/.codex
-RUN npm install -g npm@11.6.3 @openai/codex
+# Install npm update and codex CLI, create config directory
+RUN npm install -g npm@11.6.3 @openai/codex@latest \
+    && npm cache clean --force \
+    && mkdir -p /root/.codex
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
 RUN sed -i 's#file:../../shared#file:./shared#g; s#"../../shared"#"./shared"#g' package.json package-lock.json
 COPY --from=shared-build /shared ./shared

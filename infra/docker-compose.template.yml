@@ -33,7 +33,7 @@ services:
         source: ./artifacts  # Change to your artifacts directory
         target: /data/artifacts
       - type: bind
-        source: ./codex  # Codex CLI config (copy from ~/.codex on host)
+        source: ./codex  # Codex CLI config - requires auth.json with OpenAI API key
         target: /root/.codex
         read_only: true
     depends_on:
