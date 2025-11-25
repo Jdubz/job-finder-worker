@@ -104,6 +104,13 @@ class GreenhouseScraper(BaseScraper):
 
             # Build job URL
             absolute_url = job_data.get("absolute_url", "")
+            job_id = job_data.get("id")
+            # Prefer canonical boards URL to ensure we can scrape consistently
+            canonical_url = (
+                f"https://boards.greenhouse.io/{self.board_token}/jobs/{job_id}"
+                if self.board_token and job_id
+                else absolute_url
+            )
 
             # Extract description - combine content fields
             description = self._extract_description(job_data)
@@ -129,7 +136,8 @@ class GreenhouseScraper(BaseScraper):
                 "company_website": self.company_website,
                 "location": location,
                 "description": description_clean,
-                "url": absolute_url,
+                "url": canonical_url,
+                "original_url": absolute_url,
             }
 
             # Add optional fields only if present

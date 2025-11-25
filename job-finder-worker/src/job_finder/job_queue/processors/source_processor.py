@@ -187,7 +187,6 @@ class SourceProcessor(BaseProcessor):
                 discovery_queue_item_id=item.id,
                 company_id=discovery_config.company_id,
                 company_name=company_name,
-                enabled=discovery_config.auto_enable,
                 validation_required=discovery_config.validation_required,
                 tier="A",
             )
@@ -242,7 +241,6 @@ class SourceProcessor(BaseProcessor):
                 discovery_queue_item_id=item.id,
                 company_id=discovery_config.company_id,
                 company_name=company_name,
-                enabled=False,  # Workday requires manual validation
                 validation_required=True,
                 tier="B",
             )
@@ -306,7 +304,6 @@ class SourceProcessor(BaseProcessor):
                 discovery_queue_item_id=item.id,
                 company_id=discovery_config.company_id,
                 company_name=company_name,
-                enabled=discovery_config.auto_enable,
                 validation_required=discovery_config.validation_required,
                 tier="A",
             )
@@ -382,7 +379,6 @@ class SourceProcessor(BaseProcessor):
                 discovery_queue_item_id=item.id,
                 company_id=discovery_config.company_id,
                 company_name=company_name,
-                enabled=auto_enable,
                 validation_required=validation_required,
                 tier="B",
             )
@@ -441,16 +437,6 @@ class SourceProcessor(BaseProcessor):
                     QueueStatus.FAILED,
                     "Source not found",
                     error_details=f"source_id={source_id}, url={source_url}",
-                )
-                return
-
-            # Check if source is enabled
-            if not source.get("enabled", False):
-                logger.info(f"Skipping disabled source: {source.get('name')}")
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.SKIPPED,
-                    "Source is disabled",
                 )
                 return
 

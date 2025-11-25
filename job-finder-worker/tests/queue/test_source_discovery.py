@@ -184,7 +184,6 @@ class TestWorkdayDiscovery:
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "workday"
-        assert create_kwargs["enabled"] is False
         assert create_kwargs["validation_required"] is True
 
 
@@ -246,7 +245,6 @@ class TestGenericDiscovery:
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "generic"
         assert create_kwargs["config"]["discovered_by_ai"] is True
-        assert create_kwargs["enabled"] is False  # medium confidence -> manual validation
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
         mock_dependencies["queue_manager"].add_item.assert_called_once()

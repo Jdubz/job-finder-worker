@@ -14,6 +14,12 @@ from typing import Any, Dict, List, Optional
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import ConfigurationError
 from job_finder.job_queue.manager import QueueManager
+from job_finder.job_queue.models import (
+    JobQueueItem,
+    QueueItemType,
+    SourceDiscoveryConfig,
+    SourceTypeHint,
+)
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.greenhouse_scraper import GreenhouseScraper
 from job_finder.storage import JobStorage
@@ -202,6 +208,20 @@ class ScrapeRunner:
         source_name = source.get("name", "Unknown")
         config = source.get("config", {})
 
+        # Enrich config with company metadata (used by scrapers for labeling)
+        company_id = source.get("company_id") or source.get("companyId")
+        company_name = source.get("company_name") or source_name
+        company_website = None
+        if company_id:
+            company = self.companies_manager.get_company_by_id(company_id)
+            if company:
+                company_name = company.get("name") or company_name
+                company_website = company.get("website")
+        if company_name:
+            config["name"] = company_name
+        if company_website:
+            config["company_website"] = company_website
+
         logger.info(f"\n📡 Scraping source: {source_name} ({source_type})")
 
         stats = {
@@ -225,7 +245,15 @@ class ScrapeRunner:
             scraper_rss = RSSJobScraper(rss_url, listing_config={})
             jobs = scraper_rss.scrape()
         else:
-            logger.warning(f"Unsupported source type: {source_type}")
+            logger.warning(
+                f"Unsupported source type: {source_type}. Spawning discovery for {source_name}"
+            )
+            self._spawn_source_discovery(
+                url=source.get("url") or config.get("url") or source_name,
+                company_id=company_id,
+                company_name=company_name,
+                discovered_via=source.get("discovered_via") or "automated_scan",
+            )
             return stats
 
         stats["jobs_found"] = len(jobs)
@@ -234,7 +262,6 @@ class ScrapeRunner:
         if not jobs:
             return stats
 
-        company_id = source.get("company_id") or source.get("companyId")
         source_label = f"{source_type}:{source_name}"
         jobs_submitted = self.scraper_intake.submit_jobs(
             jobs=jobs,
@@ -248,3 +275,38 @@ class ScrapeRunner:
         logger.info(f"  Submitted {jobs_submitted} jobs to queue from {source_name}")
 
         return stats
+
+    # ------------------------------------------------------------
+    # Discovery spawn helper
+    # ------------------------------------------------------------
+
+    def _spawn_source_discovery(
+        self,
+        url: str,
+        company_id: Optional[str],
+        company_name: Optional[str],
+        discovered_via: str,
+    ) -> None:
+        discovery_config = SourceDiscoveryConfig(
+            url=url,
+            company_id=company_id,
+            company_name=company_name,
+            type_hint=SourceTypeHint.AUTO,
+            validation_required=True,
+        )
+
+        discovery_item = JobQueueItem(
+            type=QueueItemType.SOURCE_DISCOVERY,
+            url=url,
+            company_name=company_name or "",
+            source=discovered_via,
+            source_discovery_config=discovery_config,
+        )
+
+        discovery_id = self.queue_manager.add_item(discovery_item)
+        logger.info(
+            "Spawned SOURCE_DISCOVERY %s for url=%s company=%s",
+            discovery_id,
+            url,
+            company_name,
+        )

@@ -274,9 +274,9 @@ class TestCompanyPipeline:
         # First call should be PROCESSING
         assert calls[0][0][1] == QueueStatus.PROCESSING
 
-        # Last call should be PENDING (will retry)
+        # Last call should be FAILED (retry disabled for malformed items)
         last_call = calls[-1]
-        assert last_call[0][1] == QueueStatus.PENDING  # Status is PENDING (for retry)
+        assert last_call[0][1] == QueueStatus.FAILED
         # Error details should be in keyword arg 'error_details'
         if "error_details" in last_call[1]:
             assert "must have company_sub_task" in last_call[1]["error_details"]
