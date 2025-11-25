@@ -8,7 +8,7 @@ describe("GenerationProgress", () => {
     {
       id: "collect-data",
       name: "Collect Data",
-      description: "Loading experience data",
+      description: "Gathering experience data",
       status: "completed",
       startedAt: new Date("2025-01-01T10:00:00Z"),
       completedAt: new Date("2025-01-01T10:00:01Z"),
@@ -29,56 +29,56 @@ describe("GenerationProgress", () => {
     },
   ]
 
-  it("should render all steps", () => {
+  it("should render all steps with names always visible", () => {
     render(<GenerationProgress steps={mockSteps} />)
 
-    // Completed step shows completion message, not name
-    expect(screen.getByText(/Successfully loaded your experience data/)).toBeInTheDocument()
-    // In-progress step shows description, not name
-    expect(screen.getByText("AI generating resume")).toBeInTheDocument()
-    // Pending step shows name
+    // All step names should be visible
+    expect(screen.getByText("Collect Data")).toBeInTheDocument()
+    expect(screen.getByText("Generate Resume")).toBeInTheDocument()
     expect(screen.getByText("Generate Cover Letter")).toBeInTheDocument()
   })
 
-  it("should show completed step with check icon", () => {
+  it("should show progress header with step count", () => {
+    render(<GenerationProgress steps={mockSteps} />)
+
+    // Shows "Step 2 of 3" when second step is in progress
+    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument()
+    expect(screen.getByText("1/3 complete")).toBeInTheDocument()
+  })
+
+  it("should show completed step with check icon and description", () => {
     render(<GenerationProgress steps={mockSteps} />)
 
     const checkIcon = screen.getByTestId("check-icon")
     expect(checkIcon).toBeInTheDocument()
     expect(checkIcon).toHaveClass("text-green-600")
+    // Completed step shows what was accomplished
+    expect(screen.getByText("Loaded profile, experience, and skills")).toBeInTheDocument()
   })
 
-  it("should show in-progress step with spinner", () => {
+  it("should show in-progress step with spinner and active description", () => {
     render(<GenerationProgress steps={mockSteps} />)
 
     const spinner = screen.getByTestId("spinner-icon")
     expect(spinner).toBeInTheDocument()
     expect(spinner).toHaveClass("animate-spin")
+    // In-progress step shows what is happening
+    expect(screen.getByText("AI is analyzing the job and crafting your resume...")).toBeInTheDocument()
   })
 
-  it("should show pending step with empty circle", () => {
+  it("should show pending step with circle and future description", () => {
     render(<GenerationProgress steps={mockSteps} />)
 
     const pendingIcon = screen.getByTestId("pending-icon")
     expect(pendingIcon).toBeInTheDocument()
+    // Pending step shows what will happen
+    expect(screen.getByText("Will write a personalized cover letter")).toBeInTheDocument()
   })
 
-  it("should display step content based on status", () => {
+  it("should show duration for completed steps", () => {
     render(<GenerationProgress steps={mockSteps} />)
 
-    // Completed step shows completion message (not description)
-    expect(screen.getByText(/Successfully loaded your experience data/)).toBeInTheDocument()
-    // In-progress step shows description
-    expect(screen.getByText("AI generating resume")).toBeInTheDocument()
-    // Pending step shows name (not description)
-    expect(screen.getByText("Generate Cover Letter")).toBeInTheDocument()
-  })
-
-  it("should show completion message with duration", () => {
-    render(<GenerationProgress steps={mockSteps} />)
-
-    expect(screen.getByText(/Successfully loaded your experience data/)).toBeInTheDocument()
-    expect(screen.getByText(/\(1\.0s\)/)).toBeInTheDocument()
+    expect(screen.getByText("1.0s")).toBeInTheDocument()
   })
 
   it("should handle failed step", () => {
@@ -89,7 +89,7 @@ describe("GenerationProgress", () => {
         description: "AI generating resume",
         status: "failed",
         error: {
-          message: "API Error",
+          message: "API Error: Rate limit exceeded",
           code: "500",
         },
       },
@@ -100,25 +100,32 @@ describe("GenerationProgress", () => {
     const errorIcon = screen.getByTestId("error-icon")
     expect(errorIcon).toBeInTheDocument()
     expect(errorIcon).toHaveClass("text-destructive")
-    expect(screen.getByText("Error: API Error")).toBeInTheDocument()
+    expect(screen.getByText("API Error: Rate limit exceeded")).toBeInTheDocument()
+    expect(screen.getByText("Generation Failed")).toBeInTheDocument()
+    expect(screen.getByText("Generation encountered an error. Please try again.")).toBeInTheDocument()
   })
 
-  it("should show completion messages for render-pdf step", () => {
-    const stepsWithPDFs: GenerationStep[] = [
+  it("should show completion message when all steps done", () => {
+    const completedSteps: GenerationStep[] = [
+      {
+        id: "collect-data",
+        name: "Collect Data",
+        description: "Done",
+        status: "completed",
+      },
       {
         id: "render-pdf",
         name: "Render PDF",
-        description: "Creating PDF documents",
+        description: "Done",
         status: "completed",
-        result: {
-          resumeUrl: "https://example.com/resume.pdf",
-        },
       },
     ]
 
-    render(<GenerationProgress steps={stepsWithPDFs} />)
+    render(<GenerationProgress steps={completedSteps} />)
 
-    expect(screen.getByText(/PDF documents created and ready/)).toBeInTheDocument()
+    expect(screen.getByText("Generation Complete")).toBeInTheDocument()
+    expect(screen.getByText("Your documents are ready for download")).toBeInTheDocument()
+    expect(screen.getByText("2/2 complete")).toBeInTheDocument()
   })
 
   it("should handle skipped steps", () => {
@@ -133,20 +140,27 @@ describe("GenerationProgress", () => {
 
     render(<GenerationProgress steps={skippedSteps} />)
 
-    // Skipped step shows "name (skipped)"
-    expect(screen.getByText("Generate Cover Letter (skipped)")).toBeInTheDocument()
+    expect(screen.getByText("Generate Cover Letter")).toBeInTheDocument()
+    expect(screen.getByText("Skipped")).toBeInTheDocument()
   })
 
   it("should render empty state when no steps provided", () => {
     render(<GenerationProgress steps={[]} />)
 
-    // Should render the progress container even with no steps
     const progressContainer = screen.getByTestId("generation-progress")
     expect(progressContainer).toBeInTheDocument()
+    expect(screen.getByText("0/0 complete")).toBeInTheDocument()
   })
 
-  it("should display step duration correctly", () => {
-    const stepWithDuration: GenerationStep[] = [
+  it("should highlight in-progress step with background", () => {
+    render(<GenerationProgress steps={mockSteps} />)
+
+    const inProgressStep = screen.getByText("Generate Resume").closest("[data-step-id]")
+    expect(inProgressStep).toHaveClass("bg-primary/5")
+  })
+
+  it("should show render-pdf descriptions correctly", () => {
+    const pdfSteps: GenerationStep[] = [
       {
         id: "render-pdf",
         name: "Render PDF",
@@ -156,9 +170,10 @@ describe("GenerationProgress", () => {
       },
     ]
 
-    render(<GenerationProgress steps={stepWithDuration} />)
+    render(<GenerationProgress steps={pdfSteps} />)
 
-    // Completed step shows completion message with duration
-    expect(screen.getByText(/PDF documents created and ready \(2\.5s\)/)).toBeInTheDocument()
+    expect(screen.getByText("Render PDF")).toBeInTheDocument()
+    expect(screen.getByText("PDF documents ready for download")).toBeInTheDocument()
+    expect(screen.getByText("2.5s")).toBeInTheDocument()
   })
 })
