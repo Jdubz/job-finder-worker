@@ -6,7 +6,7 @@ import { PersonalInfoStore } from '../personal-info.store'
 import { ContentItemRepository } from '../../content-items/content-item.repository'
 import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { storageService } from './services/storage.service'
-import { PDFService } from './services/pdf.service'
+import { PdfMakeService } from './services/pdfmake.service'
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
@@ -63,7 +63,7 @@ export class GeneratorWorkflowService {
   private readonly activeRequests = new Map<string, ActiveRequestState>()
 
   constructor(
-    private readonly pdfService = new PDFService(),
+    private readonly pdfService = new PdfMakeService(),
     private readonly workflowRepo = new GeneratorWorkflowRepository(),
     private readonly personalInfoStore = new PersonalInfoStore(),
     private readonly contentItemRepo = new ContentItemRepository(),
@@ -186,37 +186,69 @@ export class GeneratorWorkflowService {
     }
 
     if (pendingStep.id === 'generate-resume') {
-      const resumeUrl = await this.generateResume(
-        {
-          generateType: request.generateType,
-          job: request.job as GenerateDocumentPayload['job'],
-          preferences: request.preferences as GenerateDocumentPayload['preferences']
-        },
-        requestId,
-        personalInfo
-      )
-      this.workflowRepo.updateRequest(requestId, { resumeUrl: resumeUrl ?? null })
-      const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'completed')
-      activeState.steps = updated
-      const nextStep = updated.find((s) => s.status === 'pending')?.id
-      return { requestId, status: request.status, steps: updated, nextStep, resumeUrl, stepCompleted: 'generate-resume' }
+      try {
+        const resumeUrl = await this.generateResume(
+          {
+            generateType: request.generateType,
+            job: request.job as GenerateDocumentPayload['job'],
+            preferences: request.preferences as GenerateDocumentPayload['preferences']
+          },
+          requestId,
+          personalInfo
+        )
+        this.workflowRepo.updateRequest(requestId, { resumeUrl: resumeUrl ?? null })
+        const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'completed')
+        activeState.steps = updated
+        const nextStep = updated.find((s) => s.status === 'pending')?.id
+        return { requestId, status: request.status, steps: updated, nextStep, resumeUrl, stepCompleted: 'generate-resume' }
+      } catch (error) {
+        this.log.error({ err: error, requestId }, 'Resume generation failed')
+        const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'failed')
+        activeState.steps = updated
+        this.workflowRepo.updateRequest(requestId, { status: 'failed' })
+        this.activeRequests.delete(requestId)
+        return {
+          requestId,
+          status: 'failed',
+          steps: updated,
+          nextStep: undefined,
+          stepCompleted: 'generate-resume',
+          error: error instanceof Error ? error.message : 'Resume generation failed'
+        }
+      }
     }
 
     if (pendingStep.id === 'generate-cover-letter') {
-      const coverLetterUrl = await this.generateCoverLetter(
-        {
-          generateType: request.generateType,
-          job: request.job as GenerateDocumentPayload['job'],
-          preferences: request.preferences as GenerateDocumentPayload['preferences']
-        },
-        requestId,
-        personalInfo
-      )
-      this.workflowRepo.updateRequest(requestId, { coverLetterUrl: coverLetterUrl ?? null })
-      const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'completed')
-      activeState.steps = updated
-      const nextStep = updated.find((s) => s.status === 'pending')?.id
-      return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl, stepCompleted: 'generate-cover-letter' }
+      try {
+        const coverLetterUrl = await this.generateCoverLetter(
+          {
+            generateType: request.generateType,
+            job: request.job as GenerateDocumentPayload['job'],
+            preferences: request.preferences as GenerateDocumentPayload['preferences']
+          },
+          requestId,
+          personalInfo
+        )
+        this.workflowRepo.updateRequest(requestId, { coverLetterUrl: coverLetterUrl ?? null })
+        const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'completed')
+        activeState.steps = updated
+        const nextStep = updated.find((s) => s.status === 'pending')?.id
+        return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl, stepCompleted: 'generate-cover-letter' }
+      } catch (error) {
+        this.log.error({ err: error, requestId }, 'Cover letter generation failed')
+        const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'failed')
+        activeState.steps = updated
+        this.workflowRepo.updateRequest(requestId, { status: 'failed' })
+        this.activeRequests.delete(requestId)
+        return {
+          requestId,
+          status: 'failed',
+          steps: updated,
+          nextStep: undefined,
+          stepCompleted: 'generate-cover-letter',
+          error: error instanceof Error ? error.message : 'Cover letter generation failed'
+        }
+      }
     }
 
     // render-pdf step: PDF rendering is done within generateResume/generateCoverLetter,
