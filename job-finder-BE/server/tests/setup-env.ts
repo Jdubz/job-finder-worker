@@ -34,3 +34,7 @@ if (!process.env.DATABASE_PATH) {
 // Ensure migrations are applied from the repo path
 process.env.JF_SQLITE_MIGRATIONS_DIR =
   process.env.JF_SQLITE_MIGRATIONS_DIR ?? path.resolve(__dirname, '../../../infra/sqlite/migrations')
+
+// Keep test artifacts in a repo-local, git-ignored folder (never /srv/...)
+process.env.GENERATOR_ARTIFACTS_DIR =
+  process.env.GENERATOR_ARTIFACTS_DIR ?? path.resolve(__dirname, '../../.artifacts-test')

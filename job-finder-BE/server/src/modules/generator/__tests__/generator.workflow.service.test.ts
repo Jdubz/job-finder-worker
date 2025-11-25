@@ -9,7 +9,7 @@ import type { PersonalInfo, ContentItem } from '@shared/types'
 
 vi.mock('../workflow/services/cli-runner', () => {
   const runCliProvider = vi.fn().mockImplementation((prompt: string) => {
-    const isCover = prompt.includes('cover letter') || prompt.includes('Return the result as a JSON object with keys: greeting')
+    const isCover = /greeting|cover\s*letter|cover_letter|cover-letter/i.test(prompt)
     if (isCover) {
       return Promise.resolve({
         success: true,
