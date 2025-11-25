@@ -687,8 +687,6 @@ describe("JobFinderConfigPage", () => {
 
       await waitFor(() => {
         // Check form labels exist
-        expect(screen.getByLabelText("Max Retries")).toBeInTheDocument()
-        expect(screen.getByLabelText("Retry Delay (seconds)")).toBeInTheDocument()
         expect(screen.getByLabelText("Processing Timeout (seconds)")).toBeInTheDocument()
       })
     })

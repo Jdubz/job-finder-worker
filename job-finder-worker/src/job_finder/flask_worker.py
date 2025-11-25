@@ -227,7 +227,9 @@ def worker_loop():
             # Refresh timeout from DB each loop (allows runtime changes)
             try:
                 queue_settings = config_loader.get_queue_settings()
-                processing_timeout = max(5, int(queue_settings.get("processingTimeoutSeconds", 1800)))
+                processing_timeout = max(
+                    5, int(queue_settings.get("processingTimeoutSeconds", 1800))
+                )
             except Exception as exc:  # pragma: no cover - defensive
                 slogger.worker_status("queue_settings_load_failed", {"error": str(exc)})
                 processing_timeout = 1800
@@ -263,7 +265,9 @@ def worker_loop():
                             )
                             worker_state["last_error"] = msg
                         except Exception as e:
-                            slogger.logger.error(f"Error processing item {item.id}: {e}", exc_info=True)
+                            slogger.logger.error(
+                                f"Error processing item {item.id}: {e}", exc_info=True
+                            )
                             worker_state["last_error"] = str(e)
 
                 # Get updated stats

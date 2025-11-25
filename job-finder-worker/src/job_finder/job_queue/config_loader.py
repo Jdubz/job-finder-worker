@@ -43,7 +43,10 @@ class ConfigLoader:
                   payload_json = excluded.payload_json,
                   updated_at = excluded.updated_at
                 """,
-                (key, json.dumps(value),),
+                (
+                    key,
+                    json.dumps(value),
+                ),
             )
         return value
 
