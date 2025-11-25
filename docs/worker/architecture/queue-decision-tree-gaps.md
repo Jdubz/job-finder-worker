@@ -142,9 +142,10 @@ analysis_progress: Dict[str, bool] = {
 **Current Implementation** (`companies_manager.py:190-195`):
 ```python
 def has_good_company_data(self, company_data):
-    has_good_quality = about_length > 100 and culture_length > 50
-    has_minimal_quality = about_length > 50 or culture_length > 25
-    return has_good_quality or has_minimal_quality
+    about_length = len(company_data.get("about", ""))
+    culture_length = len(company_data.get("culture", ""))
+    # Check for minimal quality: either field has some content
+    return about_length > 50 or culture_length > 25
 ```
 
 **What's Implemented**:
