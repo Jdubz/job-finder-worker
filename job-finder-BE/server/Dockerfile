@@ -10,10 +10,13 @@ FROM node:20-bullseye AS base
 WORKDIR /app
 ENV HUSKY=0
 ENV HUSKY_SKIP_INSTALL=1
+RUN npm install -g npm@11.6.3
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
-COPY --from=shared-build /shared /shared
+# Adjust monorepo file dependency to match container layout (shared copied into /app/shared)
+RUN sed -i 's#file:../../shared#file:./shared#g; s#"../../shared"#"./shared"#g' package.json package-lock.json
+COPY --from=shared-build /shared ./shared
 COPY infra/sqlite ./infra/sqlite
-RUN npm install && npm rebuild better-sqlite3
+RUN rm package-lock.json && npm install --no-package-lock && npm rebuild better-sqlite3
 COPY job-finder-BE/server/ .
 RUN npm run build
 COPY job-finder-BE/server/src/modules/generator/templates ./dist/modules/generator/templates
@@ -23,9 +26,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV HUSKY=0
 ENV HUSKY_SKIP_INSTALL=1
+RUN npm install -g npm@11.6.3
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
-COPY --from=shared-build /shared /shared
+RUN sed -i 's#file:../../shared#file:./shared#g; s#"../../shared"#"./shared"#g' package.json package-lock.json
+COPY --from=shared-build /shared ./shared
 COPY infra/sqlite ./infra/sqlite
-RUN npm install --omit=dev && npm rebuild better-sqlite3
+RUN rm package-lock.json && npm install --omit=dev --no-package-lock && npm rebuild better-sqlite3
 COPY --from=base /app/dist ./dist
 CMD ["node", "dist/index.js"]

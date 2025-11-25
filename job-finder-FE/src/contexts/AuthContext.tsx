@@ -71,6 +71,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const storedToken = getStoredAuthToken()
     if (storedToken) {
       const payload = decodeJwt(storedToken)
+      const expiresAtMs = payload.exp ? payload.exp * 1000 : null
+      if (expiresAtMs && Date.now() >= expiresAtMs) {
+        console.warn("Stored auth token has expired; clearing session")
+        clearStoredAuthToken()
+        setUser(null)
+        setIsOwner(false)
+        setLoading(false)
+        return
+      }
       const restoredUser = buildUserFromToken(storedToken, payload)
       setUser(restoredUser)
       setIsOwner(restoredUser?.email ? adminEmailSet.has(restoredUser.email) : false)
