@@ -60,9 +60,7 @@ export class ConfigClient extends BaseApiClient {
 
   async updateQueueSettings(settings: Partial<QueueSettings>): Promise<void> {
     const existing = (await this.getQueueSettings()) ?? {
-      maxRetries: 3,
-      retryDelaySeconds: 300,
-      processingTimeout: 600,
+      processingTimeoutSeconds: 1800,
     }
     await this.updateConfigEntry("queue-settings", {
       ...existing,
@@ -79,7 +77,6 @@ export class ConfigClient extends BaseApiClient {
       provider: "claude",
       model: "claude-sonnet-4",
       minMatchScore: 70,
-      costBudgetDaily: 10,
       generateIntakeData: true,
       portlandOfficeBonus: 15,
       userTimezone: -8,

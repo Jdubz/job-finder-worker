@@ -65,12 +65,7 @@ The `infra/` directory contains **templates and development configurations** for
 ## SQLite Workspace
 
 - [`schema.sql`](./sqlite/schema.sql) is the authoritative schema used by the API and seeded via migrations.
-- [`seeders`](./sqlite/seeders) is an npm workspace (already declared in the root `package.json`). Use it to export Firestore data or bootstrap new SQLite instances:
-
-```bash
-npm install --workspace infra/sqlite/seeders
-npm run export:firestore --workspace infra/sqlite/seeders
-```
+- Legacy cloud export snapshots now live under `data/backups/cloud-exports/` for reference only.
 
 
 Add new infrastructure modules (Terraform, Ansible, etc.) under this folder so they stay versioned with the rest of the stack.

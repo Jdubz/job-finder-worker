@@ -1,7 +1,8 @@
 import type { QueueItem, QueueSource, QueueStats, QueueStatus, ScrapeConfig } from '@shared/types'
 import { JobQueueRepository, type NewQueueItem, type QueueItemUpdate } from './job-queue.repository'
 
-const DEFAULT_MAX_RETRIES = 3
+// Queue retries are disabled until recovery is implemented.
+const DEFAULT_MAX_RETRIES = 0
 
 export type SubmitJobInput = {
   url: string
@@ -118,6 +119,19 @@ export class JobQueueService {
   }
 
   update(id: string, updates: QueueItemUpdate): QueueItem {
+    const existing = this.repo.getById(id)
+    if (!existing) {
+      throw new Error(`Queue item not found: ${id}`)
+    }
+
+    if (updates.status === 'pending' && existing.status !== 'pending') {
+      throw new Error('Retry is disabled; items cannot be moved back to pending')
+    }
+
+    if (updates.retry_count !== undefined || updates.max_retries !== undefined) {
+      throw new Error('Retry counters are read-only while retry is disabled')
+    }
+
     return this.repo.update(id, updates)
   }
 

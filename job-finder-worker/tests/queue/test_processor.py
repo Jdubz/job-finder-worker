@@ -201,52 +201,39 @@ def test_process_job_already_exists(processor, mock_managers, sample_job_item):
 
 def test_handle_failure_retry(processor, mock_managers):
     """Test failure handling with retry logic."""
-    # Mock queue settings
-    mock_managers["config_loader"].get_queue_settings.return_value = {"maxRetries": 3}
-
     item = JobQueueItem(
         id="test-123",
         type=QueueItemType.JOB,
         url="https://example.com/job",
         company_name="Test Corp",
         source="scraper",
-        retry_count=1,  # First retry
+        retry_count=1,
     )
 
     processor._handle_failure(item, "Test error")
 
-    # Should increment retry count
-    mock_managers["queue_manager"].increment_retry.assert_called_with("test-123")
-
-    # Should update to PENDING for retry
+    # Should mark failed immediately
     call_args = mock_managers["queue_manager"].update_status.call_args[0]
-    assert call_args[1] == QueueStatus.PENDING
-    assert "retry" in call_args[2].lower()
+    assert call_args[1] == QueueStatus.FAILED
+    assert "failed" in call_args[2].lower()
 
 
 def test_handle_failure_max_retries(processor, mock_managers):
     """Test failure handling when max retries exceeded."""
-    # Mock queue settings
-    mock_managers["config_loader"].get_queue_settings.return_value = {"maxRetries": 3}
-
     item = JobQueueItem(
         id="test-123",
         type=QueueItemType.JOB,
         url="https://example.com/job",
         company_name="Test Corp",
         source="scraper",
-        retry_count=2,  # At max retries
+        retry_count=2,
     )
 
     processor._handle_failure(item, "Test error")
 
-    # Should increment retry count
-    mock_managers["queue_manager"].increment_retry.assert_called_with("test-123")
-
-    # Should update to FAILED
     call_args = mock_managers["queue_manager"].update_status.call_args[0]
     assert call_args[1] == QueueStatus.FAILED
-    assert "retries" in call_args[2].lower()
+    assert "failed" in call_args[2].lower()
 
 
 def test_build_company_info_string(processor):

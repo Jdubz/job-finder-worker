@@ -1,6 +1,27 @@
-import type { ContactSubmissionMetadata, ContactSubmissionTransaction } from "./firestore-schema.types"
-
 export type ContactSubmissionStatus = "new" | "read" | "replied" | "spam"
+
+export interface ContactSubmissionMetadata {
+  timestamp: string
+  ip: string
+  userAgent: string
+  referrer?: string
+}
+
+export interface EmailTransactionResult {
+  success: boolean
+  response?: {
+    messageId: string
+    status: string
+    accepted: boolean
+  }
+  error?: string
+}
+
+export interface ContactSubmissionTransaction {
+  contactEmail?: EmailTransactionResult
+  autoReply?: EmailTransactionResult
+  errors?: string[]
+}
 
 export interface ContactSubmission {
   id: string

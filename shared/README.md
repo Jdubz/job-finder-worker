@@ -38,7 +38,7 @@ import type { JobMatch } from "@shared/types"
 
 ### Python Projects
 
-Mirror the schemas using Pydantic models. The `shared/src` directory is the source of truth for the Firestore schema and queue/job payloads.
+Mirror the schemas using Pydantic models. The `shared/src` directory is the source of truth for the database schema and queue/job payloads.
 
 ## Usage
 
@@ -102,14 +102,14 @@ class JobQueueItem(BaseModel):
 Represents an item in the job processing queue.
 
 **Fields:**
-- `id?: string` - Firestore document ID
+- `id?: string` - Database record ID
 - `type: QueueItemType` - "job" or "company"
 - `status: QueueStatus` - Current processing status
 - `url: string` - Job or company URL
 - `company_name: string` - Company name
 - `source: QueueSource` - Where the item came from
 - `submitted_by: string` - User ID who submitted
-- `retry_count: number` - Number of retry attempts
+- `retry_count: number` - Number of retry attempts (currently 0 while retrying is disabled)
 - `max_retries: number` - Maximum retries allowed
 - `created_at: Date` - Creation timestamp
 - `updated_at: Date` - Last update timestamp
@@ -138,7 +138,7 @@ Standard job data structure returned by scrapers (before AI analysis).
 
 **Added During Processing:**
 - `companyInfo?: string` - Company about/culture (fetched after scraping)
-- `companyId?: string` - Firestore company document ID (added during analysis)
+- `companyId?: string` - Company record ID (added during analysis)
 - `resumeIntakeData?: ResumeIntakeData` - AI-generated resume customization
 
 #### `ResumeIntakeData`
@@ -159,10 +159,10 @@ AI-generated resume customization data for tailoring applications.
 AI-analyzed job match result (saved to job-matches collection).
 
 **Fields:**
-- `id?: string` - Firestore document ID
+- `id?: string` - Database record ID
 - `url: string` - Job posting URL
 - `companyName: string` - Company name
-- `companyId?: string | null` - Firestore company document ID
+- `companyId?: string | null` - Company record ID
 - `jobTitle: string` - Job title/role
 - `matchScore: number` - AI match score (0-100)
 - `matchedSkills: string[]` - Skills matching requirements
@@ -180,7 +180,7 @@ AI-analyzed job match result (saved to job-matches collection).
 Company record (companies collection).
 
 **Fields:**
-- `id?: string` - Firestore document ID
+- `id?: string` - Database record ID
 - `name: string` - Company name
 - `website: string` - Company website URL
 - `about?: string | null` - About/mission statement
@@ -203,9 +203,7 @@ Exclusion list for filtering jobs.
 Queue processing configuration.
 
 **Fields:**
-- `maxRetries: number` - Max retry attempts (0-10)
-- `retryDelaySeconds: number` - Delay between retries
-- `processingTimeout: number` - Max processing time (seconds)
+- `processingTimeoutSeconds: number` - Max processing time (seconds)
 
 #### `AISettings`
 AI provider configuration.
@@ -214,7 +212,6 @@ AI provider configuration.
 - `provider: "claude" | "openai"` - AI provider
 - `model: string` - Model identifier
 - `minMatchScore: number` - Minimum match score (0-100)
-- `costBudgetDaily: number` - Daily budget limit
 
 ### Helper Types
 
@@ -225,7 +222,7 @@ AI provider configuration.
 
 ## Type Guards
 
-Type guards provide runtime type checking for validating data structures. These are especially useful when reading from Firestore or validating API inputs.
+Type guards provide runtime type checking for validating data structures. These are especially useful when reading from SQLite or validating API inputs.
 
 ### Available Type Guards
 
@@ -263,17 +260,15 @@ import {
   JobMatch
 } from '@jdubz/job-finder-shared-types'
 
-// Example 1: Validating Firestore data
+// Example 1: Validating data loaded from SQLite (or any source)
 async function getQueueItem(id: string): Promise<QueueItem | null> {
-  const doc = await firestore.collection('job-queue').doc(id).get()
-  const data = doc.data()
-  
-  if (isQueueItem(data)) {
-    // TypeScript knows data is QueueItem here
-    console.log(`Status: ${data.status}`)
-    return data
+  const row = await db.get('SELECT * FROM job_queue WHERE id = ?', id)
+
+  if (isQueueItem(row)) {
+    console.log(`Status: ${row.status}`)
+    return row
   }
-  
+
   console.error('Invalid queue item data')
   return null
 }
@@ -386,7 +381,7 @@ class JobQueueItem(BaseModel):
    │ import { ... }   │          │ (Mirrored)       │
    └──────────────────┘          └──────────────────┘
              │                              │
-             │         Firestore            │
+             │         SQLite DB           │
              └───────────(shared)───────────┘
 ```
 

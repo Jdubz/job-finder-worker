@@ -199,7 +199,6 @@ export function QueueFilters({
                   <SelectItem value="type">Type</SelectItem>
                   <SelectItem value="source">Source</SelectItem>
                   <SelectItem value="company_name">Company Name</SelectItem>
-                  <SelectItem value="retry_count">Retry Count</SelectItem>
                 </SelectContent>
               </Select>
             </div>

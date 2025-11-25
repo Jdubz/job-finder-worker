@@ -8,7 +8,7 @@
  * NOTE: Blurb service deprecated - using content items directly
  */
 
-import type { TimestampLike } from "./firestore.types"
+import type { TimestampLike } from "./time.types"
 
 export interface GeneratorDocumentRecord {
   id: string
@@ -170,7 +170,7 @@ export interface GenerationStep {
 }
 
 /**
- * Generator request document (stored in Firestore)
+ * Generator request document (stored in the primary database)
  */
 export interface GeneratorRequest {
   id: string
@@ -206,7 +206,7 @@ export interface GeneratorRequest {
 }
 
 /**
- * Generator response document (stored in Firestore)
+ * Generator response document (stored in the primary database)
  */
 export interface GeneratorResponse {
   id: string

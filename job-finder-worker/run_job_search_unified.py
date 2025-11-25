@@ -12,7 +12,6 @@ import sys
 from pathlib import Path
 import sqlite3
 
-import yaml
 from dotenv import load_dotenv
 
 # Add src to path
@@ -34,11 +33,6 @@ from job_finder.storage.job_sources_manager import JobSourcesManager
 def main():
     """Run a full scrape + match cycle through the queue pipeline."""
     parser = argparse.ArgumentParser(description="Run job finder search")
-    parser.add_argument(
-        "--config",
-        default="config/config.dev.yaml",
-        help="Path to configuration file (default: config/config.dev.yaml)",
-    )
     parser.add_argument(
         "--max-jobs",
         type=int,
@@ -78,22 +72,12 @@ def main():
         print("=" * 70)
         print("STATE-DRIVEN JOB SEARCH (QUEUE)")
         print("=" * 70)
-        print(f"\n📋 Loading configuration from: {args.config}")
+        print("\n📋 Loading configuration from SQLite job_finder_config (no YAML file)")
 
-    config_path = Path(args.config)
-    if not config_path.exists():
-        print(
-            f"\n❌ Config file not found: {config_path}\n"
-            "   Try one of: config/config.dev.yaml, config/config.local-e2e.yaml, "
-            "or copy config/config.example.yaml to config/config.yaml and customize."
-        )
-        sys.exit(1)
-
-    with config_path.open("r") as f:
-        config = yaml.safe_load(f)
+    config: dict = {}
 
     # Override target matches if specified
-    target_matches = args.max_jobs or config.get("search", {}).get("max_jobs", 10)
+    target_matches = args.max_jobs or 10
 
     # Resolve DB path
     db_path = (
@@ -114,7 +98,16 @@ def main():
     config_loader = ConfigLoader(db_path)
     profile = SQLiteProfileLoader(db_path).load_profile()
 
-    ai_config = config.get("ai", {})
+    ai_config = {
+        "provider": "claude",
+        "model": "claude-sonnet-4",
+        "min_match_score": 70,
+        "generate_intake_data": True,
+        "portland_office_bonus": 15,
+        "user_timezone": -8,
+        "prefer_large_companies": True,
+        **config.get("ai", {}),
+    }
     provider = create_provider(ai_config.get("provider", "openai"), model=ai_config.get("model"))
     ai_matcher = AIJobMatcher(
         provider=provider,

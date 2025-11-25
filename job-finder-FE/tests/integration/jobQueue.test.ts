@@ -34,8 +34,8 @@ describeIntegration("Job Queue API Integration", () => {
       expect(item.url).toContain("https://")
       expect(item.company_name.length).toBeGreaterThan(0)
       expect(item.source).toBe("user_submission")
-      expect(item.retry_count).toBeGreaterThanOrEqual(0)
-      expect(item.max_retries).toBeGreaterThan(0)
+      expect(item.retry_count).toBe(0)
+      expect(item.max_retries).toBe(0)
     })
 
     it("captures processing lifecycle metadata", () => {

@@ -21,7 +21,7 @@ export type LogCategory =
   | "pipeline"    // Pipeline stage transitions
   | "scrape"      // Web scraping operations
   | "ai"          // AI model operations
-  | "database"    // Firestore operations
+  | "database"    // Database operations
   | "api"         // API requests/responses (backend)
   | "auth"        // Authentication operations
   | "client"      // Client-side operations (frontend)

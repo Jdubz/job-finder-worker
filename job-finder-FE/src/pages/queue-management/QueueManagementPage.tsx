@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Filter, RotateCcw, Trash2, AlertCircle, Activity } from "lucide-react"
+import { Search, Filter, Trash2, AlertCircle, Activity } from "lucide-react"
 import { QueueItemCard } from "./components/QueueItemCard"
 import { QueueStatsGrid } from "./components/QueueStatsGrid"
 import { QueueFilters } from "./components/QueueFilters"
@@ -134,29 +134,6 @@ export function QueueManagementPage() {
     setFilteredItems(filtered as QueueItem[])
   }
 
-  const handleRetryItem = async (id: string) => {
-    try {
-      // Update the queue item to pending status for retry
-      await updateQueueItem(id, {
-        status: "pending",
-        result_message: "Queued for retry",
-        processed_at: undefined,
-        completed_at: undefined,
-      })
-
-      setAlert({
-        type: "success",
-        message: "Queue item queued for retry",
-      })
-    } catch (error) {
-      console.error("Failed to retry item:", error)
-      setAlert({
-        type: "error",
-        message: "Failed to retry queue item",
-      })
-    }
-  }
-
   const handleCancelItem = async (id: string) => {
     try {
       // Update the queue item to cancelled status
@@ -179,37 +156,28 @@ export function QueueManagementPage() {
     }
   }
 
-  const handleBulkAction = async (action: "retry" | "cancel") => {
+  const handleBulkCancel = async () => {
     if (selectedItems.size === 0) return
 
     try {
       const promises = Array.from(selectedItems).map((id) => {
-        if (action === "retry") {
-          return updateQueueItem(id, {
-            status: "pending",
-            result_message: "Queued for retry",
-            processed_at: undefined,
-            completed_at: undefined,
-          })
-        } else {
-          return updateQueueItem(id, {
-            status: "skipped",
-            result_message: "Cancelled by user",
-            completed_at: new Date(),
-          })
-        }
+        return updateQueueItem(id, {
+          status: "skipped",
+          result_message: "Cancelled by user",
+          completed_at: new Date(),
+        })
       })
 
       await Promise.all(promises)
       setAlert({
         type: "success",
-        message: `${action === "retry" ? "Retried" : "Cancelled"} ${selectedItems.size} items`,
+        message: `Cancelled ${selectedItems.size} items`,
       })
       setSelectedItems(new Set())
     } catch {
       setAlert({
         type: "error",
-        message: `Failed to ${action} selected items`,
+        message: "Failed to cancel selected items",
       })
     }
   }
@@ -266,18 +234,15 @@ export function QueueManagementPage() {
             </Badge>
           </div>
           <p className="text-muted-foreground mt-2">
-            Monitor and manage the job processing queue in real-time
+            Monitor and manage the job processing queue in real-time. Retries are temporarily
+            disabled; cancel stuck items and re-submit only after fixing root causes.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           {selectedItems.size > 0 && (
             <>
-              <Button variant="outline" size="sm" onClick={() => handleBulkAction("retry")}>
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Retry ({selectedItems.size})
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handleBulkAction("cancel")}>
+              <Button variant="outline" size="sm" onClick={handleBulkCancel}>
                 <Trash2 className="h-4 w-4 mr-2" />
                 Cancel ({selectedItems.size})
               </Button>
@@ -412,7 +377,6 @@ export function QueueManagementPage() {
                       }
                       setSelectedItems(newSelected)
                     }}
-                    onRetry={handleRetryItem}
                     onCancel={handleCancelItem}
                   />
                 )

@@ -28,34 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.0] - 2025-10-21
 
-### Added
-- **Complete Firestore Schema Types**: Codified production database schema from portfolio database
-  - `QueueItemDocument`: Job queue collection schema
-  - `CompanyDocument`: Companies collection with priority scoring and tech stack
-  - `ContentItemDocument`: Portfolio content items with multiple content types (company, project, skill-group, text-section, profile-section)
-  - `ContactSubmissionDocument`: Contact form submissions with email transaction tracking
-  - `UserDocument`: User authentication and profile structure
-  - `ConfigDocument`: Application configuration documents
-- **Type Guards for Firestore Schema**: Runtime validation for all Firestore document types
-  - Collection-specific guards (isQueueItemDocument, isCompanyDocument, etc.)
-  - Enum guards for document status and types
-- **Schema Extraction Script**: Automated tool to extract schema from production Firestore (`scripts/extract-firestore-schema.js`)
-- **Firestore Schema Documentation**: Comprehensive docs for all collections and document types
-- Exported schema types and guards from main package index
-- Automated package publishing workflow via GitHub Actions
-- CHANGELOG.md for tracking version history
-- .npmignore for optimizing published package contents
-
-### Changed
-- Renamed Firestore schema types to avoid conflicts with existing application types
-  - Used "Document" suffix for Firestore-specific types (e.g., `QueueItemDocument` vs `QueueItem`)
-  - Enum types also renamed (e.g., `QueueItemDocumentStatus` vs `QueueItemStatus`)
-- Re-exported Firestore schema guards from main guards module for convenience
-- Publish workflow triggers on semantic version tags (`v*.*.*`)
-- CI workflow runs on pull requests to guard publishing quality
-
-### Fixed
-- Type conflicts between application layer types and database schema types
+### Removed (retroactive)
+- Legacy cloud schema exports and guards (the stack now uses SQLite; former artifacts deleted in 2025-11 cleanup)
 
 ## [1.1.1] - 2025-10-20
 

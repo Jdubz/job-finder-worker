@@ -6,10 +6,10 @@
  * IMPORTANT: When modifying these types, also update:
  * - Python models in job-finder/src/job_finder/scrapers/base.py
  * - Python models in job-finder/src/job_finder/ai/matcher.py
- * - Firestore schema expectations in both projects
+ * - Database schema expectations in both projects
  */
 
-import type { TimestampLike } from "./firestore.types"
+import type { TimestampLike } from "./time.types"
 
 /**
  * Standard job listing structure returned by scrapers.
@@ -71,7 +71,7 @@ export interface JobListing {
   companyInfo?: string
 
   /**
-   * Firestore company document ID
+  * Company record ID
    * Added during JOB_ANALYZE step
    */
   companyId?: string
@@ -199,7 +199,7 @@ export interface ResumeIntakeData {
  * Read by portfolio for displaying matched jobs.
  */
 export interface JobMatch {
-  /** Firestore document ID */
+  /** Database record ID */
   id?: string
 
   /** Job posting URL (unique identifier) */
@@ -208,7 +208,7 @@ export interface JobMatch {
   /** Company name */
   companyName: string
 
-  /** Firestore company document ID */
+  /** Company record ID */
   companyId?: string | null
 
   /** Job title/role */
@@ -262,7 +262,7 @@ export interface JobMatch {
   /** When AI analysis was performed */
   analyzedAt: TimestampLike
 
-  /** When record was created in Firestore */
+  /** When record was created */
   createdAt: TimestampLike
 
   /** User ID who submitted the job */
@@ -278,7 +278,7 @@ export interface JobMatch {
  * Managed by job-finder, read by portfolio.
  */
 export interface Company {
-  /** Firestore document ID */
+  /** Database record ID */
   id?: string
 
   /** Company name */

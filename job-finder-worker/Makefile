@@ -130,11 +130,6 @@ shell: ## Start Python shell with app context
 	@echo "$(CYAN)Starting Python shell...$(RESET)"
 	@. $(VENV_DIR)/bin/activate && python3
 
-check-config: ## Validate configuration files
-	@echo "$(CYAN)Checking configuration...$(RESET)"
-	@. $(VENV_DIR)/bin/activate && python3 -c "import yaml; yaml.safe_load(open('config/config.dev.yaml'))"
-	@echo "$(GREEN)✓ Configuration valid$(RESET)"
-
 check-env: ## Check environment variables
 	@echo "$(CYAN)Checking environment...$(RESET)"
 	@echo "JF_SQLITE_DB_PATH: $$JF_SQLITE_DB_PATH"

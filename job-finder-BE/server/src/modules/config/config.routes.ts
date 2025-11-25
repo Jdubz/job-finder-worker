@@ -11,6 +11,7 @@ import type {
   TechnologyRanksConfig,
   SchedulerSettings,
   JobFinderConfigId,
+  PromptConfig,
 } from '@shared/types'
 import {
   ApiErrorCode,
@@ -20,6 +21,7 @@ import {
   DEFAULT_JOB_FILTERS,
   DEFAULT_TECH_RANKS,
   DEFAULT_SCHEDULER_SETTINGS,
+  DEFAULT_PROMPTS,
   isStopList,
   isQueueSettings,
   isAISettings,
@@ -45,6 +47,7 @@ type KnownPayload =
   | JobFiltersConfig
   | TechnologyRanksConfig
   | SchedulerSettings
+  | PromptConfig
   | Record<string, unknown>
 
 function toCamelCaseKey(key: string): string {
@@ -54,6 +57,24 @@ function toCamelCaseKey(key: string): string {
 function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>): T {
   const entries = Object.entries(obj).map(([k, v]) => [toCamelCaseKey(k), v])
   return Object.fromEntries(entries) as T
+}
+
+function seedDefaults(repo: ConfigRepository) {
+  const seeds: Array<[JobFinderConfigId, KnownPayload]> = [
+    ['stop-list', DEFAULT_STOP_LIST],
+    ['queue-settings', DEFAULT_QUEUE_SETTINGS],
+    ['ai-settings', DEFAULT_AI_SETTINGS],
+    ['job-filters', DEFAULT_JOB_FILTERS],
+    ['technology-ranks', DEFAULT_TECH_RANKS],
+    ['scheduler-settings', DEFAULT_SCHEDULER_SETTINGS],
+    ['ai-prompts', DEFAULT_PROMPTS],
+  ]
+
+  for (const [id, payload] of seeds) {
+    if (!repo.get(id)) {
+      repo.upsert(id, payload)
+    }
+  }
 }
 
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
@@ -112,6 +133,7 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
       return { ...DEFAULT_SCHEDULER_SETTINGS, ...normalized }
     }
     case 'ai-prompts':
+      return payload
     case 'personal-info':
     default:
       return payload
@@ -160,6 +182,9 @@ async function triggerWorkerReload(id: string) {
 export function buildConfigRouter() {
   const router = Router()
   const repo = new ConfigRepository()
+
+  // Ensure required configs exist with sensible defaults
+  seedDefaults(repo)
 
   router.get(
     '/',

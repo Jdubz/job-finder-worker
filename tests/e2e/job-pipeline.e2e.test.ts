@@ -298,10 +298,9 @@ describe("Configuration flows", () => {
     expect(stopList?.excludedCompanies).toContain("Bad Corp")
     expect(stopList?.excludedDomains).toContain("spam.example.com")
 
-    await configClient.updateQueueSettings({ maxRetries: 7, processingTimeout: 1200 })
+    await configClient.updateQueueSettings({ processingTimeoutSeconds: 1200 })
     const queueSettings = await configClient.getQueueSettings()
-    expect(queueSettings?.maxRetries).toBe(7)
-    expect(queueSettings?.processingTimeout).toBe(1200)
+    expect(queueSettings?.processingTimeoutSeconds).toBe(1200)
 
     await configClient.updateAISettings({ provider: "openai", model: "gpt-e2e" })
     const aiSettings = await configClient.getAISettings()

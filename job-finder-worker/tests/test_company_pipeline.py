@@ -261,12 +261,6 @@ class TestCompanyPipeline:
             "excludedDomains": [],
         }
 
-        # Mock queue settings for error handling
-        mock_dependencies["config_loader"].get_queue_settings.return_value = {
-            "maxRetries": 3,
-            "retryDelaySeconds": 60,
-        }
-
         # Execute - should fail the item with ValueError
         processor.process_item(queue_item)
 
@@ -274,8 +268,7 @@ class TestCompanyPipeline:
         assert mock_dependencies["queue_manager"].update_status.called
 
         calls = mock_dependencies["queue_manager"].update_status.call_args_list
-
-        # Should have: PROCESSING, then PENDING (for retry)
+        # Should have: PROCESSING, then FAILED
         assert len(calls) >= 2
 
         # First call should be PROCESSING

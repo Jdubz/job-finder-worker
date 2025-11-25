@@ -32,52 +32,105 @@ class ConfigLoader:
         except json.JSONDecodeError as exc:
             raise InitializationError(f"Invalid JSON for config '{key}': {exc}") from exc
 
+    def _seed_config(self, key: str, value: Dict[str, Any]) -> Dict[str, Any]:
+        """Persist default config to SQLite and return it."""
+        with sqlite_connection(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO job_finder_config (id, payload_json, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(id) DO UPDATE SET
+                  payload_json = excluded.payload_json,
+                  updated_at = excluded.updated_at
+                """,
+                (
+                    key,
+                    json.dumps(value),
+                ),
+            )
+        return value
+
     def get_stop_list(self) -> Dict[str, Any]:
+        default = {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []}
         try:
             return self._get_config("stop-list")
         except InitializationError:
-            logger.warning("Stop list not configured; using defaults")
-            return {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []}
+            logger.warning("Stop list missing; seeding defaults")
+            return self._seed_config("stop-list", default)
 
     def get_queue_settings(self) -> Dict[str, Any]:
+        default = {"processingTimeoutSeconds": 1800}
         try:
             return self._get_config("queue-settings")
         except InitializationError:
-            logger.warning("Queue settings not configured; using defaults")
-            return {"maxRetries": 3, "retryDelaySeconds": 300, "processingTimeout": 600}
+            logger.warning("Queue settings missing; seeding defaults")
+            return self._seed_config("queue-settings", default)
 
     def get_ai_settings(self) -> Dict[str, Any]:
+        default = {
+            "provider": "claude",
+            "model": "claude-sonnet-4",
+            "minMatchScore": 70,
+            "generateIntakeData": True,
+            "portlandOfficeBonus": 15,
+            "userTimezone": -8,
+            "preferLargeCompanies": True,
+        }
         try:
             return self._get_config("ai-settings")
         except InitializationError:
-            logger.warning("AI settings not configured; using defaults")
-            return {
-                "provider": "claude",
-                "model": "claude-sonnet-4",
-                "minMatchScore": 70,
-                "generateIntakeData": True,
-                "portlandOfficeBonus": 15,
-                "userTimezone": -8,
-                "preferLargeCompanies": True,
-            }
+            logger.warning("AI settings missing; seeding defaults")
+            return self._seed_config("ai-settings", default)
 
     def get_job_filters(self) -> Dict[str, Any]:
+        default = {
+            "enabled": True,
+            "strikeThreshold": 5,
+            "hardRejections": {
+                "excludedJobTypes": [],
+                "excludedSeniority": [],
+                "excludedCompanies": [],
+                "excludedKeywords": [],
+                "minSalaryFloor": 100000,
+                "rejectCommissionOnly": True,
+            },
+            "remotePolicy": {
+                "allowRemote": True,
+                "allowHybridPortland": True,
+                "allowOnsite": False,
+            },
+            "salaryStrike": {"enabled": True, "threshold": 150000, "points": 2},
+            "experienceStrike": {"enabled": True, "minPreferred": 6, "points": 1},
+            "seniorityStrikes": {},
+            "qualityStrikes": {
+                "minDescriptionLength": 200,
+                "shortDescriptionPoints": 1,
+                "buzzwords": [],
+                "buzzwordPoints": 1,
+            },
+            "ageStrike": {"enabled": True, "strikeDays": 1, "rejectDays": 7, "points": 1},
+        }
         try:
             return self._get_config("job-filters")
         except InitializationError:
-            logger.warning("Job filters not configured; using defaults")
-            return {}
+            logger.warning("Job filters missing; seeding defaults")
+            return self._seed_config("job-filters", default)
 
     def get_technology_ranks(self) -> Dict[str, Any]:
+        default = {
+            "technologies": {},
+            "strikes": {"missingAllRequired": 1, "perBadTech": 2},
+        }
         try:
             return self._get_config("technology-ranks")
         except InitializationError:
-            logger.warning("Technology ranks not configured; using defaults")
-            return {"technologies": {}, "strikes": {"missingAllRequired": 1, "perBadTech": 2}}
+            logger.warning("Technology ranks missing; seeding defaults")
+            return self._seed_config("technology-ranks", default)
 
     def get_scheduler_settings(self) -> Dict[str, Any]:
+        default = {"pollIntervalSeconds": 60}
         try:
             return self._get_config("scheduler-settings")
         except InitializationError:
-            logger.warning("Scheduler settings not configured; using defaults")
-            return {"pollIntervalSeconds": 60}
+            logger.warning("Scheduler settings missing; seeding defaults")
+            return self._seed_config("scheduler-settings", default)

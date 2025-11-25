@@ -2,7 +2,7 @@
  * Type Guard Functions
  *
  * Runtime validation helpers for shared domain types and API responses.
- * Use these guards when reading from Firestore, handling API payloads, or
+ * Use these guards when reading from persistence layers, handling API payloads, or
  * validating user input across services.
  *
  * Usage:
@@ -26,7 +26,6 @@ import type {
   JobFiltersConfig,
   TechnologyRanksConfig,
   SchedulerSettings,
-  ModelTuning,
 } from "./config.types"
 import type { PersonalInfo } from "./generator.types"
 // Import and re-export type guards from queue.types for convenience
@@ -72,12 +71,12 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 /**
- * Helper: Check if value is a Date or Firestore Timestamp
+ * Helper: Check if value is a Date or structured timestamp
  */
 function isDateLike(value: unknown): boolean {
   if (value instanceof Date) return true
   if (!isObject(value)) return false
-  // Check for Firestore Timestamp structure
+  // Check for structured timestamp shape
   return (
     typeof (value as any).seconds === "number" &&
     typeof (value as any).nanoseconds === "number" &&
@@ -158,9 +157,7 @@ export function isQueueSettings(value: unknown): value is QueueSettings {
   const settings = value as Partial<QueueSettings>
 
   return (
-    typeof settings.maxRetries === "number" &&
-    typeof settings.retryDelaySeconds === "number" &&
-    typeof settings.processingTimeout === "number"
+    typeof settings.processingTimeoutSeconds === "number"
   )
 }
 
@@ -183,29 +180,12 @@ export function isAISettings(value: unknown): value is AISettings {
     isAIProvider(settings.provider) &&
     typeof settings.model === "string" &&
     typeof settings.minMatchScore === "number" &&
-    typeof settings.costBudgetDaily === "number" &&
     (settings.generateIntakeData === undefined || typeof settings.generateIntakeData === "boolean") &&
     (settings.portlandOfficeBonus === undefined || typeof settings.portlandOfficeBonus === "number") &&
     (settings.userTimezone === undefined || typeof settings.userTimezone === "number") &&
     (settings.preferLargeCompanies === undefined || typeof settings.preferLargeCompanies === "boolean") &&
-    (settings.models === undefined || isModelsMap(settings.models)) &&
-    (settings.maxTokens === undefined || typeof settings.maxTokens === "number") &&
-    (settings.temperature === undefined || typeof settings.temperature === "number")
+    true
   )
-}
-
-function isModelTuning(value: unknown): value is ModelTuning {
-  if (!isObject(value)) return false
-  const tuning = value as ModelTuning
-  return (
-    (tuning.maxTokens === undefined || typeof tuning.maxTokens === "number") &&
-    (tuning.temperature === undefined || typeof tuning.temperature === "number")
-  )
-}
-
-function isModelsMap(value: unknown): value is Record<string, ModelTuning> {
-  if (!isObject(value)) return false
-  return Object.values(value).every(isModelTuning)
 }
 
 export function isJobFiltersConfig(value: unknown): value is JobFiltersConfig {
@@ -632,21 +612,3 @@ export function createErrorResponse(
     },
   }
 }
-
-// ============================================
-// Firestore Schema Guards
-// ============================================
-
-// Re-export all Firestore schema guards for convenience
-export {
-  isQueueItemStatus as isQueueItemDocumentStatus,
-  isQueueItemType as isQueueItemDocumentType,
-  isQueueSource as isQueueItemDocumentSource,
-  isQueueItemDocument,
-  isCompanyTier,
-  isCompanyDocument,
-  isContentItemDocument,
-  isContactSubmissionDocument,
-  isUserDocument,
-  isConfigDocument,
-} from "./firestore-schema.guards"

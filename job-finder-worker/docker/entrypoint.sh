@@ -95,7 +95,7 @@ elif [ "${ENABLE_QUEUE_MODE}" = "true" ]; then
     echo "========================================="
     echo "Starting Queue Worker Daemon (Legacy)"
     echo "========================================="
-    echo "Queue worker will process jobs from Firestore queue"
+    echo "Queue worker will process jobs from SQLite queue"
     echo ""
 
     # Ensure logs directory exists
