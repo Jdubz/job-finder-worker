@@ -291,7 +291,8 @@ export class GeneratorWorkflowService {
     const pdf = await this.pdfService.generateResumePDF(
       resume,
       payload.preferences?.style ?? 'modern',
-      personalInfo.accentColor ?? '#2563eb'
+      personalInfo.accentColor ?? '#2563eb',
+      personalInfo
     )
     const saved = await storageService.saveArtifact(pdf, requestId, 'resume', `${requestId}-resume.pdf`)
     this.workflowRepo.addArtifact({
@@ -316,7 +317,8 @@ export class GeneratorWorkflowService {
       name: personalInfo.name ?? 'Candidate',
       email: personalInfo.email,
       accentColor: personalInfo.accentColor,
-      date: payload.date
+      date: payload.date,
+      logo: personalInfo.logo
     })
     const saved = await storageService.saveArtifact(pdf, requestId, 'cover-letter', `${requestId}-cover-letter.pdf`)
     this.workflowRepo.addArtifact({
