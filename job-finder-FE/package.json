@@ -7,7 +7,6 @@
     "dev": "node scripts/dev-with-port-check.js",
     "dev:new": "vite",
     "build": "npm run validate:config && npm run build:prod-core",
-    "build:staging": "npm run validate:config && tsc -b && vite build --mode staging",
     "build:production": "npm run build",
     "build:deploy": "npm run build:prod-core",
     "build:prod-core": "tsc -b && vite build --mode production",
