@@ -41,10 +41,30 @@ export function buildResumePrompt(
 ): string {
   const prompts = promptsRepo.getPrompts()
 
-  // Extract experience and skills from content items
+  // Extract experience and skills from content items (preserve structure so the model has enough detail)
   const experience = contentItems
-    .filter(item => item.role && item.title)
-    .map(item => `${item.role} at ${item.title}${item.description ? ': ' + item.description : ''}`)
+    .filter((item) => item.role && item.title)
+    .map((item) => {
+      const bullets = (item.description || '')
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length)
+        .map((line) => line.replace(/^[-•]\s*/, '').trim())
+        .map((line) => `    - ${line}`)
+        .join('\n')
+
+      const skills = item.skills ?? []
+
+      return [
+        `- Role: ${item.role}`,
+        `  Company: ${item.title}${item.location ? ` (${item.location})` : ''}`,
+        `  Dates: ${item.startDate || 'unspecified'} - ${item.endDate || 'Present'}`,
+        bullets ? `  Highlights:\n${bullets}` : null,
+        skills && skills.length ? `  Skills: ${skills.join(', ')}` : null,
+        item.website ? `  Website: ${item.website}` : null
+      ]
+        .filter(Boolean)
+        .join('\n')
+    })
     .join('\n')
 
   const skills = [...new Set(contentItems.flatMap(item => item.skills || []))].join(', ')
@@ -65,8 +85,16 @@ export function buildResumePrompt(
 
   const prompt = replaceVariables(prompts.resumeGeneration, variables)
 
-  // Append JSON format instruction for structured output
-  return prompt + '\n\nReturn the result as a JSON object with keys: personalInfo, professionalSummary, experience[], skills[], education[].'
+  const dataBlock = `\n\nINPUT DATA (authoritative — use exactly this):\nCandidate: ${variables.candidateName}\nTarget Role: ${variables.jobTitle}\nCompany: ${variables.companyName}\nJob Description:\n${variables.jobDescription}\n\nExperience:\n${experience || 'None'}\n\nSkills:\n${skills || 'None'}\n\nAdditional Instructions:\n${variables.additionalInstructions || 'None'}`
+
+  // Append JSON format instruction for structured output and forbid follow-up questions
+  return (
+    prompt +
+    dataBlock +
+    '\n\nUse ONLY the experience and skills provided above. Do NOT ask for more information.' +
+    '\nIf a field is missing, leave it empty/null but still return the full JSON object.' +
+    '\nReturn the result as a JSON object with keys: personalInfo, professionalSummary, experience[], skills[], education[].'
+  )
 }
 
 export function buildCoverLetterPrompt(

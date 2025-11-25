@@ -4,6 +4,15 @@ import type { Logger } from 'pino'
 import type { CoverLetterContent, ResumeContent, PersonalInfo } from '@shared/types'
 import { logger as rootLogger } from '../../../../logger'
 
+function formatDate(value?: string | null): string {
+  if (!value) return ''
+  const normalized = value.length === 4 ? `${value}-01` : value
+  const date = new Date(normalized + (normalized.length === 7 ? '-01' : ''))
+  if (Number.isNaN(date.getTime())) return value
+  const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' })
+  return formatter.format(date)
+}
+
 // Use standard fonts that pdfmake bundles
 const fonts = {
   Helvetica: {
@@ -19,6 +28,17 @@ const printer = new PdfPrinter(fonts)
 // Fetch image and convert to base64 data URI for pdfmake
 async function fetchImageAsBase64(url: string, log: Logger): Promise<string | null> {
   try {
+    // Allow local filesystem paths for avatar/logo
+    if (url.startsWith('/')) {
+      const fs = await import('node:fs/promises')
+      const path = await import('node:path')
+      const absolute = path.resolve(url)
+      const buffer = await fs.readFile(absolute)
+      const ext = path.extname(absolute).toLowerCase()
+      const mime = ext === '.svg' ? 'image/svg+xml' : 'image/jpeg'
+      return `data:${mime};base64,${buffer.toString('base64')}`
+    }
+
     const response = await fetch(url)
     if (!response.ok) {
       log.warn({ url, status: response.status }, 'Failed to fetch image')
@@ -143,48 +163,59 @@ export class PdfMakeService {
     const website = personalInfo?.website || content.personalInfo.contact.website
     const linkedin = personalInfo?.linkedin || content.personalInfo.contact.linkedin
     const github = personalInfo?.github || content.personalInfo.contact.github
+    const phone = (personalInfo as any)?.phone || (content.personalInfo as any)?.contact?.phone
 
     if (email) contactParts.push(email)
     if (location) contactParts.push(location)
+    if (phone) contactParts.push(phone)
     if (website) contactParts.push(website)
     if (linkedin) contactParts.push('LinkedIn')
     if (github) contactParts.push('GitHub')
 
     // Build header with optional avatar
     const headerContent: Content[] = []
+    const headerTitle = content.personalInfo.title ?? ''
 
-    // If we have an avatar, create a two-column layout with avatar on left
+    // If we have an avatar and/or logo, show them with the header stack
+    const headerColumns: any[] = []
     if (avatarDataUri) {
-      headerContent.push({
-        columns: [
-          {
-            image: avatarDataUri,
-            width: 50,
-            height: 50,
-            margin: [0, 0, 12, 0]
-          },
-          {
-            stack: [
-              { text: personalInfo?.name || content.personalInfo.name, style: 'name' },
-              { text: content.personalInfo.title, style: 'title' },
-              { text: contactParts.join(' • '), style: 'contactLine' }
-            ],
-            width: '*'
-          }
-        ],
-        margin: [0, 0, 0, 0]
+      headerColumns.push({
+        image: avatarDataUri,
+        width: 50,
+        height: 50,
+        margin: [0, 0, 12, 0]
       })
-    } else {
-      // No avatar - simple text header
-      headerContent.push({ text: personalInfo?.name || content.personalInfo.name, style: 'name' })
-      headerContent.push({ text: content.personalInfo.title, style: 'title' })
-      headerContent.push({ text: contactParts.join(' • '), style: 'contactLine' })
     }
+
+    headerColumns.push({
+      stack: [
+        { text: personalInfo?.name || content.personalInfo.name, style: 'name' },
+        { text: headerTitle, style: 'title' },
+        { text: contactParts.join(' • '), style: 'contactLine' }
+      ],
+      width: '*'
+    })
+
+    if (logoDataUri) {
+      headerColumns.push({
+        image: logoDataUri,
+        width: 40,
+        height: 40,
+        alignment: 'right'
+      })
+    }
+
+    headerContent.push({
+      columns: headerColumns,
+      margin: [0, 0, 0, 0]
+    })
 
     // Build experience section
     const experienceContent: Content[] = []
     for (const exp of content.experience) {
-      const dateRange = exp.endDate ? `${exp.startDate} - ${exp.endDate}` : `${exp.startDate} - Present`
+      const start = formatDate(exp.startDate)
+      const end = formatDate(exp.endDate)
+      const dateRange = start || end ? `${start || ''} - ${end || 'Present'}` : ''
 
       // Role and date on same line
       experienceContent.push({
@@ -210,9 +241,10 @@ export class PdfMakeService {
       }
 
       // Technologies line (if present)
-      if (exp.technologies && exp.technologies.length > 0) {
+      const tech = Array.isArray((exp as any).technologies) ? (exp as any).technologies : []
+      if (tech.length > 0) {
         experienceContent.push({
-          text: [{ text: 'Technologies: ', bold: true }, exp.technologies.join(', ')],
+          text: [{ text: 'Technologies: ', bold: true }, tech.join(', ')],
           style: 'technologies'
         })
       }
@@ -264,12 +296,19 @@ export class PdfMakeService {
     const educationContent: Content[] = []
     if (content.education && content.education.length > 0) {
       for (const edu of content.education) {
-        const dateStr =
-          edu.startDate || edu.endDate ? ` (${edu.startDate || ''}${edu.endDate ? ` - ${edu.endDate}` : ''})` : ''
+        const institution = edu.institution || ''
+        const degree = edu.degree || ''
+        const field = edu.field || ''
+        const start = formatDate(edu.startDate)
+        const end = formatDate(edu.endDate)
+        const dateStr = start || end ? ` (${start || ''}${end ? ` - ${end}` : ''})` : ''
+
+        if (!institution && !degree && !field && !dateStr) continue
+
         educationContent.push({
           text: [
-            { text: edu.institution, bold: true },
-            { text: ` – ${edu.degree}${edu.field ? ` in ${edu.field}` : ''}${dateStr}` }
+            { text: institution, bold: true },
+            { text: `${institution ? ' – ' : ''}${degree}${field ? ` in ${field}` : ''}${dateStr}` }
           ],
           style: 'educationEntry',
           margin: [0, 2, 0, 2]

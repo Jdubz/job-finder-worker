@@ -14,6 +14,7 @@ const EnvSchema = z.object({
   GENERATOR_FUNCTION_URL: z.string().optional(),
   GENERATOR_ARTIFACTS_DIR: z.string().optional(),
   GENERATOR_ARTIFACTS_PUBLIC_BASE: z.string().optional(),
+  GENERATOR_ASSETS_DIR: z.string().optional(),
   GOOGLE_API_KEY: z.string().optional(),
   WORKER_RELOAD_URL: z.string().url().optional()
 })

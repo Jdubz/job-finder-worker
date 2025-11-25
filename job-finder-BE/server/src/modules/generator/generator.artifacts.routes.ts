@@ -15,6 +15,38 @@ function sanitizeSegment(value: string): string {
 export function buildGeneratorArtifactsRouter() {
   const router = Router()
 
+  // Assets (avatar/logo) - served from /assets/...
+  router.get(
+    '/assets/*',
+    asyncHandler(async (req, res) => {
+      const relative = req.params[0]
+      if (!relative) {
+        res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Invalid asset path'))
+        return
+      }
+      const safe = relative.replace(/\\.\\.+/g, '').replace(/^\\//, '')
+      const absolutePath = storageService.getAbsolutePath(path.posix.join('assets', safe))
+      try {
+        const fileStats = await stat(absolutePath)
+        const contentType = mime.lookup(absolutePath) || 'application/octet-stream'
+        res.setHeader('Content-Type', contentType)
+        res.setHeader('Content-Length', fileStats.size.toString())
+        res.setHeader('Cache-Control', 'private, max-age=31536000')
+        const stream = fs.createReadStream(absolutePath)
+        stream.on('error', () => {
+          res.status(500).json(failure(ApiErrorCode.STORAGE_ERROR, 'Failed to read asset'))
+        })
+        stream.pipe(res)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Asset not found'))
+          return
+        }
+        res.status(500).json(failure(ApiErrorCode.STORAGE_ERROR, 'Failed to load asset'))
+      }
+    })
+  )
+
   // New human-readable path: /:date/:folder/:filename
   // e.g., /2024-01-15/acme_software-engineer/josh-wentworth_acme_software-engineer_resume.pdf
   router.get(

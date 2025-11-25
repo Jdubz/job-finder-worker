@@ -74,8 +74,11 @@ export interface UserDefaults {
   location?: string
   linkedin?: string
   github?: string
-  portfolio?: string
+  website?: string
   summary?: string
+  accentColor?: string
+  avatar?: string
+  logo?: string
 }
 
 export interface GenerationStep {
@@ -163,6 +166,13 @@ export class GeneratorClient extends BaseApiClient {
    */
   async updateUserDefaults(defaults: Partial<UserDefaults>): Promise<{ success: boolean }> {
     return this.put<{ success: boolean }>("/defaults", defaults)
+  }
+
+  async uploadAsset(params: { type: "avatar" | "logo"; dataUrl: string }): Promise<{ path: string; publicUrl: string }> {
+    return this.post<{ success: boolean; path: string; publicUrl: string }>("/assets/upload", params).then((r) => ({
+      path: (r as any).path,
+      publicUrl: (r as any).publicUrl,
+    }))
   }
 
   /**
