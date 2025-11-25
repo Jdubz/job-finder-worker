@@ -63,7 +63,7 @@ export class GeneratorWorkflowService {
   ) {}
 
   async generate(payload: GenerateDocumentPayload): Promise<GenerateDocumentResult> {
-    const requestId = await this.createRequest(payload)
+    const { requestId } = await this.createRequest(payload)
     return this.runAllSteps(requestId, payload)
   }
 
@@ -84,7 +84,8 @@ export class GeneratorWorkflowService {
     })
     // Keep steps in memory only
     this.activeRequests.set(requestId, { steps, request })
-    return requestId
+    const nextStep = steps.find((s) => s.status === 'pending')?.id
+    return { requestId, steps, nextStep }
   }
 
   async runAllSteps(requestId: string, payload: GenerateDocumentPayload): Promise<GenerateDocumentResult> {
@@ -137,7 +138,8 @@ export class GeneratorWorkflowService {
       return {
         requestId,
         status: this.workflowRepo.getRequest(requestId)?.status ?? request.status,
-        steps
+        steps,
+        nextStep: undefined
       }
     }
 
@@ -147,10 +149,12 @@ export class GeneratorWorkflowService {
     if (pendingStep.id === 'collect-data') {
       const updated = completeStep(startStep(steps, 'collect-data'), 'collect-data', 'completed')
       activeState.steps = updated
+      const nextStep = updated.find((s) => s.status === 'pending')?.id
       return {
         requestId,
         status: request.status,
-        steps: updated
+        steps: updated,
+        nextStep
       }
     }
 
@@ -167,7 +171,8 @@ export class GeneratorWorkflowService {
       this.workflowRepo.updateRequest(requestId, { resumeUrl: resumeUrl ?? null })
       const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'completed')
       activeState.steps = updated
-      return { requestId, status: request.status, steps: updated }
+      const nextStep = updated.find((s) => s.status === 'pending')?.id
+      return { requestId, status: request.status, steps: updated, nextStep, resumeUrl }
     }
 
     if (pendingStep.id === 'generate-cover-letter') {
@@ -183,13 +188,16 @@ export class GeneratorWorkflowService {
       this.workflowRepo.updateRequest(requestId, { coverLetterUrl: coverLetterUrl ?? null })
       const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'completed')
       activeState.steps = updated
-      return { requestId, status: request.status, steps: updated }
+      const nextStep = updated.find((s) => s.status === 'pending')?.id
+      return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl }
     }
 
+    const nextStep = steps.find((s) => s.status === 'pending')?.id
     return {
       requestId,
       status: request.status,
-      steps
+      steps,
+      nextStep
     }
   }
 

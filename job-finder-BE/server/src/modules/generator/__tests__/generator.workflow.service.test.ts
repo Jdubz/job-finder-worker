@@ -160,7 +160,7 @@ const storageMock = vi.mocked(storageService)
 
   it('creates a request and tracks steps in memory', async () => {
     const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore, contentItemRepo as unknown as ContentItemRepository)
-    const requestId = await service.createRequest(payload)
+    const { requestId } = await service.createRequest(payload)
     const request = repo.getRequest(requestId)
     expect(request).toBeTruthy()
     expect(request?.status).toBe('processing')
@@ -173,7 +173,7 @@ const storageMock = vi.mocked(storageService)
 
   it('runNextStep completes collect-data step first', async () => {
     const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore, contentItemRepo as unknown as ContentItemRepository)
-    const requestId = await service.createRequest(payload)
+    const { requestId } = await service.createRequest(payload)
 
     const result = await service.runNextStep(requestId)
     expect(result?.steps[0].id).toBe('collect-data')
@@ -182,7 +182,7 @@ const storageMock = vi.mocked(storageService)
 
   it('runNextStep generates resume and stores artifact/url', async () => {
     const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore, contentItemRepo as unknown as ContentItemRepository)
-    const requestId = await service.createRequest(payload)
+    const { requestId } = await service.createRequest(payload)
     // complete collect-data
     await service.runNextStep(requestId)
     const resumeResult = await service.runNextStep(requestId)

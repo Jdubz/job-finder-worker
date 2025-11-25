@@ -103,6 +103,7 @@ export interface StartGenerationResponse {
     requestId: string
     status: string
     nextStep?: string
+    steps?: GenerationStep[]
   }
   requestId: string
 }

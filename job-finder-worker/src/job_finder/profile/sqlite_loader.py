@@ -86,6 +86,8 @@ class SQLiteProfileLoader:
 
         experiences: List[Experience] = []
         for row in rows:
+            # Convert sqlite3.Row to dict for .get() access
+            row = dict(row)
             # Parse description field for bullet points (achievements)
             description = row.get("description") or ""
             achievements = []

@@ -183,6 +183,11 @@ export function DocumentBuilderPage() {
 
       setGenerationRequestId(startResponse.data.requestId)
 
+      // Show initial steps immediately for progress feedback
+      if (startResponse.data.steps) {
+        setGenerationSteps(startResponse.data.steps)
+      }
+
       // Step 2: Execute steps sequentially until complete
       let nextStep = startResponse.data.nextStep
       let isComplete = false
