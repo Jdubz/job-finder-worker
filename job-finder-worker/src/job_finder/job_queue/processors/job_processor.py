@@ -51,6 +51,12 @@ class JobProcessor(BaseProcessor):
         # Get current pipeline state
         state = item.pipeline_state or {}
 
+        # If no pipeline_state but scraped_data is present, bootstrap pipeline_state
+        # so we skip re-scraping known data and proceed to filtering/analysis.
+        if not state and item.scraped_data:
+            state = {"job_data": item.scraped_data}
+            item.pipeline_state = state
+
         self.slogger.queue_item_processing(
             item.id,
             "job",
