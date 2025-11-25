@@ -4,218 +4,190 @@
 
 # Worker Docker Development Guide
 
-## Overview
-
-The worker service runs in a Docker container during development for isolation and consistency. The source code is mounted from your local directory, allowing you to edit files and see changes immediately.
+Development environment that mirrors production as closely as possible. Uses Docker with hot reload, a cloned production database, and a test harness for queue interactions.
 
 ## Quick Start
 
 ```bash
-# Start all services (worker runs in Docker)
-make dev-ui
+# 1. Setup local dev environment (creates .dev/ directories)
+make dev-setup
 
-# Or start just the worker in Docker
-make worker-docker-up
+# 2. Clone production database
+make dev-clone-db PROD_DB=/path/to/jobfinder.db
+# Or from remote server:
+make dev-clone-db-scp SCP_SRC=user@server:/srv/job-finder/data/jobfinder.db
+
+# 3. Build and start
+make dev-build
+make dev-up
+
+# 4. Watch logs (hot reload active)
+make dev-logs
 ```
 
-## Architecture
+## Directory Structure
 
-- **Source Code**: Mounted from `job-finder-worker/` directory (read-write)
-- **Logs**: Written to `job-finder-worker/logs/` (visible on host)
-- **Config**: `job-finder-worker/config/` (editable on host)
-- **Credentials**: `job-finder-worker/.firebase/` (read-only)
+After setup, the `.dev/` directory (gitignored) mirrors production:
 
-## Common Commands
-
-### Starting & Stopping
-
-```bash
-# Start worker in Docker (builds if needed)
-make worker-docker-up
-
-# Stop worker
-make worker-docker-down
-
-# Restart worker (after code changes)
-make worker-docker-restart
+```
+.dev/
+├── data/              # SQLite database (cloned from prod)
+│   └── jobfinder.db
+├── config/            # Configuration files
+├── logs/              # Worker logs
+└── worker-data/       # Temp worker data
 ```
 
-### Viewing Logs
+## Hot Reload
 
-```bash
-# Follow logs in real-time
-make worker-docker-logs
+The dev container uses `watchdog` to monitor `src/` for Python file changes. Edit any `.py` file and the worker automatically restarts within seconds.
 
-# Or view directly from tmux pane when using dev-ui
-```
+No manual restart needed for code changes.
 
-### Debugging
+## Commands Reference
 
-```bash
-# Enter container shell for debugging
-make worker-docker-shell
+### Setup & Database
 
-# Inside container, you can:
-python run_job_search.py          # Run job search
-python run_search.py               # Run basic search
-pip list                           # View installed packages
-ls -la /app/src                    # Check mounted source code
-```
+| Command | Description |
+|---------|-------------|
+| `make dev-setup` | Create `.dev/` directory structure |
+| `make dev-clone-db PROD_DB=...` | Clone production database from local path |
+| `make dev-clone-db-scp SCP_SRC=...` | Clone production database via SCP |
 
-### Rebuilding
+### Docker Control
 
-```bash
-# Rebuild after dependency changes (requirements.txt)
-make worker-docker-rebuild
-```
+| Command | Description |
+|---------|-------------|
+| `make dev-build` | Build dev Docker image |
+| `make dev-up` | Start container (detached) |
+| `make dev-up-attached` | Start container (see logs inline) |
+| `make dev-down` | Stop container |
+| `make dev-restart` | Restart container |
+| `make dev-logs` | Tail worker logs |
+| `make dev-shell` | Shell into container |
+| `make dev-sqlite` | Open SQLite CLI for dev database |
+
+### Test Harness
+
+| Command | Description |
+|---------|-------------|
+| `make dev-test-status` | Show queue status |
+| `make dev-test-watch` | Watch queue for changes |
+| `make dev-test-all` | Run all test scenarios |
+| `make dev-test-job URL=...` | Submit a job URL for processing |
+| `make dev-test-company NAME=...` | Submit a company for analysis |
+| `make dev-test-clear` | Clear test items from queue |
+
+### Cleanup
+
+| Command | Description |
+|---------|-------------|
+| `make dev-clean` | Clean logs/temp data (keeps database) |
+| `make dev-clean-all` | Remove entire `.dev/` directory |
 
 ## Development Workflow
 
-### 1. Standard Development (with tmux)
+### 1. Start Environment
 
 ```bash
-# Start all services in tmux panes
-make dev-ui
-
-# Now you have 4 panes:
-# - Top-left: Firebase Emulators
-# - Top-right: Backend (Cloud Functions)
-# - Bottom-left: Frontend (Vite)
-# - Bottom-right: Worker (Docker)
-
-# Navigate between panes: Ctrl+B then arrow keys
-# Zoom into a pane: Ctrl+B then z
-# Detach from tmux: Ctrl+B then d
+make dev-up
+make dev-logs  # In a separate terminal
 ```
 
 ### 2. Edit Code
 
-Edit any Python file in `job-finder-worker/src/`:
+Edit files in `src/`. Changes auto-reload via watchdog.
 
-- Changes are immediately visible in container (mounted volume)
-- No need to rebuild for code changes
-- Only rebuild if you change `requirements.txt`
-
-### 3. See Changes
+### 3. Test Queue Processing
 
 ```bash
-# If using dev-ui (tmux):
-# - Switch to worker pane (Ctrl+B then arrows)
-# - The container auto-restarts on code changes
+# Submit a test job
+make dev-test-job URL=https://boards.greenhouse.io/company/jobs/12345
 
-# If running worker separately:
-make worker-docker-restart
-make worker-docker-logs
+# Watch for status changes
+make dev-test-watch
+
+# Check queue status
+make dev-test-status
 ```
 
-### 4. Debug Issues
+### 4. Inspect Database
 
 ```bash
-# Enter container shell
-make worker-docker-shell
+make dev-sqlite
+
+# Inside sqlite:
+.tables
+SELECT * FROM job_queue ORDER BY created_at DESC LIMIT 10;
+SELECT * FROM job_matches ORDER BY created_at DESC LIMIT 5;
+```
+
+### 5. Debug in Container
+
+```bash
+make dev-shell
 
 # Inside container:
-cd /app
-python -c "import sys; print(sys.path)"
-pip list | grep dotenv
-python run_job_search.py
+python -c "from job_finder.storage.sqlite_client import get_connection; print(get_connection())"
 ```
 
-## Tmux Navigation Shortcuts
+## Test Harness CLI
 
-When using `make dev-ui`:
-
-| Shortcut             | Action                                      |
-| -------------------- | ------------------------------------------- |
-| `Ctrl+B` then `←↑↓→` | Switch between panes                        |
-| `Ctrl+B` then `z`    | Zoom in/out of current pane                 |
-| `Ctrl+B` then `d`    | Detach (keeps services running)             |
-| `Ctrl+B` then `x`    | Kill current pane                           |
-| `Ctrl+B` then `[`    | Scroll mode (arrows to scroll, `q` to exit) |
-
-To reconnect after detaching:
+The test harness (`dev/test_harness.py`) provides direct queue manipulation:
 
 ```bash
-tmux attach -t job-finder
-```
+# Submit items
+python dev/test_harness.py job https://example.com/job/123 --watch
+python dev/test_harness.py company "Acme Corp" --url https://acme.com --watch
+python dev/test_harness.py discover "Stripe" --url https://stripe.com
 
-To kill the entire session:
+# Monitor
+python dev/test_harness.py status
+python dev/test_harness.py watch
+python dev/test_harness.py watch-item <tracking-id>
 
-```bash
-tmux kill-session -t job-finder
-```
-
-## Docker Compose Details
-
-The worker uses `docker-compose.dev.yml`:
-
-```yaml
-services:
-  job-finder:
-    build:
-      dockerfile: Dockerfile.dev
-    volumes:
-      - ./src:/app/src:rw # Source code (editable)
-      - ./config:/app/config:rw # Config files (editable)
-      - ./logs:/app/logs # Log output
-      - ./.firebase:/app/credentials:ro # Firebase credentials
-    environment:
-      - PYTHONUNBUFFERED=1 # See logs immediately
-      - ENVIRONMENT=local-dev
-      - PROFILE_DATABASE_NAME=portfolio-staging
+# Cleanup
+python dev/test_harness.py clear
 ```
 
 ## Troubleshooting
 
-### Container won't start
+### Database not found
 
 ```bash
-# View detailed logs
-cd job-finder-worker
-docker-compose -f docker-compose.dev.yml logs
-
-# Rebuild from scratch
-make worker-docker-rebuild
+make dev-clone-db PROD_DB=/path/to/jobfinder.db
+make dev-restart
 ```
 
-### Changes not appearing
+### Worker not starting
 
 ```bash
-# Restart container
-make worker-docker-restart
-
-# Verify volume mount
-make worker-docker-shell
-ls -la /app/src  # Should show your local files
+docker compose -f docker-compose.dev.yml logs worker
 ```
 
-### Missing dependencies
+### Hot reload not working
 
-```bash
-# Rebuild after updating requirements.txt
-make worker-docker-rebuild
-```
+Ensure you're editing files in `src/` on the host (not inside the container). The volume mount maps `./src` to `/app/src`.
 
-### Port conflicts
+### Port 5555 in use
 
-If Docker complains about ports in use:
+Edit `docker-compose.dev.yml` to change the port mapping, or stop the conflicting process.
 
-```bash
-# Stop all Docker containers
-docker stop $(docker ps -aq)
+### Missing API keys
 
-# Or just stop the worker
-make worker-docker-down
-```
+Ensure `.env` contains `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
 
 ## Environment Variables
 
-The worker container reads from:
+Set in `docker-compose.dev.yml`:
 
-1. `job-finder-worker/.env` file (if exists)
-2. Host environment variables (via docker-compose)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENVIRONMENT` | development | Environment name |
+| `POLL_INTERVAL` | 10 | Queue poll interval (faster for dev) |
+| `LOG_LEVEL` | DEBUG | Logging verbosity |
+| `ENABLE_HOT_RELOAD` | true | Enable watchdog file monitoring |
 
-Required:
-
-- `ANTHROPIC_API_KEY` - Claude API key
-- `OPENAI_API_KEY` - OpenAI API key (optional)
+API keys loaded from `.env`:
+- `ANTHROPIC_API_KEY` - Required for AI processing
+- `OPENAI_API_KEY` - Alternative AI provider

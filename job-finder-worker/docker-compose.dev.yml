@@ -1,0 +1,90 @@
+# Development docker-compose - mirrors production as closely as possible
+#
+# USAGE:
+#   1. Clone prod DB:    make dev-clone-db
+#   2. Start containers: make dev-up
+#   3. Watch logs:       make dev-logs
+#   4. Run tests:        make dev-test-queue
+#   5. Stop containers:  make dev-down
+#
+# HOT RELOAD:
+#   - Source code is mounted from ./src to /app/src
+#   - watchdog monitors for file changes and restarts the worker
+#   - Changes to Python files trigger automatic restart
+#
+# DIRECTORY STRUCTURE (all gitignored):
+#   .dev/
+#   ├── data/              # SQLite database (cloned from prod)
+#   │   └── jobfinder.db
+#   ├── config/            # Configuration files
+#   ├── logs/              # Worker logs
+#   └── worker-data/       # Temp worker data
+
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: job-finder-worker-dev
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ENVIRONMENT: development
+      FLASK_ENV: development
+      ENABLE_QUEUE_MODE: "true"
+      ENABLE_CRON: "false"  # Disable cron for dev - use manual submissions
+      ENABLE_FLASK_WORKER: "true"
+      ENABLE_HOT_RELOAD: "true"
+      SQLITE_DB_PATH: /data/sqlite/jobfinder.db
+      JF_SQLITE_DB_PATH: /data/sqlite/jobfinder.db
+      WORKER_PORT: "5555"
+      WORKER_HOST: "0.0.0.0"
+      POLL_INTERVAL: "10"  # Faster polling for dev
+      LOG_LEVEL: DEBUG
+      PYTHONUNBUFFERED: "1"
+      # Optional: set to lower thresholds for testing
+      # MIN_MATCH_SCORE: "50"
+    ports:
+      - "5555:5555"
+    volumes:
+      # Source code - mounted for hot reload
+      - type: bind
+        source: ./src
+        target: /app/src
+      # Scripts - mounted for testing
+      - type: bind
+        source: ./scripts
+        target: /app/scripts
+      # Database - local dev copy (cloned from prod)
+      - type: bind
+        source: ./.dev/data
+        target: /data/sqlite
+      # Configuration - local dev copy
+      - type: bind
+        source: ./.dev/config
+        target: /app/config
+      # Logs - local for inspection
+      - type: bind
+        source: ./.dev/logs
+        target: /app/logs
+      # Worker temp data
+      - type: bind
+        source: ./.dev/worker-data
+        target: /app/data
+      # Test harness scripts
+      - type: bind
+        source: ./dev
+        target: /app/dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - jobfinder-dev
+
+networks:
+  jobfinder-dev:
+    driver: bridge
