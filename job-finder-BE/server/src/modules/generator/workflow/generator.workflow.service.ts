@@ -381,51 +381,18 @@ export class GeneratorWorkflowService {
 
     const prompt = buildResumePrompt(payload, personalInfo, contentItems, jobMatch)
     const cliResult = await runCliProvider(prompt, 'codex')
-    if (cliResult.success) {
-      try {
-        const parsed = JSON.parse(cliResult.output) as ResumeContent
-        return parsed
-      } catch (error) {
-        this.log.warn({ err: error }, 'Failed to parse resume JSON, using fallback template')
-      }
-    } else {
-      this.log.warn({ error: cliResult.error }, 'AI generation failed, using fallback template')
+
+    if (!cliResult.success) {
+      this.log.error({ error: cliResult.error }, 'AI resume generation failed')
+      throw new Error(`AI generation failed: ${cliResult.error || 'Unknown error'}`)
     }
 
-    // Fallback: Build resume from content items if AI generation fails
-    return {
-      personalInfo: {
-        name: personalInfo.name ?? 'Candidate',
-        title: `Aspiring ${payload.job.role}`,
-        summary:
-          personalInfo.summary ??
-          `Motivated professional pursuing the ${payload.job.role} role at ${payload.job.company}.`,
-        contact: {
-          email: personalInfo.email,
-          location: personalInfo.location,
-          website: personalInfo.website,
-          linkedin: personalInfo.linkedin,
-          github: personalInfo.github
-        }
-      },
-      professionalSummary:
-        payload.job.jobDescriptionText ??
-        `Seasoned professional seeking to contribute to ${payload.job.company} as a ${payload.job.role}.`,
-      experience: [
-        {
-          company: payload.job.company,
-          role: payload.job.role,
-          highlights:
-            payload.preferences?.emphasize?.length
-              ? payload.preferences.emphasize
-              : [
-                  `Delivered measurable impact for ${payload.job.company}.`,
-                  'Collaborated across teams to ship features rapidly.'
-                ],
-          startDate: '2022-01',
-          endDate: null
-        }
-      ]
+    try {
+      const parsed = JSON.parse(cliResult.output) as ResumeContent
+      return parsed
+    } catch (error) {
+      this.log.error({ err: error, output: cliResult.output.slice(0, 500) }, 'Failed to parse AI resume output as JSON')
+      throw new Error('AI returned invalid JSON for resume content')
     }
   }
 
@@ -441,29 +408,18 @@ export class GeneratorWorkflowService {
 
     const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
     const cliResult = await runCliProvider(prompt, 'codex')
-    if (cliResult.success) {
-      try {
-        const parsed = JSON.parse(cliResult.output) as CoverLetterContent
-        return parsed
-      } catch (error) {
-        this.log.warn({ err: error }, 'Failed to parse cover letter JSON, using fallback template')
-      }
-    } else {
-      this.log.warn({ error: cliResult.error }, 'AI generation failed for cover letter, using fallback template')
+
+    if (!cliResult.success) {
+      this.log.error({ error: cliResult.error }, 'AI cover letter generation failed')
+      throw new Error(`AI generation failed: ${cliResult.error || 'Unknown error'}`)
     }
 
-    // Fallback: Build cover letter if AI generation fails
-    return {
-      greeting: `Dear ${payload.job.company} Hiring Team,`,
-      openingParagraph: `I am excited to apply for the ${payload.job.role} role at ${payload.job.company}.`,
-      bodyParagraphs: [
-        `My background aligns with your needs. I am eager to contribute to ${payload.job.company}'s mission.`,
-        payload.job.jobDescriptionText
-          ? payload.job.jobDescriptionText.slice(0, 400)
-          : 'I have led cross-functional initiatives that delivered user-facing improvements.'
-      ],
-      closingParagraph: 'Thank you for your consideration. I would welcome the opportunity to discuss the role further.',
-      signature: 'Sincerely'
+    try {
+      const parsed = JSON.parse(cliResult.output) as CoverLetterContent
+      return parsed
+    } catch (error) {
+      this.log.error({ err: error, output: cliResult.output.slice(0, 500) }, 'Failed to parse AI cover letter output as JSON')
+      throw new Error('AI returned invalid JSON for cover letter content')
     }
   }
 }
