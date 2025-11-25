@@ -445,7 +445,15 @@ export function SettingsPage() {
               <Label>Avatar</Label>
               <div className="flex items-center gap-3">
                 {userDefaults.avatar ? (
-                  <img src={userDefaults.avatar.startsWith('http') ? userDefaults.avatar : userDefaults.avatar} alt="avatar" className="h-12 w-12 rounded-full object-cover border" />
+                  <img
+                    src={
+                      userDefaults.avatar.startsWith('http')
+                        ? userDefaults.avatar
+                        : `/api/generator/artifacts${userDefaults.avatar}`
+                    }
+                    alt="avatar"
+                    className="h-12 w-12 rounded-full object-cover border"
+                  />
                 ) : (
                   <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-500">No avatar</div>
                 )}
@@ -477,7 +485,15 @@ export function SettingsPage() {
               <Label>Logo</Label>
               <div className="flex items-center gap-3">
                 {userDefaults.logo ? (
-                  <img src={userDefaults.logo.startsWith('http') ? userDefaults.logo : userDefaults.logo} alt="logo" className="h-10 w-10 object-contain border p-1 bg-white" />
+                  <img
+                    src={
+                      userDefaults.logo.startsWith('http')
+                        ? userDefaults.logo
+                        : `/api/generator/artifacts${userDefaults.logo}`
+                    }
+                    alt="logo"
+                    className="h-10 w-10 object-contain border p-1 bg-white"
+                  />
                 ) : (
                   <div className="h-10 w-10 border bg-gray-100 flex items-center justify-center text-xs text-gray-500">No logo</div>
                 )}

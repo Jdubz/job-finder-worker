@@ -290,11 +290,6 @@ const mockCoverLetterContent = {
     await service.runNextStep(requestId) // collect-data
     const coverResult = await service.runNextStep(requestId)
 
-    if (coverResult?.steps.find((s) => s.id === 'generate-cover-letter')?.status === 'failed') {
-      // Surface the underlying error in test output to debug regressions
-      // eslint-disable-next-line no-console
-      console.error('cover-letter error', coverResult?.error)
-    }
     expect(coverResult?.steps.find((s) => s.id === 'generate-cover-letter')?.status).toBe('completed')
     const request = repo.getRequest(requestId)
     expect(request?.coverLetterUrl).toBe('http://example.com/resume.pdf')

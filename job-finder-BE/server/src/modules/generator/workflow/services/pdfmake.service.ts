@@ -3,6 +3,7 @@ import type { TDocumentDefinitions, Content, StyleDictionary } from 'pdfmake/int
 import type { Logger } from 'pino'
 import type { CoverLetterContent, ResumeContent, PersonalInfo } from '@shared/types'
 import { logger as rootLogger } from '../../../../logger'
+import { storageService } from './storage.service'
 
 function formatDate(value?: string | null): string {
   if (!value) return ''
@@ -32,7 +33,7 @@ async function fetchImageAsBase64(url: string, log: Logger): Promise<string | nu
     if (url.startsWith('/')) {
       const fs = await import('node:fs/promises')
       const path = await import('node:path')
-      const absolute = path.resolve(url)
+      const absolute = storageService.getAbsolutePath(url.replace(/^\//, ''))
       const buffer = await fs.readFile(absolute)
       const ext = path.extname(absolute).toLowerCase()
       const mime = ext === '.svg' ? 'image/svg+xml' : 'image/jpeg'
