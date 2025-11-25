@@ -202,6 +202,20 @@ class ScrapeRunner:
         source_name = source.get("name", "Unknown")
         config = source.get("config", {})
 
+        # Enrich config with company metadata (used by scrapers for labeling)
+        company_id = source.get("company_id") or source.get("companyId")
+        company_name = source.get("company_name") or source_name
+        company_website = None
+        if company_id:
+            company = self.companies_manager.get_company_by_id(company_id)
+            if company:
+                company_name = company.get("name") or company_name
+                company_website = company.get("website") or company.get("company_website")
+        if company_name:
+            config = {**config, "name": company_name}
+        if company_website:
+            config = {**config, "company_website": company_website}
+
         logger.info(f"\n📡 Scraping source: {source_name} ({source_type})")
 
         stats = {
@@ -234,7 +248,6 @@ class ScrapeRunner:
         if not jobs:
             return stats
 
-        company_id = source.get("company_id") or source.get("companyId")
         source_label = f"{source_type}:{source_name}"
         jobs_submitted = self.scraper_intake.submit_jobs(
             jobs=jobs,
