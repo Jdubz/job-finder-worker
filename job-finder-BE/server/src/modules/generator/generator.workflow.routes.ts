@@ -72,12 +72,14 @@ export function buildGeneratorWorkflowRouter() {
     '/start',
     asyncHandler(async (req, res) => {
       const payload = startSchema.parse(req.body ?? {})
-      const requestId = await service.createRequest(payload)
+      const { requestId, steps, nextStep } = await service.createRequest(payload)
       const request = repo.getRequest(requestId)
       res.status(202).json(
         success({
           requestId,
-          status: request?.status ?? 'processing'
+          status: request?.status ?? 'processing',
+          steps,
+          nextStep
         })
       )
     })
