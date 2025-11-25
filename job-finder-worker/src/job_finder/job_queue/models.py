@@ -290,8 +290,10 @@ class JobQueueItem(BaseModel):
     )
 
     # Processing data
-    retry_count: int = Field(default=0, description="Number of retry attempts")
-    max_retries: int = Field(default=3, description="Maximum retry attempts before failure")
+    retry_count: int = Field(default=0, description="Number of retry attempts (disabled)")
+    max_retries: int = Field(
+        default=0, description="Maximum retry attempts before failure (disabled)"
+    )
 
     # Timestamps (for FIFO ordering)
     created_at: Optional[datetime] = Field(default=None, description="When item was added to queue")
@@ -467,7 +469,7 @@ class JobQueueItem(BaseModel):
             source=record.get("source", "scraper"),
             submitted_by=record.get("submitted_by"),
             retry_count=record.get("retry_count", 0),
-            max_retries=record.get("max_retries", 3),
+            max_retries=record.get("max_retries", 0),
             created_at=parse_dt(record.get("created_at")),
             updated_at=parse_dt(record.get("updated_at")),
             processed_at=parse_dt(record.get("processed_at")),

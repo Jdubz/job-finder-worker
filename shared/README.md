@@ -109,7 +109,7 @@ Represents an item in the job processing queue.
 - `company_name: string` - Company name
 - `source: QueueSource` - Where the item came from
 - `submitted_by: string` - User ID who submitted
-- `retry_count: number` - Number of retry attempts
+- `retry_count: number` - Number of retry attempts (currently 0 while retrying is disabled)
 - `max_retries: number` - Maximum retries allowed
 - `created_at: Date` - Creation timestamp
 - `updated_at: Date` - Last update timestamp

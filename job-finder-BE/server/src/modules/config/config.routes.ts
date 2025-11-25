@@ -11,6 +11,7 @@ import type {
   TechnologyRanksConfig,
   SchedulerSettings,
   JobFinderConfigId,
+  PromptConfig,
 } from '@shared/types'
 import {
   ApiErrorCode,
@@ -46,6 +47,7 @@ type KnownPayload =
   | JobFiltersConfig
   | TechnologyRanksConfig
   | SchedulerSettings
+  | PromptConfig
   | Record<string, unknown>
 
 function toCamelCaseKey(key: string): string {

@@ -760,7 +760,8 @@ export function JobFinderConfigPage() {
                 <div>
                   <CardTitle>Queue Processing Settings</CardTitle>
                   <CardDescription>
-                    Configure job queue processing parameters and retry logic
+                    Configure job queue processing parameters. Retries are paused until recovery
+                    tooling ships.
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">

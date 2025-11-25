@@ -143,7 +143,9 @@ export interface QueueItem {
    * User UID for user submissions (optional - single-owner system)
    */
   submitted_by?: string | null
+  /** @deprecated Queue retries are currently disabled; value is always 0. */
   retry_count: number
+  /** @deprecated Queue retries are currently disabled; value is always 0. */
   max_retries: number
   result_message?: string
   error_details?: string

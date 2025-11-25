@@ -10,7 +10,6 @@ import {
   Pause,
   Filter,
   AlertCircle,
-  RotateCcw,
   Trash2,
   ExternalLink,
   Calendar,
@@ -21,11 +20,10 @@ interface QueueItemCardProps {
   item: QueueItem
   selected: boolean
   onSelect: (id: string, selected: boolean) => void
-  onRetry: (id: string) => void
   onCancel: (id: string) => void
 }
 
-export function QueueItemCard({ item, selected, onSelect, onRetry, onCancel }: QueueItemCardProps) {
+export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemCardProps) {
   if (!item.id) {
     return null
   }
@@ -89,7 +87,6 @@ export function QueueItemCard({ item, selected, onSelect, onRetry, onCancel }: Q
     return "N/A"
   }
 
-  const canRetry = item.status === "failed" || item.status === "skipped"
   const canCancel = item.status === "pending" || item.status === "processing"
 
   const getStatusBorderClass = () => {
@@ -183,25 +180,10 @@ export function QueueItemCard({ item, selected, onSelect, onRetry, onCancel }: Q
                 </div>
               )}
 
-              {item.retry_count && item.retry_count > 0 && (
-                <div className="text-xs text-muted-foreground">
-                  <strong>Retries:</strong> {item.retry_count}
-                </div>
-              )}
             </div>
           </div>
 
           <div className="flex gap-1">
-            {canRetry && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onRetry(itemId)}
-                className="h-8 px-2"
-              >
-                <RotateCcw className="h-3 w-3" />
-              </Button>
-            )}
             {canCancel && (
               <Button
                 variant="outline"

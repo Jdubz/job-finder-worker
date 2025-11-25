@@ -107,7 +107,7 @@ def make_discovery_item(
         source="user_submission",
         submitted_by="tester",
         retry_count=0,
-        max_retries=3,
+        max_retries=0,
         source_discovery_config=config,
     )
 

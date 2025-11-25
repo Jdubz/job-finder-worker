@@ -61,8 +61,6 @@ const listQueueSchema = z.object({
 const updateQueueItemSchema = z
   .object({
     status: z.enum(queueStatuses).optional(),
-    retry_count: z.coerce.number().int().min(0).optional(),
-    max_retries: z.coerce.number().int().min(0).optional(),
     result_message: z.string().optional(),
     error_details: z.string().optional(),
     processed_at: z.union([z.string().datetime(), z.coerce.date()]).optional(),
@@ -191,12 +189,23 @@ export function buildJobQueueRouter() {
             : payload.completed_at,
         updated_at: new Date()
       }
-      const queueItem = service.update(req.params.id, normalized)
-      const response: UpdateJobStatusResponse = {
-        queueItem,
-        message: 'Queue item updated'
+      try {
+        const queueItem = service.update(req.params.id, normalized)
+        const response: UpdateJobStatusResponse = {
+          queueItem,
+          message: 'Queue item updated'
+        }
+        res.json(success(response))
+      } catch (error) {
+        res
+          .status(400)
+          .json(
+            failure(
+              ApiErrorCode.INVALID_REQUEST,
+              error instanceof Error ? error.message : 'Invalid queue update'
+            )
+          )
       }
-      res.json(success(response))
     })
   )
 

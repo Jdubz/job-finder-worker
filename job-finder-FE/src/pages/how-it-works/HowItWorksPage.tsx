@@ -146,8 +146,8 @@ export function HowItWorksPage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground pt-2 border-t">
-                Each job moves through our pipeline automatically, with retry logic and error
-                handling built in
+                Each job moves through our pipeline automatically. Retries are paused until the
+                new recovery flow ships, so failed items surface for review instead of looping.
               </p>
             </CardContent>
           </Card>
@@ -620,8 +620,8 @@ export function HowItWorksPage() {
               <div>
                 <h4 className="font-semibold mb-1">Batch Processing</h4>
                 <p className="text-sm text-muted-foreground">
-                  Submit multiple job URLs at once. Our queue system processes them in parallel,
-                  with intelligent retry logic and error handling.
+                  Submit multiple job URLs at once. Our queue system processes them in parallel
+                  and surfaces failures quickly while retries remain paused.
                 </p>
               </div>
             </div>
@@ -737,8 +737,8 @@ export function HowItWorksPage() {
               <CardTitle className="text-base">Resilient Queue</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Automatic retry logic, dead-letter queue, and exponential backoff ensure no jobs are
-              lost
+              Generous processing timeouts and clear failure states surface issues for review. Retry
+              logic will return once the recovery path is battle-tested.
             </CardContent>
           </Card>
 

@@ -24,7 +24,7 @@ export const mockQueueItem: QueueItem = {
   source: "user_submission",
   submitted_by: "test-user-123",
   retry_count: 0,
-  max_retries: 3,
+  max_retries: 0,
   created_at: new Date(),
   updated_at: new Date(),
 }
