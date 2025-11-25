@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Worker command - defined once for consistency
+WORKER_CMD="python /app/src/job_finder/flask_worker.py"
+
 echo "========================================="
 echo "Job Finder Worker - DEVELOPMENT MODE"
 echo "========================================="
@@ -24,7 +27,7 @@ fi
 # Function to start the Flask worker
 start_worker() {
     echo "Starting Flask worker on port ${WORKER_PORT:-5555}..."
-    exec python /app/src/job_finder/flask_worker.py
+    exec $WORKER_CMD
 }
 
 # Check if hot reload is enabled
@@ -46,7 +49,7 @@ if [ "${ENABLE_HOT_RELOAD:-true}" = "true" ]; then
         --pattern='*.py' \
         --recursive \
         --kill-after=3 \
-        -- python /app/src/job_finder/flask_worker.py
+        -- $WORKER_CMD
 else
     echo "Hot reload disabled, starting worker directly..."
     start_worker

@@ -183,7 +183,7 @@ echo -e "  1. Ensure .env has your API keys (ANTHROPIC_API_KEY or OPENAI_API_KEY
 echo -e "  2. Build dev image:    ${CYAN}make dev-build${NC}"
 echo -e "  3. Start containers:   ${CYAN}make dev-up${NC}"
 echo -e "  4. Watch logs:         ${CYAN}make dev-logs${NC}"
-echo -e "  5. Test queue:         ${CYAN}make dev-test-queue${NC}"
+echo -e "  5. Test queue:         ${CYAN}make dev-test-status${NC}"
 echo ""
 
 # Show database info if cloned

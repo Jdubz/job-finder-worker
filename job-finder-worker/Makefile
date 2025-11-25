@@ -218,35 +218,35 @@ dev-shell: ## Open shell in worker container
 dev-sqlite: ## Open sqlite CLI for dev database
 	@docker compose -f docker-compose.dev.yml exec worker sqlite3 /data/sqlite/jobfinder.db
 
-# Test harness commands
+# Test harness commands (run inside container for consistency)
 dev-test-status: ## Show queue status in dev environment
 	@echo "$(CYAN)Queue Status:$(RESET)"
-	@. $(VENV_DIR)/bin/activate && JF_SQLITE_DB_PATH=.dev/data/jobfinder.db python dev/test_harness.py status
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py status
 
 dev-test-watch: ## Watch queue processing in dev environment
-	@. $(VENV_DIR)/bin/activate && JF_SQLITE_DB_PATH=.dev/data/jobfinder.db python dev/test_harness.py watch
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py watch
 
 dev-test-all: ## Run all test scenarios
 	@echo "$(CYAN)Running test scenarios...$(RESET)"
-	@. $(VENV_DIR)/bin/activate && JF_SQLITE_DB_PATH=.dev/data/jobfinder.db python dev/test_harness.py test-all
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py test-all
 
 dev-test-job: ## Submit a test job (use URL=... to specify)
 	@if [ -z "$(URL)" ]; then \
 		echo "$(YELLOW)Usage: make dev-test-job URL=https://example.com/job$(RESET)"; \
 		exit 1; \
 	fi
-	@. $(VENV_DIR)/bin/activate && JF_SQLITE_DB_PATH=.dev/data/jobfinder.db python dev/test_harness.py job "$(URL)" --watch
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py job "$(URL)" --watch
 
 dev-test-company: ## Submit a test company (use NAME=... to specify)
 	@if [ -z "$(NAME)" ]; then \
 		echo "$(YELLOW)Usage: make dev-test-company NAME='Company Name'$(RESET)"; \
 		exit 1; \
 	fi
-	@. $(VENV_DIR)/bin/activate && JF_SQLITE_DB_PATH=.dev/data/jobfinder.db python dev/test_harness.py company "$(NAME)" --watch
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py company "$(NAME)" --watch
 
 dev-test-clear: ## Clear all test items from queue
 	@echo "$(YELLOW)Clearing test items...$(RESET)"
-	@. $(VENV_DIR)/bin/activate && JF_SQLITE_DB_PATH=.dev/data/jobfinder.db python dev/test_harness.py clear
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py clear
 
 # Cleanup
 dev-clean: ## Clean dev environment (keeps database)
