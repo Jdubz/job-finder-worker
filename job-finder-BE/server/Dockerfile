@@ -27,15 +27,16 @@ ENV NODE_ENV=production
 ENV HUSKY=0
 ENV HUSKY_SKIP_INSTALL=1
 
-# Create non-root user for security (node user already exists in node image)
 # Codex config directory (mount from host for auth credentials)
 ENV CODEX_HOME=/home/node/.codex
 
-# Install npm update and codex CLI, create config directory
-RUN npm install -g npm@11.6.3 @openai/codex@0.63.0 \
+# Install gosu for dropping privileges, npm update, and codex CLI
+RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g npm@11.6.3 @openai/codex@0.63.0 \
     && npm cache clean --force \
-    && mkdir -p /home/node/.codex \
-    && chown -R node:node /home/node/.codex
+    && mkdir -p /home/node/.codex /data/artifacts /data/sqlite \
+    && chown -R node:node /home/node/.codex /data
 
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
 RUN sed -i 's#file:../../shared#file:./shared#g; s#"../../shared"#"./shared"#g' package.json package-lock.json
@@ -44,8 +45,11 @@ COPY infra/sqlite ./infra/sqlite
 RUN rm package-lock.json && npm install --omit=dev --no-package-lock && npm rebuild better-sqlite3
 COPY --from=base /app/dist ./dist
 
-# Set ownership and switch to non-root user
-RUN chown -R node:node /app
-USER node
+# Copy entrypoint script and set ownership
+COPY job-finder-BE/server/docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && chown -R node:node /app
 
+# Entrypoint fixes volume permissions then drops to node user
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]
