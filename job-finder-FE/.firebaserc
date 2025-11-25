@@ -5,9 +5,6 @@
   "targets": {
     "static-sites-257923": {
       "hosting": {
-        "staging": [
-          "job-finder-staging"
-        ],
         "production": [
           "job-finder-production"
         ]
