@@ -16,10 +16,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Filter, Trash2, AlertCircle, Activity } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Search, Filter, Trash2, AlertCircle, Activity, Plus } from "lucide-react"
 import { QueueItemCard } from "./components/QueueItemCard"
-import { QueueStatsGrid } from "./components/QueueStatsGrid"
 import { QueueFilters } from "./components/QueueFilters"
+import { queueClient } from "@/api"
+import type { ScrapeConfig } from "@shared/types"
 
 interface QueueFiltersType {
   status?: string
@@ -33,12 +36,21 @@ export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
 
   // Use the queue items hook (will show all items since editors can see all)
-  const { queueItems, loading, error, updateQueueItem } = useQueueItems({ limit: 100 })
+  const { queueItems, loading, error, updateQueueItem, refetch } = useQueueItems({ limit: 100 })
 
   const [filteredItems, setFilteredItems] = useState<QueueItem[]>([])
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null)
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [submittingScrape, setSubmittingScrape] = useState(false)
+  const [scrapeForm, setScrapeForm] = useState<{ targetMatches: string; maxSources: string; sourceIds: string }>(
+    {
+      targetMatches: "5",
+      maxSources: "10",
+      sourceIds: "",
+    }
+  )
 
   // Filter state
   const [filters, setFilters] = useState<QueueFiltersType>({})
@@ -182,6 +194,41 @@ export function QueueManagementPage() {
     }
   }
 
+  const handleCreateScrape = async () => {
+    setSubmittingScrape(true)
+    try {
+      const config: ScrapeConfig = {
+        target_matches: scrapeForm.targetMatches.trim() === ""
+          ? null
+          : Number.parseInt(scrapeForm.targetMatches, 10),
+        max_sources: scrapeForm.maxSources.trim() === ""
+          ? null
+          : Number.parseInt(scrapeForm.maxSources, 10),
+      }
+
+      if (Number.isNaN(config.target_matches ?? undefined)) config.target_matches = null
+      if (Number.isNaN(config.max_sources ?? undefined)) config.max_sources = null
+
+      const sourceIds = scrapeForm.sourceIds
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (sourceIds.length > 0) {
+        config.source_ids = sourceIds
+      }
+
+      await queueClient.submitScrape({ scrapeConfig: config })
+      await refetch()
+      setAlert({ type: "success", message: "Scrape job created and queued" })
+      setCreateOpen(false)
+    } catch (err) {
+      console.error("Failed to create scrape job", err)
+      setAlert({ type: "error", message: "Failed to create scrape job" })
+    } finally {
+      setSubmittingScrape(false)
+    }
+  }
+
   if (!user) {
     return (
       <div className="space-y-6">
@@ -240,13 +287,16 @@ export function QueueManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => setCreateOpen(true)} className="shadow-sm">
+            <Plus className="h-4 w-4 mr-2" />
+            Create Scrape Job
+          </Button>
+
           {selectedItems.size > 0 && (
-            <>
-              <Button variant="outline" size="sm" onClick={handleBulkCancel}>
-                <Trash2 className="h-4 w-4 mr-2" />
-                Cancel ({selectedItems.size})
-              </Button>
-            </>
+            <Button variant="outline" size="sm" onClick={handleBulkCancel}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Cancel ({selectedItems.size})
+            </Button>
           )}
         </div>
       </div>
@@ -258,15 +308,28 @@ export function QueueManagementPage() {
         </Alert>
       )}
 
-      {/* Queue Statistics */}
+      {/* Compact stats */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-24" />
           ))}
         </div>
       ) : (
-        queueStats && <QueueStatsGrid stats={queueStats} />
+        queueStats && (
+          <div className="flex flex-wrap gap-2 text-sm">
+            <StatPill label="Total" value={queueStats.total} />
+            <StatPill label="Pending" value={queueStats.pending} tone="amber" />
+            <StatPill label="Processing" value={queueStats.processing} tone="blue" />
+            <StatPill label="Failed" value={queueStats.failed} tone="red" />
+            <StatPill label="Success" value={queueStats.success} tone="green" />
+            <StatPill
+              label="Success Rate"
+              value={`${queueStats.total > 0 ? Math.round((queueStats.success / queueStats.total) * 100) : 0}%`}
+              tone="green"
+            />
+          </div>
+        )
       )}
 
       {/* Queue Management Interface */}
@@ -396,6 +459,80 @@ export function QueueManagementPage() {
           />
         </TabsContent>
       </Tabs>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Scrape Job</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="targetMatches">Target matches</Label>
+                <Input
+                  id="targetMatches"
+                  type="number"
+                  min={1}
+                  placeholder="e.g. 5"
+                  value={scrapeForm.targetMatches}
+                  onChange={(e) => setScrapeForm({ ...scrapeForm, targetMatches: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">Stop after enqueuing this many jobs (leave blank for unlimited).</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxSources">Max sources</Label>
+                <Input
+                  id="maxSources"
+                  type="number"
+                  min={1}
+                  placeholder="e.g. 10"
+                  value={scrapeForm.maxSources}
+                  onChange={(e) => setScrapeForm({ ...scrapeForm, maxSources: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">Limit how many sources are scraped (leave blank for all).</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="sourceIds">Source IDs (optional)</Label>
+              <Input
+                id="sourceIds"
+                placeholder="uuid-1, uuid-2"
+                value={scrapeForm.sourceIds}
+                onChange={(e) => setScrapeForm({ ...scrapeForm, sourceIds: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">Comma-separated list; leave empty to use rotation.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={submittingScrape}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateScrape} disabled={submittingScrape}>
+              {submittingScrape ? "Creating..." : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+type StatTone = "default" | "amber" | "blue" | "red" | "green"
+
+function StatPill({ label, value, tone = "default" }: { label: string; value: string | number; tone?: StatTone }) {
+  const toneClasses: Record<StatTone, string> = {
+    default: "border-muted-foreground/20 text-muted-foreground",
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    blue: "border-blue-200 bg-blue-50 text-blue-800",
+    red: "border-red-200 bg-red-50 text-red-800",
+    green: "border-green-200 bg-green-50 text-green-800",
+  }
+
+  return (
+    <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium ${toneClasses[tone]}`}>
+      <span className="uppercase tracking-wide text-[11px]">{label}</span>
+      <span className="text-sm font-semibold">{value}</span>
     </div>
   )
 }
