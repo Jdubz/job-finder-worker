@@ -1,3 +1,7 @@
+> Status: Draft
+> Owner: @jdubz
+> Last Updated: 2025-11-25
+
 # Job Finder Worker – Production Testing Guide
 
 This doc summarizes how the Python worker is wired, how to run it safely against production data, and how to manage credentials/config.
