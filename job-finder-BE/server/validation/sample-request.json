@@ -1,0 +1,15 @@
+{
+  "generateType": "both",
+  "job": {
+    "role": "Senior Backend Engineer",
+    "company": "Acme Analytics",
+    "companyWebsite": "https://acme.example.com",
+    "jobDescriptionUrl": "https://acme.example.com/jobs/backend",
+    "jobDescriptionText": "Lead the design and delivery of data-heavy APIs using Node.js and TypeScript. Mentor engineers and improve reliability."
+  },
+  "preferences": {
+    "style": "technical",
+    "emphasize": ["scalability", "mentorship", "observability"]
+  },
+  "date": "2025-11-25"
+}
