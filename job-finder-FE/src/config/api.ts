@@ -84,8 +84,6 @@ export function getAbsoluteArtifactUrl(relativeUrl: string | null | undefined): 
   if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) {
     return relativeUrl
   }
-  // Get base URL without /api suffix since artifact URLs already include /api
-  const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "")
-    || (import.meta.env.DEV ? `http://${window.location.hostname}:${import.meta.env.VITE_API_PORT || "8080"}` : "")
-  return `${baseUrl}${relativeUrl}`
+  // Use getApiBaseUrl (without /api suffix) since artifact URLs already include /api
+  return `${getApiBaseUrl()}${relativeUrl}`
 }

@@ -35,7 +35,7 @@ function sanitize(value: string): string {
 }
 
 function buildHumanReadablePath(metadata: ArtifactMetadata): { folder: string; filename: string } {
-  const date = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+  const date = new Date().toISOString().slice(0, 10) // YYYY-MM-DD in UTC
   const company = sanitize(metadata.company)
   const role = sanitize(metadata.role)
   const name = sanitize(metadata.name)

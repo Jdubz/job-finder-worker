@@ -301,7 +301,7 @@ export class GeneratorWorkflowService {
       personalInfo
     )
     const metadata: ArtifactMetadata = {
-      name: personalInfo.name ?? 'candidate',
+      name: personalInfo.name,
       company: payload.job.company,
       role: payload.job.role,
       type: 'resume'
@@ -326,14 +326,14 @@ export class GeneratorWorkflowService {
   ): Promise<string | undefined> {
     const coverLetter = await this.buildCoverLetterContent(payload, personalInfo)
     const pdf = await this.pdfService.generateCoverLetterPDF(coverLetter, {
-      name: personalInfo.name ?? 'Candidate',
+      name: personalInfo.name,
       email: personalInfo.email,
       accentColor: personalInfo.accentColor,
       date: payload.date,
       logo: personalInfo.logo
     })
     const metadata: ArtifactMetadata = {
-      name: personalInfo.name ?? 'candidate',
+      name: personalInfo.name,
       company: payload.job.company,
       role: payload.job.role,
       type: 'cover-letter'
