@@ -236,6 +236,67 @@ def test_handle_failure_max_retries(processor, mock_managers):
     assert "failed" in call_args[2].lower()
 
 
+def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_job_item):
+    """Job analyze should spawn company pipeline and requeue when company is unknown."""
+    sample_job_item.pipeline_state = {
+        "job_data": {
+            "title": "Engineer",
+            "company": "Spawn Co",
+            "company_website": "https://spawn.example",
+            "description": "A" * 200,
+        },
+        "filter_result": {"passed": True},
+    }
+
+    processor.job_processor.ai_matcher.analyze_job = MagicMock()
+
+    processor.job_processor._do_job_analyze(sample_job_item)
+
+    # Should enqueue company task and requeue job to wait
+    assert mock_managers["queue_manager"].spawn_item_safely.called
+    mock_managers["queue_manager"].requeue_with_state.assert_called()
+    _, _, next_stage = mock_managers["queue_manager"].requeue_with_state.call_args[0]
+    assert next_stage == "wait_company"
+    processor.job_processor.ai_matcher.analyze_job.assert_not_called()
+
+
+def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sample_job_item):
+    """Job analyze should proceed when company dependency is active."""
+
+    class DummyResult:
+        match_score = 95
+        application_priority = "High"
+
+        def to_dict(self):
+            return {"match_score": self.match_score, "application_priority": self.application_priority}
+
+    active_company = {
+        "id": "comp-1",
+        "analysis_status": "active",
+        "about": "About text",
+        "culture": "Culture text",
+    }
+
+    mock_managers["companies_manager"].get_company_by_id.return_value = active_company
+    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
+
+    sample_job_item.pipeline_state = {
+        "job_data": {
+            "title": "Engineer",
+            "company": "Ready Co",
+            "company_website": "https://ready.example",
+            "description": "A" * 200,
+        },
+        "filter_result": {"passed": True},
+        "company_dependency": {"company_id": "comp-1"},
+    }
+
+    processor.job_processor._do_job_analyze(sample_job_item)
+
+    processor.job_processor.ai_matcher.analyze_job.assert_called_once()
+    mock_managers["queue_manager"].requeue_with_state.assert_called()  # save stage handoff
+
+
 def test_build_company_info_string(processor):
     """Test company info string builder."""
     company_info = {

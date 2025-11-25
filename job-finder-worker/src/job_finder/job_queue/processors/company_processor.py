@@ -11,14 +11,16 @@ COMPANY_FETCH → COMPANY_EXTRACT → COMPANY_ANALYZE → COMPANY_SAVE
 """
 
 import logging
+import os
 import re
 import uuid
 from typing import Any, Dict, Optional
 
 from job_finder.constants import MIN_COMPANY_PAGE_LENGTH
-from job_finder.exceptions import QueueProcessingError
+from job_finder.exceptions import InvalidStateTransition, QueueProcessingError
 from job_finder.logging_config import format_company_name
 from job_finder.job_queue.models import (
+    CompanyStatus,
     CompanySubTask,
     JobQueueItem,
     QueueItemType,
@@ -82,10 +84,21 @@ class CompanyProcessor(BaseProcessor):
         _, company_display = format_company_name(company_name)
         logger.info(f"COMPANY_FETCH: Fetching website content for {company_display}")
 
+        company_id = item.company_id or (item.pipeline_state or {}).get("company_id")
+
+        # Mark company as analyzing
+        if company_id:
+            try:
+                self.companies_manager.transition_status(company_id, CompanyStatus.ANALYZING)
+            except InvalidStateTransition as exc:
+                logger.warning("Company %s transition to analyzing blocked: %s", company_id, exc)
+
         try:
             if not item.url:
                 error_msg = "No company website URL provided"
                 self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
+                if company_id:
+                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
                 return
 
             # Fetch HTML content from company pages
@@ -111,17 +124,33 @@ class CompanyProcessor(BaseProcessor):
                     continue
 
             if not html_content:
-                error_msg = "Could not fetch any content from company website"
-                error_details = f"Tried pages: {', '.join(pages_to_try)}"
-                self.queue_manager.update_status(
-                    item.id, QueueStatus.FAILED, error_msg, error_details=error_details
-                )
-                return
+                allow_stub = bool(os.environ.get("ALLOW_COMPANY_FETCH_STUB"))
+                if allow_stub:
+                    html_content = {"about": "Stub company page for dev"}
+                    logger.warning(
+                        "Using stub company content for %s (ALLOW_COMPANY_FETCH_STUB=1)",
+                        company_name,
+                    )
+                else:
+                    error_msg = "Could not fetch any content from company website"
+                    error_details = f"Tried pages: {', '.join(pages_to_try)}"
+                    self.queue_manager.update_status(
+                        item.id, QueueStatus.FAILED, error_msg, error_details=error_details
+                    )
+                    if company_id:
+                        try:
+                            self.companies_manager.transition_status(
+                                company_id, CompanyStatus.FAILED
+                            )
+                        except InvalidStateTransition:
+                            pass
+                    return
 
             # Prepare pipeline state for next step
             pipeline_state = {
                 "company_name": company_name,
                 "company_website": item.url,
+                "company_id": company_id,
                 "html_content": html_content,
             }
 
@@ -131,6 +160,9 @@ class CompanyProcessor(BaseProcessor):
                 QueueStatus.SUCCESS,
                 f"Fetched {len(html_content)} pages from company website",
             )
+
+            if company_id:
+                self.companies_manager.update_analysis_progress(company_id, fetch=True)
 
             # Spawn next pipeline step (EXTRACT)
             self.queue_manager.spawn_next_pipeline_step(
@@ -147,6 +179,11 @@ class CompanyProcessor(BaseProcessor):
 
         except Exception as e:
             logger.error(f"Error in COMPANY_FETCH: {e}")
+            if company_id:
+                try:
+                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
+                except InvalidStateTransition:
+                    pass
             raise
 
     def process_company_extract(self, item: JobQueueItem) -> None:
@@ -165,6 +202,7 @@ class CompanyProcessor(BaseProcessor):
 
         company_name = item.pipeline_state.get("company_name", "Unknown Company")
         html_content = item.pipeline_state.get("html_content", {})
+        company_id = item.pipeline_state.get("company_id") or item.company_id
 
         _, company_display = format_company_name(company_name)
         logger.info(f"COMPANY_EXTRACT: Extracting company info for {company_display}")
@@ -179,9 +217,20 @@ class CompanyProcessor(BaseProcessor):
             )
 
             if not extracted_info:
-                error_msg = "AI extraction failed to produce company information"
-                self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
-                return
+                if os.environ.get("ALLOW_COMPANY_FETCH_STUB"):
+                    extracted_info = {
+                        "about": "Stub about for dev",
+                        "culture": "Stub culture",
+                        "mission": "Stub mission",
+                    }
+                    logger.warning(
+                        "Using stub extracted info for %s (ALLOW_COMPANY_FETCH_STUB=1)",
+                        company_name,
+                    )
+                else:
+                    error_msg = "AI extraction failed to produce company information"
+                    self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
+                    return
 
             # Prepare pipeline state with extracted info
             pipeline_state = {
@@ -195,6 +244,9 @@ class CompanyProcessor(BaseProcessor):
                 QueueStatus.SUCCESS,
                 "Company information extracted successfully",
             )
+
+            if company_id:
+                self.companies_manager.update_analysis_progress(company_id, extract=True)
 
             # Spawn next pipeline step (ANALYZE)
             self.queue_manager.spawn_next_pipeline_step(
@@ -212,6 +264,11 @@ class CompanyProcessor(BaseProcessor):
 
         except Exception as e:
             logger.error(f"Error in COMPANY_EXTRACT: {e}")
+            if company_id:
+                try:
+                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
+                except InvalidStateTransition:
+                    pass
             raise
 
     def process_company_analyze(self, item: JobQueueItem) -> None:
@@ -244,6 +301,7 @@ class CompanyProcessor(BaseProcessor):
         company_website = item.pipeline_state.get("company_website", "")
         extracted_info = item.pipeline_state.get("extracted_info", {})
         html_content = item.pipeline_state.get("html_content", {})
+        company_id = item.pipeline_state.get("company_id") or item.company_id
 
         _, company_display = format_company_name(company_name)
         logger.info(f"COMPANY_ANALYZE: Analyzing {company_display}")
@@ -281,6 +339,9 @@ class CompanyProcessor(BaseProcessor):
                 f"Company analyzed (Tier {tier}, Score: {priority_score})",
             )
 
+            if company_id:
+                self.companies_manager.update_analysis_progress(company_id, analyze=True)
+
             # If job board found, spawn SOURCE_DISCOVERY
             if job_board_url:
                 _, company_display = format_company_name(company_name)
@@ -302,6 +363,11 @@ class CompanyProcessor(BaseProcessor):
 
         except Exception as e:
             logger.error(f"Error in COMPANY_ANALYZE: {e}")
+            if company_id:
+                try:
+                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
+                except InvalidStateTransition:
+                    pass
             raise
 
     def process_company_save(self, item: JobQueueItem) -> None:
@@ -321,6 +387,7 @@ class CompanyProcessor(BaseProcessor):
         company_website = item.pipeline_state.get("company_website", "")
         extracted_info = item.pipeline_state.get("extracted_info", {})
         analysis_result = item.pipeline_state.get("analysis_result", {})
+        company_id = item.pipeline_state.get("company_id") or item.company_id
 
         _, company_display = format_company_name(company_name)
         logger.info(f"COMPANY_SAVE: Saving {company_display}")
@@ -334,14 +401,31 @@ class CompanyProcessor(BaseProcessor):
                 "techStack": analysis_result.get("tech_stack", []),
                 "tier": analysis_result.get("tier", "D"),
                 "priorityScore": analysis_result.get("priority_score", 0),
-                "analysis_status": "complete",
+                "analysis_status": CompanyStatus.ACTIVE.value,
+                "analysis_progress": {
+                    "fetch": True,
+                    "extract": True,
+                    "analyze": True,
+                    "save": True,
+                },
             }
+
+            if company_id:
+                company_info["id"] = company_id
 
             # Save to companies collection
             company_id = self.companies_manager.save_company(company_info)
 
             _, company_display = format_company_name(company_name)
             logger.info(f"Company saved: {company_display} (ID: {company_id})")
+
+            try:
+                self.companies_manager.transition_status(company_id, CompanyStatus.ACTIVE)
+                self.companies_manager.update_analysis_progress(
+                    company_id, fetch=True, extract=True, analyze=True, save=True
+                )
+            except InvalidStateTransition:
+                logger.debug("Company %s already active", company_id)
 
             # If job board found, spawn SOURCE_DISCOVERY
             job_board_url = analysis_result.get("job_board_url")
@@ -378,6 +462,11 @@ class CompanyProcessor(BaseProcessor):
 
         except Exception as e:
             logger.error(f"Error in COMPANY_SAVE: {e}")
+            if company_id:
+                try:
+                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
+                except InvalidStateTransition:
+                    pass
             raise
 
     # ============================================================

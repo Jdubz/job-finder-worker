@@ -84,7 +84,7 @@ def generate_tracking_id() -> str:
 def submit_job_item(
     url: str,
     company_name: Optional[str] = None,
-    source: str = "test_harness",
+    source: str = "manual_submission",
     tracking_id: Optional[str] = None,
 ) -> str:
     """Submit a JOB type item to the queue."""
@@ -94,14 +94,18 @@ def submit_job_item(
     tracking_id = tracking_id or generate_tracking_id()
     now = datetime.now(timezone.utc).isoformat()
 
+    unique_url = f"{url}?t={tracking_id}" if url else f"https://example.com/job/{tracking_id}"
+
+    item_id = generate_tracking_id()
+
     cursor.execute(
         """
         INSERT INTO job_queue (
-            type, status, url, company_name, source, tracking_id,
+            id, type, status, url, company_name, source, tracking_id,
             submitted_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
-        ("JOB", "PENDING", url, company_name, source, tracking_id, "test_harness", now, now),
+        (item_id, "job", "pending", unique_url, company_name, source, tracking_id, "test_harness", now, now),
     )
 
     conn.commit()
@@ -130,22 +134,28 @@ def submit_company_item(
     metadata = {}
     if url:
         metadata["website"] = url
+    company_url = url or "https://example.com/company"
+
+    item_id = generate_tracking_id()
 
     cursor.execute(
         """
         INSERT INTO job_queue (
-            type, status, company_name, source, tracking_id,
-            submitted_by, metadata, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, type, status, url, company_name, source, tracking_id,
+            submitted_by, metadata, company_sub_task, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
-            "COMPANY",
-            "PENDING",
+            item_id,
+            "company",
+            "pending",
+            company_url,
             company_name,
-            "test_harness",
+            "manual_submission",
             tracking_id,
             "test_harness",
             json.dumps(metadata) if metadata else None,
+            "fetch",
             now,
             now,
         ),
@@ -185,18 +195,21 @@ def submit_scrape_item(
     if board_token:
         scrape_config["board_token"] = board_token
 
+    item_id = generate_tracking_id()
+
     cursor.execute(
         """
         INSERT INTO job_queue (
-            type, status, company_name, source, tracking_id,
+            id, type, status, company_name, source, tracking_id,
             submitted_by, scrape_config, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
-            "SCRAPE",
-            "PENDING",
+            item_id,
+            "scrape",
+            "pending",
             company_name,
-            "test_harness",
+            "manual_submission",
             tracking_id,
             "test_harness",
             json.dumps(scrape_config),
@@ -229,22 +242,27 @@ def submit_source_discovery_item(
     tracking_id = tracking_id or generate_tracking_id()
     now = datetime.now(timezone.utc).isoformat()
 
-    config = {"company_name": company_name}
-    if website:
-        config["website"] = website
+    target_url = website or "https://example.com"
+    config = {"company_name": company_name, "url": target_url}
+
+    discovery_url = target_url + f"?t={tracking_id}"
+
+    item_id = generate_tracking_id()
 
     cursor.execute(
         """
         INSERT INTO job_queue (
-            type, status, company_name, source, tracking_id,
+            id, type, status, url, company_name, source, tracking_id,
             submitted_by, source_discovery_config, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
-            "SOURCE_DISCOVERY",
-            "PENDING",
+            item_id,
+            "source_discovery",
+            "pending",
+            discovery_url,
             company_name,
-            "test_harness",
+            "manual_submission",
             tracking_id,
             "test_harness",
             json.dumps(config),

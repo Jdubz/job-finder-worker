@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -111,6 +112,23 @@ class AIJobMatcher:
         Returns:
             JobMatchResult if successful, None if analysis fails.
         """
+        # Dev/CI shortcut: allow stubbed match results without hitting external AI.
+        if os.environ.get("DISABLE_AI_MATCHER") == "1":
+            return JobMatchResult(
+                job_title=job.get("title", "Unknown"),
+                job_company=job.get("company", "Unknown"),
+                job_url=job.get("url", ""),
+                match_score=max(self.min_match_score, 90),
+                matched_skills=job.get("skills", []) or ["python", "queueing"],
+                missing_skills=[],
+                experience_match="auto-stub",
+                key_strengths=["stubbed matcher"],
+                match_reasons=["DISABLE_AI_MATCHER=1"],
+                potential_concerns=[],
+                application_priority="High",
+                customization_recommendations={},
+            )
+
         try:
             # Step 1: Analyze job match
             logger.info(f"Analyzing job: {job.get('title')} at {job.get('company')}")
