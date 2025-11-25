@@ -53,11 +53,9 @@ PAYLOAD_FILE=/path/to/custom.json ./run-validation.sh
 ```
 - A ready-made example from Veeva (Senior Software Engineer, Full Stack) lives at `payloads/veeva-sse-portland.json`.
 
-## Troubleshooting notes (2025-11-25)
-- Codex CLI inside the container may hit `ERROR: Connection failed ... chatgpt.com/backend-api/codex/responses` even when `codex login status` reports logged-in. In that case:
-  1) Ensure `~/.codex` from the host is copied in (the runner already `docker cp`'s it into a tmpfs at `/home/node/.codex`).
-  2) If it still 401s, try host networking for the API service or refresh the host Codex login and rerun.
-  3) The issue reproduces with the Veeva payload; DB and artifacts mounts are fine—failure is during the Codex HTTP call.
+## Troubleshooting notes
+- **TLS/Connection errors**: If Codex CLI fails with `ERROR: Connection failed ... chatgpt.com/backend-api/codex/responses`, ensure the container image includes `ca-certificates`. The slim Debian base image lacks CA certs, which breaks native TLS in the Codex binary (Node.js bundles its own certs so it works, but Codex CLI doesn't). Fixed in commit `105f841`.
+- **Auth issues**: Ensure `~/.codex` from the host is mounted correctly. The runner `docker cp`'s it into `/home/node/.codex`. If login status shows authenticated but requests fail, refresh the host Codex login (`codex logout && codex login`) and rerun.
 
 ## Cleanup
 ```bash
