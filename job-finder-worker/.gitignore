@@ -86,3 +86,13 @@ Thumbs.db
 # Prevent --no-verify bypass scripts
 git-bypass-*
 no-verify-*
+
+# =============================================================================
+# Docker Development Environment
+# =============================================================================
+# Local dev environment (created by make dev-setup)
+.dev/
+
+# Keep the dev scripts directory tracked
+!dev/
+dev/__pycache__/
