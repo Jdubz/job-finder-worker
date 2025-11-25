@@ -36,9 +36,5 @@ WHERE parent_id = 'selected-projects';
 UPDATE content_items SET ai_context = 'skills'
 WHERE parent_id = 'skills-technologies';
 
--- Catch any remaining items: if they have a parent, likely highlights; otherwise section
-UPDATE content_items SET ai_context = 'highlight'
-WHERE ai_context IS NULL AND parent_id IS NOT NULL;
-
-UPDATE content_items SET ai_context = 'section'
-WHERE ai_context IS NULL AND parent_id IS NULL;
+-- Items that don't match explicit criteria remain NULL.
+-- Application code handles NULL aiContext gracefully.

@@ -24,7 +24,7 @@ export interface ContentItem {
   endDate?: string | null
   description?: string | null
   skills?: string[] | null
-  /** Context for document generation: experience, education, project, skill, overview */
+  /** Context for document generation. See ContentItemAIContext for values. */
   aiContext?: ContentItemAIContext | null
   createdAt: TimestampLike
   updatedAt: TimestampLike
