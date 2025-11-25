@@ -121,6 +121,7 @@ export interface ExecuteStepResponse {
     resumeUrl?: string
     coverLetterUrl?: string
     steps?: GenerationStep[]
+    error?: string
   }
   requestId: string
 }

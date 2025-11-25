@@ -243,19 +243,31 @@ export function DocumentBuilderPage() {
           // Execute the step (waits for completion)
           const stepResponse = await generatorClient.executeStep(startResponse.data.requestId)
 
-          // Check if request failed
-          if (!stepResponse.success) {
-            // Mark step as failed
-            setGenerationSteps(
-              currentSteps.map((step) =>
-                step.id === nextStep
-                  ? { ...step, status: "failed" as const, error: { message: "Request failed" } }
+          // Check if request failed (either HTTP failure or step failure)
+          if (!stepResponse.success || stepResponse.data.status === "failed") {
+            const errorMessage = stepResponse.data.error || "Generation step failed"
+            // Update with backend's step states (will include failed step)
+            if (stepResponse.data.steps) {
+              // Add error message to the failed step
+              const stepsWithError = stepResponse.data.steps.map((step) =>
+                step.status === "failed" && !step.error
+                  ? { ...step, error: { message: errorMessage } }
                   : step
               )
-            )
+              setGenerationSteps(stepsWithError)
+            } else {
+              // Fallback: mark current step as failed locally
+              setGenerationSteps(
+                currentSteps.map((step) =>
+                  step.id === nextStep
+                    ? { ...step, status: "failed" as const, error: { message: errorMessage } }
+                    : step
+                )
+              )
+            }
             setAlert({
               type: "error",
-              message: `Generation failed: ${stepResponse.error || "Unknown error"}`,
+              message: errorMessage,
             })
             return
           }

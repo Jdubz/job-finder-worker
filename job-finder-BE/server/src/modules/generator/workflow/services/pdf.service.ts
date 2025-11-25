@@ -79,8 +79,12 @@ export class PDFService {
       await page.close()
       return Buffer.isBuffer(pdfResult) ? pdfResult : Buffer.from(pdfResult)
     } catch (error) {
-      this.log.warn({ err: error }, 'Falling back to HTML buffer for PDF output')
-      return Buffer.from(html, 'utf-8')
+      // Fail loudly - don't silently return HTML as PDF
+      this.log.error({ err: error }, 'PDF generation failed - Chromium/Puppeteer error')
+      throw new Error(
+        `PDF generation failed: ${error instanceof Error ? error.message : 'Chromium unavailable'}. ` +
+          'Please ensure Chromium is installed and accessible.'
+      )
     } finally {
       if (browser) {
         await browser.close()
