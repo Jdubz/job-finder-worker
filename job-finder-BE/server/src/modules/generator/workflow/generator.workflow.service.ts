@@ -50,8 +50,17 @@ const DEFAULT_PERSONAL_INFO: PersonalInfo = {
   summary: undefined
 }
 
+interface ActiveRequestState {
+  steps: ReturnType<typeof createInitialSteps>
+  request: ReturnType<GeneratorWorkflowRepository['getRequest']>
+  createdAt: number
+}
+
+// TTL for abandoned requests: 30 minutes
+const REQUEST_TTL_MS = 30 * 60 * 1000
+
 export class GeneratorWorkflowService {
-  private readonly activeRequests = new Map<string, { steps: any[]; request: any }>()
+  private readonly activeRequests = new Map<string, ActiveRequestState>()
 
   constructor(
     private readonly pdfService = new PDFService(),
@@ -60,7 +69,22 @@ export class GeneratorWorkflowService {
     private readonly contentItemRepo = new ContentItemRepository(),
     private readonly jobMatchRepo = new JobMatchRepository(),
     private readonly log: Logger = logger
-  ) {}
+  ) {
+    // Periodically clean up abandoned requests to prevent memory leaks
+    // Run every 15 minutes (half of TTL) to ensure timely cleanup
+    setInterval(() => this.cleanupAbandonedRequests(), REQUEST_TTL_MS / 2)
+  }
+
+  private cleanupAbandonedRequests(): void {
+    const now = Date.now()
+    for (const [requestId, state] of this.activeRequests.entries()) {
+      if (now - state.createdAt > REQUEST_TTL_MS) {
+        this.log.warn({ requestId }, 'Cleaning up abandoned generator request')
+        this.workflowRepo.updateRequest(requestId, { status: 'failed' })
+        this.activeRequests.delete(requestId)
+      }
+    }
+  }
 
   async generate(payload: GenerateDocumentPayload): Promise<GenerateDocumentResult> {
     const { requestId } = await this.createRequest(payload)
@@ -82,8 +106,10 @@ export class GeneratorWorkflowService {
       jobMatchId: payload.jobMatchId ?? null,
       createdBy: undefined
     })
-    // Keep steps in memory only
-    this.activeRequests.set(requestId, { steps, request })
+    // Keep steps in memory only (with TTL for cleanup)
+    this.activeRequests.set(requestId, { steps, request, createdAt: Date.now() })
+    // Run cleanup on each new request to prevent unbounded growth
+    this.cleanupAbandonedRequests()
     const nextStep = steps.find((s) => s.status === 'pending')?.id
     return { requestId, steps, nextStep }
   }
@@ -154,7 +180,8 @@ export class GeneratorWorkflowService {
         requestId,
         status: request.status,
         steps: updated,
-        nextStep
+        nextStep,
+        stepCompleted: 'collect-data'
       }
     }
 
@@ -172,7 +199,7 @@ export class GeneratorWorkflowService {
       const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'completed')
       activeState.steps = updated
       const nextStep = updated.find((s) => s.status === 'pending')?.id
-      return { requestId, status: request.status, steps: updated, nextStep, resumeUrl }
+      return { requestId, status: request.status, steps: updated, nextStep, resumeUrl, stepCompleted: 'generate-resume' }
     }
 
     if (pendingStep.id === 'generate-cover-letter') {
@@ -189,15 +216,37 @@ export class GeneratorWorkflowService {
       const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'completed')
       activeState.steps = updated
       const nextStep = updated.find((s) => s.status === 'pending')?.id
-      return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl }
+      return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl, stepCompleted: 'generate-cover-letter' }
     }
 
-    const nextStep = steps.find((s) => s.status === 'pending')?.id
+    // render-pdf step: PDF rendering is done within generateResume/generateCoverLetter,
+    // so just mark this step complete and finalize the request
+    if (pendingStep.id === 'render-pdf') {
+      const updated = completeStep(startStep(steps, 'render-pdf'), 'render-pdf', 'completed')
+      activeState.steps = updated
+      this.workflowRepo.updateRequest(requestId, { status: 'completed' })
+      const finalRequest = this.workflowRepo.getRequest(requestId)
+      // Clean up in-memory state now that generation is complete
+      this.activeRequests.delete(requestId)
+      return {
+        requestId,
+        status: 'completed',
+        steps: updated,
+        nextStep: undefined,
+        resumeUrl: finalRequest?.resumeUrl ?? undefined,
+        coverLetterUrl: finalRequest?.coverLetterUrl ?? undefined,
+        stepCompleted: 'render-pdf'
+      }
+    }
+
+    // Unknown step - mark request as failed to prevent infinite loop
+    this.workflowRepo.updateRequest(requestId, { status: 'failed' })
+    this.activeRequests.delete(requestId)
     return {
       requestId,
-      status: request.status,
+      status: 'failed',
       steps,
-      nextStep
+      nextStep: undefined
     }
   }
 

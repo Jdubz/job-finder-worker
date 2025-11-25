@@ -104,6 +104,9 @@ export interface StartGenerationResponse {
     status: string
     nextStep?: string
     steps?: GenerationStep[]
+    stepCompleted?: string
+    resumeUrl?: string
+    coverLetterUrl?: string
   }
   requestId: string
 }
@@ -111,7 +114,8 @@ export interface StartGenerationResponse {
 export interface ExecuteStepResponse {
   success: boolean
   data: {
-    stepCompleted: string
+    requestId: string
+    stepCompleted?: string
     nextStep?: string
     status: string
     resumeUrl?: string
@@ -123,7 +127,9 @@ export interface ExecuteStepResponse {
 
 export class GeneratorClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.generatorBaseUrl) {
-    super(baseUrl)
+    // Use longer timeout for AI generation (2 minutes) and fewer retries
+    // since generation steps are not idempotent
+    super(baseUrl, { timeout: 120000, retryAttempts: 1 })
   }
 
   /**
