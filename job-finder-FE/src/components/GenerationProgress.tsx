@@ -26,23 +26,20 @@ interface GenerationProgressProps {
 
 /**
  * Get meaningful completion message for each step
+ * Step IDs use kebab-case (e.g., collect-data, generate-resume)
  */
 const getCompletionMessage = (step: GenerationStep): string => {
   const duration = step.duration ? ` (${(step.duration / 1000).toFixed(1)}s)` : ""
 
   switch (step.id) {
-    case "fetch_data":
+    case "collect-data":
       return `Successfully loaded your experience data${duration}`
-    case "generate_resume":
+    case "generate-resume":
       return `AI generated tailored resume content${duration}`
-    case "generate_cover_letter":
+    case "generate-cover-letter":
       return `AI generated personalized cover letter${duration}`
-    case "create_resume_pdf":
-      return `Resume PDF created and ready${duration}`
-    case "create_cover_letter_pdf":
-      return `Cover letter PDF created and ready${duration}`
-    case "upload_documents":
-      return `Documents uploaded to cloud storage${duration}`
+    case "render-pdf":
+      return `PDF documents created and ready${duration}`
     default:
       return `Completed${duration}`
   }

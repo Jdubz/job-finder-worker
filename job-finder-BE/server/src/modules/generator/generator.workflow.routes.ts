@@ -6,7 +6,8 @@ import { ApiErrorCode } from '@shared/types'
 import { GeneratorWorkflowService } from './workflow/generator.workflow.service'
 import { GeneratorWorkflowRepository, type GeneratorRequestRecord } from './generator.workflow.repository'
 
-const generateSchema = z.object({
+// Shared schema for both /generate and /start endpoints
+const generatorRequestSchema = z.object({
   generateType: z.enum(['resume', 'coverLetter', 'both']),
   job: z.object({
     role: z.string().min(1),
@@ -33,7 +34,7 @@ export function buildGeneratorWorkflowRouter() {
   router.post(
     '/generate',
     asyncHandler(async (req, res) => {
-      const payload = generateSchema.parse(req.body ?? {})
+      const payload = generatorRequestSchema.parse(req.body ?? {})
       const result = await service.generate(payload)
       if (!result.success) {
         res.status(500).json(failure(ApiErrorCode.INTERNAL_ERROR, result.message ?? 'Generation failed'))
@@ -71,7 +72,7 @@ export function buildGeneratorWorkflowRouter() {
   router.post(
     '/start',
     asyncHandler(async (req, res) => {
-      const payload = startSchema.parse(req.body ?? {})
+      const payload = generatorRequestSchema.parse(req.body ?? {})
       const { requestId, steps, nextStep } = await service.createRequest(payload)
       const request = repo.getRequest(requestId)
       res.status(202).json(
@@ -100,21 +101,3 @@ export function buildGeneratorWorkflowRouter() {
 
   return router
 }
-const startSchema = z.object({
-  generateType: z.enum(['resume', 'coverLetter', 'both']),
-  job: z.object({
-    role: z.string().min(1),
-    company: z.string().min(1),
-    companyWebsite: z.string().url().optional(),
-    jobDescriptionUrl: z.string().url().optional(),
-    jobDescriptionText: z.string().optional()
-  }),
-  preferences: z
-    .object({
-      style: z.enum(['modern', 'traditional', 'technical', 'executive']).optional(),
-      emphasize: z.array(z.string()).optional()
-    })
-    .optional(),
-  date: z.string().optional(),
-  jobMatchId: z.string().optional()
-})
