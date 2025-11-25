@@ -6,7 +6,7 @@
 
 ## Overview
 
-This document describes the unified development environment orchestration for all job-finder repositories, managed from the `job-finder-app-manager` repository.
+This document describes the development environment orchestration for the job-finder monorepo. All services run locally or via Docker, sharing a SQLite database.
 
 ## Architecture
 
@@ -14,386 +14,255 @@ This document describes the unified development environment orchestration for al
 
 ```mermaid
 graph TD
-    A[Firebase Emulators] --> B[Backend Functions]
-    A --> C[Frontend Vite]
+    A[SQLite Database] --> B[Express API]
     A --> D[Worker Docker]
-    B --> C
-    B --> D
+    B --> C[Frontend Vite]
 ```
 
 **Startup Order:**
 
-1. **Firebase Emulators** (Firestore, Auth, Functions) - Port 8080, 9099, 5001
-2. **Backend Functions** - Depends on emulators
-3. **Frontend Vite** - Depends on emulators and Backend
-4. **Worker Docker** - Depends on emulators
+1. **SQLite Database** - Initialized via migrations
+2. **Express API** - Depends on database
+3. **Frontend Vite** - Depends on API
+4. **Worker Docker** - Depends on database
 
 ### Repository Structure
 
 ```
-job-finder-app-manager/          # Orchestration root
-├── job-finder-FE/              # Frontend (React + Vite)
-├── job-finder-BE/              # Backend (Firebase Functions)
-├── job-finder-worker/          # Worker (Python + Docker)
-├── job-finder-shared-types/    # Shared TypeScript types
-└── scripts/dev/                # Development orchestration scripts
+job-finder-bot/              # Monorepo root
+├── job-finder-FE/           # Frontend (React + Vite)
+├── job-finder-BE/           # Backend (Express API)
+├── job-finder-worker/       # Worker (Python + Docker)
+├── shared/                  # Shared TypeScript types
+├── infra/                   # Infrastructure configs
+│   ├── sqlite/              # Database migrations
+│   └── docker-compose.yml   # Production deployment
+└── data/
+    └── sqlite/              # SQLite database files
 ```
 
 ## Standard Makefile Targets
 
-All repositories implement these consistent targets:
+All services implement consistent targets:
 
 ### Core Development Commands
 
-| Target            | Description                 | Example           |
-| ----------------- | --------------------------- | ----------------- |
-| `make help`       | Show available commands     | `make help`       |
-| `make install`    | Install dependencies        | `make install`    |
-| `make dev`        | Start development server    | `make dev`        |
-| `make dev-build`  | Build before starting dev   | `make dev-build`  |
-| `make dev-stop`   | Stop development server     | `make dev-stop`   |
-| `make dev-status` | Check if service is running | `make dev-status` |
-| `make dev-logs`   | Show development logs       | `make dev-logs`   |
-| `make clean`      | Clean build artifacts       | `make clean`      |
-| `make test`       | Run tests                   | `make test`       |
-| `make lint`       | Run linters                 | `make lint`       |
+| Target            | Description                 |
+|-------------------|----------------------------|
+| `make help`       | Show available commands    |
+| `make install`    | Install dependencies       |
+| `make dev`        | Start development server   |
+| `make stop`       | Stop development server    |
+| `make status`     | Check if service is running|
+| `make test`       | Run tests                  |
+| `make lint`       | Run linters                |
+| `make migrate`    | Run database migrations    |
 
-### Repository-Specific Targets
+### Service-Specific Targets
 
 **Frontend (job-finder-FE):**
 
 ```makefile
-make emulators        # Start Firebase emulators
-make emulators-stop   # Stop Firebase emulators
-make emulators-status # Check emulator status
+make dev          # Start Vite dev server
+make build        # Build for production
+make preview      # Preview production build
 ```
 
 **Backend (job-finder-BE):**
 
 ```makefile
-make functions        # Start Functions emulator
-make functions-stop   # Stop Functions emulator
-make functions-logs   # View Functions logs
+make dev          # Start Express server
+make build        # Compile TypeScript
+make test         # Run API tests
 ```
 
 **Worker (job-finder-worker):**
 
 ```makefile
-make docker-dev       # Start worker in Docker
-make docker-shell     # Enter Docker container
-make docker-logs      # View Docker logs
-make docker-stop      # Stop Docker container
+make docker-dev   # Start worker in Docker
+make docker-shell # Enter Docker container
+make docker-logs  # View Docker logs
+make docker-stop  # Stop Docker container
 ```
 
-## Manager Orchestration Commands
+## Root Orchestration Commands
 
-Run from `job-finder-app-manager` directory:
+Run from repository root:
 
 ### Full Stack Development
 
 ```bash
-# Start complete development stack (all services in tmux)
-make dev-ui
+# Start complete development stack
+make dev
 
-# Attach to existing dev session
-make dev-ui-attach
+# Stop all services
+make stop
 
-# Kill dev stack
-make dev-ui-kill
+# Check service status
+make status
 ```
 
 ### Individual Services
 
 ```bash
-# Start only backend (emulators + functions)
-make dev-backend
+# Start only API
+make dev-api
 
-# Start only frontend (assumes emulators running)
+# Start only frontend
 make dev-frontend
 
-# Start only worker (assumes emulators running)
+# Start only worker
 make dev-worker
 ```
 
 ### Health & Status
 
 ```bash
-# Comprehensive health check of all services
-make dev-health-check
-
 # Check service status
-make dev-status
+make status
 
-# View logs from all services
-make dev-logs
+# Health check
+curl http://localhost:8080/api/healthz
 ```
 
 ### Installation & Setup
 
 ```bash
 # Install dependencies in all repos
-make dev-install
+make install
 
-# Clean all repos
-make dev-clean
-
-# Validate environment (node, npm, docker, firebase-tools)
-make dev-validate-env
+# Run database migrations
+make migrate
 ```
-
-### Port Management
-
-```bash
-# Check if required ports are available
-make dev-check-ports
-
-# Kill processes on required ports
-make dev-kill-ports
-```
-
-## Development Scripts
-
-Located in `job-finder-app-manager/scripts/dev/`:
-
-### Environment Validation
-
-**`check-env.sh`**
-
-- Validates required tools: Node.js, npm, Docker, Firebase CLI
-- Checks minimum versions
-- Verifies environment variables
-- Exit code 0 = success, 1 = failure
-
-**`check-ports.sh`**
-
-- Checks if required ports are available:
-  - 5173 (Vite)
-  - 8080 (Firestore Emulator)
-  - 9099 (Auth Emulator)
-  - 5001 (Functions Emulator)
-  - 4000 (Emulator UI)
-- Lists processes using ports if occupied
-- Exit code 0 = all free, 1 = ports occupied
-
-### Health Checks
-
-**`wait-for-emulators.sh`**
-
-- Waits for Firebase emulators to be ready
-- Checks Firestore on localhost:8080
-- Timeout: 60 seconds
-- Exit code 0 = ready, 1 = timeout
-
-**`wait-for-functions.sh`**
-
-- Waits for Functions emulator to be ready
-- Checks Functions on localhost:5001
-- Timeout: 60 seconds
-- Exit code 0 = ready, 1 = timeout
-
-**`health-check.sh`**
-
-- Comprehensive health check of all services
-- Validates:
-  - Firebase emulators running
-  - Functions emulator responding
-  - Vite dev server running
-  - Worker Docker container running
-- Colored output (green = healthy, red = error, yellow = warning)
-- Exit code 0 = all healthy, 1 = issues found
-
-### Service Management
-
-**`start-services.sh`**
-
-- Starts all services in dependency order
-- Uses health checks instead of sleep timings
-- Logs output to `logs/dev-{service}.log`
-- Returns PID for each service
-
-**`stop-services.sh`**
-
-- Gracefully stops all services
-- Kills processes by PID
-- Cleans up log files
-
-## tmux Layout
-
-The `dev-ui` command creates a tmux session with 4 panes:
-
-```
-┌─────────────────┬─────────────────┐
-│                 │                 │
-│  Emulators      │  Backend        │
-│  (FE)           │  (BE)           │
-│                 │                 │
-├─────────────────┼─────────────────┤
-│                 │                 │
-│  Frontend       │  Worker         │
-│  (FE)           │  (Worker)       │
-│                 │                 │
-└─────────────────┴─────────────────┘
-```
-
-**Navigation:**
-
-- `Ctrl+B` then arrow keys - Switch panes
-- `Ctrl+B` then `z` - Zoom current pane
-- `Ctrl+B` then `[` - Scroll mode (q to quit)
-- Type `exit` in each pane to close
-
-**Startup Sequence:**
-
-1. **Pane 1** (top-left): Firebase emulators
-2. **Pane 2** (top-right): Wait for emulators → Start Functions
-3. **Pane 3** (bottom-left): Wait for emulators → Start Vite
-4. **Pane 4** (bottom-right): Wait for emulators → Start Worker Docker
 
 ## Environment Variables
 
 ### Required
 
-| Variable                         | Description              | Default            |
-| -------------------------------- | ------------------------ | ------------------ |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Firebase service account | _(varies by repo)_ |
-| `ANTHROPIC_API_KEY`              | Claude API key           | _(none)_           |
+| Variable            | Description                |
+|--------------------|----------------------------|
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID     |
+| `ANTHROPIC_API_KEY`| Claude API key             |
+| `OPENAI_API_KEY`   | OpenAI API key             |
 
 ### Optional
 
-| Variable                           | Description                | Default          |
-| ---------------------------------- | -------------------------- | ---------------- |
-| `FIRESTORE_EMULATOR_HOST`          | Firestore emulator address | `localhost:8080` |
-| `FIREBASE_AUTH_EMULATOR_HOST`      | Auth emulator address      | `localhost:9099` |
-| `FIREBASE_FUNCTIONS_EMULATOR_HOST` | Functions emulator address | `localhost:5001` |
-| `VITE_USE_EMULATORS`               | Enable emulators in FE     | `true`           |
-| `NODE_ENV`                         | Node environment           | `development`    |
+| Variable           | Description              | Default          |
+|-------------------|--------------------------|------------------|
+| `PORT`            | API server port          | `8080`           |
+| `SQLITE_PATH`     | Database file path       | `./data/sqlite/jobfinder.db` |
+| `NODE_ENV`        | Node environment         | `development`    |
+| `LOG_LEVEL`       | Logging verbosity        | `info`           |
 
 ## Port Allocation
 
-| Service            | Port | Description                |
-| ------------------ | ---- | -------------------------- |
-| Vite Dev Server    | 5173 | Frontend development       |
-| Vite Preview       | 4173 | Production preview         |
-| Firestore Emulator | 8080 | Firebase Firestore         |
-| Auth Emulator      | 9099 | Firebase Auth              |
-| Functions Emulator | 5001 | Firebase Functions         |
-| Emulator UI        | 4000 | Firebase Emulator Suite UI |
-| Firebase Hosting   | 5000 | Firebase Hosting emulator  |
+| Service         | Port | Description            |
+|-----------------|------|------------------------|
+| Vite Dev Server | 5173 | Frontend development   |
+| Express API     | 8080 | Backend API            |
 
 ## Workflow Examples
 
 ### Starting Development for the First Time
 
 ```bash
-# 1. Validate environment
-make dev-validate-env
+# 1. Install dependencies
+make install
 
-# 2. Install dependencies in all repos
-make dev-install
+# 2. Run database migrations
+make migrate
 
 # 3. Start full development stack
-make dev-ui
+make dev
 ```
 
 ### Daily Development
 
 ```bash
 # Start dev stack
-make dev-ui
-
-# Or attach to existing session
-make dev-ui-attach
+make dev
 
 # Check health
-make dev-health-check
+curl http://localhost:8080/api/healthz
 
 # When done
-make dev-ui-kill
+make stop
 ```
 
 ### Working on Frontend Only
 
 ```bash
-# Terminal 1: Start backend services
-make dev-backend
+# Terminal 1: Start API
+make dev-api
 
 # Terminal 2: Start frontend
 cd job-finder-FE
 make dev
 ```
 
-### Working on Backend Only
+### Working on API Only
 
 ```bash
-# Start emulators + functions
-make dev-backend
+# Start API with auto-reload
+cd job-finder-BE
+npm run dev
 ```
 
 ### Working on Worker Only
 
 ```bash
-# Terminal 1: Start emulators
-cd job-finder-FE
-make emulators
+# Terminal 1: Ensure API is running for database
+make dev-api
 
 # Terminal 2: Start worker
-cd job-finder-worker
-make docker-dev
+make dev-worker
 ```
 
-### Debugging Individual Services
+### Debugging
 
 ```bash
 # Check what's running
-make dev-status
+make status
 
-# View logs
-make dev-logs
+# View API logs
+# (API logs to stdout when running in dev mode)
 
-# Check ports
-make dev-check-ports
+# View worker logs
+docker logs job-finder-worker
 
-# Health check
-make dev-health-check
-
-# Restart specific service
-make dev-ui-kill
-make dev-frontend  # or dev-backend, dev-worker
+# Check database
+sqlite3 ./data/sqlite/jobfinder.db
 ```
 
-### Troubleshooting
+## Troubleshooting
 
-**Port conflicts:**
+### Port conflicts
 
 ```bash
-# Check which processes are using required ports
-make dev-check-ports
+# Check which processes are using ports
+lsof -i :5173
+lsof -i :8080
 
 # Kill processes on those ports
-make dev-kill-ports
+make stop
 ```
 
-**Services not starting:**
+### Services not starting
 
 ```bash
-# Validate environment
-make dev-validate-env
+# Check dependencies
+make install
 
-# Check health
-make dev-health-check
+# Check database
+make migrate
 
-# View logs
-make dev-logs
+# View logs for errors
 ```
 
-**Emulators not connecting:**
+### Database issues
 
 ```bash
-# Check emulator status
-cd job-finder-FE
-make emulators-status
-
-# Restart emulators
-make emulators-stop
-make emulators
+# Reset database
+rm ./data/sqlite/jobfinder.db
+make migrate
 ```

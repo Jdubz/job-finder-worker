@@ -8,42 +8,79 @@ Complete guide for running the Job Finder development environment locally.
 
 ## Quick Start
 
-Start the entire development stack with one command:
+Start the development stack using Docker Compose:
 
 ```bash
-make dev-stack
+# From repository root
+make dev
 ```
 
-This starts all services in parallel:
+Or start individual services:
 
-- **Firebase Emulators** (Auth, Firestore, Functions, UI)
-- **Frontend** (React/Vite dev server)
-- **Backend** (Cloud Functions emulator)
-- **Worker** (Python job processor)
-
-Press `Ctrl+C` to stop all services.
+```bash
+make dev-api      # Start API server
+make dev-frontend # Start frontend dev server
+make dev-worker   # Start worker in Docker
+```
 
 ## Service Endpoints
 
-| Service            | URL                   | Purpose                             |
-| ------------------ | --------------------- | ----------------------------------- |
-| Frontend           | http://localhost:5173 | React application (Vite dev server) |
-| Firebase UI        | http://localhost:4000 | Emulator UI dashboard               |
-| Auth Emulator      | http://localhost:9099 | Firebase Authentication             |
-| Firestore Emulator | http://localhost:8080 | Firestore database                  |
-| Functions Emulator | http://localhost:5001 | Cloud Functions                     |
+| Service  | URL                   | Purpose                 |
+|----------|----------------------|-------------------------|
+| Frontend | http://localhost:5173 | React application (Vite)|
+| API      | http://localhost:8080 | Express backend API     |
+| Worker   | (background)          | Job processing          |
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Browser (localhost:5173)                │
+│                   Frontend React Application                │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+              ┌──────────────────────┐
+              │   Express API        │
+              │   (localhost:8080)   │
+              │   - REST endpoints   │
+              │   - Authentication   │
+              │   - Business logic   │
+              └──────────┬───────────┘
+                         │
+                         ▼
+              ┌──────────────────────┐
+              │   SQLite Database    │
+              │   (./data/sqlite/)   │
+              └──────────────────────┘
+                         ▲
+                         │
+              ┌──────────────────────┐
+              │   Python Worker      │
+              │   (Docker container) │
+              │   - Job scraping     │
+              │   - Queue processing │
+              │   - AI matching      │
+              └──────────────────────┘
+```
 
 ## Individual Commands
-
-Run services individually for focused development:
 
 ### Start Entire Stack
 
 ```bash
-make dev-stack
+make dev
 ```
 
-Starts all services in the correct order with proper delays.
+Starts all services: API, frontend, and worker.
+
+### Start API Only
+
+```bash
+make dev-api
+```
+
+Runs the Express API server on port 8080.
 
 ### Start Frontend Only
 
@@ -51,15 +88,7 @@ Starts all services in the correct order with proper delays.
 make dev-frontend
 ```
 
-Runs the React/TypeScript frontend on port 5173.
-
-### Start Backend Only
-
-```bash
-make dev-backend
-```
-
-Runs Cloud Functions emulator on port 5001.
+Runs the React/Vite dev server on port 5173.
 
 ### Start Worker Only
 
@@ -67,17 +96,9 @@ Runs Cloud Functions emulator on port 5001.
 make dev-worker
 ```
 
-Runs the Python job processing worker.
+Runs the Python worker in a Docker container.
 
-### Start Emulators Only
-
-```bash
-make dev-emulators
-```
-
-Runs Firebase emulators (Auth, Firestore, Functions) without other services.
-
-### Check Service Status
+### Check Status
 
 ```bash
 make status
@@ -88,20 +109,19 @@ Shows which services are currently running.
 ### Stop All Services
 
 ```bash
-make kill-all
+make stop
 ```
 
-Stops all development processes and frees up ports.
+Stops all development processes.
 
 ## Prerequisites
 
-Before running the dev stack, ensure you have:
-
 ### 1. Install Dependencies
 
-**Manager Repo:**
+**API (Backend):**
 
 ```bash
+cd job-finder-BE
 npm install
 ```
 
@@ -109,15 +129,6 @@ npm install
 
 ```bash
 cd job-finder-FE
-npm install
-```
-
-**Backend:**
-
-```bash
-cd job-finder-BE
-npm install
-cd functions
 npm install
 ```
 
@@ -132,22 +143,23 @@ pip install -r requirements.txt
 
 ### 2. Configure Environment Variables
 
-Each repository needs its own `.env` file:
+Each service needs its own `.env` file:
+
+**API (`job-finder-BE/.env`):**
+
+```env
+NODE_ENV=development
+PORT=8080
+SQLITE_PATH=../data/sqlite/jobfinder.db
+GOOGLE_CLIENT_ID=your-google-client-id
+ANTHROPIC_API_KEY=your-api-key
+```
 
 **Frontend (`job-finder-FE/.env`):**
 
 ```env
-VITE_FIREBASE_API_KEY=your-api-key
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_USE_EMULATORS=true
-```
-
-**Backend (`job-finder-BE/.env`):**
-
-```env
-FIREBASE_PROJECT_ID=your-project-id
-ANTHROPIC_API_KEY=your-api-key
+VITE_API_BASE_URL=http://localhost:8080
+VITE_GOOGLE_CLIENT_ID=your-google-client-id
 ```
 
 **Worker (`job-finder-worker/.env`):**
@@ -155,17 +167,22 @@ ANTHROPIC_API_KEY=your-api-key
 ```env
 ANTHROPIC_API_KEY=your-api-key
 OPENAI_API_KEY=your-api-key
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/serviceAccountKey.json
+SQLITE_PATH=/data/sqlite/jobfinder.db
 ```
 
-### 3. Firebase Setup
+### 3. Initialize Database
 
-Initialize Firebase in each repository:
+Run migrations to set up the SQLite database:
 
 ```bash
-firebase login
-cd job-finder-FE && firebase use --add
-cd job-finder-BE && firebase use --add
+make migrate
+```
+
+Or manually:
+
+```bash
+cd infra/sqlite
+./run-migrations.sh
 ```
 
 ## Development Workflow
@@ -175,73 +192,68 @@ cd job-finder-BE && firebase use --add
 1. **Start the stack:**
 
    ```bash
-   make dev-stack
+   make dev
    ```
 
 2. **Open services:**
    - Frontend: http://localhost:5173
-   - Firebase UI: http://localhost:4000
+   - API health: http://localhost:8080/api/healthz
 
 3. **Make changes:**
-   - Frontend changes hot-reload automatically
-   - Backend functions require rebuild (automatic with watch mode)
-   - Worker changes require restart
+   - Frontend changes hot-reload automatically (Vite HMR)
+   - API changes require restart (or use `npm run dev` with nodemon)
+   - Worker changes require container rebuild
 
 4. **Stop when done:**
-   - Press `Ctrl+C` (if using `make dev-stack`)
-   - Or run `make kill-all`
+   ```bash
+   make stop
+   ```
 
 ### Focused Development
 
 Working on just the frontend?
 
 ```bash
-make dev-emulators    # Terminal 1
-make dev-frontend     # Terminal 2
+make dev-api       # Terminal 1 (or ensure API is running)
+make dev-frontend  # Terminal 2
 ```
 
-Working on just the backend?
+Working on just the API?
 
 ```bash
-make dev-emulators    # Terminal 1
-make dev-backend      # Terminal 2
+cd job-finder-BE
+npm run dev
 ```
 
 Working on the worker?
 
 ```bash
-make dev-emulators    # Terminal 1
-make dev-worker       # Terminal 2
+make dev-worker
+# Or for direct Python execution:
+cd job-finder-worker
+source venv/bin/activate
+python -m src.main
 ```
 
-## Architecture Overview
+## Database Operations
 
+### View Database
+
+```bash
+sqlite3 ./data/sqlite/jobfinder.db
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Browser (localhost:5173)                │
-│                   Frontend React Application                │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ├─────────────────────────────────────┐
-                         │                                     │
-                         ▼                                     ▼
-              ┌──────────────────────┐          ┌──────────────────────┐
-              │  Firebase Emulators  │          │   Cloud Functions    │
-              │   (localhost:9099)   │          │   (localhost:5001)   │
-              │  - Auth              │          │  - API Endpoints     │
-              │  - Firestore (8080)  │◄─────────┤  - Business Logic    │
-              │  - UI (4000)         │          │  - Data Processing   │
-              └──────────┬───────────┘          └──────────────────────┘
-                         │                                     ▲
-                         │                                     │
-                         │                                     │
-                         ▼                                     │
-              ┌──────────────────────┐                        │
-              │   Python Worker      │────────────────────────┘
-              │  - Job Scraping      │
-              │  - Queue Processing  │
-              │  - AI Matching       │
-              └──────────────────────┘
+
+### Run Migrations
+
+```bash
+make migrate
+```
+
+### Reset Database
+
+```bash
+rm ./data/sqlite/jobfinder.db
+make migrate
 ```
 
 ## Troubleshooting
@@ -251,9 +263,9 @@ make dev-worker       # Terminal 2
 If you get port conflicts:
 
 ```bash
-make kill-all
+make stop
 make status  # Verify all stopped
-make dev-stack
+make dev
 ```
 
 Or manually kill specific ports:
@@ -261,145 +273,123 @@ Or manually kill specific ports:
 ```bash
 # Linux
 fuser -k 5173/tcp   # Frontend
-fuser -k 5001/tcp   # Functions
-fuser -k 9099/tcp   # Auth
-fuser -k 8080/tcp   # Firestore
-fuser -k 4000/tcp   # Firebase UI
+fuser -k 8080/tcp   # API
 
 # macOS
 lsof -ti:5173 | xargs kill -9
+lsof -ti:8080 | xargs kill -9
 ```
 
-### Firebase Emulators Won't Start
+### API Won't Start
 
-1. Check Firebase CLI is installed:
-
+1. Check Node.js is installed:
    ```bash
-   firebase --version
+   node --version  # Should be 18+
    ```
 
-2. Check you're logged in:
-
+2. Check dependencies installed:
    ```bash
-   firebase login
+   cd job-finder-BE && npm install
    ```
 
-3. Check project is configured:
+3. Check environment variables:
    ```bash
-   cd job-finder-FE
-   firebase projects:list
+   cat job-finder-BE/.env
    ```
 
-### Frontend Won't Connect to Emulators
+### Frontend Won't Connect to API
 
-1. Verify `VITE_USE_EMULATORS=true` in `job-finder-FE/.env`
-2. Check emulators are running: `make status`
-3. Check browser console for connection errors
+1. Verify API is running: http://localhost:8080/api/healthz
+2. Check `VITE_API_BASE_URL` in frontend `.env`
+3. Check browser console for CORS errors
 4. Clear browser cache and reload
 
-### Backend Functions Not Loading
+### Worker Docker Issues
 
-1. Check TypeScript compiled successfully:
-
+1. Check Docker is running:
    ```bash
-   cd job-finder-BE
-   npm run build
+   docker info
    ```
 
-2. Check for syntax errors in functions
-3. Restart emulators: `make kill-all && make dev-emulators`
-
-### Python Worker Issues
-
-1. Check virtual environment is activated:
-
+2. Rebuild container:
    ```bash
-   cd job-finder-worker
-   source venv/bin/activate
+   make dev-worker-rebuild
    ```
 
-2. Check dependencies are installed:
-
+3. View worker logs:
    ```bash
-   pip install -r requirements.txt
+   docker logs job-finder-worker
    ```
 
-3. Check environment variables are set
-4. Check Firestore emulator is accessible
+### Database Errors
 
-### Services Keep Running After Ctrl+C
+1. Check database file exists:
+   ```bash
+   ls -la ./data/sqlite/
+   ```
 
-Run the cleanup command:
+2. Run migrations:
+   ```bash
+   make migrate
+   ```
 
-```bash
-make kill-all
-```
+3. Check file permissions:
+   ```bash
+   chmod 644 ./data/sqlite/jobfinder.db
+   ```
 
 ## Development Tips
 
 ### Hot Reload
 
 - **Frontend**: Changes auto-reload (Vite HMR)
-- **Backend**: Functions auto-rebuild with watch mode
-- **Worker**: Requires manual restart
+- **API**: Use `npm run dev` for auto-restart on changes
+- **Worker**: Requires container restart
 
 ### Debug Mode
 
-Enable verbose logging:
+**API:**
+```bash
+DEBUG=* npm run dev
+```
 
 **Frontend:**
-
 ```bash
 # In job-finder-FE/.env
 VITE_LOG_LEVEL=debug
 ```
 
-**Backend:**
-
-```bash
-# View function logs in Firebase UI
-# http://localhost:4000/logs
-```
-
 **Worker:**
-
 ```bash
 cd job-finder-worker
-make run  # Already includes debug output
+LOG_LEVEL=DEBUG python -m src.main
 ```
 
-### Testing Against Real Firebase
+### Running Tests
 
-To test against staging/production instead of emulators:
+```bash
+# API tests
+cd job-finder-BE && npm test
 
-1. Set `VITE_USE_EMULATORS=false` in frontend `.env`
-2. Use `firebase use staging` or `firebase use production`
-3. Ensure proper credentials are configured
+# Frontend tests
+cd job-finder-FE && npm test
 
-Warning: Be careful when testing against production!
+# Worker tests
+cd job-finder-worker && pytest
+```
 
-## Performance Considerations
+## Resource Usage
 
-### Emulator Startup Time
+Running the full stack requires approximately:
 
-Firebase emulators take ~8 seconds to initialize. The `dev-stack` command includes appropriate delays.
-
-### Memory Usage
-
-Running the full stack requires:
-
-- ~500MB for Firebase emulators
+- ~200MB for API server
 - ~200MB for frontend dev server
-- ~300MB for backend emulator
-- ~150MB for Python worker
-- **Total: ~1.2GB RAM**
+- ~500MB for worker Docker container
+- **Total: ~900MB RAM**
 
-### Port Usage
+## Ports Used
 
-The stack uses 5 ports:
-
-- 5173 (Frontend)
-- 5001 (Functions)
-- 9099 (Auth)
-- 8080 (Firestore)
-- 4000 (Firebase UI)
+| Port | Service           |
+|------|-------------------|
+| 5173 | Vite dev server   |
+| 8080 | Express API       |

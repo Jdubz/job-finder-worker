@@ -1,96 +1,205 @@
-# Frontend Public Deployment Checklist
+# Production Deployment Checklist
 
 > Status: Active
 > Owner: @jdubz
 > Last Updated: 2025-11-25
 
-## Objectives
+## Overview
 
-1. Serve the React application via Firebase Hosting in both staging and production environments.
-2. Route public traffic through Cloudflare with TLS, caching, and WAF support on the canonical domains `job-finder-staging.joshwentworth.com` and `job-finder.joshwentworth.com`.
-3. Automate deployments from GitHub using environment-specific workflows.
-4. Manage infrastructure (Firebase resources, Cloudflare records, secrets) with Terraform to keep configuration reproducible.
-5. Provide rollback, monitoring, and operational runbooks before go-live.
+Production deployment uses Docker Compose with services exposed via Cloudflare Tunnel. This checklist covers the deployment procedures for all services.
 
-### Current Domain Map
+## Architecture
 
-- **Staging (public)**: `https://job-finder-staging.joshwentworth.com` → Cloudflare proxy → `https://job-finder-staging.web.app` (Firebase Hosting)
-- **Production (public)**: `https://job-finder.joshwentworth.com` → Cloudflare proxy → `https://job-finder-production.web.app` (Firebase Hosting)
-- Firebase `*.web.app` endpoints remain live for diagnostics and as the origin for CDN purges; Cloudflare should be treated as the user-facing entry point.
+```
+Internet → Cloudflare Tunnel → Docker Compose Stack
+                                ├── API (Express)
+                                ├── Worker (Python)
+                                └── SQLite Database
+```
+
+### Domain Configuration
+
+- **Production**: `job-finder.joshwentworth.com` → Cloudflare Tunnel → API container
+- **Staging**: `job-finder-staging.joshwentworth.com` → Cloudflare Tunnel → API container
+
+## Pre-Deployment Checklist
+
+### 1. Code Verification
+
+- [ ] All tests passing (`make test`)
+- [ ] Linting passes (`make lint`)
+- [ ] TypeScript compiles without errors
+- [ ] No security vulnerabilities in dependencies
+
+### 2. Environment Configuration
+
+- [ ] Production `.env` file configured
+- [ ] API keys and secrets set
+- [ ] Database path configured
+- [ ] Cloudflare tunnel token set
+
+### 3. Database
+
+- [ ] Migrations are up to date
+- [ ] Database backup taken (if updating schema)
+- [ ] Migration script tested locally
 
 ## Deployment Procedures
 
-### 1. Domain & Cloudflare Configuration
+### 1. Build and Push Docker Images
 
-- Confirm canonical domains (staging: `job-finder-staging.joshwentworth.com`, production: `job-finder.joshwentworth.com`)
-- Create Cloudflare DNS records (CNAME to the respective Firebase origins `job-finder-staging.web.app` and `job-finder-production.web.app`) with orange-cloud proxy enabled
-- Configure SSL mode to **Full (Strict)** and create page rules for `/*` caching headers if needed
-- Set security/WAF rules for common bot mitigation and rate limiting
-- Document Cloudflare API tokens and permissions for Terraform and CI usage
+```bash
+# Build images
+docker compose -f infra/docker-compose.yml build
 
-### 2. Firebase Hosting Setup
+# Or for specific services
+docker compose -f infra/docker-compose.yml build api
+docker compose -f infra/docker-compose.yml build worker
+```
 
-- Validate hosting targets in `.firebaserc` (`job-finder-staging`, `job-finder-production`)
-- Ensure Firebase project `static-sites-257923` contains both sites with unique domains
-- Configure custom domains within Firebase console to match Cloudflare DNS records
-- Enable preview channels for PR validation (`firebase hosting:channel:deploy`)
-- Verify CDN caching headers in `firebase.json` align with performance goals
+### 2. Run Database Migrations
 
-### 3. Infrastructure as Code (Terraform)
+```bash
+# Migrations run automatically via sqlite-migrator service
+# Or manually:
+docker compose -f infra/docker-compose.yml run --rm sqlite-migrator
+```
 
-- Extend existing Terraform (or create new module) to manage:
-  - Firebase Hosting sites (`google_firebase_hosting_site`, `google_firebase_hosting_version`)
-  - Cloudflare DNS records and SSL/TLS settings
-  - Service accounts for GitHub Actions with limited hosting deploy roles
-- Store Terraform state in shared backend (e.g., GCS bucket) and document workflow
-- Add secrets management for environment variables (Firebase Remote Config or Secret Manager) instead of storing `.env.*` in git
+### 3. Deploy Services
 
-### 4. Build & Environment Configuration
+```bash
+# Deploy all services
+docker compose -f infra/docker-compose.yml up -d
 
-- Audit `.env.staging` and `.env.production`; migrate sensitive values to GitHub Secrets & Firebase via `firebase functions:config:set` or Secret Manager
-- Update Vite build pipeline to read runtime config from environment variables supplied during CI (no checked-in secrets)
-- Add integration tests post-build that hit Cloud Functions using stubbed AI/paid-service calls; no full E2E browser pass required in CI
+# Check service status
+docker compose -f infra/docker-compose.yml ps
 
-### 5. CI/CD Workflow Hardening
+# View logs
+docker compose -f infra/docker-compose.yml logs -f
+```
 
-- Split GitHub secrets: `FIREBASE_SERVICE_ACCOUNT_STAGING`, `FIREBASE_SERVICE_ACCOUNT_PROD`, Cloudflare API tokens, etc.
-- Update `deploy-staging.yml` and `deploy-production.yml` to:
-  - Use matrix caching for `npm ci`
-  - Run unit, lint, type-check, and integration suites with all AI/third-party calls stubbed or mocked
-  - Deploy via `FirebaseExtended/action-hosting-deploy` with environment-specific credentials
-  - Post deployment, trigger synthetic check hitting `/health` endpoint on Functions
-- Add manual approval gate (environment protection rule) for production deploys
-- Enable PR check workflow to build preview channel and comment URL on PR
+### 4. Verify Deployment
 
-### 6. Monitoring, Logging & Rollback
+```bash
+# Health check
+curl https://job-finder.joshwentworth.com/api/healthz
 
-- Enable Firebase Hosting logs export to Google Cloud Logging; wire to alerting (PagerDuty/email)
-- Instrument frontend with Google Analytics 4 / alternative as required
-- Define rollback procedure (re-deploy previous version or activate Hosting rollback command)
-- Add runbook covering DNS changes, CI/CD secrets rotation, and incident response steps
+# Readiness check
+curl https://job-finder.joshwentworth.com/api/readyz
+```
 
-### 7. Launch Readiness Checklist
+## Docker Compose Services
 
-- Domain ownership verified and SSL propagated
-- CI pipelines green for 3 consecutive runs
-- Smoke tests covering primary flows
-- Documentation published (`README.md`, `DEPLOYMENT.md`) with step-by-step instructions
-- Stakeholder sign-off before flipping production DNS to new frontend
+| Service          | Purpose                          |
+|-----------------|----------------------------------|
+| `api`           | Express backend API              |
+| `worker`        | Python job processing worker     |
+| `sqlite-migrator`| Database migrations (run once)  |
+| `cloudflared`   | Cloudflare tunnel for external access |
+| `watchtower`    | Automatic container updates      |
 
-## Roles & Ownership
+## Rollback Procedures
 
-| Workstream            | Primary  | Support  |
-| --------------------- | -------- | -------- |
-| Cloudflare/DNS        | PM       | Worker B |
-| Firebase Hosting      | Worker B | PM       |
-| Terraform IaC         | PM       | Worker B |
-| Build & Env Config    | Worker B | PM       |
-| CI/CD Workflows       | Worker B | PM       |
-| Monitoring & Runbooks | PM       | Worker B |
+### Quick Rollback
 
-## Open Considerations
+```bash
+# Stop current deployment
+docker compose -f infra/docker-compose.yml down
 
-1. Final production/staging domain names?
-2. Preferred analytics/monitoring stack (GA4, Sentry, etc.)?
-3. Do we require multi-region hosting or is single region acceptable?
-4. Any compliance requirements (cookie consent, GDPR banners) before public launch?
+# Pull previous image version
+docker pull your-registry/job-finder-api:previous-tag
+
+# Redeploy with previous version
+docker compose -f infra/docker-compose.yml up -d
+```
+
+### Database Rollback
+
+If a migration caused issues:
+
+1. Stop services
+2. Restore database from backup
+3. Revert code to previous version
+4. Redeploy
+
+## Monitoring Post-Deployment
+
+### Immediate Checks (0-15 minutes)
+
+- [ ] Health endpoints responding
+- [ ] No errors in application logs
+- [ ] Cloudflare tunnel connected
+- [ ] API requests completing successfully
+
+### Short-term Monitoring (15-60 minutes)
+
+- [ ] Error rates normal
+- [ ] Response times acceptable
+- [ ] Worker processing queue items
+- [ ] No memory leaks or resource issues
+
+## Environment Variables
+
+### Required for Production
+
+```env
+NODE_ENV=production
+PORT=8080
+SQLITE_PATH=/data/sqlite/jobfinder.db
+GOOGLE_CLIENT_ID=your-client-id
+ANTHROPIC_API_KEY=your-api-key
+OPENAI_API_KEY=your-api-key
+CLOUDFLARE_TUNNEL_TOKEN=your-tunnel-token
+```
+
+## CI/CD Pipeline
+
+### GitHub Actions Workflow
+
+Automated deployment triggers on:
+- Push to `main` branch (production)
+- Push to `staging` branch (staging)
+
+Workflow steps:
+1. Run tests
+2. Build Docker images
+3. Push to container registry
+4. Deploy via SSH/Docker Compose
+
+## Security Checklist
+
+- [ ] No secrets in code or logs
+- [ ] HTTPS enforced via Cloudflare
+- [ ] CORS configured correctly
+- [ ] Rate limiting enabled
+- [ ] Authentication working
+
+## Troubleshooting
+
+### API Not Responding
+
+1. Check container status: `docker compose ps`
+2. View logs: `docker compose logs api`
+3. Check Cloudflare tunnel: `docker compose logs cloudflared`
+4. Verify database connectivity
+
+### Worker Not Processing
+
+1. Check worker logs: `docker compose logs worker`
+2. Verify database access
+3. Check queue for stuck items
+4. Restart worker: `docker compose restart worker`
+
+### Database Issues
+
+1. Check database file permissions
+2. Verify volume mount
+3. Check disk space
+4. Review migration logs
+
+## Post-Deployment Documentation
+
+After deployment, update:
+- [ ] Version changelog
+- [ ] Deployment log with date/time
+- [ ] Any configuration changes made

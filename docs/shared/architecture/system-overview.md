@@ -6,136 +6,145 @@
 
 ## Overview
 
-The Job Finder application follows a 3-repository architecture with clear separation of concerns. The system consists of a queue worker, a frontend application with cloud functions, and shared type definitions.
+The Job Finder application is a containerized monorepo with three main services: an Express API backend, a React frontend, and a Python worker for job processing. All services share a SQLite database and are orchestrated via Docker Compose.
 
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Job Finder Application                   │
-├─────────────────────────────────────────────────────────────┤
-│  Frontend + Cloud Functions  │  Queue Worker (Python)      │
-│  ┌─────────────────────────┐   │  ┌─────────────────────────┐ │
-│  │  job-finder-FE/        │   │  │  job-finder/           │ │
-│  │  - React Frontend       │   │  │  - Queue Processing    │ │
-│  │  - Firebase Functions   │   │  │  - Scraping Logic      │ │
-│  │  - User Interface       │   │  │  - E2E Testing         │ │
-│  │  - State Management     │   │  │  - Data Processing     │ │
-│  └─────────────────────────┘   │  └─────────────────────────┘ │
-│                                │                              │
-│  ┌─────────────────────────┐   │  ┌─────────────────────────┐ │
-│  │  job-finder-shared-    │   │  │  Project Management    │ │
-│  │  types/                │   │  │  ┌─────────────────┐   │ │
-│  │  - Firestore Types     │   │  │  │  job-finder-    │   │ │
-│  │  - Data Structures     │   │  │  │  app-manager/   │   │ │
-│  │  - Data Models        │   │  │  │  - Coordination │   │ │
-│  │  - Validation         │   │  │  │  - Documentation│   │ │
-│  └─────────────────────────┘   │  │  │  - Task Management│   │ │
-│                                │  │  └─────────────────┘   │ │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    Job Finder Application                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────┐  ┌─────────────────────────────────┐   │
+│  │  Frontend           │  │  Backend API                     │   │
+│  │  (job-finder-FE/)   │  │  (job-finder-BE/)               │   │
+│  │  ─────────────────  │  │  ────────────────────────────── │   │
+│  │  - React 19         │  │  - Express.js                   │   │
+│  │  - TypeScript       │  │  - TypeScript                   │   │
+│  │  - Vite             │  │  - SQLite (better-sqlite3)      │   │
+│  │  - TailwindCSS      │  │  - Google OAuth                 │   │
+│  │  - Radix UI         │  │  - Pino logging                 │   │
+│  └─────────────────────┘  └─────────────────────────────────┘   │
+│                                                                  │
+│  ┌─────────────────────┐  ┌─────────────────────────────────┐   │
+│  │  Worker             │  │  Shared Types                    │   │
+│  │  (job-finder-worker)│  │  (shared/)                      │   │
+│  │  ─────────────────  │  │  ────────────────────────────── │   │
+│  │  - Python/Flask     │  │  - TypeScript definitions       │   │
+│  │  - Selenium         │  │  - API contracts                │   │
+│  │  - SQLAlchemy       │  │  - Data models                  │   │
+│  │  - Anthropic/OpenAI │  │  - Shared interfaces            │   │
+│  └─────────────────────┘  └─────────────────────────────────┘   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Repository Structure
+## Service Structure
 
-### Frontend Repository (job-finder-FE/)
+### Frontend (job-finder-FE/)
 
-- **Technology**: React with TypeScript
-- **Purpose**: User interface and user experience
-- **Key Components**:
-  - Job search interface and job listing views
-  - Queue monitoring and document builder flows
-  - Firebase Authentication client
-  - Integrations with Cloud Functions for data retrieval
-  - Served publicly via Cloudflare at `job-finder-staging.joshwentworth.com` (staging) and `job-finder.joshwentworth.com` (production), proxying Firebase Hosting origins (`job-finder-staging.web.app`, `job-finder-production.web.app`).
+- **Framework**: React 19 with TypeScript
+- **Build Tool**: Vite
+- **UI Components**: Radix UI + TailwindCSS
+- **Authentication**: Google OAuth (client-side)
+- **Testing**: Playwright, Vitest, React Testing Library
 
-### Cloud Functions Repository (job-finder-BE/)
+### Backend API (job-finder-BE/)
 
-- **Technology**: Firebase Cloud Functions (TypeScript)
-- **Purpose**: Serve data and operations to the frontend over callable/HTTP Functions
-- **Key Components**:
-  - Read/write access to Firestore collections the UI consumes
-  - Configuration/document generation endpoints migrated from portfolio
-  - Lightweight validation, auth, and response shaping
+- **Framework**: Express.js with TypeScript
+- **Database**: SQLite with better-sqlite3 driver
+- **Authentication**: Google OAuth ID token verification
+- **Authorization**: Role-based access control (admin, viewer)
+- **Logging**: Pino (structured JSON)
+- **Port**: 8080
 
-### Queue Worker Repository (job-finder/)
+### Worker (job-finder-worker/)
 
-- **Technology**: Python
-- **Purpose**: Perform all queue processing, scraping, AI analysis, and data enrichment
-- **Key Components**:
-  - Job and company scraping pipelines
-  - AI-driven analysis and scoring logic
-  - Firestore persistence for job matches and supporting collections
-  - Scheduled tasks and scripting to keep the queue healthy
+- **Language**: Python 3.9+
+- **Framework**: Flask
+- **Database**: SQLAlchemy (SQLite)
+- **Scraping**: Selenium, BeautifulSoup
+- **AI Integration**: Anthropic Claude, OpenAI
+- **Data Processing**: pandas
 
-### Shared Types Repository (job-finder-shared-types/)
+### Shared Types (shared/)
 
-- **Technology**: TypeScript
-- **Purpose**: Shared type definitions and contracts
-- **Key Components**:
-  - API contract types
-  - Data model types
-  - Validation schemas
-  - Shared interfaces
-
-### Project Management Repository (job-finder-app-manager/)
-
-- **Technology**: Markdown, YAML
-- **Purpose**: Project coordination and documentation
-- **Key Components**:
-  - Task management
-  - Documentation
-  - Team coordination
-  - Process management
+- **Language**: TypeScript
+- **Purpose**: Shared type definitions across frontend and backend
+- **Package**: `@shared/types` workspace dependency
 
 ## Data Flow
 
 ### User Request Flow
 
-1. **User Interface**: User interacts with the React frontend.
-2. **Cloud Functions**: The frontend calls Firebase Cloud Functions to read/write Firestore data and trigger curated operations.
-3. **Data Backend**: Cloud Functions apply lightweight validation and return data.
-4. **Display**: Frontend renders the results for the user.
+1. **Browser**: User interacts with React frontend
+2. **API Request**: Frontend calls Express API endpoints
+3. **Authentication**: API validates Google OAuth token
+4. **Database**: API queries/updates SQLite database
+5. **Response**: Data returned to frontend for rendering
 
-### Data Processing Flow
+### Job Processing Flow
 
-1. **Queue Intake**: User submissions and automated discoveries are written to Firestore queue collections.
-2. **Job Scraping & Analysis**: The Python worker pulls queue items, performs scraping, AI scoring, and enrichment (no Cloud Function involvement).
-3. **Data Storage**: The worker persists results (job matches, company info, queue state) back to Firestore.
-4. **Cloud Functions**: Functions surface the processed data to the frontend via callable/HTTP endpoints.
-5. **Frontend Consumption**: The frontend reads from Cloud Functions and renders the enriched data.
+1. **Queue Submission**: User or system adds jobs to queue (via API)
+2. **Worker Polling**: Python worker monitors queue for pending items
+3. **Scraping**: Worker scrapes job listings using Selenium
+4. **AI Analysis**: Worker analyzes jobs using Claude/OpenAI
+5. **Storage**: Results persisted to SQLite via SQLAlchemy
+6. **Display**: Frontend fetches processed results via API
 
-## Technology Stack
+## Database Schema
 
-### Frontend Stack
+SQLite database with migrations managed in `/infra/sqlite/migrations/`.
 
-- **Framework**: React
-- **Language**: TypeScript
-- **Build Tool**: Vite
-- **Testing**: Jest, React Testing Library, Playwright
+**Key Tables**:
+- `users` - User accounts and roles
+- `jobs` - Job listings
+- `job_matches` - Matched jobs with scores
+- `queue_items` - Processing queue
+- `companies` - Company information
+- `content_items` - Resume/portfolio content
 
-### Backend Stack
+## API Routes
 
-- **Framework**: Python (Django/FastAPI)
-- **Language**: Python
-- **Authentication**: Firebase Authentication
-- **Testing**: pytest, unittest
+```
+/api/
+  ├── /content-items    (authenticated)
+  ├── /queue            (authenticated)
+  ├── /job-matches      (authenticated)
+  ├── /config           (admin-only)
+  ├── /generator        (authenticated)
+  │   ├── /artifacts
+  │   └── /workflow
+  ├── /prompts          (public GET, authenticated mutations)
+  ├── /healthz          (health check)
+  └── /readyz           (readiness check)
+```
 
-### Shared Stack
+## Infrastructure
 
-- **Language**: TypeScript
+### Docker Compose Services
 
-## Integration Points
+Production deployment via Docker Compose with 5 services:
 
-### Frontend-Backend Integration
+1. **api** - Express backend (port 8080)
+2. **worker** - Python job processor
+3. **sqlite-migrator** - Database migrations on startup
+4. **cloudflared** - Cloudflare tunnel for external access
+5. **watchtower** - Automatic container updates
 
-- **API Contracts**: Defined in shared types
-- **Authentication**: Coordinated between frontend and backend
-- **Data Flow**: Structured data flow between components
-- **Error Handling**: Consistent error handling across stack
+### Database Location
 
-### Cross-Repository Coordination
+- **Development**: `./data/sqlite/jobfinder.db`
+- **Production**: `/data/sqlite/jobfinder.db` (Docker volume)
 
-- **Shared Types**: Maintained in shared types repository
-- **API Versioning**: Coordinated versioning strategy
-- **Deployment**: Coordinated deployment process
-- **Testing**: Integrated testing across repositories
+## Technology Stack Summary
+
+| Layer      | Technology           |
+|------------|---------------------|
+| Frontend   | React, TypeScript, Vite, TailwindCSS |
+| Backend    | Express.js, TypeScript |
+| Database   | SQLite (better-sqlite3, SQLAlchemy) |
+| Worker     | Python, Flask, Selenium |
+| AI         | Anthropic Claude, OpenAI |
+| Auth       | Google OAuth |
+| Deployment | Docker Compose, Cloudflare |
