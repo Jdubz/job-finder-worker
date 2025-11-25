@@ -10,6 +10,7 @@ import { DEFAULT_PROMPTS } from "@shared/types"
 import { asyncHandler } from "../../utils/async-handler"
 import { success } from "../../utils/api-response"
 import { PromptsRepository } from "./prompts.repository"
+import { publicReadPrivateWrite } from "../../middleware/optional-auth"
 
 const promptSchema = z.object({
   resumeGeneration: z.string().min(1),
@@ -36,6 +37,9 @@ const withMetadata = (prompts: PromptConfig, userEmail: string): PromptConfig =>
 export function buildPromptsRouter() {
   const router = Router()
   const repository = new PromptsRepository()
+
+  // Apply selective auth: public GET, authenticated PUT/POST
+  router.use(publicReadPrivateWrite)
 
   router.get(
     "/",
