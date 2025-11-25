@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { asyncHandler } from '../../utils/async-handler'
-import { apiResponse } from '../../utils/api-response'
+import { success } from '../../utils/api-response'
 import { loggingController } from './logging.controller'
 import { validateLogRequest } from './logging.validation'
 
@@ -13,7 +13,7 @@ export function buildLoggingRouter(): Router {
     validateLogRequest,
     asyncHandler(async (req, res) => {
       const result = await loggingController.storeLogs(req)
-      res.json(apiResponse(result))
+      res.json(success(result))
     })
   )
 
