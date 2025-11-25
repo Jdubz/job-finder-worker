@@ -64,11 +64,6 @@ function buildAuthenticatedUser(profile: GoogleUser): AuthenticatedUser | null {
 
   const roles = resolveRoles(profile.email)
 
-  if (roles.length === 0) {
-    logger.warn({ email: profile.email }, "User has no resolved roles")
-    return null
-  }
-
   return {
     uid: profile.uid ?? profile.email,
     email: profile.email,
