@@ -1,0 +1,19 @@
+{
+  "generateType": "both",
+  "job": {
+    "role": "Senior Software Engineer - Full Stack",
+    "company": "Veeva Systems",
+    "companyWebsite": "https://www.veeva.com",
+    "jobDescriptionUrl": "https://careers.veeva.com/job/25574132-ddc6-4b1a-8f93-36da102592a8/senior-software-engineer-full-stack-portland-or",
+    "jobDescriptionText": "Mission-driven public benefit corp building industry cloud for life sciences. Full-time remote-friendly role in Portland, OR. Responsibilities: participate in all SDLC phases; design and build cutting-edge life sciences apps with PMs, engineers, and domain experts; collaborate with QA for comprehensive coverage; troubleshoot and support production; mentor junior engineers. Requirements: 5+ years software product development; strong JavaScript + React; backend experience in Java; SQL/RDBMS (MySQL/Oracle/SQL Server); CSS abstraction (SASS/JSS); strong communication; BS CS/Engineering or equivalent; proven mentoring track record. Nice: Agile, Spring, ES6, SaaS background, content management knowledge. Compensation listed $110k–$270k base; flexible PTO; medical/dental/vision; 1% charitable giving."
+  },
+  "preferences": {
+    "style": "technical",
+    "emphasize": [
+      "mentorship",
+      "distributed systems",
+      "quality and testing",
+      "remote collaboration"
+    ]
+  }
+}
