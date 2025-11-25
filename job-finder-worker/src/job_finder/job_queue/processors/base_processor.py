@@ -24,6 +24,7 @@ from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_storage import JobStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.utils.company_info import should_skip_by_stop_list
+from job_finder.logging_config import get_structured_logger
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,11 @@ class BaseProcessor:
         self.company_info_fetcher = company_info_fetcher
         self.ai_matcher = ai_matcher
         self.profile = profile
+
+        # Structured logger for traceable, queryable log fields
+        self.slogger = get_structured_logger(
+            f"{self.__class__.__module__}.{self.__class__.__name__}"
+        )
 
         # Initialize strike-based filter engine
         filter_config = config_loader.get_job_filters()

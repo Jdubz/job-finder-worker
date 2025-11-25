@@ -6,6 +6,7 @@ Legacy sub_task routing has been removed to keep a single pipeline.
 """
 
 import logging
+import time
 from typing import Any, Dict, Optional
 
 from job_finder.utils.company_info import build_company_info_string
@@ -47,6 +48,13 @@ class JobProcessor(BaseProcessor):
             logger.error("Cannot process item without ID")
             return
 
+        self.slogger.queue_item_processing(
+            item.id,
+            "job",
+            "processing",
+            {"url": item.url, "pipeline_stage": state.get("pipeline_stage", "unknown")},
+        )
+
         # Get current pipeline state
         state = item.pipeline_state or {}
 
@@ -85,6 +93,9 @@ class JobProcessor(BaseProcessor):
         if not item.id:
             logger.error("Cannot process item without ID")
             return
+
+        self.slogger.pipeline_stage(item.id, "scrape", "started", {"url": item.url})
+        start = time.monotonic()
 
         logger.info(f"JOB_SCRAPE: Extracting job data from {item.url[:50]}...")
 
@@ -129,8 +140,25 @@ class JobProcessor(BaseProcessor):
                 f"JOB_SCRAPE complete: {job_data.get('title')} at {job_data.get('company')}"
             )
 
+            self.slogger.pipeline_stage(
+                item.id,
+                "scrape",
+                "completed",
+                {
+                    "url": item.url,
+                    "source": source.get("name") if source else "generic",
+                    "duration_ms": round((time.monotonic() - start) * 1000),
+                },
+            )
+
         except Exception as e:
             logger.error(f"Error in JOB_SCRAPE: {e}")
+            self.slogger.pipeline_stage(
+                item.id,
+                "scrape",
+                "failed",
+                {"url": item.url, "error": str(e)},
+            )
             raise
 
     def _do_job_filter(self, item: JobQueueItem) -> None:
@@ -147,6 +175,9 @@ class JobProcessor(BaseProcessor):
         if not job_data:
             logger.error("No job_data in pipeline_state")
             return
+
+        self.slogger.pipeline_stage(item.id, "filter", "started", {"job_title": job_data.get("title")})
+        start = time.monotonic()
 
         logger.info(f"JOB_FILTER: Evaluating {job_data.get('title')} at {job_data.get('company')}")
 
@@ -189,8 +220,25 @@ class JobProcessor(BaseProcessor):
 
             logger.info(f"JOB_FILTER complete: Passed with {filter_result.total_strikes} strikes")
 
+            self.slogger.pipeline_stage(
+                item.id,
+                "filter",
+                "completed",
+                {
+                    "job_title": job_data.get("title"),
+                    "strikes": filter_result.total_strikes,
+                    "duration_ms": round((time.monotonic() - start) * 1000),
+                },
+            )
+
         except Exception as e:
             logger.error(f"Error in JOB_FILTER: {e}")
+            self.slogger.pipeline_stage(
+                item.id,
+                "filter",
+                "failed",
+                {"job_title": job_data.get("title"), "error": str(e)},
+            )
             raise
 
     def _do_job_analyze(self, item: JobQueueItem) -> None:
@@ -207,6 +255,17 @@ class JobProcessor(BaseProcessor):
         if not job_data:
             logger.error("No job_data in pipeline_state")
             return
+
+        self.slogger.pipeline_stage(
+            item.id,
+            "analyze",
+            "started",
+            {
+                "job_title": job_data.get("title"),
+                "company": job_data.get("company"),
+            },
+        )
+        start = time.monotonic()
 
         logger.info(f"JOB_ANALYZE: Analyzing {job_data.get('title')} at {job_data.get('company')}")
 
@@ -266,8 +325,31 @@ class JobProcessor(BaseProcessor):
                 f"Priority {result.application_priority}"
             )
 
+            self.slogger.pipeline_stage(
+                item.id,
+                "analyze",
+                "completed",
+                {
+                    "job_title": job_data.get("title"),
+                    "company": job_data.get("company"),
+                    "match_score": result.match_score,
+                    "priority": result.application_priority,
+                    "duration_ms": round((time.monotonic() - start) * 1000),
+                },
+            )
+
         except Exception as e:
             logger.error(f"Error in JOB_ANALYZE: {e}")
+            self.slogger.pipeline_stage(
+                item.id,
+                "analyze",
+                "failed",
+                {
+                    "job_title": job_data.get("title"),
+                    "company": job_data.get("company"),
+                    "error": str(e),
+                },
+            )
             raise
 
     def _do_job_save(self, item: JobQueueItem) -> None:
@@ -286,6 +368,17 @@ class JobProcessor(BaseProcessor):
         if not job_data or not match_result_dict:
             logger.error("Missing job_data or match_result in pipeline_state")
             return
+
+        self.slogger.pipeline_stage(
+            item.id,
+            "save",
+            "started",
+            {
+                "job_title": job_data.get("title"),
+                "company": job_data.get("company"),
+            },
+        )
+        start = time.monotonic()
 
         logger.info(f"JOB_SAVE: Saving {job_data.get('title')} at {job_data.get('company')}")
 
@@ -310,8 +403,30 @@ class JobProcessor(BaseProcessor):
                 pipeline_stage="save",
             )
 
+            self.slogger.pipeline_stage(
+                item.id,
+                "save",
+                "completed",
+                {
+                    "job_title": job_data.get("title"),
+                    "company": job_data.get("company"),
+                    "doc_id": doc_id,
+                    "duration_ms": round((time.monotonic() - start) * 1000),
+                },
+            )
+
         except Exception as e:
             logger.error(f"Error in JOB_SAVE: {e}")
+            self.slogger.pipeline_stage(
+                item.id,
+                "save",
+                "failed",
+                {
+                    "job_title": job_data.get("title"),
+                    "company": job_data.get("company"),
+                    "error": str(e),
+                },
+            )
             raise
 
     def _respawn_job_with_state(
@@ -342,8 +457,20 @@ class JobProcessor(BaseProcessor):
             logger.info(
                 f"Requeued item {current_item.id} for {next_stage}: {current_item.url[:50]}"
             )
+            self.slogger.queue_item_processing(
+                current_item.id,
+                "job",
+                "requeued",
+                {"next_stage": next_stage, "url": current_item.url},
+            )
         except Exception as e:
             logger.error(f"Failed to requeue item {current_item.id}: {e}")
+            self.slogger.queue_item_processing(
+                current_item.id,
+                "job",
+                "requeue_failed",
+                {"next_stage": next_stage, "url": current_item.url, "error": str(e)},
+            )
             raise
 
     # ============================================================
