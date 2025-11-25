@@ -210,11 +210,11 @@ class ScrapeRunner:
             company = self.companies_manager.get_company_by_id(company_id)
             if company:
                 company_name = company.get("name") or company_name
-                company_website = company.get("website") or company.get("company_website")
+                company_website = company.get("website")
         if company_name:
-            config = {**config, "name": company_name}
+            config["name"] = company_name
         if company_website:
-            config = {**config, "company_website": company_website}
+            config["company_website"] = company_website
 
         logger.info(f"\n📡 Scraping source: {source_name} ({source_type})")
 
