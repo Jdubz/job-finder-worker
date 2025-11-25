@@ -17,7 +17,7 @@ import uuid
 from typing import Any, Dict, Optional
 
 from job_finder.exceptions import ConfigurationError, QueueProcessingError
-from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus, SourceStatus
+from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 
 from .base_processor import BaseProcessor
 
