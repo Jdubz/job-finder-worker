@@ -36,6 +36,7 @@ from job_finder.job_queue.processor import QueueItemProcessor
 from job_finder.storage import JobStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
+from job_finder.exceptions import InitializationError
 
 # Load environment variables
 load_dotenv()
@@ -168,7 +169,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     try:
         profile = profile_loader.load_profile()
     except InitializationError as exc:
-        s_logger.worker_status("profile_load_failed", {"error": str(exc)})
+        slogger.worker_status("profile_load_failed", {"error": str(exc)})
         profile = Profile(
             name="Fallback User",
             email=None,

@@ -48,15 +48,15 @@ class JobProcessor(BaseProcessor):
             logger.error("Cannot process item without ID")
             return
 
+        # Get current pipeline state
+        state = item.pipeline_state or {}
+
         self.slogger.queue_item_processing(
             item.id,
             "job",
             "processing",
             {"url": item.url, "pipeline_stage": state.get("pipeline_stage", "unknown")},
         )
-
-        # Get current pipeline state
-        state = item.pipeline_state or {}
 
         # Decision tree: determine what action to take based on state
         has_job_data = "job_data" in state
@@ -176,7 +176,9 @@ class JobProcessor(BaseProcessor):
             logger.error("No job_data in pipeline_state")
             return
 
-        self.slogger.pipeline_stage(item.id, "filter", "started", {"job_title": job_data.get("title")})
+        self.slogger.pipeline_stage(
+            item.id, "filter", "started", {"job_title": job_data.get("title")}
+        )
         start = time.monotonic()
 
         logger.info(f"JOB_FILTER: Evaluating {job_data.get('title')} at {job_data.get('company')}")
