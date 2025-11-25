@@ -7,21 +7,47 @@ import type { PdfMakeService } from '../workflow/services/pdfmake.service'
 import { storageService } from '../workflow/services/storage.service'
 import type { PersonalInfo, ContentItem } from '@shared/types'
 
-vi.mock('../workflow/services/cli-runner', () => ({
-  runCliProvider: vi.fn().mockResolvedValue({
-    success: true,
-    output: JSON.stringify({
-      personalInfo: {
-        name: 'Test User',
-        title: 'Engineer',
-        summary: 'Test summary',
-        contact: { email: 'test@example.com' }
-      },
-      professionalSummary: 'Summary',
-      experience: []
+vi.mock('../workflow/services/cli-runner', () => {
+  const runCliProvider = vi.fn().mockImplementation((prompt: string) => {
+    const isCover = prompt.includes('cover letter') || prompt.includes('Return the result as a JSON object with keys: greeting')
+    if (isCover) {
+      return Promise.resolve({
+        success: true,
+        output: JSON.stringify({
+          greeting: 'Hello Hiring Team,',
+          openingParagraph: 'I am excited to apply.',
+          bodyParagraphs: ['Body paragraph one'],
+          closingParagraph: 'Thank you for your consideration.',
+          signature: 'Test User'
+        })
+      })
+    }
+    return Promise.resolve({
+      success: true,
+      output: JSON.stringify({
+        personalInfo: {
+          name: 'Test User',
+          title: 'Engineer',
+          summary: 'Test summary',
+          contact: { email: 'test@example.com' }
+        },
+        professionalSummary: 'Summary',
+        experience: [
+          {
+            company: 'Acme Corp',
+            role: 'Engineer',
+            startDate: '2020-01',
+            endDate: '2021-01',
+            highlights: ['Did things']
+          }
+        ],
+        skills: [{ category: 'Core', items: ['JS'] }],
+        education: []
+      })
     })
   })
-}))
+  return { runCliProvider }
+})
 
 vi.mock('../workflow/services/storage.service', () => {
   const saveArtifactWithMetadata = vi.fn().mockResolvedValue({
@@ -190,6 +216,23 @@ const storageMock = vi.mocked(storageService)
     expect(resumeResult?.steps.find((s) => s.id === 'generate-resume')?.status).toBe('completed')
     const request = repo.getRequest(requestId)
     expect(request?.resumeUrl).toBe('http://example.com/resume.pdf')
+    expect(repo.listArtifacts(requestId)).toHaveLength(1)
+  })
+
+  it('runNextStep generates cover letter and stores artifact/url', async () => {
+    const service = new GeneratorWorkflowService(
+      pdfService,
+      repo as unknown as GeneratorWorkflowRepository,
+      personalInfoStore as unknown as PersonalInfoStore,
+      contentItemRepo as unknown as ContentItemRepository
+    )
+    const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+    await service.runNextStep(requestId) // collect-data
+    const coverResult = await service.runNextStep(requestId)
+
+    expect(coverResult?.steps.find((s) => s.id === 'generate-cover-letter')?.status).toBe('completed')
+    const request = repo.getRequest(requestId)
+    expect(request?.coverLetterUrl).toBe('http://example.com/resume.pdf')
     expect(repo.listArtifacts(requestId)).toHaveLength(1)
   })
 })
