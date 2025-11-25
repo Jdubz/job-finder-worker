@@ -6,26 +6,36 @@
 
 This document tracks implementation gaps between the decision tree architecture (see `queue-decision-tree.md`) and the current codebase.
 
+## Terminology
+
+- **Task**: A work unit in the queue (formerly called "queue item" or "job")
+- **Job**: An employment opportunity (job listing, job match)
+- **Queue Item Types**: COMPANY, JOB_LISTING, SCRAPE, SOURCE_DISCOVERY, SCRAPE_SOURCE
+
 ## Current Implementation Status
 
 ### Implemented
 
 | Component | Location | Status |
 |-----------|----------|--------|
-| Job Pipeline (SCRAPE → FILTER → ANALYZE → SAVE) | `processor.py` | Complete |
-| Company Pipeline (FETCH → EXTRACT → ANALYZE → SAVE) | `processor.py` | Complete |
-| Source Discovery | `processor.py` | Complete |
+| Job Listing Pipeline (SCRAPE → FILTER → ANALYZE → SAVE) | `job_processor.py` | Complete |
+| Company Pipeline (FETCH → EXTRACT → ANALYZE → SAVE) | `company_processor.py` | Complete |
+| Source Discovery | `source_processor.py` | Complete |
+| SCRAPE_SOURCE Task Type | `source_processor.py` | Complete (2025-11-25) |
 | Loop Prevention (tracking_id, ancestry_chain, spawn_depth) | `manager.py` | Complete |
 | Source Health Tracking | `job_sources_manager.py` | Complete |
 | Strike-Based Filtering | `filters/strike_filter_engine.py` | Complete |
+| Discovery Confidence Levels | `job_sources_manager.py` | Complete |
 
 ---
 
 ## Implementation Gaps
 
-### Gap 1: Job → Company Spawning
+### Gap 1: Job Listing → Company Task Spawning (HIGH PRIORITY)
 
-**Current Behavior**:
+**Status**: Required for architectural consistency
+
+**Current Behavior** (`job_processor.py:291`):
 ```python
 company = self.companies_manager.get_or_create_company(
     company_name=company_name,
@@ -33,175 +43,227 @@ company = self.companies_manager.get_or_create_company(
     fetch_info_func=self.company_info_fetcher.fetch_company_info,
 )
 ```
-Creates company record **inline** with basic scraping. No queue item spawned.
+Creates company record **inline** with basic scraping. No queue task spawned.
 
-**Problem**:
+**Problems**:
+- Breaks consistent queue-based architecture paradigm
 - Company gets minimal info (about/culture scraped inline)
 - No tech stack detection
 - No priority scoring
 - No job board discovery
-- Blocks job analysis until company fetch completes
-
-**Decision Tree Requirement**:
-When processing a job with unknown company → Spawn COMPANY_FETCH item for full analysis
-
-**Impact**: Medium priority
-
----
-
-### Gap 2: Record Status Tracking
-
-**Current State**: Companies and sources lack status field
-
-**Required States**:
-- `status: "analyzing"` - Currently being processed
-- `status: "pending_validation"` - Awaiting manual approval
-- `status: "active"` - Validated and ready for use
-- `status: "failed"` - Analysis failed permanently
-
-**Required Changes**:
-1. Add `status` field to companies collection
-2. Add `status` field to job-sources collection
-3. Update status at each pipeline stage
-4. Query by status for monitoring dashboards
-
-**Impact**: Low priority - Nice-to-have for visibility
-
----
-
-### Gap 3: Data Quality Thresholds
-
-**Current Behavior**:
-```python
-has_about = len(company.get("about", "")) > 100
-has_culture = len(company.get("culture", "")) > 50
-
-if has_about or has_culture:
-    return company  # Use cached
-```
-
-Checks exist but not comprehensive.
-
-**Required Implementation**:
-```python
-def should_reanalyze_company(company_data):
-    # Check completeness threshold
-    is_minimal = (about > 50 or culture > 25)
-    is_good = (about > 100 and culture > 50)
-
-    # Check freshness
-    updated_at = company_data.get("updatedAt")
-    is_stale = (now - updated_at) > 30 days
-
-    # Re-analyze if sparse OR stale
-    return (not is_good) or is_stale
-```
-
-**Impact**: Medium priority - Prevents redundant AI calls
-
----
-
-### Gap 4: Job Board Confidence Level Handling
-
-**Current Behavior**:
-```python
-if job_board_url and job_board_url != company_website:
-    self._spawn_source_discovery(...)  # Always spawns
-```
+- Blocks job listing analysis until company fetch completes
+- No retry/error handling via queue mechanisms
 
 **Required Behavior**:
-- **High confidence** (Greenhouse, RSS): Auto-spawn SOURCE_DISCOVERY
-- **Medium confidence** (Workday, Lever): Store as metadata, require approval
-- **Low confidence** (Generic HTML): Store as metadata, require validation
+When processing a job listing with unknown company:
+1. Create company stub with `status: "pending"`
+2. Spawn COMPANY_FETCH task for full pipeline analysis
+3. Job listing task should either:
+   - Wait for company task completion (dependency tracking), OR
+   - Proceed with stub data and allow company enrichment later
 
-**Required Changes**:
-1. Return confidence level from job board detection
-2. Conditional spawning based on confidence
-3. Store low/medium confidence URLs in company metadata for manual review
+**Implementation Options**:
+- **Option A**: Job listing waits - Add `depends_on_task_id` field, processor skips until dependency completes
+- **Option B**: Async enrichment - Job listing proceeds with stub, company data enriches later
+- **Recommended**: Option A for data consistency
 
-**Impact**: Medium priority - Prevents false positive source creation
+**Impact**: High priority - Architectural consistency
 
 ---
 
-### Gap 5: Source Scraping Queue Items
+### Gap 2: Full State Machine Enforcement (HIGH PRIORITY)
 
-**Current State**: No queue item type for "scrape this specific source"
+**Status**: Required for system reliability and observability
 
-**Required**: New queue item type `SCRAPE_SOURCE`
+**Current State**:
+- Companies have `analysis_status` field but only use `"analyzing"` and `"complete"`
+- Sources have `status` field with basic states
+- No enforced state transitions
+- No `analysis_progress` tracking
+
+**Required States for Companies**:
+- `pending` - Created but not yet processing
+- `analyzing` - Currently being processed (in pipeline)
+- `active` - Analysis complete, ready for use
+- `failed` - Analysis failed permanently (after max retries)
+
+**Required States for Sources**:
+- `pending_validation` - Awaiting manual approval (medium/low confidence)
+- `active` - Validated and operational
+- `disabled` - Manually disabled or auto-disabled after failures
+- `failed` - Permanently failed
+
+**Required Implementation**:
+
+1. **State transition enforcement**:
 ```python
-{
-  "type": "scrape_source",
-  "source_id": "job-source-doc-id",
-  "url": "https://boards.greenhouse.io/netflix",
-  "source_type": "greenhouse",
-  "config": { "board_token": "netflix" }
+class CompanyStatus(str, Enum):
+    PENDING = "pending"
+    ANALYZING = "analyzing"
+    ACTIVE = "active"
+    FAILED = "failed"
+
+VALID_TRANSITIONS = {
+    CompanyStatus.PENDING: [CompanyStatus.ANALYZING],
+    CompanyStatus.ANALYZING: [CompanyStatus.ACTIVE, CompanyStatus.FAILED],
+    CompanyStatus.ACTIVE: [CompanyStatus.ANALYZING],  # Re-analysis
+    CompanyStatus.FAILED: [CompanyStatus.PENDING],    # Manual retry
+}
+
+def transition_status(current: CompanyStatus, new: CompanyStatus) -> bool:
+    if new not in VALID_TRANSITIONS.get(current, []):
+        raise InvalidStateTransition(f"Cannot transition from {current} to {new}")
+    return True
+```
+
+2. **Analysis progress tracking**:
+```python
+analysis_progress: Dict[str, bool] = {
+    "fetch": False,
+    "extract": False,
+    "analyze": False,
+    "save": False,
 }
 ```
 
-**Impact**: High priority - Enables automated source scraping workflow
+3. **Update status at each pipeline stage**:
+   - FETCH start: `pending` → `analyzing`
+   - SAVE success: `analyzing` → `active`
+   - Any failure (max retries): `analyzing` → `failed`
+
+**Impact**: High priority - System reliability and debugging
+
+---
+
+### Gap 3: Data Quality Thresholds (DEPRIORITIZED)
+
+**Status**: Partially implemented, staleness check not needed yet
+
+**Current Implementation** (`companies_manager.py:190-195`):
+```python
+def has_good_company_data(self, company_data):
+    about_length = len(company_data.get("about", ""))
+    culture_length = len(company_data.get("culture", ""))
+    # Check for minimal quality: either field has some content
+    return about_length > 50 or culture_length > 25
+```
+
+**What's Implemented**:
+- Basic quality threshold checks
+- Minimal vs good quality distinction
+
+**What's Deferred**:
+- Staleness-based re-analysis (30-day threshold)
+- Companies don't go stale quickly enough to warrant this complexity now
+
+**Future Enhancement** (when needed):
+```python
+def should_reanalyze_company(company_data):
+    is_good = (about > 100 and culture > 50)
+    updated_at = company_data.get("updatedAt")
+    is_stale = (now - updated_at) > timedelta(days=30)
+    return (not is_good) or is_stale
+```
+
+**Impact**: Low priority - Defer until system proves stable
+
+---
+
+### Gap 4: Job Board Confidence Level Handling (ACCEPTABLE)
+
+**Status**: Current behavior acceptable, will refine later
+
+**Current Behavior**:
+- Always spawns SOURCE_DISCOVERY when job board found
+- Source processor assigns confidence levels per source type:
+  - Greenhouse: `"high"` (API available, reliable)
+  - RSS: `"high"` (standard format, reliable)
+  - Workday: `"medium"` (requires validation)
+  - Generic HTML: variable confidence based on selector discovery
+
+**Why This Is Acceptable**:
+- `validation_required` flag exists for medium/low confidence sources
+- Health tracking auto-disables failing sources after 5 consecutive failures
+- Better to discover sources and let validation handle quality
+
+**Future Optimization** (when needed):
+- Conditional spawning: only high confidence auto-spawns
+- Medium/low confidence stored in company metadata for manual review
+- Dashboard for reviewing pending source validations
+
+**Impact**: Low priority - Current behavior works, optimize later
+
+---
+
+### ~~Gap 5: Source Scraping Queue Items~~ (IMPLEMENTED)
+
+**Status**: Implemented as of 2025-11-25
+
+**Implementation**:
+- `SCRAPE_SOURCE` task type defined in `models.py:28`
+- Processed by `source_processor.py`
+- Auto-spawned after SOURCE_DISCOVERY completes
+
+```python
+class QueueItemType(str, Enum):
+    SCRAPE_SOURCE = "scrape_source"  # ✓ Implemented
+```
+
+**No further action required.**
 
 ---
 
 ## Proposed Data Structure Changes
 
-### Companies Collection - Add Status Field
+### Companies Table - Status Enhancement
 
-**New Schema**:
-```typescript
-{
-  name: string;
-  website: string;
-  about: string;
-  culture: string;
-  // NEW FIELDS
-  status: "pending" | "analyzing" | "active" | "failed";
-  analysis_progress?: {
-    fetch: boolean;
-    extract: boolean;
-    analyze: boolean;
-    save: boolean;
-  };
-  last_analyzed_at?: Timestamp;
-}
+**Current Schema** has `analysis_status` field. **Required changes**:
+```sql
+-- Enforce state machine values
+ALTER TABLE companies
+  ADD CONSTRAINT chk_status
+  CHECK (analysis_status IN ('pending', 'analyzing', 'active', 'failed'));
+
+-- Add progress tracking (JSON column)
+ALTER TABLE companies ADD COLUMN analysis_progress TEXT;  -- JSON
+ALTER TABLE companies ADD COLUMN last_analyzed_at TEXT;   -- ISO timestamp
 ```
 
-### Job-Sources Collection - Enhance Status
-
-**New Schema**:
-```typescript
-{
-  enabled: boolean;
-  status: "pending_validation" | "active" | "disabled" | "failed";
-  discoveryConfidence: "high" | "medium" | "low";
-  consecutiveFailures: number;
-  // NEW FIELDS
-  validation_required: boolean;
-  auto_enabled: boolean;
-  scraping_schedule?: {
-    frequency: "hourly" | "daily" | "weekly";
-    last_scraped_at: Timestamp;
-    next_scrape_at: Timestamp;
-  };
-}
+**Python Model**:
+```python
+class CompanyStatus(str, Enum):
+    PENDING = "pending"
+    ANALYZING = "analyzing"
+    ACTIVE = "active"
+    FAILED = "failed"
 ```
 
-### Queue Item Model - Add SCRAPE_SOURCE
+### Job-Sources Table - Already Implemented
+
+Current schema already has needed fields:
+- `status` (pending_validation, active, disabled, failed)
+- `discovery_confidence` (high, medium, low)
+- `validation_required` (boolean)
+- `consecutive_failures` (integer)
+
+**Future enhancement** (scraping schedule):
+```sql
+ALTER TABLE job_sources ADD COLUMN scrape_frequency TEXT;      -- hourly|daily|weekly
+ALTER TABLE job_sources ADD COLUMN next_scrape_at TEXT;        -- ISO timestamp
+```
+
+### Queue Task Types - IMPLEMENTED
 
 ```python
 class QueueItemType(str, Enum):
-    JOB = "job"
-    COMPANY = "company"
-    SCRAPE = "scrape"
-    SOURCE_DISCOVERY = "source_discovery"
-    SCRAPE_SOURCE = "scrape_source"  # NEW
-
-class SourceTier(str, Enum):
-    S = "S"  # 150+ points
-    A = "A"  # 100-149
-    B = "B"  # 70-99
-    C = "C"  # 50-69
-    D = "D"  # 0-49
+    JOB = "job"                       # Job listing processing
+    COMPANY = "company"               # Company analysis
+    SCRAPE = "scrape"                 # Batch scrape from source
+    SOURCE_DISCOVERY = "source_discovery"  # Discover/validate new source
+    SCRAPE_SOURCE = "scrape_source"   # Scrape specific source (✓ implemented)
 ```
+
+**Note**: Consider renaming `JOB` to `JOB_LISTING` for clarity (terminology update).
 
 ---
 
@@ -209,53 +271,54 @@ class SourceTier(str, Enum):
 
 ### Unit Tests Needed
 
-1. `tests/queue/test_scrape_source_processing.py`
+1. `tests/queue/test_scrape_source_processing.py` ✓ (exists)
    - Test SCRAPE_SOURCE handler for each source type
    - Test health tracking updates
-   - Test job submission from source scrapes
+   - Test job listing submission from source scrapes
 
-2. `tests/storage/test_company_status.py`
-   - Test status transitions
-   - Test quality assessment
-   - Test threshold checks
+2. `tests/storage/test_company_status.py` (needed for Gap 2)
+   - Test status transitions (state machine enforcement)
+   - Test invalid transition rejection
+   - Test analysis_progress tracking
 
-3. `tests/queue/test_company_spawning.py`
-   - Test job → company spawning logic
-   - Test stub company creation
-   - Test async company data handling
+3. `tests/queue/test_company_spawning.py` (needed for Gap 1)
+   - Test job listing → company task spawning logic
+   - Test stub company creation with `pending` status
+   - Test dependency tracking (job listing waits for company)
 
 ### E2E Test Scenarios
 
-1. **Full Company Discovery Flow**
+1. **Full Company Discovery Flow** (Gap 1 implementation)
    ```
-   Submit Job (unknown company)
-     → Job SCRAPE
-     → Job FILTER
-     → Job ANALYZE (spawns COMPANY_FETCH)
-     → Job PENDING (waits for company)
-     → Company FETCH/EXTRACT/ANALYZE/SAVE
-     → Job ANALYZE (retries with company data)
-     → Job SAVE
+   Submit Job Listing (unknown company)
+     → JOB_LISTING SCRAPE
+     → JOB_LISTING FILTER
+     → JOB_LISTING ANALYZE (spawns COMPANY_FETCH task)
+     → JOB_LISTING waits (depends_on_task_id set)
+     → COMPANY FETCH/EXTRACT/ANALYZE/SAVE
+     → JOB_LISTING ANALYZE (retries with company data)
+     → JOB_LISTING SAVE
    ```
 
-2. **Source Discovery to Scraping Flow**
+2. **Source Discovery to Scraping Flow** ✓ (working)
    ```
-   Submit Company
-     → Company FETCH/EXTRACT/ANALYZE
+   Submit Company Task
+     → COMPANY FETCH/EXTRACT/ANALYZE
      → Discovers Greenhouse board
-     → Company SAVE (spawns SOURCE_DISCOVERY)
-     → SOURCE_DISCOVERY (creates job-source)
-     → Auto-spawn SCRAPE_SOURCE
-     → SCRAPE_SOURCE (fetches jobs)
-     → Jobs submitted to queue
+     → COMPANY SAVE (spawns SOURCE_DISCOVERY task)
+     → SOURCE_DISCOVERY (creates job-source record)
+     → Auto-spawn SCRAPE_SOURCE task
+     → SCRAPE_SOURCE (fetches job listings)
+     → Job listing tasks submitted to queue
    ```
 
-3. **Confidence Level Handling**
+3. **State Machine Enforcement** (Gap 2 implementation)
    ```
-   Company with generic careers page
-     → Low confidence detected
-     → NO SOURCE_DISCOVERY spawned
-     → Metadata stored for manual review
+   Company in "pending" state
+     → FETCH starts → transitions to "analyzing"
+     → EXTRACT fails (max retries) → transitions to "failed"
+     → Manual retry → transitions back to "pending"
+     → Invalid transition attempt → raises InvalidStateTransition
    ```
 
 ---
@@ -263,7 +326,7 @@ class SourceTier(str, Enum):
 ## Risks & Mitigations
 
 ### Risk 1: Queue Depth Explosion
-**Risk**: Spawning COMPANY and SCRAPE_SOURCE items increases queue depth
+**Risk**: Spawning COMPANY and SCRAPE_SOURCE tasks increases queue depth
 
 **Mitigation**:
 - Implement queue depth monitoring
@@ -279,17 +342,18 @@ class SourceTier(str, Enum):
 - Cache company data aggressively
 
 ### Risk 3: Circular Dependencies
-**Risk**: Job → Company → Source → Job creates loops
+**Risk**: Job Listing → Company → Source → Job Listing creates loops
 
 **Mitigation**:
-- Existing loop prevention handles this
+- Existing loop prevention handles this (tracking_id, ancestry_chain, spawn_depth)
 - Add E2E tests for circular cases
 - Alert on spawn_depth > 5
 
-### Risk 4: Stale Data Handling
-**Risk**: Jobs waiting for company analysis might timeout
+### Risk 4: Task Dependency Deadlocks (NEW - Gap 1 related)
+**Risk**: Job listing tasks waiting for company tasks might deadlock or timeout
 
 **Mitigation**:
-- Retry with exponential backoff
 - Max wait time: 5 minutes before FAILED
-- Alert on jobs stuck in PENDING state
+- Exponential backoff for dependency checks
+- Alert on tasks stuck in PENDING with unresolved dependencies
+- Fallback: proceed with stub data after timeout

@@ -1,73 +1,129 @@
-# Environment Parity Template
+# Environment Parity Checklist
 
 > Status: Active
 > Owner: @jdubz
 > Last Updated: 2025-11-25
 
-Use this checklist to verify configuration alignment across environments (staging, production, etc.) before deployment or cutover.
+Use this checklist to verify configuration alignment across environments (development, staging, production) before deployment or cutover.
+
+## API Service
+
+| Item                  | Development              | Staging                  | Production               | Notes                              |
+|-----------------------|-------------------------|--------------------------|--------------------------|-----------------------------------|
+| Node.js Version       | `18+`                   | `18+`                    | `18+`                    | Verify in Dockerfile              |
+| Port                  | `8080`                  | `8080`                   | `8080`                   | Internal container port           |
+| Database Path         | `./data/sqlite/`        | `/data/sqlite/`          | `/data/sqlite/`          | Docker volume mount               |
+| Log Level             | `debug`                 | `info`                   | `info`                   | Via `LOG_LEVEL` env var           |
+| CORS Origins          | `localhost:5173`        | Staging domain           | Production domain        | Verify in API config              |
 
 ## Frontend
 
-| Item                   | Staging Value                          | Production Value                     | Notes                                                                                                   |
-| ---------------------- | -------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Firebase Project ID    | `[project-id]`                         | `[project-id]`                       | Verify project ID matches deployment documentation.                                                     |
-| Hosting Site           | `[site-staging]` (`.web.app`)          | `[site-production]` (`.web.app`)     | Ensure both hosts are accessible and configured correctly.                                               |
-| Custom Domain          | `[staging-domain.example.com]`         | `[production-domain.example.com]`    | Verify DNS and proxy configuration (e.g., Cloudflare).                                                  |
-| GitHub Environment     | `staging`                              | `production`                         | Confirm environments are provisioned with appropriate approvals matrix.                                  |
-| GitHub Secrets         | `FIREBASE_SERVICE_ACCOUNT` (present)   | `FIREBASE_SERVICE_ACCOUNT` (present) | Verify secrets are uploaded and check rotation policy.                                                   |
-| `.env` Files           | `apps/web/.env.staging` (configured)   | `.env.production` (configured)       | Validate environment-specific configuration values.                                                      |
-| Analytics & Monitoring | Firebase Analytics (configured)        | Firebase Analytics (configured)      | Confirm instrumentation is in place.                                                                     |
+| Item                  | Development              | Staging                  | Production               | Notes                              |
+|-----------------------|-------------------------|--------------------------|--------------------------|-----------------------------------|
+| API Base URL          | `localhost:8080`        | Staging API URL          | Production API URL       | `VITE_API_BASE_URL`               |
+| Google Client ID      | Dev client ID           | Staging client ID        | Production client ID     | OAuth configuration               |
+| Build Mode            | Development             | Production               | Production               | Vite build mode                   |
 
-## Backend (Cloud Functions)
+## Worker Service
 
-| Item               | Staging                                                                 | Production                             | Notes                                                                |
-| ------------------ | ----------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------- |
-| Firebase Project   | `[project-id]`                                                          | `[project-id]`                         | Shared or separate projects depending on architecture.               |
-| Functions Deployed | `[function-name]-staging`, `[function-name]-staging`                    | `[function-name]`, `[function-name]`   | Verify all required functions are deployed and functional.           |
-| CI Workflows       | `deploy-staging.yml` (passing)                                          | `deploy-production.yml` (passing)      | Ensure workflows have required secrets and environment configuration. |
-| Firestore DB       | `[database-name]-staging`                                               | `(default)` or `[database-name]`       | Verify correct database references in configuration.                 |
-| Auth Claims Matrix | Configured per security requirements                                    | Configured per security requirements   | Validate authentication and authorization configuration.              |
+| Item                  | Development              | Staging                  | Production               | Notes                              |
+|-----------------------|-------------------------|--------------------------|--------------------------|-----------------------------------|
+| Python Version        | `3.9+`                  | `3.9+`                   | `3.9+`                   | Verify in Dockerfile              |
+| Database Path         | `./data/sqlite/`        | `/data/sqlite/`          | `/data/sqlite/`          | Docker volume mount               |
+| Log Level             | `DEBUG`                 | `INFO`                   | `INFO`                   | Via `LOG_LEVEL` env var           |
+| Selenium Mode         | Headless                | Headless                 | Headless                 | Browser automation config         |
 
-## Worker (Python)
+## Database
 
-| Item              | Staging                                    | Production                              | Notes                                                     |
-| ----------------- | ------------------------------------------ | --------------------------------------- | --------------------------------------------------------- |
-| Deployment Target | Docker Compose staging stack               | Docker Compose prod stack               | Verify deployment configuration files are correct.        |
-| Queue Smoke Tests | Completed successfully                     | Completed successfully                  | Run baseline tests to ensure queue processing works.      |
-| Service Accounts  | `worker-staging@[project-id]`              | `worker-prod@[project-id]`              | Confirm credentials and secure secret storage.            |
-| Monitoring/Alerts | Configured per monitoring requirements     | Configured per monitoring requirements  | Define and test alerting before production deployment.    |
+| Item                  | Development              | Staging                  | Production               | Notes                              |
+|-----------------------|-------------------------|--------------------------|--------------------------|-----------------------------------|
+| Database Type         | SQLite                  | SQLite                   | SQLite                   | File-based database               |
+| File Location         | `./data/sqlite/`        | `/data/sqlite/`          | `/data/sqlite/`          | Docker volume mount               |
+| WAL Mode              | Enabled                 | Enabled                  | Enabled                  | Write-ahead logging               |
+| Migrations            | Manual/Makefile         | Auto on deploy           | Auto on deploy           | sqlite-migrator service           |
 
-## Shared Types
+## Infrastructure
 
-| Item                | Staging                              | Production                           | Notes                                         |
-| ------------------- | ------------------------------------ | ------------------------------------ | --------------------------------------------- |
-| Package Version     | `job-finder-shared-types@[version]`  | `job-finder-shared-types@[version]`  | Ensure version is consistent across services. |
-| Type Sync in FE     | `package.json` locked to `^[version]`| `package.json` locked to `^[version]`| Verify workspace `package.json` is updated.   |
-| Type Sync in BE     | `package.json` locked to `^[version]`| `package.json` locked to `^[version]`| Verify backend manifest is updated.           |
-| Type Sync in Worker | `poetry.lock` or `requirements.txt`  | `poetry.lock` or `requirements.txt`  | Confirm Python worker uses generated schemas. |
+| Item                  | Development              | Staging                  | Production               | Notes                              |
+|-----------------------|-------------------------|--------------------------|--------------------------|-----------------------------------|
+| Docker Compose        | Local                   | Remote server            | Remote server            | Deployment method                 |
+| External Access       | localhost               | Cloudflare Tunnel        | Cloudflare Tunnel        | Network exposure                  |
+| Domain                | N/A                     | staging subdomain        | production domain        | DNS configuration                 |
+| SSL/TLS               | N/A                     | Cloudflare managed       | Cloudflare managed       | HTTPS termination                 |
+| Container Updates     | Manual                  | Watchtower               | Watchtower               | Auto-update mechanism             |
 
-## Infrastructure & Access
+## Environment Variables
 
-| Item                  | Staging                                      | Production                                   | Notes                                                                                               |
-| --------------------- | -------------------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| DNS Configuration     | Records in place for staging subdomain       | Records in place for production domain       | Document manual configuration if DNS provider doesn't support IaC.                                  |
-| SSL Certificates      | Managed via DNS provider or CDN              | Managed via DNS provider or CDN              | Verify certificates are valid and auto-renewing.                                                    |
-| IAM Bindings          | Service account access for deploys (granted) | Service account access for deploys (granted) | Ensure proper permissions for deployment and runtime operations.                                    |
-| Secrets Storage       | GitHub Secrets + Cloud Provider              | GitHub Secrets + Cloud Provider              | Establish centralized secret management strategy.                                                   |
-| Monitoring Dashboards | Configured and accessible                    | Configured and accessible                    | Define dashboards and verify access prior to launch.                                                |
+| Variable               | Development              | Staging                  | Production               | Notes                              |
+|-----------------------|-------------------------|--------------------------|--------------------------|-----------------------------------|
+| `NODE_ENV`            | `development`           | `production`             | `production`             | Node environment                  |
+| `PORT`                | `8080`                  | `8080`                   | `8080`                   | API port                          |
+| `SQLITE_PATH`         | Local path              | Docker volume            | Docker volume            | Database location                 |
+| `GOOGLE_CLIENT_ID`    | Dev credentials         | Staging credentials      | Prod credentials         | OAuth client                      |
+| `ANTHROPIC_API_KEY`   | Personal key            | Shared key               | Shared key               | AI API key                        |
+| `OPENAI_API_KEY`      | Personal key            | Shared key               | Shared key               | AI API key                        |
+| `LOG_LEVEL`           | `debug`                 | `info`                   | `info`                   | Logging verbosity                 |
 
-## How to Use This Template
+## Secrets Management
 
-1. **Copy this template** for each environment comparison (staging vs production, dev vs staging, etc.)
-2. **Fill in values** for both environments in each row
-3. **Add notes** specific to your configuration or any deviations
-4. **Review regularly** especially before deployments or major changes
-5. **Track completion** by checking off verified items (not included in this template - add as needed)
+| Item                  | Development              | Staging                  | Production               | Notes                              |
+|-----------------------|-------------------------|--------------------------|--------------------------|-----------------------------------|
+| Storage Method        | `.env` files            | GitHub Secrets           | GitHub Secrets           | Secret storage                    |
+| Rotation Policy       | N/A                     | Quarterly                | Quarterly                | Key rotation schedule             |
+| Access Control        | Developer               | CI/CD only               | CI/CD only               | Who can access secrets            |
+
+## Monitoring & Logging
+
+| Item                  | Development              | Staging                  | Production               | Notes                              |
+|-----------------------|-------------------------|--------------------------|--------------------------|-----------------------------------|
+| Sentry DSN            | N/A or test             | Staging project          | Production project       | Error tracking                    |
+| Log Output            | Console                 | Docker logs              | Docker logs + forwarding | Log destination                   |
+| Health Checks         | Manual                  | Automated                | Automated                | Uptime monitoring                 |
+
+## How to Use This Checklist
+
+1. **Before deployment**: Review each row to ensure values are correct
+2. **After configuration changes**: Update this document and verify all environments
+3. **During incidents**: Use as reference for expected configuration
+4. **New team members**: Reference for understanding environment differences
+
+## Parity Verification Commands
+
+### Check API Configuration
+
+```bash
+# Development
+curl http://localhost:8080/api/healthz
+
+# Staging
+curl https://job-finder-staging.joshwentworth.com/api/healthz
+
+# Production
+curl https://job-finder.joshwentworth.com/api/healthz
+```
+
+### Check Container Status
+
+```bash
+# On deployment server
+docker compose ps
+docker compose logs --tail=50
+```
+
+### Verify Database
+
+```bash
+# Check database file exists
+ls -la /data/sqlite/
+
+# Check migrations applied
+sqlite3 /data/sqlite/jobfinder.db ".tables"
+```
 
 ## Best Practices
 
 - Verify parity before any production deployment
 - Document any intentional differences between environments
-- Automate parity checks where possible (scripts, IaC validation)
+- Automate parity checks where possible
 - Keep this checklist updated as infrastructure evolves
 - Review and update after each deployment

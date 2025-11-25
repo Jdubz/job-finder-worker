@@ -2,58 +2,136 @@
 > Owner: @jdubz
 > Last Updated: 2025-11-25
 
-# Job Finder Queue Decision Tree
+# Queue Worker Decision Tree
 
-This document describes the decision tree logic for the worker job queue system. It provides both a high-level conceptual flow and detailed implementation specifics.
+This document describes the decision tree logic for the worker queue system. It provides both a high-level conceptual flow and detailed implementation specifics.
+
+## Terminology
+
+| Term | Definition |
+|------|------------|
+| **Task** | A work unit in the queue (generic term for all queue items) |
+| **Job** | An employment opportunity (job listing or job match) |
+| **Job Listing** | A scraped employment opportunity before matching |
+| **Job Match** | A job listing that passed filters and AI analysis |
+| **Pipeline** | A sequence of stages that process a task type |
+| **Stage** | A discrete step within a pipeline (e.g., FETCH, EXTRACT) |
+| **State** | The current status of a task (PENDING, PROCESSING, etc.) |
 
 ## Table of Contents
 1. [High-Level Overview](#high-level-overview)
-2. [Loop Prevention Mechanisms](#loop-prevention-mechanisms)
-3. [Data Quality Standards](#data-quality-standards)
-4. [Queue Processing States](#queue-processing-states)
-5. [Company Pipeline](#company-pipeline)
-6. [Job Source Pipeline](#job-source-pipeline)
-7. [Job Listing Pipeline](#job-listing-pipeline)
-8. [Scraper Instruction Schemas](#scraper-instruction-schemas)
-9. [Error Handling](#error-handling)
+2. [State Machine Architecture](#state-machine-architecture)
+3. [Loop Prevention Mechanisms](#loop-prevention-mechanisms)
+4. [Data Quality Standards](#data-quality-standards)
+5. [Queue Processing States](#queue-processing-states)
+6. [Company Pipeline](#company-pipeline)
+7. [Job Source Pipeline](#job-source-pipeline)
+8. [Job Listing Pipeline](#job-listing-pipeline)
+9. [Scraper Instruction Schemas](#scraper-instruction-schemas)
+10. [Error Handling](#error-handling)
+11. [Configuration Constants](#configuration-constants)
 
 ---
 
 ## High-Level Overview
 
-The system processes three main entity types that interconnect:
+The system processes three main entity types through queue tasks:
 
 ```
 ┌─────────────┐         ┌──────────────┐         ┌──────────────┐
 │  Companies  │────────▶│ Job Sources  │────────▶│ Job Listings │
 └─────────────┘         └──────────────┘         └──────────────┘
       │                       │                         │
-      │                       │                         └──▶ Analyze Match ──▶ Success!
-      │                       └──▶ Scrape Jobs
+      │                       │                         └──▶ Analyze Match ──▶ Job Match!
+      │                       └──▶ Scrape Job Listings
       └──▶ Discover Job Boards
 ```
 
+### Task Types:
+- **COMPANY**: Analyzes a company (fetch website, extract info, detect job boards)
+- **JOB** (Job Listing): Processes an employment opportunity through the matching pipeline
+- **SOURCE_DISCOVERY**: Discovers and validates a new job source
+- **SCRAPE_SOURCE**: Scrapes job listings from a configured source
+- **SCRAPE**: Batch scrape operation
+
 ### Key Relationships:
-- **Companies** can spawn **Job Sources** when career pages/job boards are discovered
-- **Job Sources** spawn **Job Listings** when scraping finds new postings
-- **Job Listings** may spawn **Companies** if the company is unknown
+- **Company tasks** can spawn **SOURCE_DISCOVERY tasks** when job boards are discovered
+- **SCRAPE_SOURCE tasks** spawn **Job Listing tasks** when scraping finds new postings
+- **Job Listing tasks** may spawn **COMPANY tasks** if the company is unknown
 - **Each spawn path uses loop prevention** to avoid circular dependencies
+
+---
+
+## State Machine Architecture
+
+The queue worker implements a **state machine** where:
+- **Task state** determines processing eligibility (PENDING, PROCESSING, SUCCESS, etc.)
+- **Pipeline stage** determines which operation to perform next (FETCH, EXTRACT, etc.)
+- **Pipeline state** (data accumulated) determines stage routing
+
+### State vs Stage vs Pipeline State
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Task                                                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│ status: PROCESSING          ← Task STATE (queue status)             │
+│ pipeline_stage: "extract"   ← Current STAGE in pipeline             │
+│ pipeline_state: {           ← Accumulated data (determines routing) │
+│   "html_content": "...",                                            │
+│   "extracted_info": {...}                                           │
+│ }                                                                   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Stage Routing Patterns
+
+**Company Pipeline** - Uses explicit `company_sub_task` field:
+```python
+if item.company_sub_task == CompanySubTask.FETCH:
+    → process_company_fetch()
+elif item.company_sub_task == CompanySubTask.EXTRACT:
+    → process_company_extract()
+# ... etc
+```
+
+**Job Listing Pipeline** - Uses state-based routing via `pipeline_state`:
+```python
+state = item.pipeline_state or {}
+if "job_data" not in state:
+    → do_job_scrape()      # Stage: SCRAPE
+elif "filter_result" not in state:
+    → do_job_filter()      # Stage: FILTER
+elif "match_result" not in state:
+    → do_job_analyze()     # Stage: ANALYZE
+else:
+    → do_job_save()        # Stage: SAVE
+```
+
+### Why Two Routing Patterns?
+
+| Pattern | Used By | Behavior | Rationale |
+|---------|---------|----------|-----------|
+| Explicit sub_task | Company | Spawns new task per stage | Granular control, independent retries |
+| State-based | Job Listing | Same task progresses through stages | Simpler E2E monitoring, atomic flow |
+
+Both patterns use the same underlying state machine for task status transitions.
 
 ---
 
 ## Loop Prevention Mechanisms
 
-**Critical**: Every queue item spawn is protected against infinite loops using three mechanisms:
+**Critical**: Every task spawn is protected against infinite loops using three mechanisms:
 
 ### 1. Tracking ID
-- UUID generated at root item, inherited by all spawned children
-- Groups related items into a processing lineage
+- UUID generated at root task, inherited by all spawned children
+- Groups related tasks into a processing lineage
 - Used to query for duplicate work and circular dependencies
 
 ### 2. Ancestry Chain
-- List of parent item document IDs from root to current
+- List of parent task IDs from root to current
 - Before spawning, check if target URL already exists in ancestry
-- Prevents circular patterns: `Job → Company → Source → Job` (same URL)
+- Prevents circular patterns: `Job Listing → Company → Source → Job Listing` (same URL)
 
 ### 3. Spawn Depth
 - Counter incremented with each spawn
@@ -61,11 +139,11 @@ The system processes three main entity types that interconnect:
 - Prevents runaway spawning even without circular URLs
 
 ### Spawn Safety Checks
-Before creating a new queue item, the system verifies:
+Before creating a new task, the system verifies:
 1. Spawn depth < max_spawn_depth (default: 10)
 2. Target URL not in ancestry chain (no circular dependency)
-3. No pending/processing item for same URL+type in this lineage
-4. Item hasn't already reached terminal state (FILTERED, SKIPPED, FAILED, or final SUCCESS)
+3. No pending/processing task for same URL+type in this lineage
+4. Task hasn't already reached terminal state (FILTERED, SKIPPED, FAILED, or final SUCCESS)
 
 **If any check fails, spawning is blocked and logged as a warning.**
 
@@ -107,13 +185,13 @@ To prevent race conditions while keeping the database clean:
 
 ## Queue Processing States
 
-Every queue item progresses through states with terminal exit points:
+Every task progresses through states with terminal exit points:
 
 ### States
 - **PENDING**: Waiting to be processed (entry state)
 - **PROCESSING**: Currently being processed
 - **SUCCESS**: Completed successfully (may spawn next stage)
-- **FILTERED**: Rejected by filter engine (terminal - jobs only)
+- **FILTERED**: Rejected by filter engine (terminal - job listings only)
 - **SKIPPED**: Below threshold or duplicate (terminal)
 - **FAILED**: Error after max retries (terminal)
 
@@ -130,11 +208,11 @@ PENDING ──▶ PROCESSING ──┬──▶ SUCCESS ──▶ (spawn next st
 ```
 
 ### Terminal vs Non-Terminal SUCCESS
-- **Non-terminal SUCCESS**: Intermediate pipeline stages (SCRAPE, FILTER, ANALYZE for jobs)
-  - Item marked SUCCESS, spawns next stage
+- **Non-terminal SUCCESS**: Intermediate pipeline stages (SCRAPE, FILTER, ANALYZE)
+  - Task marked SUCCESS, spawns/continues to next stage
   - Allows same URL to progress through pipeline
 - **Terminal SUCCESS**: Final stage (SAVE)
-  - Item marked SUCCESS, no further spawning
+  - Task marked SUCCESS, no further spawning
   - Blocks future spawns for same URL in this lineage
 
 ---
@@ -143,7 +221,7 @@ PENDING ──▶ PROCESSING ──┬──▶ SUCCESS ──▶ (spawn next st
 
 **Full pipeline**: `FETCH → EXTRACT → ANALYZE → SAVE`
 
-Each stage is an independent queue item with `company_sub_task` field.
+Each stage is an independent task with `company_sub_task` field.
 
 ### Stage 1: COMPANY_FETCH
 **Input**: `company_name`, `company_website`
@@ -275,7 +353,7 @@ Sources are discovered either:
 2. User submission via frontend
 3. Automated scanning
 
-### SOURCE_DISCOVERY Queue Item
+### SOURCE_DISCOVERY Task
 **Input**: `source_discovery_config` with:
 - `url`: URL to analyze
 - `type_hint`: `'auto'`, `'greenhouse'`, `'workday'`, `'rss'`, `'generic'`
@@ -346,7 +424,7 @@ Create `job-sources` document:
 **Full pipeline**: `SCRAPE → FILTER → ANALYZE → SAVE`
 
 ### Decision Tree Routing
-Unlike companies/sources which have explicit `sub_task` fields, job processing uses **state-based routing**. The processor examines `pipeline_state` to determine next action:
+Unlike companies/sources which have explicit `sub_task` fields, job listing processing uses **state-based routing**. The processor examines `pipeline_state` to determine next action:
 
 ```python
 has_job_data = "job_data" in pipeline_state
@@ -363,7 +441,7 @@ else:
     → do_job_save()
 ```
 
-This allows the SAME queue item to progress through all stages (easier for E2E tests to monitor).
+This allows the SAME task to progress through all stages (easier for E2E tests to monitor).
 
 ---
 
@@ -395,7 +473,7 @@ This allows the SAME queue item to progress through all stages (easier for E2E t
    ```
 5. Update `pipeline_state.job_data` and `pipeline_state.scrape_method`
 
-**Success**: Re-queue same item with updated state, `pipeline_stage='scrape'`
+**Success**: Re-queue same task with updated state, `pipeline_stage='scrape'`
 **Failure**: Mark FAILED (retry up to 3 times)
 
 **Cost**: $0.001/1K tokens if using AI (Claude Haiku)
@@ -438,7 +516,7 @@ This allows the SAME queue item to progress through all stages (easier for E2E t
 }
 ```
 
-**Passed**: Re-queue same item with `pipeline_state.filter_result`, `pipeline_stage='filter'`
+**Passed**: Re-queue same task with `pipeline_state.filter_result`, `pipeline_stage='filter'`
 **Failed**: Mark FILTERED (terminal) with rejection details
 **Cost**: $0 (rule-based only)
 
@@ -488,7 +566,7 @@ This allows the SAME queue item to progress through all stages (easier for E2E t
 }
 ```
 
-**Success**: Re-queue same item with `pipeline_state.match_result`, `pipeline_stage='analyze'`
+**Success**: Re-queue same task with `pipeline_state.match_result`, `pipeline_stage='analyze'`
 **Skipped**: Mark SKIPPED (terminal) if score < threshold
 **Cost**: $0.015-$0.075/1K tokens (Claude Sonnet)
 
@@ -519,9 +597,9 @@ This allows the SAME queue item to progress through all stages (easier for E2E t
    ```
 3. Log success with document ID
 
-**Success**: Mark item SUCCESS (terminal - no further spawning)
+**Success**: Mark task SUCCESS (terminal - no further spawning)
 **Failure**: Mark FAILED (retry up to 3 times)
-**Cost**: $0 (Firestore write only)
+**Cost**: $0 (database write only)
 
 ---
 
@@ -663,13 +741,13 @@ Every pipeline stage has consistent error handling:
 **Purpose**: Prevent wasting resources on broken scrapers while allowing transient failures
 
 ### Terminal State Handling
-Once an item reaches a terminal state, it cannot be re-processed in the same lineage:
-- **FILTERED**: Job failed strike-based filters (no retry)
-- **SKIPPED**: Job below match threshold or duplicate (no retry)
+Once a task reaches a terminal state, it cannot be re-processed in the same lineage:
+- **FILTERED**: Job listing failed strike-based filters (no retry)
+- **SKIPPED**: Job listing below match threshold or duplicate (no retry)
 - **FAILED**: Error after max retries (requires manual intervention)
 - **SUCCESS (final)**: Completed SAVE stage (no further processing)
 
-**Non-terminal SUCCESS**: Intermediate stages (SCRAPE, FILTER, ANALYZE) mark SUCCESS then spawn next stage
+**Non-terminal SUCCESS**: Intermediate stages (SCRAPE, FILTER, ANALYZE) mark SUCCESS then continue/spawn next stage
 
 ---
 
@@ -699,7 +777,7 @@ Once an item reaches a terminal state, it cannot be re-processed in the same lin
 **Future optimization consideration**:
 ```python
 # Consider parallelizing company parameter fetches (size, location, etc.)
-# Could spawn multiple queue items:
+# Could spawn multiple tasks:
 #   - COMPANY_SIZE (web search for employee count)
 #   - COMPANY_LOCATION (web search for offices)
 #   - COMPANY_CULTURE (scrape about page)
@@ -711,9 +789,83 @@ Once an item reaches a terminal state, it cannot be re-processed in the same lin
 
 ---
 
+## Configuration Constants
+
+Key constants used by the queue worker. These are currently hardcoded in `constants.py` but are candidates for future configurability via the `job-finder-config` database table.
+
+### Filter Thresholds
+
+| Constant | Value | Location | Description |
+|----------|-------|----------|-------------|
+| `DEFAULT_STRIKE_THRESHOLD` | 5 | `constants.py` | Maximum strikes before job listing is FILTERED |
+| `MIN_MATCH_SCORE` | 80 | `constants.py` | Minimum AI match score to save job match |
+| `PORTLAND_MATCH_SCORE` | 65 | `constants.py` | Lower threshold when Portland office detected |
+| `HIGH_PRIORITY_THRESHOLD` | 85 | `constants.py` | Score threshold for "High" priority |
+| `MEDIUM_PRIORITY_THRESHOLD` | 70 | `constants.py` | Score threshold for "Medium" priority |
+
+### Company Scoring
+
+| Constant | Value | Location | Description |
+|----------|-------|----------|-------------|
+| `PORTLAND_OFFICE_BONUS` | 50 | `constants.py` | Priority points for Portland office |
+| `TECH_STACK_MAX_POINTS` | 100 | `constants.py` | Max points from tech stack alignment |
+| `REMOTE_FIRST_BONUS` | 15 | `constants.py` | Bonus for remote-first culture |
+| `AI_ML_FOCUS_BONUS` | 10 | `constants.py` | Bonus for AI/ML companies |
+
+### Company Tier Thresholds
+
+| Tier | Points | Description |
+|------|--------|-------------|
+| S | 150+ | Top priority - immediate processing |
+| A | 100-149 | High priority |
+| B | 70-99 | Medium priority |
+| C | 50-69 | Low priority |
+| D | 0-49 | Minimal priority |
+
+### Queue Processing
+
+| Constant | Value | Location | Description |
+|----------|-------|----------|-------------|
+| `MAX_RETRIES` | 3 | `constants.py` | Maximum retry attempts before FAILED |
+| `MAX_SPAWN_DEPTH` | 10 | `models.py` | Maximum task spawn depth |
+| `MAX_CONSECUTIVE_FAILURES` | 5 | `constants.py` | Source auto-disable threshold |
+
+### Data Quality
+
+| Constant | Value | Location | Description |
+|----------|-------|----------|-------------|
+| `COMPANY_ABOUT_MIN` | 50 | `companies_manager.py` | Minimal about text length |
+| `COMPANY_ABOUT_GOOD` | 100 | `companies_manager.py` | Good about text length |
+| `COMPANY_CULTURE_MIN` | 25 | `companies_manager.py` | Minimal culture text length |
+| `COMPANY_CULTURE_GOOD` | 50 | `companies_manager.py` | Good culture text length |
+
+### Future Configurability
+
+These constants should eventually be stored in the `job-finder-config` SQLite table to allow runtime configuration without code changes:
+
+```sql
+CREATE TABLE job_finder_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    value_type TEXT NOT NULL,  -- 'int', 'float', 'string', 'json'
+    description TEXT,
+    updated_at TEXT
+);
+
+-- Example entries:
+INSERT INTO job_finder_config VALUES
+    ('filter.strike_threshold', '5', 'int', 'Max strikes before FILTERED', ...),
+    ('match.min_score', '80', 'int', 'Minimum AI match score', ...),
+    ('company.portland_bonus', '50', 'int', 'Portland office priority bonus', ...);
+```
+
+**Priority**: Low - Implement after system proves stable with hardcoded values.
+
+---
+
 ## Summary
 
-This decision tree provides a comprehensive framework for processing companies, job sources, and job listings through a queue-based system. Key design principles:
+This decision tree provides a comprehensive framework for processing companies, job sources, and job listings through a task-based queue system. Key design principles:
 
 1. **Safety First**: Loop prevention mechanisms protect against infinite recursion
 2. **Cost Optimization**: Cheap models for scraping, expensive only for analysis
