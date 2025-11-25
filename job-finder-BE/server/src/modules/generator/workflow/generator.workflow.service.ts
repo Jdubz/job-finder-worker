@@ -5,7 +5,7 @@ import { logger } from '../../../logger'
 import { PersonalInfoStore } from '../personal-info.store'
 import { ContentItemRepository } from '../../content-items/content-item.repository'
 import { JobMatchRepository } from '../../job-matches/job-match.repository'
-import { storageService } from './services/storage.service'
+import { storageService, type ArtifactMetadata } from './services/storage.service'
 import { PdfMakeService } from './services/pdfmake.service'
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
@@ -300,7 +300,13 @@ export class GeneratorWorkflowService {
       personalInfo.accentColor ?? '#2563eb',
       personalInfo
     )
-    const saved = await storageService.saveArtifact(pdf, requestId, 'resume', `${requestId}-resume.pdf`)
+    const metadata: ArtifactMetadata = {
+      name: personalInfo.name ?? 'candidate',
+      company: payload.job.company,
+      role: payload.job.role,
+      type: 'resume'
+    }
+    const saved = await storageService.saveArtifactWithMetadata(pdf, metadata)
     this.workflowRepo.addArtifact({
       id: randomUUID(),
       requestId,
@@ -326,7 +332,13 @@ export class GeneratorWorkflowService {
       date: payload.date,
       logo: personalInfo.logo
     })
-    const saved = await storageService.saveArtifact(pdf, requestId, 'cover-letter', `${requestId}-cover-letter.pdf`)
+    const metadata: ArtifactMetadata = {
+      name: personalInfo.name ?? 'candidate',
+      company: payload.job.company,
+      role: payload.job.role,
+      type: 'cover-letter'
+    }
+    const saved = await storageService.saveArtifactWithMetadata(pdf, metadata)
     this.workflowRepo.addArtifact({
       id: randomUUID(),
       requestId,

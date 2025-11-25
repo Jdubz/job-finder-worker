@@ -24,14 +24,14 @@ vi.mock('../workflow/services/cli-runner', () => ({
 }))
 
 vi.mock('../workflow/services/storage.service', () => {
-  const saveArtifact = vi.fn().mockResolvedValue({
-    storagePath: 'req/resume.pdf',
-    filename: 'resume.pdf',
+  const saveArtifactWithMetadata = vi.fn().mockResolvedValue({
+    storagePath: '2024-01-15/acme-corp_software-engineer/test-user_acme-corp_software-engineer_resume.pdf',
+    filename: 'test-user_acme-corp_software-engineer_resume.pdf',
     size: 1024
   })
   return {
     storageService: {
-      saveArtifact,
+      saveArtifactWithMetadata,
       createPublicUrl: vi.fn().mockReturnValue('http://example.com/resume.pdf')
     }
   }
@@ -154,7 +154,7 @@ const storageMock = vi.mocked(storageService)
   beforeEach(() => {
     repo.mockRequests.clear()
     repo.mockArtifacts = []
-    storageMock.saveArtifact.mockClear()
+    storageMock.saveArtifactWithMetadata.mockClear()
     storageMock.createPublicUrl.mockClear()
   })
 
