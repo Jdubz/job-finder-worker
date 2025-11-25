@@ -392,7 +392,7 @@ export class GeneratorWorkflowService {
       return parsed
     } catch (error) {
       this.log.error({ err: error, output: cliResult.output.slice(0, 500) }, 'Failed to parse AI resume output as JSON')
-      throw new Error('AI returned invalid JSON for resume content')
+      throw new Error('AI returned invalid JSON for resume content', { cause: error })
     }
   }
 
@@ -419,7 +419,7 @@ export class GeneratorWorkflowService {
       return parsed
     } catch (error) {
       this.log.error({ err: error, output: cliResult.output.slice(0, 500) }, 'Failed to parse AI cover letter output as JSON')
-      throw new Error('AI returned invalid JSON for cover letter content')
+      throw new Error('AI returned invalid JSON for cover letter content', { cause: error })
     }
   }
 }
