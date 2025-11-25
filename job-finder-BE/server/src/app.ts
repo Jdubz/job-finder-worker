@@ -12,6 +12,7 @@ import { buildGeneratorApiRouter } from './modules/generator/generator.api'
 import { buildGeneratorWorkflowRouter } from './modules/generator/generator.workflow.routes'
 import { buildGeneratorArtifactsRouter } from './modules/generator/generator.artifacts.routes'
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
+import { buildLoggingRouter } from './modules/logging/logging.routes'
 import { verifyFirebaseAuth } from './middleware/firebase-auth'
 
 export function buildApp() {
@@ -71,6 +72,9 @@ export function buildApp() {
 
   // Prompts route - public GET, authenticated PUT/POST
   app.use('/api/prompts', buildPromptsRouter())
+
+  // Logging route - accepts both authenticated and unauthenticated requests
+  app.use('/api/logs', buildLoggingRouter())
 
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)
