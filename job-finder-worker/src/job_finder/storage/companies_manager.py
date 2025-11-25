@@ -113,7 +113,7 @@ class CompaniesManager:
         if not name or not str(name).strip():
             raise StorageError("Company name is required")
 
-        cleaned_name = clean_company_name(name) or str(name).strip()
+        cleaned_name = clean_company_name(str(name)) or str(name).strip()
         normalized = self._normalize_name(cleaned_name)
         company_id = company_data.get("id")
 
@@ -195,7 +195,7 @@ class CompaniesManager:
         return has_good_quality or has_minimal_quality
 
     def create_company_stub(self, company_name: str, company_website: str = "") -> Dict[str, Any]:
-        cleaned_name = clean_company_name(company_name) or company_name
+        cleaned_name = clean_company_name(company_name) or company_name.strip()
         stub_data = {
             "name": cleaned_name,
             "website": company_website,

@@ -19,11 +19,9 @@ JOB_BOARD_SUFFIX_PATTERNS: List[str] = [
 ]
 
 LEGAL_SUFFIX_PATTERNS: List[str] = [
-    r"\s+inc\.?$",
     r"\s+incorporated$",
     r"\s+corp\.?$",
     r"\s+corporation$",
-    r"\s+llc\.?$",
     r"\s+ltd\.?$",
     r"\s+limited$",
     r"\s+co\.?$",

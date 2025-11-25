@@ -217,7 +217,7 @@ class JobProcessor(BaseProcessor):
 
             # Clean up scraped labels like "Acme Careers" before persisting
             company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
-            company_name_clean = clean_company_name(company_name_base) or company_name_base
+            company_name_clean = clean_company_name(company_name_base) or company_name_base.strip()
             job_data["company"] = company_name_clean
 
             if company_name_clean and company_website:
