@@ -1,7 +1,9 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import type { ContentItemNode } from "@shared/types"
 import type { ContentItemFormValues } from "@/types/content-items"
+import { AI_CONTEXT_OPTIONS } from "@/types/content-items"
 import { ContentItemForm } from "./ContentItemForm"
 import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Trash2 } from "lucide-react"
 
@@ -100,7 +102,14 @@ export function ContentItemCard({
       ) : (
         <>
           <div className="flex flex-col gap-1">
-            {item.title && <h3 className="text-lg font-semibold">{item.title}</h3>}
+            <div className="flex items-center gap-2">
+              {item.title && <h3 className="text-lg font-semibold">{item.title}</h3>}
+              {item.aiContext && (
+                <Badge variant="outline" className="text-xs">
+                  {AI_CONTEXT_OPTIONS.find((o) => o.value === item.aiContext)?.label ?? item.aiContext}
+                </Badge>
+              )}
+            </div>
             <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
               {item.role && <span>{item.role}</span>}
               {item.location && <span>{item.location}</span>}
