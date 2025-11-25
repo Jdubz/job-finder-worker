@@ -3,10 +3,11 @@ import { describe, it, expect } from "vitest"
 import { GenerationProgress, type GenerationStep } from "../GenerationProgress"
 
 describe("GenerationProgress", () => {
+  // Step IDs use kebab-case to match backend (collect-data, generate-resume, etc.)
   const mockSteps: GenerationStep[] = [
     {
-      id: "fetch_data",
-      name: "Fetch Data",
+      id: "collect-data",
+      name: "Collect Data",
       description: "Loading experience data",
       status: "completed",
       startedAt: new Date("2025-01-01T10:00:00Z"),
@@ -14,14 +15,14 @@ describe("GenerationProgress", () => {
       duration: 1000,
     },
     {
-      id: "generate_resume",
+      id: "generate-resume",
       name: "Generate Resume",
       description: "AI generating resume",
       status: "in_progress",
       startedAt: new Date("2025-01-01T10:00:01Z"),
     },
     {
-      id: "generate_cover_letter",
+      id: "generate-cover-letter",
       name: "Generate Cover Letter",
       description: "AI generating cover letter",
       status: "pending",
@@ -83,7 +84,7 @@ describe("GenerationProgress", () => {
   it("should handle failed step", () => {
     const failedSteps: GenerationStep[] = [
       {
-        id: "generate_resume",
+        id: "generate-resume",
         name: "Generate Resume",
         description: "AI generating resume",
         status: "failed",
@@ -102,38 +103,28 @@ describe("GenerationProgress", () => {
     expect(screen.getByText("Error: API Error")).toBeInTheDocument()
   })
 
-  it("should show completion messages for completed PDF steps", () => {
+  it("should show completion messages for render-pdf step", () => {
     const stepsWithPDFs: GenerationStep[] = [
       {
-        id: "create_resume_pdf",
-        name: "Create Resume PDF",
-        description: "Creating PDF",
+        id: "render-pdf",
+        name: "Render PDF",
+        description: "Creating PDF documents",
         status: "completed",
         result: {
           resumeUrl: "https://example.com/resume.pdf",
-        },
-      },
-      {
-        id: "create_cover_letter_pdf",
-        name: "Create Cover Letter PDF",
-        description: "Creating PDF",
-        status: "completed",
-        result: {
-          coverLetterUrl: "https://example.com/cover-letter.pdf",
         },
       },
     ]
 
     render(<GenerationProgress steps={stepsWithPDFs} />)
 
-    expect(screen.getByText(/Resume PDF created and ready/)).toBeInTheDocument()
-    expect(screen.getByText(/Cover letter PDF created and ready/)).toBeInTheDocument()
+    expect(screen.getByText(/PDF documents created and ready/)).toBeInTheDocument()
   })
 
   it("should handle skipped steps", () => {
     const skippedSteps: GenerationStep[] = [
       {
-        id: "generate_cover_letter",
+        id: "generate-cover-letter",
         name: "Generate Cover Letter",
         description: "Skipped",
         status: "skipped",
@@ -157,9 +148,9 @@ describe("GenerationProgress", () => {
   it("should display step duration correctly", () => {
     const stepWithDuration: GenerationStep[] = [
       {
-        id: "upload_documents",
-        name: "Upload Documents",
-        description: "Uploading",
+        id: "render-pdf",
+        name: "Render PDF",
+        description: "Creating PDFs",
         status: "completed",
         duration: 2500,
       },
@@ -168,6 +159,6 @@ describe("GenerationProgress", () => {
     render(<GenerationProgress steps={stepWithDuration} />)
 
     // Completed step shows completion message with duration
-    expect(screen.getByText(/Documents uploaded to cloud storage \(2\.5s\)/)).toBeInTheDocument()
+    expect(screen.getByText(/PDF documents created and ready \(2\.5s\)/)).toBeInTheDocument()
   })
 })
