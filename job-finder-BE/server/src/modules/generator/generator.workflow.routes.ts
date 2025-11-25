@@ -26,9 +26,18 @@ const generatorRequestSchema = z.object({
   jobMatchId: z.string().optional()
 })
 
+// Singleton service instance to share activeRequests state across all requests
+let serviceInstance: GeneratorWorkflowService | null = null
+function getService(): GeneratorWorkflowService {
+  if (!serviceInstance) {
+    serviceInstance = new GeneratorWorkflowService()
+  }
+  return serviceInstance
+}
+
 export function buildGeneratorWorkflowRouter() {
   const router = Router()
-  const service = new GeneratorWorkflowService()
+  const service = getService()
   const repo = new GeneratorWorkflowRepository()
 
   router.post(
@@ -73,14 +82,24 @@ export function buildGeneratorWorkflowRouter() {
     '/start',
     asyncHandler(async (req, res) => {
       const payload = generatorRequestSchema.parse(req.body ?? {})
-      const { requestId, steps, nextStep } = await service.createRequest(payload)
-      const request = repo.getRequest(requestId)
-      res.status(202).json(
+      const { requestId, steps } = await service.createRequest(payload)
+
+      // Execute the first step synchronously
+      const stepResult = await service.runNextStep(requestId, payload)
+      if (!stepResult) {
+        res.status(500).json(failure(ApiErrorCode.INTERNAL_ERROR, 'Failed to execute first step'))
+        return
+      }
+
+      res.json(
         success({
           requestId,
-          status: request?.status ?? 'processing',
-          steps,
-          nextStep
+          status: stepResult.status,
+          steps: stepResult.steps,
+          nextStep: stepResult.nextStep,
+          stepCompleted: steps[0]?.id, // First step that was completed
+          resumeUrl: stepResult.resumeUrl,
+          coverLetterUrl: stepResult.coverLetterUrl
         })
       )
     })

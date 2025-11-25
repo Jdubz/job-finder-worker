@@ -104,6 +104,9 @@ export interface StartGenerationResponse {
     status: string
     nextStep?: string
     steps?: GenerationStep[]
+    stepCompleted?: string
+    resumeUrl?: string
+    coverLetterUrl?: string
   }
   requestId: string
 }
@@ -111,7 +114,8 @@ export interface StartGenerationResponse {
 export interface ExecuteStepResponse {
   success: boolean
   data: {
-    stepCompleted: string
+    requestId: string
+    stepCompleted?: string
     nextStep?: string
     status: string
     resumeUrl?: string

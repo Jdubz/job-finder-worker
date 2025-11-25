@@ -179,7 +179,8 @@ export class GeneratorWorkflowService {
         requestId,
         status: request.status,
         steps: updated,
-        nextStep
+        nextStep,
+        stepCompleted: 'collect-data'
       }
     }
 
@@ -197,7 +198,7 @@ export class GeneratorWorkflowService {
       const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'completed')
       activeState.steps = updated
       const nextStep = updated.find((s) => s.status === 'pending')?.id
-      return { requestId, status: request.status, steps: updated, nextStep, resumeUrl }
+      return { requestId, status: request.status, steps: updated, nextStep, resumeUrl, stepCompleted: 'generate-resume' }
     }
 
     if (pendingStep.id === 'generate-cover-letter') {
@@ -214,7 +215,7 @@ export class GeneratorWorkflowService {
       const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'completed')
       activeState.steps = updated
       const nextStep = updated.find((s) => s.status === 'pending')?.id
-      return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl }
+      return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl, stepCompleted: 'generate-cover-letter' }
     }
 
     // render-pdf step: PDF rendering is done within generateResume/generateCoverLetter,
@@ -232,7 +233,8 @@ export class GeneratorWorkflowService {
         steps: updated,
         nextStep: undefined,
         resumeUrl: finalRequest?.resumeUrl ?? undefined,
-        coverLetterUrl: finalRequest?.coverLetterUrl ?? undefined
+        coverLetterUrl: finalRequest?.coverLetterUrl ?? undefined,
+        stepCompleted: 'render-pdf'
       }
     }
 
