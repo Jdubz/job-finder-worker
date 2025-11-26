@@ -3,6 +3,7 @@ import { queueClient } from "@/api"
 import type { QueueItem } from "@shared/types"
 import { API_CONFIG } from "@/config/api"
 import { consumeSavedProviderState, registerStateProvider } from "@/lib/restart-persistence"
+import { getStoredAuthToken } from "@/lib/auth-storage"
 
 interface UseQueueItemsOptions {
   limit?: number
@@ -79,7 +80,10 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         return
       }
 
-      const url = `${API_CONFIG.baseUrl}/queue/events`
+      const token = getStoredAuthToken()
+      const url = token
+        ? `${API_CONFIG.baseUrl}/queue/events?token=${encodeURIComponent(token)}`
+        : `${API_CONFIG.baseUrl}/queue/events`
       eventSource = new EventSource(url, { withCredentials: true })
 
       eventSource.addEventListener("snapshot", (event) => {
