@@ -37,7 +37,9 @@ def _rows_to_items(rows: List[Any]) -> List[JobQueueItem]:
 class QueueManager:
     """Manage queue items stored inside the SQLite database."""
 
-    def __init__(self, db_path: Optional[str] = None, notifier: Optional[QueueEventNotifier] = None):
+    def __init__(
+        self, db_path: Optional[str] = None, notifier: Optional[QueueEventNotifier] = None
+    ):
         self.db_path = db_path
         self.notifier = notifier
 
@@ -137,7 +139,9 @@ class QueueManager:
         if self.notifier:
             updated_item = self.get_item(item_id)
             if updated_item:
-                self.notifier.send_event("item.updated", {"queueItem": updated_item.model_dump(mode="json")})
+                self.notifier.send_event(
+                    "item.updated", {"queueItem": updated_item.model_dump(mode="json")}
+                )
 
     def increment_retry(self, item_id: str) -> None:
         with sqlite_connection(self.db_path) as conn:

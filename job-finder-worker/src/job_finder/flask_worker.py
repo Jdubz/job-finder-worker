@@ -250,7 +250,9 @@ def worker_loop():
 
             # Heartbeat
             if queue_manager and queue_manager.notifier:
-                queue_manager.notifier.send_event("heartbeat", {"iteration": worker_state["iteration"]})
+                queue_manager.notifier.send_event(
+                    "heartbeat", {"iteration": worker_state["iteration"]}
+                )
 
             # Apply remote commands before picking new work (HTTP fallback only if WS not connected)
             if queue_manager and queue_manager.notifier and not queue_manager.notifier.ws_connected:

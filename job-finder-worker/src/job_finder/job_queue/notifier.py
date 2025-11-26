@@ -18,9 +18,9 @@ import threading
 import time
 
 try:  # optional dependency for WS commands
-    import websocket  # type: ignore
+    import websocket  # type: ignore[import-untyped]
 except Exception:  # pragma: no cover - optional
-    websocket = None
+    websocket = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,11 @@ def _worker_id() -> str:
 
 
 class QueueEventNotifier:
-    def __init__(self, worker_id: Optional[str] = None, on_command: Optional[Callable[[Dict[str, Any]], None]] = None):
+    def __init__(
+        self,
+        worker_id: Optional[str] = None,
+        on_command: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ):
         self.base = _base_url().rstrip("/")
         self.token = _token()
         self.worker_id = worker_id or _worker_id()
@@ -75,7 +79,11 @@ class QueueEventNotifier:
                 try:
                     self._ws_app = websocket.WebSocketApp(  # type: ignore
                         self._ws_url(),
-                        header=[f"Authorization: Bearer {_worker_ws_token()}"] if _worker_ws_token() else None,
+                        header=(
+                            [f"Authorization: Bearer {_worker_ws_token()}"]
+                            if _worker_ws_token()
+                            else None
+                        ),
                         on_open=lambda *_: self._on_ws_open(),
                         on_message=self._handle_ws_message,
                         on_close=lambda *_: self._on_ws_close(),
@@ -121,7 +129,9 @@ class QueueEventNotifier:
         try:
             resp = requests.post(url, json=payload, headers=self._headers(), timeout=5)
             if resp.status_code >= 300:
-                logger.debug("QueueEventNotifier send_event failed: %s %s", resp.status_code, resp.text)
+                logger.debug(
+                    "QueueEventNotifier send_event failed: %s %s", resp.status_code, resp.text
+                )
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug("QueueEventNotifier send_event error: %s", exc)
 
@@ -129,9 +139,13 @@ class QueueEventNotifier:
         # Fallback when WS is unavailable
         url = f"{self.base}/queue/worker/commands"
         try:
-            resp = requests.get(url, params={"workerId": self.worker_id}, headers=self._headers(), timeout=5)
+            resp = requests.get(
+                url, params={"workerId": self.worker_id}, headers=self._headers(), timeout=5
+            )
             if resp.status_code >= 300:
-                logger.debug("QueueEventNotifier poll_commands failed: %s %s", resp.status_code, resp.text)
+                logger.debug(
+                    "QueueEventNotifier poll_commands failed: %s %s", resp.status_code, resp.text
+                )
                 return []
             data = resp.json()
             return data.get("data", {}).get("commands", [])  # api success wrapper
