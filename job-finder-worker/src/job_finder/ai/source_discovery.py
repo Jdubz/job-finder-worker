@@ -8,6 +8,7 @@ import feedparser
 import requests
 
 from job_finder.ai.providers import AITask, create_provider
+from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.settings import get_scraping_settings
 
@@ -33,7 +34,7 @@ class SourceDiscovery:
             api_key: Optional API key
         """
         self.provider = create_provider(
-            provider_type=provider_type, api_key=api_key, task=AITask.SELECTOR_DISCOVERY
+            provider_type=provider_type, api_key=api_key, task=AITask.SOURCE_DISCOVERY
         )
 
     def discover(self, url: str) -> Optional[Dict[str, Any]]:
@@ -214,10 +215,12 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
             # Clean response
             response = response.strip()
 
-            # Remove markdown code blocks
+            # Remove markdown code blocks - find JSON content directly
             if response.startswith("```"):
-                lines = response.split("\n")
-                response = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+                json_start = response.find("{")
+                json_end = response.rfind("}")
+                if json_start != -1 and json_end != -1:
+                    response = response[json_start : json_end + 1]
 
             config = json.loads(response)
 
@@ -253,8 +256,6 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
             source_config.validate()
 
             # Attempt test scrape
-            from job_finder.scrapers.generic_scraper import GenericScraper
-
             scraper = GenericScraper(source_config)
             jobs = scraper.scrape()
 

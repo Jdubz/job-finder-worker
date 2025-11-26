@@ -335,11 +335,20 @@ class GenericScraper:
             return el.get_text(strip=True) if el else None
 
     def _navigate_path(self, data, path: str) -> List:
-        """Navigate to jobs array. Supports: 'jobs', 'data.results', '[1:]'"""
+        """Navigate to jobs array. Supports: 'jobs', 'data.results', '[1:]'
+
+        WARNING: Never use eval() here - parse slices safely instead.
+        """
         if not path:
             return data if isinstance(data, list) else [data]
-        if path.startswith("["):  # Array slice like "[1:]"
-            return eval(f"data{path}")
+        if path.startswith("[") and path.endswith("]"):
+            # Safe slice parsing (see generic_scraper.py for full implementation)
+            slice_str = path[1:-1]
+            if ":" in slice_str:
+                parts = slice_str.split(":")
+                start = int(parts[0]) if parts[0] else None
+                end = int(parts[1]) if len(parts) > 1 and parts[1] else None
+                return data[start:end] if isinstance(data, list) else []
         return self._dot_access(data, path) or []
 ```
 

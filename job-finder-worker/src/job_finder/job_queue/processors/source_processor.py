@@ -8,8 +8,10 @@ All sources use the GenericScraper with unified SourceConfig format.
 """
 
 import logging
+import re
 import traceback
 import uuid
+from urllib.parse import urlparse
 
 from job_finder.exceptions import QueueProcessingError
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
@@ -123,9 +125,6 @@ class SourceProcessor(BaseProcessor):
 
     def _extract_company_from_url(self, url: str) -> str:
         """Extract company name from URL."""
-        from urllib.parse import urlparse
-        import re
-
         try:
             parsed = urlparse(url)
             domain = parsed.netloc

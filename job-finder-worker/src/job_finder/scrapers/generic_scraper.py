@@ -353,23 +353,20 @@ class GenericScraper:
             return [data] if data else []
 
         # Array slice notation
-        if path.startswith("["):
+        if path.startswith("[") and path.endswith("]"):
             try:
-                # Safe evaluation of slice
-                if path == "[1:]":
-                    return data[1:] if isinstance(data, list) else []
-                elif path.startswith("[") and path.endswith("]"):
-                    # Handle [0], [1:5], etc.
-                    slice_str = path[1:-1]
-                    if ":" in slice_str:
-                        parts = slice_str.split(":")
-                        start = int(parts[0]) if parts[0] else None
-                        end = int(parts[1]) if len(parts) > 1 and parts[1] else None
-                        return data[start:end] if isinstance(data, list) else []
-                    else:
-                        idx = int(slice_str)
-                        item = data[idx] if isinstance(data, list) and len(data) > idx else None
-                        return [item] if item else []
+                slice_str = path[1:-1]
+                if ":" in slice_str:
+                    # Handle slices like [1:], [:5], [1:5]
+                    parts = slice_str.split(":")
+                    start = int(parts[0]) if parts[0] else None
+                    end = int(parts[1]) if len(parts) > 1 and parts[1] else None
+                    return data[start:end] if isinstance(data, list) else []
+                else:
+                    # Handle index like [0], [1]
+                    idx = int(slice_str)
+                    item = data[idx] if isinstance(data, list) and len(data) > idx else None
+                    return [item] if item else []
             except (ValueError, IndexError) as e:
                 logger.warning(f"Error parsing array path '{path}': {e}")
                 return []

@@ -21,12 +21,12 @@ class AITask(str, Enum):
     - SCRAPE: Extract structured data from HTML (cheap, fast - Haiku)
     - FILTER: Not used (filtering is rule-based)
     - ANALYZE: Match job to profile (cheap, fast - Haiku, 95% cost savings vs Sonnet)
-    - SELECTOR_DISCOVERY: Discover CSS selectors (cheap, one-time - Haiku)
+    - SOURCE_DISCOVERY: Discover source config and field mappings (cheap, one-time - Haiku)
     """
 
     SCRAPE = "scrape"
     ANALYZE = "analyze"
-    SELECTOR_DISCOVERY = "selector_discovery"
+    SOURCE_DISCOVERY = "source_discovery"
 
 
 class ModelTier(str, Enum):
@@ -57,7 +57,7 @@ MODEL_SELECTION = {
 TASK_MODEL_TIERS = {
     AITask.SCRAPE: ModelTier.FAST,
     AITask.ANALYZE: ModelTier.FAST,  # Changed to FAST - Haiku handles job analysis well at 95% cost savings
-    AITask.SELECTOR_DISCOVERY: ModelTier.FAST,
+    AITask.SOURCE_DISCOVERY: ModelTier.FAST,
 }
 
 
