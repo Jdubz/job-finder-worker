@@ -6,6 +6,7 @@ import { UserRepository, type UserRole } from "../modules/users/user.repository"
 import { logger } from "../logger"
 import { ApiErrorCode } from "@shared/types"
 import { ApiHttpError } from "./api-error"
+import { parse as parseCookie } from "cookie"
 
 const IS_DEVELOPMENT = env.NODE_ENV === "development"
 
@@ -43,16 +44,6 @@ function resolveBypassEmail(): string | undefined {
   const admin = userRepository.findFirstAdmin()
   cachedBypassEmail = admin?.email ?? ""
   return cachedBypassEmail || undefined
-}
-
-function parseCookies(header: string | undefined): Record<string, string> {
-  if (!header) return {}
-  return header.split(";").reduce<Record<string, string>>((acc, part) => {
-    const [rawKey, ...rest] = part.trim().split("=")
-    if (!rawKey || !rest.length) return acc
-    acc[rawKey] = decodeURIComponent(rest.join("="))
-    return acc
-  }, {})
 }
 
 function issueSession(res: Response, user: AuthenticatedUser) {
@@ -105,12 +96,13 @@ export function buildAuthenticatedUser(profile: GoogleUser): AuthenticatedUser |
 }
 
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
-  const cookies = parseCookies(req.headers.cookie)
+  const cookies = req.headers.cookie ? parseCookie(req.headers.cookie) : {}
   const sessionToken = cookies[SESSION_COOKIE]
 
   if (sessionToken) {
     const sessionUser = userRepository.findBySessionToken(sessionToken)
-    if (sessionUser && sessionUser.sessionExpiresAt && new Date(sessionUser.sessionExpiresAt) > new Date()) {
+    const expiryMs = sessionUser?.sessionExpiresAtMs ?? (sessionUser?.sessionExpiresAt ? Date.parse(sessionUser.sessionExpiresAt) : undefined)
+    if (sessionUser && expiryMs && expiryMs > Date.now()) {
       const user: AuthenticatedUser = {
         uid: sessionUser.id,
         email: sessionUser.email,

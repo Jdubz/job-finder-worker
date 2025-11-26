@@ -14,6 +14,7 @@ export interface UserRecord {
   lastLoginAt?: string
   sessionToken?: string | null
   sessionExpiresAt?: string | null
+  sessionExpiresAtMs?: number | null
 }
 
 type UserRow = {
@@ -27,6 +28,7 @@ type UserRow = {
   last_login_at: string | null
   session_token: string | null
   session_expires_at: string | null
+  session_expires_at_ms: number | null
 }
 
 function parseRoles(value: string | null): UserRole[] {
@@ -50,7 +52,8 @@ function mapRow(row: UserRow): UserRecord {
     updatedAt: row.updated_at,
     lastLoginAt: row.last_login_at ?? undefined,
     sessionToken: row.session_token,
-    sessionExpiresAt: row.session_expires_at
+    sessionExpiresAt: row.session_expires_at,
+    sessionExpiresAtMs: row.session_expires_at_ms ?? null
   }
 }
 
@@ -65,7 +68,7 @@ export class UserRepository {
     const row = this.db
       .prepare(
         [
-          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at",
+          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms",
           "FROM users",
           "WHERE lower(email) = lower(?)"
         ].join(" ")
@@ -83,7 +86,7 @@ export class UserRepository {
     const row = this.db
       .prepare(
         [
-          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at",
+          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms",
           "FROM users",
           "WHERE instr(lower(ifnull(roles, '')), 'admin') > 0",
           "ORDER BY created_at ASC",
@@ -108,11 +111,13 @@ export class UserRepository {
   upsertUser(email: string, displayName?: string | null, avatarUrl?: string | null, roles: UserRole[] = ['viewer']): UserRecord {
     const existing = this.findByEmail(email)
     if (existing) {
+      const nextDisplay = displayName === undefined ? existing.displayName ?? null : displayName
+      const nextAvatar = avatarUrl === undefined ? existing.avatarUrl ?? null : avatarUrl
       this.db
         .prepare(
-          "UPDATE users SET display_name = COALESCE(?, display_name), avatar_url = COALESCE(?, avatar_url), roles = ?, updated_at = datetime('now') WHERE id = ?"
+          "UPDATE users SET display_name = ?, avatar_url = ?, roles = ?, updated_at = datetime('now') WHERE id = ?"
         )
-        .run(displayName ?? null, avatarUrl ?? null, roles.join(','), existing.id)
+        .run(nextDisplay, nextAvatar, roles.join(','), existing.id)
       return this.findByEmail(email) as UserRecord
     }
 
@@ -128,14 +133,16 @@ export class UserRepository {
 
   saveSession(userId: string, token: string, expiresAt: string): void {
     this.db
-      .prepare("UPDATE users SET session_token = ?, session_expires_at = ?, updated_at = datetime('now') WHERE id = ?")
-      .run(token, expiresAt, userId)
+      .prepare(
+        "UPDATE users SET session_token = ?, session_expires_at = ?, session_expires_at_ms = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(token, expiresAt, Date.parse(expiresAt), userId)
   }
 
   findBySessionToken(token: string): UserRecord | null {
     const row = this.db
       .prepare(
-        "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at FROM users WHERE session_token = ?"
+        "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms FROM users WHERE session_token = ?"
       )
       .get(token) as UserRow | undefined
     if (!row) return null
