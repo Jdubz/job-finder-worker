@@ -2,6 +2,11 @@
 # Run job search every 6 hours at minute 0
 0 */6 * * * root cd /app && /usr/local/bin/python scheduler.py >> /var/log/cron.log 2>&1
 
+# Run maintenance every 24 hours at 3 AM UTC
+# - Deletes job matches older than 2 weeks
+# - Recalculates match scores based on staleness (no AI)
+0 3 * * * root curl -s -X POST http://localhost:5555/maintenance >> /var/log/maintenance.log 2>&1
+
 # Run at specific times daily (optional - comment out if using above)
 # 0 6 * * * root cd /app && /usr/local/bin/python scheduler.py >> /var/log/cron.log 2>&1
 # 0 12 * * * root cd /app && /usr/local/bin/python scheduler.py >> /var/log/cron.log 2>&1

@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DB_PATH = PROJECT_ROOT.parent / "infra" / "sqlite" / "jobfinder.db"
 
 
-def _resolve_db_path(db_path: Optional[str] = None) -> Path:
+def resolve_db_path(db_path: Optional[str] = None) -> Path:
     """
     Resolve the SQLite database path using env vars with sane defaults.
 
@@ -61,7 +61,7 @@ def sqlite_connection(db_path: Optional[str] = None) -> Iterator[sqlite3.Connect
 
     Each call opens a fresh connection to avoid cross-thread issues.
     """
-    resolved_path = _resolve_db_path(db_path)
+    resolved_path = resolve_db_path(db_path)
     conn = _create_connection(resolved_path)
     try:
         yield conn
