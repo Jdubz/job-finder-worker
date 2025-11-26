@@ -6,9 +6,7 @@ import mime from 'mime-types'
 import { asyncHandler } from '../../utils/async-handler'
 import { failure } from '../../utils/api-response'
 import { ApiErrorCode } from '@shared/types'
-import { storageService, type ArtifactType } from './workflow/services/storage.service'
-
-const VALID_TYPES: ArtifactType[] = ['resume', 'cover-letter', 'image', 'raw']
+import { storageService } from './workflow/services/storage.service'
 
 function sanitizeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9-_.]/g, '')
@@ -17,24 +15,27 @@ function sanitizeSegment(value: string): string {
 export function buildGeneratorArtifactsRouter() {
   const router = Router()
 
+  // New human-readable path: /:date/:folder/:filename
+  // e.g., /2024-01-15/acme_software-engineer/josh-wentworth_acme_software-engineer_resume.pdf
   router.get(
-    '/:requestId/:type/:filename',
+    '/:date/:folder/:filename',
     asyncHandler(async (req, res) => {
-      const requestId = sanitizeSegment(req.params.requestId)
+      const date = sanitizeSegment(req.params.date)
+      const folder = sanitizeSegment(req.params.folder)
       const filename = sanitizeSegment(req.params.filename)
-      const type = req.params.type as ArtifactType
 
-      if (!VALID_TYPES.includes(type)) {
-        res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Unsupported artifact type'))
-        return
-      }
-
-      if (!requestId || !filename) {
+      if (!date || !folder || !filename) {
         res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Invalid artifact path'))
         return
       }
 
-      const relativePath = path.posix.join(requestId, type, filename)
+      // Validate date format (YYYY-MM-DD) and ensure it's a valid calendar date
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) !== date) {
+        res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Invalid date format'))
+        return
+      }
+
+      const relativePath = path.posix.join(date, folder, filename)
       const absolutePath = storageService.getAbsolutePath(relativePath)
 
       try {

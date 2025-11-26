@@ -8,6 +8,7 @@ import {
   type GenerateDocumentRequest,
   type GenerationStep,
 } from "@/api/generator-client"
+import { getAbsoluteArtifactUrl } from "@/config/api"
 import type { JobMatch } from "@shared/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,6 +26,29 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Sparkles, Download } from "lucide-react"
 import { GenerationProgress } from "@/components/GenerationProgress"
+
+// Step definitions matching backend generation-steps.ts
+function getInitialSteps(generateType: "resume" | "coverLetter" | "both"): GenerationStep[] {
+  const baseSteps: Record<string, GenerationStep[]> = {
+    resume: [
+      { id: "collect-data", name: "Collect Data", description: "Gathering your experience data", status: "pending" },
+      { id: "generate-resume", name: "Generate Resume", description: "AI generating tailored resume", status: "pending" },
+      { id: "render-pdf", name: "Render PDF", description: "Creating PDF document", status: "pending" },
+    ],
+    coverLetter: [
+      { id: "collect-data", name: "Collect Data", description: "Gathering your experience data", status: "pending" },
+      { id: "generate-cover-letter", name: "Generate Cover Letter", description: "AI generating cover letter", status: "pending" },
+      { id: "render-pdf", name: "Render PDF", description: "Creating PDF document", status: "pending" },
+    ],
+    both: [
+      { id: "collect-data", name: "Collect Data", description: "Gathering your experience data", status: "pending" },
+      { id: "generate-resume", name: "Generate Resume", description: "AI generating tailored resume", status: "pending" },
+      { id: "generate-cover-letter", name: "Generate Cover Letter", description: "AI generating cover letter", status: "pending" },
+      { id: "render-pdf", name: "Render PDF", description: "Creating PDF documents", status: "pending" },
+    ],
+  }
+  return baseSteps[generateType] || baseSteps.resume
+}
 
 // Helper function to normalize job match data from different sources
 function normalizeJobMatch(match: Record<string, unknown>): {
@@ -170,7 +194,15 @@ export function DocumentBuilderPage() {
           : undefined,
       }
 
-      // Step 1: Start generation
+      // Show initial progress immediately with first step in_progress
+      const initialSteps: GenerationStep[] = getInitialSteps(generateType)
+      setGenerationSteps(
+        initialSteps.map((step, index) =>
+          index === 0 ? { ...step, status: "in_progress" as const } : step
+        )
+      )
+
+      // Step 1: Start generation (executes first step synchronously)
       const startResponse = await generatorClient.startGeneration(request)
 
       if (!startResponse.success) {
@@ -183,17 +215,68 @@ export function DocumentBuilderPage() {
 
       setGenerationRequestId(startResponse.data.requestId)
 
-      // Step 2: Execute steps sequentially until complete
-      let nextStep = startResponse.data.nextStep
-      let isComplete = false
+      // Update with backend's step states (first step already completed)
+      if (startResponse.data.steps) {
+        setGenerationSteps(startResponse.data.steps)
+      }
 
-      while (nextStep && !isComplete) {
+      // Update URLs from start response
+      if (startResponse.data.resumeUrl) {
+        setResumeUrl(startResponse.data.resumeUrl)
+      }
+      if (startResponse.data.coverLetterUrl) {
+        setCoverLetterUrl(startResponse.data.coverLetterUrl)
+      }
+
+      // Step 2: Execute remaining steps sequentially until complete
+      let nextStep = startResponse.data.nextStep
+      let currentSteps = startResponse.data.steps || []
+
+      while (nextStep) {
         try {
+          // Mark the next step as in_progress in the UI before making the request
+          setGenerationSteps(
+            currentSteps.map((step) =>
+              step.id === nextStep ? { ...step, status: "in_progress" as const } : step
+            )
+          )
+
+          // Execute the step (waits for completion)
           const stepResponse = await generatorClient.executeStep(startResponse.data.requestId)
 
-          // Update steps if provided
+          // Check if request failed (either HTTP failure or step failure)
+          if (!stepResponse.success || stepResponse.data.status === "failed") {
+            const errorMessage = stepResponse.data.error || "Generation step failed"
+            // Update with backend's step states (will include failed step)
+            if (stepResponse.data.steps) {
+              // Add error message to the failed step
+              const stepsWithError = stepResponse.data.steps.map((step) =>
+                step.status === "failed" && !step.error
+                  ? { ...step, error: { message: errorMessage } }
+                  : step
+              )
+              setGenerationSteps(stepsWithError)
+            } else {
+              // Fallback: mark current step as failed locally
+              setGenerationSteps(
+                currentSteps.map((step) =>
+                  step.id === nextStep
+                    ? { ...step, status: "failed" as const, error: { message: errorMessage } }
+                    : step
+                )
+              )
+            }
+            setAlert({
+              type: "error",
+              message: errorMessage,
+            })
+            return
+          }
+
+          // Update with backend's step states (step is now completed)
           if (stepResponse.data.steps) {
-            setGenerationSteps(stepResponse.data.steps)
+            currentSteps = stepResponse.data.steps
+            setGenerationSteps(currentSteps)
           }
 
           // Update URLs as they become available
@@ -204,20 +287,22 @@ export function DocumentBuilderPage() {
             setCoverLetterUrl(stepResponse.data.coverLetterUrl)
           }
 
-          // Check if generation failed
-          if (!stepResponse.success) {
-            setAlert({
-              type: "error",
-              message: `Generation failed during step execution: ${stepResponse.error || stepResponse.message || "Unknown error"}`,
-            })
-            return
-          }
-
-          // Check for next step or completion
+          // Move to next step (undefined when complete)
           nextStep = stepResponse.data.nextStep
-          isComplete = stepResponse.data.status === "completed" || !nextStep
         } catch (error) {
           console.error("Step execution error:", error)
+          // Mark current step as failed
+          setGenerationSteps(
+            currentSteps.map((step) =>
+              step.id === nextStep
+                ? {
+                    ...step,
+                    status: "failed" as const,
+                    error: { message: error instanceof Error ? error.message : "Unknown error" },
+                  }
+                : step
+            )
+          )
           setAlert({
             type: "error",
             message: `Step execution failed: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -225,6 +310,8 @@ export function DocumentBuilderPage() {
           return
         }
       }
+
+      const isComplete = !nextStep
 
       // Step 3: Mark complete only if pipeline completed successfully
       if (isComplete) {
@@ -467,7 +554,7 @@ export function DocumentBuilderPage() {
             <div className="flex gap-3 justify-center">
               {resumeUrl && (
                 <Button asChild variant="outline" size="sm">
-                  <a href={resumeUrl} target="_blank" rel="noopener noreferrer">
+                  <a href={getAbsoluteArtifactUrl(resumeUrl) || "#"} target="_blank" rel="noopener noreferrer">
                     <Download className="w-4 h-4 mr-2" />
                     Download Resume
                   </a>
@@ -475,7 +562,7 @@ export function DocumentBuilderPage() {
               )}
               {coverLetterUrl && (
                 <Button asChild variant="outline" size="sm">
-                  <a href={coverLetterUrl} target="_blank" rel="noopener noreferrer">
+                  <a href={getAbsoluteArtifactUrl(coverLetterUrl) || "#"} target="_blank" rel="noopener noreferrer">
                     <Download className="w-4 h-4 mr-2" />
                     Download Cover Letter
                   </a>

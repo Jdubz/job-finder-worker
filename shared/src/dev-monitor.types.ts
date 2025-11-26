@@ -2,10 +2,10 @@
  * Dev Monitor Types
  *
  * Extended types for the dev-monitor tool that manages local development services
- * and cloud environment logs.
+ * and production environment logs.
  */
 
-import { CloudLogEntry } from './logging.types';
+import { FileLogEntry } from './logging.types';
 
 /**
  * Dev monitor log levels (uppercase)
@@ -140,12 +140,12 @@ export interface CloudLogQuery {
 }
 
 /**
- * Unified log entry (local or cloud)
+ * Unified log entry (local or file-based)
  *
- * This combines local dev logs and cloud logs into a single format
+ * This combines local dev logs and file-based logs into a single format
  * for display in the UI.
  */
-export type UnifiedLogEntry = DevMonitorLogLine | CloudLogEntry;
+export type UnifiedLogEntry = DevMonitorLogLine | FileLogEntry;
 
 /**
  * Socket.IO event types for dev-monitor

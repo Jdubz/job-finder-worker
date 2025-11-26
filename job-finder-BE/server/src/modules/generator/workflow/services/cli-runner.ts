@@ -18,7 +18,8 @@ function buildCommand(provider: CliProvider, prompt: string): { cmd: string; arg
   if (provider === 'codex') {
     return {
       cmd: 'codex',
-      args: ['exec', '--cd', process.cwd(), '--dangerously-bypass-approvals-and-sandbox', prompt]
+      // Skip Codex's git repo trust check because production containers don't include the .git folder
+      args: ['exec', '--skip-git-repo-check', '--cd', process.cwd(), '--dangerously-bypass-approvals-and-sandbox', prompt]
     }
   }
   if (provider === 'gemini') {
@@ -45,16 +46,19 @@ export async function runCliProvider(prompt: string, preferred: CliProvider = 'c
   const providers: CliProvider[] =
     preferred === 'codex' ? ['codex'] : [preferred, 'codex']
 
+  let lastError: string | undefined
+
   for (const provider of providers) {
     const result = await executeCommand(provider, prompt)
     if (result.success) {
       return result
     }
+    lastError = result.error || lastError
   }
 
   // If all providers fail, log a warning about the current limitations
-  logger.warn('Document generation failed. Only OpenAI/Codex provider is currently supported.')
-  return { success: false, output: '', error: 'Provider failed. Currently only OpenAI/Codex is supported.' }
+  logger.warn({ lastError }, 'Document generation failed. Only OpenAI/Codex provider is currently supported.')
+  return { success: false, output: '', error: lastError || 'Provider failed. Currently only OpenAI/Codex is supported.' }
 }
 
 async function executeCommand(provider: CliProvider, prompt: string): Promise<CliResult> {

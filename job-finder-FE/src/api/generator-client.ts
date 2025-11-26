@@ -74,8 +74,11 @@ export interface UserDefaults {
   location?: string
   linkedin?: string
   github?: string
-  portfolio?: string
+  website?: string
   summary?: string
+  accentColor?: string
+  avatar?: string
+  logo?: string
 }
 
 export interface GenerationStep {
@@ -103,6 +106,10 @@ export interface StartGenerationResponse {
     requestId: string
     status: string
     nextStep?: string
+    steps?: GenerationStep[]
+    stepCompleted?: string
+    resumeUrl?: string
+    coverLetterUrl?: string
   }
   requestId: string
 }
@@ -110,19 +117,23 @@ export interface StartGenerationResponse {
 export interface ExecuteStepResponse {
   success: boolean
   data: {
-    stepCompleted: string
+    requestId: string
+    stepCompleted?: string
     nextStep?: string
     status: string
     resumeUrl?: string
     coverLetterUrl?: string
     steps?: GenerationStep[]
+    error?: string
   }
   requestId: string
 }
 
 export class GeneratorClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.generatorBaseUrl) {
-    super(baseUrl)
+    // Use longer timeout for AI generation (2 minutes) and fewer retries
+    // since generation steps are not idempotent
+    super(baseUrl, { timeout: 120000, retryAttempts: 1 })
   }
 
   /**
@@ -155,6 +166,13 @@ export class GeneratorClient extends BaseApiClient {
    */
   async updateUserDefaults(defaults: Partial<UserDefaults>): Promise<{ success: boolean }> {
     return this.put<{ success: boolean }>("/defaults", defaults)
+  }
+
+  async uploadAsset(params: { type: "avatar" | "logo"; dataUrl: string }): Promise<{ path: string; publicUrl: string }> {
+    return this.post<{ success: boolean; path: string; publicUrl: string }>("/assets/upload", params).then((r) => ({
+      path: r.path,
+      publicUrl: r.publicUrl,
+    }))
   }
 
   /**

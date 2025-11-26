@@ -1,0 +1,78 @@
+version: "3.9"
+name: job-finder-generator-validation
+
+x-api-env: &api-env
+  NODE_ENV: production
+  PORT: 8080
+  DATABASE_PATH: /data/sqlite/jobfinder.db
+  JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
+  GENERATOR_ARTIFACTS_DIR: /data/artifacts
+  GENERATOR_ARTIFACTS_PUBLIC_BASE: ${GENERATOR_ARTIFACTS_PUBLIC_BASE:-http://localhost:${API_PORT:-18080}/api/generator/artifacts}
+  GENERATOR_ASSETS_DIR: /data/artifacts/assets
+
+services:
+  sqlite-migrator:
+    image: ghcr.io/jdubz/job-finder-worker/api:latest
+    env_file:
+      - .env.validation
+    environment:
+      <<: *api-env
+    command: ["node", "dist/scripts/migrate.js"]
+    volumes:
+      - ./volumes/sqlite:/data/sqlite
+    profiles: ["prod", "hotreload"]
+
+  api:
+    image: ghcr.io/jdubz/job-finder-worker/api:latest
+    container_name: generator-validation-api
+    env_file:
+      - .env.validation
+    environment:
+      <<: *api-env
+    ports:
+      - "${API_PORT:-18080}:8080"
+    volumes:
+      - ./volumes/sqlite:/data/sqlite
+      - ./volumes/artifacts:/data/artifacts
+      - ./volumes/logs:/srv/job-finder/logs
+      - type: tmpfs
+        target: /home/node/.codex
+    extra_hosts:
+      # Force IPv4 for ChatGPT endpoints (IPv6 sometimes blocked in local Docker)
+      - "chatgpt.com:104.18.32.47"
+      - "www.chatgpt.com:104.18.32.47"
+    depends_on:
+      sqlite-migrator:
+        condition: service_completed_successfully
+    profiles: ["prod"]
+
+  api-dev:
+    build:
+      context: ../../..
+      dockerfile: job-finder-BE/server/Dockerfile
+      target: base
+    container_name: generator-validation-api-dev
+    working_dir: /app
+    command: npm run dev
+    env_file:
+      - .env.validation
+    environment:
+      <<: *api-env
+      NODE_ENV: development
+    ports:
+      - "${API_PORT:-18080}:8080"
+    volumes:
+      - ../src:/app/src
+      - ../../../shared:/app/shared
+      - ./volumes/sqlite:/data/sqlite
+      - ./volumes/artifacts:/data/artifacts
+      - ./volumes/logs:/srv/job-finder/logs
+      - type: tmpfs
+        target: /home/node/.codex
+    extra_hosts:
+      - "chatgpt.com:104.18.32.47"
+      - "www.chatgpt.com:104.18.32.47"
+    depends_on:
+      sqlite-migrator:
+        condition: service_completed_successfully
+    profiles: ["hotreload"]

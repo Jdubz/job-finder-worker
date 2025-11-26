@@ -73,3 +73,17 @@ export async function authenticatedFetch(
 }
 
 // Legacy functions endpoints removed – use the Express API exclusively.
+
+/**
+ * Convert a relative artifact URL to an absolute URL
+ * Backend returns paths like /api/generator/artifacts/... which need the API base prepended
+ */
+export function getAbsoluteArtifactUrl(relativeUrl: string | null | undefined): string | null {
+  if (!relativeUrl) return null
+  // Already absolute
+  if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) {
+    return relativeUrl
+  }
+  // Use getApiBaseUrl (without /api suffix) since artifact URLs already include /api
+  return `${getApiBaseUrl()}${relativeUrl}`
+}

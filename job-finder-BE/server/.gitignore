@@ -4,3 +4,5 @@ dist
 *.log
 coverage
 *.tsbuildinfo
+# Test artifacts directory
+.artifacts-test/

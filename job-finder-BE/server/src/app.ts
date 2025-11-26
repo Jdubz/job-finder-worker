@@ -11,7 +11,9 @@ import { buildGeneratorRouter } from './modules/generator/generator.routes'
 import { buildGeneratorApiRouter } from './modules/generator/generator.api'
 import { buildGeneratorWorkflowRouter } from './modules/generator/generator.workflow.routes'
 import { buildGeneratorArtifactsRouter } from './modules/generator/generator.artifacts.routes'
+import { buildGeneratorAssetsRouter, buildGeneratorAssetsServeRouter } from './modules/generator/generator.assets.routes'
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
+import { buildLoggingRouter } from './modules/logging/logging.routes'
 import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
 
 export function buildApp() {
@@ -61,8 +63,13 @@ export function buildApp() {
   generatorPipeline.use(express.json({ limit: '10mb' }))
   generatorPipeline.use(express.urlencoded({ extended: true }))
   generatorPipeline.use(buildGeneratorApiRouter())
+  generatorPipeline.use('/assets', buildGeneratorAssetsRouter())
   generatorPipeline.use(buildGeneratorWorkflowRouter())
-  generatorPipeline.use('/artifacts', buildGeneratorArtifactsRouter())
+
+  // Public asset serving (no auth). Upload stays behind /api/generator/assets within the auth pipeline.
+  app.use('/api/generator/artifacts/assets', buildGeneratorAssetsServeRouter())
+  // Artifacts route is public - URLs are unique/semi-secret paths for direct download
+  app.use('/api/generator/artifacts', buildGeneratorArtifactsRouter())
 
   app.use('/api/generator', verifyFirebaseAuth, generatorPipeline)
 
@@ -71,6 +78,9 @@ export function buildApp() {
 
   // Prompts route - public GET, authenticated PUT/POST
   app.use('/api/prompts', buildPromptsRouter())
+
+  // Logging route - accepts both authenticated and unauthenticated requests
+  app.use('/api/logs', buildLoggingRouter())
 
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)

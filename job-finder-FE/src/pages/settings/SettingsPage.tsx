@@ -17,6 +17,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { generatorClient } from "@/api"
+
+async function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
 
 export function SettingsPage() {
   const { user, isOwner } = useAuth()
@@ -41,6 +51,8 @@ export function SettingsPage() {
     github: "",
     website: "",
     accentColor: "#3b82f6",
+    avatar: "",
+    logo: "",
   })
   const [originalDefaults, setOriginalDefaults] = useState<Partial<PersonalInfo>>({
     name: "",
@@ -51,7 +63,10 @@ export function SettingsPage() {
     github: "",
     website: "",
     accentColor: "#3b82f6",
+    avatar: "",
+    logo: "",
   })
+  const [uploading, setUploading] = useState<{ avatar: boolean; logo: boolean }>({ avatar: false, logo: false })
 
   // Theme preference (stored in localStorage)
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system")
@@ -59,19 +74,21 @@ export function SettingsPage() {
   // Load personal info into state when it changes
   useEffect(() => {
     if (personalInfo) {
-      const defaults = {
-        name: personalInfo.name || "",
-        email: personalInfo.email || "",
-        phone: personalInfo.phone || "",
-        location: personalInfo.location || "",
-        linkedin: personalInfo.linkedin || "",
-        github: personalInfo.github || "",
-        website: personalInfo.website || "",
-        accentColor: personalInfo.accentColor || "#3b82f6",
+        const defaults = {
+          name: personalInfo.name || "",
+          email: personalInfo.email || "",
+          phone: personalInfo.phone || "",
+          location: personalInfo.location || "",
+          linkedin: personalInfo.linkedin || "",
+          github: personalInfo.github || "",
+          website: personalInfo.website || "",
+          accentColor: personalInfo.accentColor || "#3b82f6",
+          avatar: personalInfo.avatar || "",
+          logo: personalInfo.logo || "",
+        }
+        setUserDefaults(defaults)
+        setOriginalDefaults(defaults)
       }
-      setUserDefaults(defaults)
-      setOriginalDefaults(defaults)
-    }
   }, [personalInfo])
 
   // Set error from load error
@@ -422,6 +439,86 @@ export function SettingsPage() {
               <p className="text-xs text-gray-500">
                 Choose a color to personalize your resumes and cover letters
               </p>
+            </div>
+
+            <div className="space-y-2 col-span-2">
+              <Label>Avatar</Label>
+              <div className="flex items-center gap-3">
+                {userDefaults.avatar ? (
+                  <img
+                    src={
+                      userDefaults.avatar.startsWith('http')
+                        ? userDefaults.avatar
+                        : `/api/generator/artifacts${userDefaults.avatar}`
+                    }
+                    alt="avatar"
+                    className="h-12 w-12 rounded-full object-cover border"
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-500">No avatar</div>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    try {
+                      setUploading((p) => ({ ...p, avatar: true }))
+                      const res = await generatorClient.uploadAsset({ type: "avatar", dataUrl: await fileToDataUrl(file) })
+                      setUserDefaults((prev) => ({ ...prev, avatar: res.path }))
+                      setSuccess("Avatar uploaded")
+                    } catch (err) {
+                      console.error(err)
+                      setError("Failed to upload avatar")
+                    } finally {
+                      setUploading((p) => ({ ...p, avatar: false }))
+                    }
+                  }}
+                  disabled={uploading.avatar || isSaving}
+                />
+              </div>
+              <p className="text-xs text-gray-500">JPEG/PNG/SVG. Stored locally and used in resume header.</p>
+            </div>
+
+            <div className="space-y-2 col-span-2">
+              <Label>Logo</Label>
+              <div className="flex items-center gap-3">
+                {userDefaults.logo ? (
+                  <img
+                    src={
+                      userDefaults.logo.startsWith('http')
+                        ? userDefaults.logo
+                        : `/api/generator/artifacts${userDefaults.logo}`
+                    }
+                    alt="logo"
+                    className="h-10 w-10 object-contain border p-1 bg-white"
+                  />
+                ) : (
+                  <div className="h-10 w-10 border bg-gray-100 flex items-center justify-center text-xs text-gray-500">No logo</div>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    try {
+                      setUploading((p) => ({ ...p, logo: true }))
+                      const res = await generatorClient.uploadAsset({ type: "logo", dataUrl: await fileToDataUrl(file) })
+                      setUserDefaults((prev) => ({ ...prev, logo: res.path }))
+                      setSuccess("Logo uploaded")
+                    } catch (err) {
+                      console.error(err)
+                      setError("Failed to upload logo")
+                    } finally {
+                      setUploading((p) => ({ ...p, logo: false }))
+                    }
+                  }}
+                  disabled={uploading.logo || isSaving}
+                />
+              </div>
+              <p className="text-xs text-gray-500">SVG/PNG recommended. Used in resume header/footer.</p>
             </div>
           </div>
         </CardContent>
