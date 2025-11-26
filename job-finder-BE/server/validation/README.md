@@ -32,7 +32,13 @@ cp .env.validation.example .env.validation
 PROD_SSH_HOST=prod-jobfinder ./clone-prod-db.sh
 ```
 
-4) Run the end-to-end validation
+4) Ensure personal-info is configured
+```bash
+./setup-personal-info.sh
+# Edit the script to match your actual personal info if needed
+```
+
+5) Run the end-to-end validation
 ```bash
 ./run-validation.sh
 ```

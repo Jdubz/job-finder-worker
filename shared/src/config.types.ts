@@ -216,36 +216,91 @@ export const DEFAULT_SCHEDULER_SETTINGS: SchedulerSettings = {
 }
 
 export const DEFAULT_PROMPTS: PromptConfig = {
-  resumeGeneration: `You are an expert resume writer. Generate a professional resume based on the following information:
+  resumeGeneration: `You are an expert resume writer creating a tailored resume for a specific job.
 
-Job Description: {{jobDescription}}
-Job Title: {{jobTitle}}
-Company: {{companyName}}
+TARGET ROLE: {{jobTitle}} at {{companyName}}
 
-User Experience:
+JOB DESCRIPTION:
+{{jobDescription}}
+
+YOUR TASK:
+1. Write a compelling professionalSummary (2-3 sentences) tailored to this specific role
+2. For each experience entry, write 3-5 achievement-focused highlights that:
+   - Use action verbs and quantify impact where possible
+   - Emphasize skills/accomplishments relevant to the target role
+   - Are concise (one line each, ~10-15 words)
+3. Organize skills into 2-4 logical categories relevant to the role
+4. Preserve ALL dates, company names, and locations exactly as provided
+
+RESPONSE FORMAT (JSON only, no markdown):
+{
+  "personalInfo": {
+    "name": "string",
+    "title": "target role title",
+    "summary": "brief tagline",
+    "contact": { "email": "", "location": "", "website": "", "linkedin": "", "github": "" }
+  },
+  "professionalSummary": "2-3 sentence summary tailored to the role",
+  "experience": [
+    {
+      "role": "exact role from input",
+      "company": "exact company from input",
+      "location": "exact location from input",
+      "startDate": "YYYY-MM from input",
+      "endDate": "YYYY-MM from input or null if current",
+      "highlights": ["achievement 1", "achievement 2", "achievement 3"],
+      "technologies": ["tech1", "tech2"]
+    }
+  ],
+  "skills": [
+    { "category": "Category Name", "items": ["skill1", "skill2"] }
+  ],
+  "education": [
+    { "institution": "", "degree": "", "field": "", "startDate": "", "endDate": "" }
+  ]
+}
+
+IMPORTANT:
+- Output ONLY valid JSON, no explanations or markdown
+- Preserve exact dates, company names, locations from the input data
+- Customize highlights and summary for the target role
+- Include technologies used at each job`,
+
+  coverLetterGeneration: `You are an expert cover letter writer creating a compelling, personalized letter.
+
+TARGET ROLE: {{jobTitle}} at {{companyName}}
+
+JOB DESCRIPTION:
+{{jobDescription}}
+
+CANDIDATE EXPERIENCE:
 {{userExperience}}
 
-User Skills:
-{{userSkills}}
+YOUR TASK:
+Write a cover letter that:
+1. Opens with a hook that connects the candidate's background to this specific role
+2. Highlights 2-3 most relevant achievements/experiences for this position
+3. Shows genuine interest in the company and role (use details from job description)
+4. Closes with confidence and a clear call to action
+5. Maintains professional but personable tone
 
-Additional Instructions: {{additionalInstructions}}
+RESPONSE FORMAT (JSON only, no markdown):
+{
+  "greeting": "Dear Hiring Manager," or specific name if known,
+  "openingParagraph": "Strong opening that hooks the reader and states intent",
+  "bodyParagraphs": [
+    "Paragraph connecting specific experience to job requirements",
+    "Paragraph highlighting relevant achievements and skills"
+  ],
+  "closingParagraph": "Express enthusiasm and include call to action",
+  "signature": "Sincerely,"
+}
 
-Create a tailored resume that highlights relevant experience and skills for this specific role.`,
-
-  coverLetterGeneration: `You are an expert cover letter writer. Generate a compelling cover letter based on:
-
-Job Description: {{jobDescription}}
-Job Title: {{jobTitle}}
-Company: {{companyName}}
-
-User Experience:
-{{userExperience}}
-
-Match Reason: {{matchReason}}
-
-Additional Instructions: {{additionalInstructions}}
-
-Write a personalized cover letter that demonstrates enthusiasm and fit for the role.`,
+IMPORTANT:
+- Output ONLY valid JSON, no explanations or markdown
+- Keep total length to ~300-400 words
+- Be specific about how experience relates to their needs
+- Avoid generic phrases; show you understand this specific role`,
 
   jobScraping: `Extract job posting information from the provided HTML content.
 

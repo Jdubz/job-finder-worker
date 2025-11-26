@@ -36,8 +36,19 @@ process.env.JF_SQLITE_MIGRATIONS_DIR =
   process.env.JF_SQLITE_MIGRATIONS_DIR ?? path.resolve(__dirname, '../../../infra/sqlite/migrations')
 
 // Keep test artifacts in a repo-local, git-ignored folder (never /srv/...)
-process.env.GENERATOR_ARTIFACTS_DIR =
-  process.env.GENERATOR_ARTIFACTS_DIR ?? path.resolve(__dirname, '../../.artifacts-test')
+const defaultArtifactsDir = path.resolve(__dirname, '../../.artifacts-test')
+const artifactsDir = process.env.GENERATOR_ARTIFACTS_DIR ?? defaultArtifactsDir
+
+// Keep test artifacts in a repo-local, git-ignored folder (never /srv/...)
+process.env.GENERATOR_ARTIFACTS_DIR = artifactsDir
+
+// Clean up artifacts between test runs so they don't accumulate across developers/CI runs.
+if (artifactsDir === defaultArtifactsDir) {
+  fs.rmSync(artifactsDir, { recursive: true, force: true })
+  fs.mkdirSync(artifactsDir, { recursive: true })
+} else if (!fs.existsSync(artifactsDir)) {
+  fs.mkdirSync(artifactsDir, { recursive: true })
+}
 
 // Make the auth bypass token available before any modules load (tests share module cache)
 process.env.TEST_AUTH_BYPASS_TOKEN = process.env.TEST_AUTH_BYPASS_TOKEN ?? 'bypass-token'

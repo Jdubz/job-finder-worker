@@ -53,7 +53,13 @@ $COMPOSE --profile "$PROFILE" up -d "$SERVICE_NAME"
 
 # Copy Codex credentials into the running container (tmpfs) just like dev-bots
 echo "Syncing Codex credentials into container..."
-docker cp "$CODEX_DIR" "$SERVICE_CONTAINER":/home/node/.codex >/dev/null
+# Use trailing /. to copy CONTENTS of CODEX_DIR into the target directory
+docker exec "$SERVICE_CONTAINER" rm -rf /home/node/.codex/* 2>/dev/null || true
+for f in auth.json config.toml; do
+  if [[ -f "$CODEX_DIR/$f" ]]; then
+    docker cp "$CODEX_DIR/$f" "$SERVICE_CONTAINER":/home/node/.codex/ >/dev/null
+  fi
+done
 docker exec "$SERVICE_CONTAINER" chown -R node:node /home/node/.codex
 docker exec "$SERVICE_CONTAINER" ls -la /home/node/.codex || true
 
