@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-from job_finder.exceptions import QueueProcessingError, StorageError
+from job_finder.exceptions import DuplicateQueueItemError, QueueProcessingError, StorageError
 from job_finder.job_queue.models import (
     CompanySubTask,
     JobQueueItem,
@@ -67,6 +68,11 @@ class QueueManager:
                     f"INSERT INTO job_queue ({columns}) VALUES ({placeholders})",
                     tuple(record.values()),
                 )
+        except sqlite3.IntegrityError as exc:
+            # UNIQUE constraint on url - this is expected during concurrent scraping
+            if "UNIQUE constraint failed" in str(exc):
+                raise DuplicateQueueItemError(f"Duplicate URL in queue: {item.url}") from exc
+            raise StorageError(f"Failed to insert queue item: {exc}") from exc
         except Exception as exc:
             raise StorageError(f"Failed to insert queue item: {exc}") from exc
 

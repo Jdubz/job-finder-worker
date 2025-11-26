@@ -85,6 +85,20 @@ class StorageError(JobFinderError):
     pass
 
 
+class DuplicateQueueItemError(StorageError):
+    """Raised when attempting to insert a duplicate queue item.
+
+    This is expected behavior during concurrent scraping operations
+    and should be handled gracefully (not logged as an error).
+
+    Examples:
+    - Same URL submitted by multiple scrapers simultaneously
+    - Race condition between url_exists check and insert
+    """
+
+    pass
+
+
 class ProfileError(JobFinderError):
     """Raised when profile operations fail.
 

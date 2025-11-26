@@ -13,6 +13,7 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
+from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueSource
 from job_finder.utils.company_name_utils import clean_company_name
@@ -171,6 +172,13 @@ class ScraperIntake:
                 doc_id = self.queue_manager.add_item(queue_item)
                 added_count += 1
 
+            except DuplicateQueueItemError:
+                # Race condition - another process added this URL between our check and insert
+                # This is expected behavior during concurrent scraping, not an error
+                skipped_count += 1
+                logger.debug(f"Job already in queue (race condition): {normalized_url}")
+                continue
+
             except Exception as e:
                 logger.error(f"Error adding job to queue: {e}")
                 continue
@@ -267,6 +275,11 @@ class ScraperIntake:
                 f"Submitted company to granular pipeline: {cleaned_name} (ID: {doc_id}, tracking_id: {tracking_id})"
             )
             return doc_id
+
+        except DuplicateQueueItemError:
+            # Race condition - another process added this URL between our check and insert
+            logger.debug(f"Company already in queue (race condition): {normalized_url}")
+            return None
 
         except Exception as e:
             logger.error(f"Error adding company to granular pipeline: {e}")
