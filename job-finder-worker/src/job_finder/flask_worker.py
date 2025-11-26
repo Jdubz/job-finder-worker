@@ -433,21 +433,14 @@ def config_endpoint():
 @app.route("/maintenance", methods=["POST"])
 def maintenance_endpoint():
     """
-    Run maintenance tasks: delete stale matches and recalculate scores.
+    Run maintenance tasks: delete stale matches and recalculate priorities.
 
     This endpoint triggers the maintenance cycle which:
     - Deletes job matches older than 2 weeks
-    - Recalculates match scores based on freshness (programmatic, no AI)
+    - Recalculates application priorities based on match scores
     """
-    db_path = (
-        os.getenv("JF_SQLITE_DB_PATH")
-        or os.getenv("JOB_FINDER_SQLITE_PATH")
-        or os.getenv("SQLITE_DB_PATH")
-        or os.getenv("DATABASE_PATH")
-    )
-
     slogger.worker_status("maintenance_started")
-    results = run_maintenance(db_path)
+    results = run_maintenance()  # db_path resolved internally via resolve_db_path
     slogger.worker_status("maintenance_completed", results)
 
     if results["success"]:
@@ -459,12 +452,15 @@ def maintenance_endpoint():
             }
         )
     else:
-        return jsonify(
-            {
-                "message": "Maintenance failed",
-                "error": results["error"],
-            }
-        ), 500
+        return (
+            jsonify(
+                {
+                    "message": "Maintenance failed",
+                    "error": results["error"],
+                }
+            ),
+            500,
+        )
 
 
 def signal_handler(signum, frame):
