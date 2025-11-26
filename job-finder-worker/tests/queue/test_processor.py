@@ -268,7 +268,10 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
         application_priority = "High"
 
         def to_dict(self):
-            return {"match_score": self.match_score, "application_priority": self.application_priority}
+            return {
+                "match_score": self.match_score,
+                "application_priority": self.application_priority,
+            }
 
     active_company = {
         "id": "comp-1",

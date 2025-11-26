@@ -481,7 +481,8 @@ class SourceProcessor(BaseProcessor):
 
                 elif source_type == "generic":
                     logger.info(
-                        "Generic source type not yet implemented; marking success for %s", source_name
+                        "Generic source type not yet implemented; marking success for %s",
+                        source_name,
                     )
                     self.sources_manager.record_scraping_success(
                         source_id=source.get("id"), jobs_found=0
@@ -490,7 +491,11 @@ class SourceProcessor(BaseProcessor):
                         item.id,
                         QueueStatus.SUCCESS,
                         "Generic source placeholder - no jobs scraped",
-                        scraped_data={"jobs_found": 0, "jobs_submitted": 0, "source_name": source_name},
+                        scraped_data={
+                            "jobs_found": 0,
+                            "jobs_submitted": 0,
+                            "source_name": source_name,
+                        },
                     )
                     return
 

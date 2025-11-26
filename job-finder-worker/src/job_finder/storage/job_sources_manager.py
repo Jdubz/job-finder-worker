@@ -20,8 +20,16 @@ def _utcnow_iso() -> str:
 
 
 VALID_SOURCE_TRANSITIONS = {
-    SourceStatus.PENDING_VALIDATION: {SourceStatus.ACTIVE, SourceStatus.FAILED, SourceStatus.DISABLED},
-    SourceStatus.ACTIVE: {SourceStatus.DISABLED, SourceStatus.FAILED, SourceStatus.PENDING_VALIDATION},
+    SourceStatus.PENDING_VALIDATION: {
+        SourceStatus.ACTIVE,
+        SourceStatus.FAILED,
+        SourceStatus.DISABLED,
+    },
+    SourceStatus.ACTIVE: {
+        SourceStatus.DISABLED,
+        SourceStatus.FAILED,
+        SourceStatus.PENDING_VALIDATION,
+    },
     SourceStatus.DISABLED: {SourceStatus.ACTIVE, SourceStatus.PENDING_VALIDATION},
     SourceStatus.FAILED: {SourceStatus.PENDING_VALIDATION, SourceStatus.ACTIVE},
 }
@@ -320,7 +328,9 @@ class JobSourcesManager:
 
     def update_source_status(self, source_id: str, status: SourceStatus) -> None:
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute("SELECT status FROM job_sources WHERE id = ?", (source_id,)).fetchone()
+            row = conn.execute(
+                "SELECT status FROM job_sources WHERE id = ?", (source_id,)
+            ).fetchone()
             if not row:
                 raise StorageError(f"Source {source_id} not found")
 

@@ -96,7 +96,9 @@ class CompaniesManager:
     def _validate_transition(self, current: CompanyStatus, new: CompanyStatus) -> None:
         allowed = VALID_COMPANY_TRANSITIONS.get(current, set()) | {current}
         if new not in allowed:
-            raise InvalidStateTransition(f"Cannot transition company from {current.value} to {new.value}")
+            raise InvalidStateTransition(
+                f"Cannot transition company from {current.value} to {new.value}"
+            )
 
     def _serialize_progress(self, progress: Optional[Dict[str, Any]]) -> str:
         merged = DEFAULT_ANALYSIS_PROGRESS.copy()
@@ -130,7 +132,9 @@ class CompaniesManager:
                 "UPDATE companies SET analysis_status = ?, updated_at = ? WHERE id = ?",
                 (new_status.value, _utcnow_iso(), company_id),
             )
-        logger.debug("Company %s status %s → %s", company_id, current_status.value, new_status.value)
+        logger.debug(
+            "Company %s status %s → %s", company_id, current_status.value, new_status.value
+        )
 
     def update_analysis_progress(self, company_id: str, **stage_updates: bool) -> Dict[str, bool]:
         company = self.get_company_by_id(company_id) or {}
@@ -211,7 +215,9 @@ class CompaniesManager:
         desired_status = CompanyStatus(desired_status_value)
 
         if existing:
-            current_status = CompanyStatus(existing.get("analysis_status") or CompanyStatus.PENDING.value)
+            current_status = CompanyStatus(
+                existing.get("analysis_status") or CompanyStatus.PENDING.value
+            )
             self._validate_transition(current_status, desired_status)
 
         now = _utcnow_iso()

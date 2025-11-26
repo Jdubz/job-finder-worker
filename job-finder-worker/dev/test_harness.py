@@ -105,7 +105,18 @@ def submit_job_item(
             submitted_by, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
-        (item_id, "job", "pending", unique_url, company_name, source, tracking_id, "test_harness", now, now),
+        (
+            item_id,
+            "job",
+            "pending",
+            unique_url,
+            company_name,
+            source,
+            tracking_id,
+            "test_harness",
+            now,
+            now,
+        ),
     )
 
     conn.commit()
@@ -371,7 +382,11 @@ def show_status():
             "SKIPPED": Colors.MAGENTA,
         }.get(item["status"], Colors.RESET)
 
-        url_display = item["url"][:40] + "..." if item["url"] and len(item["url"]) > 40 else item["url"] or "-"
+        url_display = (
+            item["url"][:40] + "..."
+            if item["url"] and len(item["url"]) > 40
+            else item["url"] or "-"
+        )
         print(
             f"  [{item['id']}] {status_color}{item['status']:10}{Colors.RESET} "
             f"{item['type']:8} {item['company_name'] or '-':20} {url_display}"
@@ -535,7 +550,9 @@ def run_test_scenarios():
     # Test 2: Company analysis
     print(f"\n{Colors.BOLD}Test 2: Company Analysis{Colors.RESET}")
     print("Submitting a company for analysis...")
-    tracking_ids.append(submit_company_item(company_name="Test Company", url="https://testcompany.com"))
+    tracking_ids.append(
+        submit_company_item(company_name="Test Company", url="https://testcompany.com")
+    )
 
     # Test 3: Source discovery
     print(f"\n{Colors.BOLD}Test 3: Source Discovery{Colors.RESET}")
