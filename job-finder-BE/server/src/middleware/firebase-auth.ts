@@ -3,6 +3,8 @@ import { env } from "../config/env"
 import { verifyGoogleIdToken, type GoogleUser } from "../config/google-oauth"
 import { UserRepository, type UserRole } from "../modules/users/user.repository"
 import { logger } from "../logger"
+import { ApiErrorCode } from "@shared/types"
+import { ApiHttpError } from "./api-error"
 
 const IS_DEVELOPMENT = env.NODE_ENV === "development"
 
@@ -77,7 +79,7 @@ function buildAuthenticatedUser(profile: GoogleUser): AuthenticatedUser | null {
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization
   if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "Missing Authorization header" })
+    return next(new ApiHttpError(ApiErrorCode.UNAUTHORIZED, "Missing Authorization header", { status: 401 }))
   }
 
   const token = authHeader.slice("Bearer ".length)
@@ -86,7 +88,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     const email = resolveBypassEmail()
     if (!email) {
       logger.error("Bypass token used but no admin user is defined in the users table")
-      return res.status(403).json({ message: "User is not authorized" })
+      return next(new ApiHttpError(ApiErrorCode.FORBIDDEN, "User is not authorized", { status: 403 }))
     }
     const bypassUser: AuthenticatedUser = {
       uid: "test-user",
@@ -118,12 +120,12 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
 
   const googleUser = await verifyGoogleIdToken(token)
   if (!googleUser) {
-    return res.status(401).json({ message: "Invalid auth token" })
+    return next(new ApiHttpError(ApiErrorCode.INVALID_TOKEN, "Invalid auth token", { status: 401 }))
   }
 
   const authenticatedUser = buildAuthenticatedUser(googleUser)
   if (!authenticatedUser) {
-    return res.status(403).json({ message: "User is not authorized" })
+    return next(new ApiHttpError(ApiErrorCode.FORBIDDEN, "User is not authorized", { status: 403 }))
   }
 
   ;(req as AuthenticatedRequest).user = authenticatedUser
@@ -134,10 +136,10 @@ export function requireRole(role: UserRole) {
   return (req: Request, res: Response, next: NextFunction) => {
     const user = (req as AuthenticatedRequest).user
     if (!user) {
-      return res.status(401).json({ message: "Missing authenticated user" })
+      return next(new ApiHttpError(ApiErrorCode.UNAUTHORIZED, "Missing authenticated user", { status: 401 }))
     }
     if (!user.roles.includes(role)) {
-      return res.status(403).json({ message: "User is not authorized" })
+      return next(new ApiHttpError(ApiErrorCode.FORBIDDEN, "User is not authorized", { status: 403, details: { requiredRole: role } }))
     }
     next()
   }

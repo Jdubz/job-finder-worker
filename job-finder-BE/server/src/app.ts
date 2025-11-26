@@ -1,4 +1,4 @@
-import express, { type Request, type Response, type NextFunction } from 'express'
+import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import { httpLogger, logger } from './logger'
@@ -15,6 +15,8 @@ import { buildGeneratorAssetsRouter, buildGeneratorAssetsServeRouter } from './m
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
 import { buildLoggingRouter } from './modules/logging/logging.routes'
 import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
+import { ApiErrorCode } from '@shared/types'
+import { ApiHttpError, apiErrorHandler } from './middleware/api-error'
 
 export function buildApp() {
   const app = express()
@@ -93,14 +95,11 @@ export function buildApp() {
   app.get('/healthz', healthHandler)
   app.get('/readyz', healthHandler)
 
-  app.use((req, res) => {
-    res.status(404).json({ message: 'Not Found', path: req.path })
+  app.use((req, _res, next) => {
+    next(new ApiHttpError(ApiErrorCode.NOT_FOUND, 'Resource not found', { status: 404, details: { path: req.path } }))
   })
 
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    logger.error({ err }, 'Unhandled error')
-    res.status(500).json({ message: 'Internal Server Error', error: err instanceof Error ? err.message : 'Unknown error' })
-  })
+  app.use(apiErrorHandler)
 
   return app
 }
