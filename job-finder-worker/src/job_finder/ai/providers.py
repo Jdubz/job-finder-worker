@@ -229,7 +229,6 @@ def get_model_for_task(provider_type: str, task: AITask) -> str:
         'claude-3-5-haiku-20241022'
     """
     provider_type = provider_type.lower()
-    use_codex_cli = os.getenv("USE_CODEX_CLI", "0") == "1"
 
     if provider_type not in MODEL_SELECTION:
         raise AIProviderError(

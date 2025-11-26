@@ -13,9 +13,8 @@ from job_finder.storage.companies_manager import CompaniesManager
 
 
 def _apply_migrations(db_path: Path) -> None:
-    # In the dev container the worker lives at /app and the shared migrations
-    # are mounted at /app/infra/sqlite/migrations.
-    migrations_dir = Path(__file__).resolve().parents[1] / "infra" / "sqlite" / "migrations"
+    # Migrations are at monorepo root: job-finder-bot/infra/sqlite/migrations
+    migrations_dir = Path(__file__).resolve().parents[2] / "infra" / "sqlite" / "migrations"
     with sqlite3.connect(db_path) as conn:
         for sql_file in sorted(migrations_dir.glob("*.sql")):
             conn.executescript(sql_file.read_text())

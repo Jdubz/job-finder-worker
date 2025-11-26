@@ -87,6 +87,31 @@ def test_queue_scrape_end_to_end(temp_db):
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
     ai_matcher = DummyMatcher(score=88)
 
+    # Pre-populate an ACTIVE company so the job pipeline doesn't spawn a company task
+    # Note: name_lower must match normalize_company_name("E2E Co") = "e2e"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO companies (
+                id, name, name_lower, website, about, culture,
+                analysis_status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "e2e-company-id",
+                "E2E Co",
+                "e2e",  # normalized: " Co" suffix is stripped
+                "https://e2e.example.com",
+                "We build E2E pipelines",
+                "Remote-first",
+                "active",
+                now_iso,
+                now_iso,
+            ),
+        )
+
     # Insert a single active source so ScrapeRunner has work.
     source_id = sources_manager.add_source(
         name="E2E RSS",
