@@ -1,28 +1,63 @@
-# Development Dockerfile - optimized for quick rebuilds
+# Development Dockerfile - optimized for rapid development with hot reload
+#
+# Features:
+# - watchdog for file change detection and auto-restart
+# - Full Python dependencies including test/dev tools
+# - Volume mounts override code for live editing
+# - Debug-friendly environment variables
+#
+# Stage 1: build Codex CLI without leaving npm/node in final image
+FROM node:20-slim AS codex-builder
+RUN npm install -g @openai/codex@0.58.0
+
+# Stage 2: runtime image
 FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies and development tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     gcc \
     procps \
     curl \
     vim \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy codex CLI + node runtime from builder (no npm in final image)
+COPY --from=codex-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=codex-builder /usr/local/bin/codex /usr/local/bin/codex
+COPY --from=codex-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=codex-builder /usr/local/lib/node_modules/@openai/codex/vendor /usr/local/vendor
 
 # Copy and install Python dependencies first (for layer caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install watchdog for hot reload
+RUN pip install --no-cache-dir watchdog[watchmedo]
+
 # Copy application code (will be overridden by volume mounts in docker-compose)
 COPY . .
+
+# Create directories for dev data
+RUN mkdir -p /app/data /app/logs /app/dev /data/sqlite
 
 # Set Python environment variables for development
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app/src:/app
+    PYTHONPATH=/app/src:/app \
+    FLASK_ENV=development \
+    LOG_LEVEL=DEBUG
 
-# Default command - start Flask worker (can be overridden in docker-compose)
-CMD ["python", "simple_flask_worker.py"]
+# Copy entrypoint script for hot reload
+COPY docker/entrypoint.dev.sh /app/entrypoint.dev.sh
+RUN chmod +x /app/entrypoint.dev.sh
+
+# Expose worker port
+EXPOSE 5555
+
+# Use dev entrypoint with hot reload
+ENTRYPOINT ["/app/entrypoint.dev.sh"]

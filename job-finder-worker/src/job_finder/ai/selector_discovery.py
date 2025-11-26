@@ -5,7 +5,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from job_finder.ai.providers import AITask, create_provider
-from job_finder.constants import MAX_HTML_SAMPLE_LENGTH
+from job_finder.settings import get_scraping_settings
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,9 @@ class SelectorDiscovery:
     def _build_discovery_prompt(self, html: str, url: str) -> str:
         """Build prompt for selector discovery."""
         # Truncate HTML if too long (keep first 20k chars)
-        html_sample = html[:MAX_HTML_SAMPLE_LENGTH] if len(html) > MAX_HTML_SAMPLE_LENGTH else html
+        scraping_settings = get_scraping_settings()
+        max_html_sample = scraping_settings.get("maxHtmlSampleLength", 20000)
+        html_sample = html[:max_html_sample] if len(html) > max_html_sample else html
 
         return f"""You are an expert at analyzing HTML structure to extract CSS selectors for web scraping.
 

@@ -323,8 +323,40 @@ class QueueManager:
                 "sub_task": next_sub_task,
                 "pipeline_state": pipeline_state,
             }
+        try:
+            return self.spawn_item_safely(current_item, new_item_data)
+        except StorageError as exc:
+            # If a unique URL constraint blocks granular company steps, fall back to
+            # requeueing the same item in-place with the next sub_task.
+            if is_company:
+                self._requeue_company_step(current_item.id, next_sub_task, pipeline_state)
+                logger.debug(
+                    "Requeued company %s in-place for sub_task=%s due to %s",
+                    current_item.id,
+                    next_sub_task,
+                    exc,
+                )
+                return current_item.id
+            raise
 
-        return self.spawn_item_safely(current_item, new_item_data)
+    def _requeue_company_step(
+        self, item_id: str, next_sub_task: CompanySubTask, pipeline_state: Optional[Dict[str, Any]]
+    ) -> None:
+        with sqlite_connection(self.db_path) as conn:
+            conn.execute(
+                """
+                UPDATE job_queue
+                SET company_sub_task = ?, pipeline_state = ?, status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    next_sub_task.value,
+                    json.dumps(pipeline_state or {}),
+                    QueueStatus.PENDING.value,
+                    _iso(_utcnow()),
+                    item_id,
+                ),
+            )
 
     def requeue_with_state(
         self,

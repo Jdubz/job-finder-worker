@@ -14,6 +14,8 @@ import {
   DEFAULT_JOB_FILTERS,
   DEFAULT_TECH_RANKS,
   DEFAULT_SCHEDULER_SETTINGS,
+  DEFAULT_COMPANY_SCORING,
+  DEFAULT_WORKER_SETTINGS,
 } from "@shared/types"
 import type {
   StopList,
@@ -23,6 +25,8 @@ import type {
   TechnologyRanksConfig,
   SchedulerSettings,
   TechnologyRank,
+  CompanyScoringConfig,
+  WorkerSettings,
 } from "@shared/types"
 import {
   Select,
@@ -201,7 +205,7 @@ export function JobFinderConfigPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<"stop-list" | "queue" | "ai" | "filters" | "tech" | "scheduler">("stop-list")
+  const [activeTab, setActiveTab] = useState<"stop-list" | "queue" | "ai" | "filters" | "tech" | "scheduler" | "scoring" | "worker">("stop-list")
 
   // Stop List state
   const [stopList, setStopList] = useState<StopList | null>(null)
@@ -233,6 +237,14 @@ export function JobFinderConfigPage() {
   const [schedulerSettings, setSchedulerSettings] = useState<SchedulerSettings | null>(null)
   const [originalSchedulerSettings, setOriginalSchedulerSettings] = useState<SchedulerSettings | null>(null)
 
+  // Company Scoring
+  const [companyScoring, setCompanyScoring] = useState<CompanyScoringConfig | null>(null)
+  const [originalCompanyScoring, setOriginalCompanyScoring] = useState<CompanyScoringConfig | null>(null)
+
+  // Worker Settings
+  const [workerSettings, setWorkerSettings] = useState<WorkerSettings | null>(null)
+  const [originalWorkerSettings, setOriginalWorkerSettings] = useState<WorkerSettings | null>(null)
+
   useEffect(() => {
     loadAllSettings()
   }, [])
@@ -242,13 +254,15 @@ export function JobFinderConfigPage() {
     setError(null)
 
     try {
-      const [stopListData, queueData, aiData, filtersData, techData, schedulerData] = await Promise.all([
+      const [stopListData, queueData, aiData, filtersData, techData, schedulerData, scoringData, workerData] = await Promise.all([
         configClient.getStopList(),
         configClient.getQueueSettings(),
         configClient.getAISettings(),
         configClient.getJobFilters(),
         configClient.getTechnologyRanks(),
         configClient.getSchedulerSettings(),
+        configClient.getCompanyScoring(),
+        configClient.getWorkerSettings(),
       ])
 
       setStopList(stopListData)
@@ -269,6 +283,14 @@ export function JobFinderConfigPage() {
       const schedulerPayload = deepClone(schedulerData ?? DEFAULT_SCHEDULER_SETTINGS)
       setSchedulerSettings(schedulerPayload)
       setOriginalSchedulerSettings(deepClone(schedulerPayload))
+
+      const scoringPayload = deepClone(scoringData ?? DEFAULT_COMPANY_SCORING)
+      setCompanyScoring(scoringPayload)
+      setOriginalCompanyScoring(deepClone(scoringPayload))
+
+      const workerPayload = deepClone(workerData ?? DEFAULT_WORKER_SETTINGS)
+      setWorkerSettings(workerPayload)
+      setOriginalWorkerSettings(deepClone(workerPayload))
     } catch (err) {
       setError("Failed to load configuration settings")
       console.error("Error loading settings:", err)
@@ -299,6 +321,18 @@ export function JobFinderConfigPage() {
       ...(prev ?? DEFAULT_SCHEDULER_SETTINGS),
       ...updates,
     }))
+  }
+
+  const updateCompanyScoringState = (
+    updater: (current: CompanyScoringConfig) => CompanyScoringConfig
+  ) => {
+    setCompanyScoring((prev) => updater(prev ?? deepClone(DEFAULT_COMPANY_SCORING)))
+  }
+
+  const updateWorkerSettingsState = (
+    updater: (current: WorkerSettings) => WorkerSettings
+  ) => {
+    setWorkerSettings((prev) => updater(prev ?? deepClone(DEFAULT_WORKER_SETTINGS)))
   }
 
   const handleSaveStopList = async () => {
@@ -415,6 +449,42 @@ export function JobFinderConfigPage() {
     }
   }
 
+  const handleSaveCompanyScoring = async () => {
+    if (!companyScoring) return
+    setIsSaving(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      await configClient.updateCompanyScoring(companyScoring)
+      setOriginalCompanyScoring(deepClone(companyScoring))
+      setSuccess("Company scoring saved successfully!")
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err) {
+      setError("Failed to save company scoring")
+      console.error("Error saving company scoring:", err)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleSaveWorkerSettings = async () => {
+    if (!workerSettings) return
+    setIsSaving(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      await configClient.updateWorkerSettings(workerSettings)
+      setOriginalWorkerSettings(deepClone(workerSettings))
+      setSuccess("Worker settings saved successfully!")
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err) {
+      setError("Failed to save worker settings")
+      console.error("Error saving worker settings:", err)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   const handleAddCompany = () => {
     if (!newCompany.trim() || !stopList) return
 
@@ -512,6 +582,18 @@ export function JobFinderConfigPage() {
     setSuccess(null)
   }
 
+  const handleResetCompanyScoring = () => {
+    setCompanyScoring(deepClone(originalCompanyScoring ?? DEFAULT_COMPANY_SCORING))
+    setError(null)
+    setSuccess(null)
+  }
+
+  const handleResetWorkerSettings = () => {
+    setWorkerSettings(deepClone(originalWorkerSettings ?? DEFAULT_WORKER_SETTINGS))
+    setError(null)
+    setSuccess(null)
+  }
+
   const handleAddTechnology = () => {
     const name = newTechName.trim()
     if (!name) return
@@ -541,6 +623,10 @@ export function JobFinderConfigPage() {
   const hasTechRankChanges = stableStringify(techRanks) !== stableStringify(originalTechRanks)
   const hasSchedulerChanges =
     stableStringify(schedulerSettings) !== stableStringify(originalSchedulerSettings)
+  const hasCompanyScoringChanges =
+    stableStringify(companyScoring) !== stableStringify(originalCompanyScoring)
+  const hasWorkerSettingsChanges =
+    stableStringify(workerSettings) !== stableStringify(originalWorkerSettings)
 
   const currentJobFilters = jobFilters ?? DEFAULT_JOB_FILTERS
   const currentTechRanks = techRanks ?? {
@@ -548,6 +634,8 @@ export function JobFinderConfigPage() {
     strikes: { ...DEFAULT_TECH_RANKS.strikes },
   }
   const currentScheduler = schedulerSettings ?? DEFAULT_SCHEDULER_SETTINGS
+  const currentScoring = companyScoring ?? DEFAULT_COMPANY_SCORING
+  const currentWorker = workerSettings ?? DEFAULT_WORKER_SETTINGS
   const hardRejections = currentJobFilters.hardRejections
   const remotePolicy = currentJobFilters.remotePolicy
   const salaryStrike = currentJobFilters.salaryStrike
@@ -600,13 +688,15 @@ export function JobFinderConfigPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="stop-list">Stop List</TabsTrigger>
-          <TabsTrigger value="queue">Queue Settings</TabsTrigger>
-          <TabsTrigger value="ai">AI Settings</TabsTrigger>
-          <TabsTrigger value="filters">Job Filters</TabsTrigger>
-          <TabsTrigger value="tech">Tech Ranks</TabsTrigger>
+          <TabsTrigger value="queue">Queue</TabsTrigger>
+          <TabsTrigger value="ai">AI</TabsTrigger>
+          <TabsTrigger value="filters">Filters</TabsTrigger>
+          <TabsTrigger value="tech">Tech</TabsTrigger>
           <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
+          <TabsTrigger value="scoring">Scoring</TabsTrigger>
+          <TabsTrigger value="worker">Worker</TabsTrigger>
         </TabsList>
 
         {/* Stop List Tab */}
@@ -1758,6 +1848,665 @@ export function JobFinderConfigPage() {
               <p className="text-xs text-muted-foreground">
                 How often the worker polls for new queue items. Minimum 5 seconds to avoid churn.
               </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Company Scoring Tab */}
+        <TabsContent value="scoring" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Company Scoring</CardTitle>
+                  <CardDescription>Tier thresholds, priority bonuses, and score adjustments</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetCompanyScoring}
+                    disabled={!hasCompanyScoringChanges || isSaving}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reset
+                  </Button>
+                  <Button onClick={handleSaveCompanyScoring} disabled={!hasCompanyScoringChanges || isSaving}>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <Label className="text-base font-semibold">Company Tier Thresholds</Label>
+                <p className="text-xs text-muted-foreground mb-3">Points needed for each company tier classification</p>
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tier-s">S-Tier</Label>
+                    <Input
+                      id="tier-s"
+                      type="number"
+                      min="0"
+                      value={currentScoring.tierThresholds.s}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          tierThresholds: { ...c.tierThresholds, s: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tier-a">A-Tier</Label>
+                    <Input
+                      id="tier-a"
+                      type="number"
+                      min="0"
+                      value={currentScoring.tierThresholds.a}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          tierThresholds: { ...c.tierThresholds, a: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tier-b">B-Tier</Label>
+                    <Input
+                      id="tier-b"
+                      type="number"
+                      min="0"
+                      value={currentScoring.tierThresholds.b}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          tierThresholds: { ...c.tierThresholds, b: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tier-c">C-Tier</Label>
+                    <Input
+                      id="tier-c"
+                      type="number"
+                      min="0"
+                      value={currentScoring.tierThresholds.c}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          tierThresholds: { ...c.tierThresholds, c: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-base font-semibold">Priority Bonuses</Label>
+                <p className="text-xs text-muted-foreground mb-3">Points added to company priority score</p>
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="portland-office">Portland Office</Label>
+                    <Input
+                      id="portland-office"
+                      type="number"
+                      value={currentScoring.priorityBonuses.portlandOffice}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          priorityBonuses: { ...c.priorityBonuses, portlandOffice: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="remote-first">Remote First</Label>
+                    <Input
+                      id="remote-first"
+                      type="number"
+                      value={currentScoring.priorityBonuses.remoteFirst}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          priorityBonuses: { ...c.priorityBonuses, remoteFirst: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ai-ml-focus">AI/ML Focus</Label>
+                    <Input
+                      id="ai-ml-focus"
+                      type="number"
+                      value={currentScoring.priorityBonuses.aiMlFocus}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          priorityBonuses: { ...c.priorityBonuses, aiMlFocus: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tech-stack-max">Tech Stack Max</Label>
+                    <Input
+                      id="tech-stack-max"
+                      type="number"
+                      value={currentScoring.priorityBonuses.techStackMax}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          priorityBonuses: { ...c.priorityBonuses, techStackMax: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-base font-semibold">Match Score Adjustments</Label>
+                <p className="text-xs text-muted-foreground mb-3">Score modifiers based on company size</p>
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="large-bonus">Large Co. Bonus</Label>
+                    <Input
+                      id="large-bonus"
+                      type="number"
+                      value={currentScoring.matchAdjustments.largeCompanyBonus}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          matchAdjustments: { ...c.matchAdjustments, largeCompanyBonus: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="small-penalty">Small Co. Penalty</Label>
+                    <Input
+                      id="small-penalty"
+                      type="number"
+                      value={currentScoring.matchAdjustments.smallCompanyPenalty}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          matchAdjustments: { ...c.matchAdjustments, smallCompanyPenalty: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="large-threshold">Large Threshold</Label>
+                    <Input
+                      id="large-threshold"
+                      type="number"
+                      min="0"
+                      value={currentScoring.matchAdjustments.largeCompanyThreshold}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          matchAdjustments: { ...c.matchAdjustments, largeCompanyThreshold: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="small-threshold">Small Threshold</Label>
+                    <Input
+                      id="small-threshold"
+                      type="number"
+                      min="0"
+                      value={currentScoring.matchAdjustments.smallCompanyThreshold}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          matchAdjustments: { ...c.matchAdjustments, smallCompanyThreshold: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-base font-semibold">Timezone Adjustments</Label>
+                <p className="text-xs text-muted-foreground mb-3">Score modifiers based on timezone difference</p>
+                <div className="grid grid-cols-5 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tz-same">Same TZ</Label>
+                    <Input
+                      id="tz-same"
+                      type="number"
+                      value={currentScoring.timezoneAdjustments.sameTimezone}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          timezoneAdjustments: { ...c.timezoneAdjustments, sameTimezone: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tz-1-2">1-2hr Diff</Label>
+                    <Input
+                      id="tz-1-2"
+                      type="number"
+                      value={currentScoring.timezoneAdjustments.diff1to2hr}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          timezoneAdjustments: { ...c.timezoneAdjustments, diff1to2hr: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tz-3-4">3-4hr Diff</Label>
+                    <Input
+                      id="tz-3-4"
+                      type="number"
+                      value={currentScoring.timezoneAdjustments.diff3to4hr}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          timezoneAdjustments: { ...c.timezoneAdjustments, diff3to4hr: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tz-5-8">5-8hr Diff</Label>
+                    <Input
+                      id="tz-5-8"
+                      type="number"
+                      value={currentScoring.timezoneAdjustments.diff5to8hr}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          timezoneAdjustments: { ...c.timezoneAdjustments, diff5to8hr: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tz-9plus">9+hr Diff</Label>
+                    <Input
+                      id="tz-9plus"
+                      type="number"
+                      value={currentScoring.timezoneAdjustments.diff9plusHr}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          timezoneAdjustments: { ...c.timezoneAdjustments, diff9plusHr: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-base font-semibold">Priority Thresholds</Label>
+                <p className="text-xs text-muted-foreground mb-3">Match score thresholds for priority classification</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="priority-high">High Priority</Label>
+                    <Input
+                      id="priority-high"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={currentScoring.priorityThresholds.high}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          priorityThresholds: { ...c.priorityThresholds, high: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="priority-medium">Medium Priority</Label>
+                    <Input
+                      id="priority-medium"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={currentScoring.priorityThresholds.medium}
+                      onChange={(e) =>
+                        updateCompanyScoringState((c) => ({
+                          ...c,
+                          priorityThresholds: { ...c.priorityThresholds, medium: parseInt(e.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Worker Settings Tab */}
+        <TabsContent value="worker" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Worker Settings</CardTitle>
+                  <CardDescription>Scraping, health tracking, caching, and text limits</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetWorkerSettings}
+                    disabled={!hasWorkerSettingsChanges || isSaving}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reset
+                  </Button>
+                  <Button onClick={handleSaveWorkerSettings} disabled={!hasWorkerSettingsChanges || isSaving}>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <Label className="text-base font-semibold">Scraping Settings</Label>
+                <p className="text-xs text-muted-foreground mb-3">HTTP and scraping configuration</p>
+                <div className="grid grid-cols-5 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="request-timeout">Timeout (s)</Label>
+                    <Input
+                      id="request-timeout"
+                      type="number"
+                      min="1"
+                      value={currentWorker.scraping.requestTimeoutSeconds}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          scraping: { ...w.scraping, requestTimeoutSeconds: parseInt(e.target.value) || 30 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rate-limit">Rate Limit (s)</Label>
+                    <Input
+                      id="rate-limit"
+                      type="number"
+                      min="0"
+                      value={currentWorker.scraping.rateLimitDelaySeconds}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          scraping: { ...w.scraping, rateLimitDelaySeconds: parseInt(e.target.value) || 2 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="max-retries">Max Retries</Label>
+                    <Input
+                      id="max-retries"
+                      type="number"
+                      min="0"
+                      value={currentWorker.scraping.maxRetries}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          scraping: { ...w.scraping, maxRetries: parseInt(e.target.value) || 3 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="html-max">HTML Max</Label>
+                    <Input
+                      id="html-max"
+                      type="number"
+                      min="1000"
+                      value={currentWorker.scraping.maxHtmlSampleLength}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          scraping: { ...w.scraping, maxHtmlSampleLength: parseInt(e.target.value) || 20000 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="html-small">HTML Small</Label>
+                    <Input
+                      id="html-small"
+                      type="number"
+                      min="1000"
+                      value={currentWorker.scraping.maxHtmlSampleLengthSmall}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          scraping: { ...w.scraping, maxHtmlSampleLengthSmall: parseInt(e.target.value) || 15000 },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-base font-semibold">Health Tracking</Label>
+                <p className="text-xs text-muted-foreground mb-3">Source health monitoring settings</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="max-failures">Max Consecutive Failures</Label>
+                    <Input
+                      id="max-failures"
+                      type="number"
+                      min="1"
+                      value={currentWorker.health.maxConsecutiveFailures}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          health: { ...w.health, maxConsecutiveFailures: parseInt(e.target.value) || 5 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="health-interval">Health Check Interval (s)</Label>
+                    <Input
+                      id="health-interval"
+                      type="number"
+                      min="60"
+                      value={currentWorker.health.healthCheckIntervalSeconds}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          health: { ...w.health, healthCheckIntervalSeconds: parseInt(e.target.value) || 3600 },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-base font-semibold">Cache TTLs</Label>
+                <p className="text-xs text-muted-foreground mb-3">Time-to-live for cached data (in seconds)</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="company-ttl">Company Info TTL</Label>
+                    <Input
+                      id="company-ttl"
+                      type="number"
+                      min="60"
+                      value={currentWorker.cache.companyInfoTtlSeconds}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          cache: { ...w.cache, companyInfoTtlSeconds: parseInt(e.target.value) || 86400 },
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">Default: 86400 (24 hours)</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="source-ttl">Source Config TTL</Label>
+                    <Input
+                      id="source-ttl"
+                      type="number"
+                      min="60"
+                      value={currentWorker.cache.sourceConfigTtlSeconds}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          cache: { ...w.cache, sourceConfigTtlSeconds: parseInt(e.target.value) || 3600 },
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">Default: 3600 (1 hour)</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-base font-semibold">Text Limits</Label>
+                <p className="text-xs text-muted-foreground mb-3">Character limits for text processing</p>
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="min-company-page">Min Company Page</Label>
+                    <Input
+                      id="min-company-page"
+                      type="number"
+                      min="0"
+                      value={currentWorker.textLimits.minCompanyPageLength}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          textLimits: { ...w.textLimits, minCompanyPageLength: parseInt(e.target.value) || 200 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="min-sparse">Min Sparse Info</Label>
+                    <Input
+                      id="min-sparse"
+                      type="number"
+                      min="0"
+                      value={currentWorker.textLimits.minSparseCompanyInfoLength}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          textLimits: { ...w.textLimits, minSparseCompanyInfoLength: parseInt(e.target.value) || 100 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="max-intake-text">Max Intake Text</Label>
+                    <Input
+                      id="max-intake-text"
+                      type="number"
+                      min="0"
+                      value={currentWorker.textLimits.maxIntakeTextLength}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          textLimits: { ...w.textLimits, maxIntakeTextLength: parseInt(e.target.value) || 500 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="max-intake-desc">Max Intake Desc</Label>
+                    <Input
+                      id="max-intake-desc"
+                      type="number"
+                      min="0"
+                      value={currentWorker.textLimits.maxIntakeDescriptionLength}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          textLimits: { ...w.textLimits, maxIntakeDescriptionLength: parseInt(e.target.value) || 2000 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="max-intake-field">Max Intake Field</Label>
+                    <Input
+                      id="max-intake-field"
+                      type="number"
+                      min="0"
+                      value={currentWorker.textLimits.maxIntakeFieldLength}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          textLimits: { ...w.textLimits, maxIntakeFieldLength: parseInt(e.target.value) || 400 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="max-desc-preview">Max Desc Preview</Label>
+                    <Input
+                      id="max-desc-preview"
+                      type="number"
+                      min="0"
+                      value={currentWorker.textLimits.maxDescriptionPreviewLength}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          textLimits: { ...w.textLimits, maxDescriptionPreviewLength: parseInt(e.target.value) || 500 },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="max-company-info">Max Company Info</Label>
+                    <Input
+                      id="max-company-info"
+                      type="number"
+                      min="0"
+                      value={currentWorker.textLimits.maxCompanyInfoTextLength}
+                      onChange={(e) =>
+                        updateWorkerSettingsState((w) => ({
+                          ...w,
+                          textLimits: { ...w.textLimits, maxCompanyInfoTextLength: parseInt(e.target.value) || 1000 },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

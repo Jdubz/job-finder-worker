@@ -66,7 +66,6 @@ export async function seedContentItem(
       startDate: "2024-01",
       description: "Ensures SQLite-backed workflows ship quickly.",
       skills: ["testing", "playwright"],
-      visibility: "published",
       order: 0,
       parentId: null,
     },

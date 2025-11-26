@@ -196,6 +196,11 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         "prefer_large_companies": True,
         **config.get("ai", {}),
     }
+
+    # Prefer Codex CLI (OpenAI) when enabled so we use the pro account session
+    if os.getenv("USE_CODEX_CLI", "0") == "1":
+        ai_config["provider"] = "openai"
+        ai_config.setdefault("model", "gpt-4o-mini")
     provider = create_provider(ai_config.get("provider", "openai"), model=ai_config.get("model"))
     ai_matcher = AIJobMatcher(
         provider=provider,
