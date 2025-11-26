@@ -37,6 +37,10 @@ services:
       - type: bind
         source: ./codex  # Codex CLI OAuth tokens (ChatGPT Pro) - must be read-write for token refresh
         target: /home/node/.codex
+    extra_hosts:
+      # Force IPv4 for ChatGPT domains to avoid IPv6 edge/network issues seen in prod
+      - "chatgpt.com:104.18.32.47"
+      - "www.chatgpt.com:104.18.32.47"
     depends_on:
       sqlite-migrator:
         condition: service_completed_successfully
