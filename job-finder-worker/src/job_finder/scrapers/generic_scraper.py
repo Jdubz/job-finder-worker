@@ -1,0 +1,438 @@
+"""Generic scraper for all job source types."""
+
+import logging
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+import feedparser
+import requests
+from bs4 import BeautifulSoup
+
+from job_finder.scrapers.source_config import SourceConfig
+from job_finder.scrapers.text_sanitizer import (
+    sanitize_company_name,
+    sanitize_html_description,
+    sanitize_title,
+)
+from job_finder.utils.date_utils import parse_job_date
+
+logger = logging.getLogger(__name__)
+
+# Default headers for requests
+DEFAULT_HEADERS = {
+    "User-Agent": "JobFinderBot/1.0",
+    "Accept": "application/json, text/html, */*",
+}
+
+
+class GenericScraper:
+    """
+    Generic scraper that works with any job source type.
+
+    Supports:
+    - api: JSON APIs with configurable response paths
+    - rss: RSS/Atom feeds parsed with feedparser
+    - html: HTML pages parsed with CSS selectors
+
+    Usage:
+        config = SourceConfig.from_dict({
+            "type": "api",
+            "url": "https://api.example.com/jobs",
+            "response_path": "jobs",
+            "fields": {"title": "name", "url": "link"}
+        })
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+    """
+
+    def __init__(self, config: SourceConfig):
+        """
+        Initialize generic scraper.
+
+        Args:
+            config: Source configuration
+        """
+        self.config = config
+
+    def scrape(self) -> List[Dict[str, Any]]:
+        """
+        Scrape jobs from the configured source.
+
+        Returns:
+            List of standardized job dictionaries
+        """
+        try:
+            logger.info(f"Scraping {self.config.type} source: {self.config.url}")
+
+            # Fetch data based on source type
+            if self.config.type == "api":
+                data = self._fetch_json()
+            elif self.config.type == "rss":
+                data = self._fetch_rss()
+            elif self.config.type == "html":
+                data = self._fetch_html()
+            else:
+                logger.error(f"Unknown source type: {self.config.type}")
+                return []
+
+            # Parse each item into standardized job format
+            jobs = []
+            for item in data:
+                try:
+                    job = self._extract_fields(item)
+                    if job.get("title") and job.get("url"):
+                        jobs.append(job)
+                except Exception as e:
+                    logger.warning(f"Error parsing item: {e}")
+                    continue
+
+            logger.info(f"Scraped {len(jobs)} jobs from {self.config.url}")
+            return jobs
+
+        except requests.RequestException as e:
+            logger.error(f"Request error scraping {self.config.url}: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Error scraping {self.config.url}: {e}")
+            return []
+
+    def _fetch_json(self) -> List[Dict[str, Any]]:
+        """
+        Fetch JSON API with optional authentication.
+
+        Returns:
+            List of job items from API response
+        """
+        url = self.config.url
+        headers = {**DEFAULT_HEADERS, **self.config.headers}
+
+        # Apply authentication
+        if self.config.api_key:
+            if self.config.auth_type == "bearer":
+                headers["Authorization"] = f"Bearer {self.config.api_key}"
+            elif self.config.auth_type == "header":
+                headers[self.config.auth_param] = self.config.api_key
+            elif self.config.auth_type == "query":
+                sep = "&" if "?" in url else "?"
+                url = f"{url}{sep}{self.config.auth_param}={self.config.api_key}"
+
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+
+        # Navigate to jobs array using response_path
+        return self._navigate_path(data, self.config.response_path)
+
+    def _fetch_rss(self) -> List[Any]:
+        """
+        Fetch and parse RSS/Atom feed.
+
+        Returns:
+            List of feed entries
+        """
+        feed = feedparser.parse(self.config.url)
+
+        if feed.bozo:
+            logger.warning(f"RSS feed has issues: {feed.bozo_exception}")
+
+        return feed.entries
+
+    def _fetch_html(self) -> List[Any]:
+        """
+        Fetch HTML page and select job elements.
+
+        Returns:
+            List of BeautifulSoup elements matching job_selector
+        """
+        headers = {**DEFAULT_HEADERS, **self.config.headers}
+        response = requests.get(self.config.url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        if not self.config.job_selector:
+            logger.error("job_selector is required for HTML sources")
+            return []
+
+        return soup.select(self.config.job_selector)
+
+    def _extract_fields(self, item: Any) -> Dict[str, Any]:
+        """
+        Extract fields from item using config mappings.
+
+        Args:
+            item: Raw item (dict for api/rss, element for html)
+
+        Returns:
+            Standardized job dictionary
+        """
+        job: Dict[str, Any] = {}
+
+        for field, path in self.config.fields.items():
+            value = self._get_value(item, path)
+
+            # Post-process based on field type
+            if field == "posted_date" and value:
+                value = self._normalize_date(value)
+            elif field == "title" and value:
+                value = sanitize_title(str(value))
+            elif field == "company" and value:
+                value = sanitize_company_name(str(value))
+            elif field == "description" and value:
+                value = sanitize_html_description(str(value))
+
+            job[field] = value
+
+        # Handle salary min/max fields
+        if self.config.salary_min_field:
+            min_val = self._get_value(item, self.config.salary_min_field)
+            max_val = (
+                self._get_value(item, self.config.salary_max_field)
+                if self.config.salary_max_field
+                else None
+            )
+            if min_val:
+                job["salary"] = self._format_salary(min_val, max_val)
+
+        # Override company name if specified
+        if self.config.company_name:
+            job["company"] = self.config.company_name
+
+        # Ensure required fields have defaults
+        if not job.get("company"):
+            job["company"] = "Unknown"
+        if not job.get("location"):
+            job["location"] = "Unknown"
+        if not job.get("description"):
+            job["description"] = ""
+
+        # Add company_website if not present
+        if "company_website" not in job:
+            job["company_website"] = ""
+
+        return job
+
+    def _get_value(self, item: Any, path: str) -> Optional[Any]:
+        """
+        Get value using appropriate extraction method.
+
+        Args:
+            item: Source item
+            path: Extraction path (dot notation or CSS selector)
+
+        Returns:
+            Extracted value or None
+        """
+        if self.config.type == "html":
+            return self._css_select(item, path)
+        elif self.config.type == "rss":
+            return self._rss_access(item, path)
+        else:
+            return self._dot_access(item, path)
+
+    def _dot_access(self, item: Any, path: str) -> Optional[Any]:
+        """
+        Navigate nested dict with dot notation.
+
+        Examples:
+            _dot_access({"a": {"b": 1}}, "a.b") -> 1
+            _dot_access({"name": "test"}, "name") -> "test"
+
+        Args:
+            item: Dictionary to navigate
+            path: Dot-separated path like "location.name"
+
+        Returns:
+            Value at path or None
+        """
+        if not path:
+            return None
+
+        current = item
+        for key in path.split("."):
+            if current is None:
+                return None
+            if isinstance(current, dict):
+                current = current.get(key)
+            else:
+                return None
+        return current
+
+    def _rss_access(self, entry: Any, path: str) -> Optional[Any]:
+        """
+        Access feedparser entry attributes.
+
+        Handles common RSS field names and fallbacks.
+
+        Args:
+            entry: Feedparser entry
+            path: Attribute name
+
+        Returns:
+            Attribute value or None
+        """
+        # Direct attribute access
+        value = getattr(entry, path, None)
+
+        # Handle common fallbacks
+        if value is None:
+            # Try alternate field names
+            fallbacks = {
+                "description": ["summary", "content"],
+                "url": ["link", "id"],
+                "posted_date": ["published", "updated", "created"],
+            }
+            for fallback in fallbacks.get(path, []):
+                value = getattr(entry, fallback, None)
+                if value is not None:
+                    break
+
+            # Handle content list
+            if value is None and path in ("description", "content"):
+                content = getattr(entry, "content", None)
+                if content and isinstance(content, list) and len(content) > 0:
+                    value = content[0].get("value")
+
+        return value
+
+    def _css_select(self, element: Any, selector: str) -> Optional[str]:
+        """
+        Extract value using CSS selector.
+
+        Supports attribute extraction with "@" syntax:
+            "a@href" -> Get href attribute from <a> element
+            ".title@data-id" -> Get data-id from .title element
+
+        Args:
+            element: BeautifulSoup element
+            selector: CSS selector, optionally with @attribute
+
+        Returns:
+            Text content or attribute value
+        """
+        if "@" in selector:
+            # Attribute selector: "a@href" or ".link@data-url"
+            parts = selector.split("@")
+            sel = parts[0]
+            attr = parts[1]
+
+            if sel:
+                el = element.select_one(sel)
+            else:
+                el = element
+
+            if el:
+                return el.get(attr)
+            return None
+        else:
+            # Text content selector
+            el = element.select_one(selector)
+            if el:
+                return el.get_text(strip=True)
+            return None
+
+    def _navigate_path(self, data: Any, path: str) -> List[Any]:
+        """
+        Navigate to jobs array in API response.
+
+        Supports:
+            - Empty path: return data as list
+            - Dot notation: "jobs", "data.results"
+            - Array slice: "[1:]", "[0]"
+
+        Args:
+            data: API response data
+            path: Navigation path
+
+        Returns:
+            List of job items
+        """
+        if not path:
+            if isinstance(data, list):
+                return data
+            return [data] if data else []
+
+        # Array slice notation
+        if path.startswith("["):
+            try:
+                # Safe evaluation of slice
+                if path == "[1:]":
+                    return data[1:] if isinstance(data, list) else []
+                elif path.startswith("[") and path.endswith("]"):
+                    # Handle [0], [1:5], etc.
+                    slice_str = path[1:-1]
+                    if ":" in slice_str:
+                        parts = slice_str.split(":")
+                        start = int(parts[0]) if parts[0] else None
+                        end = int(parts[1]) if len(parts) > 1 and parts[1] else None
+                        return data[start:end] if isinstance(data, list) else []
+                    else:
+                        idx = int(slice_str)
+                        item = data[idx] if isinstance(data, list) and len(data) > idx else None
+                        return [item] if item else []
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Error parsing array path '{path}': {e}")
+                return []
+
+        # Dot notation
+        result = self._dot_access(data, path)
+        if result is None:
+            return []
+        if isinstance(result, list):
+            return result
+        return [result]
+
+    def _normalize_date(self, value: Any) -> str:
+        """
+        Normalize date value to ISO format string.
+
+        Handles:
+            - Unix timestamps (int/float)
+            - ISO format strings
+            - Various date string formats
+
+        Args:
+            value: Raw date value
+
+        Returns:
+            ISO format date string or empty string
+        """
+        if value is None:
+            return ""
+
+        # Unix timestamp
+        if isinstance(value, (int, float)):
+            try:
+                dt = datetime.fromtimestamp(value, tz=timezone.utc)
+                return dt.isoformat()
+            except (ValueError, OSError):
+                return ""
+
+        # String date
+        if isinstance(value, str):
+            parsed = parse_job_date(value)
+            if parsed:
+                return parsed.isoformat()
+            return value  # Return as-is if parsing fails
+
+        return ""
+
+    def _format_salary(self, min_val: Any, max_val: Any = None) -> str:
+        """
+        Format salary range string.
+
+        Args:
+            min_val: Minimum salary value
+            max_val: Maximum salary value (optional)
+
+        Returns:
+            Formatted salary string like "$100,000 - $150,000"
+        """
+        try:
+            min_num = int(float(min_val))
+            if max_val:
+                max_num = int(float(max_val))
+                return f"${min_num:,} - ${max_num:,}"
+            return f"${min_num:,}+"
+        except (ValueError, TypeError):
+            return ""

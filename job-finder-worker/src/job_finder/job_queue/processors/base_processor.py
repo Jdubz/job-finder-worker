@@ -70,25 +70,28 @@ class BaseProcessor:
             f"{self.__class__.__module__}.{self.__class__.__name__}"
         )
 
-        # Initialize strike-based filter engine
+        # Initialize strike-based filter engine (shared with ScrapeRunner for pre-filtering)
         filter_config = config_loader.get_job_filters()
         tech_ranks = config_loader.get_technology_ranks()
         self.filter_engine = StrikeFilterEngine(filter_config, tech_ranks)
 
-        # Initialize scrape runner (now enqueues jobs instead of analyzing inline)
+        # Initialize scrape runner with shared filter engine for pre-filtering
+        # This prevents irrelevant jobs from entering the queue
         self.scrape_runner = ScrapeRunner(
             queue_manager=queue_manager,
             job_storage=job_storage,
             companies_manager=companies_manager,
             sources_manager=sources_manager,
             company_info_fetcher=company_info_fetcher,
+            filter_engine=self.filter_engine,
         )
 
-        # Initialize scraper intake for submitting jobs to queue
+        # Initialize scraper intake with filter engine for pre-filtering
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
             job_storage=job_storage,
             companies_manager=companies_manager,
+            filter_engine=self.filter_engine,
         )
 
     # ============================================================
