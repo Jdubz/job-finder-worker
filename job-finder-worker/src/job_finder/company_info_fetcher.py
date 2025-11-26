@@ -7,8 +7,8 @@ from typing import Any, Dict, Optional
 import requests
 from bs4 import BeautifulSoup
 
-from job_finder.constants import MIN_COMPANY_PAGE_LENGTH, MIN_SPARSE_COMPANY_INFO_LENGTH
 from job_finder.logging_config import format_company_name
+from job_finder.settings import get_text_limits
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,9 @@ class CompanyInfoFetcher:
             for page_url in pages_to_try:
                 try:
                     content = self._fetch_page_content(page_url)
-                    if content and len(content) > MIN_COMPANY_PAGE_LENGTH:  # Got meaningful content
+                    text_limits = get_text_limits()
+                    min_page_length = text_limits.get("minCompanyPageLength", 200)
+                    if content and len(content) > min_page_length:  # Got meaningful content
                         logger.info(f"Successfully fetched content from {page_url}")
                         break
                 except (requests.RequestException, ValueError, AttributeError) as e:
@@ -323,7 +325,9 @@ Return ONLY valid JSON in this format:
                     break
 
         # If we found nothing, use first 300 chars as about
-        if not result["about"] and len(content) > MIN_SPARSE_COMPANY_INFO_LENGTH:
+        text_limits = get_text_limits()
+        min_sparse_length = text_limits.get("minSparseCompanyInfoLength", 100)
+        if not result["about"] and len(content) > min_sparse_length:
             result["about"] = content[:300].strip()
 
         return result

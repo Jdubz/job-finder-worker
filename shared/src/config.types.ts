@@ -117,6 +117,87 @@ export interface SchedulerSettings {
 }
 
 // -----------------------------------------------------------
+// Company Scoring Configuration
+// -----------------------------------------------------------
+
+export interface CompanyScoringConfig {
+  /** Company tier thresholds (points needed for each tier) */
+  tierThresholds: {
+    s: number // S-tier (default: 150)
+    a: number // A-tier (default: 100)
+    b: number // B-tier (default: 70)
+    c: number // C-tier (default: 50)
+    // Below C threshold = D-tier
+  }
+  /** Priority bonuses for company scoring */
+  priorityBonuses: {
+    portlandOffice: number // Bonus for Portland office (default: 50)
+    remoteFirst: number // Bonus for remote-first companies (default: 15)
+    aiMlFocus: number // Bonus for AI/ML-focused companies (default: 10)
+    techStackMax: number // Maximum points from tech stack alignment (default: 100)
+  }
+  /** Match score adjustments based on company attributes */
+  matchAdjustments: {
+    largeCompanyBonus: number // Bonus for large companies (default: 10)
+    smallCompanyPenalty: number // Penalty for small companies/startups (default: -5)
+    largeCompanyThreshold: number // Employee count for "large" (default: 10000)
+    smallCompanyThreshold: number // Employee count for "small" (default: 100)
+  }
+  /** Timezone-based score adjustments */
+  timezoneAdjustments: {
+    sameTimezone: number // Bonus for same timezone (default: 5)
+    diff1to2hr: number // Penalty for 1-2 hour difference (default: -2)
+    diff3to4hr: number // Penalty for 3-4 hour difference (default: -5)
+    diff5to8hr: number // Penalty for 5-8 hour difference (default: -10)
+    diff9plusHr: number // Penalty for 9+ hour difference (default: -15)
+  }
+  /** Match score priority thresholds */
+  priorityThresholds: {
+    high: number // Score threshold for high priority (default: 85)
+    medium: number // Score threshold for medium priority (default: 70)
+  }
+  updatedAt?: TimestampLike
+  updatedBy?: string | null
+}
+
+// -----------------------------------------------------------
+// Worker Operational Settings
+// -----------------------------------------------------------
+
+export interface WorkerSettings {
+  /** HTTP/Scraping settings */
+  scraping: {
+    requestTimeoutSeconds: number // HTTP request timeout (default: 30)
+    rateLimitDelaySeconds: number // Delay between requests (default: 2)
+    maxRetries: number // Maximum retries for failed requests (default: 3)
+    maxHtmlSampleLength: number // Max HTML length for AI selector discovery (default: 20000)
+    maxHtmlSampleLengthSmall: number // Smaller HTML sample for faster processing (default: 15000)
+  }
+  /** Source health tracking */
+  health: {
+    maxConsecutiveFailures: number // Failures before auto-disabling source (default: 5)
+    healthCheckIntervalSeconds: number // Seconds between health checks (default: 3600)
+  }
+  /** Cache TTLs */
+  cache: {
+    companyInfoTtlSeconds: number // Company info cache TTL (default: 86400 = 24h)
+    sourceConfigTtlSeconds: number // Source config cache TTL (default: 3600 = 1h)
+  }
+  /** Text processing limits */
+  textLimits: {
+    minCompanyPageLength: number // Min chars for valid company page (default: 200)
+    minSparseCompanyInfoLength: number // Threshold for "sparse" cached info (default: 100)
+    maxIntakeTextLength: number // Max length for intake data text fields (default: 500)
+    maxIntakeDescriptionLength: number // Max length for description in intake (default: 2000)
+    maxIntakeFieldLength: number // Max length for most intake fields (default: 400)
+    maxDescriptionPreviewLength: number // Max description length for remote keyword search (default: 500)
+    maxCompanyInfoTextLength: number // Max length for company info text (default: 1000)
+  }
+  updatedAt?: TimestampLike
+  updatedBy?: string | null
+}
+
+// -----------------------------------------------------------
 // Config IDs and payload map
 // -----------------------------------------------------------
 
@@ -129,6 +210,8 @@ export type JobFinderConfigId =
   | "job-filters"
   | "technology-ranks"
   | "scheduler-settings"
+  | "company-scoring"
+  | "worker-settings"
 
 export type JobFinderConfigPayloadMap = {
   "stop-list": StopList
@@ -139,6 +222,8 @@ export type JobFinderConfigPayloadMap = {
   "job-filters": JobFiltersConfig
   "technology-ranks": TechnologyRanksConfig
   "scheduler-settings": SchedulerSettings
+  "company-scoring": CompanyScoringConfig
+  "worker-settings": WorkerSettings
 }
 
 // -----------------------------------------------------------
@@ -282,4 +367,63 @@ Provide:
 - Strengths (what makes the candidate strong)
 - Concerns (potential gaps or mismatches)
 - Customization recommendations (what to emphasize)`
+}
+
+export const DEFAULT_COMPANY_SCORING: CompanyScoringConfig = {
+  tierThresholds: {
+    s: 150,
+    a: 100,
+    b: 70,
+    c: 50,
+  },
+  priorityBonuses: {
+    portlandOffice: 50,
+    remoteFirst: 15,
+    aiMlFocus: 10,
+    techStackMax: 100,
+  },
+  matchAdjustments: {
+    largeCompanyBonus: 10,
+    smallCompanyPenalty: -5,
+    largeCompanyThreshold: 10000,
+    smallCompanyThreshold: 100,
+  },
+  timezoneAdjustments: {
+    sameTimezone: 5,
+    diff1to2hr: -2,
+    diff3to4hr: -5,
+    diff5to8hr: -10,
+    diff9plusHr: -15,
+  },
+  priorityThresholds: {
+    high: 85,
+    medium: 70,
+  },
+}
+
+export const DEFAULT_WORKER_SETTINGS: WorkerSettings = {
+  scraping: {
+    requestTimeoutSeconds: 30,
+    rateLimitDelaySeconds: 2,
+    maxRetries: 3,
+    maxHtmlSampleLength: 20000,
+    maxHtmlSampleLengthSmall: 15000,
+  },
+  health: {
+    maxConsecutiveFailures: 5,
+    healthCheckIntervalSeconds: 3600,
+  },
+  cache: {
+    companyInfoTtlSeconds: 86400,
+    sourceConfigTtlSeconds: 3600,
+  },
+  textLimits: {
+    minCompanyPageLength: 200,
+    minSparseCompanyInfoLength: 100,
+    maxIntakeTextLength: 500,
+    maxIntakeDescriptionLength: 2000,
+    maxIntakeFieldLength: 400,
+    maxDescriptionPreviewLength: 500,
+    maxCompanyInfoTextLength: 1000,
+  },
 }

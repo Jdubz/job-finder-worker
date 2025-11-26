@@ -9,13 +9,8 @@ from pydantic import BaseModel, Field
 
 from job_finder.ai.prompts import JobMatchPrompts
 from job_finder.ai.providers import AIProvider
-from job_finder.constants import (
-    MAX_INTAKE_DESCRIPTION_LENGTH,
-    MAX_INTAKE_FIELD_LENGTH,
-    MAX_INTAKE_TEXT_LENGTH,
-    MAX_TEXT_OPTIMIZATION_LENGTH,
-)
 from job_finder.profile.schema import Profile
+from job_finder.settings import get_text_limits
 from job_finder.utils.company_size_utils import (
     calculate_company_size_adjustment,
     detect_company_size,
@@ -489,7 +484,14 @@ class AIJobMatcher:
         """
         import re
 
-        def clean_text(text: str, max_length: int = MAX_INTAKE_TEXT_LENGTH) -> str:
+        # Get text limits from config
+        text_limits = get_text_limits()
+        max_intake_text = text_limits.get("maxIntakeTextLength", 500)
+        max_intake_desc = text_limits.get("maxIntakeDescriptionLength", 2000)
+        max_intake_field = text_limits.get("maxIntakeFieldLength", 400)
+        max_text_optimization = 100  # Only optimize strings longer than this
+
+        def clean_text(text: str, max_length: int = max_intake_text) -> str:
             """Clean and truncate text intelligently."""
             if not text or len(text) <= max_length:
                 return text
@@ -553,16 +555,16 @@ class AIJobMatcher:
             if isinstance(value, str):
                 # Apply different limits based on field purpose
                 if (
-                    len(value) > MAX_TEXT_OPTIMIZATION_LENGTH
+                    len(value) > max_text_optimization
                 ):  # Only optimize strings that are actually large
                     if "description" in key.lower():
                         return clean_text(
-                            value, max_length=MAX_INTAKE_DESCRIPTION_LENGTH
+                            value, max_length=max_intake_desc
                         )  # Descriptions can be longer
                     elif "summary" in key.lower():
-                        return clean_text(value, max_length=MAX_INTAKE_FIELD_LENGTH)
+                        return clean_text(value, max_length=max_intake_field)
                     else:
-                        return clean_text(value, max_length=MAX_INTAKE_TEXT_LENGTH)
+                        return clean_text(value, max_length=max_intake_text)
                 return value
 
             elif isinstance(value, list):
