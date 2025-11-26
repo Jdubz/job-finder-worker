@@ -309,7 +309,7 @@ export function useConfigState() {
     createResetHandler(
       setQueueSettings,
       originalQueueSettings,
-      { maxConcurrentJobs: 5, retryAttempts: 3, retryDelay: 1000 },
+      { processingTimeoutSeconds: 1800 },
       setError,
       setSuccess
     )
@@ -318,7 +318,7 @@ export function useConfigState() {
     createResetHandler(
       setAISettings,
       originalAISettings,
-      { model: "gpt-4", temperature: 0.7, maxTokens: 2000 },
+      { provider: "claude", model: "claude-sonnet-4", minMatchScore: 70 },
       setError,
       setSuccess
     )
