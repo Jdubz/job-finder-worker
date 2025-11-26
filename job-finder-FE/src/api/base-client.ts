@@ -8,7 +8,8 @@
  */
 
 import { DEFAULT_E2E_AUTH_TOKEN, TEST_AUTH_TOKEN_KEY, AUTH_BYPASS_ENABLED } from "@/config/testing"
-import { getStoredAuthToken } from "@/lib/auth-storage"
+import { clearStoredAuthToken, getStoredAuthToken } from "@/lib/auth-storage"
+import { decodeJwt } from "@/lib/jwt"
 import { ApiErrorCode, type ApiErrorResponse } from "@shared/types"
 import { handleApiError } from "@/lib/api-error-handler"
 
@@ -71,7 +72,13 @@ export class BaseApiClient {
       return bypassToken
     }
 
-    return getStoredAuthToken()
+    const stored = getStoredAuthToken()
+    if (stored && isJwtExpired(stored)) {
+      clearStoredAuthToken()
+      return null
+    }
+
+    return stored
   }
 
   /**
@@ -110,6 +117,7 @@ export class BaseApiClient {
       method,
       headers: requestHeaders,
       cache: "no-store",
+      credentials: "include",
       signal: AbortSignal.timeout(timeout),
     }
 
@@ -119,6 +127,7 @@ export class BaseApiClient {
 
     // Retry logic
     let lastError: Error | null = null
+    let attemptedSessionRetry = false
     for (let attempt = 0; attempt < retryAttempts; attempt++) {
       try {
         const response = await fetch(url, fetchOptions)
@@ -143,7 +152,21 @@ export class BaseApiClient {
       } catch (error) {
         lastError = error as Error
 
-        // Don't retry on client errors (4xx) or auth errors
+        // Special-case 401: clear stale bearer token once and retry using the session cookie
+        if (
+          error instanceof ApiError &&
+          error.statusCode === 401 &&
+          !attemptedSessionRetry &&
+          requestHeaders["Authorization"]
+        ) {
+          attemptedSessionRetry = true
+          clearStoredAuthToken()
+          delete requestHeaders["Authorization"]
+          // retry immediately without counting toward backoff attempts
+          continue
+        }
+
+        // Don't retry on other client errors (4xx)
         if (
           error instanceof ApiError &&
           error.statusCode &&
@@ -218,4 +241,19 @@ function getBypassTokenOverride(): string | null {
   }
 
   return DEFAULT_E2E_AUTH_TOKEN || null
+}
+
+function isJwtExpired(token: string): boolean {
+  try {
+    const payload = decodeJwt(token)
+    if (!payload.exp) {
+      return false
+    }
+    const expiresAtMs = payload.exp * 1000
+    return Date.now() >= expiresAtMs
+  } catch (error) {
+    // If the token cannot be decoded, treat it as expired to force re-auth
+    console.warn("Failed to decode auth token; treating as expired", error)
+    return true
+  }
 }
