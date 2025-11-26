@@ -3,6 +3,7 @@ import { AuthProvider } from "@/contexts/AuthContext"
 import { router } from "@/router"
 import { GoogleOAuthProvider } from "@react-oauth/google"
 import ErrorBoundary from "@/components/error/ErrorBoundary"
+import { RestartOverlay } from "@/components/system/RestartOverlay"
 
 function App() {
   const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
@@ -14,6 +15,7 @@ function App() {
     <ErrorBoundary>
       <GoogleOAuthProvider clientId={clientId}>
         <AuthProvider>
+          <RestartOverlay />
           <RouterProvider router={router} />
         </AuthProvider>
       </GoogleOAuthProvider>

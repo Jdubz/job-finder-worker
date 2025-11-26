@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { queueClient } from "@/api"
 import type { QueueItem } from "@shared/types"
 import { API_CONFIG } from "@/config/api"
+import { consumeSavedProviderState, registerStateProvider } from "@/lib/restart-persistence"
 
 interface UseQueueItemsOptions {
   limit?: number
@@ -24,6 +25,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   const [queueItems, setQueueItems] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<Error | null>(null)
+  const savedQueueItems = useMemo(() => consumeSavedProviderState<QueueItem[]>("queue-items"), [])
 
   const normalizeQueueItem = useCallback((item: QueueItem): QueueItem => {
     const normalize = (value: unknown): Date | null => {
@@ -41,6 +43,16 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       completed_at: normalize(item.completed_at ?? null) ?? undefined,
     } as QueueItem
   }, [])
+
+  useEffect(() => {
+    if (!savedQueueItems || savedQueueItems.length === 0) return
+    try {
+      setQueueItems(savedQueueItems.map(normalizeQueueItem))
+      setLoading(false)
+    } catch (err) {
+      console.warn("Failed to hydrate queue items from restart snapshot", err)
+    }
+  }, [normalizeQueueItem, savedQueueItems])
 
   const fetchQueueItems = useCallback(async () => {
     setLoading(true)
@@ -178,6 +190,22 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   const refetch = useCallback(async () => {
     await fetchQueueItems()
   }, [fetchQueueItems])
+
+  useEffect(() => {
+    registerStateProvider({
+      name: "queue-items",
+      version: 1,
+      serialize: () => queueItems,
+      hydrate: (data) => {
+        if (!Array.isArray(data)) return
+        try {
+          setQueueItems((data as QueueItem[]).map(normalizeQueueItem))
+        } catch (err) {
+          console.warn("Failed to hydrate queue items provider", err)
+        }
+      },
+    })
+  }, [normalizeQueueItem, queueItems])
 
   return {
     queueItems,
