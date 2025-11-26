@@ -17,8 +17,8 @@ import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
-from job_finder.constants import MIN_COMPANY_PAGE_LENGTH
 from job_finder.exceptions import InvalidStateTransition, QueueProcessingError
+from job_finder.settings import get_text_limits
 from job_finder.logging_config import format_company_name
 from job_finder.job_queue.models import (
     CompanyStatus,
@@ -112,10 +112,12 @@ class CompanyProcessor(BaseProcessor):
             ]
 
             html_content = {}
+            text_limits = get_text_limits()
+            min_page_length = text_limits.get("minCompanyPageLength", 200)
             for page_url in pages_to_try:
                 try:
                     content = self.company_info_fetcher._fetch_page_content(page_url)
-                    if content and len(content) > MIN_COMPANY_PAGE_LENGTH:
+                    if content and len(content) > min_page_length:
                         # Extract page type from URL
                         page_type = page_url.split("/")[-1] if "/" in page_url else "homepage"
                         html_content[page_type] = content

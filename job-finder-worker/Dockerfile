@@ -45,7 +45,6 @@ COPY --from=codex-builder /usr/local/lib/node_modules/@openai/codex/vendor /usr/
 # Copy application code
 COPY src/ ./src/
 COPY config/ ./config/
-COPY run_job_search.py .
 COPY scripts/ ./scripts/
 
 # Copy cron configuration, entrypoint, and helper scripts

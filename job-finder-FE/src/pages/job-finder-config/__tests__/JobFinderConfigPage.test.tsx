@@ -21,12 +21,16 @@ vi.mock("@/api/config-client", () => ({
     getJobFilters: vi.fn(),
     getTechnologyRanks: vi.fn(),
     getSchedulerSettings: vi.fn(),
+    getCompanyScoring: vi.fn(),
+    getWorkerSettings: vi.fn(),
     updateStopList: vi.fn(),
     updateQueueSettings: vi.fn(),
     updateAISettings: vi.fn(),
     updateJobFilters: vi.fn(),
     updateTechnologyRanks: vi.fn(),
     updateSchedulerSettings: vi.fn(),
+    updateCompanyScoring: vi.fn(),
+    updateWorkerSettings: vi.fn(),
   },
 }))
 
@@ -93,6 +97,46 @@ const mockScheduler = {
   pollIntervalSeconds: 60,
 }
 
+const mockCompanyScoring = {
+  tierThresholds: { s: 150, a: 100, b: 70, c: 50 },
+  priorityBonuses: { portlandOffice: 50, remoteFirst: 15, aiMlFocus: 10, techStackMax: 100 },
+  matchAdjustments: {
+    largeCompanyBonus: 10,
+    smallCompanyPenalty: -5,
+    largeCompanyThreshold: 10000,
+    smallCompanyThreshold: 100,
+  },
+  timezoneAdjustments: {
+    sameTimezone: 5,
+    diff1to2hr: -2,
+    diff3to4hr: -5,
+    diff5to8hr: -10,
+    diff9plusHr: -15,
+  },
+  priorityThresholds: { high: 85, medium: 70 },
+}
+
+const mockWorkerSettings = {
+  scraping: {
+    requestTimeoutSeconds: 30,
+    rateLimitDelaySeconds: 2,
+    maxRetries: 3,
+    maxHtmlSampleLength: 20000,
+    maxHtmlSampleLengthSmall: 15000,
+  },
+  health: { maxConsecutiveFailures: 5, healthCheckIntervalSeconds: 3600 },
+  cache: { companyInfoTtlSeconds: 86400, sourceConfigTtlSeconds: 3600 },
+  textLimits: {
+    minCompanyPageLength: 200,
+    minSparseCompanyInfoLength: 100,
+    maxIntakeTextLength: 500,
+    maxIntakeDescriptionLength: 2000,
+    maxIntakeFieldLength: 400,
+    maxDescriptionPreviewLength: 500,
+    maxCompanyInfoTextLength: 1000,
+  },
+}
+
 describe("JobFinderConfigPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -106,12 +150,16 @@ describe("JobFinderConfigPage", () => {
     vi.mocked(configClient.getJobFilters).mockResolvedValue(mockJobFilters)
     vi.mocked(configClient.getTechnologyRanks).mockResolvedValue(mockTechRanks)
     vi.mocked(configClient.getSchedulerSettings).mockResolvedValue(mockScheduler)
+    vi.mocked(configClient.getCompanyScoring).mockResolvedValue(mockCompanyScoring)
+    vi.mocked(configClient.getWorkerSettings).mockResolvedValue(mockWorkerSettings)
     vi.mocked(configClient.updateStopList).mockResolvedValue(undefined)
     vi.mocked(configClient.updateQueueSettings).mockResolvedValue(undefined)
     vi.mocked(configClient.updateAISettings).mockResolvedValue(undefined)
     vi.mocked(configClient.updateJobFilters).mockResolvedValue(undefined)
     vi.mocked(configClient.updateTechnologyRanks).mockResolvedValue(undefined)
     vi.mocked(configClient.updateSchedulerSettings).mockResolvedValue(undefined)
+    vi.mocked(configClient.updateCompanyScoring).mockResolvedValue(undefined)
+    vi.mocked(configClient.updateWorkerSettings).mockResolvedValue(undefined)
   })
 
   describe("rendering", () => {
@@ -122,13 +170,15 @@ describe("JobFinderConfigPage", () => {
         expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
       })
 
-      // Check tabs
-      expect(screen.getByText("Stop List")).toBeInTheDocument()
-      expect(screen.getByText("Queue Settings")).toBeInTheDocument()
-      expect(screen.getByText("AI Settings")).toBeInTheDocument()
-      expect(screen.getByText("Job Filters")).toBeInTheDocument()
-      expect(screen.getByText("Tech Ranks")).toBeInTheDocument()
-      expect(screen.getByText("Scheduler")).toBeInTheDocument()
+      // Check tabs (shortened names to fit 8-column layout)
+      expect(screen.getByRole("tab", { name: "Stop List" })).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "Queue" })).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "AI" })).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "Filters" })).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "Tech" })).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "Scheduler" })).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "Scoring" })).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "Worker" })).toBeInTheDocument()
     })
 
     it("should show loading state while fetching configuration", () => {
@@ -317,7 +367,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("Queue Settings"))
+      await user.click(screen.getByRole("tab", { name: "Queue" }))
 
       await waitFor(() => {
         expect(screen.getByText("Queue Processing Settings")).toBeInTheDocument()
@@ -333,7 +383,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("Queue Settings"))
+      await user.click(screen.getByRole("tab", { name: "Queue" }))
 
       await waitFor(() => {
         expect(screen.getByDisplayValue("600")).toBeInTheDocument() // processingTimeoutSeconds
@@ -349,7 +399,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("Queue Settings"))
+      await user.click(screen.getByRole("tab", { name: "Queue" }))
 
       const timeoutInput = await screen.findByLabelText("Processing Timeout (seconds)")
       await user.clear(timeoutInput)
@@ -374,7 +424,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("AI Settings"))
+      await user.click(screen.getByRole("tab", { name: "AI" }))
 
       await waitFor(() => {
         expect(screen.getByText("AI Configuration")).toBeInTheDocument()
@@ -390,7 +440,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("AI Settings"))
+      await user.click(screen.getByRole("tab", { name: "AI" }))
 
       await waitFor(() => {
         expect(screen.getByDisplayValue("claude-sonnet-4")).toBeInTheDocument() // model
@@ -407,7 +457,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("AI Settings"))
+      await user.click(screen.getByRole("tab", { name: "AI" }))
 
       await waitFor(() => {
         expect(screen.getByLabelText("Model")).toBeInTheDocument()
@@ -435,7 +485,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("AI Settings"))
+      await user.click(screen.getByRole("tab", { name: "AI" }))
 
       await waitFor(() => {
         expect(screen.getByLabelText("Minimum Match Score")).toBeInTheDocument()
@@ -502,7 +552,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("Queue Settings"))
+      await user.click(screen.getByRole("tab", { name: "Queue" }))
 
       await waitFor(() => {
         expect(screen.getByDisplayValue("600")).toBeInTheDocument()
@@ -532,7 +582,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("AI Settings"))
+      await user.click(screen.getByRole("tab", { name: "AI" }))
 
       await waitFor(() => {
         expect(screen.getByDisplayValue("claude-sonnet-4")).toBeInTheDocument()
@@ -585,7 +635,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("Queue Settings"))
+      await user.click(screen.getByRole("tab", { name: "Queue" }))
 
       await waitFor(() => {
         expect(screen.getByDisplayValue("600")).toBeInTheDocument()
@@ -613,7 +663,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("AI Settings"))
+      await user.click(screen.getByRole("tab", { name: "AI" }))
 
       await waitFor(() => {
         expect(screen.getByDisplayValue("claude-sonnet-4")).toBeInTheDocument()
@@ -683,7 +733,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("Queue Settings"))
+      await user.click(screen.getByRole("tab", { name: "Queue" }))
 
       await waitFor(() => {
         // Check form labels exist

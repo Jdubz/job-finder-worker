@@ -134,3 +134,66 @@ class ConfigLoader:
         except InitializationError:
             logger.warning("Scheduler settings missing; seeding defaults")
             return self._seed_config("scheduler-settings", default)
+
+    def get_company_scoring(self) -> Dict[str, Any]:
+        default = {
+            "tierThresholds": {"s": 150, "a": 100, "b": 70, "c": 50},
+            "priorityBonuses": {
+                "portlandOffice": 50,
+                "remoteFirst": 15,
+                "aiMlFocus": 10,
+                "techStackMax": 100,
+            },
+            "matchAdjustments": {
+                "largeCompanyBonus": 10,
+                "smallCompanyPenalty": -5,
+                "largeCompanyThreshold": 10000,
+                "smallCompanyThreshold": 100,
+            },
+            "timezoneAdjustments": {
+                "sameTimezone": 5,
+                "diff1to2hr": -2,
+                "diff3to4hr": -5,
+                "diff5to8hr": -10,
+                "diff9plusHr": -15,
+            },
+            "priorityThresholds": {"high": 85, "medium": 70},
+        }
+        try:
+            return self._get_config("company-scoring")
+        except InitializationError:
+            logger.warning("Company scoring config missing; seeding defaults")
+            return self._seed_config("company-scoring", default)
+
+    def get_worker_settings(self) -> Dict[str, Any]:
+        default = {
+            "scraping": {
+                "requestTimeoutSeconds": 30,
+                "rateLimitDelaySeconds": 2,
+                "maxRetries": 3,
+                "maxHtmlSampleLength": 20000,
+                "maxHtmlSampleLengthSmall": 15000,
+            },
+            "health": {
+                "maxConsecutiveFailures": 5,
+                "healthCheckIntervalSeconds": 3600,
+            },
+            "cache": {
+                "companyInfoTtlSeconds": 86400,
+                "sourceConfigTtlSeconds": 3600,
+            },
+            "textLimits": {
+                "minCompanyPageLength": 200,
+                "minSparseCompanyInfoLength": 100,
+                "maxIntakeTextLength": 500,
+                "maxIntakeDescriptionLength": 2000,
+                "maxIntakeFieldLength": 400,
+                "maxDescriptionPreviewLength": 500,
+                "maxCompanyInfoTextLength": 1000,
+            },
+        }
+        try:
+            return self._get_config("worker-settings")
+        except InitializationError:
+            logger.warning("Worker settings missing; seeding defaults")
+            return self._seed_config("worker-settings", default)
