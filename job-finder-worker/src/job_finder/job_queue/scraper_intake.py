@@ -1,9 +1,19 @@
-"""Helper for scrapers to submit jobs to the queue."""
+"""Helper for scrapers to submit jobs to the queue.
+
+Pre-filtering behavior:
+  Jobs are pre-filtered using StrikeFilterEngine BEFORE being added to the queue.
+  This prevents irrelevant jobs (sales roles, too junior, excluded companies,
+  old jobs, wrong locations) from consuming queue resources.
+
+  Only jobs that pass hard rejection filters are queued for AI analysis.
+  See docs/worker/architecture/pre-filtering.md for details.
+"""
 
 import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
+from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueSource
 from job_finder.utils.company_name_utils import clean_company_name
@@ -18,6 +28,11 @@ class ScraperIntake:
 
     This provides a simple interface for scrapers to add jobs without
     worrying about queue implementation details.
+
+    Pre-filtering:
+      When a filter_engine is provided, jobs are pre-filtered before queueing.
+      Only jobs that pass hard rejection filters are added to the queue.
+      This significantly reduces queue size and AI analysis costs.
     """
 
     def __init__(
@@ -25,6 +40,7 @@ class ScraperIntake:
         queue_manager: QueueManager,
         job_storage=None,
         companies_manager=None,
+        filter_engine=None,
     ):
         """
         Initialize scraper intake.
@@ -33,10 +49,12 @@ class ScraperIntake:
             queue_manager: Queue manager for adding items
             job_storage: JobStorage for checking job existence (optional)
             companies_manager: CompaniesManager for checking company existence (optional)
+            filter_engine: StrikeFilterEngine for pre-filtering jobs (optional)
         """
         self.queue_manager = queue_manager
         self.job_storage = job_storage
         self.companies_manager = companies_manager
+        self.filter_engine = filter_engine
 
     def submit_jobs(
         self,
@@ -48,11 +66,27 @@ class ScraperIntake:
         company_id: Optional[str] = None,
     ) -> int:
         """
-        Submit multiple jobs to the queue.
+        Submit multiple jobs to the queue with pre-filtering.
+
+        Pre-filtering:
+            When filter_engine is set, jobs are pre-filtered BEFORE being added
+            to the queue. This prevents irrelevant jobs from consuming queue
+            resources and AI analysis costs.
+
+            Pre-filtering checks:
+            - Excluded job types (sales, HR, etc.)
+            - Excluded seniority (too junior)
+            - Excluded companies
+            - Excluded keywords
+            - Job age (>7 days)
+            - Remote policy violations
 
         Args:
             jobs: List of job dictionaries from scraper
             source: Source identifier (e.g., "greenhouse_scraper", "rss_feed")
+            source_id: Optional source ID for tracking
+            source_label: Optional human-readable source label
+            source_type: Optional source type (greenhouse, rss, etc.)
             company_id: Optional company ID if known
 
         Returns:
@@ -60,6 +94,8 @@ class ScraperIntake:
         """
         added_count = 0
         skipped_count = 0
+        prefiltered_count = 0
+        prefilter_reasons: Dict[str, int] = {}
 
         for job in jobs:
             try:
@@ -84,6 +120,19 @@ class ScraperIntake:
                     skipped_count += 1
                     logger.debug(f"Job already exists in job-matches: {normalized_url}")
                     continue
+
+                # Pre-filter job before adding to queue
+                if self.filter_engine:
+                    filter_result = self.filter_engine.evaluate_job(job)
+                    if not filter_result.passed:
+                        prefiltered_count += 1
+                        # Track rejection reasons for logging
+                        reason = filter_result.get_rejection_summary() or "unknown"
+                        # Simplify reason for counting
+                        reason_key = reason.split(":")[0].strip() if ":" in reason else reason
+                        prefilter_reasons[reason_key] = prefilter_reasons.get(reason_key, 0) + 1
+                        logger.debug(f"Pre-filtered job: {job.get('title', 'Unknown')} - {reason}")
+                        continue
 
                 # Clean company label scraped from the listing (avoid storing "Acme Careers")
                 company_name_raw = job.get("company", "")
@@ -121,14 +170,31 @@ class ScraperIntake:
                 doc_id = self.queue_manager.add_item(queue_item)
                 added_count += 1
 
+            except DuplicateQueueItemError:
+                # Race condition - another process added this URL between our check and insert
+                # This is expected behavior during concurrent scraping, not an error
+                skipped_count += 1
+                logger.debug(f"Job already in queue (race condition): {normalized_url}")
+                continue
+
             except Exception as e:
                 logger.error(f"Error adding job to queue: {e}")
                 continue
 
-        logger.info(
-            f"Submitted {added_count} jobs to queue from {source} "
-            f"({skipped_count} skipped as duplicates)"
-        )
+        # Log detailed stats
+        log_parts = [f"Submitted {added_count} jobs to queue from {source}"]
+        if skipped_count > 0:
+            log_parts.append(f"{skipped_count} duplicates")
+        if prefiltered_count > 0:
+            log_parts.append(f"{prefiltered_count} pre-filtered")
+
+        logger.info(" | ".join(log_parts))
+
+        # Log pre-filter breakdown if any were filtered
+        if prefilter_reasons:
+            reasons_str = ", ".join(f"{k}: {v}" for k, v in sorted(prefilter_reasons.items()))
+            logger.info(f"  Pre-filter breakdown: {reasons_str}")
+
         return added_count
 
     def submit_company(
@@ -207,6 +273,11 @@ class ScraperIntake:
                 f"Submitted company to granular pipeline: {cleaned_name} (ID: {doc_id}, tracking_id: {tracking_id})"
             )
             return doc_id
+
+        except DuplicateQueueItemError:
+            # Race condition - another process added this URL between our check and insert
+            logger.debug(f"Company already in queue (race condition): {normalized_url}")
+            return None
 
         except Exception as e:
             logger.error(f"Error adding company to granular pipeline: {e}")

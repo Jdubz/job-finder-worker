@@ -21,8 +21,8 @@ class TestModelSelection:
         assert model == "claude-3-5-haiku-20241022"
 
     def test_discovery_uses_fast_claude(self):
-        """SELECTOR_DISCOVERY task should use cheap/fast model."""
-        model = get_model_for_task("claude", AITask.SELECTOR_DISCOVERY)
+        """SOURCE_DISCOVERY task should use cheap/fast model."""
+        model = get_model_for_task("claude", AITask.SOURCE_DISCOVERY)
         assert model == "claude-3-5-haiku-20241022"
 
     def test_scrape_uses_fast_openai(self):
@@ -109,7 +109,7 @@ class TestCostOptimization:
         """All tasks should use cheap/fast models for maximum cost savings."""
         scrape = get_model_for_task("claude", AITask.SCRAPE)
         analyze = get_model_for_task("claude", AITask.ANALYZE)
-        discovery = get_model_for_task("claude", AITask.SELECTOR_DISCOVERY)
+        discovery = get_model_for_task("claude", AITask.SOURCE_DISCOVERY)
 
         # All use Haiku for 95% cost savings
         assert "haiku" in scrape.lower()
@@ -122,4 +122,4 @@ class TestCostOptimization:
 
         assert TASK_MODEL_TIERS[AITask.SCRAPE] == ModelTier.FAST
         assert TASK_MODEL_TIERS[AITask.ANALYZE] == ModelTier.FAST
-        assert TASK_MODEL_TIERS[AITask.SELECTOR_DISCOVERY] == ModelTier.FAST
+        assert TASK_MODEL_TIERS[AITask.SOURCE_DISCOVERY] == ModelTier.FAST

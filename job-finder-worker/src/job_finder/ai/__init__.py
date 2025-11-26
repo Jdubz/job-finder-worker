@@ -10,7 +10,7 @@ from job_finder.ai.providers import (
     create_provider,
     get_model_for_task,
 )
-from job_finder.ai.selector_discovery import SelectorDiscovery
+from job_finder.ai.source_discovery import SourceDiscovery
 
 __all__ = [
     "AIJobMatcher",
@@ -20,7 +20,7 @@ __all__ = [
     "ModelTier",
     "ClaudeProvider",
     "OpenAIProvider",
-    "SelectorDiscovery",
+    "SourceDiscovery",
     "create_provider",
     "get_model_for_task",
 ]

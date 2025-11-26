@@ -1,11 +1,14 @@
 """
 Scrape runner - selects sources and submits jobs to the queue.
 
-All filtering, AI analysis, and persistence now happen in the state-driven queue
-pipeline (JOB items). This runner only:
+Pre-filtering is applied at the intake stage:
 1) chooses which sources to scrape (rotation/filters)
 2) scrapes raw jobs from each source
-3) enqueues those jobs via ScraperIntake
+3) pre-filters jobs using StrikeFilterEngine (excludes sales, old jobs, etc.)
+4) enqueues only relevant jobs via ScraperIntake
+
+This significantly reduces queue size and AI analysis costs by filtering
+out obviously irrelevant jobs BEFORE they enter the queue.
 """
 
 import logging
@@ -13,6 +16,8 @@ from typing import Any, Dict, List, Optional
 
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import ConfigurationError
+from job_finder.filters.strike_filter_engine import StrikeFilterEngine
+from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import (
     JobQueueItem,
@@ -21,7 +26,8 @@ from job_finder.job_queue.models import (
     SourceTypeHint,
 )
 from job_finder.job_queue.scraper_intake import ScraperIntake
-from job_finder.scrapers.greenhouse_scraper import GreenhouseScraper
+from job_finder.scrapers.generic_scraper import GenericScraper
+from job_finder.scrapers.source_config import SourceConfig
 from job_finder.storage import JobStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
@@ -32,6 +38,11 @@ logger = logging.getLogger(__name__)
 class ScrapeRunner:
     """
     Runs scraping operations with custom configuration and enqueues jobs.
+
+    Pre-filtering:
+        Uses StrikeFilterEngine to pre-filter jobs BEFORE adding to queue.
+        This prevents irrelevant jobs (sales roles, old jobs, wrong locations)
+        from consuming queue resources and AI analysis costs.
     """
 
     def __init__(
@@ -41,17 +52,42 @@ class ScrapeRunner:
         companies_manager: CompaniesManager,
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
+        filter_engine: Optional[StrikeFilterEngine] = None,
+        config_loader: Optional[ConfigLoader] = None,
     ):
         self.queue_manager = queue_manager
         self.job_storage = job_storage
         self.companies_manager = companies_manager
         self.sources_manager = sources_manager
         self.company_info_fetcher = company_info_fetcher
+
+        # Use provided filter engine or create one from config
+        self.filter_engine: Optional[StrikeFilterEngine] = None
+        if filter_engine:
+            self.filter_engine = filter_engine
+        elif config_loader:
+            self.filter_engine = self._create_filter_engine(config_loader)
+        else:
+            # Try to create config loader from job_storage db_path
+            try:
+                loader = ConfigLoader(job_storage.db_path)
+                self.filter_engine = self._create_filter_engine(loader)
+            except Exception as e:
+                logger.warning(f"Could not create filter engine: {e}. Pre-filtering disabled.")
+                self.filter_engine = None
+
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
             job_storage=job_storage,
             companies_manager=companies_manager,
+            filter_engine=self.filter_engine,
         )
+
+    def _create_filter_engine(self, config_loader: ConfigLoader) -> StrikeFilterEngine:
+        """Create StrikeFilterEngine for pre-filtering scraped jobs."""
+        job_filters = config_loader.get_job_filters()
+        tech_ranks = config_loader.get_technology_ranks()
+        return StrikeFilterEngine(job_filters, tech_ranks)
 
     def run_scrape(
         self,
@@ -83,7 +119,7 @@ class ScrapeRunner:
             logger.info("Using all sources with rotation (oldest first)")
 
         sources = self._get_sources(max_sources, source_ids)
-        logger.info(f"✓ Found {len(sources)} sources to scrape")
+        logger.info(f"Found {len(sources)} sources to scrape")
 
         stats = {
             "sources_scraped": 0,
@@ -96,7 +132,7 @@ class ScrapeRunner:
 
         for source in sources:
             if target_matches is not None and potential_matches >= target_matches:
-                logger.info(f"\n✅ Reached target: {potential_matches} enqueued jobs, stopping")
+                logger.info(f"\nReached target: {potential_matches} enqueued jobs, stopping")
                 break
 
             try:
@@ -124,14 +160,14 @@ class ScrapeRunner:
                 )
 
         logger.info("\n" + "=" * 70)
-        logger.info("✅ SCRAPE COMPLETE")
+        logger.info("SCRAPE COMPLETE")
         logger.info("=" * 70)
         logger.info(f"  Sources scraped: {stats['sources_scraped']}")
         logger.info(f"  Total jobs found: {stats['total_jobs_found']}")
         logger.info(f"  Jobs submitted to queue: {stats['jobs_submitted']}")
 
         if stats["errors"]:
-            logger.warning(f"\n⚠️  Errors: {len(stats['errors'])}")
+            logger.warning(f"\n  Errors: {len(stats['errors'])}")
             for error in stats["errors"]:
                 logger.warning(f"  - {error}")
 
@@ -152,25 +188,49 @@ class ScrapeRunner:
         return self._get_next_sources_by_rotation(max_sources)
 
     def _get_next_sources_by_rotation(self, limit: Optional[int]) -> List[Dict[str, Any]]:
+        """
+        Get sources sorted for even rotation.
+
+        Sort priority (for fair rotation):
+        1. last_scraped (oldest first) - ensures all sources get scraped
+        2. tier_priority (S > A > B > C > D) - high-value sources as tiebreaker
+        3. health_score (healthier first) - prefer reliable sources when tied
+        4. company_scrape_freq (less frequent first) - spread across companies
+
+        Sources with health_score < 0.3 are deprioritized (moved to end).
+        """
         from datetime import datetime, timezone
+
         from job_finder.utils.source_health import CompanyScrapeTracker
 
         sources = self.sources_manager.get_active_sources()
         scored_sources = []
+        min_datetime = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
         for source in sources:
             health = source.get("health", {})
             health_score = health.get("healthScore", 1.0)
+
+            # Adjust health by discovery confidence
             confidence = source.get("discoveryConfidence") or "medium"
             if confidence == "high":
                 health_score = min(1.0, health_score + 0.05)
             elif confidence == "low":
                 health_score = max(0.1, health_score - 0.1)
+
             tier = source.get("tier", "D")
             tier_priority = {"S": 0, "A": 1, "B": 2, "C": 3, "D": 4}.get(tier, 4)
-            last_scraped = source.get("lastScrapedAt") or source.get("scraped_at")
-            if last_scraped is None:
-                last_scraped = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+            # Parse last_scraped to datetime for consistent comparison
+            last_scraped_str = source.get("lastScrapedAt") or source.get("scraped_at")
+            if last_scraped_str:
+                try:
+                    # Handle ISO format strings
+                    last_scraped = datetime.fromisoformat(last_scraped_str.replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    last_scraped = min_datetime
+            else:
+                last_scraped = min_datetime
 
             company_id = source.get("company_id") or source.get("companyId", "")
             try:
@@ -180,22 +240,33 @@ class ScrapeRunner:
                 logger.warning(f"Error getting company scrape frequency: {e}")
                 company_scrape_freq = 0.0
 
+            # Deprioritize unhealthy sources (health < 0.3)
+            is_unhealthy = health_score < 0.3
+
             scored_sources.append(
                 {
                     "source": source,
-                    "health_score": health_score,
-                    "tier_priority": tier_priority,
+                    "is_unhealthy": is_unhealthy,
                     "last_scraped": last_scraped,
+                    "tier_priority": tier_priority,
+                    "health_score": health_score,
                     "company_scrape_freq": company_scrape_freq,
                 }
             )
 
+        # Sort for even rotation:
+        # 1. Unhealthy sources last
+        # 2. Oldest scraped first (primary rotation key)
+        # 3. Higher tier first (S=0 < A=1 < ...)
+        # 4. Higher health first (tiebreaker)
+        # 5. Lower company frequency first
         scored_sources.sort(
             key=lambda x: (
-                -x["health_score"],
-                x["tier_priority"],
-                x["last_scraped"],
-                x["company_scrape_freq"],
+                x["is_unhealthy"],  # Healthy sources first
+                x["last_scraped"],  # Oldest scraped first (ROTATION)
+                x["tier_priority"],  # Higher tier first
+                -x["health_score"],  # Higher health first
+                x["company_scrape_freq"],  # Less frequently scraped companies first
             )
         )
 
@@ -204,57 +275,60 @@ class ScrapeRunner:
         return [s["source"] for s in scored_sources[:limit]]
 
     def _scrape_source(self, source: Dict[str, Any]) -> Dict[str, Any]:
-        source_type = source.get("sourceType")
+        """
+        Scrape a single source using GenericScraper.
+
+        Args:
+            source: Source configuration from job_sources table
+
+        Returns:
+            Stats dict with jobs_found and jobs_submitted counts
+        """
         source_name = source.get("name", "Unknown")
         config = source.get("config", {})
 
-        # Enrich config with company metadata (used by scrapers for labeling)
+        # Get company metadata
         company_id = source.get("company_id") or source.get("companyId")
         company_name = source.get("company_name") or source_name
-        company_website = None
         if company_id:
             company = self.companies_manager.get_company_by_id(company_id)
             if company:
                 company_name = company.get("name") or company_name
-                company_website = company.get("website")
-        if company_name:
-            config["name"] = company_name
-        if company_website:
-            config["company_website"] = company_website
 
-        logger.info(f"\n📡 Scraping source: {source_name} ({source_type})")
+        logger.info(f"\nScraping source: {source_name}")
 
         stats = {
             "jobs_found": 0,
             "jobs_submitted": 0,
         }
 
-        jobs: List[Dict[str, Any]] = []
-        if source_type == "greenhouse":
-            board_token = config.get("board_token")
-            if not board_token:
-                raise ConfigurationError(f"Source {source_name} missing board_token in config")
-            scraper = GreenhouseScraper(config)
-            jobs = scraper.scrape()
-        elif source_type == "rss":
-            rss_url = config.get("url")
-            if not rss_url:
-                raise ConfigurationError(f"Source {source_name} missing url in config")
-            from job_finder.scrapers.rss_scraper import RSSJobScraper
-
-            scraper_rss = RSSJobScraper(rss_url, listing_config={})
-            jobs = scraper_rss.scrape()
-        else:
-            logger.warning(
-                f"Unsupported source type: {source_type}. Spawning discovery for {source_name}"
-            )
+        # Check if config has new format (type field)
+        if "type" not in config:
+            # Config needs migration - spawn discovery
+            logger.warning(f"Source '{source_name}' has legacy config format. Spawning discovery.")
             self._spawn_source_discovery(
-                url=source.get("url") or config.get("url") or source_name,
+                url=source.get("url") or config.get("url") or config.get("base_url", ""),
                 company_id=company_id,
                 company_name=company_name,
-                discovered_via=source.get("discovered_via") or "automated_scan",
+                discovered_via=source.get("discovered_via") or "config_migration",
             )
             return stats
+
+        # Validate config has required fields
+        if "url" not in config:
+            raise ConfigurationError(f"Source {source_name} missing 'url' in config")
+        if "fields" not in config:
+            raise ConfigurationError(f"Source {source_name} missing 'fields' in config")
+
+        # Create SourceConfig with company name override
+        try:
+            source_config = SourceConfig.from_dict(config, company_name=company_name)
+        except Exception as e:
+            raise ConfigurationError(f"Invalid config for source {source_name}: {e}")
+
+        # Scrape using GenericScraper
+        scraper = GenericScraper(source_config)
+        jobs = scraper.scrape()
 
         stats["jobs_found"] = len(jobs)
         logger.info(f"  Found {len(jobs)} jobs")
@@ -262,6 +336,8 @@ class ScrapeRunner:
         if not jobs:
             return stats
 
+        # Submit jobs to queue
+        source_type = config.get("type", "unknown")
         source_label = f"{source_type}:{source_name}"
         jobs_submitted = self.scraper_intake.submit_jobs(
             jobs=jobs,
@@ -287,6 +363,11 @@ class ScrapeRunner:
         company_name: Optional[str],
         discovered_via: str,
     ) -> None:
+        """Spawn a SOURCE_DISCOVERY queue item for a URL."""
+        if not url:
+            logger.warning("Cannot spawn discovery without URL")
+            return
+
         discovery_config = SourceDiscoveryConfig(
             url=url,
             company_id=company_id,

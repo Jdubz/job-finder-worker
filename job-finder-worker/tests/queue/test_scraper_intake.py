@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.scraper_intake import ScraperIntake
 
 
@@ -172,3 +173,42 @@ def test_submit_jobs_empty_list(scraper_intake, mock_queue_manager):
 
     assert count == 0
     mock_queue_manager.add_item.assert_not_called()
+
+
+def test_submit_jobs_handles_race_condition(scraper_intake, mock_queue_manager):
+    """Test that DuplicateQueueItemError is handled gracefully as a duplicate."""
+    jobs = [
+        {"title": "Job 1", "url": "https://example.com/job/1", "company": "Test"},
+        {"title": "Job 2", "url": "https://example.com/job/2", "company": "Test"},
+        {"title": "Job 3", "url": "https://example.com/job/3", "company": "Test"},
+    ]
+
+    # url_exists check passes (returns False) but insert fails due to race condition
+    mock_queue_manager.url_exists_in_queue.return_value = False
+
+    # Second job hits race condition (another process added it between check and insert)
+    mock_queue_manager.add_item.side_effect = [
+        "doc-id-1",
+        DuplicateQueueItemError("Duplicate URL in queue"),
+        "doc-id-3",
+    ]
+
+    # Should handle gracefully and continue
+    count = scraper_intake.submit_jobs(jobs, source="scraper")
+
+    # 2 jobs added (1 was duplicate due to race condition)
+    assert count == 2
+    assert mock_queue_manager.add_item.call_count == 3
+
+
+def test_submit_company_handles_race_condition(scraper_intake, mock_queue_manager):
+    """Test that company submission handles race condition gracefully."""
+    mock_queue_manager.url_exists_in_queue.return_value = False
+    mock_queue_manager.add_item.side_effect = DuplicateQueueItemError("Duplicate URL")
+
+    result = scraper_intake.submit_company(
+        company_name="Test Corp", company_website="https://testcorp.com", source="scraper"
+    )
+
+    # Should return None gracefully (not raise or log as error)
+    assert result is None

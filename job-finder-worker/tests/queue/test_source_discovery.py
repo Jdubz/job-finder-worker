@@ -142,130 +142,143 @@ class TestQueueRouting:
         assert calls[0][0][1] == QueueStatus.PROCESSING
 
 
-class TestGreenhouseDiscovery:
-    @patch("requests.get")
-    def test_discovers_greenhouse_source(self, mock_get, source_processor, mock_dependencies):
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"jobs": [{"id": 1}, {"id": 2}]}
-        mock_get.return_value = mock_response
+class TestSourceDiscoverySuccess:
+    """Test successful source discovery scenarios."""
+
+    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    def test_discovers_api_source(self, mock_discovery_class, source_processor, mock_dependencies):
+        """Test discovering an API source (like Greenhouse)."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = {
+            "type": "api",
+            "url": "https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true",
+            "response_path": "jobs",
+            "fields": {"title": "title", "url": "absolute_url"},
+            "company_name": "Stripe",
+        }
+        mock_discovery_class.return_value = mock_discovery
 
         item = make_discovery_item(url="https://boards.greenhouse.io/stripe")
         source_processor.process_source_discovery(item)
 
-        mock_get.assert_called_once()
+        # Should create source
         mock_dependencies["sources_manager"].create_from_discovery.assert_called_once()
-        # Last update should mark the queue item as SUCCESS with the created source id
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["source_type"] == "api"
+        assert create_kwargs["discovery_confidence"] == "high"
+
+        # Should mark as success
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
-        assert status_call[0][0] == item.id
         assert status_call[0][1] == QueueStatus.SUCCESS
         assert status_call[0][2] == "source-123"
-        mock_dependencies["queue_manager"].add_item.assert_called_once()
 
-    @patch("requests.get")
-    def test_handles_greenhouse_404(self, mock_get, source_processor, mock_dependencies):
-        mock_response = Mock()
-        mock_response.status_code = 404
-        mock_get.return_value = mock_response
-
-        item = make_discovery_item(url="https://boards.greenhouse.io/unknown")
-        source_processor.process_source_discovery(item)
-
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
-        assert status_call[0][1] == QueueStatus.FAILED
-        assert "Greenhouse" in status_call[0][2]
-
-
-class TestWorkdayDiscovery:
-    def test_requires_manual_validation(self, source_processor, mock_dependencies):
-        item = make_discovery_item(url="https://netflix.wd1.myworkdayjobs.com/External")
-
-        source_processor.process_source_discovery(item)
-
-        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
-        assert create_kwargs["source_type"] == "workday"
-        assert create_kwargs["validation_required"] is True
-
-
-class TestRSSDiscovery:
-    @patch("feedparser.parse")
-    def test_discovers_rss_source(self, mock_parse, source_processor, mock_dependencies):
-        feed = Mock()
-        feed.bozo = False
-        feed.entries = [{"title": "Job"}]
-        mock_parse.return_value = feed
-
-        item = make_discovery_item(url="https://example.com/jobs.xml")
-        source_processor.process_source_discovery(item)
-
-        mock_dependencies["sources_manager"].create_from_discovery.assert_called_once()
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
-        assert status_call[0][1] == QueueStatus.SUCCESS
+        # Should spawn SCRAPE_SOURCE
         mock_dependencies["queue_manager"].add_item.assert_called_once()
         queue_item_arg = mock_dependencies["queue_manager"].add_item.call_args.args[0]
         assert queue_item_arg.type == QueueItemType.SCRAPE_SOURCE
-        assert queue_item_arg.source == "automated_scan"
 
-    @patch("feedparser.parse")
-    def test_handles_invalid_rss_source(self, mock_parse, source_processor, mock_dependencies):
-        feed = Mock()
-        feed.bozo = True
-        feed.bozo_exception = ValueError("bad feed")
-        mock_parse.return_value = feed
+    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    def test_discovers_rss_source(self, mock_discovery_class, source_processor, mock_dependencies):
+        """Test discovering an RSS source."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = {
+            "type": "rss",
+            "url": "https://example.com/jobs.rss",
+            "fields": {"title": "title", "url": "link"},
+        }
+        mock_discovery_class.return_value = mock_discovery
 
-        item = make_discovery_item(url="https://example.com/rss")
+        item = make_discovery_item(url="https://example.com/jobs.rss")
         source_processor.process_source_discovery(item)
 
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["source_type"] == "rss"
+        assert create_kwargs["discovery_confidence"] == "high"
+
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
-        assert status_call[0][1] == QueueStatus.FAILED
-        assert "Invalid RSS" in status_call[0][2]
+        assert status_call[0][1] == QueueStatus.SUCCESS
 
-
-class TestGenericDiscovery:
-    @patch("job_finder.ai.selector_discovery.SelectorDiscovery")
-    @patch("requests.get")
-    def test_discovers_generic_source(
-        self, mock_get, mock_selector, source_processor, mock_dependencies
-    ):
-        response = Mock()
-        response.text = "<html></html>"
-        response.raise_for_status = Mock()
-        mock_get.return_value = response
-
-        selector_instance = Mock()
-        selector_instance.discover_selectors.return_value = {
-            "selectors": {"title": ".job"},
-            "confidence": "medium",
+    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    def test_discovers_html_source(self, mock_discovery_class, source_processor, mock_dependencies):
+        """Test discovering an HTML source."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = {
+            "type": "html",
+            "url": "https://example.com/careers",
+            "job_selector": ".job-listing",
+            "fields": {"title": ".title", "url": "a@href"},
         }
-        mock_selector.return_value = selector_instance
+        mock_discovery_class.return_value = mock_discovery
 
         item = make_discovery_item(url="https://example.com/careers")
         source_processor.process_source_discovery(item)
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
-        assert create_kwargs["source_type"] == "generic"
-        assert create_kwargs["config"]["discovered_by_ai"] is True
+        assert create_kwargs["source_type"] == "html"
+        assert create_kwargs["discovery_confidence"] == "medium"  # HTML gets medium confidence
+
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
-        mock_dependencies["queue_manager"].add_item.assert_called_once()
 
-    @patch("job_finder.ai.selector_discovery.SelectorDiscovery")
-    @patch("requests.get")
-    def test_generic_selector_failure_marks_failed(
-        self, mock_get, mock_selector, source_processor, mock_dependencies
+
+class TestSourceDiscoveryFailure:
+    """Test source discovery failure scenarios."""
+
+    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    def test_handles_discovery_failure(
+        self, mock_discovery_class, source_processor, mock_dependencies
     ):
-        response = Mock()
-        response.text = "<html></html>"
-        response.raise_for_status = Mock()
-        mock_get.return_value = response
+        """Test handling when discovery returns None."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = None
+        mock_discovery_class.return_value = mock_discovery
 
-        selector_instance = Mock()
-        selector_instance.discover_selectors.return_value = None
-        mock_selector.return_value = selector_instance
-
-        item = make_discovery_item(url="https://example.com/careers")
+        item = make_discovery_item(url="https://example.com/invalid")
         source_processor.process_source_discovery(item)
 
+        # Should mark as failed
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.FAILED
-        assert "AI selector discovery failed" in status_call[0][2]
+        assert "could not generate valid config" in status_call[0][2]
+
+        # Should not spawn SCRAPE_SOURCE
+        mock_dependencies["queue_manager"].add_item.assert_not_called()
+
+    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    def test_handles_discovery_exception(
+        self, mock_discovery_class, source_processor, mock_dependencies
+    ):
+        """Test handling when discovery raises an exception."""
+        mock_discovery = Mock()
+        mock_discovery.discover.side_effect = Exception("API Error")
+        mock_discovery_class.return_value = mock_discovery
+
+        item = make_discovery_item(url="https://example.com/error")
+        source_processor.process_source_discovery(item)
+
+        # Should mark as failed
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        assert status_call[0][1] == QueueStatus.FAILED
+
+
+class TestCompanyNameExtraction:
+    """Test company name extraction from URL."""
+
+    def test_extract_company_from_url(self, source_processor):
+        """Test extracting company name from URL."""
+        # Simple domain
+        assert source_processor._extract_company_from_url("https://stripe.com/careers") == "Stripe"
+
+        # Hyphenated
+        result = source_processor._extract_company_from_url("https://tech-corp.com/jobs")
+        assert result in ("TechCorp", "Tech Corp")
+
+        # With www
+        assert (
+            source_processor._extract_company_from_url("https://www.example.com/jobs") == "Example"
+        )
+
+    def test_extract_company_from_invalid_url(self, source_processor):
+        """Test handling invalid URLs."""
+        assert source_processor._extract_company_from_url("not-a-url") == ""
+        assert source_processor._extract_company_from_url("") == ""
