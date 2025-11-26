@@ -45,6 +45,9 @@ The `infra/` directory contains **templates and development configurations** for
    # CORS configuration - comma-separated list of allowed frontend origins
    CORS_ALLOWED_ORIGINS="https://job-finder.joshwentworth.com"
 
+   # Worker/WebSocket auth (shared secret between API and worker)
+   WORKER_WS_TOKEN="change-me"
+
    # Firebase configuration
    FIREBASE_PROJECT_ID="your-project-id"
    FIREBASE_CLIENT_EMAIL="your-service-account@project.iam.gserviceaccount.com"

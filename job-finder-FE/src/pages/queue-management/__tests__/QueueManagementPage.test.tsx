@@ -31,7 +31,7 @@ describe("QueueManagementPage", () => {
     {
       id: "queue-1",
       user_id: "test-user-123",
-      type: "linkedin-job",
+      type: "job",
       status: "pending",
       url: "https://linkedin.com/jobs/123",
       company_name: "Tech Corp",
@@ -44,7 +44,7 @@ describe("QueueManagementPage", () => {
     {
       id: "queue-2",
       user_id: "test-user-123",
-      type: "linkedin-job",
+      type: "job",
       status: "processing",
       url: "https://linkedin.com/jobs/456",
       company_name: "StartupCo",
@@ -57,7 +57,7 @@ describe("QueueManagementPage", () => {
     {
       id: "queue-3",
       user_id: "test-user-123",
-      type: "linkedin-job",
+      type: "job",
       status: "success",
       url: "https://linkedin.com/jobs/789",
       company_name: "BigCorp",
@@ -71,7 +71,7 @@ describe("QueueManagementPage", () => {
     {
       id: "queue-4",
       user_id: "test-user-123",
-      type: "linkedin-job",
+      type: "job",
       status: "failed",
       url: "https://linkedin.com/jobs/999",
       company_name: "FailCorp",
@@ -118,9 +118,9 @@ describe("QueueManagementPage", () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Tech Corp")).toBeInTheDocument()
-        expect(screen.getByText("StartupCo")).toBeInTheDocument()
-        expect(screen.getByText("BigCorp")).toBeInTheDocument()
+        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
+        expect(screen.getByTestId("queue-item-queue-2")).toBeInTheDocument()
+        expect(screen.getByTestId("queue-item-queue-3")).toBeInTheDocument()
       })
     })
 
@@ -219,7 +219,7 @@ describe("QueueManagementPage", () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Tech Corp")).toBeInTheDocument()
+        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
       })
 
       // Verify the status filter label exists
@@ -234,15 +234,15 @@ describe("QueueManagementPage", () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Tech Corp")).toBeInTheDocument()
+        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
       })
 
       const searchInput = screen.getByPlaceholderText(/search/i)
       await user.type(searchInput, "BigCorp")
 
       await waitFor(() => {
-        expect(screen.getByText("BigCorp")).toBeInTheDocument()
-        expect(screen.queryByText("Tech Corp")).not.toBeInTheDocument()
+        expect(screen.getByTestId("queue-item-queue-3")).toBeInTheDocument()
+        expect(screen.queryByTestId("queue-item-queue-1")).not.toBeInTheDocument()
       })
     })
 
@@ -251,15 +251,15 @@ describe("QueueManagementPage", () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Tech Corp")).toBeInTheDocument()
+        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
       })
 
       const searchInput = screen.getByPlaceholderText(/search/i)
       await user.type(searchInput, "jobs/123")
 
       await waitFor(() => {
-        expect(screen.getByText("Tech Corp")).toBeInTheDocument()
-        expect(screen.queryByText("StartupCo")).not.toBeInTheDocument()
+        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
+        expect(screen.queryByTestId("queue-item-queue-2")).not.toBeInTheDocument()
       })
     })
   })
