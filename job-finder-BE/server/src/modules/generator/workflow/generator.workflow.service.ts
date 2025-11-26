@@ -444,14 +444,19 @@ export class GeneratorWorkflowService {
       const normalizeSkillsCategory = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
         if (!skills || skills.length === 0) return []
         if (skills.length && typeof skills[0] === 'string') {
-          return [{ category: 'Skills', items: (skills as unknown as string[]).filter((s) => allowedSkills.size === 0 || allowedSkills.has(s)) }]
+          const filteredSkills = (skills as unknown as string[]).filter(
+            (s) => allowedSkills.size === 0 || allowedSkills.has(s)
+          )
+          return filteredSkills.length > 0 ? [{ category: 'Skills', items: filteredSkills }] : []
         }
 
-        return (skills as any[])
+        return (skills as Array<{ category?: string; items?: unknown[] }>)
           .map((s) => ({
             category: s.category || 'Skills',
             items: Array.isArray(s.items)
-              ? s.items.filter((item: string) => allowedSkills.size === 0 || allowedSkills.has(item))
+              ? s.items.filter(
+                  (item): item is string => typeof item === 'string' && (allowedSkills.size === 0 || allowedSkills.has(item))
+                )
               : []
           }))
           .filter((s) => s.items.length > 0)
