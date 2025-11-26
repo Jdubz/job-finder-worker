@@ -8,12 +8,12 @@ import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { storageService, type ArtifactMetadata } from './services/storage.service'
 import { PdfMakeService } from './services/pdfmake.service'
 import { generateRequestId } from './request-id'
-
-export class UserFacingError extends Error {}
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import { buildCoverLetterPrompt, buildResumePrompt } from './prompts'
 import { runCliProvider } from './services/cli-runner'
+
+export class UserFacingError extends Error {}
 
 export interface GenerateDocumentPayload {
   generateType: 'resume' | 'coverLetter' | 'both'

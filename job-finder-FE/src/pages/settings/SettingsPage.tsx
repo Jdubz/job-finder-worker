@@ -475,7 +475,6 @@ export function SettingsPage() {
 
                           // Persist to backend and refresh defaults so the UI stays in sync
                           await updatePersonalInfo({ avatar: res.path })
-                          setUserDefaults((prev) => ({ ...prev, avatar: res.path }))
                           setSuccess("Avatar uploaded")
                           setError(null)
                         } catch (err) {
