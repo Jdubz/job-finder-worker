@@ -47,7 +47,13 @@ function restoreStorage(snapshot: Record<string, string>, target: Storage, label
       target.setItem(key, value)
     } catch (error) {
       logger.warning("restart", "hydrate-storage-failed", `Failed to restore ${label} key ${key}`, {
-        error: (error as Error).message,
+        details: {
+          error: {
+            type: (error as Error).name,
+            message: (error as Error).message,
+            stack: (error as Error).stack,
+          },
+        },
       })
     }
   })
@@ -68,19 +74,25 @@ export function persistAppSnapshot(reason: string): StoredSnapshot | null {
   if (typeof window === "undefined") return null
   const providerSnapshots: ProviderSnapshot[] = []
 
-  providers.forEach((provider) => {
-    try {
-      providerSnapshots.push({
-        name: provider.name,
-        version: provider.version,
-        data: provider.serialize(),
-      })
-    } catch (error) {
-      logger.warning("restart", "provider-serialize-failed", `Provider ${provider.name} failed to serialize`, {
-        error: (error as Error).message,
-      })
-    }
-  })
+    providers.forEach((provider) => {
+      try {
+        providerSnapshots.push({
+          name: provider.name,
+          version: provider.version,
+          data: provider.serialize(),
+        })
+      } catch (error) {
+        logger.warning("restart", "provider-serialize-failed", `Provider ${provider.name} failed to serialize`, {
+          details: {
+            error: {
+              type: (error as Error).name,
+              message: (error as Error).message,
+              stack: (error as Error).stack,
+            },
+          },
+        })
+      }
+    })
 
   const snapshot: StoredSnapshot = {
     version: 1,
@@ -94,7 +106,7 @@ export function persistAppSnapshot(reason: string): StoredSnapshot | null {
 
   window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
   logger.info("restart", "snapshot-created", "Persisted app snapshot for restart", {
-    providers: providerSnapshots.length,
+    details: { providers: providerSnapshots.length },
   })
   return snapshot
 }
@@ -109,7 +121,7 @@ export function hydrateAppSnapshot(): { restoredProviders: number; errors: numbe
     const snapshot = JSON.parse(raw) as StoredSnapshot
     if (snapshot.version !== 1) {
       logger.warning("restart", "snapshot-version-mismatch", "Snapshot version not supported", {
-        version: snapshot.version,
+        details: { version: snapshot.version },
       })
       return { restoredProviders: 0, errors: 1 }
     }
@@ -122,13 +134,17 @@ export function hydrateAppSnapshot(): { restoredProviders: number; errors: numbe
     })
 
     logger.info("restart", "snapshot-restored", "Restored persisted snapshot after restart", {
-      providers: snapshot.providers.length,
+      details: { providers: snapshot.providers.length },
     })
 
     return { restoredProviders: snapshot.providers.length, errors: 0 }
   } catch (error) {
     logger.error("restart", "hydrate-failed", "Failed to hydrate saved snapshot", {
-      error: (error as Error).message,
+      error: {
+        type: (error as Error).name,
+        message: (error as Error).message,
+        stack: (error as Error).stack,
+      },
     })
     return { restoredProviders: 0, errors: 1 }
   }

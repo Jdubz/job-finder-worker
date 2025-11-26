@@ -29,14 +29,22 @@ export function useRestartPersistedState<T>(
       serialize: () => state,
       hydrate: (data) => {
         if (!isSerializable(data)) {
-          logger.warning("restart", "hydrate-incompatible", `Provider ${name} data incompatible`, { dataType: typeof data })
+          logger.warning("restart", "hydrate-incompatible", `Provider ${name} data incompatible`, {
+            details: { dataType: typeof data },
+          })
           return
         }
         try {
           setState(data as T)
         } catch (error) {
           logger.warning("restart", "hydrate-failed", `Provider ${name} hydrate threw`, {
-            error: (error as Error).message,
+            details: {
+              error: {
+                type: (error as Error).name,
+                message: (error as Error).message,
+                stack: (error as Error).stack,
+              },
+            },
           })
         }
       },
