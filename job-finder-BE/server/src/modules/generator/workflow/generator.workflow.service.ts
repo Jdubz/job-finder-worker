@@ -8,6 +8,8 @@ import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { storageService, type ArtifactMetadata } from './services/storage.service'
 import { PdfMakeService } from './services/pdfmake.service'
 import { generateRequestId } from './request-id'
+
+export class UserFacingError extends Error {}
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import { buildCoverLetterPrompt, buildResumePrompt } from './prompts'
@@ -290,8 +292,9 @@ export class GeneratorWorkflowService {
     }
   }
 
-  private buildUserMessage(_error: unknown, fallback: string): string {
-    // Keep the log detailed but surface a short message to the user.
+  private buildUserMessage(error: unknown, fallback: string): string {
+    // Allow explicit, user-facing errors to bubble up; otherwise, keep it generic.
+    if (error instanceof UserFacingError) return error.message
     return fallback
   }
 
