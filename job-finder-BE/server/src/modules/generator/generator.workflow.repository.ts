@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import type { PersonalInfo } from '@shared/types'
+import type { GenerationStep, PersonalInfo } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
 export interface GeneratorRequestRecord {
@@ -13,6 +13,7 @@ export interface GeneratorRequestRecord {
   coverLetterUrl?: string | null
   jobMatchId?: string | null
   createdBy?: string | null
+  steps?: GenerationStep[] | null
   createdAt: string
   updatedAt: string
 }
@@ -32,6 +33,11 @@ export interface GeneratorArtifactRecord {
 export class GeneratorWorkflowRepository {
   private db: Database.Database
 
+  private mergeJsonField<T>(updateValue: T | null | undefined, existingValue: T | null | undefined): string | null {
+    const value = updateValue !== undefined ? updateValue : existingValue
+    return value ? JSON.stringify(value) : null
+  }
+
   constructor() {
     this.db = getDb()
   }
@@ -41,8 +47,8 @@ export class GeneratorWorkflowRepository {
     this.db
       .prepare(
         `INSERT INTO generator_requests
-         (id, generate_type, job_json, preferences_json, personal_info_json, status, resume_url, cover_letter_url, job_match_id, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, generate_type, job_json, preferences_json, personal_info_json, status, resume_url, cover_letter_url, job_match_id, created_by, steps_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         record.id,
@@ -55,6 +61,7 @@ export class GeneratorWorkflowRepository {
         record.coverLetterUrl ?? null,
         record.jobMatchId ?? null,
         record.createdBy ?? null,
+        record.steps ? JSON.stringify(record.steps) : null,
         now,
         now
       )
@@ -71,27 +78,14 @@ export class GeneratorWorkflowRepository {
     }
 
     const mergedJob = updates.job ? JSON.stringify(updates.job) : JSON.stringify(existing.job)
-    const mergedPrefs =
-      updates.preferences !== undefined
-        ? updates.preferences
-          ? JSON.stringify(updates.preferences)
-          : null
-        : existing.preferences
-        ? JSON.stringify(existing.preferences)
-        : null
-    const mergedPersonal =
-      updates.personalInfo !== undefined
-        ? updates.personalInfo
-          ? JSON.stringify(updates.personalInfo)
-          : null
-        : existing.personalInfo
-        ? JSON.stringify(existing.personalInfo)
-        : null
+    const mergedPrefs = this.mergeJsonField(updates.preferences, existing.preferences)
+    const mergedPersonal = this.mergeJsonField(updates.personalInfo, existing.personalInfo)
+    const mergedSteps = this.mergeJsonField(updates.steps, existing.steps)
 
     this.db
       .prepare(
         `UPDATE generator_requests
-         SET status = ?, resume_url = ?, cover_letter_url = ?, job_match_id = ?, job_json = ?, preferences_json = ?, personal_info_json = ?, updated_at = ?
+         SET status = ?, resume_url = ?, cover_letter_url = ?, job_match_id = ?, job_json = ?, preferences_json = ?, personal_info_json = ?, steps_json = ?, updated_at = ?
          WHERE id = ?`
       )
       .run(
@@ -102,6 +96,7 @@ export class GeneratorWorkflowRepository {
         mergedJob,
         mergedPrefs,
         mergedPersonal,
+        mergedSteps,
         new Date().toISOString(),
         id
       )
@@ -127,6 +122,7 @@ export class GeneratorWorkflowRepository {
       cover_letter_url: string | null
       job_match_id: string | null
       created_by: string | null
+      steps_json: string | null
       created_at: string
       updated_at: string
     }>
@@ -152,6 +148,7 @@ export class GeneratorWorkflowRepository {
           cover_letter_url: string | null
           job_match_id: string | null
           created_by: string | null
+          steps_json: string | null
           created_at: string
           updated_at: string
         }
@@ -159,8 +156,31 @@ export class GeneratorWorkflowRepository {
     return row ? this.mapRequest(row) : null
   }
 
-  // Steps are now tracked in-memory only during request execution
-  // The generator_steps table has been dropped as per migration 011
+  listByStatus(status: GeneratorRequestRecord['status']): GeneratorRequestRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM generator_requests
+         WHERE status = ?
+         ORDER BY created_at ASC`
+      )
+      .all(status) as Array<{
+      id: string
+      generate_type: string
+      job_json: string
+      preferences_json: string | null
+      personal_info_json: string | null
+      status: string
+      resume_url: string | null
+      cover_letter_url: string | null
+      job_match_id: string | null
+      created_by: string | null
+      steps_json: string | null
+      created_at: string
+      updated_at: string
+    }>
+
+    return rows.map((row) => this.mapRequest(row))
+  }
 
   addArtifact(record: GeneratorArtifactRecord): GeneratorArtifactRecord {
     this.db
@@ -220,6 +240,7 @@ export class GeneratorWorkflowRepository {
     cover_letter_url: string | null
     job_match_id: string | null
     created_by: string | null
+    steps_json: string | null
     created_at: string
     updated_at: string
   }): GeneratorRequestRecord {
@@ -234,6 +255,7 @@ export class GeneratorWorkflowRepository {
       coverLetterUrl: row.cover_letter_url,
       jobMatchId: row.job_match_id,
       createdBy: row.created_by,
+      steps: row.steps_json ? (JSON.parse(row.steps_json) as GenerationStep[]) : null,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }

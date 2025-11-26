@@ -159,10 +159,14 @@ describe("BaseApiClient", () => {
           error: { code: ApiErrorCode.INVALID_REQUEST, message: "Invalid input" },
         }),
       })
-      const request = client.get("/test")
-      await expect(request).rejects.toThrow(ApiError)
-      await expect(request).rejects.toThrow("Invalid input")
-      expect(handleApiError).toHaveBeenCalledTimes(1)
+      try {
+        await client.get("/test")
+        expect.fail("Expected request to throw")
+      } catch (error) {
+        expect(error).toBeInstanceOf(ApiError)
+        expect((error as ApiError).message).toBe("Invalid input")
+        expect(handleApiError).toHaveBeenCalledTimes(1)
+      }
     })
 
     it("should throw ApiError on 5xx response", async () => {

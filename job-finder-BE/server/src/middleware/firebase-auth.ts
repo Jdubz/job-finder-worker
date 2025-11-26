@@ -1,10 +1,12 @@
 import type { NextFunction, Request, Response } from "express"
+import { randomUUID } from "node:crypto"
 import { env } from "../config/env"
 import { verifyGoogleIdToken, type GoogleUser } from "../config/google-oauth"
 import { UserRepository, type UserRole } from "../modules/users/user.repository"
 import { logger } from "../logger"
 import { ApiErrorCode } from "@shared/types"
 import { ApiHttpError } from "./api-error"
+import { parse as parseCookie } from "cookie"
 
 const IS_DEVELOPMENT = env.NODE_ENV === "development"
 
@@ -32,6 +34,8 @@ interface AuthenticatedRequest extends Request {
 
 const userRepository = new UserRepository()
 let cachedBypassEmail: string | null = null
+const SESSION_COOKIE = "jf_session"
+const SESSION_TTL_DAYS = env.SESSION_TTL_DAYS
 
 function resolveBypassEmail(): string | undefined {
   if (cachedBypassEmail !== null) {
@@ -42,7 +46,22 @@ function resolveBypassEmail(): string | undefined {
   return cachedBypassEmail || undefined
 }
 
-function resolveRoles(email: string | undefined): UserRole[] {
+function issueSession(res: Response, user: AuthenticatedUser) {
+  const token = randomUUID()
+  const expires = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
+
+  // Persist on the user record
+  userRepository.saveSession(user.uid, token, expires.toISOString())
+
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: !IS_DEVELOPMENT,
+    maxAge: SESSION_TTL_DAYS * 24 * 60 * 60 * 1000
+  })
+}
+
+export function resolveRoles(email: string | undefined): UserRole[] {
   if (!email) {
     return []
   }
@@ -58,7 +77,7 @@ function resolveRoles(email: string | undefined): UserRole[] {
   return ["viewer"]
 }
 
-function buildAuthenticatedUser(profile: GoogleUser): AuthenticatedUser | null {
+export function buildAuthenticatedUser(profile: GoogleUser): AuthenticatedUser | null {
   if (!profile.email) {
     logger.warn("Auth token missing email claim")
     return null
@@ -77,6 +96,29 @@ function buildAuthenticatedUser(profile: GoogleUser): AuthenticatedUser | null {
 }
 
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
+  const cookies = req.headers.cookie ? parseCookie(req.headers.cookie) : {}
+  const sessionToken = cookies[SESSION_COOKIE]
+
+  if (sessionToken) {
+    const sessionUser = userRepository.findBySessionToken(sessionToken)
+    const expiryMs = sessionUser?.sessionExpiresAtMs ?? (sessionUser?.sessionExpiresAt ? Date.parse(sessionUser.sessionExpiresAt) : undefined)
+    if (sessionUser && expiryMs && expiryMs > Date.now()) {
+      const user: AuthenticatedUser = {
+        uid: sessionUser.id,
+        email: sessionUser.email,
+        emailVerified: true,
+        name: sessionUser.displayName,
+        picture: sessionUser.avatarUrl,
+        roles: sessionUser.roles.length ? sessionUser.roles : ["viewer"]
+      }
+      userRepository.touchLastLogin(sessionUser.id)
+      ;(req as AuthenticatedRequest).user = user
+      return next()
+    }
+    // Expired/invalid session - clear the cookie for the client
+    res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: "lax", secure: !IS_DEVELOPMENT })
+  }
+
   const authHeader = req.headers.authorization
   if (!authHeader?.startsWith("Bearer ")) {
     return next(new ApiHttpError(ApiErrorCode.UNAUTHORIZED, "Missing Authorization header", { status: 401 }))
@@ -90,13 +132,16 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
       logger.error("Bypass token used but no admin user is defined in the users table")
       return next(new ApiHttpError(ApiErrorCode.FORBIDDEN, "User is not authorized", { status: 403 }))
     }
+    const persisted = userRepository.upsertUser(email, "Test Bypass User", undefined, ["admin", "viewer"])
     const bypassUser: AuthenticatedUser = {
-      uid: "test-user",
-      email,
+      uid: persisted.id,
+      email: persisted.email,
       emailVerified: true,
-      name: "Test Bypass User",
-      roles: ["admin", "viewer"],
+      name: persisted.displayName,
+      picture: persisted.avatarUrl,
+      roles: persisted.roles.length ? persisted.roles : ["admin", "viewer"],
     }
+    issueSession(res, bypassUser)
     ;(req as AuthenticatedRequest).user = bypassUser
     return next()
   }
@@ -107,13 +152,16 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     logger.info({ email: devConfig.email, roles: devConfig.roles }, "Dev token authentication")
 
     // Create user object for dev token. Role-based access is determined by the roles array.
+    const persisted = userRepository.upsertUser(devConfig.email, devConfig.name, undefined, devConfig.roles)
     const devUser: AuthenticatedUser = {
-      uid: `dev-${devConfig.roles[0]}-user`,
-      email: devConfig.email,
+      uid: persisted.id,
+      email: persisted.email,
       emailVerified: true,
-      name: devConfig.name,
-      roles: devConfig.roles,
+      name: persisted.displayName,
+      picture: persisted.avatarUrl,
+      roles: persisted.roles.length ? persisted.roles : devConfig.roles,
     }
+    issueSession(res, devUser)
     ;(req as AuthenticatedRequest).user = devUser
     return next()
   }
@@ -128,7 +176,24 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     return next(new ApiHttpError(ApiErrorCode.FORBIDDEN, "User is not authorized", { status: 403 }))
   }
 
-  ;(req as AuthenticatedRequest).user = authenticatedUser
+  const persisted = userRepository.upsertUser(
+    authenticatedUser.email!,
+    authenticatedUser.name,
+    authenticatedUser.picture,
+    authenticatedUser.roles
+  )
+  const sessionUser: AuthenticatedUser = {
+    ...authenticatedUser,
+    uid: persisted.id,
+    email: persisted.email,
+    roles: persisted.roles.length ? persisted.roles : authenticatedUser.roles,
+    name: persisted.displayName ?? authenticatedUser.name,
+    picture: persisted.avatarUrl ?? authenticatedUser.picture,
+  }
+
+  issueSession(res, sessionUser)
+
+  ;(req as AuthenticatedRequest).user = sessionUser
   return next()
 }
 

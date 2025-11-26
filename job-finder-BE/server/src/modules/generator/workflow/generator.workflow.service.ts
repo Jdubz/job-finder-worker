@@ -52,17 +52,7 @@ const DEFAULT_PERSONAL_INFO: PersonalInfo = {
   summary: undefined
 }
 
-interface ActiveRequestState {
-  steps: ReturnType<typeof createInitialSteps>
-  request: ReturnType<GeneratorWorkflowRepository['getRequest']>
-  createdAt: number
-}
-
-// TTL for abandoned requests: 30 minutes
-const REQUEST_TTL_MS = 30 * 60 * 1000
-
 export class GeneratorWorkflowService {
-  private readonly activeRequests = new Map<string, ActiveRequestState>()
   private readonly userFriendlyError =
     'AI generation failed. Please retry in a moment or contact support if it keeps happening.'
 
@@ -73,22 +63,7 @@ export class GeneratorWorkflowService {
     private readonly contentItemRepo = new ContentItemRepository(),
     private readonly jobMatchRepo = new JobMatchRepository(),
     private readonly log: Logger = logger
-  ) {
-    // Periodically clean up abandoned requests to prevent memory leaks
-    // Run every 15 minutes (half of TTL) to ensure timely cleanup
-    setInterval(() => this.cleanupAbandonedRequests(), REQUEST_TTL_MS / 2)
-  }
-
-  private cleanupAbandonedRequests(): void {
-    const now = Date.now()
-    for (const [requestId, state] of this.activeRequests.entries()) {
-      if (now - state.createdAt > REQUEST_TTL_MS) {
-        this.log.warn({ requestId }, 'Cleaning up abandoned generator request')
-        this.workflowRepo.updateRequest(requestId, { status: 'failed' })
-        this.activeRequests.delete(requestId)
-      }
-    }
-  }
+  ) {}
 
   async generate(payload: GenerateDocumentPayload): Promise<GenerateDocumentResult> {
     const { requestId } = await this.createRequest(payload)
@@ -98,7 +73,7 @@ export class GeneratorWorkflowService {
   async createRequest(payload: GenerateDocumentPayload) {
     const requestId = generateRequestId()
     const steps = createInitialSteps(payload.generateType)
-    const request = this.workflowRepo.createRequest({
+    this.workflowRepo.createRequest({
       id: requestId,
       generateType: payload.generateType,
       job: payload.job,
@@ -108,12 +83,9 @@ export class GeneratorWorkflowService {
       resumeUrl: null,
       coverLetterUrl: null,
       jobMatchId: payload.jobMatchId ?? null,
-      createdBy: undefined
+      createdBy: undefined,
+      steps
     })
-    // Keep steps in memory only (with TTL for cleanup)
-    this.activeRequests.set(requestId, { steps, request, createdAt: Date.now() })
-    // Run cleanup on each new request to prevent unbounded growth
-    this.cleanupAbandonedRequests()
     const nextStep = steps.find((s) => s.status === 'pending')?.id
     return { requestId, steps, nextStep }
   }
@@ -126,9 +98,6 @@ export class GeneratorWorkflowService {
       }
 
       const finalRequest = this.workflowRepo.getRequest(requestId)
-      // Clean up in-memory state
-      this.activeRequests.delete(requestId)
-
       return {
         requestId,
         resumeUrl: finalRequest?.resumeUrl ?? undefined,
@@ -139,7 +108,6 @@ export class GeneratorWorkflowService {
     } catch (error) {
       this.log.error({ err: error }, 'Generator workflow failed')
       this.workflowRepo.updateRequest(requestId, { status: 'failed' })
-      this.activeRequests.delete(requestId)
       return {
         requestId,
         success: false,
@@ -154,16 +122,11 @@ export class GeneratorWorkflowService {
       return null
     }
 
-    const activeState = this.activeRequests.get(requestId)
-    if (!activeState) {
-      return null
-    }
-
-    const steps = activeState.steps
+    const steps = request.steps ?? createInitialSteps(request.generateType)
     const pendingStep = steps.find((step) => step.status === 'pending')
     if (!pendingStep) {
       if (request.status !== 'completed' && request.status !== 'failed') {
-        this.workflowRepo.updateRequest(requestId, { status: 'completed' })
+        this.workflowRepo.updateRequest(requestId, { status: 'completed', steps })
       }
       return {
         requestId,
@@ -174,14 +137,11 @@ export class GeneratorWorkflowService {
     }
 
     const personalInfo = request.personalInfo ?? (await this.personalInfoStore.get()) ?? DEFAULT_PERSONAL_INFO
-    this.workflowRepo.updateRequest(requestId, { personalInfo })
+    this.workflowRepo.updateRequest(requestId, { personalInfo, steps })
 
     if (pendingStep.id === 'collect-data') {
-      // Mark step as started before work begins
-      activeState.steps = startStep(steps, 'collect-data')
-      // collect-data is essentially instant, so complete immediately
-      const updated = completeStep(activeState.steps, 'collect-data', 'completed')
-      activeState.steps = updated
+      const updated = completeStep(startStep(steps, 'collect-data'), 'collect-data', 'completed')
+      this.workflowRepo.updateRequest(requestId, { steps: updated })
       const nextStep = updated.find((s) => s.status === 'pending')?.id
       return {
         requestId,
@@ -193,8 +153,6 @@ export class GeneratorWorkflowService {
     }
 
     if (pendingStep.id === 'generate-resume') {
-      // Mark step as started BEFORE the work begins to capture accurate duration
-      activeState.steps = startStep(steps, 'generate-resume')
       try {
         const resumeUrl = await this.generateResume(
           {
@@ -206,19 +164,17 @@ export class GeneratorWorkflowService {
           personalInfo
         )
         this.workflowRepo.updateRequest(requestId, { resumeUrl: resumeUrl ?? null })
-        const updated = completeStep(activeState.steps, 'generate-resume', 'completed')
-        activeState.steps = updated
+        const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'completed')
+        this.workflowRepo.updateRequest(requestId, { steps: updated })
         const nextStep = updated.find((s) => s.status === 'pending')?.id
         return { requestId, status: request.status, steps: updated, nextStep, resumeUrl, stepCompleted: 'generate-resume' }
       } catch (error) {
         this.log.error({ err: error, requestId }, 'Resume generation failed')
         const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
-        const updated = completeStep(activeState.steps, 'generate-resume', 'failed', undefined, {
+        const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'failed', undefined, {
           message: errorMessage
         })
-        activeState.steps = updated
-        this.workflowRepo.updateRequest(requestId, { status: 'failed' })
-        this.activeRequests.delete(requestId)
+        this.workflowRepo.updateRequest(requestId, { status: 'failed', steps: updated })
         return {
           requestId,
           status: 'failed',
@@ -231,8 +187,6 @@ export class GeneratorWorkflowService {
     }
 
     if (pendingStep.id === 'generate-cover-letter') {
-      // Mark step as started BEFORE the work begins to capture accurate duration
-      activeState.steps = startStep(steps, 'generate-cover-letter')
       try {
         const coverLetterUrl = await this.generateCoverLetter(
           {
@@ -244,19 +198,17 @@ export class GeneratorWorkflowService {
           personalInfo
         )
         this.workflowRepo.updateRequest(requestId, { coverLetterUrl: coverLetterUrl ?? null })
-        const updated = completeStep(activeState.steps, 'generate-cover-letter', 'completed')
-        activeState.steps = updated
+        const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'completed')
+        this.workflowRepo.updateRequest(requestId, { steps: updated })
         const nextStep = updated.find((s) => s.status === 'pending')?.id
         return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl, stepCompleted: 'generate-cover-letter' }
       } catch (error) {
         this.log.error({ err: error, requestId }, 'Cover letter generation failed')
         const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
-        const updated = completeStep(activeState.steps, 'generate-cover-letter', 'failed', undefined, {
+        const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'failed', undefined, {
           message: errorMessage
         })
-        activeState.steps = updated
-        this.workflowRepo.updateRequest(requestId, { status: 'failed' })
-        this.activeRequests.delete(requestId)
+        this.workflowRepo.updateRequest(requestId, { status: 'failed', steps: updated })
         return {
           requestId,
           status: 'failed',
@@ -271,14 +223,9 @@ export class GeneratorWorkflowService {
     // render-pdf step: PDF rendering is done within generateResume/generateCoverLetter,
     // so just mark this step complete and finalize the request
     if (pendingStep.id === 'render-pdf') {
-      // Mark step as started before completing (instant step)
-      activeState.steps = startStep(steps, 'render-pdf')
-      const updated = completeStep(activeState.steps, 'render-pdf', 'completed')
-      activeState.steps = updated
-      this.workflowRepo.updateRequest(requestId, { status: 'completed' })
+      const updated = completeStep(startStep(steps, 'render-pdf'), 'render-pdf', 'completed')
+      this.workflowRepo.updateRequest(requestId, { status: 'completed', steps: updated })
       const finalRequest = this.workflowRepo.getRequest(requestId)
-      // Clean up in-memory state now that generation is complete
-      this.activeRequests.delete(requestId)
       return {
         requestId,
         status: 'completed',
@@ -291,8 +238,7 @@ export class GeneratorWorkflowService {
     }
 
     // Unknown step - mark request as failed to prevent infinite loop
-    this.workflowRepo.updateRequest(requestId, { status: 'failed' })
-    this.activeRequests.delete(requestId)
+    this.workflowRepo.updateRequest(requestId, { status: 'failed', steps })
     return {
       requestId,
       status: 'failed',
