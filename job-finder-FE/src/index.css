@@ -83,3 +83,12 @@ body {
   background-color: var(--color-background);
   color: var(--color-foreground);
 }
+
+@keyframes toastShrink {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}

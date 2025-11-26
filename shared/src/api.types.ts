@@ -48,6 +48,180 @@ export enum ApiErrorCode {
 }
 
 /**
+ * Optional metadata describing an API error code.
+ *
+ * httpStatus: the HTTP status the backend should return for this code
+ * defaultMessage: developer-facing default message
+ * userMessage: safe user-facing copy for the UI (optional)
+ * retryable: whether the frontend may retry automatically
+ */
+export interface ApiErrorDefinition {
+  code: ApiErrorCode
+  httpStatus: number
+  defaultMessage: string
+  userMessage?: string
+  retryable?: boolean
+}
+
+export const API_ERROR_DEFINITIONS: Record<ApiErrorCode, ApiErrorDefinition> = {
+  [ApiErrorCode.UNAUTHORIZED]: {
+    code: ApiErrorCode.UNAUTHORIZED,
+    httpStatus: 401,
+    defaultMessage: "Authentication required",
+    userMessage: "Please sign in to continue."
+  },
+  [ApiErrorCode.FORBIDDEN]: {
+    code: ApiErrorCode.FORBIDDEN,
+    httpStatus: 403,
+    defaultMessage: "You don't have permission to perform this action",
+    userMessage: "You don't have access to do that."
+  },
+  [ApiErrorCode.TOKEN_EXPIRED]: {
+    code: ApiErrorCode.TOKEN_EXPIRED,
+    httpStatus: 401,
+    defaultMessage: "Authentication token has expired",
+    userMessage: "Your session expired. Please sign in again.",
+    retryable: false
+  },
+  [ApiErrorCode.INVALID_TOKEN]: {
+    code: ApiErrorCode.INVALID_TOKEN,
+    httpStatus: 401,
+    defaultMessage: "Invalid authentication token",
+    userMessage: "There was a problem with your session. Please sign in again.",
+    retryable: false
+  },
+  [ApiErrorCode.INVALID_REQUEST]: {
+    code: ApiErrorCode.INVALID_REQUEST,
+    httpStatus: 400,
+    defaultMessage: "Request payload is invalid",
+    userMessage: "Please double-check the information you entered.",
+    retryable: false
+  },
+  [ApiErrorCode.MISSING_FIELD]: {
+    code: ApiErrorCode.MISSING_FIELD,
+    httpStatus: 400,
+    defaultMessage: "Required field is missing",
+    userMessage: "Looks like something is missing. Please fill out all required fields.",
+    retryable: false
+  },
+  [ApiErrorCode.INVALID_FIELD]: {
+    code: ApiErrorCode.INVALID_FIELD,
+    httpStatus: 422,
+    defaultMessage: "Field value is invalid",
+    userMessage: "One of the fields has an invalid value.",
+    retryable: false
+  },
+  [ApiErrorCode.VALIDATION_FAILED]: {
+    code: ApiErrorCode.VALIDATION_FAILED,
+    httpStatus: 422,
+    defaultMessage: "Request failed validation",
+    userMessage: "Please fix the highlighted issues and try again.",
+    retryable: false
+  },
+  [ApiErrorCode.NOT_FOUND]: {
+    code: ApiErrorCode.NOT_FOUND,
+    httpStatus: 404,
+    defaultMessage: "Resource not found",
+    userMessage: "We couldn't find what you were looking for.",
+    retryable: false
+  },
+  [ApiErrorCode.ALREADY_EXISTS]: {
+    code: ApiErrorCode.ALREADY_EXISTS,
+    httpStatus: 409,
+    defaultMessage: "Resource already exists",
+    userMessage: "This already exists.",
+    retryable: false
+  },
+  [ApiErrorCode.RESOURCE_CONFLICT]: {
+    code: ApiErrorCode.RESOURCE_CONFLICT,
+    httpStatus: 409,
+    defaultMessage: "Resource conflict",
+    userMessage: "Your change couldn't be saved because it conflicted with another update.",
+    retryable: false
+  },
+  [ApiErrorCode.GENERATION_FAILED]: {
+    code: ApiErrorCode.GENERATION_FAILED,
+    httpStatus: 500,
+    defaultMessage: "Generation pipeline failed",
+    userMessage: "We couldn't generate the document. Please try again.",
+    retryable: true
+  },
+  [ApiErrorCode.AI_SERVICE_ERROR]: {
+    code: ApiErrorCode.AI_SERVICE_ERROR,
+    httpStatus: 502,
+    defaultMessage: "AI provider returned an error",
+    userMessage: "Our AI service ran into an issue. Please try again.",
+    retryable: true
+  },
+  [ApiErrorCode.PDF_GENERATION_FAILED]: {
+    code: ApiErrorCode.PDF_GENERATION_FAILED,
+    httpStatus: 500,
+    defaultMessage: "PDF generation failed",
+    userMessage: "We couldn't generate your PDF. Please try again.",
+    retryable: true
+  },
+  [ApiErrorCode.STORAGE_ERROR]: {
+    code: ApiErrorCode.STORAGE_ERROR,
+    httpStatus: 500,
+    defaultMessage: "Storage operation failed",
+    userMessage: "We couldn't access a file we need. Please try again.",
+    retryable: true
+  },
+  [ApiErrorCode.RATE_LIMIT_EXCEEDED]: {
+    code: ApiErrorCode.RATE_LIMIT_EXCEEDED,
+    httpStatus: 429,
+    defaultMessage: "Rate limit exceeded",
+    userMessage: "You're doing that too often. Please slow down.",
+    retryable: true
+  },
+  [ApiErrorCode.QUOTA_EXCEEDED]: {
+    code: ApiErrorCode.QUOTA_EXCEEDED,
+    httpStatus: 429,
+    defaultMessage: "Quota exceeded",
+    userMessage: "You've hit your quota. Please wait and try again later.",
+    retryable: true
+  },
+  [ApiErrorCode.INTERNAL_ERROR]: {
+    code: ApiErrorCode.INTERNAL_ERROR,
+    httpStatus: 500,
+    defaultMessage: "Unexpected internal error",
+    userMessage: "Something went wrong on our side. Please try again.",
+    retryable: true
+  },
+  [ApiErrorCode.SERVICE_UNAVAILABLE]: {
+    code: ApiErrorCode.SERVICE_UNAVAILABLE,
+    httpStatus: 503,
+    defaultMessage: "Service temporarily unavailable",
+    userMessage: "The service is temporarily unavailable. Please try again soon.",
+    retryable: true
+  },
+  [ApiErrorCode.TIMEOUT]: {
+    code: ApiErrorCode.TIMEOUT,
+    httpStatus: 504,
+    defaultMessage: "Request timed out",
+    userMessage: "This is taking longer than expected. Please try again.",
+    retryable: true
+  },
+  [ApiErrorCode.DATABASE_ERROR]: {
+    code: ApiErrorCode.DATABASE_ERROR,
+    httpStatus: 500,
+    defaultMessage: "Database error",
+    userMessage: "We couldn't complete your request due to a data error.",
+    retryable: true
+  }
+}
+
+export const DEFAULT_API_ERROR_DEFINITION: ApiErrorDefinition = API_ERROR_DEFINITIONS[ApiErrorCode.INTERNAL_ERROR]
+
+export const getApiErrorDefinition = (code?: ApiErrorCode | string | null): ApiErrorDefinition => {
+  if (!code) return DEFAULT_API_ERROR_DEFINITION
+  if (Object.prototype.hasOwnProperty.call(API_ERROR_DEFINITIONS, code)) {
+    return API_ERROR_DEFINITIONS[code as ApiErrorCode]
+  }
+  return DEFAULT_API_ERROR_DEFINITION
+}
+
+/**
  * Generic API success response wrapper
  * Discriminated union type with success: true
  */
