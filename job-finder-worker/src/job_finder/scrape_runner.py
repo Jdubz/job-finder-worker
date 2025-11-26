@@ -62,6 +62,7 @@ class ScrapeRunner:
         self.company_info_fetcher = company_info_fetcher
 
         # Use provided filter engine or create one from config
+        self.filter_engine: Optional[StrikeFilterEngine] = None
         if filter_engine:
             self.filter_engine = filter_engine
         elif config_loader:
@@ -270,9 +271,7 @@ class ScrapeRunner:
         # Check if config has new format (type field)
         if "type" not in config:
             # Config needs migration - spawn discovery
-            logger.warning(
-                f"Source '{source_name}' has legacy config format. Spawning discovery."
-            )
+            logger.warning(f"Source '{source_name}' has legacy config format. Spawning discovery.")
             self._spawn_source_discovery(
                 url=source.get("url") or config.get("url") or config.get("base_url", ""),
                 company_id=company_id,

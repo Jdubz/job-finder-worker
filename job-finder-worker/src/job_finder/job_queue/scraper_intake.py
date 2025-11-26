@@ -131,9 +131,7 @@ class ScraperIntake:
                         # Simplify reason for counting
                         reason_key = reason.split(":")[0].strip() if ":" in reason else reason
                         prefilter_reasons[reason_key] = prefilter_reasons.get(reason_key, 0) + 1
-                        logger.debug(
-                            f"Pre-filtered job: {job.get('title', 'Unknown')} - {reason}"
-                        )
+                        logger.debug(f"Pre-filtered job: {job.get('title', 'Unknown')} - {reason}")
                         continue
 
                 # Clean company label scraped from the listing (avoid storing "Acme Careers")

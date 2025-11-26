@@ -274,7 +274,9 @@ class TestCompanyNameExtraction:
         assert result in ("TechCorp", "Tech Corp")
 
         # With www
-        assert source_processor._extract_company_from_url("https://www.example.com/jobs") == "Example"
+        assert (
+            source_processor._extract_company_from_url("https://www.example.com/jobs") == "Example"
+        )
 
     def test_extract_company_from_invalid_url(self, source_processor):
         """Test handling invalid URLs."""
