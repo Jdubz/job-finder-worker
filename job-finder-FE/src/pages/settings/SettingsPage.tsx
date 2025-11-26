@@ -465,11 +465,16 @@ export function SettingsPage() {
                     if (!file) return
                     try {
                       setUploading((p) => ({ ...p, avatar: true }))
-                      const res = await generatorClient.uploadAsset({ type: "avatar", dataUrl: await fileToDataUrl(file) })
+                      const dataUrl = await fileToDataUrl(file)
+                      const res = await generatorClient.uploadAsset({ type: "avatar", dataUrl })
+
+                      // Persist to backend and refresh defaults so the UI stays in sync
+                      await updatePersonalInfo({ avatar: res.path })
                       setUserDefaults((prev) => ({ ...prev, avatar: res.path }))
                       setSuccess("Avatar uploaded")
+                      setError(null)
                     } catch (err) {
-                      console.error(err)
+                      console.error("Avatar upload failed", err)
                       setError("Failed to upload avatar")
                     } finally {
                       setUploading((p) => ({ ...p, avatar: false }))
@@ -505,11 +510,15 @@ export function SettingsPage() {
                     if (!file) return
                     try {
                       setUploading((p) => ({ ...p, logo: true }))
-                      const res = await generatorClient.uploadAsset({ type: "logo", dataUrl: await fileToDataUrl(file) })
+                      const dataUrl = await fileToDataUrl(file)
+                      const res = await generatorClient.uploadAsset({ type: "logo", dataUrl })
+
+                      await updatePersonalInfo({ logo: res.path })
                       setUserDefaults((prev) => ({ ...prev, logo: res.path }))
                       setSuccess("Logo uploaded")
+                      setError(null)
                     } catch (err) {
-                      console.error(err)
+                      console.error("Logo upload failed", err)
                       setError("Failed to upload logo")
                     } finally {
                       setUploading((p) => ({ ...p, logo: false }))
