@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label"
 import { Search, Filter, Trash2, AlertCircle, Activity, Plus } from "lucide-react"
 import { QueueItemCard } from "./components/QueueItemCard"
+import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { QueueFilters } from "./components/QueueFilters"
 import { queueClient } from "@/api"
 import type { ScrapeConfig } from "@shared/types"
@@ -341,6 +342,27 @@ export function QueueManagementPage() {
         )
       )}
 
+      {/* Active task banner */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+          <Activity className="h-4 w-4" />
+          Now Processing
+        </div>
+        <ActiveQueueItem
+          item={
+            filteredItems
+              .filter((i) => i.status === "processing")
+              .sort((a, b) => {
+                const aTime = (a.processed_at ?? a.updated_at) as Date
+                const bTime = (b.processed_at ?? b.updated_at) as Date
+                return bTime.getTime() - aTime.getTime()
+              })[0]
+          }
+          loading={loading}
+          onCancel={handleCancelItem}
+        />
+      </div>
+
       {/* Queue Management Interface */}
       <Tabs defaultValue="items" className="space-y-4">
         <TabsList>
@@ -432,7 +454,14 @@ export function QueueManagementPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="hidden rounded-md border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground md:grid md:grid-cols-[32px,1.6fr,1fr,1fr,auto] md:items-center md:gap-2">
+                <span />
+                <span>Task</span>
+                <span>Status & Stage</span>
+                <span>Timing</span>
+                <span className="text-right">Actions</span>
+              </div>
               {filteredItems.map((item) => {
                 if (!item.id) return null
                 return (

@@ -32,6 +32,7 @@ from job_finder.maintenance import run_maintenance
 from job_finder.profile import SQLiteProfileLoader
 from job_finder.profile.schema import Profile
 from job_finder.job_queue import ConfigLoader, QueueManager
+from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.models import QueueStatus
 from job_finder.job_queue.processor import QueueItemProcessor
 from job_finder.storage import JobStorage
@@ -215,7 +216,9 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     )
 
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
-    queue_manager = QueueManager(db_path)
+    notifier = QueueEventNotifier()
+    queue_manager = QueueManager(db_path, notifier=notifier)
+    notifier.on_command = queue_manager.handle_command
     config_loader = ConfigLoader(db_path)
     processor = QueueItemProcessor(
         queue_manager=queue_manager,
@@ -245,6 +248,17 @@ def worker_loop():
         try:
             worker_state["iteration"] += 1
             worker_state["last_poll_time"] = time.time()
+
+            # Heartbeat
+            if queue_manager and queue_manager.notifier:
+                queue_manager.notifier.send_event(
+                    "heartbeat", {"iteration": worker_state["iteration"]}
+                )
+
+            # Apply remote commands before picking new work (HTTP fallback only if WS not connected)
+            if queue_manager and queue_manager.notifier and not queue_manager.notifier.ws_connected:
+                for cmd in queue_manager.notifier.poll_commands():
+                    queue_manager.handle_command({"event": f"command.{cmd.get('command')}", **cmd})
 
             # Get pending items
             items = queue_manager.get_pending_items()

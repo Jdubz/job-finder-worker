@@ -18,6 +18,7 @@ from job_finder.job_queue.models import (
     QueueStatus,
 )
 from job_finder.storage.sqlite_client import sqlite_connection
+from job_finder.job_queue.notifier import QueueEventNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,11 @@ def _rows_to_items(rows: List[Any]) -> List[JobQueueItem]:
 class QueueManager:
     """Manage queue items stored inside the SQLite database."""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(
+        self, db_path: Optional[str] = None, notifier: Optional[QueueEventNotifier] = None
+    ):
         self.db_path = db_path
+        self.notifier = notifier
 
     # --------------------------------------------------------------------- #
     # CRUD HELPERS
@@ -78,6 +82,8 @@ class QueueManager:
 
         type_label = item.type if not hasattr(item.type, "value") else item.type.value
         logger.info("Added queue item %s (%s)", item.id, type_label)
+        if self.notifier:
+            self.notifier.send_event("item.created", {"queueItem": item.model_dump(mode="json")})
         return item.id
 
     def get_pending_items(self, limit: int = 10) -> List[JobQueueItem]:
@@ -136,6 +142,13 @@ class QueueManager:
 
         logger.debug("Updated queue item %s -> %s", item_id, status.value)
 
+        if self.notifier:
+            updated_item = self.get_item(item_id)
+            if updated_item:
+                self.notifier.send_event(
+                    "item.updated", {"queueItem": updated_item.model_dump(mode="json")}
+                )
+
     def increment_retry(self, item_id: str) -> None:
         with sqlite_connection(self.db_path) as conn:
             conn.execute(
@@ -175,6 +188,15 @@ class QueueManager:
 
         return stats
 
+    def handle_command(self, command: Dict[str, Any]) -> None:
+        """Handle external command (currently cancel).
+
+        This is invoked by the notifier's WebSocket callback.
+        """
+        if command.get("event") == "command.cancel" and command.get("itemId"):
+            item_id = command["itemId"]
+            self.update_status(item_id, QueueStatus.SKIPPED, "Cancelled by user (command)")
+
     def retry_item(self, item_id: str) -> bool:
         now = _iso(_utcnow())
         with sqlite_connection(self.db_path) as conn:
@@ -198,6 +220,8 @@ class QueueManager:
         deleted = result.rowcount > 0
         if deleted:
             logger.info("Deleted queue item %s", item_id)
+            if self.notifier:
+                self.notifier.send_event("item.deleted", {"queueItemId": item_id})
         return deleted
 
     # --------------------------------------------------------------------- #

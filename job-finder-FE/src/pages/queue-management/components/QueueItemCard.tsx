@@ -1,20 +1,17 @@
 import type { QueueItem } from "@shared/types"
-import { Card, CardHeader } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Calendar, Clock, ExternalLink, Trash2 } from "lucide-react"
+import { format, formatDistanceToNow } from "date-fns"
 import {
-  Clock,
-  Zap,
-  CheckCircle2,
-  XCircle,
-  Pause,
-  Filter,
-  AlertCircle,
-  Trash2,
-  ExternalLink,
-  Calendar,
-} from "lucide-react"
-import { format } from "date-fns"
+  getCompanyName,
+  getDomain,
+  getJobTitle,
+  getSourceLabel,
+  getStageLabel,
+  getTaskTypeLabel,
+} from "./queueItemDisplay"
 
 interface QueueItemCardProps {
   item: QueueItem
@@ -30,44 +27,6 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
 
   // TypeScript type narrowing - at this point we know item.id is defined
   const itemId = item.id
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "pending":
-        return <Clock className="h-4 w-4 text-yellow-500" />
-      case "processing":
-        return <Zap className="h-4 w-4 text-blue-500 animate-pulse" />
-      case "success":
-        return <CheckCircle2 className="h-4 w-4 text-green-500" />
-      case "failed":
-        return <XCircle className="h-4 w-4 text-red-500" />
-      case "skipped":
-        return <Pause className="h-4 w-4 text-gray-500" />
-      case "filtered":
-        return <Filter className="h-4 w-4 text-purple-500" />
-      default:
-        return <AlertCircle className="h-4 w-4 text-gray-400" />
-    }
-  }
-
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
-      case "pending":
-        return "secondary"
-      case "processing":
-        return "default"
-      case "success":
-        return "default"
-      case "failed":
-        return "destructive"
-      case "skipped":
-        return "outline"
-      case "filtered":
-        return "outline"
-      default:
-        return "outline"
-    }
-  }
 
   const formatDate = (date: unknown) => {
     if (!date) return "N/A"
@@ -89,25 +48,19 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
 
   const canCancel = item.status === "pending" || item.status === "processing"
 
-  const getStatusBorderClass = () => {
-    switch (item.status) {
-      case "processing":
-        return "border-l-4 border-l-blue-500"
-      case "success":
-        return "border-l-4 border-l-green-500 bg-green-50/30 dark:bg-green-950/10"
-      case "failed":
-        return "border-l-4 border-l-red-500"
-      default:
-        return ""
-    }
-  }
+  const title = getJobTitle(item)
+  const company = getCompanyName(item)
+  const stageLabel = getStageLabel(item)
+  const domain = getDomain(item.url)
+  const sourceLabel = getSourceLabel(item)
+  const taskType = getTaskTypeLabel(item)
 
   return (
     <Card
       data-testid={`queue-item-${itemId}`}
-      className={`transition-all duration-300 ease-in-out hover:shadow-md ${selected ? "ring-2 ring-primary shadow-lg" : ""} ${getStatusBorderClass()}`}
+      className={`transition-all duration-200 hover:shadow-sm ${selected ? "ring-2 ring-primary shadow-md" : ""}`}
     >
-      <CardHeader className="pb-3">
+      <CardContent className="p-4">
         <div className="flex items-start gap-3">
           <input
             type="checkbox"
@@ -117,73 +70,70 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
             className="mt-1 rounded border-gray-300"
           />
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              {getStatusIcon(item.status)}
-              <Badge
-                variant={
-                  getStatusBadgeVariant(item.status) as
-                    | "default"
-                    | "secondary"
-                    | "destructive"
-                    | "outline"
-                }
-              >
-                {item.status}
-              </Badge>
-              <Badge variant="outline">{item.type}</Badge>
-              {item.source && (
-                <Badge variant="outline" className="text-xs">
-                  {item.source}
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge className="capitalize">{item.status}</Badge>
+              <Badge variant="outline">{taskType}</Badge>
+              {stageLabel && (
+                <Badge variant="secondary" className="capitalize">
+                  {stageLabel}
                 </Badge>
+              )}
+              {sourceLabel && <Badge variant="outline">{sourceLabel}</Badge>}
+              {item.source_tier && <Badge variant="outline">Tier {item.source_tier}</Badge>}
+            </div>
+
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-sm font-semibold truncate">
+                {title || "Role not yet detected"}
+              </span>
+              {company && (
+                <span className="text-sm text-muted-foreground flex items-center gap-1">
+                  <span aria-hidden="true">•</span>
+                  <span>{company}</span>
+                  <span className="sr-only">{company}</span>
+                </span>
               )}
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <ExternalLink className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            {company && (
+              <div className="text-xs text-muted-foreground">Company: {company}</div>
+            )}
+
+            <div className="grid gap-3 text-xs text-muted-foreground md:grid-cols-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <ExternalLink className="h-3 w-3 flex-shrink-0" />
                 <a
                   href={item.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm font-medium text-primary hover:underline truncate"
+                  className="truncate text-primary hover:underline"
                 >
-                  {item.url}
+                  {domain ?? item.url}
                 </a>
               </div>
 
-              {item.company_name && (
-                <div className="text-sm text-muted-foreground">
-                  <strong>Company:</strong> {item.company_name}
-                </div>
-              )}
-
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  <span>Created: {formatDate(item.created_at)}</span>
-                </div>
-                {item.updated_at && (
-                  <div className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    <span>Updated: {formatDate(item.updated_at)}</span>
-                  </div>
-                )}
+              <div className="flex items-center gap-2">
+                <Clock className="h-3 w-3" />
+                <span>
+                  Queued {formatDistanceToNow(item.created_at as Date, { addSuffix: true })}
+                </span>
               </div>
 
-              {item.result_message && (
-                <div className="mt-2 p-2 bg-muted rounded-md">
-                  <div className="text-xs font-medium text-muted-foreground mb-1">
-                    Result Message:
-                  </div>
-                  <div className="text-sm text-foreground">{item.result_message}</div>
-                </div>
-              )}
-
+              <div className="flex items-center gap-2">
+                <Calendar className="h-3 w-3" />
+                <span>Updated {formatDate(item.updated_at)}</span>
+              </div>
             </div>
+
+            {item.result_message && (
+              <div className="rounded-md bg-muted px-3 py-2 text-xs text-foreground">
+                {item.result_message}
+              </div>
+            )}
           </div>
 
-          <div className="flex gap-1">
+          <div className="flex flex-col items-end gap-2">
             {canCancel && (
               <Button
                 variant="outline"
@@ -194,9 +144,14 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
                 <Trash2 className="h-3 w-3" />
               </Button>
             )}
+            <span className="text-[11px] text-muted-foreground">
+              {item.processed_at
+                ? `In flight ${formatDistanceToNow(item.processed_at as Date)}`
+                : `Added ${formatDistanceToNow(item.created_at as Date)} ago`}
+            </span>
           </div>
         </div>
-      </CardHeader>
+      </CardContent>
     </Card>
   )
 }

@@ -120,7 +120,6 @@ def submit_job_item(
     )
 
     conn.commit()
-    item_id = cursor.lastrowid
     conn.close()
 
     print(f"{Colors.GREEN}Submitted JOB item:{Colors.RESET}")
@@ -173,7 +172,6 @@ def submit_company_item(
     )
 
     conn.commit()
-    item_id = cursor.lastrowid
     conn.close()
 
     print(f"{Colors.GREEN}Submitted COMPANY item:{Colors.RESET}")
@@ -230,7 +228,6 @@ def submit_scrape_item(
     )
 
     conn.commit()
-    item_id = cursor.lastrowid
     conn.close()
 
     print(f"{Colors.GREEN}Submitted SCRAPE item:{Colors.RESET}")
@@ -283,7 +280,6 @@ def submit_source_discovery_item(
     )
 
     conn.commit()
-    item_id = cursor.lastrowid
     conn.close()
 
     print(f"{Colors.GREEN}Submitted SOURCE_DISCOVERY item:{Colors.RESET}")
