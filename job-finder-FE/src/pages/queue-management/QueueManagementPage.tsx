@@ -350,7 +350,7 @@ export function QueueManagementPage() {
         </div>
         <ActiveQueueItem
           item={
-            queueItems
+            filteredItems
               .filter((i) => i.status === "processing")
               .sort((a, b) => {
                 const aTime = (a.processed_at ?? a.updated_at) as Date
