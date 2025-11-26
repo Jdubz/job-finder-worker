@@ -71,6 +71,8 @@ describe("GeneratorClient", () => {
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 400,
+        statusText: "Bad Request",
         headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
@@ -253,12 +255,13 @@ describe("GeneratorClient", () => {
     it("should handle step execution errors", async () => {
       const mockError = {
         success: false,
-        error: "Step execution failed",
-        message: "AI provider unavailable",
+        error: { code: "AI_SERVICE_ERROR", message: "AI provider unavailable" },
       }
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 500,
+        statusText: "Server Error",
         headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
@@ -563,12 +566,13 @@ describe("GeneratorClient", () => {
 
       const mockError = {
         success: false,
-        error: "Validation failed",
-        message: "Job role and company are required",
+        error: { code: "VALIDATION_FAILED", message: "Job role and company are required" },
       }
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 400,
+        statusText: "Bad Request",
         headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)
@@ -587,12 +591,13 @@ describe("GeneratorClient", () => {
 
       const mockError = {
         success: false,
-        error: "Validation failed",
-        message: "Invalid document type",
+        error: { code: "VALIDATION_FAILED", message: "Invalid document type" },
       }
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
+        status: 400,
+        statusText: "Bad Request",
         headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(mockError),
       } as Response)

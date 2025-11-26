@@ -254,7 +254,7 @@ describe("BaseApiClient", () => {
       ;(global.fetch as any).mockRejectedValue(new Error("Network error"))
 
       await expect(client.get("/test"))
-        .rejects.toThrow("Request failed after all retry attempts")
+        .rejects.toThrow("Network error")
 
       expect(handleApiError).toHaveBeenCalled()
     })
