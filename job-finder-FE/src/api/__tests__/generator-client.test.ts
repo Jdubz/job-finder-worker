@@ -65,8 +65,7 @@ describe("GeneratorClient", () => {
     it("should handle generation errors", async () => {
       const mockError = {
         success: false,
-        error: "Generation failed",
-        message: "Invalid request parameters",
+        error: { code: "INVALID_REQUEST", message: "Invalid request parameters" },
       }
 
       vi.mocked(fetch).mockResolvedValue({
@@ -85,7 +84,7 @@ describe("GeneratorClient", () => {
         },
       }
 
-      await expect(client.startGeneration(request)).rejects.toThrow("HTTP 400: Bad Request")
+      await expect(client.startGeneration(request)).rejects.toThrow("Invalid request parameters")
     })
 
     it("should handle network errors", async () => {
