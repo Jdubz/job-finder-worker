@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Tuple
 import feedparser
 import requests
 
-from job_finder.ai.providers import AITask, create_provider
+from job_finder.ai.providers import AIProvider
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.settings import get_scraping_settings
@@ -25,17 +25,14 @@ class SourceDiscovery:
     3. Validate configuration by test scraping
     """
 
-    def __init__(self, provider_type: str = "claude", api_key: Optional[str] = None):
+    def __init__(self, provider: AIProvider):
         """
         Initialize source discovery.
 
         Args:
-            provider_type: AI provider to use (claude, openai)
-            api_key: Optional API key
+            provider: AI provider instance to use for analysis.
         """
-        self.provider = create_provider(
-            provider_type=provider_type, api_key=api_key, task=AITask.SOURCE_DISCOVERY
-        )
+        self.provider = provider
 
     def discover(self, url: str) -> Optional[Dict[str, Any]]:
         """
@@ -278,15 +275,16 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
             return False
 
 
-def discover_source(url: str) -> Optional[Dict[str, Any]]:
+def discover_source(url: str, provider: AIProvider) -> Optional[Dict[str, Any]]:
     """
     Convenience function to discover source configuration.
 
     Args:
         url: URL to analyze
+        provider: AI provider instance to use
 
     Returns:
         SourceConfig dict or None
     """
-    discovery = SourceDiscovery()
+    discovery = SourceDiscovery(provider)
     return discovery.discover(url)

@@ -42,7 +42,6 @@ services:
       POLL_INTERVAL: "10"  # Faster polling for dev
       LOG_LEVEL: DEBUG
       PYTHONUNBUFFERED: "1"
-      USE_CODEX_CLI: "1"
       # Optional: set to lower thresholds for testing
       # MIN_MATCH_SCORE: "50"
     ports:

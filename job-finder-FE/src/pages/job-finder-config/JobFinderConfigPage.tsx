@@ -7,6 +7,7 @@ import {
   StopListTab,
   QueueSettingsTab,
   AISettingsTab,
+  JobMatchTab,
   JobFiltersTab,
   TechnologyRanksTab,
   SchedulerTab,
@@ -71,10 +72,11 @@ export function JobFinderConfigPage() {
       )}
 
       <Tabs defaultValue="stop-list" className="w-full">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="stop-list">Stop List</TabsTrigger>
           <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
+          <TabsTrigger value="job-match">Match</TabsTrigger>
           <TabsTrigger value="filters">Filters</TabsTrigger>
           <TabsTrigger value="tech">Tech</TabsTrigger>
           <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
@@ -118,6 +120,15 @@ export function JobFinderConfigPage() {
           hasAIChanges={configState.hasAIChanges}
           handleSaveAISettings={configState.handleSaveAISettings}
           handleResetAISettings={configState.handleResetAISettings}
+        />
+
+        <JobMatchTab
+          isSaving={configState.isSaving}
+          jobMatch={configState.jobMatch}
+          setJobMatch={configState.setJobMatch}
+          hasJobMatchChanges={configState.hasJobMatchChanges}
+          handleSaveJobMatch={configState.handleSaveJobMatch}
+          handleResetJobMatch={configState.handleResetJobMatch}
         />
 
         <JobFiltersTab

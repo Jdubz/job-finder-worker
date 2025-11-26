@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
+import { execSync } from 'child_process'
 import type {
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
@@ -7,7 +8,9 @@ import type {
   StopList,
   QueueSettings,
   AISettings,
+  AIProviderStatus,
   JobFiltersConfig,
+  JobMatchConfig,
   TechnologyRanksConfig,
   SchedulerSettings,
   JobFinderConfigId,
@@ -19,13 +22,16 @@ import {
   DEFAULT_QUEUE_SETTINGS,
   DEFAULT_AI_SETTINGS,
   DEFAULT_JOB_FILTERS,
+  DEFAULT_JOB_MATCH,
   DEFAULT_TECH_RANKS,
   DEFAULT_SCHEDULER_SETTINGS,
   DEFAULT_PROMPTS,
+  AI_PROVIDER_MODELS,
   isStopList,
   isQueueSettings,
   isAISettings,
   isJobFiltersConfig,
+  isJobMatchConfig,
   isTechnologyRanksConfig,
   isSchedulerSettings,
   isPersonalInfo,
@@ -45,10 +51,70 @@ type KnownPayload =
   | QueueSettings
   | AISettings
   | JobFiltersConfig
+  | JobMatchConfig
   | TechnologyRanksConfig
   | SchedulerSettings
   | PromptConfig
   | Record<string, unknown>
+
+/**
+ * Check provider availability based on API keys and CLI auth status
+ */
+function getProviderAvailability(): AIProviderStatus[] {
+  const providers: AIProviderStatus[] = []
+
+  // Codex CLI - check login status
+  let codexEnabled = false
+  let codexReason = 'CLI not installed or not authenticated'
+  try {
+    const result = execSync('codex login status 2>&1', { encoding: 'utf-8', timeout: 5000 })
+    codexEnabled = result.toLowerCase().includes('logged in')
+    if (!codexEnabled) {
+      codexReason = 'Not logged in - run `codex login`'
+    }
+  } catch {
+    codexReason = 'Codex CLI not available'
+  }
+  providers.push({
+    provider: 'codex',
+    interface: 'cli',
+    enabled: codexEnabled,
+    reason: codexEnabled ? undefined : codexReason,
+    models: [...AI_PROVIDER_MODELS.codex.cli],
+  })
+
+  // Claude API - check ANTHROPIC_API_KEY
+  const claudeEnabled = !!process.env.ANTHROPIC_API_KEY
+  providers.push({
+    provider: 'claude',
+    interface: 'api',
+    enabled: claudeEnabled,
+    reason: claudeEnabled ? undefined : 'ANTHROPIC_API_KEY not set',
+    models: [...AI_PROVIDER_MODELS.claude.api],
+  })
+
+  // OpenAI API - check OPENAI_API_KEY
+  const openaiEnabled = !!process.env.OPENAI_API_KEY
+  providers.push({
+    provider: 'openai',
+    interface: 'api',
+    enabled: openaiEnabled,
+    reason: openaiEnabled ? undefined : 'OPENAI_API_KEY not set',
+    models: [...AI_PROVIDER_MODELS.openai.api],
+  })
+
+  // Gemini API - check GOOGLE_API_KEY or GEMINI_API_KEY
+  const geminiEnabled = !!(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)
+  providers.push({
+    provider: 'gemini',
+    interface: 'api',
+    enabled: geminiEnabled,
+    reason: geminiEnabled ? undefined : 'GOOGLE_API_KEY or GEMINI_API_KEY not set',
+    models: [...AI_PROVIDER_MODELS.gemini.api],
+  })
+
+  return providers
+}
 
 function toCamelCaseKey(key: string): string {
   return key.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
@@ -65,6 +131,7 @@ function seedDefaults(repo: ConfigRepository) {
     ['queue-settings', DEFAULT_QUEUE_SETTINGS],
     ['ai-settings', DEFAULT_AI_SETTINGS],
     ['job-filters', DEFAULT_JOB_FILTERS],
+    ['job-match', DEFAULT_JOB_MATCH],
     ['technology-ranks', DEFAULT_TECH_RANKS],
     ['scheduler-settings', DEFAULT_SCHEDULER_SETTINGS],
     ['ai-prompts', DEFAULT_PROMPTS],
@@ -89,9 +156,20 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
       }
     }
     case 'ai-settings': {
-      const normalized = normalizeKeys<AISettings>(payload)
+      const normalized = normalizeKeys<Partial<AISettings>>(payload)
+      // Merge selected configuration, providers are populated on GET
       return {
-        ...DEFAULT_AI_SETTINGS,
+        selected: {
+          ...DEFAULT_AI_SETTINGS.selected,
+          ...(normalized.selected ?? {}),
+        },
+        providers: [], // Always populated dynamically on GET
+      }
+    }
+    case 'job-match': {
+      const normalized = normalizeKeys<JobMatchConfig>(payload)
+      return {
+        ...DEFAULT_JOB_MATCH,
         ...normalized,
       }
     }
@@ -150,6 +228,8 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
       return isAISettings(payload)
     case 'job-filters':
       return isJobFiltersConfig(payload)
+    case 'job-match':
+      return isJobMatchConfig(payload)
     case 'technology-ranks':
       return isTechnologyRanksConfig(payload)
     case 'scheduler-settings':
@@ -211,6 +291,19 @@ export function buildConfigRouter() {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Config not found'))
         return
       }
+
+      // For ai-settings, populate provider availability dynamically
+      if (id === 'ai-settings') {
+        const aiPayload = entry.payload as AISettings
+        entry = {
+          ...entry,
+          payload: {
+            ...aiPayload,
+            providers: getProviderAvailability(),
+          },
+        }
+      }
+
       const response: GetConfigEntryResponse = { config: entry }
       res.json(success(response))
     })

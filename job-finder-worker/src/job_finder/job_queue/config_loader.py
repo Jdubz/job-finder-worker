@@ -67,20 +67,35 @@ class ConfigLoader:
             return self._seed_config("queue-settings", default)
 
     def get_ai_settings(self) -> Dict[str, Any]:
+        """Get AI provider configuration (provider selection only)."""
         default = {
-            "provider": "claude",
-            "model": "claude-sonnet-4",
-            "minMatchScore": 70,
-            "generateIntakeData": True,
-            "portlandOfficeBonus": 15,
-            "userTimezone": -8,
-            "preferLargeCompanies": True,
+            "selected": {
+                "provider": "codex",
+                "interface": "cli",
+                "model": "gpt-4o-mini",
+            },
+            "providers": [],  # Populated dynamically by backend on GET
         }
         try:
             return self._get_config("ai-settings")
         except InitializationError:
             logger.warning("AI settings missing; seeding defaults")
             return self._seed_config("ai-settings", default)
+
+    def get_job_match(self) -> Dict[str, Any]:
+        """Get job matching preferences (scoring, bonuses, thresholds)."""
+        default = {
+            "minMatchScore": 70,
+            "portlandOfficeBonus": 15,
+            "userTimezone": -8,
+            "preferLargeCompanies": True,
+            "generateIntakeData": True,
+        }
+        try:
+            return self._get_config("job-match")
+        except InitializationError:
+            logger.warning("Job match config missing; seeding defaults")
+            return self._seed_config("job-match", default)
 
     def get_job_filters(self) -> Dict[str, Any]:
         default = {

@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from job_finder.ai import AIJobMatcher
-from job_finder.ai.providers import create_provider
+from job_finder.ai.providers import create_provider_from_config
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue import ConfigLoader, QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, ScrapeConfig
@@ -98,26 +98,21 @@ def main():
     config_loader = ConfigLoader(db_path)
     profile = SQLiteProfileLoader(db_path).load_profile()
 
-    ai_config = {
-        "provider": "claude",
-        "model": "claude-sonnet-4",
-        "min_match_score": 70,
-        "generate_intake_data": True,
-        "portland_office_bonus": 15,
-        "user_timezone": -8,
-        "prefer_large_companies": True,
-        **config.get("ai", {}),
-    }
-    provider = create_provider(ai_config.get("provider", "openai"), model=ai_config.get("model"))
+    # Load AI settings from config
+    ai_settings = config_loader.get_ai_settings()
+    job_match = config_loader.get_job_match()
+
+    # Create provider from AI settings
+    provider = create_provider_from_config(ai_settings)
     ai_matcher = AIJobMatcher(
         provider=provider,
         profile=profile,
-        min_match_score=ai_config.get("min_match_score", 70),
-        generate_intake=ai_config.get("generate_intake_data", True),
-        portland_office_bonus=ai_config.get("portland_office_bonus", 15),
-        user_timezone=ai_config.get("user_timezone", -8),
-        prefer_large_companies=ai_config.get("prefer_large_companies", True),
-        config=ai_config,
+        min_match_score=job_match.get("minMatchScore", 70),
+        generate_intake=job_match.get("generateIntakeData", True),
+        portland_office_bonus=job_match.get("portlandOfficeBonus", 15),
+        user_timezone=job_match.get("userTimezone", -8),
+        prefer_large_companies=job_match.get("preferLargeCompanies", True),
+        config=job_match,
     )
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
 
