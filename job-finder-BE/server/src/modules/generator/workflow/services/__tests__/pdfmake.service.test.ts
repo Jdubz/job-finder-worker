@@ -16,4 +16,8 @@ describe('normalizeAssetPath', () => {
   it('returns null for unrelated external URLs', () => {
     expect(normalizeAssetPath('https://cdn.example.com/images/avatar.png')).toBeNull()
   })
+
+  it('handles generic absolute paths for backward compatibility', () => {
+    expect(normalizeAssetPath('/other/local/assets/image.png')).toBe('other/local/assets/image.png')
+  })
 })

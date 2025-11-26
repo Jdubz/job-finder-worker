@@ -9,6 +9,8 @@
 
 import { DEFAULT_E2E_AUTH_TOKEN, TEST_AUTH_TOKEN_KEY, AUTH_BYPASS_ENABLED } from "@/config/testing"
 import { getStoredAuthToken } from "@/lib/auth-storage"
+import { ApiErrorCode, type ApiErrorResponse } from "@shared/types"
+import { handleApiError } from "@/lib/api-error-handler"
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"
@@ -22,12 +24,16 @@ export interface RequestOptions {
 export class ApiError extends Error {
   statusCode?: number
   response?: unknown
+  code?: ApiErrorCode | string
+  details?: Record<string, unknown>
 
-  constructor(message: string, statusCode?: number, response?: unknown) {
+  constructor(message: string, statusCode?: number, response?: unknown, code?: ApiErrorCode | string) {
     super(message)
     this.name = "ApiError"
     this.statusCode = statusCode
     this.response = response
+    this.code = code
+    this.details = (response as ApiErrorResponse | undefined)?.error?.details
   }
 }
 
@@ -119,12 +125,11 @@ export class BaseApiClient {
 
         // Handle non-2xx responses
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}))
-          throw new ApiError(
-            errorData.message || `HTTP ${response.status}: ${response.statusText}`,
-            response.status,
-            errorData
-          )
+          const errorData = (await response.json().catch(() => ({}))) as ApiErrorResponse | Record<string, unknown>
+          const apiErrorPayload = (errorData as ApiErrorResponse).error
+          const code = apiErrorPayload?.code ?? ApiErrorCode.INTERNAL_ERROR
+          const message = apiErrorPayload?.message || `HTTP ${response.status}: ${response.statusText}`
+          throw new ApiError(message, response.status, errorData, code)
         }
 
         // Parse response
@@ -145,6 +150,7 @@ export class BaseApiClient {
           error.statusCode >= 400 &&
           error.statusCode < 500
         ) {
+          handleApiError(error, { context: `${method} ${url}` })
           throw error
         }
 
@@ -157,7 +163,10 @@ export class BaseApiClient {
     }
 
     // All retries failed
-    throw lastError || new Error("Request failed after all retry attempts")
+    const finalError =
+      lastError || new ApiError("Request failed after all retry attempts", undefined, undefined, ApiErrorCode.INTERNAL_ERROR)
+    handleApiError(finalError, { context: `${method} ${url}` })
+    throw finalError
   }
 
   /**

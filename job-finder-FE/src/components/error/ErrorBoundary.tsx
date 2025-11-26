@@ -1,6 +1,7 @@
 import { Component } from 'react'
 import type { ReactNode, ErrorInfo } from 'react'
 import { logger } from '@/services/logging/FrontendLogger'
+import { handleApiError } from '@/lib/api-error-handler'
 
 interface Props {
   children: ReactNode
@@ -31,7 +32,16 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log error to backend
+    handleApiError(error, {
+      context: 'react-boundary',
+      toastTitle: 'Something went wrong',
+      details: {
+        componentStack: errorInfo.componentStack,
+        url: window.location.href
+      }
+    })
+
+    // Preserve existing log payload for downstream analysis
     logger.error('client', 'error', `React Error: ${error.message}`, {
       error: {
         type: error.name,
