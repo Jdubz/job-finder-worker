@@ -15,6 +15,7 @@ import { buildGeneratorAssetsRouter, buildGeneratorAssetsServeRouter } from './m
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
 import { buildLoggingRouter } from './modules/logging/logging.routes'
 import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
+import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError, apiErrorHandler } from './middleware/api-error'
 
@@ -40,7 +41,12 @@ export function buildApp() {
   // Configure CORS with explicit allowed origins from environment or default for development
   const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
     ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
-    : ['http://localhost:5173', 'http://localhost:3000']
+    : [
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'https://job-finder.joshwentworth.com',
+        'https://job-finder-api.joshwentworth.com'
+      ]
 
   app.use(
     cors({
@@ -83,6 +89,9 @@ export function buildApp() {
 
   // Logging route - accepts both authenticated and unauthenticated requests
   app.use('/api/logs', buildLoggingRouter())
+
+  // Lifecycle events route - public by design so the frontend can detect deploys/restarts
+  app.use('/api/lifecycle', buildLifecycleRouter())
 
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)

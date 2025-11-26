@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react"
 import { QueueStatusTable } from "./components/QueueStatusTable"
+import { useRestartPersistedState } from "@/hooks/useRestartPersistedState"
 
 export function JobFinderPage() {
   const { user } = useAuth()
@@ -17,9 +18,9 @@ export function JobFinderPage() {
   const [success, setSuccess] = useState<string | null>(null)
 
   // Form state
-  const [jobUrl, setJobUrl] = useState("")
-  const [companyName, setCompanyName] = useState("")
-  const [companyUrl, setCompanyUrl] = useState("")
+  const [jobUrl, setJobUrl] = useRestartPersistedState("job-finder:job-url", "")
+  const [companyName, setCompanyName] = useRestartPersistedState("job-finder:company-name", "")
+  const [companyUrl, setCompanyUrl] = useRestartPersistedState("job-finder:company-url", "")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
