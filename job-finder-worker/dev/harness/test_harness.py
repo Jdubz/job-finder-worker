@@ -9,22 +9,22 @@ This script mimics production interactions by:
 
 Usage:
     # Submit a job URL for processing
-    python dev/test_harness.py job https://example.com/job/12345
+    python dev/harness/test_harness.py job https://example.com/job/12345
 
     # Submit a company for analysis
-    python dev/test_harness.py company "Acme Corp" --url https://acme.com
+    python dev/harness/test_harness.py company "Acme Corp" --url https://acme.com
 
     # Submit a scrape request
-    python dev/test_harness.py scrape --source greenhouse --company "Acme Corp"
+    python dev/harness/test_harness.py scrape --source greenhouse --company "Acme Corp"
 
     # Watch queue processing
-    python dev/test_harness.py watch
+    python dev/harness/test_harness.py watch
 
     # Run all test scenarios
-    python dev/test_harness.py test-all
+    python dev/harness/test_harness.py test-all
 
     # Show queue status
-    python dev/test_harness.py status
+    python dev/harness/test_harness.py status
 """
 import argparse
 import json
@@ -35,10 +35,10 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add src to path (go up from dev/harness to worker root, then into src)
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 
 class Colors:
@@ -58,7 +58,7 @@ def get_db_path() -> str:
     return os.environ.get(
         "JF_SQLITE_DB_PATH",
         os.environ.get(
-            "SQLITE_DB_PATH", str(Path(__file__).parent.parent / ".dev/data/jobfinder.db")
+            "SQLITE_DB_PATH", str(Path(__file__).parent.parent.parent / ".dev/data/jobfinder.db")
         ),
     )
 
@@ -68,7 +68,7 @@ def get_db_connection() -> sqlite3.Connection:
     db_path = get_db_path()
     if not Path(db_path).exists():
         print(f"{Colors.RED}Database not found: {db_path}{Colors.RESET}")
-        print("Run: make dev-setup or ./dev/setup-dev-env.sh --prod-db-path /path/to/db")
+        print("Run: make dev-setup or ./dev/setup/setup-dev-env.sh --prod-db-path /path/to/db")
         sys.exit(1)
 
     conn = sqlite3.connect(db_path)
@@ -570,8 +570,8 @@ def run_test_scenarios():
         print(f"  - {tid}")
 
     print(f"\n{Colors.CYAN}To watch processing:{Colors.RESET}")
-    print(f"  python dev/test_harness.py watch")
-    print(f"  python dev/test_harness.py watch-item {tracking_ids[0]}")
+    print(f"  python dev/harness/test_harness.py watch")
+    print(f"  python dev/harness/test_harness.py watch-item {tracking_ids[0]}")
 
     return tracking_ids
 
