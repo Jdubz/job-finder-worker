@@ -290,11 +290,8 @@ export class GeneratorWorkflowService {
     }
   }
 
-  private buildUserMessage(error: unknown, fallback: string): string {
-    if (error instanceof Error) {
-      // Keep the log detailed but surface a short message to the user.
-      return fallback
-    }
+  private buildUserMessage(_error: unknown, fallback: string): string {
+    // Keep the log detailed but surface a short message to the user.
     return fallback
   }
 

@@ -22,6 +22,7 @@ if [ -d "/home/node/.codex" ]; then
         echo "Checking codex login status..."
         if ! gosu node codex login status; then
             echo "ERROR: Codex login status failed (likely expired token)"
+            echo "AI document generation will fail!"
             [ "$CODEX_REQUIRED" = "true" ] && exit 1
         fi
     else
