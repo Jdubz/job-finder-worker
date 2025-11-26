@@ -101,14 +101,6 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   const cookies = req.headers.cookie ? parseCookie(req.headers.cookie) : {}
   const sessionToken = cookies[SESSION_COOKIE]
 
-  // Allow bearer token to be passed via query string (SSE/EventSource cannot set headers easily)
-  const queryToken =
-    typeof req.query.token === "string"
-      ? (req.query.token as string)
-      : Array.isArray(req.query.token)
-        ? (req.query.token as string[])[0]
-        : undefined
-
   if (sessionToken) {
     const sessionUser = userRepository.findBySessionToken(sessionToken)
     const expiryMs = sessionUser?.sessionExpiresAtMs ?? (sessionUser?.sessionExpiresAt ? Date.parse(sessionUser.sessionExpiresAt) : undefined)
@@ -133,7 +125,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     })
   }
 
-  const authHeader = req.headers.authorization ?? (queryToken ? `Bearer ${queryToken}` : undefined)
+  const authHeader = req.headers.authorization
   if (!authHeader?.startsWith("Bearer ")) {
     return next(new ApiHttpError(ApiErrorCode.UNAUTHORIZED, "Missing Authorization header", { status: 401 }))
   }
