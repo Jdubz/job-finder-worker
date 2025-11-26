@@ -273,8 +273,12 @@ class TestRecalculateMatchPriorities:
         now = datetime.now(timezone.utc)
         with sqlite3.connect(db) as conn:
             _insert_match(conn, "m1", "Company A", 90, "Low", now)  # Should be High - needs update
-            _insert_match(conn, "m2", "Company B", 65, "High", now)  # Should be Medium - needs update
-            _insert_match(conn, "m3", "Company C", 30, "Medium", now)  # Should be Low - needs update
+            _insert_match(
+                conn, "m2", "Company B", 65, "High", now
+            )  # Should be Medium - needs update
+            _insert_match(
+                conn, "m3", "Company C", 30, "Medium", now
+            )  # Should be Low - needs update
             _insert_match(conn, "m4", "Company D", 75, "High", now)  # Already correct - no update
 
         updated = recalculate_match_priorities(str(db))
