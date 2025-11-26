@@ -72,13 +72,20 @@ export const toast = {
 export const subscribeToToasts = (listener: Listener) => {
   listeners.add(listener)
   listener(state)
-  return () => listeners.delete(listener)
+  return () => {
+    listeners.delete(listener)
+  }
 }
 
 export const useToastStore = () => {
   const [toasts, setToasts] = useState<Toast[]>(state)
 
-  useEffect(() => subscribeToToasts(setToasts), [])
+  useEffect(() => {
+    const unsubscribe = subscribeToToasts(setToasts)
+    return () => {
+      unsubscribe()
+    }
+  }, [])
 
   return { toasts, dismissToast, clearToasts }
 }

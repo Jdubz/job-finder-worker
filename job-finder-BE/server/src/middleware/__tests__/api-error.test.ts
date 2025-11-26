@@ -30,7 +30,8 @@ describe('apiErrorHandler middleware', () => {
       error: {
         code: ApiErrorCode.INVALID_REQUEST,
         message: 'Invalid payload',
-        details: expect.objectContaining({ field: 'email', path: '/bad-request' })
+        details: expect.objectContaining({ field: 'email', path: '/bad-request' }),
+        stack: expect.any(String)
       }
     })
   })
