@@ -1,6 +1,8 @@
 """AI provider abstractions for different LLM services."""
 
+import json
 import os
+import subprocess
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional
@@ -146,6 +148,62 @@ class OpenAIProvider(AIProvider):
             raise AIProviderError(f"OpenAI API error: {str(e)}") from e
 
 
+class CodexCLIProvider(AIProvider):
+    """
+    Codex CLI provider: uses the `codex` CLI (pro account session) instead of per-request API keys.
+
+    Requires the `codex` binary on PATH and that the user is already authenticated (e.g., via the
+    same credential copy flow used by the backend).
+    """
+
+    def __init__(self, model: str = "gpt-4o-mini", timeout: int = 60):
+        self.model = model or os.getenv("CODEX_CLI_MODEL", "gpt-4o-mini")
+        self.timeout = timeout
+
+    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+        body = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant for job processing."},
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+
+        try:
+            result = subprocess.run(
+                [
+                    "codex",
+                    "api",
+                    "chat/completions",
+                    "-m",
+                    self.model,
+                    "-d",
+                    json.dumps(body),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+            )
+
+            if result.returncode != 0:
+                raise AIProviderError(
+                    f"Codex CLI failed (exit {result.returncode}): {result.stderr.strip()}"
+                )
+
+            parsed = json.loads(result.stdout)
+            content = parsed.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not content:
+                raise AIProviderError("Codex CLI returned empty content")
+            return content
+
+        except subprocess.TimeoutExpired as exc:
+            raise AIProviderError(f"Codex CLI timed out after {self.timeout}s") from exc
+        except json.JSONDecodeError as exc:
+            raise AIProviderError("Failed to parse Codex CLI JSON response") from exc
+
+
 def get_model_for_task(provider_type: str, task: AITask) -> str:
     """
     Get the appropriate model for a specific task.
@@ -171,6 +229,7 @@ def get_model_for_task(provider_type: str, task: AITask) -> str:
         'claude-3-5-haiku-20241022'
     """
     provider_type = provider_type.lower()
+    use_codex_cli = os.getenv("USE_CODEX_CLI", "0") == "1"
 
     if provider_type not in MODEL_SELECTION:
         raise AIProviderError(
@@ -213,6 +272,7 @@ def create_provider(
         provider = create_provider("claude", model="claude-opus-4-20250514")
     """
     provider_type = provider_type.lower()
+    use_codex_cli = os.getenv("USE_CODEX_CLI", "0") == "1"
 
     # Determine model
     if model:
@@ -224,6 +284,11 @@ def create_provider(
     else:
         # No model or task provided, use None to trigger provider default
         selected_model = None
+
+    if use_codex_cli and provider_type in ("openai", "codex", "codex_cli"):
+        # Use CLI-based Codex to leverage pro account without per-request API keys
+        cli_model = selected_model or get_model_for_task("openai", AITask.ANALYZE)
+        return CodexCLIProvider(model=cli_model)
 
     if provider_type == "claude":
         kwargs = {"api_key": api_key} if api_key else {}

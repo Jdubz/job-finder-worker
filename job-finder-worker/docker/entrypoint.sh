@@ -10,6 +10,36 @@ echo "Environment: $ENVIRONMENT"
 echo "Queue Mode: ${ENABLE_QUEUE_MODE:-false}"
 echo ""
 
+# Copy Codex CLI credentials from host-mounted location if present.
+copy_codex_creds() {
+  # Preferred source can be overridden; fallbacks align with backend CLI flow.
+  CANDIDATES=(
+    "${CODEX_CONFIG_SOURCE}"
+    "/host/.config/codex"
+    "/codex/.config/codex"
+    "/credentials/.config/codex"
+    "/credentials/codex"
+  )
+
+  for src in "${CANDIDATES[@]}"; do
+    if [ -n "$src" ] && [ -d "$src" ]; then
+      mkdir -p /root/.config
+      rm -rf /root/.config/codex
+      cp -r "$src" /root/.config/codex
+      echo "✓ Codex CLI credentials copied from $src"
+      return
+    fi
+  done
+
+  if [ -d "/root/.config/codex" ]; then
+    echo "Codex CLI credentials already present in container."
+  else
+    echo "⚠ Codex CLI credentials not found. Set CODEX_CONFIG_SOURCE or mount ~/.config/codex."
+  fi
+}
+
+copy_codex_creds
+
 # Check if cron should be enabled (default: true for backward compatibility)
 ENABLE_CRON=${ENABLE_CRON:-true}
 
