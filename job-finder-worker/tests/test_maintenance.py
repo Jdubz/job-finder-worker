@@ -3,9 +3,6 @@
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from uuid import uuid4
-
-import pytest
 
 from job_finder.maintenance import (
     STALE_THRESHOLD_DAYS,

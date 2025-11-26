@@ -8,10 +8,9 @@ This module handles:
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from job_finder.storage.sqlite_client import sqlite_connection
-from job_finder.utils.date_utils import calculate_freshness_adjustment
 
 logger = logging.getLogger(__name__)
 
@@ -103,28 +102,6 @@ def recalculate_match_scores(db_path: Optional[str] = None) -> int:
                 logger.warning(f"Failed to parse date for match {match_id}: {e}")
                 continue
 
-            # Calculate age-based freshness adjustment
-            # The freshness adjustment is relative to now, reflecting how stale the job has become
-            freshness_adjustment = calculate_freshness_adjustment(reference_date)
-
-            # The current score already has some freshness adjustment baked in from initial analysis
-            # We need to recalculate based on current age
-            # Strategy: We store a "base_score" concept by removing old adjustment and adding new
-            # For simplicity, we'll just recalculate the adjustment portion
-
-            # Since we don't store the original base score, we'll calculate what the
-            # current freshness penalty should be and ensure it's applied
-            # This is a conservative approach - we only decrease scores, never increase
-
-            now = datetime.now(timezone.utc)
-            age_days = (now - reference_date).total_seconds() / 86400
-
-            # Only apply additional penalty if job has aged significantly
-            # Jobs < 3 days old: no change needed (they had positive or neutral adjustment)
-            # Jobs 3-7 days: should have -35 adjustment
-            # Jobs 7-14 days: should have -40 adjustment
-            # This logic is already in calculate_freshness_adjustment
-
             # Calculate new priority based on current score
             # Note: We're recalculating based on the current score, not changing it dramatically
             # The main point is to ensure priority tiers are correctly assigned
@@ -155,7 +132,7 @@ def recalculate_match_scores(db_path: Optional[str] = None) -> int:
     return updated_count
 
 
-def run_maintenance(db_path: Optional[str] = None) -> dict:
+def run_maintenance(db_path: Optional[str] = None) -> Dict[str, Any]:
     """
     Run full maintenance cycle.
 
@@ -170,7 +147,7 @@ def run_maintenance(db_path: Optional[str] = None) -> dict:
     """
     logger.info("Starting maintenance cycle")
 
-    results = {
+    results: Dict[str, Any] = {
         "deleted_count": 0,
         "updated_count": 0,
         "success": False,
