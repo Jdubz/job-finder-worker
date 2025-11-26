@@ -85,7 +85,7 @@ describe("GeneratorClient", () => {
         },
       }
 
-      await expect(client.startGeneration(request)).rejects.toThrow("Invalid request parameters")
+      await expect(client.startGeneration(request)).rejects.toThrow("HTTP 400: Bad Request")
     })
 
     it("should handle network errors", async () => {
