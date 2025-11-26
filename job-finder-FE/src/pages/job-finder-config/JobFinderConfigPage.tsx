@@ -57,6 +57,51 @@ function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value))
 }
 
+// Generic save handler factory to reduce duplication
+type SaveHandlerConfig<T> = {
+  data: T | null
+  updateFn: (data: T) => Promise<void>
+  setOriginal: (data: T) => void
+  configName: string
+  setIsSaving: (saving: boolean) => void
+  setError: (error: string | null) => void
+  setSuccess: (success: string | null) => void
+}
+
+async function createSaveHandler<T>(config: SaveHandlerConfig<T>): Promise<void> {
+  const { data, updateFn, setOriginal, configName, setIsSaving, setError, setSuccess } = config
+  if (!data) return
+  setIsSaving(true)
+  setError(null)
+  setSuccess(null)
+  // Capitalize first letter for success message
+  const displayName = configName.charAt(0).toUpperCase() + configName.slice(1)
+  try {
+    await updateFn(data)
+    setOriginal(deepClone(data))
+    setSuccess(`${displayName} saved successfully!`)
+    setTimeout(() => setSuccess(null), 3000)
+  } catch (err) {
+    setError(`Failed to save ${configName}`)
+    console.error(`Error saving ${configName}:`, err)
+  } finally {
+    setIsSaving(false)
+  }
+}
+
+// Generic reset handler factory to reduce duplication
+function createResetHandler<T>(
+  setter: (data: T) => void,
+  original: T | null,
+  defaultValue: T,
+  setError: (error: string | null) => void,
+  setSuccess: (success: string | null) => void
+): void {
+  setter(deepClone(original ?? defaultValue))
+  setError(null)
+  setSuccess(null)
+}
+
 type StringListEditorProps = {
   label: string
   values: string[]
@@ -335,155 +380,93 @@ export function JobFinderConfigPage() {
     setWorkerSettings((prev) => updater(prev ?? deepClone(DEFAULT_WORKER_SETTINGS)))
   }
 
-  const handleSaveStopList = async () => {
-    if (!stopList) return
+  const handleSaveStopList = () =>
+    createSaveHandler({
+      data: stopList,
+      updateFn: configClient.updateStopList,
+      setOriginal: setOriginalStopList,
+      configName: "stop list",
+      setIsSaving,
+      setError,
+      setSuccess,
+    })
 
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
+  const handleSaveQueueSettings = () =>
+    createSaveHandler({
+      data: queueSettings,
+      updateFn: configClient.updateQueueSettings,
+      setOriginal: setOriginalQueueSettings,
+      configName: "queue settings",
+      setIsSaving,
+      setError,
+      setSuccess,
+    })
 
-    try {
-      await configClient.updateStopList(stopList)
-      setOriginalStopList(stopList)
-      setSuccess("Stop list saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError("Failed to save stop list")
-      console.error("Error saving stop list:", err)
-    } finally {
-      setIsSaving(false)
-    }
-  }
+  const handleSaveAISettings = () =>
+    createSaveHandler({
+      data: aiSettings,
+      updateFn: configClient.updateAISettings,
+      setOriginal: setOriginalAISettings,
+      configName: "AI settings",
+      setIsSaving,
+      setError,
+      setSuccess,
+    })
 
-  const handleSaveQueueSettings = async () => {
-    if (!queueSettings) return
+  const handleSaveJobFilters = () =>
+    createSaveHandler({
+      data: jobFilters,
+      updateFn: configClient.updateJobFilters,
+      setOriginal: setOriginalJobFilters,
+      configName: "job filters",
+      setIsSaving,
+      setError,
+      setSuccess,
+    })
 
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
+  const handleSaveTechRanks = () =>
+    createSaveHandler({
+      data: techRanks,
+      updateFn: configClient.updateTechnologyRanks,
+      setOriginal: setOriginalTechRanks,
+      configName: "technology ranks",
+      setIsSaving,
+      setError,
+      setSuccess,
+    })
 
-    try {
-      await configClient.updateQueueSettings(queueSettings)
-      setOriginalQueueSettings(queueSettings)
-      setSuccess("Queue settings saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError("Failed to save queue settings")
-      console.error("Error saving queue settings:", err)
-    } finally {
-      setIsSaving(false)
-    }
-  }
+  const handleSaveScheduler = () =>
+    createSaveHandler({
+      data: schedulerSettings,
+      updateFn: configClient.updateSchedulerSettings,
+      setOriginal: setOriginalSchedulerSettings,
+      configName: "scheduler settings",
+      setIsSaving,
+      setError,
+      setSuccess,
+    })
 
-  const handleSaveAISettings = async () => {
-    if (!aiSettings) return
+  const handleSaveCompanyScoring = () =>
+    createSaveHandler({
+      data: companyScoring,
+      updateFn: configClient.updateCompanyScoring,
+      setOriginal: setOriginalCompanyScoring,
+      configName: "company scoring",
+      setIsSaving,
+      setError,
+      setSuccess,
+    })
 
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
-
-    try {
-      await configClient.updateAISettings(aiSettings)
-      setOriginalAISettings(aiSettings)
-      setSuccess("AI settings saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError("Failed to save AI settings")
-      console.error("Error saving AI settings:", err)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleSaveJobFilters = async () => {
-    if (!jobFilters) return
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      await configClient.updateJobFilters(jobFilters)
-      setOriginalJobFilters(deepClone(jobFilters))
-      setSuccess("Job filters saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError("Failed to save job filters")
-      console.error("Error saving job filters:", err)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleSaveTechRanks = async () => {
-    if (!techRanks) return
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      await configClient.updateTechnologyRanks(techRanks)
-      setOriginalTechRanks(deepClone(techRanks))
-      setSuccess("Technology ranks saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError("Failed to save technology ranks")
-      console.error("Error saving technology ranks:", err)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleSaveScheduler = async () => {
-    if (!schedulerSettings) return
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      await configClient.updateSchedulerSettings(schedulerSettings)
-      setOriginalSchedulerSettings(deepClone(schedulerSettings))
-      setSuccess("Scheduler settings saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError("Failed to save scheduler settings")
-      console.error("Error saving scheduler settings:", err)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleSaveCompanyScoring = async () => {
-    if (!companyScoring) return
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      await configClient.updateCompanyScoring(companyScoring)
-      setOriginalCompanyScoring(deepClone(companyScoring))
-      setSuccess("Company scoring saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError("Failed to save company scoring")
-      console.error("Error saving company scoring:", err)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleSaveWorkerSettings = async () => {
-    if (!workerSettings) return
-    setIsSaving(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      await configClient.updateWorkerSettings(workerSettings)
-      setOriginalWorkerSettings(deepClone(workerSettings))
-      setSuccess("Worker settings saved successfully!")
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError("Failed to save worker settings")
-      console.error("Error saving worker settings:", err)
-    } finally {
-      setIsSaving(false)
-    }
-  }
+  const handleSaveWorkerSettings = () =>
+    createSaveHandler({
+      data: workerSettings,
+      updateFn: configClient.updateWorkerSettings,
+      setOriginal: setOriginalWorkerSettings,
+      configName: "worker settings",
+      setIsSaving,
+      setError,
+      setSuccess,
+    })
 
   const handleAddCompany = () => {
     if (!newCompany.trim() || !stopList) return
@@ -542,57 +525,71 @@ export function JobFinderConfigPage() {
     })
   }
 
-  const handleResetStopList = () => {
-    setStopList(originalStopList)
-    setError(null)
-    setSuccess(null)
-  }
-
-  const handleResetQueueSettings = () => {
-    setQueueSettings(originalQueueSettings)
-    setError(null)
-    setSuccess(null)
-  }
-
-  const handleResetAISettings = () => {
-    setAISettings(originalAISettings)
-    setError(null)
-    setSuccess(null)
-  }
-
-  const handleResetJobFilters = () => {
-    setJobFilters(deepClone(originalJobFilters ?? DEFAULT_JOB_FILTERS))
-    setError(null)
-    setSuccess(null)
-  }
-
-  const handleResetTechRanks = () => {
-    setTechRanks(
-      deepClone(
-        originalTechRanks ?? { technologies: {}, strikes: { ...DEFAULT_TECH_RANKS.strikes } }
-      )
+  const handleResetStopList = () =>
+    createResetHandler(
+      setStopList,
+      originalStopList,
+      { excludedCompanies: [], excludedKeywords: [], excludedDomains: [] },
+      setError,
+      setSuccess
     )
-    setError(null)
-    setSuccess(null)
-  }
 
-  const handleResetSchedulerSettings = () => {
-    setSchedulerSettings(deepClone(originalSchedulerSettings ?? DEFAULT_SCHEDULER_SETTINGS))
-    setError(null)
-    setSuccess(null)
-  }
+  const handleResetQueueSettings = () =>
+    createResetHandler(
+      setQueueSettings,
+      originalQueueSettings,
+      { maxConcurrentJobs: 5, retryAttempts: 3, retryDelay: 1000 },
+      setError,
+      setSuccess
+    )
 
-  const handleResetCompanyScoring = () => {
-    setCompanyScoring(deepClone(originalCompanyScoring ?? DEFAULT_COMPANY_SCORING))
-    setError(null)
-    setSuccess(null)
-  }
+  const handleResetAISettings = () =>
+    createResetHandler(
+      setAISettings,
+      originalAISettings,
+      { model: "gpt-4", temperature: 0.7, maxTokens: 2000 },
+      setError,
+      setSuccess
+    )
 
-  const handleResetWorkerSettings = () => {
-    setWorkerSettings(deepClone(originalWorkerSettings ?? DEFAULT_WORKER_SETTINGS))
-    setError(null)
-    setSuccess(null)
-  }
+  const handleResetJobFilters = () =>
+    createResetHandler(setJobFilters, originalJobFilters, DEFAULT_JOB_FILTERS, setError, setSuccess)
+
+  const handleResetTechRanks = () =>
+    createResetHandler(
+      setTechRanks,
+      originalTechRanks,
+      { technologies: {}, strikes: { ...DEFAULT_TECH_RANKS.strikes } },
+      setError,
+      setSuccess
+    )
+
+  const handleResetSchedulerSettings = () =>
+    createResetHandler(
+      setSchedulerSettings,
+      originalSchedulerSettings,
+      DEFAULT_SCHEDULER_SETTINGS,
+      setError,
+      setSuccess
+    )
+
+  const handleResetCompanyScoring = () =>
+    createResetHandler(
+      setCompanyScoring,
+      originalCompanyScoring,
+      DEFAULT_COMPANY_SCORING,
+      setError,
+      setSuccess
+    )
+
+  const handleResetWorkerSettings = () =>
+    createResetHandler(
+      setWorkerSettings,
+      originalWorkerSettings,
+      DEFAULT_WORKER_SETTINGS,
+      setError,
+      setSuccess
+    )
 
   const handleAddTechnology = () => {
     const name = newTechName.trim()

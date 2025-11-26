@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { BrowserRouter } from "react-router-dom"
 import { JobFinderConfigPage } from "../JobFinderConfigPage"
@@ -767,6 +767,268 @@ describe("JobFinderConfigPage", () => {
       // Check if responsive classes are applied
       const container = screen.getByText("Job Finder Configuration").closest("div")
       expect(container).toBeInTheDocument()
+    })
+  })
+
+  describe("company scoring tab", () => {
+    it("should display scoring tab content when clicked", async () => {
+      const user = userEvent.setup()
+      renderWithRouter(<JobFinderConfigPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
+        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("tab", { name: "Scoring" }))
+
+      await waitFor(() => {
+        expect(screen.getByText("Company Scoring")).toBeInTheDocument()
+        expect(screen.getByText("Company Tier Thresholds")).toBeInTheDocument()
+        expect(screen.getByLabelText("S-Tier")).toBeInTheDocument()
+      })
+    })
+
+    it("should update tier threshold values", async () => {
+      const user = userEvent.setup()
+      renderWithRouter(<JobFinderConfigPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
+        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("tab", { name: "Scoring" }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("S-Tier")).toBeInTheDocument()
+      })
+
+      // Update S-Tier threshold using fireEvent.change for number inputs
+      const sTierInput = screen.getByLabelText("S-Tier")
+      fireEvent.change(sTierInput, { target: { value: "200" } })
+
+      expect(sTierInput).toHaveValue(200)
+    })
+
+    it("should save company scoring settings", async () => {
+      vi.mocked(configClient.updateCompanyScoring).mockResolvedValueOnce(undefined)
+
+      const user = userEvent.setup()
+      renderWithRouter(<JobFinderConfigPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
+        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("tab", { name: "Scoring" }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("S-Tier")).toBeInTheDocument()
+      })
+
+      // Update S-Tier threshold using fireEvent.change for number inputs
+      const sTierInput = screen.getByLabelText("S-Tier")
+      fireEvent.change(sTierInput, { target: { value: "200" } })
+
+      // Save changes
+      await user.click(screen.getByText("Save Changes"))
+
+      await waitFor(() => {
+        expect(screen.getByText("Company scoring saved successfully!")).toBeInTheDocument()
+      })
+
+      expect(configClient.updateCompanyScoring).toHaveBeenCalled()
+    })
+
+    it("should show error when saving company scoring fails", async () => {
+      vi.mocked(configClient.updateCompanyScoring).mockRejectedValueOnce(new Error("Save failed"))
+
+      const user = userEvent.setup()
+      renderWithRouter(<JobFinderConfigPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
+        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("tab", { name: "Scoring" }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("S-Tier")).toBeInTheDocument()
+      })
+
+      // Update S-Tier threshold using fireEvent.change for number inputs
+      const sTierInput = screen.getByLabelText("S-Tier")
+      fireEvent.change(sTierInput, { target: { value: "200" } })
+
+      // Save changes
+      await user.click(screen.getByText("Save Changes"))
+
+      await waitFor(() => {
+        expect(screen.getByText("Failed to save company scoring")).toBeInTheDocument()
+      })
+    })
+
+    it("should reset company scoring to original values", async () => {
+      const user = userEvent.setup()
+      renderWithRouter(<JobFinderConfigPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
+        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("tab", { name: "Scoring" }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("S-Tier")).toBeInTheDocument()
+      })
+
+      // Update S-Tier threshold using fireEvent.change for number inputs
+      const sTierInput = screen.getByLabelText("S-Tier")
+      fireEvent.change(sTierInput, { target: { value: "200" } })
+
+      expect(sTierInput).toHaveValue(200)
+
+      // Reset
+      await user.click(screen.getByText("Reset"))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("S-Tier")).toHaveValue(150) // Original value
+      })
+    })
+  })
+
+  describe("worker settings tab", () => {
+    it("should display worker tab content when clicked", async () => {
+      const user = userEvent.setup()
+      renderWithRouter(<JobFinderConfigPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
+        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("tab", { name: "Worker" }))
+
+      await waitFor(() => {
+        expect(screen.getByText("Worker Settings")).toBeInTheDocument()
+        expect(screen.getByText("Scraping Settings")).toBeInTheDocument()
+        expect(screen.getByLabelText("Timeout (s)")).toBeInTheDocument()
+      })
+    })
+
+    it("should update scraping timeout value", async () => {
+      const user = userEvent.setup()
+      renderWithRouter(<JobFinderConfigPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
+        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("tab", { name: "Worker" }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Timeout (s)")).toBeInTheDocument()
+      })
+
+      // Update timeout using fireEvent.change for number inputs
+      const timeoutInput = screen.getByLabelText("Timeout (s)")
+      fireEvent.change(timeoutInput, { target: { value: "60" } })
+
+      expect(timeoutInput).toHaveValue(60)
+    })
+
+    it("should save worker settings", async () => {
+      vi.mocked(configClient.updateWorkerSettings).mockResolvedValueOnce(undefined)
+
+      const user = userEvent.setup()
+      renderWithRouter(<JobFinderConfigPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
+        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("tab", { name: "Worker" }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Timeout (s)")).toBeInTheDocument()
+      })
+
+      // Update timeout using fireEvent.change for number inputs
+      const timeoutInput = screen.getByLabelText("Timeout (s)")
+      fireEvent.change(timeoutInput, { target: { value: "60" } })
+
+      // Save changes
+      await user.click(screen.getByText("Save Changes"))
+
+      await waitFor(() => {
+        expect(screen.getByText("Worker settings saved successfully!")).toBeInTheDocument()
+      })
+
+      expect(configClient.updateWorkerSettings).toHaveBeenCalled()
+    })
+
+    it("should show error when saving worker settings fails", async () => {
+      vi.mocked(configClient.updateWorkerSettings).mockRejectedValueOnce(new Error("Save failed"))
+
+      const user = userEvent.setup()
+      renderWithRouter(<JobFinderConfigPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
+        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("tab", { name: "Worker" }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Timeout (s)")).toBeInTheDocument()
+      })
+
+      // Update timeout using fireEvent.change for number inputs
+      const timeoutInput = screen.getByLabelText("Timeout (s)")
+      fireEvent.change(timeoutInput, { target: { value: "60" } })
+
+      // Save changes
+      await user.click(screen.getByText("Save Changes"))
+
+      await waitFor(() => {
+        expect(screen.getByText("Failed to save worker settings")).toBeInTheDocument()
+      })
+    })
+
+    it("should reset worker settings to original values", async () => {
+      const user = userEvent.setup()
+      renderWithRouter(<JobFinderConfigPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
+        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("tab", { name: "Worker" }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Timeout (s)")).toBeInTheDocument()
+      })
+
+      // Update timeout using fireEvent.change for number inputs
+      const timeoutInput = screen.getByLabelText("Timeout (s)")
+      fireEvent.change(timeoutInput, { target: { value: "60" } })
+
+      expect(timeoutInput).toHaveValue(60)
+
+      // Reset
+      await user.click(screen.getByText("Reset"))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Timeout (s)")).toHaveValue(30) // Original value
+      })
     })
   })
 })
