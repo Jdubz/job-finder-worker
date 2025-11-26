@@ -53,6 +53,12 @@ class QueueProcessingError(JobFinderError):
     pass
 
 
+class InvalidStateTransition(JobFinderError):
+    """Raised when an entity attempts an invalid state transition."""
+
+    pass
+
+
 class AIProviderError(JobFinderError):
     """Raised when AI provider operations fail.
 

@@ -9,3 +9,4 @@
 .read migrations/009_cleanup_legacy_content_migrations.sql
 .read migrations/010_drop_legacy_experience_tables.sql
 .read migrations/011_drop_generator_steps.sql
+.read migrations/012_company_state_machine.sql

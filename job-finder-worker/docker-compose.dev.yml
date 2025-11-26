@@ -42,6 +42,7 @@ services:
       POLL_INTERVAL: "10"  # Faster polling for dev
       LOG_LEVEL: DEBUG
       PYTHONUNBUFFERED: "1"
+      USE_CODEX_CLI: "1"
       # Optional: set to lower thresholds for testing
       # MIN_MATCH_SCORE: "50"
     ports:
@@ -75,6 +76,14 @@ services:
       - type: bind
         source: ./dev
         target: /app/dev
+      # Tests - mount to run live from host
+      - type: bind
+        source: ./tests
+        target: /app/tests
+      # Share migrations from monorepo infra so tests can apply schema without duplication
+      - type: bind
+        source: ../infra/sqlite
+        target: /app/infra/sqlite
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5555/health"]
       interval: 10s

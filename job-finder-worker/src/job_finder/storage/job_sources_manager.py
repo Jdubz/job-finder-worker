@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from job_finder.exceptions import StorageError
+from job_finder.exceptions import InvalidStateTransition, StorageError
 from job_finder.job_queue.models import SourceStatus
 from job_finder.storage.sqlite_client import sqlite_connection
 
@@ -19,11 +19,34 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+VALID_SOURCE_TRANSITIONS = {
+    SourceStatus.PENDING_VALIDATION: {
+        SourceStatus.ACTIVE,
+        SourceStatus.FAILED,
+        SourceStatus.DISABLED,
+    },
+    SourceStatus.ACTIVE: {
+        SourceStatus.DISABLED,
+        SourceStatus.FAILED,
+        SourceStatus.PENDING_VALIDATION,
+    },
+    SourceStatus.DISABLED: {SourceStatus.ACTIVE, SourceStatus.PENDING_VALIDATION},
+    SourceStatus.FAILED: {SourceStatus.PENDING_VALIDATION, SourceStatus.ACTIVE},
+}
+
+
 class JobSourcesManager:
     """Manage the `job_sources` table."""
 
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path
+
+    def _validate_transition(self, current: SourceStatus, new: SourceStatus) -> None:
+        allowed = VALID_SOURCE_TRANSITIONS.get(current, set()) | {current}
+        if new not in allowed:
+            raise InvalidStateTransition(
+                f"Invalid source transition from {current.value} to {new.value}"
+            )
 
     def _row_to_source(self, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if not row:
@@ -199,24 +222,31 @@ class JobSourcesManager:
         # Normalize status into SourceStatus
         status_lower = status.lower()
         if status_lower in ("success", "active"):
-            normalized_status = SourceStatus.ACTIVE.value
+            normalized_status = SourceStatus.ACTIVE
         elif status_lower in ("error", "failed", SourceStatus.FAILED.value):
-            normalized_status = SourceStatus.FAILED.value
+            normalized_status = SourceStatus.FAILED
         elif status_lower == SourceStatus.PENDING_VALIDATION.value:
-            normalized_status = SourceStatus.PENDING_VALIDATION.value
+            normalized_status = SourceStatus.PENDING_VALIDATION
         elif status_lower == SourceStatus.DISABLED.value:
-            normalized_status = SourceStatus.DISABLED.value
+            normalized_status = SourceStatus.DISABLED
         else:
-            normalized_status = status
+            normalized_status = SourceStatus(status_lower)
 
-        # Read current consecutive failures to compute health
+        # Read current consecutive failures + status to compute health and transitions
         with sqlite_connection(self.db_path) as conn:
             row = conn.execute(
-                "SELECT consecutive_failures FROM job_sources WHERE id = ?", (source_id,)
+                "SELECT status, consecutive_failures FROM job_sources WHERE id = ?",
+                (source_id,),
             ).fetchone()
+            if not row:
+                raise StorageError(f"Source {source_id} not found")
+            current_status = SourceStatus(row["status"])
             current_failures = row["consecutive_failures"] if row else 0
 
-        new_failures = current_failures + 1 if normalized_status == SourceStatus.FAILED.value else 0
+        # Validate state transition
+        self._validate_transition(current_status, normalized_status)
+
+        new_failures = current_failures + 1 if normalized_status == SourceStatus.FAILED else 0
         health_score = max(0.1, 1.0 - 0.1 * new_failures)
         health = {"healthScore": health_score, "consecutiveFailures": new_failures}
 
@@ -237,13 +267,13 @@ class JobSourcesManager:
                 """,
                 (
                     now,
-                    normalized_status,
+                    normalized_status.value,
                     error,
                     jobs_found,
                     jobs_matched,
                     new_failures,
                     json.dumps(health),
-                    normalized_status,
+                    normalized_status.value,
                     now,
                     source_id,
                 ),
@@ -298,6 +328,15 @@ class JobSourcesManager:
 
     def update_source_status(self, source_id: str, status: SourceStatus) -> None:
         with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT status FROM job_sources WHERE id = ?", (source_id,)
+            ).fetchone()
+            if not row:
+                raise StorageError(f"Source {source_id} not found")
+
+            current_status = SourceStatus(row["status"])
+            self._validate_transition(current_status, status)
+
             conn.execute(
                 """
                 UPDATE job_sources

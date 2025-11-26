@@ -262,7 +262,6 @@ describe("Content items", () => {
       userId,
       title: "Mission",
       description: "Ship SQLite migrations fast.",
-      visibility: "published",
       parentId: null,
       order: 1,
     })

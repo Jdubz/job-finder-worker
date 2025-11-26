@@ -4,13 +4,14 @@
 # Creates directory structure and clones production database
 #
 # Usage:
-#   ./dev/setup-dev-env.sh [--prod-db-path /path/to/prod/jobfinder.db]
-#   ./dev/setup-dev-env.sh --help
+#   ./dev/setup/setup-dev-env.sh [--prod-db-path /path/to/prod/jobfinder.db]
+#   ./dev/setup/setup-dev-env.sh --help
 #
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKER_DIR="$(dirname "$SCRIPT_DIR")"
+# Go up two levels: dev/setup -> dev -> worker root
+WORKER_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 DEV_DIR="$WORKER_DIR/.dev"
 
 # Colors for output

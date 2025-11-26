@@ -14,8 +14,8 @@ import sqlite3
 
 from dotenv import load_dotenv
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add src to path (go up from dev/bin to worker root, then into src)
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from job_finder.ai import AIJobMatcher
 from job_finder.ai.providers import create_provider

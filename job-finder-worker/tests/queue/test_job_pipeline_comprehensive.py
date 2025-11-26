@@ -54,6 +54,31 @@ def test_job_pipeline_full_path(tmp_path: Path):
     config_loader = ConfigLoader(str(db_path))
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
 
+    # Pre-populate an ACTIVE company so the job pipeline doesn't spawn a company task
+    # Note: name_lower must match normalize_company_name("Comprehensive Co") = "comprehensive"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO companies (
+                id, name, name_lower, website, about, culture,
+                analysis_status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "test-company-id",
+                "Comprehensive Co",
+                "comprehensive",  # normalized: " Co" suffix is stripped
+                "https://comprehensive.example.com",
+                "We build pipelines",
+                "Remote-first",
+                "active",
+                now_iso,
+                now_iso,
+            ),
+        )
+
     # Stub AI matcher and filter to avoid network/LLM
     class DummyMatcher:
         min_match_score = 50

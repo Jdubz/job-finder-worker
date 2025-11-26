@@ -9,22 +9,22 @@ This script mimics production interactions by:
 
 Usage:
     # Submit a job URL for processing
-    python dev/test_harness.py job https://example.com/job/12345
+    python dev/harness/test_harness.py job https://example.com/job/12345
 
     # Submit a company for analysis
-    python dev/test_harness.py company "Acme Corp" --url https://acme.com
+    python dev/harness/test_harness.py company "Acme Corp" --url https://acme.com
 
     # Submit a scrape request
-    python dev/test_harness.py scrape --source greenhouse --company "Acme Corp"
+    python dev/harness/test_harness.py scrape --source greenhouse --company "Acme Corp"
 
     # Watch queue processing
-    python dev/test_harness.py watch
+    python dev/harness/test_harness.py watch
 
     # Run all test scenarios
-    python dev/test_harness.py test-all
+    python dev/harness/test_harness.py test-all
 
     # Show queue status
-    python dev/test_harness.py status
+    python dev/harness/test_harness.py status
 """
 import argparse
 import json
@@ -35,10 +35,10 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add src to path (go up from dev/harness to worker root, then into src)
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 
 class Colors:
@@ -58,7 +58,7 @@ def get_db_path() -> str:
     return os.environ.get(
         "JF_SQLITE_DB_PATH",
         os.environ.get(
-            "SQLITE_DB_PATH", str(Path(__file__).parent.parent / ".dev/data/jobfinder.db")
+            "SQLITE_DB_PATH", str(Path(__file__).parent.parent.parent / ".dev/data/jobfinder.db")
         ),
     )
 
@@ -68,7 +68,7 @@ def get_db_connection() -> sqlite3.Connection:
     db_path = get_db_path()
     if not Path(db_path).exists():
         print(f"{Colors.RED}Database not found: {db_path}{Colors.RESET}")
-        print("Run: make dev-setup or ./dev/setup-dev-env.sh --prod-db-path /path/to/db")
+        print("Run: make dev-setup or ./dev/setup/setup-dev-env.sh --prod-db-path /path/to/db")
         sys.exit(1)
 
     conn = sqlite3.connect(db_path)
@@ -84,7 +84,7 @@ def generate_tracking_id() -> str:
 def submit_job_item(
     url: str,
     company_name: Optional[str] = None,
-    source: str = "test_harness",
+    source: str = "manual_submission",
     tracking_id: Optional[str] = None,
 ) -> str:
     """Submit a JOB type item to the queue."""
@@ -94,14 +94,29 @@ def submit_job_item(
     tracking_id = tracking_id or generate_tracking_id()
     now = datetime.now(timezone.utc).isoformat()
 
+    unique_url = f"{url}?t={tracking_id}" if url else f"https://example.com/job/{tracking_id}"
+
+    item_id = generate_tracking_id()
+
     cursor.execute(
         """
         INSERT INTO job_queue (
-            type, status, url, company_name, source, tracking_id,
+            id, type, status, url, company_name, source, tracking_id,
             submitted_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
-        ("JOB", "PENDING", url, company_name, source, tracking_id, "test_harness", now, now),
+        (
+            item_id,
+            "job",
+            "pending",
+            unique_url,
+            company_name,
+            source,
+            tracking_id,
+            "test_harness",
+            now,
+            now,
+        ),
     )
 
     conn.commit()
@@ -130,22 +145,28 @@ def submit_company_item(
     metadata = {}
     if url:
         metadata["website"] = url
+    company_url = url or "https://example.com/company"
+
+    item_id = generate_tracking_id()
 
     cursor.execute(
         """
         INSERT INTO job_queue (
-            type, status, company_name, source, tracking_id,
-            submitted_by, metadata, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, type, status, url, company_name, source, tracking_id,
+            submitted_by, metadata, company_sub_task, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
-            "COMPANY",
-            "PENDING",
+            item_id,
+            "company",
+            "pending",
+            company_url,
             company_name,
-            "test_harness",
+            "manual_submission",
             tracking_id,
             "test_harness",
             json.dumps(metadata) if metadata else None,
+            "fetch",
             now,
             now,
         ),
@@ -185,18 +206,21 @@ def submit_scrape_item(
     if board_token:
         scrape_config["board_token"] = board_token
 
+    item_id = generate_tracking_id()
+
     cursor.execute(
         """
         INSERT INTO job_queue (
-            type, status, company_name, source, tracking_id,
+            id, type, status, company_name, source, tracking_id,
             submitted_by, scrape_config, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
-            "SCRAPE",
-            "PENDING",
+            item_id,
+            "scrape",
+            "pending",
             company_name,
-            "test_harness",
+            "manual_submission",
             tracking_id,
             "test_harness",
             json.dumps(scrape_config),
@@ -229,22 +253,27 @@ def submit_source_discovery_item(
     tracking_id = tracking_id or generate_tracking_id()
     now = datetime.now(timezone.utc).isoformat()
 
-    config = {"company_name": company_name}
-    if website:
-        config["website"] = website
+    target_url = website or "https://example.com"
+    config = {"company_name": company_name, "url": target_url}
+
+    discovery_url = target_url + f"?t={tracking_id}"
+
+    item_id = generate_tracking_id()
 
     cursor.execute(
         """
         INSERT INTO job_queue (
-            type, status, company_name, source, tracking_id,
+            id, type, status, url, company_name, source, tracking_id,
             submitted_by, source_discovery_config, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
-            "SOURCE_DISCOVERY",
-            "PENDING",
+            item_id,
+            "source_discovery",
+            "pending",
+            discovery_url,
             company_name,
-            "test_harness",
+            "manual_submission",
             tracking_id,
             "test_harness",
             json.dumps(config),
@@ -353,7 +382,11 @@ def show_status():
             "SKIPPED": Colors.MAGENTA,
         }.get(item["status"], Colors.RESET)
 
-        url_display = item["url"][:40] + "..." if item["url"] and len(item["url"]) > 40 else item["url"] or "-"
+        url_display = (
+            item["url"][:40] + "..."
+            if item["url"] and len(item["url"]) > 40
+            else item["url"] or "-"
+        )
         print(
             f"  [{item['id']}] {status_color}{item['status']:10}{Colors.RESET} "
             f"{item['type']:8} {item['company_name'] or '-':20} {url_display}"
@@ -517,7 +550,9 @@ def run_test_scenarios():
     # Test 2: Company analysis
     print(f"\n{Colors.BOLD}Test 2: Company Analysis{Colors.RESET}")
     print("Submitting a company for analysis...")
-    tracking_ids.append(submit_company_item(company_name="Test Company", url="https://testcompany.com"))
+    tracking_ids.append(
+        submit_company_item(company_name="Test Company", url="https://testcompany.com")
+    )
 
     # Test 3: Source discovery
     print(f"\n{Colors.BOLD}Test 3: Source Discovery{Colors.RESET}")
@@ -535,8 +570,8 @@ def run_test_scenarios():
         print(f"  - {tid}")
 
     print(f"\n{Colors.CYAN}To watch processing:{Colors.RESET}")
-    print(f"  python dev/test_harness.py watch")
-    print(f"  python dev/test_harness.py watch-item {tracking_ids[0]}")
+    print(f"  python dev/harness/test_harness.py watch")
+    print(f"  python dev/harness/test_harness.py watch-item {tracking_ids[0]}")
 
     return tracking_ids
 

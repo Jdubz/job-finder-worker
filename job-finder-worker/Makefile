@@ -155,8 +155,8 @@ docs: ## View documentation
 # Dev setup & database
 dev-setup: ## Setup dev environment (creates .dev/ directories)
 	@echo "$(CYAN)Setting up dev environment...$(RESET)"
-	@chmod +x dev/setup-dev-env.sh
-	@./dev/setup-dev-env.sh --skip-db
+	@chmod +x dev/setup/setup-dev-env.sh
+	@./dev/setup/setup-dev-env.sh --skip-db
 	@echo "$(GREEN)Dev environment ready!$(RESET)"
 	@echo "$(YELLOW)Run 'make dev-clone-db' to clone production database$(RESET)"
 
@@ -170,8 +170,8 @@ dev-clone-db: ## Clone production database (prompts for path)
 		echo "  Server: make dev-clone-db-scp SCP_SRC=user@host:/srv/job-finder/data/jobfinder.db"; \
 		exit 1; \
 	fi
-	@chmod +x dev/setup-dev-env.sh
-	@./dev/setup-dev-env.sh --prod-db-path $(PROD_DB)
+	@chmod +x dev/setup/setup-dev-env.sh
+	@./dev/setup/setup-dev-env.sh --prod-db-path $(PROD_DB)
 
 dev-clone-db-scp: ## Clone production database via SCP
 	@echo "$(CYAN)Cloning production database via SCP...$(RESET)"
@@ -179,8 +179,8 @@ dev-clone-db-scp: ## Clone production database via SCP
 		echo "$(YELLOW)Usage: make dev-clone-db-scp SCP_SRC=user@host:/path/to/jobfinder.db$(RESET)"; \
 		exit 1; \
 	fi
-	@chmod +x dev/setup-dev-env.sh
-	@./dev/setup-dev-env.sh --scp $(SCP_SRC)
+	@chmod +x dev/setup/setup-dev-env.sh
+	@./dev/setup/setup-dev-env.sh --scp $(SCP_SRC)
 
 # Docker commands
 dev-build: ## Build dev Docker image
@@ -221,32 +221,32 @@ dev-sqlite: ## Open sqlite CLI for dev database
 # Test harness commands (run inside container for consistency)
 dev-test-status: ## Show queue status in dev environment
 	@echo "$(CYAN)Queue Status:$(RESET)"
-	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py status
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/harness/test_harness.py status
 
 dev-test-watch: ## Watch queue processing in dev environment
-	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py watch
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/harness/test_harness.py watch
 
 dev-test-all: ## Run all test scenarios
 	@echo "$(CYAN)Running test scenarios...$(RESET)"
-	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py test-all
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/harness/test_harness.py test-all
 
 dev-test-job: ## Submit a test job (use URL=... to specify)
 	@if [ -z "$(URL)" ]; then \
 		echo "$(YELLOW)Usage: make dev-test-job URL=https://example.com/job$(RESET)"; \
 		exit 1; \
 	fi
-	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py job "$(URL)" --watch
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/harness/test_harness.py job "$(URL)" --watch
 
 dev-test-company: ## Submit a test company (use NAME=... to specify)
 	@if [ -z "$(NAME)" ]; then \
 		echo "$(YELLOW)Usage: make dev-test-company NAME='Company Name'$(RESET)"; \
 		exit 1; \
 	fi
-	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py company "$(NAME)" --watch
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/harness/test_harness.py company "$(NAME)" --watch
 
 dev-test-clear: ## Clear all test items from queue
 	@echo "$(YELLOW)Clearing test items...$(RESET)"
-	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/test_harness.py clear
+	@docker compose -f docker-compose.dev.yml exec worker python /app/dev/harness/test_harness.py clear
 
 # Cleanup
 dev-clean: ## Clean dev environment (keeps database)

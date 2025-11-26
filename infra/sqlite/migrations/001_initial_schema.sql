@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS content_items (
   user_id TEXT NOT NULL,
   parent_id TEXT REFERENCES content_items(id) ON DELETE SET NULL,
   order_index INTEGER NOT NULL DEFAULT 0,
-  visibility TEXT NOT NULL DEFAULT 'draft' CHECK (visibility IN ('published','draft','archived')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   created_by TEXT NOT NULL,
@@ -28,8 +27,6 @@ CREATE TABLE IF NOT EXISTS content_items (
   ai_context TEXT,
   body_json TEXT NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_content_items_visible ON content_items (visibility);
 CREATE INDEX IF NOT EXISTS idx_content_items_parent ON content_items (parent_id);
 
 -- Legacy experience + blurb data (kept for worker backfills)

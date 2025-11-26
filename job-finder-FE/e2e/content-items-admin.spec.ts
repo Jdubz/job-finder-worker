@@ -20,14 +20,12 @@ test.describe("Content items administration", () => {
       itemData: {
         title: `${slug} Alpha`,
         order: 0,
-        visibility: "published",
       },
     })
     const parentBeta = await seedContentItem(request, {
       itemData: {
         title: `${slug} Beta`,
         order: 1,
-        visibility: "published",
       },
     })
 
