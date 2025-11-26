@@ -73,7 +73,7 @@ export class GeneratorWorkflowService {
   async createRequest(payload: GenerateDocumentPayload) {
     const requestId = generateRequestId()
     const steps = createInitialSteps(payload.generateType)
-    const request = this.workflowRepo.createRequest({
+    this.workflowRepo.createRequest({
       id: requestId,
       generateType: payload.generateType,
       job: payload.job,
