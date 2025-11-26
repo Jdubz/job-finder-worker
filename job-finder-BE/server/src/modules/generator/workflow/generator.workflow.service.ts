@@ -177,7 +177,10 @@ export class GeneratorWorkflowService {
     this.workflowRepo.updateRequest(requestId, { personalInfo })
 
     if (pendingStep.id === 'collect-data') {
-      const updated = completeStep(startStep(steps, 'collect-data'), 'collect-data', 'completed')
+      // Mark step as started before work begins
+      activeState.steps = startStep(steps, 'collect-data')
+      // collect-data is essentially instant, so complete immediately
+      const updated = completeStep(activeState.steps, 'collect-data', 'completed')
       activeState.steps = updated
       const nextStep = updated.find((s) => s.status === 'pending')?.id
       return {
@@ -190,6 +193,8 @@ export class GeneratorWorkflowService {
     }
 
     if (pendingStep.id === 'generate-resume') {
+      // Mark step as started BEFORE the work begins to capture accurate duration
+      activeState.steps = startStep(steps, 'generate-resume')
       try {
         const resumeUrl = await this.generateResume(
           {
@@ -201,14 +206,14 @@ export class GeneratorWorkflowService {
           personalInfo
         )
         this.workflowRepo.updateRequest(requestId, { resumeUrl: resumeUrl ?? null })
-        const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'completed')
+        const updated = completeStep(activeState.steps, 'generate-resume', 'completed')
         activeState.steps = updated
         const nextStep = updated.find((s) => s.status === 'pending')?.id
         return { requestId, status: request.status, steps: updated, nextStep, resumeUrl, stepCompleted: 'generate-resume' }
       } catch (error) {
         this.log.error({ err: error, requestId }, 'Resume generation failed')
         const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
-        const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'failed', undefined, {
+        const updated = completeStep(activeState.steps, 'generate-resume', 'failed', undefined, {
           message: errorMessage
         })
         activeState.steps = updated
@@ -226,6 +231,8 @@ export class GeneratorWorkflowService {
     }
 
     if (pendingStep.id === 'generate-cover-letter') {
+      // Mark step as started BEFORE the work begins to capture accurate duration
+      activeState.steps = startStep(steps, 'generate-cover-letter')
       try {
         const coverLetterUrl = await this.generateCoverLetter(
           {
@@ -237,14 +244,14 @@ export class GeneratorWorkflowService {
           personalInfo
         )
         this.workflowRepo.updateRequest(requestId, { coverLetterUrl: coverLetterUrl ?? null })
-        const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'completed')
+        const updated = completeStep(activeState.steps, 'generate-cover-letter', 'completed')
         activeState.steps = updated
         const nextStep = updated.find((s) => s.status === 'pending')?.id
         return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl, stepCompleted: 'generate-cover-letter' }
       } catch (error) {
         this.log.error({ err: error, requestId }, 'Cover letter generation failed')
         const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
-        const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'failed', undefined, {
+        const updated = completeStep(activeState.steps, 'generate-cover-letter', 'failed', undefined, {
           message: errorMessage
         })
         activeState.steps = updated
@@ -264,7 +271,9 @@ export class GeneratorWorkflowService {
     // render-pdf step: PDF rendering is done within generateResume/generateCoverLetter,
     // so just mark this step complete and finalize the request
     if (pendingStep.id === 'render-pdf') {
-      const updated = completeStep(startStep(steps, 'render-pdf'), 'render-pdf', 'completed')
+      // Mark step as started before completing (instant step)
+      activeState.steps = startStep(steps, 'render-pdf')
+      const updated = completeStep(activeState.steps, 'render-pdf', 'completed')
       activeState.steps = updated
       this.workflowRepo.updateRequest(requestId, { status: 'completed' })
       const finalRequest = this.workflowRepo.getRequest(requestId)

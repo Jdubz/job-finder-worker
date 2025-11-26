@@ -90,11 +90,6 @@ const getStepDescription = (step: GenerationStep): string => {
   }
 }
 
-const formatDuration = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
-}
-
 /**
  * GenerationProgress - Comprehensive checklist UI for document generation
  *
@@ -103,7 +98,6 @@ const formatDuration = (ms: number): string => {
  * - Progress bar visualization
  * - Each step with name always visible
  * - Status-specific descriptions (what will happen / is happening / happened)
- * - Duration for completed steps
  */
 export function GenerationProgress({ steps }: GenerationProgressProps) {
   const completedCount = steps.filter((s) => s.status === "completed").length
@@ -218,14 +212,7 @@ export function GenerationProgress({ steps }: GenerationProgressProps) {
                 {/* Step Info - Always show name + description */}
                 <div className="flex-1 min-w-0">
                   {/* Step name - always visible */}
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm ${styles.name}`}>{step.name}</span>
-                    {step.status === "completed" && step.duration && (
-                      <span className="text-xs text-muted-foreground">
-                        {formatDuration(step.duration)}
-                      </span>
-                    )}
-                  </div>
+                  <span className={`text-sm ${styles.name}`}>{step.name}</span>
                   {/* Description - what will/is/did happen */}
                   <p className={`text-xs mt-0.5 ${styles.description}`}>{description}</p>
                 </div>

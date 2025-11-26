@@ -10,16 +10,12 @@ describe("GenerationProgress", () => {
       name: "Collect Data",
       description: "Gathering experience data",
       status: "completed",
-      startedAt: new Date("2025-01-01T10:00:00Z"),
-      completedAt: new Date("2025-01-01T10:00:01Z"),
-      duration: 1000,
     },
     {
       id: "generate-resume",
       name: "Generate Resume",
       description: "AI generating resume",
       status: "in_progress",
-      startedAt: new Date("2025-01-01T10:00:01Z"),
     },
     {
       id: "generate-cover-letter",
@@ -73,12 +69,6 @@ describe("GenerationProgress", () => {
     expect(pendingIcon).toBeInTheDocument()
     // Pending step shows what will happen
     expect(screen.getByText("Will write a personalized cover letter")).toBeInTheDocument()
-  })
-
-  it("should show duration for completed steps", () => {
-    render(<GenerationProgress steps={mockSteps} />)
-
-    expect(screen.getByText("1.0s")).toBeInTheDocument()
   })
 
   it("should handle failed step", () => {
@@ -166,7 +156,6 @@ describe("GenerationProgress", () => {
         name: "Render PDF",
         description: "Creating PDFs",
         status: "completed",
-        duration: 2500,
       },
     ]
 
@@ -174,6 +163,5 @@ describe("GenerationProgress", () => {
 
     expect(screen.getByText("Render PDF")).toBeInTheDocument()
     expect(screen.getByText("PDF documents ready for download")).toBeInTheDocument()
-    expect(screen.getByText("2.5s")).toBeInTheDocument()
   })
 })
