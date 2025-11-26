@@ -16,6 +16,12 @@ import type {
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { JobQueueService } from './job-queue.service'
+import {
+  broadcastQueueEvent,
+  handleQueueEventsSse,
+  sendCommandToWorker,
+  takePendingCommands
+} from './queue-events'
 
 const queueStatuses = ['pending', 'processing', 'success', 'failed', 'skipped', 'filtered'] as const
 const queueSources = [
@@ -77,6 +83,14 @@ export function buildJobQueueRouter() {
   const service = new JobQueueService()
 
   router.get(
+    '/events',
+    asyncHandler((req, res) => {
+      const items = service.list({ limit: 100, offset: 0 })
+      handleQueueEventsSse(req, res, items)
+    })
+  )
+
+  router.get(
     '/',
     asyncHandler((req, res) => {
       const query = listQueueSchema.parse(req.query)
@@ -136,6 +150,7 @@ export function buildJobQueueRouter() {
         queueItemId: item.id,
         queueItem: item
       }
+      broadcastQueueEvent('item.created', { queueItem: item })
       res.status(201).json(success(response))
     })
   )
@@ -151,6 +166,7 @@ export function buildJobQueueRouter() {
         queueItemId: item.id,
         queueItem: item
       }
+      broadcastQueueEvent('item.created', { queueItem: item })
       res.status(201).json(success(response))
     })
   )
@@ -169,6 +185,7 @@ export function buildJobQueueRouter() {
         queueItemId: item.id,
         queueItem: item
       }
+      broadcastQueueEvent('item.created', { queueItem: item })
       res.status(201).json(success(response))
     })
   )
@@ -195,6 +212,10 @@ export function buildJobQueueRouter() {
           queueItem,
           message: 'Queue item updated'
         }
+        broadcastQueueEvent('item.updated', { queueItem })
+        if (payload.status === 'skipped' && payload.result_message?.toLowerCase().includes('cancel')) {
+          sendCommandToWorker({ command: 'cancel', itemId: req.params.id, workerId: req.body.workerId ?? 'default', ts: new Date().toISOString() })
+        }
         res.json(success(response))
       } catch (error) {
         res
@@ -213,7 +234,32 @@ export function buildJobQueueRouter() {
     '/:id',
     asyncHandler((req, res) => {
       service.delete(req.params.id)
+      broadcastQueueEvent('item.deleted', { queueItemId: req.params.id })
       res.json(success({ deleted: true, queueItemId: req.params.id }))
+    })
+  )
+
+  // Worker bridge: poll commands (simple long-poll friendly GET)
+  router.get(
+    '/worker/commands',
+    asyncHandler((req, res) => {
+      const workerId = typeof req.query.workerId === 'string' ? req.query.workerId : 'default'
+      const commands = takePendingCommands(workerId)
+      res.json(success({ commands }))
+    })
+  )
+
+  // Worker bridge: ingest events and fan out to SSE listeners
+  router.post(
+    '/worker/events',
+    asyncHandler((req, res) => {
+      const { event, data } = req.body as { event?: string; data?: Record<string, unknown> }
+      if (!event) {
+        res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Missing event'))
+        return
+      }
+      broadcastQueueEvent(event as any, data ?? {})
+      res.json(success({ received: true }))
     })
   )
 

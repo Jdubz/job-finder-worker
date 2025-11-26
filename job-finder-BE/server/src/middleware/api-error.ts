@@ -7,6 +7,7 @@ export class ApiHttpError extends Error {
   code: ApiErrorCode | string
   status: number
   details?: Record<string, unknown>
+  cause?: unknown
 
   constructor(
     code: ApiErrorCode | string,
@@ -23,11 +24,7 @@ export class ApiHttpError extends Error {
     this.code = code
     this.status = options?.status ?? definition.httpStatus
     this.details = options?.details
-    if (options?.cause) {
-      // Preserve original error stack if provided
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(this as any).cause = options.cause
-    }
+    this.cause = options?.cause
   }
 }
 

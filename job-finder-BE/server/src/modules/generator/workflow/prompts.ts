@@ -248,7 +248,10 @@ ${variables.additionalInstructions || 'None'}`
     prompt +
     dataBlock +
     '\n\nIMPORTANT: You MUST respond with ONLY valid JSON. Do NOT ask questions or include any text outside the JSON object.' +
-    '\nUse ONLY the experience, education, projects, and skills provided above.' +
+    '\nUse the provided experience/education/projects/skills as your only source of truth, but select only the most relevant items for this job.' +
+    "\nDo NOT invent new companies, roles, dates, or technologies; every fact must come from the input data." +
+    '\nRewrite bullet points in fresh language that sounds like the same person without copying sentences verbatim.' +
+    '\nPrioritize accomplishments that match the job description and company tech stack.' +
     '\nIf a field is missing, leave it empty/null but still return the full JSON object.' +
     '\nReturn the result as a JSON object with keys: personalInfo, professionalSummary, experience[], skills[], education[].'
   )

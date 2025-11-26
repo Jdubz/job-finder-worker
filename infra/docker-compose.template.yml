@@ -25,6 +25,7 @@ services:
       PORT: 8080
       DATABASE_PATH: /data/sqlite/jobfinder.db
       JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
+      WORKER_WS_TOKEN: ${WORKER_WS_TOKEN}
       # CORS_ALLOWED_ORIGINS: "https://your-frontend-domain.com,https://another-domain.com"
     volumes:
       # Update these paths to match your production server
@@ -64,6 +65,10 @@ services:
       ENABLE_CLOUD_LOGGING: "false"
       SQLITE_DB_PATH: /data/sqlite/jobfinder.db
       CONFIG_PATH: /app/config/config.production.yaml
+      JF_NODE_API_BASE: http://api:8080/api
+      JF_NODE_API_TOKEN: ${WORKER_WS_TOKEN}
+      JF_WORKER_WS_TOKEN: ${WORKER_WS_TOKEN}
+      JF_WORKER_ID: default
     volumes:
       # Update these paths to match your production server
       - type: bind

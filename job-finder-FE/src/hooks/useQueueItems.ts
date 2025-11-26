@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { queueClient } from "@/api"
 import type { QueueItem } from "@shared/types"
+import { API_CONFIG } from "@/config/api"
 
 interface UseQueueItemsOptions {
   limit?: number
@@ -55,8 +56,83 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   }, [limit, normalizeQueueItem, status])
 
   useEffect(() => {
-    fetchQueueItems()
-  }, [fetchQueueItems])
+    let eventSource: EventSource | null = null
+    let cancelled = false
+
+    const startStream = async () => {
+      // Kick off an initial fetch so UI is responsive if SSE fails
+      await fetchQueueItems()
+
+      if (typeof EventSource === "undefined") {
+        return
+      }
+
+      const url = `${API_CONFIG.baseUrl}/queue/events`
+      eventSource = new EventSource(url, { withCredentials: true })
+
+      eventSource.addEventListener("snapshot", (event) => {
+        if (cancelled) return
+        try {
+          const payload = JSON.parse((event as MessageEvent).data) as { items: QueueItem[] }
+          setQueueItems(payload.items.map(normalizeQueueItem))
+          setLoading(false)
+        } catch {
+          // ignore malformed snapshots
+        }
+      })
+
+      const upsert = (queueItem: QueueItem) => {
+        setQueueItems((prev) => {
+          const normalized = normalizeQueueItem(queueItem)
+          const existing = prev.find((i) => i.id === normalized.id)
+          if (!existing) {
+            return [normalized, ...prev]
+          }
+          return prev.map((item) => (item.id === normalized.id ? normalized : item))
+        })
+      }
+
+      eventSource.addEventListener("item.created", (event) => {
+        try {
+          const payload = JSON.parse((event as MessageEvent).data) as { queueItem: QueueItem }
+          if (payload.queueItem) upsert(payload.queueItem)
+        } catch {
+          /* noop */
+        }
+      })
+
+      eventSource.addEventListener("item.updated", (event) => {
+        try {
+          const payload = JSON.parse((event as MessageEvent).data) as { queueItem: QueueItem }
+          if (payload.queueItem) upsert(payload.queueItem)
+        } catch {
+          /* noop */
+        }
+      })
+
+      eventSource.addEventListener("item.deleted", (event) => {
+        try {
+          const payload = JSON.parse((event as MessageEvent).data) as { queueItemId?: string }
+          if (!payload.queueItemId) return
+          setQueueItems((prev) => prev.filter((i) => i.id !== payload.queueItemId))
+        } catch {
+          /* noop */
+        }
+      })
+
+      eventSource.onerror = () => {
+        // Drop back to manual fetch; EventSource will auto-reconnect
+        fetchQueueItems()
+      }
+    }
+
+    startStream()
+
+    return () => {
+      cancelled = true
+      eventSource?.close()
+    }
+  }, [fetchQueueItems, normalizeQueueItem])
 
   const submitJob = useCallback(
     async (url: string, companyName?: string, generationId?: string): Promise<string> => {

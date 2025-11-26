@@ -368,6 +368,8 @@ export class GeneratorWorkflowService {
       // Filter education items
       const educationItems = contentItems.filter((item) => item.aiContext === 'education')
 
+      const normalizeKey = (value?: string | null) => (value || '').toLowerCase().trim()
+
       const mappedExperience = workItems.map((item) => ({
         role: item.role ?? '',
         company: item.title ?? '',
@@ -376,7 +378,7 @@ export class GeneratorWorkflowService {
         endDate: item.endDate ?? '',
         highlights: (item.description || '')
           .split(/\r?\n/)
-          .map((l) => l.replace(/^[-•]\s*/, '').trim())
+          .map((l) => l.replace(/^[–\-•]\s*/, '').trim())
           .filter(Boolean),
         technologies: item.skills ?? []
       }))
@@ -395,7 +397,7 @@ export class GeneratorWorkflowService {
       parsed.personalInfo = {
         name: personalInfo.name,
         title: parsed.personalInfo?.title || payload.job.role,
-        summary: personalInfo.summary || parsed.personalInfo?.summary || '',
+        summary: parsed.personalInfo?.summary || parsed.professionalSummary || personalInfo.summary || '',
         contact: {
           email: personalInfo.email || parsed.personalInfo?.contact?.email || '',
           location: personalInfo.location || parsed.personalInfo?.contact?.location || '',
@@ -405,58 +407,77 @@ export class GeneratorWorkflowService {
         }
       }
 
-      // Create lookup for AI experience by company name (normalized)
-      const aiExperienceLookup = new Map(
-        (parsed.experience || []).map((exp) => [
-          (exp.company || '').toLowerCase().trim(),
-          exp
-        ])
+      // Create lookup for authoritative experience by company name (normalized)
+      const contentExperienceLookup = new Map(
+        mappedExperience.map((exp) => [normalizeKey(exp.company), exp])
       )
 
-      // Merge: content items are authoritative for dates/company/location/technologies
-      // AI provides customized highlights for the target role
-      parsed.experience = mappedExperience.map((contentExp) => {
-        const companyKey = contentExp.company.toLowerCase().trim()
-        const aiExp = aiExperienceLookup.get(companyKey)
+      // Allow AI to choose/reorder relevant experiences, but keep facts grounded in source data
+      const validatedExperience = (parsed.experience || [])
+        .map((aiExp) => {
+          const key = normalizeKey(aiExp.company)
+          const source = contentExperienceLookup.get(key)
+          if (!source) return null // drop hallucinated or unknown companies
 
-        return {
-          role: contentExp.role,
-          company: contentExp.company,
-          location: contentExp.location,
-          startDate: contentExp.startDate,
-          endDate: contentExp.endDate,
-          // Use AI highlights if available and non-empty, otherwise use content item highlights
-          highlights: (aiExp?.highlights && aiExp.highlights.length > 0)
-            ? aiExp.highlights
-            : contentExp.highlights,
-          // Always use authoritative technologies from content items
-          technologies: contentExp.technologies
+          const aiHighlights = Array.isArray(aiExp.highlights)
+            ? aiExp.highlights.map((h) => (h || '').trim()).filter(Boolean)
+            : []
+
+          return {
+            role: source.role || aiExp.role || '',
+            company: source.company,
+            location: source.location || aiExp.location || '',
+            startDate: source.startDate || aiExp.startDate || '',
+            endDate: source.endDate || aiExp.endDate || '',
+            highlights: aiHighlights.length > 0 ? aiHighlights : source.highlights,
+            technologies: source.technologies
+          }
+        })
+        .filter(Boolean) as ResumeContent['experience']
+
+      // If AI dropped everything or returned none, fall back to full mapped list
+      parsed.experience = validatedExperience.length ? validatedExperience : mappedExperience
+
+      // Normalize skills: accept [{category, items}] or string[]; remove hallucinated skills
+      const allowedSkills = new Set<string>(contentItems.flatMap((item) => item.skills || []))
+
+      const normalizeSkillsCategory = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
+        if (!skills || skills.length === 0) return []
+        if (skills.length && typeof skills[0] === 'string') {
+          const filteredSkills = (skills as unknown as string[]).filter(
+            (s) => allowedSkills.size === 0 || allowedSkills.has(s)
+          )
+          return filteredSkills.length > 0 ? [{ category: 'Skills', items: filteredSkills }] : []
         }
-      })
 
-      // Normalize skills: accept [{category, items}] or string[]
-      if (!Array.isArray(parsed.skills) || parsed.skills.length === 0) {
-        parsed.skills = parsed.experience.length
-          ? [{ category: 'Skills', items: Array.from(new Set(parsed.experience.flatMap((e) => e.technologies || []))) }]
-          : []
-      } else if (parsed.skills.length && typeof parsed.skills[0] === 'string') {
-        parsed.skills = [{ category: 'Skills', items: parsed.skills as unknown as string[] }]
-      } else {
-        parsed.skills = (parsed.skills as any[]).map((s) => ({
-          category: s.category || 'Skills',
-          items: Array.isArray(s.items) ? s.items : []
-        }))
+        return (skills as Array<{ category?: string; items?: unknown[] }>)
+          .map((s) => ({
+            category: s.category || 'Skills',
+            items: Array.isArray(s.items)
+              ? s.items.filter(
+                  (item): item is string => typeof item === 'string' && (allowedSkills.size === 0 || allowedSkills.has(item))
+                )
+              : []
+          }))
+          .filter((s) => s.items.length > 0)
+      }
+
+      parsed.skills = normalizeSkillsCategory(parsed.skills || [])
+
+      if (!parsed.skills || parsed.skills.length === 0) {
+        const techFromExperience = Array.from(new Set(parsed.experience.flatMap((e) => e.technologies || [])))
+        parsed.skills = techFromExperience.length ? [{ category: 'Skills', items: techFromExperience }] : []
       }
 
       // Enhance education data: use AI output but fill in missing fields from content items
       if (Array.isArray(parsed.education) && parsed.education.length > 0) {
         // Create a lookup map from institution name (normalized) to content item education
         const educationLookup = new Map(
-          mappedEducation.map((edu) => [edu.institution.toLowerCase().trim(), edu])
+          mappedEducation.map((edu) => [normalizeKey(edu.institution), edu])
         )
 
         parsed.education = parsed.education.map((aiEdu) => {
-          const instKey = (aiEdu.institution || '').toLowerCase().trim()
+          const instKey = normalizeKey(aiEdu.institution)
           const contentEdu = educationLookup.get(instKey)
           if (contentEdu) {
             // Merge: use content item data as authoritative, AI data as fallback
@@ -474,6 +495,7 @@ export class GeneratorWorkflowService {
         // No AI education - use content items directly
         parsed.education = mappedEducation
       }
+
       parsed.professionalSummary = parsed.professionalSummary || personalInfo.summary || ''
 
       return parsed

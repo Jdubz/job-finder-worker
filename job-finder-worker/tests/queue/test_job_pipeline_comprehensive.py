@@ -122,11 +122,11 @@ def test_job_pipeline_full_path(tmp_path: Path):
         "posted_date": datetime.now(timezone.utc).isoformat(),
     }
 
-    processor.job_processor._scrape_job = lambda item: job_data  # type: ignore[attr-defined]
-    processor.job_processor.filter_engine.evaluate_job = lambda _job: FilterResult(
+    processor.job_processor._scrape_job = lambda item: job_data  # type: ignore[attr-defined,method-assign]
+    processor.job_processor.filter_engine.evaluate_job = lambda _job: FilterResult(  # type: ignore[method-assign,assignment]
         passed=True, total_strikes=0, strike_threshold=5
     )
-    processor.company_info_fetcher.fetch_company_info = lambda *_args, **_kwargs: {
+    processor.company_info_fetcher.fetch_company_info = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
         "about": "We build pipelines",
         "culture": "Remote-first",
     }

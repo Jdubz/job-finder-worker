@@ -17,7 +17,8 @@ const EnvSchema = z.object({
   GENERATOR_ARTIFACTS_PUBLIC_BASE: z.string().optional(),
   GENERATOR_ASSETS_DIR: z.string().optional(),
   GOOGLE_API_KEY: z.string().optional(),
-  WORKER_RELOAD_URL: z.string().url().optional()
+  WORKER_RELOAD_URL: z.string().url().optional(),
+  WORKER_WS_TOKEN: z.string().optional()
 })
 
 export type Env = z.infer<typeof EnvSchema>
