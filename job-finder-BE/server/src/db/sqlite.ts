@@ -5,6 +5,8 @@ import { env } from '../config/env'
 import { logger } from '../logger'
 import { runMigrations } from './migrations'
 
+type SQLiteOpenOptions = Database.Options & { uri?: boolean }
+
 let db: Database.Database | null = null
 let migrationsApplied = false
 
@@ -24,7 +26,7 @@ export function getDb(): Database.Database {
 
   logger.info({ dbPath }, 'Opening SQLite database')
 
-  const openOptions: Database.Options = {
+  const openOptions: SQLiteOpenOptions = {
     verbose: env.NODE_ENV === 'development' ? console.log : undefined,
   }
 
