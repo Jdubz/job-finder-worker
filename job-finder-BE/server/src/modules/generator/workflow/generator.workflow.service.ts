@@ -61,6 +61,8 @@ const REQUEST_TTL_MS = 30 * 60 * 1000
 
 export class GeneratorWorkflowService {
   private readonly activeRequests = new Map<string, ActiveRequestState>()
+  private readonly userFriendlyError =
+    'AI generation failed. Please retry in a moment or contact support if it keeps happening.'
 
   constructor(
     private readonly pdfService = new PdfMakeService(),
@@ -139,7 +141,7 @@ export class GeneratorWorkflowService {
       return {
         requestId,
         success: false,
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: this.buildUserMessage(error, this.userFriendlyError)
       }
     }
   }
@@ -203,7 +205,7 @@ export class GeneratorWorkflowService {
         return { requestId, status: request.status, steps: updated, nextStep, resumeUrl, stepCompleted: 'generate-resume' }
       } catch (error) {
         this.log.error({ err: error, requestId }, 'Resume generation failed')
-        const errorMessage = error instanceof Error ? error.message : 'Resume generation failed'
+        const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
         const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'failed', undefined, {
           message: errorMessage
         })
@@ -239,7 +241,7 @@ export class GeneratorWorkflowService {
         return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl, stepCompleted: 'generate-cover-letter' }
       } catch (error) {
         this.log.error({ err: error, requestId }, 'Cover letter generation failed')
-        const errorMessage = error instanceof Error ? error.message : 'Cover letter generation failed'
+        const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
         const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'failed', undefined, {
           message: errorMessage
         })
@@ -286,6 +288,11 @@ export class GeneratorWorkflowService {
       steps,
       nextStep: undefined
     }
+  }
+
+  private buildUserMessage(_error: unknown, fallback: string): string {
+    // Keep the log detailed but surface a short message to the user.
+    return fallback
   }
 
   private async generateResume(

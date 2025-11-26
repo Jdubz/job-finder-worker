@@ -7,6 +7,8 @@ chown -R node:node /data
 
 # Codex CLI auth: mount ~/.codex from host (contains OAuth tokens for ChatGPT Pro)
 # The mount must be read-write so codex can refresh expired tokens
+# Set CODEX_REQUIRED=false to allow container start without Codex (e.g., offline/dev).
+CODEX_REQUIRED=${CODEX_REQUIRED:-true}
 echo "=== Codex CLI Setup ==="
 echo "CODEX_HOME=$CODEX_HOME"
 
@@ -17,17 +19,22 @@ if [ -d "/home/node/.codex" ]; then
 
     if [ -f "/home/node/.codex/auth.json" ]; then
         echo "auth.json: EXISTS"
-        # Check login status (as node user)
         echo "Checking codex login status..."
-        gosu node codex login status 2>&1 || echo "Login status check failed"
+        if ! gosu node codex login status; then
+            echo "ERROR: Codex login status failed (likely expired token)"
+            echo "AI document generation will fail!"
+            [ "$CODEX_REQUIRED" = "true" ] && exit 1
+        fi
     else
         echo "ERROR: /home/node/.codex/auth.json NOT FOUND"
         echo "AI document generation will fail!"
+        [ "$CODEX_REQUIRED" = "true" ] && exit 1
     fi
 else
     echo "ERROR: /home/node/.codex directory NOT MOUNTED"
     echo "AI document generation will fail!"
     echo "Mount your ~/.codex folder to /home/node/.codex"
+    [ "$CODEX_REQUIRED" = "true" ] && exit 1
 fi
 echo "=== End Codex Setup ==="
 
