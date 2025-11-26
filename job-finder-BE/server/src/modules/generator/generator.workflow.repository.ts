@@ -33,6 +33,11 @@ export interface GeneratorArtifactRecord {
 export class GeneratorWorkflowRepository {
   private db: Database.Database
 
+  private mergeJsonField<T>(updateValue: T | null | undefined, existingValue: T | null | undefined): string | null {
+    const value = updateValue !== undefined ? updateValue : existingValue
+    return value ? JSON.stringify(value) : null
+  }
+
   constructor() {
     this.db = getDb()
   }
@@ -73,30 +78,9 @@ export class GeneratorWorkflowRepository {
     }
 
     const mergedJob = updates.job ? JSON.stringify(updates.job) : JSON.stringify(existing.job)
-    const mergedPrefs =
-      updates.preferences !== undefined
-        ? updates.preferences
-          ? JSON.stringify(updates.preferences)
-          : null
-        : existing.preferences
-        ? JSON.stringify(existing.preferences)
-        : null
-    const mergedPersonal =
-      updates.personalInfo !== undefined
-        ? updates.personalInfo
-          ? JSON.stringify(updates.personalInfo)
-          : null
-        : existing.personalInfo
-        ? JSON.stringify(existing.personalInfo)
-        : null
-    const mergedSteps =
-      updates.steps !== undefined
-        ? updates.steps
-          ? JSON.stringify(updates.steps)
-          : null
-        : existing.steps
-        ? JSON.stringify(existing.steps)
-        : null
+    const mergedPrefs = this.mergeJsonField(updates.preferences, existing.preferences)
+    const mergedPersonal = this.mergeJsonField(updates.personalInfo, existing.personalInfo)
+    const mergedSteps = this.mergeJsonField(updates.steps, existing.steps)
 
     this.db
       .prepare(
