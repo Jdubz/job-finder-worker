@@ -4,6 +4,7 @@ import type { Logger } from 'pino'
 import type { CoverLetterContent, ResumeContent, PersonalInfo } from '@shared/types'
 import { logger as rootLogger } from '../../../../logger'
 import { storageService } from './storage.service'
+import { env } from '../../../../config/env'
 
 function formatDate(value?: string | null): string {
   if (!value) return ''
@@ -26,17 +27,57 @@ const fonts = {
 
 const printer = new PdfPrinter(fonts)
 
+// Normalize asset URLs coming from the API (e.g., /api/generator/artifacts/assets/...) to
+// a relative storage path that can be read directly from disk. Returns null when the URL
+// does not point to a locally stored asset.
+export function normalizeAssetPath(url: string): string | null {
+  // Ensure leading slash and no trailing slash
+  const publicBase = `/${(env.GENERATOR_ARTIFACTS_PUBLIC_BASE ?? '/api/generator/artifacts')
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '')}`
+
+  const trimLeadingSlash = (value: string) => value.replace(/^\/+/, '')
+
+  const matchLocalPath = (pathname: string, allowGenericAbsolute = true): string | null => {
+    if (pathname.startsWith(publicBase)) {
+      const stripped = pathname.slice(publicBase.length)
+      return trimLeadingSlash(stripped)
+    }
+    if (pathname.startsWith('/assets/')) {
+      return trimLeadingSlash(pathname)
+    }
+    // Preserve prior behaviour for non-URL paths: treat any other absolute path as a local storage path
+    if (allowGenericAbsolute && pathname.startsWith('/')) {
+      return trimLeadingSlash(pathname)
+    }
+    return null
+  }
+
+  try {
+    if (/^https?:\/\//i.test(url)) {
+      const parsed = new URL(url)
+      return matchLocalPath(parsed.pathname, false)
+    }
+  } catch {
+    // Non-URL input; fall through and handle as a path below
+  }
+
+  return matchLocalPath(url)
+}
+
 // Fetch image and convert to base64 data URI for pdfmake
 async function fetchImageAsBase64(url: string, log: Logger): Promise<string | null> {
   try {
+    const localPath = normalizeAssetPath(url)
+
     // Allow local filesystem paths for avatar/logo
-    if (url.startsWith('/')) {
+    if (localPath) {
       const fs = await import('node:fs/promises')
       const path = await import('node:path')
-      const absolute = storageService.getAbsolutePath(url.replace(/^\//, ''))
+      const absolute = storageService.getAbsolutePath(localPath)
       const buffer = await fs.readFile(absolute)
       const ext = path.extname(absolute).toLowerCase()
-      const mime = ext === '.svg' ? 'image/svg+xml' : 'image/jpeg'
+      const mime = ext === '.svg' ? 'image/svg+xml' : ext === '.png' ? 'image/png' : 'image/jpeg'
       return `data:${mime};base64,${buffer.toString('base64')}`
     }
 

@@ -441,9 +441,9 @@ export function SettingsPage() {
               </p>
             </div>
 
-            <div className="space-y-2 col-span-2">
+            <div className="space-y-3 col-span-2">
               <Label>Avatar</Label>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4 p-3 border rounded-lg bg-gray-50">
                 {userDefaults.avatar ? (
                   <img
                     src={
@@ -452,38 +452,57 @@ export function SettingsPage() {
                         : `/api/generator/artifacts${userDefaults.avatar}`
                     }
                     alt="avatar"
-                    className="h-12 w-12 rounded-full object-cover border"
+                    className="h-14 w-14 rounded-full object-cover border shadow-sm"
                   />
                 ) : (
-                  <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-500">No avatar</div>
+                  <div className="h-14 w-14 rounded-full bg-gray-200 flex items-center justify-center text-[11px] text-gray-500 border">
+                    No avatar
+                  </div>
                 )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    try {
-                      setUploading((p) => ({ ...p, avatar: true }))
-                      const res = await generatorClient.uploadAsset({ type: "avatar", dataUrl: await fileToDataUrl(file) })
-                      setUserDefaults((prev) => ({ ...prev, avatar: res.path }))
-                      setSuccess("Avatar uploaded")
-                    } catch (err) {
-                      console.error(err)
-                      setError("Failed to upload avatar")
-                    } finally {
-                      setUploading((p) => ({ ...p, avatar: false }))
-                    }
-                  }}
-                  disabled={uploading.avatar || isSaving}
-                />
+                <div className="flex flex-col gap-2">
+                  <label className="inline-flex items-center gap-2 px-3 py-2 border rounded-md bg-white shadow-sm cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        try {
+                          setUploading((p) => ({ ...p, avatar: true }))
+                          const dataUrl = await fileToDataUrl(file)
+                          const res = await generatorClient.uploadAsset({ type: "avatar", dataUrl })
+
+                          // Persist to backend and refresh defaults so the UI stays in sync
+                          await updatePersonalInfo({ avatar: res.path })
+                          setUserDefaults((prev) => ({ ...prev, avatar: res.path }))
+                          setSuccess("Avatar uploaded")
+                          setError(null)
+                        } catch (err) {
+                          console.error("Avatar upload failed", err)
+                          setError("Failed to upload avatar")
+                        } finally {
+                          setUploading((p) => ({ ...p, avatar: false }))
+                          e.target.value = ""
+                        }
+                      }}
+                      disabled={uploading.avatar || isSaving}
+                    />
+                    {uploading.avatar ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                    ) : (
+                      <User className="h-4 w-4 text-gray-600" />
+                    )}
+                    {uploading.avatar ? 'Uploading…' : 'Upload image'}
+                  </label>
+                  <p className="text-xs text-gray-500">JPEG/PNG/SVG up to 2MB. Appears in resume header.</p>
+                </div>
               </div>
-              <p className="text-xs text-gray-500">JPEG/PNG/SVG. Stored locally and used in resume header.</p>
             </div>
 
-            <div className="space-y-2 col-span-2">
+            <div className="space-y-3 col-span-2">
               <Label>Logo</Label>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4 p-3 border rounded-lg bg-gray-50">
                 {userDefaults.logo ? (
                   <img
                     src={
@@ -492,33 +511,49 @@ export function SettingsPage() {
                         : `/api/generator/artifacts${userDefaults.logo}`
                     }
                     alt="logo"
-                    className="h-10 w-10 object-contain border p-1 bg-white"
+                    className="h-12 w-12 object-contain border rounded bg-white p-1 shadow-sm"
                   />
                 ) : (
-                  <div className="h-10 w-10 border bg-gray-100 flex items-center justify-center text-xs text-gray-500">No logo</div>
+                  <div className="h-12 w-12 border rounded bg-gray-100 flex items-center justify-center text-[11px] text-gray-500">No logo</div>
                 )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    try {
-                      setUploading((p) => ({ ...p, logo: true }))
-                      const res = await generatorClient.uploadAsset({ type: "logo", dataUrl: await fileToDataUrl(file) })
-                      setUserDefaults((prev) => ({ ...prev, logo: res.path }))
-                      setSuccess("Logo uploaded")
-                    } catch (err) {
-                      console.error(err)
-                      setError("Failed to upload logo")
-                    } finally {
-                      setUploading((p) => ({ ...p, logo: false }))
-                    }
-                  }}
-                  disabled={uploading.logo || isSaving}
-                />
+                <div className="flex flex-col gap-2">
+                  <label className="inline-flex items-center gap-2 px-3 py-2 border rounded-md bg-white shadow-sm cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        try {
+                          setUploading((p) => ({ ...p, logo: true }))
+                          const dataUrl = await fileToDataUrl(file)
+                          const res = await generatorClient.uploadAsset({ type: "logo", dataUrl })
+
+                          await updatePersonalInfo({ logo: res.path })
+                          setUserDefaults((prev) => ({ ...prev, logo: res.path }))
+                          setSuccess("Logo uploaded")
+                          setError(null)
+                        } catch (err) {
+                          console.error("Logo upload failed", err)
+                          setError("Failed to upload logo")
+                        } finally {
+                          setUploading((p) => ({ ...p, logo: false }))
+                          e.target.value = ""
+                        }
+                      }}
+                      disabled={uploading.logo || isSaving}
+                    />
+                    {uploading.logo ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                    ) : (
+                      <Shield className="h-4 w-4 text-gray-600" />
+                    )}
+                    {uploading.logo ? 'Uploading…' : 'Upload image'}
+                  </label>
+                  <p className="text-xs text-gray-500">Use a square SVG/PNG. Shown in resume header/footer.</p>
+                </div>
               </div>
-              <p className="text-xs text-gray-500">SVG/PNG recommended. Used in resume header/footer.</p>
             </div>
           </div>
         </CardContent>
