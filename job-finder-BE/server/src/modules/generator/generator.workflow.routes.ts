@@ -26,7 +26,7 @@ const generatorRequestSchema = z.object({
   jobMatchId: z.string().optional()
 })
 
-// Singleton service instance to share activeRequests state across all requests
+// Singleton service instance so generation uses shared dependencies
 let serviceInstance: GeneratorWorkflowService | null = null
 function getService(): GeneratorWorkflowService {
   if (!serviceInstance) {
