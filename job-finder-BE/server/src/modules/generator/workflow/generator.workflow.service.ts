@@ -451,15 +451,15 @@ export class GeneratorWorkflowService {
           .map((s) => ({
             category: s.category || 'Skills',
             items: Array.isArray(s.items)
-              ? s.items.filter((item) => allowedSkills.size === 0 || allowedSkills.has(item))
+              ? s.items.filter((item: string) => allowedSkills.size === 0 || allowedSkills.has(item))
               : []
           }))
           .filter((s) => s.items.length > 0)
       }
 
-      parsed.skills = normalizeSkillsCategory(parsed.skills)
+      parsed.skills = normalizeSkillsCategory(parsed.skills || [])
 
-      if (!parsed.skills.length) {
+      if (!parsed.skills || parsed.skills.length === 0) {
         const techFromExperience = Array.from(new Set(parsed.experience.flatMap((e) => e.technologies || [])))
         parsed.skills = techFromExperience.length ? [{ category: 'Skills', items: techFromExperience }] : []
       }
