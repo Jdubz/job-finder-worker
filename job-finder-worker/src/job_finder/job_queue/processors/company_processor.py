@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import uuid
+from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
 from job_finder.constants import MIN_COMPANY_PAGE_LENGTH
@@ -93,7 +94,7 @@ class CompanyProcessor(BaseProcessor):
             except InvalidStateTransition as exc:
                 logger.warning("Company %s transition to analyzing blocked: %s", company_id, exc)
 
-        try:
+        with self._handle_company_failure(company_id):
             if not item.url:
                 error_msg = "No company website URL provided"
                 self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
@@ -177,15 +178,6 @@ class CompanyProcessor(BaseProcessor):
                 f"COMPANY_FETCH complete: Fetched {len(html_content)} pages for {company_display}"
             )
 
-        except Exception as e:
-            logger.error(f"Error in COMPANY_FETCH: {e}")
-            if company_id:
-                try:
-                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
-                except InvalidStateTransition:
-                    pass
-            raise
-
     def process_company_extract(self, item: JobQueueItem) -> None:
         """
         COMPANY_EXTRACT: Extract company info using AI.
@@ -207,7 +199,7 @@ class CompanyProcessor(BaseProcessor):
         _, company_display = format_company_name(company_name)
         logger.info(f"COMPANY_EXTRACT: Extracting company info for {company_display}")
 
-        try:
+        with self._handle_company_failure(company_id):
             # Combine all HTML content
             combined_content = " ".join(html_content.values())
 
@@ -262,15 +254,6 @@ class CompanyProcessor(BaseProcessor):
                 f"about, {len(extracted_info.get('culture', ''))} chars culture for {company_display}"
             )
 
-        except Exception as e:
-            logger.error(f"Error in COMPANY_EXTRACT: {e}")
-            if company_id:
-                try:
-                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
-                except InvalidStateTransition:
-                    pass
-            raise
-
     def process_company_analyze(self, item: JobQueueItem) -> None:
         """
         COMPANY_ANALYZE: Analyze tech stack, job board, and priority scoring.
@@ -306,7 +289,7 @@ class CompanyProcessor(BaseProcessor):
         _, company_display = format_company_name(company_name)
         logger.info(f"COMPANY_ANALYZE: Analyzing {company_display}")
 
-        try:
+        with self._handle_company_failure(company_id):
             # Detect tech stack from company info
             tech_stack = self._detect_tech_stack(extracted_info, html_content)
 
@@ -361,15 +344,6 @@ class CompanyProcessor(BaseProcessor):
                 f"Score {priority_score}, Tech Stack: {len(tech_stack)} items"
             )
 
-        except Exception as e:
-            logger.error(f"Error in COMPANY_ANALYZE: {e}")
-            if company_id:
-                try:
-                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
-                except InvalidStateTransition:
-                    pass
-            raise
-
     def process_company_save(self, item: JobQueueItem) -> None:
         """
         COMPANY_SAVE: Save company to SQLite and spawn source discovery if needed.
@@ -392,7 +366,7 @@ class CompanyProcessor(BaseProcessor):
         _, company_display = format_company_name(company_name)
         logger.info(f"COMPANY_SAVE: Saving {company_display}")
 
-        try:
+        with self._handle_company_failure(company_id):
             # Build complete company record
             company_info = {
                 "name": company_name,
@@ -418,14 +392,6 @@ class CompanyProcessor(BaseProcessor):
 
             _, company_display = format_company_name(company_name)
             logger.info(f"Company saved: {company_display} (ID: {company_id})")
-
-            try:
-                self.companies_manager.transition_status(company_id, CompanyStatus.ACTIVE)
-                self.companies_manager.update_analysis_progress(
-                    company_id, fetch=True, extract=True, analyze=True, save=True
-                )
-            except InvalidStateTransition:
-                logger.debug("Company %s already active", company_id)
 
             # If job board found, spawn SOURCE_DISCOVERY
             job_board_url = analysis_result.get("job_board_url")
@@ -460,18 +426,24 @@ class CompanyProcessor(BaseProcessor):
                 f"Company saved successfully (ID: {company_id})",
             )
 
-        except Exception as e:
-            logger.error(f"Error in COMPANY_SAVE: {e}")
+    # ============================================================
+    # HELPER METHODS
+    # ============================================================
+
+    @contextmanager
+    def _handle_company_failure(self, company_id: Optional[str]):
+        """Ensure company status moves to FAILED on unhandled errors."""
+
+        try:
+            yield
+        except Exception as exc:
             if company_id:
                 try:
                     self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
                 except InvalidStateTransition:
                     pass
+            logger.error("Company pipeline error: %s", exc)
             raise
-
-    # ============================================================
-    # HELPER METHODS
-    # ============================================================
 
     def _detect_tech_stack(
         self, extracted_info: Dict[str, Any], html_content: Dict[str, str]

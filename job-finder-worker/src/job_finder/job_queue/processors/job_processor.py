@@ -9,6 +9,7 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
+from job_finder.exceptions import InvalidStateTransition
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name
 from job_finder.job_queue.models import (
@@ -367,7 +368,11 @@ class JobProcessor(BaseProcessor):
         dependency = pipeline_state.get("company_dependency")
 
         def _requeue_wait(dep_state: Dict[str, Any]) -> None:
-            updated_state = {**pipeline_state, "job_data": job_data, "company_dependency": dep_state}
+            updated_state = {
+                **pipeline_state,
+                "job_data": job_data,
+                "company_dependency": dep_state,
+            }
             self.queue_manager.requeue_with_state(item.id, updated_state, "wait_company")
             logger.info(
                 "JOB_ANALYZE: Waiting for company %s (dep=%s)", company_name_clean, dep_state
@@ -417,7 +422,7 @@ class JobProcessor(BaseProcessor):
             if status == CompanyStatus.FAILED.value:
                 try:
                     self.companies_manager.transition_status(company_id, CompanyStatus.PENDING)
-                except Exception:
+                except InvalidStateTransition:
                     pass
 
             company_task_id = self.queue_manager.spawn_item_safely(
