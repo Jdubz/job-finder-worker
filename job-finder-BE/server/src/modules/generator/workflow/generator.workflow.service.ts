@@ -440,18 +440,34 @@ export class GeneratorWorkflowService {
         }
       }
 
-      parsed.experience = (Array.isArray(parsed.experience) && parsed.experience.length > 0
-        ? parsed.experience
-        : mappedExperience
-      ).map((exp) => ({
-        role: exp.role || '',
-        company: exp.company || '',
-        location: exp.location || '',
-        startDate: exp.startDate || '',
-        endDate: exp.endDate || '',
-        highlights: Array.isArray(exp.highlights) ? exp.highlights : [],
-        technologies: Array.isArray((exp as any).technologies) ? (exp as any).technologies : []
-      }))
+      // Create lookup for AI experience by company name (normalized)
+      const aiExperienceLookup = new Map(
+        (parsed.experience || []).map((exp) => [
+          (exp.company || '').toLowerCase().trim(),
+          exp
+        ])
+      )
+
+      // Merge: content items are authoritative for dates/company/location/technologies
+      // AI provides customized highlights for the target role
+      parsed.experience = mappedExperience.map((contentExp) => {
+        const companyKey = contentExp.company.toLowerCase().trim()
+        const aiExp = aiExperienceLookup.get(companyKey)
+
+        return {
+          role: contentExp.role,
+          company: contentExp.company,
+          location: contentExp.location,
+          startDate: contentExp.startDate,
+          endDate: contentExp.endDate,
+          // Use AI highlights if available and non-empty, otherwise use content item highlights
+          highlights: (aiExp?.highlights && aiExp.highlights.length > 0)
+            ? aiExp.highlights
+            : contentExp.highlights,
+          // Always use authoritative technologies from content items
+          technologies: contentExp.technologies
+        }
+      })
 
       // Normalize skills: accept [{category, items}] or string[]
       if (!Array.isArray(parsed.skills) || parsed.skills.length === 0) {

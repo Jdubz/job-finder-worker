@@ -19,7 +19,6 @@ COPY infra/sqlite ./infra/sqlite
 RUN rm package-lock.json && npm install --no-package-lock && npm rebuild better-sqlite3
 COPY job-finder-BE/server/ .
 RUN npm run build
-COPY job-finder-BE/server/src/modules/generator/templates ./dist/modules/generator/templates
 
 FROM node:20-bullseye-slim AS production
 WORKDIR /app
