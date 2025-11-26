@@ -1,20 +1,5 @@
 import { useRouteError, isRouteErrorResponse, useNavigate } from "react-router-dom"
-
-/**
- * Checks if an error is caused by a failed chunk/module load
- */
-function isChunkLoadError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase()
-    return (
-      message.includes("failed to fetch dynamically imported module") ||
-      message.includes("loading chunk") ||
-      message.includes("loading css chunk") ||
-      message.includes("dynamically imported module")
-    )
-  }
-  return false
-}
+import { isChunkLoadError, RELOAD_KEY } from "@/lib/lazyWithRetry"
 
 /**
  * Route-level error boundary component for React Router.
@@ -28,7 +13,7 @@ export function RouteErrorBoundary() {
 
   const handleRetry = () => {
     // Clear the reload timestamp to allow a fresh reload attempt
-    sessionStorage.removeItem("chunk_reload_timestamp")
+    sessionStorage.removeItem(RELOAD_KEY)
     window.location.reload()
   }
 

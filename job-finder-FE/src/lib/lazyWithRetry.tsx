@@ -1,13 +1,13 @@
 import { lazy, type ComponentType } from "react"
 
-const RELOAD_KEY = "chunk_reload_timestamp"
+export const RELOAD_KEY = "chunk_reload_timestamp"
 const RELOAD_THRESHOLD_MS = 10000 // 10 seconds - prevent reload loops
 
 /**
  * Checks if an error is caused by a failed chunk/module load
  * This typically happens after deployments when cached HTML references old chunk hashes
  */
-function isChunkLoadError(error: unknown): boolean {
+export function isChunkLoadError(error: unknown): boolean {
   if (error instanceof Error) {
     const message = error.message.toLowerCase()
     return (
