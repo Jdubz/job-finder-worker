@@ -10,6 +10,7 @@ vi.mock("@/api", () => ({
   queueClient: {
     listQueueItems: vi.fn(),
     submitJob: vi.fn(),
+    submitCompany: vi.fn(),
     updateQueueItem: vi.fn(),
     deleteQueueItem: vi.fn(),
   },
@@ -99,5 +100,95 @@ describe("useQueueItems", () => {
     })
 
     expect(queueClient.deleteQueueItem).toHaveBeenCalledWith("queue-1")
+  })
+
+  describe("submitCompany", () => {
+    const mockCompanyQueueItem = {
+      id: "queue-company-1",
+      type: "company",
+      status: "pending",
+      url: "https://example.com",
+      company_name: "ExampleCo",
+      company_id: null,
+      source: "user_request",
+      created_at: "2025-01-01T00:00:00.000Z",
+      updated_at: "2025-01-01T00:00:00.000Z",
+    }
+
+    beforeEach(() => {
+      vi.mocked(queueClient.submitCompany).mockResolvedValue(mockCompanyQueueItem as any)
+    })
+
+    it("submits company without companyId for new companies", async () => {
+      const { result } = renderHook(() => useQueueItems())
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      await act(async () => {
+        await result.current.submitCompany({
+          companyName: "ExampleCo",
+          websiteUrl: "https://example.com",
+        })
+      })
+
+      expect(queueClient.submitCompany).toHaveBeenCalledWith({
+        companyName: "ExampleCo",
+        websiteUrl: "https://example.com",
+        companyId: undefined,
+        source: "user_request",
+      })
+    })
+
+    it("submits company with companyId for re-analysis", async () => {
+      const { result } = renderHook(() => useQueueItems())
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      await act(async () => {
+        await result.current.submitCompany({
+          companyName: "ExampleCo",
+          websiteUrl: "https://example.com",
+          companyId: "existing-company-123",
+        })
+      })
+
+      expect(queueClient.submitCompany).toHaveBeenCalledWith({
+        companyName: "ExampleCo",
+        websiteUrl: "https://example.com",
+        companyId: "existing-company-123",
+        source: "user_request",
+      })
+    })
+
+    it("adds submitted company to queue items", async () => {
+      const { result } = renderHook(() => useQueueItems())
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      const initialLength = result.current.queueItems.length
+
+      await act(async () => {
+        await result.current.submitCompany({
+          companyName: "ExampleCo",
+          websiteUrl: "https://example.com",
+        })
+      })
+
+      expect(result.current.queueItems.length).toBe(initialLength + 1)
+      expect(result.current.queueItems[0].id).toBe("queue-company-1")
+    })
+
+    it("returns the queue item id", async () => {
+      const { result } = renderHook(() => useQueueItems())
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      let returnedId: string | undefined
+
+      await act(async () => {
+        returnedId = await result.current.submitCompany({
+          companyName: "ExampleCo",
+          websiteUrl: "https://example.com",
+        })
+      })
+
+      expect(returnedId).toBe("queue-company-1")
+    })
   })
 })

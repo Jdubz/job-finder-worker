@@ -319,7 +319,7 @@ export function useConfigState() {
     createResetHandler(
       setQueueSettings,
       originalQueueSettings,
-      { processingTimeoutSeconds: 1800 },
+      DEFAULT_QUEUE_SETTINGS,
       setError,
       setSuccess
     )

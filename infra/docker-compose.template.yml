@@ -44,9 +44,6 @@ services:
       # Uses overridable env for visibility so ops can adjust without code changes.
       - "chatgpt.com:${CHATGPT_IPV4:-104.18.32.47}"
       - "www.chatgpt.com:${CHATGPT_IPV4:-104.18.32.47}"
-    depends_on:
-      sqlite-migrator:
-        condition: service_completed_successfully
     networks:
       - jobfinder
     labels:
@@ -83,32 +80,10 @@ services:
       - type: bind
         source: ./worker-data  # Change to your worker-data directory
         target: /app/data
-    depends_on:
-      sqlite-migrator:
-        condition: service_completed_successfully
     networks:
       - jobfinder
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
-
-  sqlite-migrator:
-    image: ghcr.io/jdubz/job-finder-worker/api:latest
-    container_name: job-finder-sqlite-migrator
-    restart: "no"
-    env_file:
-      - ../.env
-    command: ["node", "dist/scripts/migrate.js"]
-    environment:
-      NODE_ENV: production
-      DATABASE_PATH: /data/sqlite/jobfinder.db
-      JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
-    volumes:
-      # Update these paths to match your production server
-      - type: bind
-        source: ./data  # Change to your data directory
-        target: /data/sqlite
-    networks:
-      - jobfinder
 
   cloudflared:
     image: cloudflare/cloudflared:2024.10.0

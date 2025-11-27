@@ -12,7 +12,7 @@ export class PromptsRepository {
     return entry?.payload ?? DEFAULT_PROMPTS
   }
 
-  savePrompts(prompts: PromptConfig): PromptConfig {
-    return this.configRepo.upsert<PromptConfig>(PROMPTS_CONFIG_ID, prompts).payload
+  savePrompts(prompts: PromptConfig, updatedBy?: string): PromptConfig {
+    return this.configRepo.upsert<PromptConfig>(PROMPTS_CONFIG_ID, prompts, { updatedBy }).payload
   }
 }

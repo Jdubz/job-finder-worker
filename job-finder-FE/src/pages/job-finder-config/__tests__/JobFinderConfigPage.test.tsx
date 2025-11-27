@@ -64,10 +64,6 @@ const mockStopList = {
   excludedDomains: ["spam.com", "fake-jobs.com"],
 }
 
-const mockQueueSettings = {
-  processingTimeoutSeconds: 600,
-}
-
 const mockAISettings = {
   worker: {
     selected: {
@@ -101,6 +97,11 @@ const mockJobMatch = {
   userTimezone: -8,
   preferLargeCompanies: true,
   generateIntakeData: true,
+}
+
+const mockQueueSettings = {
+  processingTimeoutSeconds: 1800,
+  isProcessingEnabled: true,
 }
 
 const mockJobFilters = {
@@ -188,7 +189,7 @@ describe("JobFinderConfigPage", () => {
         expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
       })
 
-      // Check tabs (shortened names to fit 9-column layout)
+      // Check tabs (shortened names to fit 8-column layout)
       expect(screen.getByRole("tab", { name: "Stop List" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "Queue" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "AI" })).toBeInTheDocument()
@@ -375,63 +376,6 @@ describe("JobFinderConfigPage", () => {
     })
   })
 
-  describe("queue settings management", () => {
-    it("should switch to queue settings tab", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
-
-      await waitFor(() => {
-        expect(screen.getByText("Queue Processing Settings")).toBeInTheDocument()
-      })
-    })
-
-    it("should display current queue settings", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
-
-      await waitFor(() => {
-        expect(screen.getByDisplayValue("600")).toBeInTheDocument() // processingTimeoutSeconds
-      })
-    })
-
-    it("should update queue settings", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
-
-      const timeoutInput = await screen.findByLabelText("Processing Timeout (seconds)")
-      await user.clear(timeoutInput)
-      await user.type(timeoutInput, "900")
-
-      // Save changes
-      await user.click(screen.getByText("Save Changes"))
-
-      await waitFor(() => {
-        expect(configClient.updateQueueSettings).toHaveBeenCalled()
-      })
-    })
-  })
-
   describe("AI settings management", () => {
     it("should switch to AI settings tab", async () => {
       const user = userEvent.setup()
@@ -571,36 +515,6 @@ describe("JobFinderConfigPage", () => {
       })
     })
 
-    it("should show error when saving queue settings fails", async () => {
-      const user = userEvent.setup()
-      vi.mocked(configClient.updateQueueSettings).mockRejectedValue(new Error("Save failed"))
-
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
-
-      await waitFor(() => {
-        expect(screen.getByDisplayValue("600")).toBeInTheDocument()
-      })
-
-      // Update processing timeout
-      const timeoutInput = screen.getByDisplayValue("600")
-      await user.clear(timeoutInput)
-      await user.type(timeoutInput, "900")
-
-      // Save changes
-      await user.click(screen.getByText("Save Changes"))
-
-      await waitFor(() => {
-        expect(screen.getByText("Failed to save queue settings")).toBeInTheDocument()
-      })
-    })
-
     // Note: AI settings save error test skipped - Save button disabled without dropdown changes
   })
 
@@ -625,34 +539,6 @@ describe("JobFinderConfigPage", () => {
 
       await waitFor(() => {
         expect(screen.getByText("Stop list saved successfully!")).toBeInTheDocument()
-      })
-    })
-
-    it("should show success message when queue settings are saved", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
-
-      await waitFor(() => {
-        expect(screen.getByDisplayValue("600")).toBeInTheDocument()
-      })
-
-      // Update processing timeout
-      const timeoutInput = screen.getByDisplayValue("600")
-      await user.clear(timeoutInput)
-      await user.type(timeoutInput, "900")
-
-      // Save changes
-      await user.click(screen.getByText("Save Changes"))
-
-      await waitFor(() => {
-        expect(screen.getByText("Queue settings saved successfully!")).toBeInTheDocument()
       })
     })
 
@@ -709,11 +595,11 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
+      await user.click(screen.getByRole("tab", { name: "Match" }))
 
       await waitFor(() => {
         // Check form labels exist
-        expect(screen.getByLabelText("Processing Timeout (seconds)")).toBeInTheDocument()
+        expect(screen.getByLabelText("Minimum Match Score")).toBeInTheDocument()
       })
     })
 

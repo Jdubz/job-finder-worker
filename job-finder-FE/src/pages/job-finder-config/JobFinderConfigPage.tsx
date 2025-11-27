@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { useConfigState } from "./hooks/useConfigState"
@@ -112,111 +112,95 @@ export function JobFinderConfigPage() {
           <TabsTrigger value="personal">Personal</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="stop-list">
-          <StopListTab
-            isSaving={configState.isSaving}
-            stopList={configState.stopList}
-            newCompany={configState.newCompany}
-            setNewCompany={configState.setNewCompany}
-            newKeyword={configState.newKeyword}
-            setNewKeyword={configState.setNewKeyword}
-            newDomain={configState.newDomain}
-            setNewDomain={configState.setNewDomain}
-            hasStopListChanges={configState.hasStopListChanges}
-            handleAddCompany={configState.handleAddCompany}
-            handleRemoveCompany={configState.handleRemoveCompany}
-            handleAddKeyword={configState.handleAddKeyword}
-            handleRemoveKeyword={configState.handleRemoveKeyword}
-            handleAddDomain={configState.handleAddDomain}
-            handleRemoveDomain={configState.handleRemoveDomain}
-            handleSaveStopList={configState.handleSaveStopList}
-            handleResetStopList={configState.handleResetStopList}
-          />
-        </TabsContent>
+        <StopListTab
+          isSaving={configState.isSaving}
+          stopList={configState.stopList}
+          newCompany={configState.newCompany}
+          setNewCompany={configState.setNewCompany}
+          newKeyword={configState.newKeyword}
+          setNewKeyword={configState.setNewKeyword}
+          newDomain={configState.newDomain}
+          setNewDomain={configState.setNewDomain}
+          hasStopListChanges={configState.hasStopListChanges}
+          handleAddCompany={configState.handleAddCompany}
+          handleRemoveCompany={configState.handleRemoveCompany}
+          handleAddKeyword={configState.handleAddKeyword}
+          handleRemoveKeyword={configState.handleRemoveKeyword}
+          handleAddDomain={configState.handleAddDomain}
+          handleRemoveDomain={configState.handleRemoveDomain}
+          handleSaveStopList={configState.handleSaveStopList}
+          handleResetStopList={configState.handleResetStopList}
+        />
 
-        <TabsContent value="queue">
-          <QueueSettingsTab
-            isSaving={configState.isSaving}
-            queueSettings={configState.queueSettings}
-            setQueueSettings={configState.setQueueSettings}
-            hasQueueChanges={configState.hasQueueChanges}
-            handleSaveQueueSettings={configState.handleSaveQueueSettings}
-            handleResetQueueSettings={configState.handleResetQueueSettings}
-          />
-        </TabsContent>
+        <QueueSettingsTab
+          isSaving={configState.isSaving}
+          queueSettings={configState.queueSettings}
+          setQueueSettings={configState.setQueueSettings}
+          hasQueueChanges={configState.hasQueueChanges}
+          handleSaveQueueSettings={configState.handleSaveQueueSettings}
+          handleResetQueueSettings={configState.handleResetQueueSettings}
+        />
 
-        <TabsContent value="ai">
-          <AISettingsTab
-            isSaving={configState.isSaving}
-            aiSettings={configState.aiSettings}
-            setAISettings={configState.setAISettings}
-            hasAIChanges={configState.hasAIChanges}
-            handleSaveAISettings={configState.handleSaveAISettings}
-            handleResetAISettings={configState.handleResetAISettings}
-          />
-        </TabsContent>
+        <AISettingsTab
+          isSaving={configState.isSaving}
+          aiSettings={configState.aiSettings}
+          setAISettings={configState.setAISettings}
+          hasAIChanges={configState.hasAIChanges}
+          handleSaveAISettings={configState.handleSaveAISettings}
+          handleResetAISettings={configState.handleResetAISettings}
+        />
 
-        <TabsContent value="job-match">
-          <JobMatchTab
-            isSaving={configState.isSaving}
-            jobMatch={configState.jobMatch}
-            setJobMatch={configState.setJobMatch}
-            hasJobMatchChanges={configState.hasJobMatchChanges}
-            handleSaveJobMatch={configState.handleSaveJobMatch}
-            handleResetJobMatch={configState.handleResetJobMatch}
-          />
-        </TabsContent>
+        <JobMatchTab
+          isSaving={configState.isSaving}
+          jobMatch={configState.jobMatch}
+          setJobMatch={configState.setJobMatch}
+          hasJobMatchChanges={configState.hasJobMatchChanges}
+          handleSaveJobMatch={configState.handleSaveJobMatch}
+          handleResetJobMatch={configState.handleResetJobMatch}
+        />
 
-        <TabsContent value="filters">
-          <JobFiltersTab
-            isSaving={configState.isSaving}
-            currentJobFilters={configState.currentJobFilters}
-            hasJobFilterChanges={configState.hasJobFilterChanges}
-            updateJobFiltersState={configState.updateJobFiltersState}
-            handleSaveJobFilters={configState.handleSaveJobFilters}
-            handleResetJobFilters={configState.handleResetJobFilters}
-          />
-        </TabsContent>
+        <JobFiltersTab
+          isSaving={configState.isSaving}
+          currentJobFilters={configState.currentJobFilters}
+          hasJobFilterChanges={configState.hasJobFilterChanges}
+          updateJobFiltersState={configState.updateJobFiltersState}
+          handleSaveJobFilters={configState.handleSaveJobFilters}
+          handleResetJobFilters={configState.handleResetJobFilters}
+        />
 
-        <TabsContent value="tech">
-          <TechnologyRanksTab
-            isSaving={configState.isSaving}
-            currentTechRanks={configState.currentTechRanks}
-            newTechName={configState.newTechName}
-            setNewTechName={configState.setNewTechName}
-            newTechRank={configState.newTechRank}
-            setNewTechRank={configState.setNewTechRank}
-            newTechPoints={configState.newTechPoints}
-            setNewTechPoints={configState.setNewTechPoints}
-            hasTechRankChanges={configState.hasTechRankChanges}
-            updateTechRanksState={configState.updateTechRanksState}
-            handleAddTechnology={configState.handleAddTechnology}
-            handleSaveTechRanks={configState.handleSaveTechRanks}
-            handleResetTechRanks={configState.handleResetTechRanks}
-          />
-        </TabsContent>
+        <TechnologyRanksTab
+          isSaving={configState.isSaving}
+          currentTechRanks={configState.currentTechRanks}
+          newTechName={configState.newTechName}
+          setNewTechName={configState.setNewTechName}
+          newTechRank={configState.newTechRank}
+          setNewTechRank={configState.setNewTechRank}
+          newTechPoints={configState.newTechPoints}
+          setNewTechPoints={configState.setNewTechPoints}
+          hasTechRankChanges={configState.hasTechRankChanges}
+          updateTechRanksState={configState.updateTechRanksState}
+          handleAddTechnology={configState.handleAddTechnology}
+          handleSaveTechRanks={configState.handleSaveTechRanks}
+          handleResetTechRanks={configState.handleResetTechRanks}
+        />
 
-        <TabsContent value="scheduler">
-          <SchedulerTab
-            isSaving={configState.isSaving}
-            currentScheduler={configState.currentScheduler}
-            hasSchedulerChanges={configState.hasSchedulerChanges}
-            updateSchedulerState={configState.updateSchedulerState}
-            handleSaveScheduler={configState.handleSaveScheduler}
-            handleResetSchedulerSettings={configState.handleResetSchedulerSettings}
-          />
-        </TabsContent>
+        <SchedulerTab
+          isSaving={configState.isSaving}
+          currentScheduler={configState.currentScheduler}
+          hasSchedulerChanges={configState.hasSchedulerChanges}
+          updateSchedulerState={configState.updateSchedulerState}
+          handleSaveScheduler={configState.handleSaveScheduler}
+          handleResetSchedulerSettings={configState.handleResetSchedulerSettings}
+        />
 
-        <TabsContent value="personal">
-          <PersonalInfoTab
-            isSaving={configState.isSaving}
-            currentPersonalInfo={configState.currentPersonalInfo}
-            hasPersonalInfoChanges={configState.hasPersonalInfoChanges}
-            updatePersonalInfoState={configState.updatePersonalInfoState}
-            handleSavePersonalInfo={configState.handleSavePersonalInfo}
-            handleResetPersonalInfo={configState.handleResetPersonalInfo}
-          />
-        </TabsContent>
+        <PersonalInfoTab
+          isSaving={configState.isSaving}
+          currentPersonalInfo={configState.currentPersonalInfo}
+          hasPersonalInfoChanges={configState.hasPersonalInfoChanges}
+          updatePersonalInfoState={configState.updatePersonalInfoState}
+          handleSavePersonalInfo={configState.handleSavePersonalInfo}
+          handleResetPersonalInfo={configState.handleResetPersonalInfo}
+        />
       </Tabs>
     </div>
   )

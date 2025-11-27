@@ -1,4 +1,3 @@
-import type { TimestampLike } from "./time.types"
 import type { PersonalInfo } from "./generator.types"
 
 export interface JobFinderConfigEntry<TPayload = unknown> {
@@ -6,7 +5,6 @@ export interface JobFinderConfigEntry<TPayload = unknown> {
   payload: TPayload
   updatedAt: string
   updatedBy?: string | null
-  name?: string | null
 }
 
 export interface PromptConfig {
@@ -14,8 +12,6 @@ export interface PromptConfig {
   coverLetterGeneration: string
   jobScraping: string
   jobMatching: string
-  updatedAt?: TimestampLike
-  updatedBy?: string | null
 }
 
 // -----------------------------------------------------------
@@ -26,14 +22,11 @@ export interface StopList {
   excludedCompanies: string[]
   excludedKeywords: string[]
   excludedDomains: string[]
-  updatedAt?: TimestampLike
-  updatedBy?: string | null
 }
 
 export interface QueueSettings {
   processingTimeoutSeconds: number
-  updatedAt?: TimestampLike
-  updatedBy?: string | null
+  isProcessingEnabled?: boolean // Controls whether the worker processes queue items (defaults to true)
 }
 
 // -----------------------------------------------------------
@@ -96,8 +89,6 @@ export interface AISettings {
   documentGenerator: AISettingsSection
   /** Tiered provider/interface/model options validated against CLI/API */
   options: AIProviderOption[]
-  updatedAt?: TimestampLike
-  updatedBy?: string | null
 }
 
 // -----------------------------------------------------------
@@ -115,8 +106,6 @@ export interface JobMatchConfig {
   preferLargeCompanies: boolean
   /** Whether to generate resume intake data for matches */
   generateIntakeData: boolean
-  updatedAt?: TimestampLike
-  updatedBy?: string | null
 }
 
 export interface JobFiltersConfig {
@@ -160,8 +149,6 @@ export interface JobFiltersConfig {
     rejectDays?: number
     points?: number
   }
-  updatedAt?: TimestampLike
-  updatedBy?: string | null
 }
 
 export type TechnologyRank = {
@@ -178,14 +165,10 @@ export interface TechnologyRanksConfig {
   }
   extractedFromJobs?: number
   version?: string
-  updatedAt?: TimestampLike
-  updatedBy?: string | null
 }
 
 export interface SchedulerSettings {
   pollIntervalSeconds: number
-  updatedAt?: TimestampLike
-  updatedBy?: string | null
 }
 
 // -----------------------------------------------------------
@@ -228,8 +211,6 @@ export interface CompanyScoringConfig {
     high: number // Score threshold for high priority (default: 85)
     medium: number // Score threshold for medium priority (default: 70)
   }
-  updatedAt?: TimestampLike
-  updatedBy?: string | null
 }
 
 // -----------------------------------------------------------
@@ -265,8 +246,6 @@ export interface WorkerSettings {
     maxDescriptionPreviewLength: number // Max description length for remote keyword search (default: 500)
     maxCompanyInfoTextLength: number // Max length for company info text (default: 1000)
   }
-  updatedAt?: TimestampLike
-  updatedBy?: string | null
 }
 
 // -----------------------------------------------------------
@@ -312,6 +291,7 @@ export const DEFAULT_STOP_LIST: StopList = {
 
 export const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
   processingTimeoutSeconds: 1800,
+  isProcessingEnabled: true,
 }
 
 /** Canonical provider options built from AI_PROVIDER_MODELS */

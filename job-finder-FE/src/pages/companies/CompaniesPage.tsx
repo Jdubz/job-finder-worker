@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AlertCircle, CheckCircle2, Loader2, Plus, Building2, ExternalLink, Trash2, Search } from "lucide-react"
+import { AlertCircle, CheckCircle2, Loader2, Plus, Building2, ExternalLink, Trash2, Search, RefreshCw } from "lucide-react"
 import type { Company } from "@shared/types"
 
 function formatDate(date: unknown): string {
@@ -85,8 +85,11 @@ export function CompaniesPage() {
   const { companies, loading, deleteCompany, refetch, setFilters } = useCompanies({ limit: 100 })
   const { submitCompany } = useQueueItems()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isReanalyzing, setIsReanalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [reanalyzeError, setReanalyzeError] = useState<string | null>(null)
+  const [reanalyzeSuccess, setReanalyzeSuccess] = useState<string | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -144,6 +147,33 @@ export function CompaniesPage() {
       setSelectedCompany(null)
     } catch (err) {
       console.error("Failed to delete company:", err)
+    }
+  }
+
+  const handleReanalyze = async (company: Company) => {
+    if (!company.id || !company.website) {
+      setReanalyzeError("Cannot re-analyze company without website URL")
+      return
+    }
+    setReanalyzeError(null)
+    setReanalyzeSuccess(null)
+    try {
+      setIsReanalyzing(true)
+      await submitCompany({
+        companyName: company.name,
+        websiteUrl: company.website,
+        companyId: company.id,
+      })
+      setReanalyzeSuccess("Re-analysis task queued! Company data will be updated shortly.")
+      setTimeout(() => {
+        setReanalyzeSuccess(null)
+        setSelectedCompany(null)
+      }, 2000)
+    } catch (err) {
+      console.error("Failed to submit re-analysis:", err)
+      setReanalyzeError(err instanceof Error ? err.message : "Failed to queue re-analysis. Please try again.")
+    } finally {
+      setIsReanalyzing(false)
     }
   }
 
@@ -337,7 +367,13 @@ export function CompaniesPage() {
       </Card>
 
       {/* Detail Modal */}
-      <Dialog open={!!selectedCompany} onOpenChange={(open) => !open && setSelectedCompany(null)}>
+      <Dialog open={!!selectedCompany} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedCompany(null)
+          setReanalyzeError(null)
+          setReanalyzeSuccess(null)
+        }
+      }}>
         <DialogContent className="sm:max-w-[600px]">
           {selectedCompany && (
             <>
@@ -421,6 +457,20 @@ export function CompaniesPage() {
                     <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedCompany.updatedAt)}</p>
                   </div>
                 </div>
+
+                {reanalyzeError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{reanalyzeError}</AlertDescription>
+                  </Alert>
+                )}
+
+                {reanalyzeSuccess && (
+                  <Alert className="border-green-500 bg-green-50 text-green-900">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <AlertDescription>{reanalyzeSuccess}</AlertDescription>
+                  </Alert>
+                )}
               </div>
 
               <DialogFooter className="flex justify-between sm:justify-between">
@@ -431,9 +481,23 @@ export function CompaniesPage() {
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
                 </Button>
-                <Button variant="ghost" onClick={() => setSelectedCompany(null)}>
-                  Close
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleReanalyze(selectedCompany)}
+                    disabled={isReanalyzing || !selectedCompany.website}
+                  >
+                    {isReanalyzing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Re-analyze
+                  </Button>
+                  <Button variant="ghost" onClick={() => setSelectedCompany(null)}>
+                    Close
+                  </Button>
+                </div>
               </DialogFooter>
             </>
           )}
