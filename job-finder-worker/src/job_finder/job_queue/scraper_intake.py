@@ -11,7 +11,7 @@ Pre-filtering behavior:
 
 import logging
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, get_args
 
 from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.manager import QueueManager
@@ -92,6 +92,21 @@ class ScraperIntake:
         Returns:
             Number of jobs successfully added to queue
         """
+        allowed_sources = set(get_args(QueueSource))
+
+        # Defensive: some scrapers may pass a descriptive label instead of a
+        # QueueSource literal (e.g., "api:Anthropic Jobs"). Normalize to
+        # "scraper" to satisfy validation and keep the original label in
+        # metadata.
+        if source not in allowed_sources:
+            logger.warning(
+                "Invalid source '%s' provided to submit_jobs; defaulting to 'scraper'",
+                source,
+            )
+            if not source_label:
+                source_label = str(source)
+            source = "scraper"
+
         added_count = 0
         skipped_count = 0
         prefiltered_count = 0

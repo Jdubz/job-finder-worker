@@ -25,12 +25,13 @@ class SourceDiscovery:
     3. Validate configuration by test scraping
     """
 
-    def __init__(self, provider: AIProvider):
+    def __init__(self, provider: Optional[AIProvider]):
         """
         Initialize source discovery.
 
         Args:
-            provider: AI provider instance to use for analysis.
+            provider: AI provider instance to use for analysis (optional when
+                heuristic discovery is sufficient).
         """
         self.provider = provider
 
@@ -54,7 +55,7 @@ class SourceDiscovery:
 
             logger.info(f"Detected source type '{source_type}' for {url}")
 
-            # Step 2: Generate config using AI
+            # Step 2: Generate config using heuristics or AI
             config = self._generate_config(url, source_type, sample)
 
             if not config:
@@ -123,7 +124,7 @@ class SourceDiscovery:
 
     def _generate_config(self, url: str, source_type: str, sample: str) -> Optional[Dict[str, Any]]:
         """
-        Generate source config using AI analysis.
+        Generate source config using heuristics first, then AI if available.
 
         Args:
             url: Source URL
@@ -133,6 +134,31 @@ class SourceDiscovery:
         Returns:
             Config dictionary or None
         """
+
+        # Heuristic: Greenhouse API responses follow a consistent schema that we
+        # can map without AI. This avoids failed AI calls when credentials are
+        # missing or CLI arguments change.
+        heuristic_config = self._try_greenhouse_config(url, sample)
+        if heuristic_config:
+            return heuristic_config
+
+        # Heuristic: Standard RSS feeds can be mapped directly.
+        if source_type == "rss":
+            return {
+                "type": "rss",
+                "url": url,
+                "fields": {
+                    "title": "title",
+                    "url": "link",
+                    "description": "summary",
+                    "posted_date": "published",
+                },
+            }
+
+        if not self.provider:
+            logger.warning("AI provider unavailable; cannot generate config for %s", url)
+            return None
+
         prompt = self._build_prompt(url, source_type, sample)
 
         try:
@@ -141,6 +167,33 @@ class SourceDiscovery:
         except Exception as e:
             logger.error(f"Error generating config: {e}")
             return None
+
+    def _try_greenhouse_config(self, url: str, sample: str) -> Optional[Dict[str, Any]]:
+        """Return a deterministic config for Greenhouse API responses."""
+        if "boards-api.greenhouse.io" not in url:
+            return None
+
+        try:
+            data = json.loads(sample)
+        except json.JSONDecodeError:
+            return None
+
+        jobs = data.get("jobs") if isinstance(data, dict) else None
+        if jobs is None:
+            return None
+
+        return {
+            "type": "api",
+            "url": url,
+            "response_path": "jobs",
+            "fields": {
+                "title": "title",
+                "location": "location.name",
+                "description": "content",
+                "url": "absolute_url",
+                "posted_date": "updated_at",
+            },
+        }
 
     def _build_prompt(self, url: str, source_type: str, sample: str) -> str:
         """Build AI prompt for config generation."""
