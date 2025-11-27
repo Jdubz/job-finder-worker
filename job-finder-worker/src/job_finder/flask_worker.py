@@ -14,6 +14,7 @@ import sys
 import threading
 import concurrent.futures
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -36,6 +37,7 @@ from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.models import QueueStatus
 from job_finder.job_queue.processor import QueueItemProcessor
 from job_finder.storage import JobStorage
+from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.exceptions import InitializationError
@@ -70,7 +72,53 @@ worker_state = {
     "last_error": None,
     "poll_interval": 60,
     "iteration": 0,
+    "current_item_id": None,
 }
+
+
+def reset_stuck_processing_items(
+    queue_manager: QueueManager, processing_timeout: int, poll_interval: int
+) -> int:
+    """Move long-running processing items back to pending on startup.
+
+    Grace window is max(processing_timeout, 2 * poll_interval) to avoid
+    double-processing items that might still legitimately be running.
+    Returns the number of items reset.
+    """
+
+    grace = max(processing_timeout, poll_interval * 2)
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=grace)
+    cutoff_iso = cutoff.isoformat()
+
+    try:
+        with sqlite_connection(queue_manager.db_path) as conn:
+            cursor = conn.execute(
+                """
+                UPDATE job_queue
+                SET status = ?, updated_at = ?
+                WHERE status = ? AND datetime(updated_at) < ?
+                """,
+                (
+                    QueueStatus.PENDING.value,
+                    cutoff_iso,
+                    QueueStatus.PROCESSING.value,
+                    cutoff_iso,
+                ),
+            )
+            reset_count = cursor.rowcount
+    except Exception as exc:  # pragma: no cover - defensive
+        slogger.worker_status("startup_recovery_failed", {"error": str(exc)})
+        return 0
+
+    if reset_count:
+        slogger.worker_status(
+            "startup_recovered_processing",
+            {"count": reset_count, "cutoff": cutoff_iso},
+        )
+    else:
+        slogger.worker_status("startup_recovered_processing", {"count": 0})
+    return reset_count
+
 
 # Global components (initialized in main)
 queue_manager: Optional[QueueManager] = None
@@ -128,6 +176,16 @@ def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
         )
     except Exception as exc:  # pragma: no cover - defensive
         slogger.worker_status("job_match_settings_load_failed", {"error": str(exc)})
+
+
+def get_processing_timeout(config_loader: ConfigLoader) -> int:
+    """Lookup processing timeout with safe defaults."""
+    try:
+        queue_settings = config_loader.get_queue_settings()
+        return max(5, int(queue_settings.get("processingTimeoutSeconds", 1800)))
+    except Exception as exc:  # pragma: no cover - defensive
+        slogger.worker_status("queue_settings_load_failed", {"error": str(exc)})
+        return 1800
 
     # Load scheduler settings
     try:
@@ -239,54 +297,65 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
 
 
 def worker_loop():
-    """Main worker loop - runs in background thread."""
+    """Main worker loop - single thread drains the queue before sleeping."""
     global worker_state, queue_manager, processor  # noqa: F824
 
     slogger.worker_status("started")
     worker_state["running"] = True
     worker_state["iteration"] = 0
 
-    while not worker_state["shutdown_requested"]:
-        try:
-            worker_state["iteration"] += 1
-            worker_state["last_poll_time"] = time.time()
-
-            # Heartbeat
-            if queue_manager and queue_manager.notifier:
-                queue_manager.notifier.send_event(
-                    "heartbeat", {"iteration": worker_state["iteration"]}
-                )
-
-            # Apply remote commands before picking new work (HTTP fallback only if WS not connected)
-            if queue_manager and queue_manager.notifier and not queue_manager.notifier.ws_connected:
-                for cmd in queue_manager.notifier.poll_commands():
-                    queue_manager.handle_command({"event": f"command.{cmd.get('command')}", **cmd})
-
-            # Get pending items
-            items = queue_manager.get_pending_items()
-
-            # Refresh timeout from DB each loop (allows runtime changes)
+    # One executor reused for per-item timeouts while keeping single-threaded processing
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        while not worker_state["shutdown_requested"]:
             try:
-                queue_settings = config_loader.get_queue_settings()
-                processing_timeout = max(
-                    5, int(queue_settings.get("processingTimeoutSeconds", 1800))
-                )
-            except Exception as exc:  # pragma: no cover - defensive
-                slogger.worker_status("queue_settings_load_failed", {"error": str(exc)})
-                processing_timeout = 1800
+                worker_state["iteration"] += 1
+                worker_state["last_poll_time"] = time.time()
 
-            if items:
+                # Heartbeat
+                if queue_manager and queue_manager.notifier:
+                    queue_manager.notifier.send_event(
+                        "heartbeat", {"iteration": worker_state["iteration"]}
+                    )
+
+                # Apply remote commands before picking new work (HTTP fallback only if WS not connected)
+                if (
+                    queue_manager
+                    and queue_manager.notifier
+                    and not queue_manager.notifier.ws_connected
+                ):
+                    for cmd in queue_manager.notifier.poll_commands():
+                        queue_manager.handle_command(
+                            {"event": f"command.{cmd.get('command')}", **cmd}
+                        )
+
+                # Refresh timeout from DB each loop (allows runtime changes)
+                processing_timeout = get_processing_timeout(config_loader)
+
+                # Drain the queue before sleeping
+                items = queue_manager.get_pending_items()
+                if not items:
+                    slogger.worker_status(
+                        "no_pending_items",
+                        {
+                            "iteration": worker_state["iteration"],
+                            "total_processed": worker_state["items_processed_total"],
+                        },
+                    )
+                    time.sleep(worker_state["poll_interval"])
+                    continue
+
                 slogger.worker_status(
                     "processing_batch",
                     {"count": len(items), "iteration": worker_state["iteration"]},
                 )
 
-                # Process items
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                while items and not worker_state["shutdown_requested"]:
                     for item in items:
                         if worker_state["shutdown_requested"]:
                             slogger.worker_status("shutdown_in_progress")
                             break
+
+                        worker_state["current_item_id"] = item.id
 
                         future = executor.submit(processor.process_item, item)
                         try:
@@ -310,27 +379,26 @@ def worker_loop():
                                 f"Error processing item {item.id}: {e}", exc_info=True
                             )
                             worker_state["last_error"] = str(e)
+                        finally:
+                            worker_state["current_item_id"] = None
 
-                # Get updated stats
+                    # Fetch the next batch (if any) and continue immediately
+                    if worker_state["shutdown_requested"]:
+                        break
+                    items = queue_manager.get_pending_items()
+
+                # Queue drained; capture stats once and then sleep until next poll window
                 stats = queue_manager.get_queue_stats()
                 slogger.worker_status("batch_completed", {"queue_stats": str(stats)})
-            else:
-                slogger.worker_status(
-                    "no_pending_items",
-                    {
-                        "iteration": worker_state["iteration"],
-                        "total_processed": worker_state["items_processed_total"],
-                    },
-                )
+                if worker_state["shutdown_requested"]:
+                    break
+                time.sleep(worker_state["poll_interval"])
 
-            # Sleep before next poll
-            time.sleep(worker_state["poll_interval"])
-
-        except Exception as e:
-            slogger.logger.error(f"Error in worker loop: {e}", exc_info=True)
-            worker_state["last_error"] = str(e)
-            slogger.worker_status("error_recovery")
-            time.sleep(worker_state["poll_interval"])
+            except Exception as e:
+                slogger.logger.error(f"Error in worker loop: {e}", exc_info=True)
+                worker_state["last_error"] = str(e)
+                slogger.worker_status("error_recovery")
+                time.sleep(worker_state["poll_interval"])
 
     slogger.worker_status("stopped", {"total_processed": worker_state["items_processed_total"]})
     worker_state["running"] = False
@@ -382,6 +450,12 @@ def start_worker():
     if queue_manager is None or processor is None or config_loader is None or ai_matcher is None:
         config = load_config()
         queue_manager, processor, config_loader, ai_matcher, _ = initialize_components(config)
+
+    # Startup recovery: return stuck processing items to pending
+    processing_timeout = get_processing_timeout(config_loader)
+    reset_stuck_processing_items(
+        queue_manager, processing_timeout, worker_state.get("poll_interval", 60)
+    )
 
     worker_state["shutdown_requested"] = False
     worker_state["start_time"] = time.time()
@@ -506,6 +580,12 @@ def main():
                 worker_state["poll_interval"] = config.get("queue", {}).get("poll_interval", 60)
         else:
             worker_state["poll_interval"] = config.get("queue", {}).get("poll_interval", 60)
+
+        # Startup recovery: reset stale processing items before taking new work
+        processing_timeout = get_processing_timeout(config_loader)
+        reset_stuck_processing_items(
+            queue_manager, processing_timeout, worker_state.get("poll_interval", 60)
+        )
 
         # Start worker automatically
         worker_state["start_time"] = time.time()
