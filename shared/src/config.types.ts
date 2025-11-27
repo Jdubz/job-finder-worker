@@ -66,13 +66,16 @@ export const AI_PROVIDER_MODELS = {
   },
 } as const
 
-/** Provider availability status (populated dynamically on GET) */
-export interface AIProviderStatus {
-  provider: AIProviderType
-  interface: AIInterfaceType
-  enabled: boolean
-  reason?: string // e.g., "API key not set", "CLI not authenticated"
+export interface AIInterfaceOption {
+  value: AIInterfaceType
   models: string[]
+  enabled: boolean
+  reason?: string
+}
+
+export interface AIProviderOption {
+  value: AIProviderType
+  interfaces: AIInterfaceOption[]
 }
 
 /** Selected provider configuration */
@@ -82,12 +85,16 @@ export interface AIProviderSelection {
   model: string
 }
 
-/** AI Settings - provider configuration only */
-export interface AISettings {
-  /** Current provider selection */
+export interface AISettingsSection {
   selected: AIProviderSelection
-  /** Provider availability (populated on GET, read-only for client) */
-  providers: AIProviderStatus[]
+}
+
+/** AI Settings with worker and document generator sections */
+export interface AISettings {
+  worker: AISettingsSection
+  documentGenerator: AISettingsSection
+  /** Tiered provider/interface/model options validated against CLI/API */
+  options: AIProviderOption[]
   updatedAt?: TimestampLike
   updatedBy?: string | null
 }
@@ -304,13 +311,32 @@ export const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
   processingTimeoutSeconds: 1800,
 }
 
+/** Canonical provider options built from AI_PROVIDER_MODELS */
+export const AI_PROVIDER_OPTIONS: AIProviderOption[] = Object.entries(AI_PROVIDER_MODELS).map(
+  ([provider, interfaces]) => ({
+    value: provider as AIProviderType,
+    interfaces: Object.entries(interfaces).map(([iface, models]) => ({
+      value: iface as AIInterfaceType,
+      models: [...models],
+      enabled: true,
+    })),
+  })
+)
+
+export const DEFAULT_AI_SELECTION: AIProviderSelection = {
+  provider: "codex",
+  interface: "cli",
+  model: "gpt-4o",
+}
+
 export const DEFAULT_AI_SETTINGS: AISettings = {
-  selected: {
-    provider: "codex",
-    interface: "cli",
-    model: "gpt-4o-mini",
+  worker: {
+    selected: { ...DEFAULT_AI_SELECTION },
   },
-  providers: [], // Populated dynamically on GET
+  documentGenerator: {
+    selected: { ...DEFAULT_AI_SELECTION },
+  },
+  options: AI_PROVIDER_OPTIONS,
 }
 
 export const DEFAULT_JOB_MATCH: JobMatchConfig = {

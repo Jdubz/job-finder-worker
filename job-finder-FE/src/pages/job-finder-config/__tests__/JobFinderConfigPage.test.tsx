@@ -69,14 +69,29 @@ const mockQueueSettings = {
 }
 
 const mockAISettings = {
-  selected: {
-    provider: "codex" as const,
-    interface: "cli" as const,
-    model: "gpt-4o-mini",
+  worker: {
+    selected: {
+      provider: "codex" as const,
+      interface: "cli" as const,
+      model: "gpt-4o",
+    },
   },
-  providers: [
-    { provider: "codex" as const, interface: "cli" as const, enabled: true, models: ["gpt-4o-mini", "gpt-4o"] },
-    { provider: "claude" as const, interface: "api" as const, enabled: false, reason: "Missing API key", models: [] },
+  documentGenerator: {
+    selected: {
+      provider: "openai" as const,
+      interface: "api" as const,
+      model: "gpt-4o",
+    },
+  },
+  options: [
+    {
+      value: "codex" as const,
+      interfaces: [{ value: "cli" as const, models: ["gpt-4o", "gpt-4o-mini"], enabled: true }],
+    },
+    {
+      value: "openai" as const,
+      interfaces: [{ value: "api" as const, models: ["gpt-4o"], enabled: true }],
+    },
   ],
 }
 
@@ -462,9 +477,9 @@ describe("JobFinderConfigPage", () => {
 
       await waitFor(() => {
         expect(screen.getByText("AI Provider Configuration")).toBeInTheDocument()
-        expect(screen.getByLabelText("Provider")).toBeInTheDocument()
-        expect(screen.getByLabelText("Interface")).toBeInTheDocument()
-        expect(screen.getByLabelText("Model")).toBeInTheDocument()
+        expect(screen.getAllByLabelText("Provider")).toHaveLength(2)
+        expect(screen.getAllByLabelText("Interface")).toHaveLength(2)
+        expect(screen.getAllByLabelText("Model")).toHaveLength(2)
       })
     })
 

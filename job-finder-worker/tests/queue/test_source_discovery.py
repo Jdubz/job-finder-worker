@@ -47,8 +47,9 @@ def mock_dependencies() -> Dict[str, Any]:
     config_loader.get_technology_ranks.return_value = {"technologies": {}, "strikes": {}}
     config_loader.get_stop_list.return_value = _default_stop_list()
     config_loader.get_ai_settings.return_value = {
-        "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o-mini"},
-        "providers": [],
+        "worker": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
+        "documentGenerator": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
+        "options": [],
     }
 
     job_storage = MagicMock()

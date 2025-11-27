@@ -15,7 +15,6 @@ import type {
   AISettings,
   AIProviderType,
   AIInterfaceType,
-  AIProviderStatus,
   AIProviderSelection,
   JobMatchConfig,
 } from "./config.types"
@@ -25,7 +24,6 @@ export type {
   AISettings,
   AIProviderType,
   AIInterfaceType,
-  AIProviderStatus,
   AIProviderSelection,
   JobMatchConfig,
 } from "./config.types"

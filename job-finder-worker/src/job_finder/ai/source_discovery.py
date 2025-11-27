@@ -179,6 +179,7 @@ class SourceDiscovery:
             return None
 
         jobs = data.get("jobs") if isinstance(data, dict) else None
+        # An empty jobs list is valid (no openings); only bail when the key is absent/null
         if jobs is None:
             return None
 

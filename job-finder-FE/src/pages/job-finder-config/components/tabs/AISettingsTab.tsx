@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/select"
 import { TabCard } from "../shared"
 import type { AISettings, AIProviderType, AIInterfaceType } from "@shared/types"
-import { AI_PROVIDER_MODELS } from "@shared/types"
+import { DEFAULT_AI_SETTINGS } from "@shared/types"
 import type { ConfigState } from "../../hooks/useConfigState"
 
 type AISettingsTabProps = Pick<
@@ -42,98 +42,176 @@ export function AISettingsTab({
   handleSaveAISettings,
   handleResetAISettings,
 }: AISettingsTabProps) {
-  const selectedProvider = aiSettings?.selected?.provider ?? "codex"
-  const selectedInterface = aiSettings?.selected?.interface ?? "cli"
-  const selectedModel = aiSettings?.selected?.model ?? "gpt-4o-mini"
-  const providers = aiSettings?.providers ?? []
+  const options = aiSettings?.options ?? DEFAULT_AI_SETTINGS.options ?? []
+  const defaultSelection: AISettings["worker"]["selected"] =
+    DEFAULT_AI_SETTINGS?.worker?.selected ?? { provider: "codex", interface: "cli", model: "gpt-4o" }
 
-  // Get the current provider's status
-  const currentProviderStatus = providers.find(
-    (p) => p.provider === selectedProvider && p.interface === selectedInterface
-  )
+  const getSectionSelection = (section: "worker" | "documentGenerator") => {
+    const selected = aiSettings?.[section]?.selected
+    if (selected) return selected
 
-  // Get available interfaces for the selected provider
-  const getInterfacesForProvider = (provider: AIProviderType): AIInterfaceType[] => {
-    const interfaces = Object.keys(
-      AI_PROVIDER_MODELS[provider] ?? {}
-    ) as AIInterfaceType[]
-    return interfaces.length > 0 ? interfaces : ["api"]
+    const defaultSection =
+      (DEFAULT_AI_SETTINGS as Pick<AISettings, "worker" | "documentGenerator"> | undefined)?.[section]
+    if (defaultSection?.selected) return defaultSection.selected
+
+    return defaultSelection
   }
 
-  // Get available models for the selected provider/interface
-  const getModelsForSelection = (
+  const resolveProvider = (provider: AIProviderType): AIProviderOption | undefined =>
+    options.find((p) => p.value === provider)
+
+  const resolveInterface = (provider: AIProviderType, iface: AIInterfaceType) =>
+    resolveProvider(provider)?.interfaces.find((i) => i.value === iface)
+
+  const updateSelection = (
+    section: "worker" | "documentGenerator",
+    selection: { provider: AIProviderType; interface: AIInterfaceType; model: string }
+  ) => {
+    setAISettings((prev: AISettings | null) => {
+      const base = prev ?? DEFAULT_AI_SETTINGS
+      return {
+        ...base,
+        options,
+        [section]: {
+          selected: selection,
+        },
+      }
+    })
+  }
+
+  const chooseFallbackInterface = (provider: AIProviderType) => {
+    const providerOption = resolveProvider(provider)
+    if (!providerOption) return { interface: "api" as AIInterfaceType, model: "" }
+    const iface = providerOption.interfaces.find((i) => i.enabled) ?? providerOption.interfaces[0]
+    const model = iface?.models[0] ?? ""
+    return { interface: (iface?.value ?? "api") as AIInterfaceType, model }
+  }
+
+  const handleProviderChange = (section: "worker" | "documentGenerator", provider: AIProviderType) => {
+    const fallback = chooseFallbackInterface(provider)
+    updateSelection(section, {
+      provider,
+      interface: fallback.interface,
+      model: fallback.model,
+    })
+  }
+
+  const handleInterfaceChange = (
+    section: "worker" | "documentGenerator",
     provider: AIProviderType,
     iface: AIInterfaceType
-  ): string[] => {
-    const providerModels = AI_PROVIDER_MODELS[provider]
-    if (!providerModels) return []
-    const interfaceModels = (providerModels as Record<string, readonly string[]>)[iface]
-    return interfaceModels ? [...interfaceModels] : []
+  ) => {
+    const ifaceOption = resolveInterface(provider, iface)
+    const model = ifaceOption?.models[0] ?? ""
+    updateSelection(section, { provider, interface: iface, model })
   }
 
-  const availableInterfaces = getInterfacesForProvider(selectedProvider)
-  const availableModels = getModelsForSelection(selectedProvider, selectedInterface)
-
-  // Check if a provider is enabled (true if any interface for the provider is available)
-  const isProviderEnabled = (provider: AIProviderType): boolean => {
-    return providers.some((p) => p.provider === provider && p.enabled)
+  const handleModelChange = (
+    section: "worker" | "documentGenerator",
+    provider: AIProviderType,
+    iface: AIInterfaceType,
+    model: string
+  ) => {
+    updateSelection(section, { provider, interface: iface, model })
   }
 
-  // Get reason why provider is disabled
-  const getDisabledReason = (provider: AIProviderType): string | undefined => {
-    const status = providers.find((p) => p.provider === provider)
-    return status?.reason
+  const isProviderEnabled = (provider: AIProviderType) => {
+    const providerOption = resolveProvider(provider)
+    return providerOption?.interfaces.some((iface) => iface.enabled) ?? false
   }
 
-  const handleProviderChange = (newProvider: AIProviderType) => {
-    const newInterfaces = getInterfacesForProvider(newProvider)
-    const newInterface = newInterfaces[0] ?? "api"
-    const newModels = getModelsForSelection(newProvider, newInterface)
-    const newModel = newModels[0] ?? ""
-
-    setAISettings((prev: AISettings | null) =>
-      prev
-        ? {
-            ...prev,
-            selected: {
-              provider: newProvider,
-              interface: newInterface,
-              model: newModel,
-            },
-          }
-        : null
-    )
+  const getProviderDisabledReason = (provider: AIProviderType): string | undefined => {
+    const providerOption = resolveProvider(provider)
+    const firstReason = providerOption?.interfaces.find((iface) => !iface.enabled)?.reason
+    return firstReason
   }
 
-  const handleInterfaceChange = (newInterface: AIInterfaceType) => {
-    const newModels = getModelsForSelection(selectedProvider, newInterface)
-    const newModel = newModels[0] ?? ""
+  const renderSelector = (section: "worker" | "documentGenerator", title: string, description: string) => {
+    const selected = getSectionSelection(section)
+    const providerOption = resolveProvider(selected.provider)
+    const availableInterfaces = providerOption?.interfaces ?? []
+    const interfaceOption =
+      availableInterfaces.find((i) => i.value === selected.interface) ?? availableInterfaces[0]
+    const models = interfaceOption?.models ?? []
 
-    setAISettings((prev: AISettings | null) =>
-      prev
-        ? {
-            ...prev,
-            selected: {
-              ...prev.selected,
-              interface: newInterface,
-              model: newModel,
-            },
-          }
-        : null
-    )
-  }
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-6">
+          <div className="space-y-2">
+            <Label htmlFor={`${section}-provider`}>Provider</Label>
+            <Select
+              value={selected.provider}
+              onValueChange={(value) => handleProviderChange(section, value as AIProviderType)}
+            >
+              <SelectTrigger id={`${section}-provider`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(options.map((opt) => opt.value) as AIProviderType[]).map((provider) => {
+                  const enabled = isProviderEnabled(provider)
+                  const reason = getProviderDisabledReason(provider)
+                  return (
+                    <SelectItem key={provider} value={provider} disabled={!enabled}>
+                      {PROVIDER_LABELS[provider]}
+                      {!enabled && reason && (
+                        <span className="ml-2 text-xs text-gray-400">({reason})</span>
+                      )}
+                    </SelectItem>
+                  )
+                })}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500">{description}</p>
+          </div>
 
-  const handleModelChange = (newModel: string) => {
-    setAISettings((prev: AISettings | null) =>
-      prev
-        ? {
-            ...prev,
-            selected: {
-              ...prev.selected,
-              model: newModel,
-            },
-          }
-        : null
+          <div className="space-y-2">
+            <Label htmlFor={`${section}-interface`}>Interface</Label>
+            <Select
+              value={interfaceOption?.value ?? selected.interface}
+              onValueChange={(value) =>
+                handleInterfaceChange(section, selected.provider, value as AIInterfaceType)
+              }
+            >
+              <SelectTrigger id={`${section}-interface`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableInterfaces.map((iface) => (
+                  <SelectItem key={iface.value} value={iface.value} disabled={!iface.enabled}>
+                    {INTERFACE_LABELS[iface.value]}
+                    {!iface.enabled && iface.reason && (
+                      <span className="ml-2 text-xs text-gray-400">({iface.reason})</span>
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500">How to connect to the provider</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${section}-model`}>Model</Label>
+            <Select
+              value={selected.model}
+              onValueChange={(value) =>
+                handleModelChange(section, selected.provider, interfaceOption?.value ?? selected.interface, value)
+              }
+            >
+              <SelectTrigger id={`${section}-model`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {models.map((model) => (
+                  <SelectItem key={model} value={model}>
+                    {model}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500">Specific model version to use</p>
+          </div>
+        </div>
+      </div>
     )
   }
 
@@ -141,109 +219,24 @@ export function AISettingsTab({
     <TabsContent value="ai" className="space-y-4 mt-4">
       <TabCard
         title="AI Provider Configuration"
-        description="Select the AI provider, interface, and model for job matching and document generation"
+        description="Separate agents for the worker pipeline and document generator with validated provider/interface/model chains."
         hasChanges={hasAIChanges}
         isSaving={isSaving}
         onSave={handleSaveAISettings}
         onReset={handleResetAISettings}
       >
-        <div className="grid grid-cols-3 gap-6">
-          {/* Provider Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="provider">Provider</Label>
-            <Select value={selectedProvider} onValueChange={handleProviderChange}>
-              <SelectTrigger id="provider">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(AI_PROVIDER_MODELS) as AIProviderType[]).map(
-                  (provider) => {
-                    const enabled = isProviderEnabled(provider)
-                    const reason = getDisabledReason(provider)
-
-                    return (
-                      <SelectItem
-                        key={provider}
-                        value={provider}
-                        disabled={!enabled}
-                        className={!enabled ? "text-gray-400" : ""}
-                      >
-                        {PROVIDER_LABELS[provider]}
-                        {!enabled && reason && (
-                          <span className="ml-2 text-xs text-gray-400">({reason})</span>
-                        )}
-                      </SelectItem>
-                    )
-                  }
-                )}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-gray-500">
-              AI service provider for all AI operations
-            </p>
-          </div>
-
-          {/* Interface Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="interface">Interface</Label>
-            <Select
-              value={selectedInterface}
-              onValueChange={(v) => handleInterfaceChange(v as AIInterfaceType)}
-            >
-              <SelectTrigger id="interface">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {availableInterfaces.map((iface) => (
-                  <SelectItem key={iface} value={iface}>
-                    {INTERFACE_LABELS[iface]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-gray-500">
-              How to connect to the provider
-            </p>
-          </div>
-
-          {/* Model Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="model">Model</Label>
-            <Select value={selectedModel} onValueChange={handleModelChange}>
-              <SelectTrigger id="model">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {availableModels.map((model) => (
-                  <SelectItem key={model} value={model}>
-                    {model}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-gray-500">
-              Specific model version to use
-            </p>
-          </div>
+        <div className="space-y-8">
+          {renderSelector(
+            "worker",
+            "Worker AI agent",
+            "Provider chain for scraping, filtering, and queue processing."
+          )}
+          {renderSelector(
+            "documentGenerator",
+            "Document generator AI agent",
+            "Provider chain for resume/cover letter generation."
+          )}
         </div>
-
-        {/* Provider Status */}
-        {currentProviderStatus && (
-          <div className="mt-4 p-3 rounded-md bg-gray-50 dark:bg-gray-900">
-            <div className="flex items-center gap-2">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  currentProviderStatus.enabled ? "bg-green-500" : "bg-red-500"
-                }`}
-              />
-              <span className="text-sm">
-                {currentProviderStatus.enabled
-                  ? "Provider is enabled and ready"
-                  : `Provider unavailable: ${currentProviderStatus.reason}`}
-              </span>
-            </div>
-          </div>
-        )}
       </TabCard>
     </TabsContent>
   )

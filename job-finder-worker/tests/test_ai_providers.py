@@ -23,10 +23,12 @@ class TestCreateProviderFromConfig:
     def test_creates_codex_cli_provider(self):
         """Should create CodexCLIProvider for codex/cli combination."""
         ai_settings = {
-            "selected": {
-                "provider": "codex",
-                "interface": "cli",
-                "model": "gpt-4o-mini",
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-4o-mini",
+                }
             }
         }
 
@@ -40,10 +42,12 @@ class TestCreateProviderFromConfig:
     def test_creates_claude_api_provider(self, mock_anthropic):
         """Should create ClaudeProvider for claude/api combination."""
         ai_settings = {
-            "selected": {
-                "provider": "claude",
-                "interface": "api",
-                "model": "claude-sonnet-4-5-20250929",
+            "worker": {
+                "selected": {
+                    "provider": "claude",
+                    "interface": "api",
+                    "model": "claude-sonnet-4-5-20250929",
+                }
             }
         }
 
@@ -57,10 +61,12 @@ class TestCreateProviderFromConfig:
     def test_creates_openai_api_provider(self, mock_openai):
         """Should create OpenAIProvider for openai/api combination."""
         ai_settings = {
-            "selected": {
-                "provider": "openai",
-                "interface": "api",
-                "model": "gpt-4o",
+            "worker": {
+                "selected": {
+                    "provider": "openai",
+                    "interface": "api",
+                    "model": "gpt-4o",
+                }
             }
         }
 
@@ -77,14 +83,16 @@ class TestCreateProviderFromConfig:
         except ImportError:
             pytest.skip("google-generativeai package not installed")
 
-        with patch("google.generativeai.configure"), patch("google.generativeai.GenerativeModel"):
-            ai_settings = {
-                "selected": {
-                    "provider": "gemini",
-                    "interface": "api",
-                    "model": "gemini-2.0-flash",
+            with patch("google.generativeai.configure"), patch("google.generativeai.GenerativeModel"):
+                ai_settings = {
+                    "worker": {
+                        "selected": {
+                            "provider": "gemini",
+                            "interface": "api",
+                            "model": "gemini-2.0-flash",
+                        }
+                    }
                 }
-            }
 
             provider = create_provider_from_config(ai_settings)
 
@@ -94,10 +102,12 @@ class TestCreateProviderFromConfig:
     def test_raises_error_for_unsupported_provider_interface(self):
         """Should raise AIProviderError for unsupported combinations."""
         ai_settings = {
-            "selected": {
-                "provider": "unknown",
-                "interface": "api",
-                "model": "some-model",
+            "worker": {
+                "selected": {
+                    "provider": "unknown",
+                    "interface": "api",
+                    "model": "some-model",
+                }
             }
         }
 
@@ -107,10 +117,12 @@ class TestCreateProviderFromConfig:
     def test_raises_error_for_codex_api_combination(self):
         """Should raise error for codex/api (not supported)."""
         ai_settings = {
-            "selected": {
-                "provider": "codex",
-                "interface": "api",  # Codex only supports CLI
-                "model": "gpt-4o-mini",
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "api",  # Codex only supports CLI
+                    "model": "gpt-4o-mini",
+                }
             }
         }
 
@@ -120,10 +132,12 @@ class TestCreateProviderFromConfig:
     def test_raises_error_for_claude_cli_combination(self):
         """Should raise error for claude/cli (not supported)."""
         ai_settings = {
-            "selected": {
-                "provider": "claude",
-                "interface": "cli",  # Claude only supports API
-                "model": "claude-sonnet-4-5-20250929",
+            "worker": {
+                "selected": {
+                    "provider": "claude",
+                    "interface": "cli",  # Claude only supports API
+                    "model": "claude-sonnet-4-5-20250929",
+                }
             }
         }
 
@@ -136,24 +150,26 @@ class TestCreateProviderFromConfig:
 
         provider = create_provider_from_config(ai_settings)
 
-        # Defaults to codex/cli/gpt-4o-mini
+        # Defaults to codex/cli/gpt-4o
         assert isinstance(provider, CodexCLIProvider)
-        assert provider.model == "gpt-4o-mini"
+        assert provider.model == "gpt-4o"
 
     def test_uses_defaults_for_partial_selected(self):
         """Should use defaults for missing fields in selected config."""
         ai_settings = {
-            "selected": {
-                "provider": "codex",
-                # interface and model missing
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    # interface and model missing
+                }
             }
         }
 
         provider = create_provider_from_config(ai_settings)
 
-        # Defaults interface to cli and model to gpt-4o-mini
+        # Defaults interface to cli and model to gpt-4o
         assert isinstance(provider, CodexCLIProvider)
-        assert provider.model == "gpt-4o-mini"
+        assert provider.model == "gpt-4o"
 
 
 class TestCodexCLIProvider:
@@ -167,7 +183,7 @@ class TestCodexCLIProvider:
     def test_init_with_default_model(self):
         """Should use default model when not specified."""
         provider = CodexCLIProvider()
-        assert provider.model == "gpt-4o-mini"
+        assert provider.model == "gpt-4o"
 
     def test_init_with_timeout(self):
         """Should accept custom timeout."""
@@ -179,7 +195,7 @@ class TestCodexCLIProvider:
         """Should successfully generate with codex CLI."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='{"choices": [{"message": {"content": "Test response"}}]}',
+            stdout='{"choices": [{"text": "Test response"}]}',
             stderr="",
         )
 

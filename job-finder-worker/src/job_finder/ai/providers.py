@@ -208,7 +208,7 @@ _PROVIDER_MAP: Dict[tuple, type] = {
 }
 
 
-def create_provider_from_config(ai_settings: Dict[str, Any]) -> AIProvider:
+def create_provider_from_config(ai_settings: Dict[str, Any], section: str = "worker") -> AIProvider:
     """
     Create an AI provider from the ai-settings configuration.
 
@@ -217,19 +217,26 @@ def create_provider_from_config(ai_settings: Dict[str, Any]) -> AIProvider:
     to API interfaces for cloud providers to avoid CLI breakage.
     """
 
-    selected = ai_settings.get("selected") or {}
+    selected = {}
+
+    # Prefer sectioned configuration (worker/documentGenerator)
+    section_payload = ai_settings.get(section) if isinstance(ai_settings, dict) else None
+    if isinstance(section_payload, dict) and isinstance(section_payload.get("selected"), dict):
+        selected = section_payload.get("selected") or {}
+    else:
+        selected = ai_settings.get("selected") or {}
 
     # Legacy support: allow top-level provider/model keys
     if not selected and any(k in ai_settings for k in ("provider", "model", "interface")):
         selected = {
             "provider": ai_settings.get("provider", "codex"),
             "interface": ai_settings.get("interface"),
-            "model": ai_settings.get("model", "gpt-4o-mini"),
+            "model": ai_settings.get("model", "gpt-4o"),
         }
 
     provider_type = selected.get("provider", "codex")
     interface_type = selected.get("interface")
-    model = selected.get("model", "gpt-4o-mini")
+    model = selected.get("model", "gpt-4o")
 
     # Prefer CLI for codex (only supported interface here); otherwise default to API
     if not interface_type:
