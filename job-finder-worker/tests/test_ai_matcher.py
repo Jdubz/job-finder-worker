@@ -239,6 +239,24 @@ class TestAnalyzeMatch:
         assert "Python" in analysis["matched_skills"]
         mock_provider.generate.assert_called_once()
 
+    def test_analyze_match_propagates_ai_provider_error(
+        self, mock_provider, mock_profile, sample_job
+    ):
+        """Test that AIProviderError is re-raised instead of being caught.
+
+        CRITICAL: AI infrastructure failures must bubble up to cause task FAILURE,
+        not be silently swallowed and cause task to be SKIPPED.
+        """
+        from job_finder.exceptions import AIProviderError
+
+        mock_provider.generate.side_effect = AIProviderError("Codex CLI failed")
+
+        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
+
+        # Should raise AIProviderError, not return None
+        with pytest.raises(AIProviderError, match="Codex CLI failed"):
+            matcher._analyze_match(sample_job)
+
     def test_analyze_match_extracts_from_markdown(self, mock_provider, mock_profile, sample_job):
         """Test JSON extraction from markdown code blocks."""
         mock_provider.generate.return_value = """
@@ -306,6 +324,24 @@ class TestGenerateIntakeData:
         assert intake_data is not None
         assert intake_data["job_id"] == "123"
         assert "Python" in intake_data["skills_priority"]
+
+    def test_generate_intake_data_propagates_ai_provider_error(
+        self, mock_provider, mock_profile, sample_job
+    ):
+        """Test that AIProviderError is re-raised instead of being caught.
+
+        CRITICAL: AI infrastructure failures must bubble up to cause task FAILURE.
+        """
+        from job_finder.exceptions import AIProviderError
+
+        match_analysis = {"match_score": 85, "matched_skills": ["Python"]}
+        mock_provider.generate.side_effect = AIProviderError("Codex CLI timed out")
+
+        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
+
+        # Should raise AIProviderError, not return None
+        with pytest.raises(AIProviderError, match="Codex CLI timed out"):
+            matcher._generate_intake_data(sample_job, match_analysis)
 
     def test_generate_intake_data_optimizes_size(self, mock_provider, mock_profile, sample_job):
         """Test intake data size optimization is called."""

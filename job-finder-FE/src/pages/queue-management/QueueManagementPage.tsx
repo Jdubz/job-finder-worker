@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import type { QueueItem, QueueStats } from "@shared/types"
-import { useQueueItems } from "@/hooks/useQueueItems"
+import { useQueueItems, type ConnectionStatus } from "@/hooks/useQueueItems"
 import { configClient } from "@/api/config-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,6 +24,7 @@ import {
   getCompanyName,
   getDomain,
   getJobTitle,
+  getScrapeTitle,
   getSourceLabel,
   getStageLabel,
   getTaskTypeLabel,
@@ -34,7 +35,7 @@ type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skippe
 export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
 
-  const { queueItems, loading, error, updateQueueItem, refetch } = useQueueItems({ limit: 100 })
+  const { queueItems, loading, error, connectionStatus, updateQueueItem, refetch } = useQueueItems({ limit: 100 })
 
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null)
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
@@ -242,6 +243,7 @@ export function QueueManagementPage() {
               </span>
               {isProcessingEnabled === false ? "Paused" : "Live"}
             </Badge>
+            <ConnectionStatusBadge status={connectionStatus} />
           </div>
           <p className="text-muted-foreground mt-2">
             Monitor and manage the job processing queue in real-time. Retries are temporarily
@@ -296,6 +298,7 @@ export function QueueManagementPage() {
             <StatPill label="Pending" value={queueStats.pending} tone="amber" />
             <StatPill label="Processing" value={queueStats.processing} tone="blue" />
             <StatPill label="Failed" value={queueStats.failed} tone="red" />
+            <StatPill label="Skipped" value={queueStats.skipped} tone="gray" />
             <StatPill label="Success" value={queueStats.success} tone="green" />
             <StatPill
               label="Success Rate"
@@ -350,7 +353,8 @@ export function QueueManagementPage() {
               <TableBody>
                 {displayItems.map((item) => {
                   if (!item.id) return null
-                  const title = getJobTitle(item) || getDomain(item.url) || "Untitled task"
+                  const title =
+                    getJobTitle(item) || getScrapeTitle(item) || getDomain(item.url) || "Untitled task"
                   const company = getCompanyName(item)
                   const source = getSourceLabel(item)
                   const typeLabel = getTaskTypeLabel(item)
@@ -518,7 +522,7 @@ export function QueueManagementPage() {
   )
 }
 
-type StatTone = "default" | "amber" | "blue" | "red" | "green"
+type StatTone = "default" | "amber" | "blue" | "red" | "green" | "gray"
 
 interface StatPillProps {
   label: string
@@ -533,6 +537,7 @@ function StatPill({ label, value, tone = "default" }: StatPillProps) {
     blue: "border-blue-200 bg-blue-50 text-blue-800",
     red: "border-red-200 bg-red-50 text-red-800",
     green: "border-green-200 bg-green-50 text-green-800",
+    gray: "border-gray-200 bg-gray-50 text-gray-700",
   }
 
   return (
@@ -582,5 +587,42 @@ function DetailField({ label, value }: DetailFieldProps) {
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-sm text-foreground">{value}</p>
     </div>
+  )
+}
+
+interface ConnectionStatusBadgeProps {
+  status: ConnectionStatus
+}
+
+function ConnectionStatusBadge({ status }: ConnectionStatusBadgeProps) {
+  if (status === "connected") return null
+
+  const config = {
+    connecting: {
+      bg: "bg-blue-50",
+      text: "text-blue-700",
+      border: "border-blue-200",
+      label: "Connecting...",
+    },
+    disconnected: {
+      bg: "bg-red-50",
+      text: "text-red-700",
+      border: "border-red-200",
+      label: "Disconnected",
+    },
+  }[status]
+
+  return (
+    <Badge variant="outline" className={`flex items-center gap-1 ${config.bg} ${config.text} ${config.border}`}>
+      <span className="relative flex h-2 w-2">
+        {status === "connecting" && (
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+        )}
+        <span className={`relative inline-flex rounded-full h-2 w-2 ${
+          status === "connecting" ? "bg-blue-500" : "bg-red-500"
+        }`}></span>
+      </span>
+      {config.label}
+    </Badge>
   )
 }

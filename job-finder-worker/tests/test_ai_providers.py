@@ -195,10 +195,11 @@ class TestCodexCLIProvider:
 
     @patch("subprocess.run")
     def test_generate_success(self, mock_run):
-        """Should successfully generate with codex CLI."""
+        """Should successfully generate with codex CLI chat/completions."""
+        # Response format for chat/completions API
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='{"choices": [{"text": "Test response"}]}',
+            stdout='{"choices": [{"message": {"content": "Test response"}}]}',
             stderr="",
         )
 
@@ -207,6 +208,66 @@ class TestCodexCLIProvider:
 
         assert result == "Test response"
         mock_run.assert_called_once()
+
+    @patch("subprocess.run")
+    def test_generate_uses_correct_cli_command(self, mock_run):
+        """Should invoke 'codex api chat/completions' with correct arguments.
+
+        CRITICAL: This test prevents regressions like using 'completion' instead
+        of 'chat/completions', which breaks the CLI invocation entirely.
+        """
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"choices": [{"message": {"content": "Test response"}}]}',
+            stderr="",
+        )
+
+        provider = CodexCLIProvider(model="gpt-4o")
+        provider.generate("Test prompt")
+
+        # Extract the command that was called
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]  # First positional arg is the command list
+
+        # Verify the exact command structure
+        assert cmd[0] == "codex", "Must use codex binary"
+        assert cmd[1] == "api", "Must use api subcommand"
+        assert cmd[2] == "chat/completions", "MUST use chat/completions, NOT completion"
+        assert "-m" in cmd, "Must specify model with -m flag"
+        assert "-d" in cmd, "Must pass data with -d flag"
+
+    @patch("subprocess.run")
+    def test_generate_passes_correct_request_body(self, mock_run):
+        """Should pass messages array in chat/completions format."""
+        import json as json_module
+
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"choices": [{"message": {"content": "Test response"}}]}',
+            stderr="",
+        )
+
+        provider = CodexCLIProvider(model="gpt-4o")
+        provider.generate("Test prompt", max_tokens=500, temperature=0.5)
+
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]
+
+        # Find the data argument (after -d flag)
+        d_index = cmd.index("-d")
+        body_json = cmd[d_index + 1]
+        body = json_module.loads(body_json)
+
+        # Verify chat/completions format (messages array, not prompt string)
+        assert "messages" in body, "Must use messages array for chat/completions"
+        assert "prompt" not in body, "Should NOT use prompt (that's for completion API)"
+        assert body["model"] == "gpt-4o"
+        assert body["max_tokens"] == 500
+        assert body["temperature"] == 0.5
+        assert len(body["messages"]) == 2  # system + user message
+        assert body["messages"][0]["role"] == "system"
+        assert body["messages"][1]["role"] == "user"
+        assert body["messages"][1]["content"] == "Test prompt"
 
     @patch("subprocess.run")
     def test_generate_cli_error(self, mock_run):
@@ -232,6 +293,34 @@ class TestCodexCLIProvider:
         provider = CodexCLIProvider()
 
         with pytest.raises(AIProviderError, match="timed out"):
+            provider.generate("Test prompt")
+
+    @patch("subprocess.run")
+    def test_generate_empty_content_raises_error(self, mock_run):
+        """Should raise AIProviderError when CLI returns empty content."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"choices": [{"message": {"content": ""}}]}',
+            stderr="",
+        )
+
+        provider = CodexCLIProvider()
+
+        with pytest.raises(AIProviderError, match="empty content"):
+            provider.generate("Test prompt")
+
+    @patch("subprocess.run")
+    def test_generate_malformed_json_raises_error(self, mock_run):
+        """Should raise AIProviderError on malformed JSON response."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="not valid json",
+            stderr="",
+        )
+
+        provider = CodexCLIProvider()
+
+        with pytest.raises(AIProviderError, match="parse.*JSON"):
             provider.generate("Test prompt")
 
 

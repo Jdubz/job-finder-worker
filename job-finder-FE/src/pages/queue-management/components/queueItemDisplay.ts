@@ -55,6 +55,45 @@ export function getJobTitle(item: QueueItem): string | undefined {
   )
 }
 
+/**
+ * Get a descriptive title for scrape items based on their scrape_config.
+ * Falls back to result_message if available.
+ */
+export function getScrapeTitle(item: QueueItem): string | undefined {
+  if (item.type !== "scrape") return undefined
+
+  const config = item.scrape_config
+  if (config) {
+    const parts: string[] = []
+
+    // Target matches info
+    if (typeof config.target_matches === "number" && config.target_matches > 0) {
+      parts.push(`target: ${config.target_matches} jobs`)
+    }
+
+    // Max sources info
+    if (typeof config.max_sources === "number" && config.max_sources > 0) {
+      parts.push(`max ${config.max_sources} sources`)
+    }
+
+    // Specific sources
+    if (Array.isArray(config.source_ids) && config.source_ids.length > 0) {
+      parts.push(`${config.source_ids.length} source${config.source_ids.length > 1 ? "s" : ""}`)
+    }
+
+    if (parts.length > 0) {
+      return parts.join(", ")
+    }
+  }
+
+  // Fall back to result_message if available (e.g., "50 jobs enqueued")
+  if (item.result_message) {
+    return item.result_message
+  }
+
+  return undefined
+}
+
 export function getCompanyName(item: QueueItem): string | undefined {
   const state = item.pipeline_state ?? {}
   const metadata = item.metadata ?? {}

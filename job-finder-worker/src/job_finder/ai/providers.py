@@ -147,11 +147,10 @@ class GeminiProvider(AIProvider):
 
 class CodexCLIProvider(AIProvider):
     """
-    Codex CLI provider: uses the `codex` CLI instead of HTTP APIs.
+    Codex CLI provider: uses the `codex` CLI (pro account session) instead of per-request API keys.
 
-    Only supports models that the logged-in Codex account can access. We target
-    the `completion` subcommand (supported by Codex CLI) rather than
-    `chat/completions`, which is not available in this environment.
+    Requires the `codex` binary on PATH and that the user is already authenticated
+    (via `codex login`).
     """
 
     def __init__(self, model: str = "gpt-4o", timeout: int = 60):
@@ -161,7 +160,10 @@ class CodexCLIProvider(AIProvider):
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
         body = {
             "model": self.model,
-            "prompt": prompt,
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant for job processing."},
+                {"role": "user", "content": prompt},
+            ],
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
@@ -171,7 +173,7 @@ class CodexCLIProvider(AIProvider):
                 [
                     "codex",
                     "api",
-                    "completion",
+                    "chat/completions",
                     "-m",
                     self.model,
                     "-d",
@@ -188,7 +190,7 @@ class CodexCLIProvider(AIProvider):
                 )
 
             parsed = json.loads(result.stdout)
-            content = parsed.get("choices", [{}])[0].get("text", "")
+            content = (parsed.get("choices") or [{}])[0].get("message", {}).get("content", "")
             if not content:
                 raise AIProviderError("Codex CLI returned empty content")
             return content
