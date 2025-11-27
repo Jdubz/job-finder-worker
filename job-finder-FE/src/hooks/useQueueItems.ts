@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { queueClient } from "@/api"
 import type { QueueItem } from "@shared/types"
 import { API_CONFIG } from "@/config/api"
 import { consumeSavedProviderState, registerStateProvider } from "@/lib/restart-persistence"
+import { getStoredAuthToken } from "@/lib/auth-storage"
 
 interface UseQueueItemsOptions {
   limit?: number
@@ -26,6 +27,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<Error | null>(null)
   const savedQueueItems = useMemo(() => consumeSavedProviderState<QueueItem[]>("queue-items"), [])
+  const streamAbortRef = useRef<AbortController | null>(null)
 
   const normalizeQueueItem = useCallback((item: QueueItem): QueueItem => {
     const normalize = (value: unknown): Date | null => {
@@ -68,30 +70,23 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   }, [limit, normalizeQueueItem, status])
 
   useEffect(() => {
-    let eventSource: EventSource | null = null
     let cancelled = false
 
-    const startStream = async () => {
-      // Kick off an initial fetch so UI is responsive if SSE fails
-      await fetchQueueItems()
+    type QueueEventData = Partial<{
+      items: QueueItem[]
+      queueItem: QueueItem
+      queueItemId: string
+    }> &
+      Record<string, unknown>
 
-      if (typeof EventSource === "undefined") {
+    const handleEvent = (eventName: string, data?: QueueEventData) => {
+      if (cancelled) return
+      if (eventName === "snapshot" && data?.items) {
+        const items = data.items ?? []
+        setQueueItems(items.map(normalizeQueueItem))
+        setLoading(false)
         return
       }
-
-      const url = `${API_CONFIG.baseUrl}/queue/events`
-      eventSource = new EventSource(url, { withCredentials: true })
-
-      eventSource.addEventListener("snapshot", (event) => {
-        if (cancelled) return
-        try {
-          const payload = JSON.parse((event as MessageEvent).data) as { items: QueueItem[] }
-          setQueueItems(payload.items.map(normalizeQueueItem))
-          setLoading(false)
-        } catch {
-          // ignore malformed snapshots
-        }
-      })
 
       const upsert = (queueItem: QueueItem) => {
         setQueueItems((prev) => {
@@ -104,37 +99,88 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         })
       }
 
-      eventSource.addEventListener("item.created", (event) => {
-        try {
-          const payload = JSON.parse((event as MessageEvent).data) as { queueItem: QueueItem }
-          if (payload.queueItem) upsert(payload.queueItem)
-        } catch {
-          /* noop */
-        }
-      })
+      if (eventName === "item.created" && data?.queueItem) {
+        upsert(data.queueItem)
+      } else if (eventName === "item.updated" && data?.queueItem) {
+        upsert(data.queueItem)
+      } else if (eventName === "item.deleted" && data?.queueItemId) {
+        setQueueItems((prev) => prev.filter((i) => i.id !== data.queueItemId))
+      }
+    }
 
-      eventSource.addEventListener("item.updated", (event) => {
-        try {
-          const payload = JSON.parse((event as MessageEvent).data) as { queueItem: QueueItem }
-          if (payload.queueItem) upsert(payload.queueItem)
-        } catch {
-          /* noop */
-        }
-      })
+    const startStream = async () => {
+      // Kick off an initial fetch so UI is responsive if SSE fails
+      await fetchQueueItems()
 
-      eventSource.addEventListener("item.deleted", (event) => {
-        try {
-          const payload = JSON.parse((event as MessageEvent).data) as { queueItemId?: string }
-          if (!payload.queueItemId) return
-          setQueueItems((prev) => prev.filter((i) => i.id !== payload.queueItemId))
-        } catch {
-          /* noop */
-        }
-      })
+      const token = getStoredAuthToken()
+      if (!token) return
 
-      eventSource.onerror = () => {
-        // Drop back to manual fetch; EventSource will auto-reconnect
-        fetchQueueItems()
+      try {
+        const controller = new AbortController()
+        streamAbortRef.current = controller
+        const res = await fetch(`${API_CONFIG.baseUrl}/queue/events`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+          signal: controller.signal,
+        })
+
+        if (!res.ok || !res.body) {
+          await fetchQueueItems()
+          return
+        }
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder("utf-8")
+        let buffer = ""
+
+        const processBuffer = () => {
+          let idx: number
+          while ((idx = buffer.indexOf("\n\n")) !== -1) {
+            const raw = buffer.slice(0, idx)
+            buffer = buffer.slice(idx + 2)
+            if (!raw.trim()) continue
+            let eventName = "message"
+            const dataLines: string[] = []
+            raw.split("\n").forEach((line) => {
+              if (line.startsWith("event:")) {
+                eventName = line.slice(6).trim()
+              } else if (line.startsWith("data:")) {
+                dataLines.push(line.slice(5).trim())
+              }
+            })
+            const dataStr = dataLines.join("\n")
+            if (!dataStr) continue
+            try {
+              const parsed = JSON.parse(dataStr)
+              handleEvent(eventName, parsed)
+            } catch {
+              /* ignore malformed event */
+            }
+          }
+        }
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          processBuffer()
+        }
+        buffer += decoder.decode()
+        processBuffer()
+      } catch (error) {
+        // Skip reconnects if intentionally aborted during unmount
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+
+        if (!cancelled) {
+          console.error("Queue event stream disconnected; retrying shortly", error)
+          fetchQueueItems()
+          // Attempt to reconnect after backoff
+          setTimeout(() => {
+            if (!cancelled) void startStream()
+          }, 5000)
+        }
       }
     }
 
@@ -142,7 +188,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
 
     return () => {
       cancelled = true
-      eventSource?.close()
+      streamAbortRef.current?.abort()
     }
   }, [fetchQueueItems, normalizeQueueItem])
 

@@ -40,6 +40,7 @@ export function RestartOverlay() {
   const lifecycleUrl = `${apiBase}/api/lifecycle/events`
 
   const restartTriggered = useRef(false)
+  const errorStreak = useRef(0)
 
   useEffect(() => {
     if (typeof EventSource === "undefined") return
@@ -70,8 +71,22 @@ export function RestartOverlay() {
       }
     })
 
-    // If the lifecycle stream errors out, it likely means the server is restarting.
-    source.onerror = () => handleRestart("lifecycle-stream-disconnected")
+    // Reset error streak once connection is open again
+    source.onopen = () => {
+      errorStreak.current = 0
+    }
+
+    // Only treat repeated failures + failing healthcheck as a restart
+    source.onerror = async () => {
+      errorStreak.current += 1
+      // quick health probe to avoid false positives from transient network hiccups
+      const healthy = await fetch(healthUrl, { cache: "no-store" })
+        .then((r) => r.ok)
+        .catch(() => false)
+      if (!healthy && errorStreak.current >= 2) {
+        handleRestart("lifecycle stream disconnected & healthcheck failed")
+      }
+    }
 
     return () => {
       source.close()
