@@ -9,7 +9,7 @@
  * testing works without restarting the dev server.
  */
 
-function getApiBaseUrl(): string {
+export function resolveApiBaseUrl(): string {
   // If explicitly set, use that
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "")
@@ -31,10 +31,10 @@ function getApiBaseUrl(): string {
  */
 export const API_CONFIG = {
   get baseUrl() {
-    return `${getApiBaseUrl()}/api`
+    return `${resolveApiBaseUrl()}/api`
   },
   get generatorBaseUrl() {
-    return `${getApiBaseUrl()}/api/generator`
+    return `${resolveApiBaseUrl()}/api/generator`
   },
   timeout: 30000,
   retryAttempts: 3,
@@ -47,10 +47,10 @@ export const API_CONFIG = {
  */
 export const api = {
   get baseUrl() {
-    return `${getApiBaseUrl()}/api`
+    return `${resolveApiBaseUrl()}/api`
   },
   get generatorBaseUrl() {
-    return `${getApiBaseUrl()}/api/generator`
+    return `${resolveApiBaseUrl()}/api/generator`
   },
 }
 
@@ -84,6 +84,6 @@ export function getAbsoluteArtifactUrl(relativeUrl: string | null | undefined): 
   if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) {
     return relativeUrl
   }
-  // Use getApiBaseUrl (without /api suffix) since artifact URLs already include /api
-  return `${getApiBaseUrl()}${relativeUrl}`
+  // Use resolveApiBaseUrl (without /api suffix) since artifact URLs already include /api
+  return `${resolveApiBaseUrl()}${relativeUrl}`
 }

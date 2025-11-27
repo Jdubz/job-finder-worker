@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { AlertCircle, CheckCircle2, Loader2, Plus } from "lucide-react"
 import { QueueStatusTable } from "./components/QueueStatusTable"
+import { useRestartPersistedState } from "@/hooks/useRestartPersistedState"
 
 export function JobFinderPage() {
   const { user } = useAuth()
@@ -27,9 +28,9 @@ export function JobFinderPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
 
   // Form state
-  const [jobUrl, setJobUrl] = useState("")
-  const [companyName, setCompanyName] = useState("")
-  const [companyUrl, setCompanyUrl] = useState("")
+  const [jobUrl, setJobUrl] = useRestartPersistedState("job-finder:job-url", "")
+  const [companyName, setCompanyName] = useRestartPersistedState("job-finder:company-name", "")
+  const [companyUrl, setCompanyUrl] = useRestartPersistedState("job-finder:company-url", "")
 
   const resetForm = () => {
     setJobUrl("")

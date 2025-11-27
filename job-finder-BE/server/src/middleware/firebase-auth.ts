@@ -55,7 +55,9 @@ function issueSession(res: Response, user: AuthenticatedUser) {
 
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
-    sameSite: "lax",
+    // Allow the API domain to set/read the session cookie when called from the
+    // frontend domain (job-finder.joshwentworth.com).
+    sameSite: IS_DEVELOPMENT ? "lax" : "none",
     secure: !IS_DEVELOPMENT,
     maxAge: SESSION_TTL_DAYS * 24 * 60 * 60 * 1000
   })
@@ -116,7 +118,11 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
       return next()
     }
     // Expired/invalid session - clear the cookie for the client
-    res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: "lax", secure: !IS_DEVELOPMENT })
+    res.clearCookie(SESSION_COOKIE, {
+      httpOnly: true,
+      sameSite: IS_DEVELOPMENT ? "lax" : "none",
+      secure: !IS_DEVELOPMENT
+    })
   }
 
   const authHeader = req.headers.authorization

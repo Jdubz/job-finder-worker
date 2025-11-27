@@ -37,6 +37,23 @@ interface NormalizedError {
 }
 
 const normalizeError = (err: unknown): NormalizedError => {
+  // Special-case SQLite "database is locked" / SQLITE_BUSY so callers get a retryable 503
+  const isSqliteBusy =
+    typeof err === 'object' &&
+    err !== null &&
+    (['SQLITE_BUSY', 'SQLITE_LOCKED'].includes((err as { code?: string }).code ?? '') ||
+      /database is locked/i.test((err as { message?: string }).message ?? ''))
+
+  if (isSqliteBusy) {
+    const definition = getApiErrorDefinition(ApiErrorCode.SERVICE_UNAVAILABLE)
+    return {
+      code: ApiErrorCode.SERVICE_UNAVAILABLE,
+      message: 'Database is busy, please retry shortly',
+      status: definition.httpStatus,
+      details: { code: (err as { code?: string }).code, message: (err as { message?: string }).message }
+    }
+  }
+
   if (err instanceof ApiHttpError) {
     return {
       code: err.code,
