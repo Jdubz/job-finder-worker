@@ -67,6 +67,11 @@ export function normalizeAssetPath(url: string): string | null {
 
 // Fetch image and convert to base64 data URI for pdfmake
 async function fetchImageAsBase64(url: string, log: Logger): Promise<string | null> {
+  // Already a data URI; use as-is
+  if (url.startsWith('data:image/')) {
+    return url
+  }
+
   try {
     const localPath = normalizeAssetPath(url)
 
