@@ -398,6 +398,8 @@ class StrikeFilterEngine:
                 "remote-first",
                 "remote friendly",
                 "remote-friendly",
+                "remotely",
+                "hiring remote",
             ]
         )
 
