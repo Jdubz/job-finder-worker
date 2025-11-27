@@ -261,7 +261,7 @@ def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_
 
 
 def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sample_job_item):
-    """Job analyze should proceed when company dependency is active."""
+    """Job analyze should proceed when company is active (state-based check)."""
 
     class DummyResult:
         match_score = 95
@@ -280,7 +280,8 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
         "culture": "Culture text",
     }
 
-    mock_managers["companies_manager"].get_company_by_id.return_value = active_company
+    # State-based: we look up company by name, not by tracking dependency chain
+    mock_managers["companies_manager"].get_company.return_value = active_company
     processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
 
     sample_job_item.pipeline_state = {
@@ -291,7 +292,7 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
             "description": "A" * 200,
         },
         "filter_result": {"passed": True},
-        "company_dependency": {"company_id": "comp-1"},
+        # No company_dependency needed - state-based lookup by company name
     }
 
     processor.job_processor._do_job_analyze(sample_job_item)
