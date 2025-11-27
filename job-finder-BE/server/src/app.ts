@@ -21,6 +21,7 @@ import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
 import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError, apiErrorHandler } from './middleware/api-error'
+import { buildAuthRouter } from './routes/auth.routes'
 
 export function buildApp() {
   const app = express()
@@ -100,6 +101,9 @@ export function buildApp() {
 
   // Worker routes use worker token auth (not Google OAuth) for worker-to-API communication
   app.use('/api/queue/worker', buildWorkerRouter())
+
+  // Auth/session utilities
+  app.use('/api/auth', buildAuthRouter())
 
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)
