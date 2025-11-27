@@ -474,15 +474,19 @@ export function SourcesPage() {
                 {getSourceUrl(selectedSource) && (
                   <div>
                     <Label className="text-muted-foreground text-xs uppercase tracking-wide">Source URL</Label>
-                    <a
-                      href={getSourceUrl(selectedSource)!}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center text-blue-600 hover:underline mt-1"
-                    >
-                      {getSourceUrl(selectedSource)}
-                      <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
-                    </a>
+                    {getSourceUrl(selectedSource) ? (
+                      <a
+                        href={getSourceUrl(selectedSource)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center text-blue-600 hover:underline mt-1"
+                      >
+                        {getSourceUrl(selectedSource)}
+                        <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground mt-1 inline-block">Not provided</span>
+                    )}
                   </div>
                 )}
 
