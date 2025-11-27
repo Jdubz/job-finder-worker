@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react"
+import { useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
+import { useCompanies } from "@/hooks/useCompanies"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +15,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import {
   Table,
@@ -24,10 +24,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AlertCircle, CheckCircle2, Loader2, Plus, Building2, Clock, ExternalLink } from "lucide-react"
-import type { QueueItem, QueueStatus } from "@shared/types"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { AlertCircle, CheckCircle2, Loader2, Plus, Building2, ExternalLink, Trash2, Search } from "lucide-react"
+import type { Company } from "@shared/types"
 
-function formatRelativeTime(date: unknown): string {
+function formatDate(date: unknown): string {
   if (!date) return "—"
   let d: Date
   if (date instanceof Date) {
@@ -39,43 +46,45 @@ function formatRelativeTime(date: unknown): string {
   } else {
     return "—"
   }
-  const now = new Date()
-  const diffMs = now.getTime() - d.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  if (diffMins < 1) return "just now"
-  if (diffMins < 60) return `${diffMins}m ago`
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  const diffDays = Math.floor(diffHours / 24)
-  return `${diffDays}d ago`
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 }
 
-const statusVariants: Record<QueueStatus, string> = {
+const tierColors: Record<string, string> = {
+  S: "bg-purple-100 text-purple-800",
+  A: "bg-blue-100 text-blue-800",
+  B: "bg-green-100 text-green-800",
+  C: "bg-yellow-100 text-yellow-800",
+  D: "bg-gray-100 text-gray-800",
+}
+
+const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
-  processing: "bg-blue-100 text-blue-800",
-  success: "bg-green-100 text-green-800",
+  in_progress: "bg-blue-100 text-blue-800",
+  complete: "bg-green-100 text-green-800",
   failed: "bg-red-100 text-red-800",
-  skipped: "bg-gray-100 text-gray-800",
-  filtered: "bg-orange-100 text-orange-800",
 }
 
 export function CompaniesPage() {
   const { user } = useAuth()
-  const { queueItems, loading, submitCompany } = useQueueItems()
+  const { companies, loading, deleteCompany, refetch, setFilters } = useCompanies({ limit: 100 })
+  const { submitCompany } = useQueueItems()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [tierFilter, setTierFilter] = useState<string>("all")
 
   // Form state
   const [companyName, setCompanyName] = useState("")
   const [websiteUrl, setWebsiteUrl] = useState("")
-
-  // Filter to only show company tasks
-  const companyTasks = useMemo(
-    () => queueItems.filter((item) => item.type === "company"),
-    [queueItems]
-  )
 
   const resetForm = () => {
     setCompanyName("")
@@ -105,11 +114,12 @@ export function CompaniesPage() {
         websiteUrl: websiteUrl.trim(),
       })
 
-      setSuccess("Company discovery task created!")
+      setSuccess("Company discovery task created! The company will appear here once analyzed.")
       setTimeout(() => {
         resetForm()
-        setIsModalOpen(false)
-      }, 1500)
+        setIsAddModalOpen(false)
+        refetch()
+      }, 2000)
     } catch (err) {
       console.error("Failed to submit company:", err)
       setError(err instanceof Error ? err.message : "Failed to submit. Please try again.")
@@ -117,6 +127,35 @@ export function CompaniesPage() {
       setIsSubmitting(false)
     }
   }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this company?")) return
+    try {
+      await deleteCompany(id)
+      setSelectedCompany(null)
+    } catch (err) {
+      console.error("Failed to delete company:", err)
+    }
+  }
+
+  const handleSearch = () => {
+    setFilters({
+      search: searchTerm || undefined,
+      tier: tierFilter !== "all" ? (tierFilter as Company["tier"]) : undefined,
+      limit: 100,
+    })
+  }
+
+  // Filter companies locally for search (in addition to server-side filtering)
+  const filteredCompanies = companies.filter((company) => {
+    if (searchTerm && !company.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return false
+    }
+    if (tierFilter !== "all" && company.tier !== tierFilter) {
+      return false
+    }
+    return true
+  })
 
   if (!user) {
     return (
@@ -129,7 +168,7 @@ export function CompaniesPage() {
         </div>
         <Alert>
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Sign in to discover companies.</AlertDescription>
+          <AlertDescription>Sign in to view companies.</AlertDescription>
         </Alert>
       </div>
     )
@@ -142,22 +181,20 @@ export function CompaniesPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Companies</h1>
           <p className="text-muted-foreground mt-2">
-            Discover companies and analyze their tech stack and job boards
+            Companies discovered and analyzed for job opportunities
           </p>
         </div>
+        <Button onClick={() => setIsAddModalOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Company
+        </Button>
         <Dialog
-          open={isModalOpen}
+          open={isAddModalOpen}
           onOpenChange={(open) => {
-            setIsModalOpen(open)
+            setIsAddModalOpen(open)
             if (!open) resetForm()
           }}
         >
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Company
-            </Button>
-          </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Discover Company</DialogTitle>
@@ -228,66 +265,92 @@ export function CompaniesPage() {
         </Dialog>
       </div>
 
-      {/* Company Tasks List */}
+      {/* Companies List */}
       <Card>
         <CardHeader>
-          <CardTitle>Company Discovery Tasks</CardTitle>
-          <CardDescription>Track company analysis and job board discovery</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Tracked Companies</CardTitle>
+              <CardDescription>
+                Click on a company to view details
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Search companies..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="w-[200px]"
+              />
+              <Select value={tierFilter} onValueChange={setTierFilter}>
+                <SelectTrigger className="w-[100px]">
+                  <SelectValue placeholder="Tier" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tiers</SelectItem>
+                  <SelectItem value="S">S Tier</SelectItem>
+                  <SelectItem value="A">A Tier</SelectItem>
+                  <SelectItem value="B">B Tier</SelectItem>
+                  <SelectItem value="C">C Tier</SelectItem>
+                  <SelectItem value="D">D Tier</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="icon" onClick={handleSearch}>
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : companyTasks.length === 0 ? (
+          ) : filteredCompanies.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No company discovery tasks yet.</p>
-              <p className="text-sm">Click "Add Company" to get started.</p>
+              <p>No companies found.</p>
+              <p className="text-sm">Click "Add Company" to discover new companies.</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Company</TableHead>
-                  <TableHead className="hidden md:table-cell">Website</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Tier</TableHead>
+                  <TableHead className="hidden md:table-cell">Industry</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Updated</TableHead>
-                  <TableHead className="hidden md:table-cell">Result</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {companyTasks.map((item: QueueItem) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">
-                      {item.company_name || "Unknown"}
+                {filteredCompanies.map((company: Company) => (
+                  <TableRow
+                    key={company.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setSelectedCompany(company)}
+                  >
+                    <TableCell className="font-medium">{company.name}</TableCell>
+                    <TableCell>
+                      {company.tier ? (
+                        <Badge className={tierColors[company.tier] ?? tierColors.D}>
+                          {company.tier}
+                        </Badge>
+                      ) : (
+                        <Badge className={tierColors.D}>—</Badge>
+                      )}
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {item.url ? (
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center text-blue-600 hover:underline"
-                        >
-                          {new URL(item.url).hostname}
-                          <ExternalLink className="ml-1 h-3 w-3" />
-                        </a>
+                    <TableCell className="hidden md:table-cell text-muted-foreground">
+                      {company.industry || "—"}
+                    </TableCell>
+                    <TableCell>
+                      {company.analysisStatus ? (
+                        <Badge className={statusColors[company.analysisStatus] ?? statusColors.pending}>
+                          {company.analysisStatus.replace("_", " ")}
+                        </Badge>
                       ) : (
                         "—"
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={statusVariants[item.status]}>{item.status}</Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <span className="flex items-center text-muted-foreground">
-                        <Clock className="mr-1 h-3 w-3" />
-                        {formatRelativeTime(item.updated_at)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell max-w-[200px] truncate">
-                      {item.result_message || "—"}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -296,6 +359,121 @@ export function CompaniesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Detail Modal */}
+      <Dialog open={!!selectedCompany} onOpenChange={(open) => !open && setSelectedCompany(null)}>
+        <DialogContent className="sm:max-w-[600px]">
+          {selectedCompany && (
+            <>
+              <DialogHeader>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <DialogTitle className="text-xl">{selectedCompany.name}</DialogTitle>
+                    <DialogDescription className="mt-1">
+                      {selectedCompany.industry || "Industry not specified"}
+                    </DialogDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {selectedCompany.analysisStatus && (
+                      <Badge className={statusColors[selectedCompany.analysisStatus] ?? statusColors.pending}>
+                        {selectedCompany.analysisStatus.replace("_", " ")}
+                      </Badge>
+                    )}
+                    {selectedCompany.tier && (
+                      <Badge className={tierColors[selectedCompany.tier] ?? tierColors.D}>
+                        {selectedCompany.tier}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {/* Website */}
+                {selectedCompany.website && (
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Website</Label>
+                    <a
+                      href={selectedCompany.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center text-blue-600 hover:underline mt-1"
+                    >
+                      {selectedCompany.website}
+                      <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
+                    </a>
+                  </div>
+                )}
+
+                {/* Tech Stack */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Tech Stack</Label>
+                  {selectedCompany.techStack && selectedCompany.techStack.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {selectedCompany.techStack.map((tech) => (
+                        <Badge key={tech} variant="outline" className="text-xs">
+                          {tech}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground">No tech stack information available</p>
+                  )}
+                </div>
+
+                {/* Description if available */}
+                {selectedCompany.description && (
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Description</Label>
+                    <p className="mt-1 text-sm">{selectedCompany.description}</p>
+                  </div>
+                )}
+
+                {/* Headquarters/Location if available */}
+                {selectedCompany.headquarters && (
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Headquarters</Label>
+                    <p className="mt-1">{selectedCompany.headquarters}</p>
+                  </div>
+                )}
+
+                {/* Size if available */}
+                {selectedCompany.size && (
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company Size</Label>
+                    <p className="mt-1">{selectedCompany.size}</p>
+                  </div>
+                )}
+
+                {/* Timestamps */}
+                <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Created</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedCompany.createdAt)}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Updated</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedCompany.updatedAt)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter className="flex justify-between sm:justify-between">
+                <Button
+                  variant="destructive"
+                  onClick={() => selectedCompany.id && handleDelete(selectedCompany.id)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
+                <Button variant="ghost" onClick={() => setSelectedCompany(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
