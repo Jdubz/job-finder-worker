@@ -242,16 +242,3 @@ class QueueItemProcessor:
     ) -> Optional[str]:
         """Delegate to company processor."""
         return self.company_processor._detect_job_board(company_website, html_content)
-
-    def _calculate_company_priority(
-        self,
-        company_name: str,
-        extracted_info: Dict[str, Any],
-        tech_stack: list,
-        job_board_url: Optional[str] = None,
-    ) -> tuple:
-        """Delegate to company processor."""
-        # Note: job_board_url parameter is kept for backward compatibility but not used
-        return self.company_processor._calculate_company_priority(
-            company_name, extracted_info, tech_stack
-        )

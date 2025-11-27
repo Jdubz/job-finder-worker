@@ -55,8 +55,6 @@ class CompaniesManager:
             "headquartersLocation": row.get("headquarters_location"),
             "hasPortlandOffice": bool(row.get("has_portland_office", 0)),
             "techStack": tech_stack,
-            "tier": row.get("tier"),
-            "priorityScore": row.get("priority_score"),
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
         }
@@ -140,9 +138,6 @@ class CompaniesManager:
             or company_data.get("headquarters_location"),
             "has_portland_office": 1 if has_portland_office else 0,
             "tech_stack": json.dumps(tech_stack),
-            "tier": company_data.get("tier"),
-            "priority_score": company_data.get("priorityScore")
-            or company_data.get("priority_score"),
         }
 
         if company_id:
@@ -214,8 +209,6 @@ class CompaniesManager:
             "companySizeCategory": None,
             "headquartersLocation": "",
             "industry": "",
-            "tier": "D",
-            "priorityScore": 0,
         }
         company_id = self.save_company(stub_data)
         stub_data["id"] = company_id
