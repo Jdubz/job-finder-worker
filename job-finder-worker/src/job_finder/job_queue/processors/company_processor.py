@@ -147,9 +147,6 @@ class CompanyProcessor(BaseProcessor):
                 f"Fetched {len(html_content)} pages from company website",
             )
 
-            if company_id:
-                self.companies_manager.update_analysis_progress(company_id, fetch=True)
-
             # Spawn next pipeline step (EXTRACT)
             self.queue_manager.spawn_next_pipeline_step(
                 current_item=item,
@@ -221,9 +218,6 @@ class CompanyProcessor(BaseProcessor):
                 QueueStatus.SUCCESS,
                 "Company information extracted successfully",
             )
-
-            if company_id:
-                self.companies_manager.update_analysis_progress(company_id, extract=True)
 
             # Spawn next pipeline step (ANALYZE)
             self.queue_manager.spawn_next_pipeline_step(
@@ -307,9 +301,6 @@ class CompanyProcessor(BaseProcessor):
                 f"Company analyzed (Tier {tier}, Score: {priority_score})",
             )
 
-            if company_id:
-                self.companies_manager.update_analysis_progress(company_id, analyze=True)
-
             # If job board found, spawn SOURCE_DISCOVERY
             if job_board_url:
                 _, company_display = format_company_name(company_name)
@@ -360,12 +351,6 @@ class CompanyProcessor(BaseProcessor):
                 "techStack": analysis_result.get("tech_stack", []),
                 "tier": analysis_result.get("tier", "D"),
                 "priorityScore": analysis_result.get("priority_score", 0),
-                "analysis_progress": {
-                    "fetch": True,
-                    "extract": True,
-                    "analyze": True,
-                    "save": True,
-                },
             }
 
             if company_id:

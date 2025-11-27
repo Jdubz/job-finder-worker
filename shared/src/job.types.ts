@@ -305,9 +305,6 @@ export interface Company {
   /** Company size category (large/medium/small) */
   companySizeCategory?: "large" | "medium" | "small" | null
 
-  /** Year founded */
-  founded?: number | null
-
   /** Detected technology stack */
   techStack?: string[]
 

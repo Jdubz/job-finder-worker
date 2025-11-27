@@ -54,7 +54,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
     config_loader = ConfigLoader(str(db_path))
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
 
-    # Pre-populate an ACTIVE company so the job pipeline doesn't spawn a company task
+    # Pre-populate a company with good data so the job pipeline doesn't spawn a company task
     # Note: name_lower must match normalize_company_name("Comprehensive Co") = "comprehensive"
     now_iso = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(db_path) as conn:
@@ -62,18 +62,17 @@ def test_job_pipeline_full_path(tmp_path: Path):
             """
             INSERT INTO companies (
                 id, name, name_lower, website, about, culture,
-                analysis_status, created_at, updated_at
+                created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "test-company-id",
                 "Comprehensive Co",
                 "comprehensive",  # normalized: " Co" suffix is stripped
                 "https://comprehensive.example.com",
-                "We build pipelines",
-                "Remote-first",
-                "active",
+                "We build pipelines - this is a sufficiently long about section to pass has_good_company_data check",
+                "Remote-first culture with flexible hours",
                 now_iso,
                 now_iso,
             ),
@@ -143,11 +142,10 @@ def test_job_pipeline_full_path(tmp_path: Path):
     processed = _process_all(queue_manager, processor, limit=25)
     assert processed > 0
 
-    # Verify queue item reached terminal SUCCESS with save stage
+    # Verify queue item reached terminal SUCCESS with match result
     final_item = queue_manager.get_item(item_id)
     assert final_item is not None
     assert final_item.status == QueueStatus.SUCCESS
-    assert final_item.pipeline_stage == "save"
     assert final_item.pipeline_state
     assert final_item.pipeline_state["match_result"]["match_score"] == 92
 

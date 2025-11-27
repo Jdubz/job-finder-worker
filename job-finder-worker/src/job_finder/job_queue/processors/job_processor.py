@@ -131,12 +131,11 @@ class JobProcessor(BaseProcessor):
                 "scrape_method": source.get("name") if source else "generic",
             }
 
-            # Mark this step complete and set pipeline_stage
+            # Mark this step complete
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.SUCCESS,
                 "Job data scraped successfully",
-                pipeline_stage="scrape",
             )
 
             # Re-spawn same URL with updated state
@@ -205,7 +204,6 @@ class JobProcessor(BaseProcessor):
                     QueueStatus.FILTERED,
                     f"Rejected by filters: {rejection_summary}",
                     scraped_data={"job_data": job_data, "filter_result": rejection_data},
-                    pipeline_stage="filter",
                 )
                 return
 
@@ -220,7 +218,6 @@ class JobProcessor(BaseProcessor):
                 item.id,
                 QueueStatus.SUCCESS,
                 "Passed filtering",
-                pipeline_stage="filter",
             )
 
             # Re-spawn same URL with filter result
@@ -292,7 +289,6 @@ class JobProcessor(BaseProcessor):
                     item.id,
                     QueueStatus.SKIPPED,
                     f"Job score below threshold (< {self.ai_matcher.min_match_score})",
-                    pipeline_stage="analyze",
                 )
                 return
 
@@ -307,7 +303,6 @@ class JobProcessor(BaseProcessor):
                 item.id,
                 QueueStatus.SUCCESS,
                 f"AI analysis complete (score: {result.match_score})",
-                pipeline_stage="analyze",
             )
 
             # Re-spawn same URL with match result
@@ -374,7 +369,7 @@ class JobProcessor(BaseProcessor):
                 "job_data": job_data,
                 "waiting_for_company_id": company_id,
             }
-            self.queue_manager.requeue_with_state(item.id, updated_state, "wait_company")
+            self.queue_manager.requeue_with_state(item.id, updated_state)
             logger.info(
                 "JOB_ANALYZE: Waiting for company data %s (id=%s)",
                 company_name_clean,
@@ -492,7 +487,6 @@ class JobProcessor(BaseProcessor):
                 item.id,
                 QueueStatus.SUCCESS,
                 f"Job saved successfully (ID: {doc_id}, Score: {result.match_score})",
-                pipeline_stage="save",
             )
 
             self.slogger.pipeline_stage(
@@ -545,7 +539,7 @@ class JobProcessor(BaseProcessor):
 
         # Update the same item with new state and mark as pending for re-processing
         try:
-            self.queue_manager.requeue_with_state(current_item.id, updated_state, next_stage)
+            self.queue_manager.requeue_with_state(current_item.id, updated_state)
             logger.info(
                 f"Requeued item {current_item.id} for {next_stage}: {current_item.url[:50]}"
             )

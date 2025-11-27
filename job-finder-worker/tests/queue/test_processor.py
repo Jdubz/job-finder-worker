@@ -200,14 +200,13 @@ def test_process_job_already_exists(processor, mock_managers, sample_job_item):
 
 
 def test_handle_failure_retry(processor, mock_managers):
-    """Test failure handling with retry logic."""
+    """Test failure handling."""
     item = JobQueueItem(
         id="test-123",
         type=QueueItemType.JOB,
         url="https://example.com/job",
         company_name="Test Corp",
         source="scraper",
-        retry_count=1,
     )
 
     processor._handle_failure(item, "Test error")
@@ -219,14 +218,13 @@ def test_handle_failure_retry(processor, mock_managers):
 
 
 def test_handle_failure_max_retries(processor, mock_managers):
-    """Test failure handling when max retries exceeded."""
+    """Test failure handling marks item as failed."""
     item = JobQueueItem(
         id="test-123",
         type=QueueItemType.JOB,
         url="https://example.com/job",
         company_name="Test Corp",
         source="scraper",
-        retry_count=2,
     )
 
     processor._handle_failure(item, "Test error")
@@ -265,8 +263,9 @@ def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_
     # Should enqueue company task and requeue job to wait for data
     assert mock_managers["queue_manager"].spawn_item_safely.called
     mock_managers["queue_manager"].requeue_with_state.assert_called()
-    _, _, next_stage = mock_managers["queue_manager"].requeue_with_state.call_args[0]
-    assert next_stage == "wait_company"
+    # requeue_with_state now takes only (item_id, pipeline_state)
+    item_id, updated_state = mock_managers["queue_manager"].requeue_with_state.call_args[0]
+    assert "waiting_for_company_id" in updated_state
     processor.job_processor.ai_matcher.analyze_job.assert_not_called()
 
 
