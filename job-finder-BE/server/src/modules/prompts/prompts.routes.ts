@@ -4,7 +4,6 @@ import type {
   GetPromptsResponse,
   UpdatePromptsResponse,
   ResetPromptsResponse,
-  PromptConfig,
 } from "@shared/types"
 import { DEFAULT_PROMPTS } from "@shared/types"
 import { asyncHandler } from "../../utils/async-handler"
@@ -28,12 +27,6 @@ const resetSchema = z.object({
   userEmail: z.string().email(),
 })
 
-const withMetadata = (prompts: PromptConfig, userEmail: string): PromptConfig => ({
-  ...prompts,
-  updatedBy: userEmail,
-  updatedAt: new Date(),
-})
-
 export function buildPromptsRouter() {
   const router = Router()
   const repository = new PromptsRepository()
@@ -54,7 +47,7 @@ export function buildPromptsRouter() {
     "/",
     asyncHandler((req, res) => {
       const { prompts, userEmail } = updateSchema.parse(req.body)
-      const saved = repository.savePrompts(withMetadata(prompts, userEmail))
+      const saved = repository.savePrompts(prompts, userEmail)
       const response: UpdatePromptsResponse = { prompts: saved }
       res.json(success(response))
     })
@@ -64,7 +57,7 @@ export function buildPromptsRouter() {
     "/reset",
     asyncHandler((req, res) => {
       const { userEmail } = resetSchema.parse(req.body)
-      const saved = repository.savePrompts(withMetadata(DEFAULT_PROMPTS, userEmail))
+      const saved = repository.savePrompts(DEFAULT_PROMPTS, userEmail)
       const response: ResetPromptsResponse = { prompts: saved }
       res.json(success(response))
     })

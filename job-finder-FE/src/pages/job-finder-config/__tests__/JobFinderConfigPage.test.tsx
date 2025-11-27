@@ -16,7 +16,6 @@ import { configClient } from "@/api/config-client"
 vi.mock("@/api/config-client", () => ({
   configClient: {
     getStopList: vi.fn(),
-    getQueueSettings: vi.fn(),
     getAISettings: vi.fn(),
     getJobMatch: vi.fn(),
     getJobFilters: vi.fn(),
@@ -25,7 +24,6 @@ vi.mock("@/api/config-client", () => ({
     getCompanyScoring: vi.fn(),
     getPersonalInfo: vi.fn(),
     updateStopList: vi.fn(),
-    updateQueueSettings: vi.fn(),
     updateAISettings: vi.fn(),
     updateJobMatch: vi.fn(),
     updateJobFilters: vi.fn(),
@@ -63,10 +61,6 @@ const mockStopList = {
   excludedCompanies: ["Bad Company", "Spam Corp"],
   excludedKeywords: ["contractor", "freelance"],
   excludedDomains: ["spam.com", "fake-jobs.com"],
-}
-
-const mockQueueSettings = {
-  processingTimeoutSeconds: 600,
 }
 
 const mockAISettings = {
@@ -166,7 +160,6 @@ describe("JobFinderConfigPage", () => {
 
     // Setup default mocks
     vi.mocked(configClient.getStopList).mockResolvedValue(mockStopList)
-    vi.mocked(configClient.getQueueSettings).mockResolvedValue(mockQueueSettings)
     vi.mocked(configClient.getAISettings).mockResolvedValue(mockAISettings)
     vi.mocked(configClient.getJobMatch).mockResolvedValue(mockJobMatch)
     vi.mocked(configClient.getJobFilters).mockResolvedValue(mockJobFilters)
@@ -175,7 +168,6 @@ describe("JobFinderConfigPage", () => {
     vi.mocked(configClient.getCompanyScoring).mockResolvedValue(mockCompanyScoring)
     vi.mocked(configClient.getPersonalInfo).mockResolvedValue(mockPersonalInfo)
     vi.mocked(configClient.updateStopList).mockResolvedValue(undefined)
-    vi.mocked(configClient.updateQueueSettings).mockResolvedValue(undefined)
     vi.mocked(configClient.updateAISettings).mockResolvedValue(undefined)
     vi.mocked(configClient.updateJobMatch).mockResolvedValue(undefined)
     vi.mocked(configClient.updateJobFilters).mockResolvedValue(undefined)
@@ -193,9 +185,8 @@ describe("JobFinderConfigPage", () => {
         expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
       })
 
-      // Check tabs (shortened names to fit 9-column layout)
+      // Check tabs (shortened names to fit 8-column layout)
       expect(screen.getByRole("tab", { name: "Stop List" })).toBeInTheDocument()
-      expect(screen.getByRole("tab", { name: "Queue" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "AI" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "Match" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "Filters" })).toBeInTheDocument()
@@ -381,63 +372,6 @@ describe("JobFinderConfigPage", () => {
     })
   })
 
-  describe("queue settings management", () => {
-    it("should switch to queue settings tab", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
-
-      await waitFor(() => {
-        expect(screen.getByText("Queue Processing Settings")).toBeInTheDocument()
-      })
-    })
-
-    it("should display current queue settings", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
-
-      await waitFor(() => {
-        expect(screen.getByDisplayValue("600")).toBeInTheDocument() // processingTimeoutSeconds
-      })
-    })
-
-    it("should update queue settings", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
-
-      const timeoutInput = await screen.findByLabelText("Processing Timeout (seconds)")
-      await user.clear(timeoutInput)
-      await user.type(timeoutInput, "900")
-
-      // Save changes
-      await user.click(screen.getByText("Save Changes"))
-
-      await waitFor(() => {
-        expect(configClient.updateQueueSettings).toHaveBeenCalled()
-      })
-    })
-  })
-
   describe("AI settings management", () => {
     it("should switch to AI settings tab", async () => {
       const user = userEvent.setup()
@@ -577,36 +511,6 @@ describe("JobFinderConfigPage", () => {
       })
     })
 
-    it("should show error when saving queue settings fails", async () => {
-      const user = userEvent.setup()
-      vi.mocked(configClient.updateQueueSettings).mockRejectedValue(new Error("Save failed"))
-
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
-
-      await waitFor(() => {
-        expect(screen.getByDisplayValue("600")).toBeInTheDocument()
-      })
-
-      // Update processing timeout
-      const timeoutInput = screen.getByDisplayValue("600")
-      await user.clear(timeoutInput)
-      await user.type(timeoutInput, "900")
-
-      // Save changes
-      await user.click(screen.getByText("Save Changes"))
-
-      await waitFor(() => {
-        expect(screen.getByText("Failed to save queue settings")).toBeInTheDocument()
-      })
-    })
-
     // Note: AI settings save error test skipped - Save button disabled without dropdown changes
   })
 
@@ -631,34 +535,6 @@ describe("JobFinderConfigPage", () => {
 
       await waitFor(() => {
         expect(screen.getByText("Stop list saved successfully!")).toBeInTheDocument()
-      })
-    })
-
-    it("should show success message when queue settings are saved", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
-
-      await waitFor(() => {
-        expect(screen.getByDisplayValue("600")).toBeInTheDocument()
-      })
-
-      // Update processing timeout
-      const timeoutInput = screen.getByDisplayValue("600")
-      await user.clear(timeoutInput)
-      await user.type(timeoutInput, "900")
-
-      // Save changes
-      await user.click(screen.getByText("Save Changes"))
-
-      await waitFor(() => {
-        expect(screen.getByText("Queue settings saved successfully!")).toBeInTheDocument()
       })
     })
 
@@ -715,11 +591,11 @@ describe("JobFinderConfigPage", () => {
         expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByRole("tab", { name: "Queue" }))
+      await user.click(screen.getByRole("tab", { name: "Match" }))
 
       await waitFor(() => {
         // Check form labels exist
-        expect(screen.getByLabelText("Processing Timeout (seconds)")).toBeInTheDocument()
+        expect(screen.getByLabelText("Minimum Match Score")).toBeInTheDocument()
       })
     })
 

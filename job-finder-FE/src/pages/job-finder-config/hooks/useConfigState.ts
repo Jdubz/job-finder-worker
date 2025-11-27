@@ -12,7 +12,6 @@ import {
 } from "@shared/types"
 import type {
   StopList,
-  QueueSettings,
   AISettings,
   JobMatchConfig,
   JobFiltersConfig,
@@ -38,10 +37,6 @@ export function useConfigState() {
   const [newCompany, setNewCompany] = useState("")
   const [newKeyword, setNewKeyword] = useState("")
   const [newDomain, setNewDomain] = useState("")
-
-  // Queue Settings state
-  const [queueSettings, setQueueSettings] = useState<QueueSettings | null>(null)
-  const [originalQueueSettings, setOriginalQueueSettings] = useState<QueueSettings | null>(null)
 
   // AI Settings state
   const [aiSettings, setAISettings] = useState<AISettings | null>(null)
@@ -79,9 +74,8 @@ export function useConfigState() {
     setError(null)
 
     try {
-      const [stopListData, queueData, aiData, jobMatchData, filtersData, techData, schedulerData, scoringData, personalInfoData] = await Promise.all([
+      const [stopListData, aiData, jobMatchData, filtersData, techData, schedulerData, scoringData, personalInfoData] = await Promise.all([
         configClient.getStopList(),
-        configClient.getQueueSettings(),
         configClient.getAISettings(),
         configClient.getJobMatch(),
         configClient.getJobFilters(),
@@ -93,8 +87,6 @@ export function useConfigState() {
 
       setStopList(stopListData)
       setOriginalStopList(stopListData)
-      setQueueSettings(queueData)
-      setOriginalQueueSettings(queueData)
       setAISettings(aiData)
       setOriginalAISettings(aiData)
 
@@ -176,17 +168,6 @@ export function useConfigState() {
       updateFn: configClient.updateStopList,
       setOriginal: setOriginalStopList,
       configName: "stop list",
-      setIsSaving,
-      setError,
-      setSuccess,
-    })
-
-  const handleSaveQueueSettings = () =>
-    createSaveHandler({
-      data: queueSettings,
-      updateFn: configClient.updateQueueSettings,
-      setOriginal: setOriginalQueueSettings,
-      configName: "queue settings",
       setIsSaving,
       setError,
       setSuccess,
@@ -334,15 +315,6 @@ export function useConfigState() {
       setSuccess
     )
 
-  const handleResetQueueSettings = () =>
-    createResetHandler(
-      setQueueSettings,
-      originalQueueSettings,
-      { processingTimeoutSeconds: 1800 },
-      setError,
-      setSuccess
-    )
-
   const handleResetAISettings = () =>
     createResetHandler(
       setAISettings,
@@ -423,7 +395,6 @@ export function useConfigState() {
 
   // Change detection
   const hasStopListChanges = stableStringify(stopList) !== stableStringify(originalStopList)
-  const hasQueueChanges = stableStringify(queueSettings) !== stableStringify(originalQueueSettings)
   const hasAIChanges = stableStringify(aiSettings) !== stableStringify(originalAISettings)
   const hasJobMatchChanges = stableStringify(jobMatch) !== stableStringify(originalJobMatch)
   const hasJobFilterChanges = stableStringify(jobFilters) !== stableStringify(originalJobFilters)
@@ -467,13 +438,6 @@ export function useConfigState() {
     handleRemoveDomain,
     handleSaveStopList,
     handleResetStopList,
-
-    // Queue Settings
-    queueSettings,
-    setQueueSettings,
-    hasQueueChanges,
-    handleSaveQueueSettings,
-    handleResetQueueSettings,
 
     // AI Settings
     aiSettings,
