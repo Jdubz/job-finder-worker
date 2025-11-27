@@ -24,6 +24,7 @@ type QueueEventPayload = {
 type SseClient = {
   id: string
   res: Response
+  heartbeat?: NodeJS.Timeout
 }
 
 type PendingCommand = {
@@ -59,6 +60,7 @@ export function handleQueueEventsSse(req: Request, res: Response, items: QueueIt
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders?.()
 
   // Initial retry hint and snapshot
@@ -71,11 +73,16 @@ export function handleQueueEventsSse(req: Request, res: Response, items: QueueIt
   }
   res.write(toEventString(snapshot))
 
-  const client: SseClient = { id: clientId, res }
+  const heartbeat = setInterval(() => {
+    res.write(':\n\n')
+  }, 15000)
+
+  const client: SseClient = { id: clientId, res, heartbeat }
   clients.add(client)
 
   req.on('close', () => {
     clients.delete(client)
+    clearInterval(heartbeat)
     res.end()
   })
 }

@@ -14,6 +14,7 @@ type LifecyclePayload = {
 type Client = {
   id: string
   res: Response
+  heartbeat?: NodeJS.Timeout
 }
 
 type ServerPhase = 'starting' | 'ready' | 'draining' | 'restarting'
@@ -66,6 +67,7 @@ export function handleLifecycleEventsSse(req: Request, res: Response) {
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders?.()
 
   // Faster client retries on disconnect
@@ -80,11 +82,16 @@ export function handleLifecycleEventsSse(req: Request, res: Response) {
   }
   res.write(serializeEvent(snapshot))
 
-  const client: Client = { id: clientId, res }
+  const heartbeat = setInterval(() => {
+    res.write(':\n\n')
+  }, 15000)
+
+  const client: Client = { id: clientId, res, heartbeat }
   clients.add(client)
 
   req.on('close', () => {
     clients.delete(client)
+    clearInterval(heartbeat)
     res.end()
   })
 }
