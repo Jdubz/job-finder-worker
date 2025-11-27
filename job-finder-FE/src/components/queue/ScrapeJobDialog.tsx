@@ -13,17 +13,11 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command"
-import { Check, Loader2, Plus, X } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Loader2, X } from "lucide-react"
 
 type ScrapeJobDialogProps = {
   open: boolean
@@ -54,6 +48,7 @@ export function ScrapeJobDialog({
     maxSources: "",
     selectedSourceIds: prefillSourceId ? [prefillSourceId] : [],
   })
+  const [sourceSearch, setSourceSearch] = useState("")
 
   const { sources: fetchedSources, loading: loadingSources } = useJobSources({
     limit: 200,
@@ -120,6 +115,12 @@ export function ScrapeJobDialog({
     }
   }
 
+  const filteredSources = useMemo(() => {
+    const term = sourceSearch.trim().toLowerCase()
+    if (!term) return sources
+    return sources.filter((s) => s.name.toLowerCase().includes(term))
+  }, [sources, sourceSearch])
+
   const selectedBadges = form.selectedSourceIds
     .map((id) => sources.find((s) => s.id === id))
     .filter(Boolean) as JobSource[]
@@ -167,42 +168,39 @@ export function ScrapeJobDialog({
 
           <div className="space-y-2">
             <Label>Sources to scrape</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-between">
-                  <span>
-                    {form.selectedSourceIds.length === 0
-                      ? "Use rotation (all sources)"
-                      : `${form.selectedSourceIds.length} selected`}
-                  </span>
-                  {loadingSources ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="p-0 w-[320px]" align="start">
-                <Command>
-                  <CommandInput placeholder="Search sources" />
-                  <CommandEmpty>No sources found.</CommandEmpty>
-                  <CommandGroup>
-                    {sources.map((source) => {
-                      const selected = form.selectedSourceIds.includes(source.id)
-                      return (
-                        <CommandItem
-                          key={source.id}
-                          value={source.name}
-                          onSelect={() => toggleSource(source.id)}
-                        >
-                          <Check className={`mr-2 h-4 w-4 ${selected ? "opacity-100" : "opacity-20"}`} />
-                          <div className="flex flex-col">
-                            <span className="text-sm">{source.name}</span>
-                            <span className="text-xs text-muted-foreground">{source.sourceType}</span>
-                          </div>
-                        </CommandItem>
-                      )
-                    })}
-                  </CommandGroup>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            <div className="space-y-2">
+              <Input
+                placeholder="Search sources"
+                value={sourceSearch}
+                onChange={(e) => setSourceSearch(e.target.value)}
+              />
+              <div className="border rounded-md">
+                <ScrollArea className="h-52">
+                  <div className="p-2 space-y-2">
+                    {loadingSources ? (
+                      <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading sources...
+                      </div>
+                    ) : filteredSources.length === 0 ? (
+                      <div className="text-sm text-muted-foreground py-4 text-center">No sources match.</div>
+                    ) : (
+                      filteredSources.map((source) => {
+                        const selected = form.selectedSourceIds.includes(source.id)
+                        return (
+                          <label key={source.id} className="flex items-start gap-2 cursor-pointer">
+                            <Checkbox checked={selected} onCheckedChange={() => toggleSource(source.id)} />
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium leading-tight">{source.name}</span>
+                              <span className="text-xs text-muted-foreground">{source.sourceType}</span>
+                            </div>
+                          </label>
+                        )
+                      })
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
 
             {selectedBadges.length > 0 && (
               <div className="flex flex-wrap gap-2">
