@@ -238,7 +238,9 @@ class SourceProcessor(BaseProcessor):
 
                 # Get company name for override
                 company_id = source.get("companyId") or source.get("company_id")
-                company_name = source.get("companyName") or source.get("company_name") or source_name
+                company_name = (
+                    source.get("companyName") or source.get("company_name") or source_name
+                )
 
                 # Expand config based on source_type (converts simple configs to full scraper configs)
                 try:
