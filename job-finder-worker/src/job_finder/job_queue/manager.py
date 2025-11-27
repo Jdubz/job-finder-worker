@@ -141,13 +141,7 @@ class QueueManager:
             conn.execute(f"UPDATE job_queue SET {assignments} WHERE id = ?", values)
 
         logger.debug("Updated queue item %s -> %s", item_id, status.value)
-
-        if self.notifier:
-            updated_item = self.get_item(item_id)
-            if updated_item:
-                self.notifier.send_event(
-                    "item.updated", {"queueItem": updated_item.model_dump(mode="json")}
-                )
+        self._notify_item_updated(item_id)
 
     def increment_retry(self, item_id: str) -> None:
         with sqlite_connection(self.db_path) as conn:
@@ -165,6 +159,15 @@ class QueueManager:
         with sqlite_connection(self.db_path) as conn:
             row = conn.execute("SELECT * FROM job_queue WHERE id = ?", (item_id,)).fetchone()
         return JobQueueItem.from_record(dict(row)) if row else None
+
+    def _notify_item_updated(self, item_id: str) -> None:
+        """Fetch an item and send an 'item.updated' notification if it exists."""
+        if self.notifier:
+            updated_item = self.get_item(item_id)
+            if updated_item:
+                self.notifier.send_event(
+                    "item.updated", {"queueItem": updated_item.model_dump(mode="json")}
+                )
 
     def url_exists_in_queue(self, url: str) -> bool:
         with sqlite_connection(self.db_path) as conn:
@@ -388,6 +391,9 @@ class QueueManager:
                 ),
             )
 
+        # Notify FE of the company sub-task transition
+        self._notify_item_updated(item_id)
+
     def requeue_with_state(
         self,
         item_id: str,
@@ -410,3 +416,6 @@ class QueueManager:
                     item_id,
                 ),
             )
+
+        # Notify FE of the stage transition so queue UI stays in sync
+        self._notify_item_updated(item_id)

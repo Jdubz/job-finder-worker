@@ -6,6 +6,7 @@
 
 // Core types
 export * from "./queue.types"
+export * from "./queue-events.types"
 export * from "./job.types"
 export * from "./logging.types"
 export * from "./generator.types"

@@ -3,15 +3,8 @@ import { WebSocketServer, type WebSocket, type RawData } from 'ws'
 import { logger } from '../../logger'
 import { env } from '../../config/env'
 import { broadcastQueueEvent, sendCommandToWorker, setWorkerSocket } from './queue-events'
-
-type WorkerMessage = {
-  event: string
-  data?: Record<string, unknown>
-  itemId?: string
-  status?: string
-  stage?: string
-  message?: string
-}
+import type { AnyWorkerMessage } from '@shared/types'
+import { isWorkerEventName } from '@shared/types'
 
 export function initWorkerSocket(server: Server) {
   const wss = new WebSocketServer({ server, path: '/worker/stream' })
@@ -30,9 +23,26 @@ export function initWorkerSocket(server: Server) {
 
     ws.on('message', (raw: RawData) => {
       try {
-        const msg = JSON.parse(raw.toString()) as WorkerMessage
-        if (msg.event) {
-          broadcastQueueEvent(msg.event as any, { ...msg, workerId: 'default' })
+        const msg = JSON.parse(raw.toString()) as AnyWorkerMessage
+        if (msg.event && isWorkerEventName(msg.event)) {
+          // Using a switch statement allows TypeScript to narrow the type of `msg`
+          // and `msg.data` in each case, ensuring full type safety for broadcastQueueEvent.
+          switch (msg.event) {
+            case 'item.created':
+              broadcastQueueEvent(msg.event, { ...msg.data, workerId: 'default' })
+              break
+            case 'item.updated':
+              broadcastQueueEvent(msg.event, { ...msg.data, workerId: 'default' })
+              break
+            case 'item.deleted':
+              broadcastQueueEvent(msg.event, { ...msg.data, workerId: 'default' })
+              break
+            case 'heartbeat':
+              broadcastQueueEvent(msg.event, { ...msg.data, workerId: 'default' })
+              break
+          }
+        } else if (msg.event) {
+          logger.debug({ event: msg.event }, 'Unknown worker event received')
         }
       } catch (error) {
         logger.warn({ error }, 'Failed to parse worker WS message')

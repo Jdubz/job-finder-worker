@@ -1,44 +1,28 @@
 import type { Response, Request } from 'express'
 import { randomUUID } from 'crypto'
-import type { QueueItem } from '@shared/types'
+import type {
+  QueueItem,
+  QueueSseEventName,
+  QueueSsePayload,
+  QueueEventDataMap,
+  CancelCommand,
+} from '@shared/types'
 import type { WebSocket } from 'ws'
 import { HEARTBEAT_INTERVAL_MS, initSseStream, type SseClient } from '../shared/sse'
 
-type QueueEventName =
-  | 'snapshot'
-  | 'item.created'
-  | 'item.updated'
-  | 'item.deleted'
-  | 'item.cancelled'
-  | 'progress'
-  | 'command.ack'
-  | 'command.error'
-  | string
-
-type QueueEventPayload = {
-  id: string
-  event: QueueEventName
-  data: Record<string, unknown>
-  ts: string
-}
-
-type PendingCommand = {
-  workerId: string
-  command: 'cancel'
-  itemId: string
-  ts: string
-}
-
 const clients = new Set<SseClient>()
-const commandQueue = new Map<string, PendingCommand[]>()
+const commandQueue = new Map<string, CancelCommand[]>()
 let workerSocket: WebSocket | null = null
 
-const toEventString = (payload: QueueEventPayload) =>
+const toEventString = <E extends QueueSseEventName>(payload: QueueSsePayload<E>) =>
   `id: ${payload.id}\nevent: ${payload.event}\ndata: ${JSON.stringify(payload.data)}\n\n`
 
-export function broadcastQueueEvent(event: QueueEventName, data: Record<string, unknown>) {
+export function broadcastQueueEvent<E extends QueueSseEventName>(
+  event: E,
+  data: E extends keyof QueueEventDataMap ? QueueEventDataMap[E] : Record<string, unknown>
+) {
   if (clients.size === 0) return
-  const payload: QueueEventPayload = {
+  const payload: QueueSsePayload<E> = {
     id: randomUUID(),
     event,
     data,
@@ -55,7 +39,7 @@ export function handleQueueEventsSse(req: Request, res: Response, items: QueueIt
 
   // Initial retry hint and snapshot
   res.write('retry: 3000\n\n')
-  const snapshot: QueueEventPayload = {
+  const snapshot: QueueSsePayload<'snapshot'> = {
     id: randomUUID(),
     event: 'snapshot',
     data: { items },
@@ -75,7 +59,7 @@ export function enqueueCancelCommand(itemId: string, workerId = 'default') {
   commandQueue.set(workerId, commands)
 }
 
-export function takePendingCommands(workerId = 'default'): PendingCommand[] {
+export function takePendingCommands(workerId = 'default'): CancelCommand[] {
   const commands = commandQueue.get(workerId) ?? []
   commandQueue.set(workerId, [])
   return commands
@@ -85,7 +69,7 @@ export function setWorkerSocket(ws: WebSocket | null) {
   workerSocket = ws
 }
 
-export function sendCommandToWorker(command: PendingCommand) {
+export function sendCommandToWorker(command: CancelCommand) {
   // Send immediately if WS connected; otherwise enqueue for polling fallback
   if (workerSocket && workerSocket.readyState === workerSocket.OPEN) {
     try {
