@@ -52,14 +52,21 @@ describe("JobMatchTab", () => {
       expect(screen.getByLabelText("Portland Office Bonus")).toBeInTheDocument()
       expect(screen.getByLabelText("User Timezone Offset")).toBeInTheDocument()
       expect(screen.getByLabelText("Prefer Large Companies")).toBeInTheDocument()
+      expect(screen.getByLabelText("Remote-first Bonus")).toBeInTheDocument()
+      expect(screen.getByLabelText("AI/ML Focus Bonus")).toBeInTheDocument()
+      expect(screen.getByLabelText("Large Company Bonus")).toBeInTheDocument()
+      expect(screen.getByLabelText("Small Company Penalty")).toBeInTheDocument()
+      expect(screen.getByLabelText("Timezone Bonus (same)")).toBeInTheDocument()
+      expect(screen.getByLabelText("High Priority Threshold")).toBeInTheDocument()
+      expect(screen.getByLabelText("Medium Priority Threshold")).toBeInTheDocument()
     })
 
     it("should display current values", () => {
       render(<JobMatchTab {...defaultProps} />)
 
-      expect(screen.getByDisplayValue("70")).toBeInTheDocument() // minMatchScore
-      expect(screen.getByDisplayValue("15")).toBeInTheDocument() // portlandOfficeBonus
-      expect(screen.getByDisplayValue("-8")).toBeInTheDocument() // userTimezone
+      expect(screen.getByLabelText("Minimum Match Score")).toHaveValue(70)
+      expect(screen.getByLabelText("Portland Office Bonus")).toHaveValue(15)
+      expect(screen.getByLabelText("User Timezone Offset")).toHaveValue(-8)
     })
 
     it("should display help text for each field", () => {
@@ -118,14 +125,14 @@ describe("JobMatchTab", () => {
     it("should disable save button when no changes", () => {
       render(<JobMatchTab {...defaultProps} hasJobMatchChanges={false} />)
 
-      const saveButton = screen.getByText("Save Changes")
+      const saveButton = screen.getAllByText("Save Changes")[0]
       expect(saveButton).toBeDisabled()
     })
 
     it("should enable save button when there are changes", () => {
       render(<JobMatchTab {...defaultProps} hasJobMatchChanges={true} />)
 
-      const saveButton = screen.getByText("Save Changes")
+      const saveButton = screen.getAllByText("Save Changes")[0]
       expect(saveButton).not.toBeDisabled()
     })
 
@@ -133,7 +140,7 @@ describe("JobMatchTab", () => {
       render(<JobMatchTab {...defaultProps} isSaving={true} hasJobMatchChanges={true} />)
 
       // Button text changes to Saving... when isSaving is true
-      const savingButton = screen.getByText("Saving...")
+      const savingButton = screen.getAllByText("Saving...")[0]
       expect(savingButton).toBeDisabled()
     })
 
@@ -149,7 +156,8 @@ describe("JobMatchTab", () => {
         />
       )
 
-      await user.click(screen.getByText("Save Changes"))
+      const saveButton = screen.getAllByText("Save Changes")[0]
+      await user.click(saveButton)
 
       expect(handleSaveJobMatch).toHaveBeenCalled()
     })
@@ -157,14 +165,14 @@ describe("JobMatchTab", () => {
     it("should disable reset button when no changes", () => {
       render(<JobMatchTab {...defaultProps} hasJobMatchChanges={false} />)
 
-      const resetButton = screen.getByText("Reset")
+      const resetButton = screen.getAllByText("Reset")[0]
       expect(resetButton).toBeDisabled()
     })
 
     it("should enable reset button when there are changes", () => {
       render(<JobMatchTab {...defaultProps} hasJobMatchChanges={true} />)
 
-      const resetButton = screen.getByText("Reset")
+      const resetButton = screen.getAllByText("Reset")[0]
       expect(resetButton).not.toBeDisabled()
     })
 
@@ -180,7 +188,8 @@ describe("JobMatchTab", () => {
         />
       )
 
-      await user.click(screen.getByText("Reset"))
+      const resetButton = screen.getAllByText("Reset")[0]
+      await user.click(resetButton)
 
       expect(handleResetJobMatch).toHaveBeenCalled()
     })
@@ -191,9 +200,9 @@ describe("JobMatchTab", () => {
       render(<JobMatchTab {...defaultProps} jobMatch={null} />)
 
       // Should show default values
-      expect(screen.getByDisplayValue("70")).toBeInTheDocument()
-      expect(screen.getByDisplayValue("15")).toBeInTheDocument()
-      expect(screen.getByDisplayValue("-8")).toBeInTheDocument()
+      expect(screen.getByLabelText("Minimum Match Score")).toHaveValue(70)
+      expect(screen.getByLabelText("Portland Office Bonus")).toHaveValue(15)
+      expect(screen.getByLabelText("User Timezone Offset")).toHaveValue(-8)
     })
 
     it("should not crash when setJobMatch is called with null jobMatch", () => {
