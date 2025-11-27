@@ -253,12 +253,20 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
 
     provider = create_provider_from_config(ai_settings)
 
+    # Use the same AI settings section for all downstream AI users (matcher + company fetcher)
+    worker_ai_config: Dict[str, Any] = {}
+    if isinstance(ai_settings, dict):
+        candidate = ai_settings.get("worker") or ai_settings
+        if isinstance(candidate, dict):
+            worker_ai_config = candidate
+
     # Get job match settings (defaults)
     job_match = {
         "minMatchScore": 70,
         "portlandOfficeBonus": 15,
         "userTimezone": -8,
         "preferLargeCompanies": True,
+        # Intake guidance is part of every high-confidence match; doc generation stays FE-triggered
         "generateIntakeData": True,
     }
     try:
@@ -277,7 +285,8 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         config=job_match,
     )
 
-    company_info_fetcher = CompanyInfoFetcher(companies_manager)
+    # Respect AI settings when fetching/extracting company info
+    company_info_fetcher = CompanyInfoFetcher(provider, worker_ai_config)
     notifier = QueueEventNotifier()
     queue_manager = QueueManager(db_path, notifier=notifier)
     notifier.on_command = queue_manager.handle_command

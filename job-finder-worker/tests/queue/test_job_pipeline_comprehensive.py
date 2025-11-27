@@ -52,7 +52,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
     companies_manager = CompaniesManager(str(db_path))
     sources_manager = JobSourcesManager(str(db_path))
     config_loader = ConfigLoader(str(db_path))
-    company_info_fetcher = CompanyInfoFetcher(companies_manager)
+    company_info_fetcher = CompanyInfoFetcher()
 
     # Pre-populate a company with good data so the job pipeline doesn't spawn a company task
     # Note: name_lower must match normalize_company_name("Comprehensive Co") = "comprehensive"

@@ -104,6 +104,9 @@ def main():
 
     # Create provider from AI settings
     provider = create_provider_from_config(ai_settings)
+    worker_ai_config = (
+        (ai_settings.get("worker") or ai_settings) if isinstance(ai_settings, dict) else {}
+    )
     ai_matcher = AIJobMatcher(
         provider=provider,
         profile=profile,
@@ -114,7 +117,7 @@ def main():
         prefer_large_companies=job_match.get("preferLargeCompanies", True),
         config=job_match,
     )
-    company_info_fetcher = CompanyInfoFetcher(companies_manager)
+    company_info_fetcher = CompanyInfoFetcher(provider, worker_ai_config)
 
     processor = QueueItemProcessor(
         queue_manager=queue_manager,

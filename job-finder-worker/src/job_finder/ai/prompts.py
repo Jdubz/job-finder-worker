@@ -379,7 +379,17 @@ Return detailed analysis in JSON format with:
 
 **Remember:** Only scores 80+ should realistically pass. Be harsh - candidate's time is valuable.
 
-Provide your analysis in the following JSON format:
+Respond **ONLY** with valid JSON in this shape (no prose, no markdown):
+{{
+  "match_score": 0,
+  "matched_skills": [],
+  "missing_skills": [],
+  "experience_match": "",
+  "key_strengths": [],
+  "potential_concerns": [],
+  "application_priority": "High|Medium|Low",
+  "customization_recommendations": {{}}
+}}
 
 {{
   "match_score": 85,

@@ -84,7 +84,7 @@ def test_queue_scrape_end_to_end(temp_db):
     companies_manager = CompaniesManager(db_path)
     sources_manager = JobSourcesManager(db_path)
     config_loader = ConfigLoader(db_path)
-    company_info_fetcher = CompanyInfoFetcher(companies_manager)
+    company_info_fetcher = CompanyInfoFetcher()
     ai_matcher = DummyMatcher(score=88)
 
     # Pre-populate a company with good data so the job pipeline doesn't spawn a company task
