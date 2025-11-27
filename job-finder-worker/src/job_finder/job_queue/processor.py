@@ -13,7 +13,6 @@ from typing import Any, Dict, Optional
 from job_finder.ai import AIJobMatcher
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import QueueProcessingError
-from job_finder.profile.schema import Profile
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
@@ -45,10 +44,11 @@ class QueueItemProcessor:
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
         ai_matcher: AIJobMatcher,
-        profile: Profile,
     ):
         """
         Initialize processor with specialized processors for each domain.
+
+        Each specialized processor receives only the dependencies it needs.
 
         Args:
             queue_manager: Queue manager for updating item status
@@ -58,7 +58,6 @@ class QueueItemProcessor:
             sources_manager: Job sources manager
             company_info_fetcher: Company info scraper
             ai_matcher: AI job matcher
-            profile: User profile (for scrape requests)
         """
         self.queue_manager = queue_manager
         self.config_loader = config_loader
@@ -67,10 +66,8 @@ class QueueItemProcessor:
         self.sources_manager = sources_manager
         self.company_info_fetcher = company_info_fetcher
         self.ai_matcher = ai_matcher
-        self.profile = profile
 
-        # Initialize specialized processors
-        # All processors share the same dependencies via BaseProcessor
+        # Initialize specialized processors with only their needed dependencies
         self.job_processor = JobProcessor(
             queue_manager=queue_manager,
             config_loader=config_loader,
@@ -79,29 +76,19 @@ class QueueItemProcessor:
             sources_manager=sources_manager,
             company_info_fetcher=company_info_fetcher,
             ai_matcher=ai_matcher,
-            profile=profile,
         )
 
         self.company_processor = CompanyProcessor(
             queue_manager=queue_manager,
             config_loader=config_loader,
-            job_storage=job_storage,
             companies_manager=companies_manager,
-            sources_manager=sources_manager,
             company_info_fetcher=company_info_fetcher,
-            ai_matcher=ai_matcher,
-            profile=profile,
         )
 
         self.source_processor = SourceProcessor(
             queue_manager=queue_manager,
             config_loader=config_loader,
-            job_storage=job_storage,
-            companies_manager=companies_manager,
             sources_manager=sources_manager,
-            company_info_fetcher=company_info_fetcher,
-            ai_matcher=ai_matcher,
-            profile=profile,
         )
 
     # ============================================================

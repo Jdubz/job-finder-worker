@@ -228,7 +228,6 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         sources_manager=job_sources_manager,
         company_info_fetcher=company_info_fetcher,
         ai_matcher=ai_matcher,
-        profile=profile,
     )
 
     apply_db_settings(config_loader, ai_matcher)

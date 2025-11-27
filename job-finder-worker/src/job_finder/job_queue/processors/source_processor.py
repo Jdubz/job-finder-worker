@@ -14,7 +14,11 @@ import uuid
 from urllib.parse import urlparse
 
 from job_finder.exceptions import QueueProcessingError
+from job_finder.job_queue.config_loader import ConfigLoader
+from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
+from job_finder.job_queue.scraper_intake import ScraperIntake
+from job_finder.storage.job_sources_manager import JobSourcesManager
 
 from .base_processor import BaseProcessor
 
@@ -23,6 +27,28 @@ logger = logging.getLogger(__name__)
 
 class SourceProcessor(BaseProcessor):
     """Processor for source discovery and scraping queue items."""
+
+    def __init__(
+        self,
+        queue_manager: QueueManager,
+        config_loader: ConfigLoader,
+        sources_manager: JobSourcesManager,
+    ):
+        """
+        Initialize source processor with its specific dependencies.
+
+        Args:
+            queue_manager: Queue manager for updating item status
+            config_loader: Configuration loader for AI settings
+            sources_manager: Job sources manager
+        """
+        super().__init__(queue_manager, config_loader)
+
+        self.sources_manager = sources_manager
+
+        # Initialize scraper intake without filter_engine
+        # Jobs will be filtered when processed by JobProcessor
+        self.scraper_intake = ScraperIntake(queue_manager=queue_manager)
 
     # ============================================================
     # SOURCE DISCOVERY

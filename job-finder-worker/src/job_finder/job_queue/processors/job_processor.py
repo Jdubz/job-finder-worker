@@ -9,7 +9,17 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
+from job_finder.ai.matcher import AIJobMatcher
+from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import DuplicateQueueItemError
+from job_finder.filters.strike_filter_engine import StrikeFilterEngine
+from job_finder.job_queue.config_loader import ConfigLoader
+from job_finder.job_queue.manager import QueueManager
+from job_finder.job_queue.scraper_intake import ScraperIntake
+from job_finder.scrape_runner import ScrapeRunner
+from job_finder.storage.companies_manager import CompaniesManager
+from job_finder.storage.job_storage import JobStorage
+from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name
 from job_finder.job_queue.models import (
@@ -26,6 +36,58 @@ logger = logging.getLogger(__name__)
 
 class JobProcessor(BaseProcessor):
     """Processor for job queue items."""
+
+    def __init__(
+        self,
+        queue_manager: QueueManager,
+        config_loader: ConfigLoader,
+        job_storage: JobStorage,
+        companies_manager: CompaniesManager,
+        sources_manager: JobSourcesManager,
+        company_info_fetcher: CompanyInfoFetcher,
+        ai_matcher: AIJobMatcher,
+    ):
+        """
+        Initialize job processor with its specific dependencies.
+
+        Args:
+            queue_manager: Queue manager for updating item status
+            config_loader: Configuration loader for stop lists and filters
+            job_storage: Job storage implementation
+            companies_manager: Company data manager
+            sources_manager: Job sources manager
+            company_info_fetcher: Company info fetcher (for ScrapeRunner)
+            ai_matcher: AI job matcher
+        """
+        super().__init__(queue_manager, config_loader)
+
+        self.job_storage = job_storage
+        self.companies_manager = companies_manager
+        self.sources_manager = sources_manager
+        self.ai_matcher = ai_matcher
+
+        # Initialize strike-based filter engine
+        filter_config = config_loader.get_job_filters()
+        tech_ranks = config_loader.get_technology_ranks()
+        self.filter_engine = StrikeFilterEngine(filter_config, tech_ranks)
+
+        # Initialize scrape runner with shared filter engine for pre-filtering
+        self.scrape_runner = ScrapeRunner(
+            queue_manager=queue_manager,
+            job_storage=job_storage,
+            companies_manager=companies_manager,
+            sources_manager=sources_manager,
+            company_info_fetcher=company_info_fetcher,
+            filter_engine=self.filter_engine,
+        )
+
+        # Initialize scraper intake with filter engine for pre-filtering
+        self.scraper_intake = ScraperIntake(
+            queue_manager=queue_manager,
+            job_storage=job_storage,
+            companies_manager=companies_manager,
+            filter_engine=self.filter_engine,
+        )
 
     # ============================================================
     # MAIN ROUTING

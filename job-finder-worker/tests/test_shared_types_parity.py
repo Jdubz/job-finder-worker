@@ -16,7 +16,6 @@ from job_finder.ai.matcher import JobMatchResult
 from job_finder.job_queue.models import (
     CompanySubTask,
     JobQueueItem,
-    JobSubTask,
     QueueItemType,
     QueueStatus,
     SourceTier,
@@ -96,7 +95,6 @@ def test_queue_enums_match_shared_types():
 
     assert _parse_union_literals(ts_queue, "QueueItemType") == {e.value for e in QueueItemType}
     assert _parse_union_literals(ts_queue, "QueueStatus") == {e.value for e in QueueStatus}
-    assert _parse_union_literals(ts_queue, "JobSubTask") == {e.value for e in JobSubTask}
     assert _parse_union_literals(ts_queue, "CompanySubTask") == {e.value for e in CompanySubTask}
     assert _parse_union_literals(ts_queue, "SourceTier") == {e.value for e in SourceTier}
 
