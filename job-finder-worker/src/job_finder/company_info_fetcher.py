@@ -67,7 +67,10 @@ class CompanyInfoFetcher:
         }
 
         try:
-            # Try to fetch from company site first when provided
+            scraped_info: Dict[str, Any] = {}
+            search_info: Dict[str, Any] = {}
+
+            # Always attempt site scrape when a URL is provided
             content = None
             if company_website:
                 pages_to_try = [
@@ -90,27 +93,25 @@ class CompanyInfoFetcher:
                         logger.debug(f"Failed to fetch {page_url}: {e}")
                         continue
 
-            # If site scrape was empty or no URL provided, fall back to AI web search
-            if not content and self.ai_provider:
-                logger.info("Company site content sparse; running AI web search for %s", company_display)
-                search_info = self._search_company_web(company_name)
-                if search_info:
-                    result.update(search_info)
-                    return result
-
             if content:
-                extracted = self._extract_company_info(content, company_name)
-                result.update(extracted)
+                scraped_info = self._extract_company_info(content, company_name)
 
-                _, company_display = format_company_name(company_name)
-                logger.info(
-                    f"Extracted company info for {company_display}: "
-                    f"{len(result['about'])} chars about, "
-                    f"{len(result['culture'])} chars culture"
-                )
-            else:
-                _, company_display = format_company_name(company_name)
-                logger.warning(f"Could not fetch any content for {company_display}")
+            # Always run AI web search (when available) to widen coverage beyond the career site
+            if self.ai_provider:
+                logger.info("Running AI web search for %s to enrich company data", company_display)
+                search_info = self._search_company_web(company_name) or {}
+
+            # Merge scraped + searched info, prefer non-empty factual fields, carry sources if present
+            merged = self._merge_company_info(scraped_info, search_info)
+            result.update(merged)
+
+            _, company_display = format_company_name(company_name)
+            logger.info(
+                "Compiled company info for %s: about=%d chars, culture=%d chars",
+                company_display,
+                len(result.get("about", "")),
+                len(result.get("culture", "")),
+            )
 
         except (requests.RequestException, ValueError, AttributeError) as e:
             _, company_display = format_company_name(company_name)
@@ -320,6 +321,23 @@ Respond with JSON only.
         except Exception as exc:
             logger.warning("AI web search for %s failed: %s", company_name, exc)
             return None
+
+    def _merge_company_info(self, scraped: Dict[str, Any], searched: Dict[str, Any]) -> Dict[str, Any]:
+        """Combine scraped and searched fields, preferring non-empty values and keeping sources."""
+        merged = {
+            "about": scraped.get("about") or searched.get("about") or "",
+            "culture": scraped.get("culture") or searched.get("culture") or "",
+            "mission": scraped.get("mission") or searched.get("mission") or "",
+            "size": scraped.get("size") or searched.get("size") or "",
+            "industry": scraped.get("industry") or searched.get("industry") or "",
+            "founded": scraped.get("founded") or searched.get("founded") or "",
+        }
+
+        # Preserve source URLs from search when available
+        if searched.get("sources"):
+            merged["sources"] = searched.get("sources")
+
+        return merged
 
     def _is_sparse_company_info(self, info: Dict[str, str]) -> bool:
         """
