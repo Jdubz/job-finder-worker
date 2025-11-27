@@ -6,7 +6,6 @@ export interface JobFinderConfigEntry<TPayload = unknown> {
   payload: TPayload
   updatedAt: string
   updatedBy?: string | null
-  name?: string | null
 }
 
 export interface PromptConfig {

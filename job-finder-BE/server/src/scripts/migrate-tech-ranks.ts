@@ -9,8 +9,8 @@ const DB_PATH =
   path.resolve(process.cwd(), '../../infra/sqlite/jobfinder.db')
 
 function loadConfig(db: sqlite3.Database, id: string) {
-  return db.prepare('SELECT payload_json, updated_at, updated_by, name FROM job_finder_config WHERE id = ?').get(id) as
-    | { payload_json: string; updated_at: string; updated_by?: string | null; name?: string | null }
+  return db.prepare('SELECT payload_json, updated_at, updated_by FROM job_finder_config WHERE id = ?').get(id) as
+    | { payload_json: string; updated_at: string; updated_by?: string | null }
     | undefined
 }
 
@@ -18,13 +18,13 @@ function saveConfig(
   db: sqlite3.Database,
   id: string,
   payload: unknown,
-  meta: { updatedBy?: string | null; name?: string | null }
+  meta: { updatedBy?: string | null }
 ) {
   db.prepare(
     `UPDATE job_finder_config
-     SET payload_json = ?, updated_at = ?, updated_by = ?, name = ?
+     SET payload_json = ?, updated_at = ?, updated_by = ?
      WHERE id = ?`
-  ).run(JSON.stringify(payload), new Date().toISOString(), meta.updatedBy ?? null, meta.name ?? null, id)
+  ).run(JSON.stringify(payload), new Date().toISOString(), meta.updatedBy ?? null, id)
 }
 
 function convertTechnologyRanks(payload: Record<string, TechRankValue>) {
@@ -101,7 +101,6 @@ function main() {
 
   saveConfig(db, 'technology-ranks', payload, {
     updatedBy: row.updated_by ?? 'migration-tech-ranks',
-    name: row.name ?? 'Technology Ranks',
   })
   db.close()
   console.log('[migrate-tech-ranks] technology-ranks record updated to latest schema.')
