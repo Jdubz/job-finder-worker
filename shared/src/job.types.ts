@@ -321,21 +321,6 @@ export interface Company {
 export type JobSourceStatus = "active" | "paused" | "disabled" | "error"
 
 /**
- * Discovery confidence level for job sources.
- */
-export type DiscoveryConfidence = "high" | "medium" | "low"
-
-/**
- * Health status for a job source.
- */
-export interface JobSourceHealth {
-  lastCheck?: TimestampLike
-  status?: "healthy" | "degraded" | "unhealthy"
-  errorRate?: number
-  avgResponseTime?: number
-}
-
-/**
  * Job source record (job_sources table).
  *
  * Represents a configured source for scraping job listings.
@@ -368,30 +353,6 @@ export interface JobSource {
 
   /** When source was last scraped */
   lastScrapedAt?: TimestampLike | null
-
-  /** Status of last scrape (success/failed) */
-  lastScrapedStatus?: string | null
-
-  /** Error message from last failed scrape */
-  lastScrapedError?: string | null
-
-  /** Number of consecutive failed scrapes */
-  consecutiveFailures: number
-
-  /** Discovery confidence level */
-  discoveryConfidence?: DiscoveryConfidence | null
-
-  /** How the source was discovered (manual, ai, pattern) */
-  discoveredVia?: string | null
-
-  /** Who/what discovered the source */
-  discoveredBy?: string | null
-
-  /** Queue item ID that created this source */
-  discoveryQueueItemId?: string | null
-
-  /** Health metrics and status */
-  health?: JobSourceHealth | null
 
   /** When source was created */
   createdAt?: TimestampLike

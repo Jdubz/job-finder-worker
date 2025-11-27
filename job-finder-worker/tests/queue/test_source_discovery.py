@@ -167,7 +167,6 @@ class TestSourceDiscoverySuccess:
         mock_dependencies["sources_manager"].create_from_discovery.assert_called_once()
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "api"
-        assert create_kwargs["discovery_confidence"] == "high"
 
         # Should mark as success
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
@@ -198,7 +197,6 @@ class TestSourceDiscoverySuccess:
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "rss"
-        assert create_kwargs["discovery_confidence"] == "high"
 
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
@@ -223,7 +221,6 @@ class TestSourceDiscoverySuccess:
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "html"
-        assert create_kwargs["discovery_confidence"] == "medium"  # HTML gets medium confidence
 
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS

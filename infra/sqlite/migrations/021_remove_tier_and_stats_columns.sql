@@ -9,6 +9,14 @@
 --   - total_jobs_found: Was tracked but never updated after creation (latent bug)
 --   - total_jobs_matched: Was tracked but never updated after creation (latent bug)
 --   - validation_required: Manual validation gate removed - agent validates during discovery
+--   - last_scraped_status: Redundant with status column (always matched status)
+--   - last_scraped_error: Belongs on queue item error_details, not source
+--   - consecutive_failures: Tracked but never used for auto-disable logic
+--   - discovery_confidence: Stored but never queried/filtered
+--   - discovered_via: Stored but never queried
+--   - discovered_by: Stored but never populated
+--   - discovery_queue_item_id: Stored with index but never queried
+--   - health_json: Static duplicate data, never varied
 
 -- ============================================================
 -- RECREATE companies WITHOUT tier/priority_score
@@ -48,7 +56,10 @@ ALTER TABLE companies_new RENAME TO companies;
 CREATE UNIQUE INDEX idx_companies_name_lower ON companies(name_lower);
 
 -- ============================================================
--- RECREATE job_sources WITHOUT tier/total_jobs_*/validation_required
+-- RECREATE job_sources - simplified schema
+-- Keep only: id, name, source_type, status, config_json, tags,
+--            company_id, company_name, last_scraped_at,
+--            created_at, updated_at
 -- Also migrate any pending_validation sources to active
 -- ============================================================
 
@@ -62,14 +73,6 @@ CREATE TABLE job_sources_new (
     company_id TEXT,
     company_name TEXT,
     last_scraped_at TEXT,
-    last_scraped_status TEXT,
-    last_scraped_error TEXT,
-    consecutive_failures INTEGER NOT NULL DEFAULT 0,
-    discovery_confidence TEXT,
-    discovered_via TEXT,
-    discovered_by TEXT,
-    discovery_queue_item_id TEXT,
-    health_json TEXT DEFAULT '{}',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -77,20 +80,14 @@ CREATE TABLE job_sources_new (
 -- Migrate data, converting pending_validation status to active
 INSERT INTO job_sources_new (
     id, name, source_type, status, config_json, tags,
-    company_id, company_name, last_scraped_at, last_scraped_status,
-    last_scraped_error, consecutive_failures,
-    discovery_confidence, discovered_via, discovered_by,
-    discovery_queue_item_id, health_json,
+    company_id, company_name, last_scraped_at,
     created_at, updated_at
 )
 SELECT
     id, name, source_type,
     CASE WHEN status = 'pending_validation' THEN 'active' ELSE status END,
     config_json, tags,
-    company_id, company_name, last_scraped_at, last_scraped_status,
-    last_scraped_error, consecutive_failures,
-    discovery_confidence, discovered_via, discovered_by,
-    discovery_queue_item_id, health_json,
+    company_id, company_name, last_scraped_at,
     created_at, updated_at
 FROM job_sources;
 

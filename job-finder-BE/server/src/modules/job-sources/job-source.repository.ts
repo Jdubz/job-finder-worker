@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { JobSource, JobSourceStatus, JobSourceHealth, TimestampLike } from '@shared/types'
+import type { JobSource, JobSourceStatus, TimestampLike } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
 type JobSourceRow = {
@@ -13,14 +13,6 @@ type JobSourceRow = {
   company_id: string | null
   company_name: string | null
   last_scraped_at: string | null
-  last_scraped_status: string | null
-  last_scraped_error: string | null
-  consecutive_failures: number
-  discovery_confidence: string | null
-  discovered_via: string | null
-  discovered_by: string | null
-  discovery_queue_item_id: string | null
-  health_json: string | null
   created_at: string
   updated_at: string
 }
@@ -59,14 +51,6 @@ const buildJobSource = (row: JobSourceRow): JobSource => ({
   companyId: row.company_id,
   companyName: row.company_name,
   lastScrapedAt: parseTimestamp(row.last_scraped_at),
-  lastScrapedStatus: row.last_scraped_status,
-  lastScrapedError: row.last_scraped_error,
-  consecutiveFailures: row.consecutive_failures,
-  discoveryConfidence: row.discovery_confidence as JobSource['discoveryConfidence'],
-  discoveredVia: row.discovered_via,
-  discoveredBy: row.discovered_by,
-  discoveryQueueItemId: row.discovery_queue_item_id,
-  health: parseJsonObject<JobSourceHealth>(row.health_json),
   createdAt: parseTimestamp(row.created_at) ?? new Date(),
   updatedAt: parseTimestamp(row.updated_at) ?? new Date()
 })
@@ -181,10 +165,8 @@ export class JobSourceRepository {
     const stmt = this.db.prepare(`
       INSERT INTO job_sources (
         id, name, source_type, status, config_json, tags, company_id, company_name,
-        last_scraped_at, last_scraped_status, last_scraped_error, consecutive_failures,
-        discovery_confidence, discovered_via, discovered_by, discovery_queue_item_id,
-        health_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        last_scraped_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -197,14 +179,6 @@ export class JobSourceRepository {
       input.companyId ?? null,
       input.companyName ?? null,
       toIsoString(input.lastScrapedAt),
-      input.lastScrapedStatus ?? null,
-      input.lastScrapedError ?? null,
-      input.consecutiveFailures ?? 0,
-      input.discoveryConfidence ?? null,
-      input.discoveredVia ?? null,
-      input.discoveredBy ?? null,
-      input.discoveryQueueItemId ?? null,
-      input.health ? JSON.stringify(input.health) : null,
       now,
       now
     )
@@ -258,46 +232,6 @@ export class JobSourceRepository {
     if (updates.lastScrapedAt !== undefined) {
       setClauses.push('last_scraped_at = ?')
       params.push(toIsoString(updates.lastScrapedAt))
-    }
-
-    if (updates.lastScrapedStatus !== undefined) {
-      setClauses.push('last_scraped_status = ?')
-      params.push(updates.lastScrapedStatus)
-    }
-
-    if (updates.lastScrapedError !== undefined) {
-      setClauses.push('last_scraped_error = ?')
-      params.push(updates.lastScrapedError)
-    }
-
-    if (updates.consecutiveFailures !== undefined) {
-      setClauses.push('consecutive_failures = ?')
-      params.push(updates.consecutiveFailures)
-    }
-
-    if (updates.discoveryConfidence !== undefined) {
-      setClauses.push('discovery_confidence = ?')
-      params.push(updates.discoveryConfidence)
-    }
-
-    if (updates.discoveredVia !== undefined) {
-      setClauses.push('discovered_via = ?')
-      params.push(updates.discoveredVia)
-    }
-
-    if (updates.discoveredBy !== undefined) {
-      setClauses.push('discovered_by = ?')
-      params.push(updates.discoveredBy)
-    }
-
-    if (updates.discoveryQueueItemId !== undefined) {
-      setClauses.push('discovery_queue_item_id = ?')
-      params.push(updates.discoveryQueueItemId)
-    }
-
-    if (updates.health !== undefined) {
-      setClauses.push('health_json = ?')
-      params.push(updates.health ? JSON.stringify(updates.health) : null)
     }
 
     params.push(id)

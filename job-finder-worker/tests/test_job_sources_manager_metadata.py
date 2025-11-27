@@ -18,14 +18,6 @@ def _bootstrap_db(path: Path):
               company_id TEXT,
               company_name TEXT,
               last_scraped_at TEXT,
-              last_scraped_status TEXT,
-              last_scraped_error TEXT,
-              consecutive_failures INTEGER NOT NULL DEFAULT 0,
-              discovery_confidence TEXT,
-              discovered_via TEXT,
-              discovered_by TEXT,
-              discovery_queue_item_id TEXT,
-              health_json TEXT DEFAULT '{}',
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -42,10 +34,6 @@ def test_create_from_discovery_persists_metadata(tmp_path):
         name="Acme Greenhouse",
         source_type="greenhouse",
         config={"board_token": "acme"},
-        discovered_via="user_submission",
-        discovered_by="tester",
-        discovery_confidence="high",
-        discovery_queue_item_id="queue-1",
         company_id="comp-1",
         company_name="Acme",
         tags=["gh"],
@@ -53,8 +41,8 @@ def test_create_from_discovery_persists_metadata(tmp_path):
 
     stored = mgr.get_source_by_id(source_id)
     assert stored["name"] == "Acme Greenhouse"
-    assert stored["discoveredVia"] == "user_submission"
-    assert stored["discoveredBy"] == "tester"
-    assert stored["discoveryConfidence"] == "high"
-    assert stored["discoveryQueueItemId"] == "queue-1"
+    assert stored["sourceType"] == "greenhouse"
+    assert stored["companyId"] == "comp-1"
+    assert stored["companyName"] == "Acme"
     assert stored["status"] == "active"
+    assert stored["tags"] == ["gh"]

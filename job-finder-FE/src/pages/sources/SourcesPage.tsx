@@ -438,15 +438,9 @@ export function SourcesPage() {
                 </div>
 
                 {/* Scraping Info */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Last Scraped</Label>
-                    <p className="mt-1">{formatRelativeTime(selectedSource.lastScrapedAt)}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Consecutive Failures</Label>
-                    <p className="mt-1">{selectedSource.consecutiveFailures}</p>
-                  </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Last Scraped</Label>
+                  <p className="mt-1">{formatRelativeTime(selectedSource.lastScrapedAt)}</p>
                 </div>
 
                 {/* Tags */}
