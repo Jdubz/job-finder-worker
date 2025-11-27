@@ -192,7 +192,7 @@ class ScrapeRunner:
                 else:
                     logger.warning(f"Source not found: {source_id}")
             if max_sources is not None:
-                return sources[: max_sources]
+                return sources[:max_sources]
             return sources
         return self._get_next_sources_by_rotation(max_sources)
 
@@ -224,7 +224,9 @@ class ScrapeRunner:
             return sources
         return sources[:limit]
 
-    def _scrape_source(self, source: Dict[str, Any], remaining_matches: Optional[int]) -> Dict[str, Any]:
+    def _scrape_source(
+        self, source: Dict[str, Any], remaining_matches: Optional[int]
+    ) -> Dict[str, Any]:
         """
         Scrape a single source using GenericScraper.
 
