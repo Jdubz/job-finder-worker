@@ -4,19 +4,10 @@ import type { QueueItem, QueueStats } from "@shared/types"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -27,8 +18,7 @@ import {
 } from "@/components/ui/table"
 import { AlertCircle, Activity, Loader2, Plus, Trash2 } from "lucide-react"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
-import { queueClient } from "@/api"
-import type { ScrapeConfig } from "@shared/types"
+import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
 import {
   getCompanyName,
   getDomain,
@@ -37,12 +27,6 @@ import {
   getStageLabel,
   getTaskTypeLabel,
 } from "./components/queueItemDisplay"
-
-type ScrapeFormState = {
-  targetMatches: string
-  maxSources: string
-  sourceIds: string
-}
 
 type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered"
 
@@ -54,13 +38,7 @@ export function QueueManagementPage() {
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null)
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [submittingScrape, setSubmittingScrape] = useState(false)
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null)
-  const [scrapeForm, setScrapeForm] = useState<ScrapeFormState>({
-    targetMatches: "5",
-    maxSources: "10",
-    sourceIds: "",
-  })
 
   // Calculate stats when queue items change
   useEffect(() => {
@@ -145,46 +123,6 @@ export function QueueManagementPage() {
         message: "Failed to cancel queue item",
       })
     }
-  }
-
-  const handleCreateScrape = async () => {
-    setSubmittingScrape(true)
-    try {
-      const config: ScrapeConfig = {
-        target_matches: scrapeForm.targetMatches.trim() === ""
-          ? null
-          : Number.parseInt(scrapeForm.targetMatches, 10),
-        max_sources: scrapeForm.maxSources.trim() === ""
-          ? null
-          : Number.parseInt(scrapeForm.maxSources, 10),
-      }
-
-      if (Number.isNaN(config.target_matches)) config.target_matches = null
-      if (Number.isNaN(config.max_sources)) config.max_sources = null
-
-      const sourceIds = scrapeForm.sourceIds
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-      if (sourceIds.length > 0) {
-        config.source_ids = sourceIds
-      }
-
-      await queueClient.submitScrape({ scrapeConfig: config })
-      await refetch()
-      setAlert({ type: "success", message: "Scrape job created and queued" })
-      setCreateOpen(false)
-    } catch (err) {
-      console.error("Failed to create scrape job", err)
-      setAlert({ type: "error", message: "Failed to create scrape job" })
-    } finally {
-      setSubmittingScrape(false)
-    }
-  }
-
-  const handleScrapeFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { id, value } = e.target
-    setScrapeForm((prev) => ({ ...prev, [id]: value }))
   }
 
   const formatRelativeTime = (date: unknown): string => {
@@ -408,58 +346,7 @@ export function QueueManagementPage() {
       </Card>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Scrape Job</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="targetMatches">Target matches</Label>
-                <Input
-                  id="targetMatches"
-                  type="number"
-                  min={1}
-                  placeholder="e.g. 5"
-                  value={scrapeForm.targetMatches}
-                  onChange={handleScrapeFormChange}
-                />
-                <p className="text-xs text-muted-foreground">Stop after enqueuing this many jobs (leave blank for unlimited).</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="maxSources">Max sources</Label>
-                <Input
-                  id="maxSources"
-                  type="number"
-                  min={1}
-                  placeholder="e.g. 10"
-                  value={scrapeForm.maxSources}
-                  onChange={handleScrapeFormChange}
-                />
-                <p className="text-xs text-muted-foreground">Limit how many sources are scraped (leave blank for all).</p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="sourceIds">Source IDs (optional)</Label>
-              <Input
-                id="sourceIds"
-                placeholder="uuid-1, uuid-2"
-                value={scrapeForm.sourceIds}
-                onChange={handleScrapeFormChange}
-              />
-              <p className="text-xs text-muted-foreground">Comma-separated list; leave empty to use rotation.</p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={submittingScrape}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateScrape} disabled={submittingScrape}>
-              {submittingScrape ? "Creating..." : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
+        <ScrapeJobDialog open={createOpen} onOpenChange={setCreateOpen} onSubmitted={refetch} />
       </Dialog>
 
       <Dialog open={Boolean(selectedItem)} onOpenChange={(open) => !open && setSelectedItem(null)}>

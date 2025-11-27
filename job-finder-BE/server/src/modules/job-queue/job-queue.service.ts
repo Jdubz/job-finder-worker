@@ -103,8 +103,8 @@ export class JobQueueService {
       created_at: now,
       updated_at: now,
       scrape_config: input.scrapeConfig ?? {
-        target_matches: 5,
-        max_sources: 20
+        target_matches: null,
+        max_sources: null
       }
     }
 

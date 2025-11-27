@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobSources } from "@/hooks/useJobSources"
 import { useQueueItems } from "@/hooks/useQueueItems"
+import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -114,6 +115,8 @@ export function SourcesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [tierFilter, setTierFilter] = useState<string>("all")
+  const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false)
+  const [scrapePrefillSourceId, setScrapePrefillSourceId] = useState<string | null>(null)
 
   // Form state
   const [sourceUrl, setSourceUrl] = useState("")
@@ -391,6 +394,7 @@ export function SourcesPage() {
                   <TableHead>Status</TableHead>
                   <TableHead>Tier</TableHead>
                   <TableHead className="hidden md:table-cell">Company</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -418,6 +422,20 @@ export function SourcesPage() {
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
                       {source.companyName || "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setScrapePrefillSourceId(source.id)
+                          setScrapeDialogOpen(true)
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        New scrape
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -563,6 +581,14 @@ export function SourcesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ScrapeJobDialog
+        open={scrapeDialogOpen}
+        onOpenChange={setScrapeDialogOpen}
+        prefillSourceId={scrapePrefillSourceId}
+        onSubmitted={refetch}
+        sources={sources}
+      />
     </div>
   )
 }

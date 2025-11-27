@@ -52,9 +52,18 @@ const submitCompanySchema = z.object({
   source: z.enum(queueSources).optional()
 })
 
+const scrapeConfigSchema = z
+  .object({
+    target_matches: z.number().int().positive().nullable().optional(),
+    max_sources: z.number().int().positive().nullable().optional(),
+    source_ids: z.array(z.string()).optional(),
+    min_match_score: z.number().int().min(0).max(100).nullable().optional()
+  })
+  .strict()
+
 const submitScrapeSchema = z.object({
-  scrapeConfig: z.record(z.unknown()).optional(),
-  scrape_config: z.record(z.unknown()).optional()
+  scrapeConfig: scrapeConfigSchema.optional(),
+  scrape_config: scrapeConfigSchema.optional()
 })
 
 const sourceTypeHints = ['auto', 'greenhouse', 'workday', 'rss', 'generic'] as const

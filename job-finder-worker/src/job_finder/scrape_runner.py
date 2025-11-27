@@ -184,6 +184,8 @@ class ScrapeRunner:
                     sources.append(source)
                 else:
                     logger.warning(f"Source not found: {source_id}")
+            if max_sources is not None:
+                return sources[: max_sources]
             return sources
         return self._get_next_sources_by_rotation(max_sources)
 
