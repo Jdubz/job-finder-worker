@@ -45,7 +45,9 @@ class StrikeFilterEngine:
         self.excluded_companies = [c.lower() for c in hard_rej.get("excludedCompanies", [])]
         self.excluded_keywords = [k.lower() for k in hard_rej.get("excludedKeywords", [])]
         # Whitelist: job titles must contain at least one of these keywords
-        self.required_title_keywords = [k.lower() for k in hard_rej.get("requiredTitleKeywords", [])]
+        self.required_title_keywords = [
+            k.lower() for k in hard_rej.get("requiredTitleKeywords", [])
+        ]
         self.min_salary_floor = hard_rej.get("minSalaryFloor", 100000)
         self.reject_commission_only = hard_rej.get("rejectCommissionOnly", True)
 
