@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,7 @@ export function PersonalInfoTab({
   handleResetPersonalInfo,
 }: PersonalInfoTabProps) {
   const [uploading, setUploading] = useState<{ avatar: boolean; logo: boolean }>({ avatar: false, logo: false })
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const fileToDataUrl = async (file: File) => {
     const reader = new FileReader()
@@ -59,6 +61,25 @@ export function PersonalInfoTab({
     })
   }
 
+  const handleImageChange = (type: "avatar" | "logo", maxDimension: number) =>
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      setUploadError(null)
+      try {
+        setUploading((p) => ({ ...p, [type]: true }))
+        const raw = await fileToDataUrl(file)
+        const resized = await resizeDataUrl(raw, maxDimension)
+        updatePersonalInfoState({ [type]: resized })
+      } catch (err) {
+        console.error(`${type} upload failed`, err)
+        setUploadError(`Failed to upload ${type === "avatar" ? "avatar" : "logo"}. Please try another image.`)
+      } finally {
+        setUploading((p) => ({ ...p, [type]: false }))
+        e.target.value = ""
+      }
+    }
+
   return (
     <Card className="mt-4">
       <CardHeader>
@@ -68,6 +89,12 @@ export function PersonalInfoTab({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {uploadError && (
+          <Alert variant="destructive">
+            <AlertDescription>{uploadError}</AlertDescription>
+          </Alert>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
@@ -182,21 +209,7 @@ export function PersonalInfoTab({
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    try {
-                      setUploading((p) => ({ ...p, avatar: true }))
-                      const raw = await fileToDataUrl(file)
-                      const resized = await resizeDataUrl(raw, 512)
-                      updatePersonalInfoState({ avatar: resized })
-                    } catch (err) {
-                      console.error("Avatar upload failed", err)
-                    } finally {
-                      setUploading((p) => ({ ...p, avatar: false }))
-                      e.target.value = ""
-                    }
-                  }}
+                  onChange={handleImageChange("avatar", 512)}
                   disabled={uploading.avatar || isSaving}
                 />
                 {uploading.avatar ? (
@@ -228,21 +241,7 @@ export function PersonalInfoTab({
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    try {
-                      setUploading((p) => ({ ...p, logo: true }))
-                      const raw = await fileToDataUrl(file)
-                      const resized = await resizeDataUrl(raw, 640)
-                      updatePersonalInfoState({ logo: resized })
-                    } catch (err) {
-                      console.error("Logo upload failed", err)
-                    } finally {
-                      setUploading((p) => ({ ...p, logo: false }))
-                      e.target.value = ""
-                    }
-                  }}
+                  onChange={handleImageChange("logo", 640)}
                   disabled={uploading.logo || isSaving}
                 />
                 {uploading.logo ? (
