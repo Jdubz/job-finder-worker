@@ -6,24 +6,24 @@ import { Loader2 } from "lucide-react"
 import { useConfigState } from "./hooks/useConfigState"
 import {
   StopListTab,
+  QueueSettingsTab,
   AISettingsTab,
   JobMatchTab,
   JobFiltersTab,
   TechnologyRanksTab,
   SchedulerTab,
-  CompanyScoringTab,
   PersonalInfoTab,
 } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
 
 type TabType =
   | "stop-list"
+  | "queue"
   | "ai"
   | "job-match"
   | "filters"
   | "tech"
   | "scheduler"
-  | "scoring"
   | "personal"
 
 export function JobFinderConfigPage() {
@@ -84,7 +84,7 @@ export function JobFinderConfigPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Job Finder Configuration</h1>
-          <p className="text-muted-foreground">Manage filtering rules, queues, scheduling, scoring, and profile defaults.</p>
+          <p className="text-muted-foreground">Manage filtering rules, queues, scheduling, and profile defaults.</p>
         </div>
       </div>
 
@@ -103,12 +103,12 @@ export function JobFinderConfigPage() {
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="stop-list">Stop List</TabsTrigger>
+          <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
           <TabsTrigger value="job-match">Match</TabsTrigger>
           <TabsTrigger value="filters">Filters</TabsTrigger>
           <TabsTrigger value="tech">Tech</TabsTrigger>
           <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
-          <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="personal">Personal</TabsTrigger>
         </TabsList>
 
@@ -130,6 +130,15 @@ export function JobFinderConfigPage() {
           handleRemoveDomain={configState.handleRemoveDomain}
           handleSaveStopList={configState.handleSaveStopList}
           handleResetStopList={configState.handleResetStopList}
+        />
+
+        <QueueSettingsTab
+          isSaving={configState.isSaving}
+          queueSettings={configState.queueSettings}
+          setQueueSettings={configState.setQueueSettings}
+          hasQueueChanges={configState.hasQueueChanges}
+          handleSaveQueueSettings={configState.handleSaveQueueSettings}
+          handleResetQueueSettings={configState.handleResetQueueSettings}
         />
 
         <AISettingsTab
@@ -182,15 +191,6 @@ export function JobFinderConfigPage() {
           updateSchedulerState={configState.updateSchedulerState}
           handleSaveScheduler={configState.handleSaveScheduler}
           handleResetSchedulerSettings={configState.handleResetSchedulerSettings}
-        />
-
-        <CompanyScoringTab
-          isSaving={configState.isSaving}
-          currentScoring={configState.currentScoring}
-          hasCompanyScoringChanges={configState.hasCompanyScoringChanges}
-          updateCompanyScoringState={configState.updateCompanyScoringState}
-          handleSaveCompanyScoring={configState.handleSaveCompanyScoring}
-          handleResetCompanyScoring={configState.handleResetCompanyScoring}
         />
 
         <PersonalInfoTab

@@ -41,10 +41,6 @@ vi.mock("@/pages/ai-prompts/AIPromptsPage", () => ({
   AIPromptsPage: () => <div data-testid="ai-prompts-page">AI Prompts Page</div>,
 }))
 
-vi.mock("@/pages/settings/SettingsPage", () => ({
-  SettingsPage: () => <div data-testid="settings-page">Settings Page</div>,
-}))
-
 vi.mock("@/pages/job-applications/JobApplicationsPage", () => ({
   JobApplicationsPage: () => <div data-testid="job-applications-page">Job Applications Page</div>,
 }))

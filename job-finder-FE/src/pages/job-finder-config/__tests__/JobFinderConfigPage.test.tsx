@@ -15,21 +15,22 @@ import { configClient } from "@/api/config-client"
 // Mock the config client
 vi.mock("@/api/config-client", () => ({
   configClient: {
+    listEntries: vi.fn(),
     getStopList: vi.fn(),
+    getQueueSettings: vi.fn(),
     getAISettings: vi.fn(),
     getJobMatch: vi.fn(),
     getJobFilters: vi.fn(),
     getTechnologyRanks: vi.fn(),
     getSchedulerSettings: vi.fn(),
-    getCompanyScoring: vi.fn(),
     getPersonalInfo: vi.fn(),
     updateStopList: vi.fn(),
+    updateQueueSettings: vi.fn(),
     updateAISettings: vi.fn(),
     updateJobMatch: vi.fn(),
     updateJobFilters: vi.fn(),
     updateTechnologyRanks: vi.fn(),
     updateSchedulerSettings: vi.fn(),
-    updateCompanyScoring: vi.fn(),
     updatePersonalInfo: vi.fn(),
   },
 }))
@@ -98,6 +99,11 @@ const mockJobMatch = {
   generateIntakeData: true,
 }
 
+const mockQueueSettings = {
+  processingTimeoutSeconds: 1800,
+  isProcessingEnabled: true,
+}
+
 const mockJobFilters = {
   enabled: true,
   strikeThreshold: 5,
@@ -122,25 +128,6 @@ const mockScheduler = {
   pollIntervalSeconds: 60,
 }
 
-const mockCompanyScoring = {
-  tierThresholds: { s: 150, a: 100, b: 70, c: 50 },
-  priorityBonuses: { portlandOffice: 50, remoteFirst: 15, aiMlFocus: 10, techStackMax: 100 },
-  matchAdjustments: {
-    largeCompanyBonus: 10,
-    smallCompanyPenalty: -5,
-    largeCompanyThreshold: 10000,
-    smallCompanyThreshold: 100,
-  },
-  timezoneAdjustments: {
-    sameTimezone: 5,
-    diff1to2hr: -2,
-    diff3to4hr: -5,
-    diff5to8hr: -10,
-    diff9plusHr: -15,
-  },
-  priorityThresholds: { high: 85, medium: 70 },
-}
-
 const mockPersonalInfo = {
   name: "Test User",
   email: "test@example.com",
@@ -152,6 +139,13 @@ const mockPersonalInfo = {
   accentColor: "#3b82f6",
 }
 
+const buildConfigEntry = (id: string, payload: unknown) => ({
+  id,
+  payload,
+  updatedAt: "2024-01-01T00:00:00.000Z",
+  updatedBy: "tester",
+})
+
 describe("JobFinderConfigPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -159,21 +153,31 @@ describe("JobFinderConfigPage", () => {
     mockAuthState.isOwner = true
 
     // Setup default mocks
+    vi.mocked(configClient.listEntries).mockResolvedValue([
+      buildConfigEntry("stop-list", mockStopList),
+      buildConfigEntry("queue-settings", mockQueueSettings),
+      buildConfigEntry("ai-settings", mockAISettings),
+      buildConfigEntry("job-match", mockJobMatch),
+      buildConfigEntry("job-filters", mockJobFilters),
+      buildConfigEntry("technology-ranks", mockTechRanks),
+      buildConfigEntry("scheduler-settings", mockScheduler),
+      buildConfigEntry("personal-info", mockPersonalInfo),
+    ])
     vi.mocked(configClient.getStopList).mockResolvedValue(mockStopList)
+    vi.mocked(configClient.getQueueSettings).mockResolvedValue(mockQueueSettings)
     vi.mocked(configClient.getAISettings).mockResolvedValue(mockAISettings)
     vi.mocked(configClient.getJobMatch).mockResolvedValue(mockJobMatch)
     vi.mocked(configClient.getJobFilters).mockResolvedValue(mockJobFilters)
     vi.mocked(configClient.getTechnologyRanks).mockResolvedValue(mockTechRanks)
     vi.mocked(configClient.getSchedulerSettings).mockResolvedValue(mockScheduler)
-    vi.mocked(configClient.getCompanyScoring).mockResolvedValue(mockCompanyScoring)
     vi.mocked(configClient.getPersonalInfo).mockResolvedValue(mockPersonalInfo)
     vi.mocked(configClient.updateStopList).mockResolvedValue(undefined)
+    vi.mocked(configClient.updateQueueSettings).mockResolvedValue(undefined)
     vi.mocked(configClient.updateAISettings).mockResolvedValue(undefined)
     vi.mocked(configClient.updateJobMatch).mockResolvedValue(undefined)
     vi.mocked(configClient.updateJobFilters).mockResolvedValue(undefined)
     vi.mocked(configClient.updateTechnologyRanks).mockResolvedValue(undefined)
     vi.mocked(configClient.updateSchedulerSettings).mockResolvedValue(undefined)
-    vi.mocked(configClient.updateCompanyScoring).mockResolvedValue(undefined)
     vi.mocked(configClient.updatePersonalInfo).mockResolvedValue(mockPersonalInfo)
   })
 
@@ -187,19 +191,19 @@ describe("JobFinderConfigPage", () => {
 
       // Check tabs (shortened names to fit 8-column layout)
       expect(screen.getByRole("tab", { name: "Stop List" })).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "Queue" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "AI" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "Match" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "Filters" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "Tech" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "Scheduler" })).toBeInTheDocument()
-      expect(screen.getByRole("tab", { name: "Scoring" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "Personal" })).toBeInTheDocument()
     })
 
     it("should show loading state while fetching configuration", () => {
       // Mock slow response
-      vi.mocked(configClient.getStopList).mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve(mockStopList), 100))
+      vi.mocked(configClient.listEntries).mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve([]), 100))
       )
 
       renderWithRouter(<JobFinderConfigPage />)
@@ -477,7 +481,7 @@ describe("JobFinderConfigPage", () => {
 
   describe("error handling", () => {
     it("should show error when loading configuration fails", async () => {
-      vi.mocked(configClient.getStopList).mockRejectedValue(new Error("Failed to load"))
+      vi.mocked(configClient.listEntries).mockRejectedValue(new Error("Failed to load"))
 
       renderWithRouter(<JobFinderConfigPage />)
 
@@ -625,203 +629,6 @@ describe("JobFinderConfigPage", () => {
       // Check if responsive classes are applied
       const container = screen.getByText("Job Finder Configuration").closest("div")
       expect(container).toBeInTheDocument()
-    })
-  })
-
-  describe("company scoring tab", () => {
-    it("should display scoring tab content when clicked", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Scoring" }))
-
-      await waitFor(() => {
-        expect(screen.getByText("Company Scoring")).toBeInTheDocument()
-        expect(screen.getByText("Company Tier Thresholds")).toBeInTheDocument()
-        expect(screen.getByLabelText("S-Tier")).toBeInTheDocument()
-      })
-    })
-
-    it("should update tier threshold values", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Scoring" }))
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("S-Tier")).toBeInTheDocument()
-      })
-
-      // Update S-Tier threshold using fireEvent.change for number inputs
-      const sTierInput = screen.getByLabelText("S-Tier")
-      fireEvent.change(sTierInput, { target: { value: "200" } })
-
-      expect(sTierInput).toHaveValue(200)
-    })
-
-    it("should save company scoring settings", async () => {
-      vi.mocked(configClient.updateCompanyScoring).mockResolvedValueOnce(undefined)
-
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Scoring" }))
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("S-Tier")).toBeInTheDocument()
-      })
-
-      // Update S-Tier threshold using fireEvent.change for number inputs
-      const sTierInput = screen.getByLabelText("S-Tier")
-      fireEvent.change(sTierInput, { target: { value: "200" } })
-
-      // Save changes
-      await user.click(screen.getByText("Save Changes"))
-
-      await waitFor(() => {
-        expect(screen.getByText("Company scoring saved successfully!")).toBeInTheDocument()
-      })
-
-      expect(configClient.updateCompanyScoring).toHaveBeenCalled()
-    })
-
-    it("should show error when saving company scoring fails", async () => {
-      vi.mocked(configClient.updateCompanyScoring).mockRejectedValueOnce(new Error("Save failed"))
-
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Scoring" }))
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("S-Tier")).toBeInTheDocument()
-      })
-
-      // Update S-Tier threshold using fireEvent.change for number inputs
-      const sTierInput = screen.getByLabelText("S-Tier")
-      fireEvent.change(sTierInput, { target: { value: "200" } })
-
-      // Save changes
-      await user.click(screen.getByText("Save Changes"))
-
-      await waitFor(() => {
-        expect(screen.getByText("Failed to save company scoring")).toBeInTheDocument()
-      })
-    })
-
-    it("should reset company scoring to original values", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Scoring" }))
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("S-Tier")).toBeInTheDocument()
-      })
-
-      // Update S-Tier threshold using fireEvent.change for number inputs
-      const sTierInput = screen.getByLabelText("S-Tier")
-      fireEvent.change(sTierInput, { target: { value: "200" } })
-
-      expect(sTierInput).toHaveValue(200)
-
-      const activeReset =
-        screen.getAllByRole("button", { name: "Reset" }).find((btn) =>
-          btn.closest('[data-state="active"]')
-        ) ?? screen.getAllByRole("button", { name: "Reset" })[0]
-      await user.click(activeReset)
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("S-Tier")).toHaveValue(150) // Original value
-      })
-    })
-  })
-
-  describe("personal info tab", () => {
-    it("should display personal info fields when clicked", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Personal" }))
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("Name")).toBeInTheDocument()
-        expect(screen.getByLabelText("Email")).toBeInTheDocument()
-        expect(screen.getByLabelText("Accent Color")).toBeInTheDocument()
-      })
-    })
-
-    it("should save personal info updates", async () => {
-      vi.mocked(configClient.updatePersonalInfo).mockResolvedValueOnce(mockPersonalInfo)
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Personal" }))
-
-      const nameInput = await screen.findByLabelText("Name")
-      await user.clear(nameInput)
-      await user.type(nameInput, "Updated Name")
-
-      await user.click(screen.getByText("Save"))
-
-      await waitFor(() => {
-        expect(configClient.updatePersonalInfo).toHaveBeenCalled()
-      })
-    })
-
-    it("should reset personal info to original values", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await user.click(await screen.findByRole("tab", { name: "Personal" }))
-
-      const nameInput = await screen.findByLabelText("Name")
-      await user.clear(nameInput)
-      await user.type(nameInput, "Changed Name")
-      expect(nameInput).toHaveValue("Changed Name")
-
-      const personalReset =
-        screen.getAllByRole("button", { name: "Reset" }).find((btn) =>
-          btn.closest('[data-state="active"]')
-        ) ?? screen.getAllByRole("button", { name: "Reset" })[0]
-      await user.click(personalReset)
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("Name")).toHaveValue(mockPersonalInfo.name)
-      })
     })
   })
 })

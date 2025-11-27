@@ -46,7 +46,6 @@ const jobFinderLinks: NavLink[] = [
 const systemLinks: NavLink[] = [
   { to: ROUTES.AI_PROMPTS, label: "AI Prompts", icon: Sparkles },
   { to: ROUTES.JOB_FINDER_CONFIG, label: "Configuration", icon: Settings },
-  { to: ROUTES.SETTINGS, label: "Settings", icon: Settings },
 ]
 
 export function Navigation() {
