@@ -322,7 +322,9 @@ Respond with JSON only.
             logger.warning("AI web search for %s failed: %s", company_name, exc)
             return None
 
-    def _merge_company_info(self, scraped: Dict[str, Any], searched: Dict[str, Any]) -> Dict[str, Any]:
+    def _merge_company_info(
+        self, scraped: Dict[str, Any], searched: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Combine scraped and searched fields, preferring non-empty values and keeping sources."""
         merged = {
             "about": scraped.get("about") or searched.get("about") or "",
