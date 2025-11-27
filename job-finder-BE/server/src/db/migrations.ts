@@ -50,16 +50,22 @@ export function runMigrations(db: Database.Database, migrationsDir: string = def
     return []
   }
 
-  logger.info({ pending }, '[migrations] applying pending migrations')
+  logger.info({ count: pending.length }, '[migrations] applying pending migrations')
 
   const appliedNow: string[] = []
-  for (const file of pending) {
-    const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8')
-    db.exec(sql)
-    db.prepare('INSERT INTO schema_migrations (name) VALUES (?)').run(file)
-    appliedNow.push(file)
-    logger.info({ migration: file }, '[migrations] applied migration')
-  }
+
+  // Apply all migrations atomically - if one fails, none are committed
+  const applyAll = db.transaction(() => {
+    for (const file of pending) {
+      const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8')
+      db.exec(sql)
+      db.prepare('INSERT INTO schema_migrations (name) VALUES (?)').run(file)
+      appliedNow.push(file)
+      logger.info({ migration: file }, '[migrations] applied migration')
+    }
+  })
+
+  applyAll()
 
   logger.info({ count: appliedNow.length }, '[migrations] completed applying migrations')
   return appliedNow
