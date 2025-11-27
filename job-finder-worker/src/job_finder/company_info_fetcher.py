@@ -66,55 +66,57 @@ class CompanyInfoFetcher:
             "founded": "",
         }
 
-        if not company_website:
-            logger.warning(f"No website provided for {company_display}")
-            return result
-
         try:
-            # Try to fetch from common company pages
-            pages_to_try = [
-                f"{company_website}/about",
-                f"{company_website}/about-us",
-                f"{company_website}/company",
-                f"{company_website}/careers",
-                company_website,  # Homepage as fallback
-            ]
+            scraped_info: Dict[str, Any] = {}
+            search_info: Dict[str, Any] = {}
 
+            # Always attempt site scrape when a URL is provided
             content = None
-            for page_url in pages_to_try:
-                try:
-                    content = self._fetch_page_content(page_url)
-                    text_limits = get_text_limits()
-                    min_page_length = text_limits.get("minCompanyPageLength", 200)
-                    if content and len(content) > min_page_length:  # Got meaningful content
-                        logger.info(f"Successfully fetched content from {page_url}")
-                        break
-                except (requests.RequestException, ValueError, AttributeError) as e:
-                    # HTTP errors, parsing errors, or invalid URL - try next page
-                    logger.debug(f"Failed to fetch {page_url}: {e}")
-                    continue
+            if company_website:
+                pages_to_try = [
+                    f"{company_website}/about",
+                    f"{company_website}/about-us",
+                    f"{company_website}/company",
+                    f"{company_website}/careers",
+                    company_website,  # Homepage as fallback
+                ]
+
+                for page_url in pages_to_try:
+                    try:
+                        content = self._fetch_page_content(page_url)
+                        text_limits = get_text_limits()
+                        min_page_length = text_limits.get("minCompanyPageLength", 200)
+                        if content and len(content) > min_page_length:  # Got meaningful content
+                            logger.info(f"Successfully fetched content from {page_url}")
+                            break
+                    except (requests.RequestException, ValueError, AttributeError) as e:
+                        logger.debug(f"Failed to fetch {page_url}: {e}")
+                        continue
 
             if content:
-                # Extract information from content
-                extracted = self._extract_company_info(content, company_name)
-                result.update(extracted)
+                scraped_info = self._extract_company_info(content, company_name)
 
-                _, company_display = format_company_name(company_name)
-                logger.info(
-                    f"Extracted company info for {company_display}: "
-                    f"{len(result['about'])} chars about, "
-                    f"{len(result['culture'])} chars culture"
-                )
-            else:
-                _, company_display = format_company_name(company_name)
-                logger.warning(f"Could not fetch any content for {company_display}")
+            # Always run AI web search (when available) to widen coverage beyond the career site
+            if self.ai_provider:
+                logger.info("Running AI web search for %s to enrich company data", company_display)
+                search_info = self._search_company_web(company_name) or {}
+
+            # Merge scraped + searched info, prefer non-empty factual fields, carry sources if present
+            merged = self._merge_company_info(scraped_info, search_info)
+            result.update(merged)
+
+            _, company_display = format_company_name(company_name)
+            logger.info(
+                "Compiled company info for %s: about=%d chars, culture=%d chars",
+                company_display,
+                len(result.get("about", "")),
+                len(result.get("culture", "")),
+            )
 
         except (requests.RequestException, ValueError, AttributeError) as e:
-            # HTTP, parsing, or data errors - return empty result
             _, company_display = format_company_name(company_name)
             logger.error(f"Error fetching company info for {company_display}: {e}")
         except Exception as e:
-            # Unexpected errors - log with traceback
             logger.error(
                 f"Unexpected error fetching company info for {company_name} ({type(e).__name__}): {e}",
                 exc_info=True,
@@ -189,12 +191,14 @@ class CompanyInfoFetcher:
             "founded": "",
         }
 
-        # If we have AI provider, use it for better extraction
-        if self.ai_provider:
-            result = self._extract_with_ai(content, company_name)
-        else:
-            # Fallback to simple heuristics
-            result = self._extract_with_heuristics(content)
+        # Start with heuristics to avoid AI cost; only call AI when info is sparse
+        result = self._extract_with_heuristics(content)
+
+        # Consider AI only if we have a provider and the heuristic result is sparse
+        if self.ai_provider and self._is_sparse_company_info(result):
+            ai_result = self._extract_with_ai(content, company_name)
+            if ai_result and not self._is_sparse_company_info(ai_result):
+                return ai_result
 
         return result
 
@@ -282,6 +286,78 @@ Return ONLY valid JSON in this format:
                 exc_info=True,
             )
             return self._extract_with_heuristics(content)
+
+    def _search_company_web(self, company_name: str) -> Optional[Dict[str, str]]:
+        """Use AI provider with web-search tools to gather company info beyond the site."""
+        try:
+            prompt = f"""
+Use web search to gather concise, factual info about {company_name}. You have browsing tools.
+CRITICAL: Do NOT invent or guess. If a field is unknown, leave it "".
+Return ONLY JSON with these keys: about, culture, mission, size, industry, founded, sources.
+- about: 2-3 sentence factual summary (no hype)
+- culture: 1-2 sentences (cite actual claims, else "")
+- mission: mission statement if available, else ""
+- size: employee count or range if found, else ""
+- industry: primary sector if found, else ""
+- founded: year if found, else ""
+- sources: array of up to 3 URLs actually used
+
+Respond with JSON only.
+"""
+            response = self.ai_provider.generate(prompt, max_tokens=800, temperature=0.2)
+
+            response_clean = response.strip()
+            if response_clean.startswith("```"):
+                start = response_clean.find("{")
+                end = response_clean.rfind("}") + 1
+                response_clean = response_clean[start:end]
+
+            data = json.loads(response_clean)
+            # Normalize expected fields
+            for key in ["about", "culture", "mission", "size", "industry", "founded"]:
+                data.setdefault(key, "")
+            data.setdefault("sources", [])
+            return data
+        except Exception as exc:
+            logger.warning("AI web search for %s failed: %s", company_name, exc)
+            return None
+
+    def _merge_company_info(
+        self, scraped: Dict[str, Any], searched: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Combine scraped and searched fields, preferring non-empty values and keeping sources."""
+        merged = {
+            "about": scraped.get("about") or searched.get("about") or "",
+            "culture": scraped.get("culture") or searched.get("culture") or "",
+            "mission": scraped.get("mission") or searched.get("mission") or "",
+            "size": scraped.get("size") or searched.get("size") or "",
+            "industry": scraped.get("industry") or searched.get("industry") or "",
+            "founded": scraped.get("founded") or searched.get("founded") or "",
+        }
+
+        # Preserve source URLs from search when available
+        if searched.get("sources"):
+            merged["sources"] = searched.get("sources")
+
+        return merged
+
+    def _is_sparse_company_info(self, info: Dict[str, str]) -> bool:
+        """
+        Determine if extracted company info is too sparse to be useful.
+
+        Uses length thresholds from config; triggers AI enrichment when below.
+        """
+        text_limits = get_text_limits()
+        min_about = text_limits.get("minCompanyPageLength", 200)
+        min_sparse = text_limits.get("minSparseCompanyInfoLength", 100)
+
+        about_len = len(info.get("about", "") or "")
+        culture_len = len(info.get("culture", "") or "")
+        mission_len = len(info.get("mission", "") or "")
+
+        # Treat as sparse if about is short OR sum of sections is very small
+        total_len = about_len + culture_len + mission_len
+        return about_len < min_about or total_len < min_sparse
 
     def _extract_with_heuristics(self, content: str) -> Dict[str, str]:
         """

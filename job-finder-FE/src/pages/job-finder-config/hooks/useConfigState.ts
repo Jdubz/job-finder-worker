@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { configClient } from "@/api/config-client"
 import {
@@ -69,12 +69,7 @@ export function useConfigState() {
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo | null>(null)
   const [originalPersonalInfo, setOriginalPersonalInfo] = useState<PersonalInfo | null>(null)
 
-  // Load all settings on mount
-  useEffect(() => {
-    loadAllSettings()
-  }, [])
-
-  const loadAllSettings = async () => {
+  const loadAllSettings = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
@@ -126,7 +121,12 @@ export function useConfigState() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [user?.email])
+
+  // Load all settings on mount
+  useEffect(() => {
+    loadAllSettings()
+  }, [loadAllSettings])
 
   // State updaters
   const updateJobFiltersState = (updater: (current: JobFiltersConfig) => JobFiltersConfig) => {

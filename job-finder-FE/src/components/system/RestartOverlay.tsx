@@ -41,8 +41,6 @@ export function RestartOverlay() {
   const lifecycleUrl = `${apiBase}/api/lifecycle/events`
 
   const restartTriggered = useRef(false)
-  const restartPending = useRef<{ reason?: string } | null>(null)
-  const errorStreak = useRef(0)
 
   useEffect(() => {
     if (typeof EventSource === "undefined") return
@@ -63,51 +61,14 @@ export function RestartOverlay() {
       }
     }
 
-    const confirmServerGoingDown = async (reason?: string) => {
-      // Show overlay only after we see the healthcheck fail (avoids early flicker)
-      for (let i = 0; i < 5; i += 1) {
-        const healthy = await fetch(healthUrl, { cache: "no-store" })
-          .then((r) => r.ok)
-          .catch(() => false)
-        if (!healthy) {
-          await beginBlocking(reason)
-          return
-        }
-        await wait(400)
-      }
-      // If still healthy after retries, leave pending; will trigger on error handler if needed
-      restartPending.current = { reason }
-    }
-
     source.addEventListener("restarting", (event) => {
       try {
         const data = JSON.parse((event as MessageEvent).data) as { reason?: string }
-        confirmServerGoingDown(data.reason)
+        void beginBlocking(data.reason)
       } catch {
-        confirmServerGoingDown()
+        void beginBlocking()
       }
     })
-
-    // Reset error streak once connection is open again
-    source.onopen = () => {
-      errorStreak.current = 0
-    }
-
-      // Only treat repeated failures + failing healthcheck as a restart
-    source.onerror = async () => {
-      errorStreak.current += 1
-      // quick health probe to avoid false positives from transient network hiccups
-      const healthy = await fetch(healthUrl, { cache: "no-store" })
-        .then((r) => r.ok)
-        .catch(() => false)
-      if (!healthy && errorStreak.current >= 2) {
-        beginBlocking("lifecycle stream disconnected & healthcheck failed")
-      }
-      // If a restart was pending but health remained good, retry confirmation now
-      if (restartPending.current && !healthy) {
-        beginBlocking(restartPending.current.reason)
-      }
-    }
 
     return () => {
       source.close()
