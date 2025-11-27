@@ -85,6 +85,7 @@ export default defineConfig({
           `VITE_OWNER_EMAIL=${ownerEmail}`,
           `VITE_API_BASE_URL=${apiOrigin}`,
           `VITE_FUNCTIONS_BASE_URL=${apiOrigin}`,
+          `VITE_GOOGLE_OAUTH_CLIENT_ID=test-google-client`,
           `VITE_FIREBASE_API_KEY=test-api-key`,
           `VITE_FIREBASE_AUTH_DOMAIN=test.local`,
           `VITE_FIREBASE_PROJECT_ID=job-finder-e2e`,

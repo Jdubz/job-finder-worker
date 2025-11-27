@@ -1,12 +1,7 @@
 /**
  * Queue Management Page Tests
  *
- * Tests for queue management including:
- * - Queue item display and filtering
- * - Bulk operations
- * - Stats display
- * - Real-time updates
- * - Status management
+ * Focuses on the streamlined queue list, stats, and detail modal.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -16,7 +11,6 @@ import { QueueManagementPage } from "../QueueManagementPage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useQueueItems } from "@/hooks/useQueueItems"
 
-// Mock modules
 vi.mock("@/contexts/AuthContext")
 vi.mock("@/hooks/useQueueItems")
 
@@ -102,11 +96,12 @@ describe("QueueManagementPage", () => {
       loading: false,
       error: null,
       updateQueueItem: mockUpdateQueueItem,
+      refetch: vi.fn(),
     } as any)
   })
 
   describe("Initial Rendering", () => {
-    it("should render the queue management page", async () => {
+    it("renders the queue management page", async () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
@@ -114,7 +109,7 @@ describe("QueueManagementPage", () => {
       })
     })
 
-    it("should display queue items", async () => {
+    it("displays queue items in the list", async () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
@@ -124,27 +119,28 @@ describe("QueueManagementPage", () => {
       })
     })
 
-    it("should show loading state", () => {
+    it("shows loading state", () => {
       vi.mocked(useQueueItems).mockReturnValue({
         queueItems: [],
         loading: true,
         error: null,
         updateQueueItem: mockUpdateQueueItem,
+        refetch: vi.fn(),
       } as any)
 
-      const { container } = render(<QueueManagementPage />)
+      render(<QueueManagementPage />)
 
-      // Component shows skeleton loaders when loading - look for h-24 skeleton class pattern
-      const skeletons = container.querySelectorAll('[class*="h-24"], [class*="h-32"]')
-      expect(skeletons.length).toBeGreaterThan(0)
+      expect(screen.getByRole("heading", { name: /queue management/i })).toBeInTheDocument()
+      expect(document.querySelector(".animate-spin")).toBeTruthy()
     })
 
-    it("should display error state", async () => {
+    it("shows error state", async () => {
       vi.mocked(useQueueItems).mockReturnValue({
         queueItems: [],
         loading: false,
         error: new Error("Failed to load"),
         updateQueueItem: mockUpdateQueueItem,
+        refetch: vi.fn(),
       } as any)
 
       render(<QueueManagementPage />)
@@ -156,41 +152,29 @@ describe("QueueManagementPage", () => {
   })
 
   describe("Queue Stats", () => {
-    it("should display queue statistics", async () => {
+    it("displays queue statistics", async () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
-        // Total should be 4
         expect(screen.getByText(/total/i)).toBeInTheDocument()
         expect(screen.getByText("4")).toBeInTheDocument()
       })
     })
 
-    it("should show correct status counts", async () => {
-      render(<QueueManagementPage />)
-
-      await waitFor(() => {
-        // 1 pending, 1 processing, 1 success, 1 failed - there will be 4 "1"s shown
-        const ones = screen.getAllByText("1")
-        expect(ones.length).toBeGreaterThanOrEqual(4)
-      })
-    })
-
-    it("should update stats when items change", async () => {
+    it("updates stats when items change", async () => {
       const { rerender } = render(<QueueManagementPage />)
 
       await waitFor(() => {
         expect(screen.getByText("4")).toBeInTheDocument()
       })
 
-      // Update with new items
       vi.mocked(useQueueItems).mockReturnValue({
         queueItems: [
           ...mockQueueItems,
           {
             id: "queue-5",
             user_id: "test-user-123",
-            type: "linkedin-job",
+            type: "job",
             status: "pending",
             url: "https://linkedin.com/jobs/111",
             company_name: "NewCorp",
@@ -204,6 +188,7 @@ describe("QueueManagementPage", () => {
         loading: false,
         error: null,
         updateQueueItem: mockUpdateQueueItem,
+        refetch: vi.fn(),
       } as any)
 
       rerender(<QueueManagementPage />)
@@ -214,58 +199,8 @@ describe("QueueManagementPage", () => {
     })
   })
 
-  describe("Filtering", () => {
-    it("should have status filter select", async () => {
-      render(<QueueManagementPage />)
-
-      await waitFor(() => {
-        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
-      })
-
-      // Verify the status filter label exists
-      expect(screen.getByText(/status:/i)).toBeInTheDocument()
-      // Verify a combobox exists for status filtering
-      const comboboxes = screen.getAllByRole("combobox")
-      expect(comboboxes.length).toBeGreaterThan(0)
-    })
-
-    it("should search by company name", async () => {
-      const user = userEvent.setup()
-      render(<QueueManagementPage />)
-
-      await waitFor(() => {
-        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
-      })
-
-      const searchInput = screen.getByPlaceholderText(/search/i)
-      await user.type(searchInput, "BigCorp")
-
-      await waitFor(() => {
-        expect(screen.getByTestId("queue-item-queue-3")).toBeInTheDocument()
-        expect(screen.queryByTestId("queue-item-queue-1")).not.toBeInTheDocument()
-      })
-    })
-
-    it("should search by URL", async () => {
-      const user = userEvent.setup()
-      render(<QueueManagementPage />)
-
-      await waitFor(() => {
-        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
-      })
-
-      const searchInput = screen.getByPlaceholderText(/search/i)
-      await user.type(searchInput, "jobs/123")
-
-      await waitFor(() => {
-        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
-        expect(screen.queryByTestId("queue-item-queue-2")).not.toBeInTheDocument()
-      })
-    })
-  })
-
   describe("Authorization", () => {
-    it("should show sign-in message for unauthenticated users", () => {
+    it("shows sign-in message for unauthenticated users", () => {
       vi.mocked(useAuth).mockReturnValue({
         user: null,
         loading: false,
@@ -279,7 +214,7 @@ describe("QueueManagementPage", () => {
       expect(screen.getByText(/sign in/i)).toBeInTheDocument()
     })
 
-    it("should show permission error for non-editors", () => {
+    it("shows permission error for non-editors", () => {
       vi.mocked(useAuth).mockReturnValue({
         user: mockUser as any,
         loading: false,
@@ -294,59 +229,41 @@ describe("QueueManagementPage", () => {
     })
   })
 
-  describe("Error Handling", () => {
-    it("should handle empty queue gracefully", () => {
+  describe("Empty State", () => {
+    it("handles empty queue gracefully", () => {
       vi.mocked(useQueueItems).mockReturnValue({
         queueItems: [],
         loading: false,
         error: null,
         updateQueueItem: mockUpdateQueueItem,
+        refetch: vi.fn(),
       } as any)
 
       render(<QueueManagementPage />)
 
-      // Should show an empty state - "The queue is empty."
       expect(screen.getByText(/the queue is empty/i)).toBeInTheDocument()
     })
   })
 
-  describe("Tab Navigation", () => {
-    it("should render Queue Items tab", async () => {
-      render(<QueueManagementPage />)
-
-      await waitFor(() => {
-        expect(screen.getByRole("tab", { name: /queue items/i })).toBeInTheDocument()
-      })
-    })
-
-    it("should render Filters & Search tab", async () => {
-      render(<QueueManagementPage />)
-
-      await waitFor(() => {
-        expect(screen.getByRole("tab", { name: /filters/i })).toBeInTheDocument()
-      })
-    })
-
-    it("should switch between tabs", async () => {
+  describe("Details Modal", () => {
+    it("opens when a row is clicked", async () => {
       const user = userEvent.setup()
       render(<QueueManagementPage />)
 
       await waitFor(() => {
-        expect(screen.getByRole("tab", { name: /filters/i })).toBeInTheDocument()
+        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
       })
 
-      const filtersTab = screen.getByRole("tab", { name: /filters/i })
-      await user.click(filtersTab)
+      await user.click(screen.getByTestId("queue-item-queue-1"))
 
-      // Should show filters content
       await waitFor(() => {
-        expect(filtersTab).toHaveAttribute("data-state", "active")
+        expect(screen.getByText(/queue item details/i)).toBeInTheDocument()
       })
     })
   })
 
   describe("Live Badge", () => {
-    it("should show Live badge when data is loaded", async () => {
+    it("shows Live badge when data is loaded", async () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
