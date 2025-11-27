@@ -391,8 +391,6 @@ Respond **ONLY** with valid JSON in this shape (no prose, no markdown):
   "customization_recommendations": {{}}
 }}
 
-Provide your analysis in the following JSON format:
-
 {{
   "match_score": 85,
   "matched_skills": ["Python", "Django", "PostgreSQL"],

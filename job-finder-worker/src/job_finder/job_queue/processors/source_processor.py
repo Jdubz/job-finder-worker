@@ -268,13 +268,17 @@ class SourceProcessor(BaseProcessor):
                         company_name,
                     )
                     if healed_config:
-                        self.sources_manager.update_config(source.get("id"), healed_config)
                         expanded_config = expand_config(source_type, healed_config)
                         source_config = SourceConfig.from_dict(
                             expanded_config, company_name=company_name
                         )
                         scraper = GenericScraper(source_config)
-                        jobs = scraper.scrape()
+                        healed_jobs = scraper.scrape()
+
+                        # Persist healed config only if it produces usable jobs
+                        if healed_jobs and not self._is_sparse_jobs(healed_jobs):
+                            self.sources_manager.update_config(source.get("id"), healed_config)
+                            jobs = healed_jobs
 
                 logger.info(f"Found {len(jobs)} jobs from {source_name}")
 
