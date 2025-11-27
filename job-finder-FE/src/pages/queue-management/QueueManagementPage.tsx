@@ -89,14 +89,17 @@ export function QueueManagementPage() {
     }
   }, [queueItems, error])
 
-  const statusOrder: Record<string, number> = {
-    pending: 0,
-    processing: 1,
-    filtered: 2,
-    success: 3,
-    failed: 4,
-    skipped: 5,
-  }
+  const statusOrder = useMemo(
+    () => ({
+      pending: 0,
+      processing: 1,
+      filtered: 2,
+      success: 3,
+      failed: 4,
+      skipped: 5,
+    }),
+    []
+  )
 
   const displayItems = useMemo(() => {
     return [...queueItems]
