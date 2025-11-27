@@ -391,7 +391,7 @@ export function QueueManagementPage() {
                             className="h-8"
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleCancelItem(item.id)
+                              handleCancelItem(item.id as string)
                             }}
                           >
                             <Trash2 className="h-4 w-4" />
