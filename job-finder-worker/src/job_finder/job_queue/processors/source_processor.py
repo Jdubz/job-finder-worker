@@ -129,7 +129,6 @@ class SourceProcessor(BaseProcessor):
                 company_id=config.company_id,
                 company_name=company_name,
                 validation_required=config.validation_required,
-                tier="A" if confidence == "high" else "B",
             )
 
             # Spawn SCRAPE_SOURCE to immediately scrape the new source
@@ -270,7 +269,6 @@ class SourceProcessor(BaseProcessor):
                     # Record success
                     self.sources_manager.record_scraping_success(
                         source_id=source.get("id"),
-                        jobs_found=jobs_added,
                     )
 
                     self.queue_manager.update_status(

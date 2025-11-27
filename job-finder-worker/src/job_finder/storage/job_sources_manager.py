@@ -73,8 +73,6 @@ class JobSourcesManager:
             "lastScrapedAt": row.get("last_scraped_at"),
             "lastScrapedStatus": row.get("last_scraped_status"),
             "lastScrapedError": row.get("last_scraped_error"),
-            "totalJobsFound": row.get("total_jobs_found", 0),
-            "totalJobsMatched": row.get("total_jobs_matched", 0),
             "consecutiveFailures": row.get("consecutive_failures", 0),
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
@@ -83,8 +81,6 @@ class JobSourcesManager:
             "discoveredBy": row.get("discovered_by"),
             "discoveryQueueItemId": row.get("discovery_queue_item_id"),
             "validationRequired": bool(row.get("validation_required", 0)),
-            "tier": row.get("tier", "D"),
-            "health": parse_json(row.get("health_json"), {}),
         }
 
     # ------------------------------------------------------------------ #
@@ -104,8 +100,6 @@ class JobSourcesManager:
         discovered_via: Optional[str] = None,
         discovered_by: Optional[str] = None,
         discovery_queue_item_id: Optional[str] = None,
-        tier: str = "D",
-        health: Optional[Dict[str, Any]] = None,
     ) -> str:
         if validation_required:
             status = SourceStatus.PENDING_VALIDATION.value
@@ -122,12 +116,12 @@ class JobSourcesManager:
                     id, name, source_type, status, config_json, tags,
                     company_id, company_name,
                     last_scraped_at, last_scraped_status, last_scraped_error,
-                    total_jobs_found, total_jobs_matched, consecutive_failures,
+                    consecutive_failures,
                     discovery_confidence, discovered_via, discovered_by, discovery_queue_item_id,
-                    validation_required, tier, health_json,
+                    validation_required,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, 0, 0,
-                          ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0,
+                          ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     source_id,
@@ -143,8 +137,6 @@ class JobSourcesManager:
                     discovered_by,
                     discovery_queue_item_id,
                     1 if validation_required else 0,
-                    tier,
-                    json.dumps(health or {}),
                     now,
                     now,
                 ),
@@ -212,11 +204,9 @@ class JobSourcesManager:
         self,
         source_id: str,
         status: str,
-        jobs_found: int = 0,
-        jobs_matched: int = 0,
         error: Optional[str] = None,
     ) -> None:
-        """Update scrape status and recompute health."""
+        """Update scrape status and track consecutive failures."""
         now = _utcnow_iso()
 
         # Normalize status into SourceStatus
@@ -232,7 +222,7 @@ class JobSourcesManager:
         else:
             normalized_status = SourceStatus(status_lower)
 
-        # Read current consecutive failures + status to compute health and transitions
+        # Read current consecutive failures + status for transitions
         with sqlite_connection(self.db_path) as conn:
             row = conn.execute(
                 "SELECT status, consecutive_failures FROM job_sources WHERE id = ?",
@@ -247,8 +237,6 @@ class JobSourcesManager:
         self._validate_transition(current_status, normalized_status)
 
         new_failures = current_failures + 1 if normalized_status == SourceStatus.FAILED else 0
-        health_score = max(0.1, 1.0 - 0.1 * new_failures)
-        health = {"healthScore": health_score, "consecutiveFailures": new_failures}
 
         with sqlite_connection(self.db_path) as conn:
             conn.execute(
@@ -257,10 +245,7 @@ class JobSourcesManager:
                 SET last_scraped_at = ?,
                     last_scraped_status = ?,
                     last_scraped_error = ?,
-                    total_jobs_found = total_jobs_found + ?,
-                    total_jobs_matched = total_jobs_matched + ?,
                     consecutive_failures = ?,
-                    health_json = ?,
                     status = ?,
                     updated_at = ?
                 WHERE id = ?
@@ -269,10 +254,7 @@ class JobSourcesManager:
                     now,
                     normalized_status.value,
                     error,
-                    jobs_found,
-                    jobs_matched,
                     new_failures,
-                    json.dumps(health),
                     normalized_status.value,
                     now,
                     source_id,
@@ -283,17 +265,13 @@ class JobSourcesManager:
         self.update_scrape_status(
             source_id,
             status=SourceStatus.FAILED.value,
-            jobs_found=0,
-            jobs_matched=0,
             error=error,
         )
 
-    def record_scraping_success(self, source_id: str, jobs_found: int = 0) -> None:
+    def record_scraping_success(self, source_id: str) -> None:
         self.update_scrape_status(
             source_id,
             status=SourceStatus.ACTIVE.value,
-            jobs_found=jobs_found,
-            jobs_matched=jobs_found,
         )
 
     def create_from_discovery(
@@ -309,7 +287,6 @@ class JobSourcesManager:
         company_name: Optional[str],
         validation_required: bool,
         tags: Optional[List[str]] = None,
-        tier: str = "D",
     ) -> str:
         return self.add_source(
             name=name,
@@ -323,7 +300,6 @@ class JobSourcesManager:
             discovered_via=discovered_via,
             discovered_by=discovered_by,
             discovery_queue_item_id=discovery_queue_item_id,
-            tier=tier,
         )
 
     def update_source_status(self, source_id: str, status: SourceStatus) -> None:
