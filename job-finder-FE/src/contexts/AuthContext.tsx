@@ -59,19 +59,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (AUTH_BYPASS_ENABLED && typeof window !== "undefined") {
       const bypassState = readBypassState()
-      if (bypassState) {
-        const bypassUser = buildBypassUser(bypassState)
-        if (isMounted) {
+      if (isMounted) {
+        if (bypassState) {
+          const bypassUser = buildBypassUser(bypassState)
           setUser(bypassUser)
           setIsOwner(bypassState.isOwner ?? adminEmailSet.has(bypassUser.email))
-        }
-      } else {
-        if (isMounted) {
+        } else {
           setUser(null)
           setIsOwner(false)
         }
-      }
-      if (isMounted) {
         setLoading(false)
       }
       return () => {

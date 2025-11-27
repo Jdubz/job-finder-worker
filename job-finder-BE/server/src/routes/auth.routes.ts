@@ -1,7 +1,7 @@
 import { Router } from 'express'
-import { ApiErrorCode } from '@shared/types'
+import { parse as parseCookie } from 'cookie'
 import { verifyFirebaseAuth, type AuthenticatedRequest, SESSION_COOKIE } from '../middleware/firebase-auth'
-import { success, failure } from '../utils/api-response'
+import { success } from '../utils/api-response'
 import { env } from '../config/env'
 import { UserRepository } from '../modules/users/user.repository'
 
@@ -13,9 +13,6 @@ export function buildAuthRouter() {
 
   router.get('/session', verifyFirebaseAuth, (req, res) => {
     const user = (req as AuthenticatedRequest).user
-    if (!user) {
-      return res.status(401).json(failure(ApiErrorCode.UNAUTHORIZED, 'Not authenticated'))
-    }
 
     return res.json(
       success({
@@ -31,10 +28,15 @@ export function buildAuthRouter() {
     )
   })
 
-  router.post('/logout', verifyFirebaseAuth, (req, res) => {
-    const user = (req as AuthenticatedRequest).user
-    if (user?.uid) {
-      userRepository.clearSession(user.uid)
+  router.post('/logout', (req, res) => {
+    const cookies = req.headers.cookie ? parseCookie(req.headers.cookie) : {}
+    const sessionToken = cookies[SESSION_COOKIE]
+
+    if (sessionToken) {
+      const user = userRepository.findBySessionToken(sessionToken)
+      if (user) {
+        userRepository.clearSession(user.id)
+      }
     }
 
     res.clearCookie(SESSION_COOKIE, {
