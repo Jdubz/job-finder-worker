@@ -290,15 +290,16 @@ Return ONLY valid JSON in this format:
         """Use AI provider with web-search tools to gather company info beyond the site."""
         try:
             prompt = f"""
-Use web search to gather concise facts about {company_name}. You have browsing tools.
+Use web search to gather concise, factual info about {company_name}. You have browsing tools.
+CRITICAL: Do NOT invent or guess. If a field is unknown, leave it "".
 Return ONLY JSON with these keys: about, culture, mission, size, industry, founded, sources.
-- about: 2-3 sentences
-- culture: 1-2 sentences
-- mission: mission statement if available
-- size: employee count or range
-- industry: primary sector
-- founded: year
-- sources: array of up to 3 URLs you used
+- about: 2-3 sentence factual summary (no hype)
+- culture: 1-2 sentences (cite actual claims, else "")
+- mission: mission statement if available, else ""
+- size: employee count or range if found, else ""
+- industry: primary sector if found, else ""
+- founded: year if found, else ""
+- sources: array of up to 3 URLs actually used
 
 Respond with JSON only.
 """
