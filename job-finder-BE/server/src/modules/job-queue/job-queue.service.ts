@@ -27,8 +27,6 @@ export type SubmitSourceDiscoveryInput = {
   companyName?: string
   companyId?: string | null
   typeHint?: 'auto' | 'greenhouse' | 'workday' | 'rss' | 'generic'
-  autoEnable?: boolean
-  validationRequired?: boolean
 }
 
 type ListQueueOptions = {
@@ -127,9 +125,7 @@ export class JobQueueService {
         url: input.url,
         type_hint: input.typeHint ?? 'auto',
         company_id: input.companyId ?? null,
-        company_name: input.companyName ?? null,
-        auto_enable: input.autoEnable ?? true,
-        validation_required: input.validationRequired ?? false
+        company_name: input.companyName ?? null
       }
     }
 

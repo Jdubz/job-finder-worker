@@ -18,6 +18,7 @@ from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.job_queue.scraper_intake import ScraperIntake
+from job_finder.scrapers.config_expander import expand_config
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
 from .base_processor import BaseProcessor
@@ -128,7 +129,6 @@ class SourceProcessor(BaseProcessor):
                 discovery_queue_item_id=item.id,
                 company_id=config.company_id,
                 company_name=company_name,
-                validation_required=config.validation_required,
             )
 
             # Spawn SCRAPE_SOURCE to immediately scrape the new source
@@ -226,19 +226,10 @@ class SourceProcessor(BaseProcessor):
                 return
 
             source_name = source.get("name", "Unknown")
+            source_type = source.get("sourceType", "api")
             config = source.get("config", {})
 
-            # Validate config format
-            if "type" not in config:
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.FAILED,
-                    "Source has legacy config format - run migration",
-                    error_details=f"Source {source_name} missing 'type' in config",
-                )
-                return
-
-            logger.info(f"Scraping source: {source_name} ({config.get('type')})")
+            logger.info(f"Scraping source: {source_name} (type={source_type})")
 
             # Scrape using GenericScraper
             try:
@@ -246,10 +237,24 @@ class SourceProcessor(BaseProcessor):
                 from job_finder.scrapers.source_config import SourceConfig
 
                 # Get company name for override
-                company_id = source.get("company_id")
-                company_name = source.get("company_name") or source_name
+                company_id = source.get("companyId") or source.get("company_id")
+                company_name = (
+                    source.get("companyName") or source.get("company_name") or source_name
+                )
 
-                source_config = SourceConfig.from_dict(config, company_name=company_name)
+                # Expand config based on source_type (converts simple configs to full scraper configs)
+                try:
+                    expanded_config = expand_config(source_type, config)
+                except ValueError as e:
+                    self.queue_manager.update_status(
+                        item.id,
+                        QueueStatus.FAILED,
+                        f"Invalid config: {e}",
+                        error_details=f"Source {source_name} config expansion failed",
+                    )
+                    return
+
+                source_config = SourceConfig.from_dict(expanded_config, company_name=company_name)
                 scraper = GenericScraper(source_config)
                 jobs = scraper.scrape()
 
@@ -257,7 +262,6 @@ class SourceProcessor(BaseProcessor):
 
                 # Submit jobs to queue
                 if jobs:
-                    source_type = config.get("type", "unknown")
                     source_label = f"{source_type}:{source_name}"
                     jobs_added = self.scraper_intake.submit_jobs(
                         jobs=jobs,

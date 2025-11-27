@@ -28,10 +28,7 @@ export class JobSourcesClient extends BaseApiClient {
 
     if (params.status) search.append("status", params.status)
     if (params.sourceType) search.append("sourceType", params.sourceType)
-    if (params.tier) search.append("tier", params.tier)
     if (params.companyId) search.append("companyId", params.companyId)
-    if (params.validationRequired !== undefined)
-      search.append("validationRequired", String(params.validationRequired))
     if (params.search) search.append("search", params.search)
     if (params.sortBy) search.append("sortBy", params.sortBy)
     if (params.sortOrder) search.append("sortOrder", params.sortOrder)

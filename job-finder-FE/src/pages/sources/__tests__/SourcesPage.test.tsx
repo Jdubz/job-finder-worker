@@ -35,13 +35,8 @@ describe("SourcesPage", () => {
       name: "Acme Greenhouse",
       sourceType: "greenhouse",
       status: "active",
-      tier: "A",
       companyName: "Acme Corporation",
       companyId: "company-1",
-      totalJobsFound: 42,
-      totalJobsMatched: 15,
-      consecutiveFailures: 0,
-      validationRequired: false,
       configJson: { url: "https://boards.greenhouse.io/acme" },
       lastScrapedAt: new Date(),
       createdAt: new Date(),
@@ -52,13 +47,8 @@ describe("SourcesPage", () => {
       name: "TechCorp RSS",
       sourceType: "rss",
       status: "active",
-      tier: "S",
       companyName: "TechCorp",
       companyId: "company-2",
-      totalJobsFound: 100,
-      totalJobsMatched: 45,
-      consecutiveFailures: 0,
-      validationRequired: false,
       configJson: { url: "https://careers.techcorp.io/jobs.rss" },
       lastScrapedAt: new Date(),
       createdAt: new Date(),
@@ -69,13 +59,8 @@ describe("SourcesPage", () => {
       name: "StartupXYZ Careers",
       sourceType: "html",
       status: "paused",
-      tier: "D",
       companyName: null,
       companyId: null,
-      totalJobsFound: 5,
-      totalJobsMatched: 0,
-      consecutiveFailures: 3,
-      validationRequired: true,
       configJson: { url: "https://startupxyz.com/careers" },
       lastScrapedAt: null,
       createdAt: new Date(),
@@ -148,7 +133,7 @@ describe("SourcesPage", () => {
       })
     })
 
-    it("should display essential columns: Name, Type, Status, Tier, Company", async () => {
+    it("should display essential columns: Name, Type, Status", async () => {
       render(<SourcesPage />)
 
       await waitFor(() => {
@@ -156,7 +141,6 @@ describe("SourcesPage", () => {
         expect(screen.getByRole("columnheader", { name: /name/i })).toBeInTheDocument()
         expect(screen.getByRole("columnheader", { name: /type/i })).toBeInTheDocument()
         expect(screen.getByRole("columnheader", { name: /status/i })).toBeInTheDocument()
-        expect(screen.getByRole("columnheader", { name: /tier/i })).toBeInTheDocument()
       })
     })
 
@@ -287,8 +271,8 @@ describe("SourcesPage", () => {
       render(<SourcesPage />)
 
       await waitFor(() => {
-        const comboboxes = screen.getAllByRole("combobox")
-        expect(comboboxes.length).toBeGreaterThanOrEqual(2)
+        const combobox = screen.getByRole("combobox")
+        expect(combobox).toBeInTheDocument()
       })
     })
 

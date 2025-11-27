@@ -17,16 +17,12 @@ export interface ListJobSourcesRequest extends PaginationParams {
   status?: JobSourceStatus
   /** Filter by source type */
   sourceType?: string
-  /** Filter by tier (S/A/B/C/D) */
-  tier?: JobSource["tier"]
   /** Filter by company ID */
   companyId?: string
-  /** Filter by validation required */
-  validationRequired?: boolean
   /** Search by name (partial match) */
   search?: string
   /** Sort field */
-  sortBy?: "name" | "created_at" | "updated_at" | "last_scraped_at" | "total_jobs_found" | "tier"
+  sortBy?: "name" | "created_at" | "updated_at" | "last_scraped_at"
   /** Sort order */
   sortOrder?: "asc" | "desc"
 }
@@ -97,9 +93,6 @@ export interface DeleteJobSourceResponse {
 export interface JobSourceStats {
   total: number
   byStatus: Record<JobSourceStatus, number>
-  byTier: Record<JobSource["tier"], number>
-  totalJobsFound: number
-  totalJobsMatched: number
 }
 
 /**

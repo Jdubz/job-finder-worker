@@ -17,9 +17,8 @@ const listQuerySchema = z.object({
   limit: limitSchema,
   offset: z.coerce.number().int().min(0).default(0),
   industry: z.string().min(1).optional(),
-  tier: z.enum(['S', 'A', 'B', 'C', 'D']).optional(),
   search: z.string().min(1).optional(),
-  sortBy: z.enum(['name', 'created_at', 'updated_at', 'priority_score', 'tier']).optional(),
+  sortBy: z.enum(['name', 'created_at', 'updated_at']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional()
 })
 
@@ -32,10 +31,7 @@ const updateSchema = z.object({
   industry: z.string().nullable().optional(),
   headquartersLocation: z.string().nullable().optional(),
   companySizeCategory: z.enum(['large', 'medium', 'small']).nullable().optional(),
-  founded: z.number().int().min(1800).max(2100).nullable().optional(),
-  techStack: z.array(z.string()).optional(),
-  tier: z.enum(['S', 'A', 'B', 'C', 'D']).nullable().optional(),
-  priorityScore: z.number().min(0).max(200).nullable().optional()
+  techStack: z.array(z.string()).optional()
 })
 
 export function buildCompanyRouter() {

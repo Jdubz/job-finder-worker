@@ -19,14 +19,6 @@ def _bootstrap_db(path: Path):
               company_id TEXT,
               company_name TEXT,
               last_scraped_at TEXT,
-              last_scraped_status TEXT,
-              last_scraped_error TEXT,
-              consecutive_failures INTEGER NOT NULL DEFAULT 0,
-              discovery_confidence TEXT,
-              discovered_via TEXT,
-              discovered_by TEXT,
-              discovery_queue_item_id TEXT,
-              validation_required INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -48,14 +40,12 @@ def test_health_updates_on_failure_then_success(tmp_path):
     _bootstrap_db(db)
     mgr = JobSourcesManager(str(db))
 
-    # First failure
-    mgr.update_scrape_status("s1", status="error", error="boom")
+    # First failure should update status to failed
+    mgr.record_scraping_failure("s1", "Test error")
     src = mgr.get_source_by_id("s1")
-    assert src["consecutiveFailures"] == 1
     assert src["status"] == SourceStatus.FAILED.value
 
-    # Success resets failures
-    mgr.update_scrape_status("s1", status="success")
+    # Success should reset status to active
+    mgr.record_scraping_success("s1")
     src = mgr.get_source_by_id("s1")
-    assert src["consecutiveFailures"] == 0
     assert src["status"] == SourceStatus.ACTIVE.value

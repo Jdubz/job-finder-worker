@@ -278,7 +278,12 @@ vi.mock("@/types/generator", () => ({
 // Mock shared types - passthrough real exports so constants (e.g., DEFAULT_PROMPTS) stay available
 vi.mock("@shared/types", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@shared/types")>()
-  return { ...actual }
+  return {
+    ...actual,
+    // Explicitly include defaults that are used in tests
+    DEFAULT_PERSONAL_INFO: actual.DEFAULT_PERSONAL_INFO,
+    DEFAULT_AI_SETTINGS: actual.DEFAULT_AI_SETTINGS,
+  }
 })
 
 // Setup test cleanup and memory monitoring

@@ -92,8 +92,6 @@ def make_discovery_item(
     url: str,
     type_hint: SourceTypeHint = SourceTypeHint.AUTO,
     company_name: str = "Example Corp",
-    auto_enable: bool = True,
-    validation_required: bool = False,
 ) -> JobQueueItem:
     """Build a SOURCE_DISCOVERY queue item for tests."""
     config = SourceDiscoveryConfig(
@@ -101,8 +99,6 @@ def make_discovery_item(
         type_hint=type_hint,
         company_id="company-123",
         company_name=company_name,
-        auto_enable=auto_enable,
-        validation_required=validation_required,
     )
     return JobQueueItem(
         id="queue-123",
@@ -171,7 +167,6 @@ class TestSourceDiscoverySuccess:
         mock_dependencies["sources_manager"].create_from_discovery.assert_called_once()
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "api"
-        assert create_kwargs["discovery_confidence"] == "high"
 
         # Should mark as success
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
@@ -202,7 +197,6 @@ class TestSourceDiscoverySuccess:
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "rss"
-        assert create_kwargs["discovery_confidence"] == "high"
 
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
@@ -227,7 +221,6 @@ class TestSourceDiscoverySuccess:
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "html"
-        assert create_kwargs["discovery_confidence"] == "medium"  # HTML gets medium confidence
 
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS

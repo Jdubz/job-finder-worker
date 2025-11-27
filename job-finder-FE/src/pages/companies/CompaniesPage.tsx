@@ -24,13 +24,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { AlertCircle, CheckCircle2, Loader2, Plus, Building2, ExternalLink, Trash2, Search } from "lucide-react"
 import type { Company } from "@shared/types"
 
@@ -53,14 +46,6 @@ function formatDate(date: unknown): string {
     hour: "2-digit",
     minute: "2-digit",
   })
-}
-
-const tierColors: Record<string, string> = {
-  S: "bg-purple-100 text-purple-800",
-  A: "bg-blue-100 text-blue-800",
-  B: "bg-green-100 text-green-800",
-  C: "bg-yellow-100 text-yellow-800",
-  D: "bg-gray-100 text-gray-800",
 }
 
 /** Thresholds for company data quality assessment */
@@ -105,7 +90,6 @@ export function CompaniesPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
-  const [tierFilter, setTierFilter] = useState<string>("all")
 
   // Form state
   const [companyName, setCompanyName] = useState("")
@@ -166,7 +150,6 @@ export function CompaniesPage() {
   const handleSearch = () => {
     setFilters({
       search: searchTerm || undefined,
-      tier: tierFilter !== "all" ? (tierFilter as Company["tier"]) : undefined,
       limit: 100,
     })
   }
@@ -174,9 +157,6 @@ export function CompaniesPage() {
   // Filter companies locally for search (in addition to server-side filtering)
   const filteredCompanies = companies.filter((company) => {
     if (searchTerm && !company.name.toLowerCase().includes(searchTerm.toLowerCase())) {
-      return false
-    }
-    if (tierFilter !== "all" && company.tier !== tierFilter) {
       return false
     }
     return true
@@ -308,19 +288,6 @@ export function CompaniesPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 className="w-[200px]"
               />
-              <Select value={tierFilter} onValueChange={setTierFilter}>
-                <SelectTrigger className="w-[100px]">
-                  <SelectValue placeholder="Tier" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Tiers</SelectItem>
-                  <SelectItem value="S">S Tier</SelectItem>
-                  <SelectItem value="A">A Tier</SelectItem>
-                  <SelectItem value="B">B Tier</SelectItem>
-                  <SelectItem value="C">C Tier</SelectItem>
-                  <SelectItem value="D">D Tier</SelectItem>
-                </SelectContent>
-              </Select>
               <Button variant="outline" size="icon" onClick={handleSearch}>
                 <Search className="h-4 w-4" />
               </Button>
@@ -343,7 +310,6 @@ export function CompaniesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Tier</TableHead>
                   <TableHead className="hidden md:table-cell">Industry</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -356,15 +322,6 @@ export function CompaniesPage() {
                     onClick={() => setSelectedCompany(company)}
                   >
                     <TableCell className="font-medium">{company.name}</TableCell>
-                    <TableCell>
-                      {company.tier ? (
-                        <Badge className={tierColors[company.tier] ?? tierColors.D}>
-                          {company.tier}
-                        </Badge>
-                      ) : (
-                        <Badge className={tierColors.D}>—</Badge>
-                      )}
-                    </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
                       {company.industry || "—"}
                     </TableCell>
@@ -392,14 +349,7 @@ export function CompaniesPage() {
                       {selectedCompany.industry || "Industry not specified"}
                     </DialogDescription>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <CompanyStatusBadge company={selectedCompany} />
-                    {selectedCompany.tier && (
-                      <Badge className={tierColors[selectedCompany.tier] ?? tierColors.D}>
-                        {selectedCompany.tier}
-                      </Badge>
-                    )}
-                  </div>
+                  <CompanyStatusBadge company={selectedCompany} />
                 </div>
               </DialogHeader>
 
