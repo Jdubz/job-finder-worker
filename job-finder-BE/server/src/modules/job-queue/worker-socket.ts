@@ -3,7 +3,7 @@ import { WebSocketServer, type WebSocket, type RawData } from 'ws'
 import { logger } from '../../logger'
 import { env } from '../../config/env'
 import { broadcastQueueEvent, sendCommandToWorker, setWorkerSocket } from './queue-events'
-import type { WorkerMessage } from '@shared/types'
+import type { AnyWorkerMessage } from '@shared/types'
 import { isWorkerEventName } from '@shared/types'
 
 export function initWorkerSocket(server: Server) {
@@ -23,13 +23,24 @@ export function initWorkerSocket(server: Server) {
 
     ws.on('message', (raw: RawData) => {
       try {
-        const msg = JSON.parse(raw.toString()) as WorkerMessage
+        const msg = JSON.parse(raw.toString()) as AnyWorkerMessage
         if (msg.event && isWorkerEventName(msg.event)) {
-          // Extract msg.data (not spread entire msg) to match HTTP handler format
-          // Worker sends: { event: "...", data: { queueItem: {...}, workerId: "..." } }
-          // FE expects data.queueItem, not data.data.queueItem
-          const eventData = msg.data ?? {}
-          broadcastQueueEvent(msg.event, { ...eventData, workerId: 'default' } as any)
+          // Using a switch statement allows TypeScript to narrow the type of `msg`
+          // and `msg.data` in each case, ensuring full type safety for broadcastQueueEvent.
+          switch (msg.event) {
+            case 'item.created':
+              broadcastQueueEvent(msg.event, { ...msg.data, workerId: 'default' })
+              break
+            case 'item.updated':
+              broadcastQueueEvent(msg.event, { ...msg.data, workerId: 'default' })
+              break
+            case 'item.deleted':
+              broadcastQueueEvent(msg.event, { ...msg.data, workerId: 'default' })
+              break
+            case 'heartbeat':
+              broadcastQueueEvent(msg.event, { ...msg.data, workerId: 'default' })
+              break
+          }
         } else if (msg.event) {
           logger.debug({ event: msg.event }, 'Unknown worker event received')
         }

@@ -9,12 +9,111 @@ Event flow:
 3. BE receives via WebSocket or HTTP and broadcasts to FE via SSE
 """
 
+import sqlite3
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
+
+import pytest
 
 from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
+
+
+# =============================================================================
+# Fixtures
+# =============================================================================
+
+
+JOB_QUEUE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS job_queue (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    url TEXT NOT NULL UNIQUE,
+    company_name TEXT NOT NULL,
+    company_id TEXT,
+    source TEXT DEFAULT 'manual_submission',
+    submitted_by TEXT,
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 0,
+    result_message TEXT,
+    error_details TEXT,
+    created_at TEXT,
+    updated_at TEXT,
+    processed_at TEXT,
+    completed_at TEXT,
+    scrape_config TEXT,
+    scraped_data TEXT,
+    source_discovery_config TEXT,
+    source_id TEXT,
+    source_type TEXT,
+    source_config TEXT,
+    source_tier TEXT,
+    sub_task TEXT,
+    pipeline_state TEXT,
+    parent_item_id TEXT,
+    company_sub_task TEXT,
+    metadata TEXT,
+    pipeline_stage TEXT,
+    tracking_id TEXT,
+    ancestry_chain TEXT,
+    spawn_depth INTEGER DEFAULT 0,
+    max_spawn_depth INTEGER DEFAULT 5
+)
+"""
+
+
+@pytest.fixture
+def db_path(tmp_path):
+    """Create a temporary database with the job_queue table."""
+    db_path_str = str(tmp_path / "test.db")
+    conn = sqlite3.connect(db_path_str)
+    conn.execute(JOB_QUEUE_SCHEMA)
+    conn.close()
+    return db_path_str
+
+
+@pytest.fixture
+def mock_notifier():
+    """Create a mock notifier for testing event emissions."""
+    return MagicMock()
+
+
+@pytest.fixture
+def manager(db_path, mock_notifier):
+    """Create a QueueManager with a mock notifier."""
+    return QueueManager(db_path=db_path, notifier=mock_notifier)
+
+
+@pytest.fixture
+def db_with_item(db_path):
+    """Create a database with a pre-existing queue item."""
+    now = datetime.now(timezone.utc).isoformat()
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """INSERT INTO job_queue (id, type, status, url, company_name, created_at, updated_at, tracking_id, ancestry_chain)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "test-item-1",
+            "job",
+            "pending",
+            "https://example.com/job/1",
+            "Test Company",
+            now,
+            now,
+            "track-1",
+            '["test-item-1"]',
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+# =============================================================================
+# Tests
+# =============================================================================
 
 
 class TestEventPayloadStructure:
@@ -147,58 +246,8 @@ class TestNotifierPayloadFormat:
 class TestManagerEventEmission:
     """Test that QueueManager emits events correctly."""
 
-    def test_add_item_emits_item_created(self, tmp_path):
+    def test_add_item_emits_item_created(self, manager, mock_notifier):
         """Test that add_item() emits item.created event."""
-        db_path = str(tmp_path / "test.db")
-
-        # Create the table
-        import sqlite3
-
-        conn = sqlite3.connect(db_path)
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS job_queue (
-                id TEXT PRIMARY KEY,
-                type TEXT NOT NULL,
-                status TEXT NOT NULL,
-                url TEXT NOT NULL UNIQUE,
-                company_name TEXT NOT NULL,
-                company_id TEXT,
-                source TEXT DEFAULT 'manual_submission',
-                submitted_by TEXT,
-                retry_count INTEGER DEFAULT 0,
-                max_retries INTEGER DEFAULT 0,
-                result_message TEXT,
-                error_details TEXT,
-                created_at TEXT,
-                updated_at TEXT,
-                processed_at TEXT,
-                completed_at TEXT,
-                scrape_config TEXT,
-                scraped_data TEXT,
-                source_discovery_config TEXT,
-                source_id TEXT,
-                source_type TEXT,
-                source_config TEXT,
-                source_tier TEXT,
-                sub_task TEXT,
-                pipeline_state TEXT,
-                parent_item_id TEXT,
-                company_sub_task TEXT,
-                metadata TEXT,
-                pipeline_stage TEXT,
-                tracking_id TEXT,
-                ancestry_chain TEXT,
-                spawn_depth INTEGER DEFAULT 0,
-                max_spawn_depth INTEGER DEFAULT 5
-            )
-        """
-        )
-        conn.close()
-
-        mock_notifier = MagicMock()
-        manager = QueueManager(db_path=db_path, notifier=mock_notifier)
-
         item = JobQueueItem(
             type=QueueItemType.JOB,
             url="https://example.com/job/123",
@@ -215,75 +264,9 @@ class TestManagerEventEmission:
         assert "queueItem" in call_args[0][1]
         assert call_args[0][1]["queueItem"]["url"] == "https://example.com/job/123"
 
-    def test_update_status_emits_item_updated(self, tmp_path):
+    def test_update_status_emits_item_updated(self, db_with_item, mock_notifier):
         """Test that update_status() emits item.updated event."""
-        db_path = str(tmp_path / "test.db")
-
-        # Create the table and insert a test item
-        import sqlite3
-
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS job_queue (
-                id TEXT PRIMARY KEY,
-                type TEXT NOT NULL,
-                status TEXT NOT NULL,
-                url TEXT NOT NULL UNIQUE,
-                company_name TEXT NOT NULL,
-                company_id TEXT,
-                source TEXT DEFAULT 'manual_submission',
-                submitted_by TEXT,
-                retry_count INTEGER DEFAULT 0,
-                max_retries INTEGER DEFAULT 0,
-                result_message TEXT,
-                error_details TEXT,
-                created_at TEXT,
-                updated_at TEXT,
-                processed_at TEXT,
-                completed_at TEXT,
-                scrape_config TEXT,
-                scraped_data TEXT,
-                source_discovery_config TEXT,
-                source_id TEXT,
-                source_type TEXT,
-                source_config TEXT,
-                source_tier TEXT,
-                sub_task TEXT,
-                pipeline_state TEXT,
-                parent_item_id TEXT,
-                company_sub_task TEXT,
-                metadata TEXT,
-                pipeline_stage TEXT,
-                tracking_id TEXT,
-                ancestry_chain TEXT,
-                spawn_depth INTEGER DEFAULT 0,
-                max_spawn_depth INTEGER DEFAULT 5
-            )
-        """
-        )
-        now = datetime.now(timezone.utc).isoformat()
-        conn.execute(
-            """INSERT INTO job_queue (id, type, status, url, company_name, created_at, updated_at, tracking_id, ancestry_chain)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                "test-item-1",
-                "job",
-                "pending",
-                "https://example.com",
-                "Test",
-                now,
-                now,
-                "track-1",
-                '["test-item-1"]',
-            ),
-        )
-        conn.commit()
-        conn.close()
-
-        mock_notifier = MagicMock()
-        manager = QueueManager(db_path=db_path, notifier=mock_notifier)
+        manager = QueueManager(db_path=db_with_item, notifier=mock_notifier)
 
         manager.update_status("test-item-1", QueueStatus.PROCESSING)
 
@@ -295,146 +278,27 @@ class TestManagerEventEmission:
         assert "queueItem" in call_args[0][1]
         assert call_args[0][1]["queueItem"]["status"] == "processing"
 
-    def test_delete_item_emits_item_deleted(self, tmp_path):
+    def test_delete_item_emits_item_deleted(self, db_with_item, mock_notifier):
         """Test that delete_item() emits item.deleted event."""
-        db_path = str(tmp_path / "test.db")
+        manager = QueueManager(db_path=db_with_item, notifier=mock_notifier)
 
-        # Create the table and insert a test item
-        import sqlite3
-
-        conn = sqlite3.connect(db_path)
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS job_queue (
-                id TEXT PRIMARY KEY,
-                type TEXT NOT NULL,
-                status TEXT NOT NULL,
-                url TEXT NOT NULL UNIQUE,
-                company_name TEXT NOT NULL,
-                company_id TEXT,
-                source TEXT DEFAULT 'manual_submission',
-                submitted_by TEXT,
-                retry_count INTEGER DEFAULT 0,
-                max_retries INTEGER DEFAULT 0,
-                result_message TEXT,
-                error_details TEXT,
-                created_at TEXT,
-                updated_at TEXT,
-                processed_at TEXT,
-                completed_at TEXT,
-                scrape_config TEXT,
-                scraped_data TEXT,
-                source_discovery_config TEXT,
-                source_id TEXT,
-                source_type TEXT,
-                source_config TEXT,
-                source_tier TEXT,
-                sub_task TEXT,
-                pipeline_state TEXT,
-                parent_item_id TEXT,
-                company_sub_task TEXT,
-                metadata TEXT,
-                pipeline_stage TEXT,
-                tracking_id TEXT,
-                ancestry_chain TEXT,
-                spawn_depth INTEGER DEFAULT 0,
-                max_spawn_depth INTEGER DEFAULT 5
-            )
-        """
-        )
-        now = datetime.now(timezone.utc).isoformat()
-        conn.execute(
-            """INSERT INTO job_queue (id, type, status, url, company_name, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            ("delete-me", "job", "pending", "https://example.com", "Test", now, now),
-        )
-        conn.commit()
-        conn.close()
-
-        mock_notifier = MagicMock()
-        manager = QueueManager(db_path=db_path, notifier=mock_notifier)
-
-        manager.delete_item("delete-me")
+        manager.delete_item("test-item-1")
 
         # Verify event was emitted
         mock_notifier.send_event.assert_called_once()
         call_args = mock_notifier.send_event.call_args
 
         assert call_args[0][0] == "item.deleted"
-        assert call_args[0][1] == {"queueItemId": "delete-me"}
+        assert call_args[0][1] == {"queueItemId": "test-item-1"}
 
-    def test_requeue_with_state_emits_item_updated(self, tmp_path):
+    def test_requeue_with_state_emits_item_updated(self, db_with_item, mock_notifier):
         """Test that requeue_with_state() emits item.updated event."""
-        db_path = str(tmp_path / "test.db")
-
-        # Create the table and insert a test item
-        import sqlite3
-
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS job_queue (
-                id TEXT PRIMARY KEY,
-                type TEXT NOT NULL,
-                status TEXT NOT NULL,
-                url TEXT NOT NULL UNIQUE,
-                company_name TEXT NOT NULL,
-                company_id TEXT,
-                source TEXT DEFAULT 'manual_submission',
-                submitted_by TEXT,
-                retry_count INTEGER DEFAULT 0,
-                max_retries INTEGER DEFAULT 0,
-                result_message TEXT,
-                error_details TEXT,
-                created_at TEXT,
-                updated_at TEXT,
-                processed_at TEXT,
-                completed_at TEXT,
-                scrape_config TEXT,
-                scraped_data TEXT,
-                source_discovery_config TEXT,
-                source_id TEXT,
-                source_type TEXT,
-                source_config TEXT,
-                source_tier TEXT,
-                sub_task TEXT,
-                pipeline_state TEXT,
-                parent_item_id TEXT,
-                company_sub_task TEXT,
-                metadata TEXT,
-                pipeline_stage TEXT,
-                tracking_id TEXT,
-                ancestry_chain TEXT,
-                spawn_depth INTEGER DEFAULT 0,
-                max_spawn_depth INTEGER DEFAULT 5
-            )
-        """
-        )
-        now = datetime.now(timezone.utc).isoformat()
-        conn.execute(
-            """INSERT INTO job_queue (id, type, status, url, company_name, created_at, updated_at, tracking_id, ancestry_chain)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                "requeue-item",
-                "job",
-                "processing",
-                "https://example.com",
-                "Test",
-                now,
-                now,
-                "track-1",
-                '["requeue-item"]',
-            ),
-        )
-        conn.commit()
-        conn.close()
-
-        mock_notifier = MagicMock()
-        manager = QueueManager(db_path=db_path, notifier=mock_notifier)
+        manager = QueueManager(db_path=db_with_item, notifier=mock_notifier)
 
         manager.requeue_with_state(
-            "requeue-item", pipeline_state={"job_data": {"title": "Test Job"}}, next_stage="filter"
+            "test-item-1",
+            pipeline_state={"job_data": {"title": "Test Job"}},
+            next_stage="filter",
         )
 
         # Verify event was emitted

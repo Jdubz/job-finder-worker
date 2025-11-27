@@ -188,6 +188,14 @@ export interface WorkerMessage<E extends WorkerEventName = WorkerEventName> {
 }
 
 /**
+ * A discriminated union of all possible messages sent from the worker.
+ * This allows for type-safe handling of messages based on the `event` property.
+ */
+export type AnyWorkerMessage = {
+  [E in WorkerEventName]: WorkerMessage<E>
+}[WorkerEventName]
+
+/**
  * Worker command structure (BE → Worker via WebSocket)
  */
 export interface WorkerCommandMessage {
