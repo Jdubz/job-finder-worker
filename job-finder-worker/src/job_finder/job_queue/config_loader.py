@@ -217,15 +217,43 @@ class ConfigLoader:
 
     def get_job_match(self) -> Dict[str, Any]:
         """Get job matching preferences (scoring, bonuses, thresholds)."""
+        default_weights = {
+            "bonuses": {
+                "remoteFirst": 15,
+                "aiMlFocus": 10,
+                "techStackMax": 100,
+            },
+            "sizeAdjustments": {
+                "largeCompanyBonus": 10,
+                "smallCompanyPenalty": -5,
+                "largeCompanyThreshold": 10000,
+                "smallCompanyThreshold": 100,
+            },
+            "timezoneAdjustments": {
+                "sameTimezone": 5,
+                "diff1to2hr": -2,
+                "diff3to4hr": -5,
+                "diff5to8hr": -10,
+                "diff9plusHr": -15,
+            },
+            "priorityThresholds": {
+                "high": 85,
+                "medium": 70,
+            },
+        }
+
         default = {
             "minMatchScore": 70,
             "portlandOfficeBonus": 15,
             "userTimezone": -8,
             "preferLargeCompanies": True,
             "generateIntakeData": True,
+            "companyWeights": default_weights,
         }
         try:
-            return self._get_config("job-match")
+            cfg = self._get_config("job-match") or {}
+            weights = {**default_weights, **(cfg.get("companyWeights") or {})}
+            return {**default, **cfg, "companyWeights": weights}
         except InitializationError:
             logger.warning("Job match config missing; seeding defaults")
             return self._seed_config("job-match", default)

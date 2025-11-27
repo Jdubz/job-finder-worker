@@ -28,7 +28,6 @@ import type {
   JobMatchConfig,
   AIProviderType,
   AIInterfaceType,
-  CompanyScoringConfig,
   WorkerSettings,
 } from "./config.types"
 import type { PersonalInfo } from "./generator.types"
@@ -324,18 +323,6 @@ export function isTechnologyRanksConfig(value: unknown): value is TechnologyRank
 
 export function isSchedulerSettings(value: unknown): value is SchedulerSettings {
   return isObject(value) && typeof (value as Partial<SchedulerSettings>).pollIntervalSeconds === "number"
-}
-
-export function isCompanyScoringConfig(value: unknown): value is CompanyScoringConfig {
-  const v = value as CompanyScoringConfig
-  return (
-    isObject(value) &&
-    isObject(v.tierThresholds) &&
-    isObject(v.priorityBonuses) &&
-    isObject(v.matchAdjustments) &&
-    isObject(v.timezoneAdjustments) &&
-    isObject(v.priorityThresholds)
-  )
 }
 
 export function isWorkerSettings(value: unknown): value is WorkerSettings {

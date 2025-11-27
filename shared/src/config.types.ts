@@ -106,6 +106,33 @@ export interface JobMatchConfig {
   preferLargeCompanies: boolean
   /** Whether to generate resume intake data for matches */
   generateIntakeData: boolean
+  /** Company-influenced score weights */
+  companyWeights?: CompanyMatchWeights
+}
+
+export interface CompanyMatchWeights {
+  bonuses: {
+    remoteFirst: number
+    aiMlFocus: number
+    techStackMax: number
+  }
+  sizeAdjustments: {
+    largeCompanyBonus: number
+    smallCompanyPenalty: number
+    largeCompanyThreshold: number
+    smallCompanyThreshold: number
+  }
+  timezoneAdjustments: {
+    sameTimezone: number
+    diff1to2hr: number
+    diff3to4hr: number
+    diff5to8hr: number
+    diff9plusHr: number
+  }
+  priorityThresholds: {
+    high: number
+    medium: number
+  }
 }
 
 export interface JobFiltersConfig {
@@ -172,48 +199,6 @@ export interface SchedulerSettings {
 }
 
 // -----------------------------------------------------------
-// Company Scoring Configuration
-// -----------------------------------------------------------
-
-export interface CompanyScoringConfig {
-  /** Company tier thresholds (points needed for each tier) */
-  tierThresholds: {
-    s: number // S-tier (default: 150)
-    a: number // A-tier (default: 100)
-    b: number // B-tier (default: 70)
-    c: number // C-tier (default: 50)
-    // Below C threshold = D-tier
-  }
-  /** Priority bonuses for company scoring */
-  priorityBonuses: {
-    portlandOffice: number // Bonus for Portland office (default: 50)
-    remoteFirst: number // Bonus for remote-first companies (default: 15)
-    aiMlFocus: number // Bonus for AI/ML-focused companies (default: 10)
-    techStackMax: number // Maximum points from tech stack alignment (default: 100)
-  }
-  /** Match score adjustments based on company attributes */
-  matchAdjustments: {
-    largeCompanyBonus: number // Bonus for large companies (default: 10)
-    smallCompanyPenalty: number // Penalty for small companies/startups (default: -5)
-    largeCompanyThreshold: number // Employee count for "large" (default: 10000)
-    smallCompanyThreshold: number // Employee count for "small" (default: 100)
-  }
-  /** Timezone-based score adjustments */
-  timezoneAdjustments: {
-    sameTimezone: number // Bonus for same timezone (default: 5)
-    diff1to2hr: number // Penalty for 1-2 hour difference (default: -2)
-    diff3to4hr: number // Penalty for 3-4 hour difference (default: -5)
-    diff5to8hr: number // Penalty for 5-8 hour difference (default: -10)
-    diff9plusHr: number // Penalty for 9+ hour difference (default: -15)
-  }
-  /** Match score priority thresholds */
-  priorityThresholds: {
-    high: number // Score threshold for high priority (default: 85)
-    medium: number // Score threshold for medium priority (default: 70)
-  }
-}
-
-// -----------------------------------------------------------
 // Worker Operational Settings
 // -----------------------------------------------------------
 
@@ -262,7 +247,6 @@ export type JobFinderConfigId =
   | "job-match"
   | "technology-ranks"
   | "scheduler-settings"
-  | "company-scoring"
   | "worker-settings"
 
 export type JobFinderConfigPayloadMap = {
@@ -275,7 +259,6 @@ export type JobFinderConfigPayloadMap = {
   "job-match": JobMatchConfig
   "technology-ranks": TechnologyRanksConfig
   "scheduler-settings": SchedulerSettings
-  "company-scoring": CompanyScoringConfig
   "worker-settings": WorkerSettings
 }
 
@@ -334,6 +317,30 @@ export const DEFAULT_JOB_MATCH: JobMatchConfig = {
   userTimezone: -8,
   preferLargeCompanies: true,
   generateIntakeData: true,
+  companyWeights: {
+    bonuses: {
+      remoteFirst: 15,
+      aiMlFocus: 10,
+      techStackMax: 100,
+    },
+    sizeAdjustments: {
+      largeCompanyBonus: 10,
+      smallCompanyPenalty: -5,
+      largeCompanyThreshold: 10000,
+      smallCompanyThreshold: 100,
+    },
+    timezoneAdjustments: {
+      sameTimezone: 5,
+      diff1to2hr: -2,
+      diff3to4hr: -5,
+      diff5to8hr: -10,
+      diff9plusHr: -15,
+    },
+    priorityThresholds: {
+      high: 85,
+      medium: 70,
+    },
+  },
 }
 
 export const DEFAULT_JOB_FILTERS: JobFiltersConfig = {
@@ -511,37 +518,6 @@ Provide:
 - Customization recommendations (what to emphasize)`
 }
 
-export const DEFAULT_COMPANY_SCORING: CompanyScoringConfig = {
-  tierThresholds: {
-    s: 150,
-    a: 100,
-    b: 70,
-    c: 50,
-  },
-  priorityBonuses: {
-    portlandOffice: 50,
-    remoteFirst: 15,
-    aiMlFocus: 10,
-    techStackMax: 100,
-  },
-  matchAdjustments: {
-    largeCompanyBonus: 10,
-    smallCompanyPenalty: -5,
-    largeCompanyThreshold: 10000,
-    smallCompanyThreshold: 100,
-  },
-  timezoneAdjustments: {
-    sameTimezone: 5,
-    diff1to2hr: -2,
-    diff3to4hr: -5,
-    diff5to8hr: -10,
-    diff9plusHr: -15,
-  },
-  priorityThresholds: {
-    high: 85,
-    medium: 70,
-  },
-}
 
 export const DEFAULT_WORKER_SETTINGS: WorkerSettings = {
   scraping: {

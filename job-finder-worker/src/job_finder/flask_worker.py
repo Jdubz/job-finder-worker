@@ -174,6 +174,7 @@ def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
         ai_matcher.prefer_large_companies = job_match.get(
             "preferLargeCompanies", ai_matcher.prefer_large_companies
         )
+        ai_matcher.company_weights = job_match.get("companyWeights", ai_matcher.company_weights)
     except Exception as exc:  # pragma: no cover - defensive
         slogger.worker_status("job_match_settings_load_failed", {"error": str(exc)})
 
@@ -283,6 +284,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         user_timezone=job_match.get("userTimezone", -8),
         prefer_large_companies=job_match.get("preferLargeCompanies", True),
         config=job_match,
+        company_weights=job_match.get("companyWeights"),
     )
 
     # Respect AI settings when fetching/extracting company info

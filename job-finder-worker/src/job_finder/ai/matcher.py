@@ -18,7 +18,6 @@ from job_finder.utils.company_size_utils import (
 from job_finder.utils.date_utils import calculate_freshness_adjustment, parse_job_date
 from job_finder.utils.role_preference_utils import calculate_role_preference_adjustment
 from job_finder.utils.timezone_utils import (
-    calculate_timezone_score_adjustment,
     detect_timezone_for_job,
 )
 
@@ -70,6 +69,7 @@ class AIJobMatcher:
         user_timezone: float = -8,
         prefer_large_companies: bool = True,
         config: Optional[Dict[str, Any]] = None,
+        company_weights: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize AI job matcher.
@@ -92,6 +92,23 @@ class AIJobMatcher:
         self.user_timezone = user_timezone
         self.prefer_large_companies = prefer_large_companies
         self.config = config or {}
+        self.company_weights = company_weights or {
+            "bonuses": {"remoteFirst": 15, "aiMlFocus": 10, "techStackMax": 100},
+            "sizeAdjustments": {
+                "largeCompanyBonus": 10,
+                "smallCompanyPenalty": -5,
+                "largeCompanyThreshold": 10000,
+                "smallCompanyThreshold": 100,
+            },
+            "timezoneAdjustments": {
+                "sameTimezone": 5,
+                "diff1to2hr": -2,
+                "diff3to4hr": -5,
+                "diff5to8hr": -10,
+                "diff9plusHr": -15,
+            },
+            "priorityThresholds": {"high": 85, "medium": 70},
+        }
         self.prompts = JobMatchPrompts()
 
     def analyze_job(
@@ -180,10 +197,30 @@ class AIJobMatcher:
         match_score = base_score
         adjustments = []
 
+        company_data = job.get("company_data") or {}
+        weights = self.company_weights or {}
+        bonuses = weights.get("bonuses", {})
+        size_weights = weights.get("sizeAdjustments", {})
+        tz_weights = weights.get("timezoneAdjustments", {})
+        priority_thresholds = weights.get("priorityThresholds", {})
+
         # Apply Portland office bonus
         if has_portland_office and self.portland_office_bonus > 0:
             match_score += self.portland_office_bonus
             adjustments.append(f"🏙️ Portland office: +{self.portland_office_bonus}")
+
+        # Remote-first / AI/ML focus bonuses
+        if company_data.get("isRemoteFirst"):
+            bonus = bonuses.get("remoteFirst", 0)
+            match_score += bonus
+            if bonus:
+                adjustments.append(f"🌐 Remote-first company: +{bonus}")
+
+        if company_data.get("aiMlFocus"):
+            bonus = bonuses.get("aiMlFocus", 0)
+            match_score += bonus
+            if bonus:
+                adjustments.append(f"🤖 AI/ML focus: +{bonus}")
 
         # Apply freshness adjustment
         posted_date_str = job.get("posted_date", "")
@@ -205,39 +242,77 @@ class AIJobMatcher:
         company_name = job.get("company", "")
         company_info = job.get("company_info", "")
         job_description = job.get("description", "")
+        employee_count = company_data.get("employeeCount")
         company_size = detect_company_size(company_name, company_info, job_description)
 
         # Apply timezone adjustment with smart detection
         job_location = job.get("location", "")
-        headquarters_location = ""  # Would come from company data if available
-        job_timezone = detect_timezone_for_job(
-            job_location=job_location,
-            job_description=job_description,
-            company_size=company_size,
-            headquarters_location=headquarters_location,
-            company_name=company_name,
-            company_info=company_info,
-        )
-        timezone_adj, timezone_desc = calculate_timezone_score_adjustment(
-            job_timezone, self.user_timezone
-        )
-        if timezone_adj != 0:
-            match_score += timezone_adj
-            if timezone_adj > 0:
-                adjustments.append(f"🌎 {timezone_desc}")
-            else:
-                adjustments.append(f"⏰ {timezone_desc}")
+        headquarters_location = company_data.get("headquartersLocation", "")
+        timezone_offset = company_data.get("timezoneOffset")
+        if timezone_offset is None:
+            job_timezone = detect_timezone_for_job(
+                job_location=job_location,
+                job_description=job_description,
+                company_size=company_size,
+                headquarters_location=headquarters_location,
+                company_name=company_name,
+                company_info=company_info,
+            )
+        else:
+            job_timezone = timezone_offset
 
-        # Apply company size adjustment
-        size_adj, size_desc = calculate_company_size_adjustment(
-            company_size, self.prefer_large_companies
-        )
-        if size_adj != 0:
-            match_score += size_adj
-            if size_adj > 0:
-                adjustments.append(f"🏢 {size_desc}")
+        if job_timezone is not None:
+            hour_diff = abs(job_timezone - self.user_timezone)
+            if hour_diff == 0:
+                tz_adj = tz_weights.get("sameTimezone", 0)
+                desc = "Same timezone"
+            elif hour_diff <= 2:
+                tz_adj = tz_weights.get("diff1to2hr", 0)
+                desc = f"{hour_diff}h timezone difference"
+            elif hour_diff <= 4:
+                tz_adj = tz_weights.get("diff3to4hr", 0)
+                desc = f"{hour_diff}h timezone difference"
+            elif hour_diff <= 8:
+                tz_adj = tz_weights.get("diff5to8hr", 0)
+                desc = f"{hour_diff}h timezone difference"
             else:
-                adjustments.append(f"🏪 {size_desc}")
+                tz_adj = tz_weights.get("diff9plusHr", 0)
+                desc = f"{hour_diff}h timezone difference"
+
+            if tz_adj != 0:
+                match_score += tz_adj
+                adjustments.append(f"⏰ {desc} {tz_adj:+}")
+
+        # Apply company size adjustment using weights
+        size_adj = 0
+        size_desc = ""
+        large_bonus = size_weights.get("largeCompanyBonus", 0)
+        small_penalty = size_weights.get("smallCompanyPenalty", 0)
+        large_threshold = size_weights.get("largeCompanyThreshold", 10000)
+        small_threshold = size_weights.get("smallCompanyThreshold", 100)
+
+        if employee_count is not None:
+            if employee_count >= large_threshold:
+                size_adj = large_bonus
+                size_desc = f"Large company (>= {large_threshold})"
+            elif employee_count <= small_threshold:
+                size_adj = small_penalty
+                size_desc = f"Small company (<= {small_threshold})"
+        else:
+            # Fallback to detected size with preference toggle
+            if company_size == "large":
+                size_adj = large_bonus
+                size_desc = "Large company"
+            elif company_size == "small":
+                size_adj = small_penalty
+                size_desc = "Small company"
+            # If prefer_large_companies flag is still relevant, apply neutral otherwise
+            elif self.prefer_large_companies and company_size == "medium":
+                size_adj = 0
+
+        if size_adj != 0 and size_desc:
+            match_score += size_adj
+            adjustments.append(f"🏢 {size_desc} {size_adj:+}")
 
         # Apply role preference adjustment
         role_adj, role_desc = calculate_role_preference_adjustment(job.get("title", ""))
@@ -259,9 +334,11 @@ class AIJobMatcher:
             )
 
         # Recalculate priority tier based on adjusted score
-        if match_score >= 75:
+        high_threshold = priority_thresholds.get("high", 75)
+        med_threshold = priority_thresholds.get("medium", 50)
+        if match_score >= high_threshold:
             priority = "High"
-        elif match_score >= 50:
+        elif match_score >= med_threshold:
             priority = "Medium"
         else:
             priority = "Low"

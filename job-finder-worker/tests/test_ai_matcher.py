@@ -63,14 +63,10 @@ class TestCalculateAdjustedScore:
     @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
     @patch("job_finder.ai.matcher.detect_company_size")
     @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_timezone_score_adjustment")
-    @patch("job_finder.ai.matcher.calculate_company_size_adjustment")
     @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
     def test_calculate_adjusted_score_with_portland_bonus(
         self,
         mock_role_adj,
-        mock_size_adj,
-        mock_tz_adj,
         mock_tz_detect,
         mock_size_detect,
         mock_fresh_adj,
@@ -85,14 +81,31 @@ class TestCalculateAdjustedScore:
         mock_fresh_adj.return_value = 0
         mock_size_detect.return_value = "medium"
         mock_tz_detect.return_value = -8
-        mock_tz_adj.return_value = (0, "Same timezone")
-        mock_size_adj.return_value = (0, "Medium company")
         mock_role_adj.return_value = (0, "Neutral role")
 
         match_analysis = {"match_score": 70, "application_priority": "Medium"}
 
         matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, portland_office_bonus=15
+            provider=mock_provider,
+            profile=mock_profile,
+            portland_office_bonus=15,
+            company_weights={
+                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0, "techStackMax": 0},
+                "sizeAdjustments": {
+                    "largeCompanyBonus": 0,
+                    "smallCompanyPenalty": 0,
+                    "largeCompanyThreshold": 10000,
+                    "smallCompanyThreshold": 100,
+                },
+                "timezoneAdjustments": {
+                    "sameTimezone": 0,
+                    "diff1to2hr": 0,
+                    "diff3to4hr": 0,
+                    "diff5to8hr": 0,
+                    "diff9plusHr": 0,
+                },
+                "priorityThresholds": {"high": 85, "medium": 70},
+            },
         )
         adjusted_score = matcher._calculate_adjusted_score(
             match_analysis, has_portland_office=True, job=sample_job
@@ -105,14 +118,10 @@ class TestCalculateAdjustedScore:
     @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
     @patch("job_finder.ai.matcher.detect_company_size")
     @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_timezone_score_adjustment")
-    @patch("job_finder.ai.matcher.calculate_company_size_adjustment")
     @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
     def test_calculate_adjusted_score_clamps_to_100(
         self,
         mock_role_adj,
-        mock_size_adj,
-        mock_tz_adj,
         mock_tz_detect,
         mock_size_detect,
         mock_fresh_adj,
@@ -126,14 +135,31 @@ class TestCalculateAdjustedScore:
         mock_fresh_adj.return_value = 10
         mock_size_detect.return_value = "large"
         mock_tz_detect.return_value = -8
-        mock_tz_adj.return_value = (5, "Same timezone")
-        mock_size_adj.return_value = (10, "Large company")
         mock_role_adj.return_value = (5, "Engineering role")
 
         match_analysis = {"match_score": 95, "application_priority": "High"}
 
         matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, portland_office_bonus=15
+            provider=mock_provider,
+            profile=mock_profile,
+            portland_office_bonus=15,
+            company_weights={
+                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0, "techStackMax": 0},
+                "sizeAdjustments": {
+                    "largeCompanyBonus": 10,
+                    "smallCompanyPenalty": 0,
+                    "largeCompanyThreshold": 100,
+                    "smallCompanyThreshold": 10,
+                },
+                "timezoneAdjustments": {
+                    "sameTimezone": 0,
+                    "diff1to2hr": 0,
+                    "diff3to4hr": 0,
+                    "diff5to8hr": 0,
+                    "diff9plusHr": 0,
+                },
+                "priorityThresholds": {"high": 85, "medium": 70},
+            },
         )
         adjusted_score = matcher._calculate_adjusted_score(
             match_analysis, has_portland_office=True, job=sample_job
@@ -146,14 +172,10 @@ class TestCalculateAdjustedScore:
     @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
     @patch("job_finder.ai.matcher.detect_company_size")
     @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_timezone_score_adjustment")
-    @patch("job_finder.ai.matcher.calculate_company_size_adjustment")
     @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
     def test_calculate_adjusted_score_updates_priority(
         self,
         mock_role_adj,
-        mock_size_adj,
-        mock_tz_adj,
         mock_tz_detect,
         mock_size_detect,
         mock_fresh_adj,
@@ -167,15 +189,32 @@ class TestCalculateAdjustedScore:
         mock_fresh_adj.return_value = 0
         mock_size_detect.return_value = "medium"
         mock_tz_detect.return_value = -8
-        mock_tz_adj.return_value = (0, "Same timezone")
-        mock_size_adj.return_value = (0, "Medium company")
         mock_role_adj.return_value = (0, "Neutral role")
 
         # Start with Medium priority (score 55)
         match_analysis = {"match_score": 55, "application_priority": "Medium"}
 
         matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, portland_office_bonus=25
+            provider=mock_provider,
+            profile=mock_profile,
+            portland_office_bonus=25,
+            company_weights={
+                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0, "techStackMax": 0},
+                "sizeAdjustments": {
+                    "largeCompanyBonus": 0,
+                    "smallCompanyPenalty": 0,
+                    "largeCompanyThreshold": 10000,
+                    "smallCompanyThreshold": 100,
+                },
+                "timezoneAdjustments": {
+                    "sameTimezone": 0,
+                    "diff1to2hr": 0,
+                    "diff3to4hr": 0,
+                    "diff5to8hr": 0,
+                    "diff9plusHr": 0,
+                },
+                "priorityThresholds": {"high": 75, "medium": 50},
+            },
         )
         adjusted_score = matcher._calculate_adjusted_score(
             match_analysis, has_portland_office=True, job=sample_job

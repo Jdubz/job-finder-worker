@@ -13,7 +13,6 @@ import type {
   JobFiltersConfig,
   TechnologyRanksConfig,
   SchedulerSettings,
-  CompanyScoringConfig,
   WorkerSettings,
 } from "@shared/types"
 import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO } from "@shared/types"
@@ -137,14 +136,6 @@ export class ConfigClient extends BaseApiClient {
 
   async updateSchedulerSettings(settings: SchedulerSettings): Promise<void> {
     await this.updateConfigEntry("scheduler-settings", settings)
-  }
-
-  async getCompanyScoring(): Promise<CompanyScoringConfig | null> {
-    return this.getConfigEntry<CompanyScoringConfig>("company-scoring")
-  }
-
-  async updateCompanyScoring(config: CompanyScoringConfig): Promise<void> {
-    await this.updateConfigEntry("company-scoring", config)
   }
 
   async getWorkerSettings(): Promise<WorkerSettings | null> {
