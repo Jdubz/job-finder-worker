@@ -3,7 +3,7 @@ import { buildApp } from './app'
 import { logger } from './logger'
 import { getDb } from './db/sqlite'
 import { initWorkerSocket } from './modules/job-queue/worker-socket'
-import { setLifecyclePhase, broadcastLifecycleEvent } from './modules/lifecycle/lifecycle.stream'
+import { setLifecyclePhase, broadcastLifecycleEvent, setReady } from './modules/lifecycle/lifecycle.stream'
 import { createDrainManager } from './modules/lifecycle/drain-manager'
 
 async function main() {
@@ -14,6 +14,7 @@ async function main() {
   const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT }, 'Job Finder API listening')
     setLifecyclePhase('ready', { port: env.PORT })
+    setReady(true, { port: env.PORT })
   })
 
   // Attach worker WebSocket for bi-directional commands/events
@@ -23,7 +24,9 @@ async function main() {
 
   const shutdown = async (reason: string) => {
     logger.info({ reason }, 'Shutting down Job Finder API')
-    setLifecyclePhase('restarting', { reason })
+    // Mark unready before we stop accepting new connections so healthchecks fail fast
+    setReady(false, { reason })
+    setLifecyclePhase('draining', { reason })
     broadcastLifecycleEvent('restarting', { reason })
     await drain()
     process.exit(0)
