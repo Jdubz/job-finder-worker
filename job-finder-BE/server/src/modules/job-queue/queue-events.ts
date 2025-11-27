@@ -2,6 +2,7 @@ import type { Response, Request } from 'express'
 import { randomUUID } from 'crypto'
 import type { QueueItem } from '@shared/types'
 import type { WebSocket } from 'ws'
+import { HEARTBEAT_INTERVAL_MS, initSseStream, type SseClient } from '../shared/sse'
 
 type QueueEventName =
   | 'snapshot'
@@ -19,11 +20,6 @@ type QueueEventPayload = {
   event: QueueEventName
   data: Record<string, unknown>
   ts: string
-}
-
-type SseClient = {
-  id: string
-  res: Response
 }
 
 type PendingCommand = {
@@ -55,11 +51,7 @@ export function broadcastQueueEvent(event: QueueEventName, data: Record<string, 
 }
 
 export function handleQueueEventsSse(req: Request, res: Response, items: QueueItem[]) {
-  const clientId = randomUUID()
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders?.()
+  initSseStream(req, res, clients, HEARTBEAT_INTERVAL_MS)
 
   // Initial retry hint and snapshot
   res.write('retry: 3000\n\n')
@@ -70,14 +62,6 @@ export function handleQueueEventsSse(req: Request, res: Response, items: QueueIt
     ts: new Date().toISOString()
   }
   res.write(toEventString(snapshot))
-
-  const client: SseClient = { id: clientId, res }
-  clients.add(client)
-
-  req.on('close', () => {
-    clients.delete(client)
-    res.end()
-  })
 }
 
 export function enqueueCancelCommand(itemId: string, workerId = 'default') {
