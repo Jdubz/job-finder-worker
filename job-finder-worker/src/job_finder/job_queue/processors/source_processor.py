@@ -54,9 +54,17 @@ class SourceProcessor(BaseProcessor):
             from job_finder.ai.providers import create_provider_from_config
             from job_finder.ai.source_discovery import SourceDiscovery
 
-            # Get AI settings and create provider
-            ai_settings = self.config_loader.get_ai_settings()
-            provider = create_provider_from_config(ai_settings)
+            # Get AI settings and create provider (tolerate missing/invalid config)
+            try:
+                ai_settings = self.config_loader.get_ai_settings()
+                provider = create_provider_from_config(ai_settings)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "AI provider unavailable (%s); falling back to heuristic discovery for %s",
+                    exc,
+                    url,
+                )
+                provider = None
 
             # Run AI-powered discovery
             discovery = SourceDiscovery(provider)

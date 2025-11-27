@@ -214,20 +214,28 @@ def create_provider_from_config(ai_settings: Dict[str, Any]) -> AIProvider:
     """
     Create an AI provider from the ai-settings configuration.
 
-    Args:
-        ai_settings: The ai-settings config dict with 'selected' key containing
-                     provider, interface, and model.
-
-    Returns:
-        AIProvider instance configured according to settings.
-
-    Raises:
-        AIProviderError: If provider/interface combination is invalid or not available.
+    Supports both the new `{selected:{provider,interface,model}}` shape and the
+    legacy `{provider, model}` shape that ships in production SQLite. Defaults
+    to API interfaces for cloud providers to avoid CLI breakage.
     """
-    selected = ai_settings.get("selected", {})
+
+    selected = ai_settings.get("selected") or {}
+
+    # Legacy support: allow top-level provider/model keys
+    if not selected and any(k in ai_settings for k in ("provider", "model", "interface")):
+        selected = {
+            "provider": ai_settings.get("provider", "codex"),
+            "interface": ai_settings.get("interface"),
+            "model": ai_settings.get("model", "gpt-4o-mini"),
+        }
+
     provider_type = selected.get("provider", "codex")
-    interface_type = selected.get("interface", "cli")
+    interface_type = selected.get("interface")
     model = selected.get("model", "gpt-4o-mini")
+
+    # Prefer API interface for hosted models when not specified
+    if not interface_type:
+        interface_type = "api" if provider_type in {"claude", "openai", "gemini"} else "cli"
 
     provider_key = (provider_type, interface_type)
     provider_class = _PROVIDER_MAP.get(provider_key)
