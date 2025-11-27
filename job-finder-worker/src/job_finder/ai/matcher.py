@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from job_finder.ai.prompts import JobMatchPrompts
 from job_finder.ai.providers import AIProvider
+from job_finder.exceptions import AIProviderError
 from job_finder.profile.schema import Profile
 from job_finder.settings import get_text_limits
 from job_finder.utils.company_size_utils import (
@@ -397,8 +398,6 @@ class AIJobMatcher:
         except Exception as e:
             # Re-raise AIProviderError so infrastructure failures bubble up
             # and cause the task to FAIL (not be silently skipped)
-            from job_finder.exceptions import AIProviderError
-
             if isinstance(e, AIProviderError):
                 logger.error(f"AI provider error during match analysis: {str(e)}")
                 raise  # Let caller handle - this should FAIL the task
@@ -477,8 +476,6 @@ class AIJobMatcher:
             return None
         except Exception as e:
             # Re-raise AIProviderError so infrastructure failures bubble up
-            from job_finder.exceptions import AIProviderError
-
             if isinstance(e, AIProviderError):
                 logger.error(f"AI provider error generating intake data: {str(e)}")
                 raise  # Let caller handle - this should FAIL the task

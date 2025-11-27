@@ -190,7 +190,7 @@ class CodexCLIProvider(AIProvider):
                 )
 
             parsed = json.loads(result.stdout)
-            content = parsed.get("choices", [{}])[0].get("message", {}).get("content", "")
+            content = (parsed.get("choices") or [{}])[0].get("message", {}).get("content", "")
             if not content:
                 raise AIProviderError("Codex CLI returned empty content")
             return content
