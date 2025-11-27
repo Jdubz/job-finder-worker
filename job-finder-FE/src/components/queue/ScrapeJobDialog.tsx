@@ -115,15 +115,20 @@ export function ScrapeJobDialog({
     }
   }
 
+  const selectableSources = useMemo(
+    () => sources.filter((s): s is JobSource & { id: string } => typeof s.id === "string" && s.id.length > 0),
+    [sources]
+  )
+
   const filteredSources = useMemo(() => {
     const term = sourceSearch.trim().toLowerCase()
-    if (!term) return sources
-    return sources.filter((s) => s.name.toLowerCase().includes(term))
-  }, [sources, sourceSearch])
+    if (!term) return selectableSources
+    return selectableSources.filter((s) => s.name.toLowerCase().includes(term))
+  }, [selectableSources, sourceSearch])
 
-  const selectedBadges = form.selectedSourceIds
-    .map((id) => sources.find((s) => s.id === id))
-    .filter(Boolean) as JobSource[]
+  const selectedBadges: Array<JobSource & { id: string }> = form.selectedSourceIds
+    .map((id) => selectableSources.find((s) => s.id === id))
+    .filter((s): s is JobSource & { id: string } => Boolean(s?.id))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -185,6 +190,7 @@ export function ScrapeJobDialog({
                       <div className="text-sm text-muted-foreground py-4 text-center">No sources match.</div>
                     ) : (
                       filteredSources.map((source) => {
+                        if (!source.id) return null
                         const selected = form.selectedSourceIds.includes(source.id)
                         return (
                           <label key={source.id} className="flex items-start gap-2 cursor-pointer">

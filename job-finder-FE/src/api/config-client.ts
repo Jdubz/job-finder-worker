@@ -16,7 +16,7 @@ import type {
   CompanyScoringConfig,
   WorkerSettings,
 } from "@shared/types"
-import { DEFAULT_AI_SETTINGS } from "@shared/types"
+import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO } from "@shared/types"
 
 export class ConfigClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
@@ -163,11 +163,12 @@ export class ConfigClient extends BaseApiClient {
     updates: Partial<PersonalInfo>,
     userEmail: string
   ): Promise<PersonalInfo> {
-    const existing = (await this.getPersonalInfo()) ?? {
-      name: "",
-      email: userEmail,
-      accentColor: "#3b82f6",
-    }
+    const existing =
+      (await this.getPersonalInfo()) ??
+      {
+        ...DEFAULT_PERSONAL_INFO,
+        email: userEmail || DEFAULT_PERSONAL_INFO.email,
+      }
 
     const payload: PersonalInfo = {
       ...existing,

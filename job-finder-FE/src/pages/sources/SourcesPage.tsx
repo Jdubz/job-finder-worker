@@ -429,8 +429,10 @@ export function SourcesPage() {
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation()
-                          setScrapePrefillSourceId(source.id)
-                          setScrapeDialogOpen(true)
+                          if (source.id) {
+                            setScrapePrefillSourceId(source.id)
+                            setScrapeDialogOpen(true)
+                          }
                         }}
                       >
                         <Plus className="h-4 w-4 mr-1" />
@@ -474,19 +476,23 @@ export function SourcesPage() {
                 {getSourceUrl(selectedSource) && (
                   <div>
                     <Label className="text-muted-foreground text-xs uppercase tracking-wide">Source URL</Label>
-                    {getSourceUrl(selectedSource) ? (
+                    {(() => {
+                      const url = getSourceUrl(selectedSource)
+                      if (!url) {
+                        return <span className="text-muted-foreground mt-1 inline-block">Not provided</span>
+                      }
+                      return (
                       <a
-                        href={getSourceUrl(selectedSource)}
+                        href={url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center text-blue-600 hover:underline mt-1"
                       >
-                        {getSourceUrl(selectedSource)}
+                        {url}
                         <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
                       </a>
-                    ) : (
-                      <span className="text-muted-foreground mt-1 inline-block">Not provided</span>
-                    )}
+                      )
+                    })()}
                   </div>
                 )}
 
