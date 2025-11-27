@@ -8,7 +8,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { TabCard } from "../shared"
-import type { AISettings, AIProviderType, AIInterfaceType } from "@shared/types"
+import type {
+  AISettings,
+  AIProviderType,
+  AIInterfaceType,
+  AIProviderOption,
+  AIInterfaceOption,
+} from "@shared/types"
 import { DEFAULT_AI_SETTINGS } from "@shared/types"
 import type { ConfigState } from "../../hooks/useConfigState"
 
@@ -42,7 +48,7 @@ export function AISettingsTab({
   handleSaveAISettings,
   handleResetAISettings,
 }: AISettingsTabProps) {
-  const options = aiSettings?.options ?? DEFAULT_AI_SETTINGS.options ?? []
+  const options: AIProviderOption[] = aiSettings?.options ?? DEFAULT_AI_SETTINGS.options ?? []
   const defaultSelection: AISettings["worker"]["selected"] =
     DEFAULT_AI_SETTINGS?.worker?.selected ?? { provider: "codex", interface: "cli", model: "gpt-4o" }
 
@@ -58,10 +64,10 @@ export function AISettingsTab({
   }
 
   const resolveProvider = (provider: AIProviderType): AIProviderOption | undefined =>
-    options.find((p) => p.value === provider)
+    options.find((p: AIProviderOption) => p.value === provider)
 
   const resolveInterface = (provider: AIProviderType, iface: AIInterfaceType) =>
-    resolveProvider(provider)?.interfaces.find((i) => i.value === iface)
+    resolveProvider(provider)?.interfaces.find((i: AIInterfaceOption) => i.value === iface)
 
   const updateSelection = (
     section: "worker" | "documentGenerator",
@@ -82,7 +88,7 @@ export function AISettingsTab({
   const chooseFallbackInterface = (provider: AIProviderType) => {
     const providerOption = resolveProvider(provider)
     if (!providerOption) return { interface: "api" as AIInterfaceType, model: "" }
-    const iface = providerOption.interfaces.find((i) => i.enabled) ?? providerOption.interfaces[0]
+    const iface = providerOption.interfaces.find((i: AIInterfaceOption) => i.enabled) ?? providerOption.interfaces[0]
     const model = iface?.models[0] ?? ""
     return { interface: (iface?.value ?? "api") as AIInterfaceType, model }
   }
@@ -117,25 +123,26 @@ export function AISettingsTab({
 
   const isProviderEnabled = (provider: AIProviderType) => {
     const providerOption = resolveProvider(provider)
-    return providerOption?.interfaces.some((iface) => iface.enabled) ?? false
+    return providerOption?.interfaces.some((iface: AIInterfaceOption) => iface.enabled) ?? false
   }
 
   const getProviderDisabledReason = (provider: AIProviderType): string | undefined => {
     const providerOption = resolveProvider(provider)
-    const firstReason = providerOption?.interfaces.find((iface) => !iface.enabled)?.reason
+    const firstReason = providerOption?.interfaces.find((iface: AIInterfaceOption) => !iface.enabled)?.reason
     return firstReason
   }
 
   const renderSelector = (section: "worker" | "documentGenerator", title: string, description: string) => {
     const selected = getSectionSelection(section)
     const providerOption = resolveProvider(selected.provider)
-    const availableInterfaces = providerOption?.interfaces ?? []
+    const availableInterfaces: AIInterfaceOption[] = providerOption?.interfaces ?? []
     const interfaceOption =
-      availableInterfaces.find((i) => i.value === selected.interface) ?? availableInterfaces[0]
+      availableInterfaces.find((i: AIInterfaceOption) => i.value === selected.interface) ?? availableInterfaces[0]
     const models = interfaceOption?.models ?? []
 
     return (
       <div className="space-y-4">
+        <h3 className="text-lg font-medium">{title}</h3>
         <div className="grid grid-cols-3 gap-6">
           <div className="space-y-2">
             <Label htmlFor={`${section}-provider`}>Provider</Label>

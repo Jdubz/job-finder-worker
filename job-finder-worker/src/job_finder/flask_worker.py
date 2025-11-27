@@ -183,7 +183,9 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     # Get AI provider settings (defaults to codex/cli/gpt-4o for both worker and doc gen)
     ai_settings = {
         "worker": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
-        "documentGenerator": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
+        "documentGenerator": {
+            "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
+        },
         "options": [],
     }
     try:

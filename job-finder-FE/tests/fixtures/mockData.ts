@@ -251,16 +251,29 @@ export const mockQueueSettings: QueueSettings = {
 }
 
 export const mockAISettings: AISettings = {
-  selected: {
-    provider: "codex",
-    interface: "cli",
-    model: "gpt-4o-mini",
+  worker: {
+    selected: { provider: "codex", interface: "cli", model: "gpt-4o" },
   },
-  providers: [
-    { provider: "codex", interface: "cli", enabled: true, models: ["o3", "o4-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"] },
-    { provider: "claude", interface: "api", enabled: false, reason: "Missing ANTHROPIC_API_KEY", models: ["claude-sonnet-4-5-20250929"] },
-    { provider: "openai", interface: "api", enabled: false, reason: "Missing OPENAI_API_KEY", models: ["gpt-4o", "gpt-4o-mini"] },
-    { provider: "gemini", interface: "api", enabled: false, reason: "Missing GEMINI_API_KEY", models: ["gemini-2.0-flash"] },
+  documentGenerator: {
+    selected: { provider: "openai", interface: "api", model: "gpt-4o" },
+  },
+  options: [
+    {
+      value: "codex",
+      interfaces: [{ value: "cli", enabled: true, models: ["o3", "o4-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"] }],
+    },
+    {
+      value: "claude",
+      interfaces: [{ value: "api", enabled: false, reason: "Missing ANTHROPIC_API_KEY", models: ["claude-sonnet-4-5-20250929"] }],
+    },
+    {
+      value: "openai",
+      interfaces: [{ value: "api", enabled: true, models: ["gpt-4o", "gpt-4o-mini"] }],
+    },
+    {
+      value: "gemini",
+      interfaces: [{ value: "api", enabled: false, reason: "Missing GEMINI_API_KEY", models: ["gemini-2.0-flash"] }],
+    },
   ],
 }
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from job_finder.exceptions import InitializationError
 from job_finder.storage.sqlite_client import sqlite_connection
@@ -77,7 +77,11 @@ class ConfigLoader:
             {
                 "value": "codex",
                 "interfaces": [
-                    {"value": "cli", "models": ["o3", "o4-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"], "enabled": True}
+                    {
+                        "value": "cli",
+                        "models": ["o3", "o4-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"],
+                        "enabled": True,
+                    }
                 ],
             },
             {
@@ -98,13 +102,21 @@ class ConfigLoader:
             {
                 "value": "openai",
                 "interfaces": [
-                    {"value": "api", "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"], "enabled": True}
+                    {
+                        "value": "api",
+                        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+                        "enabled": True,
+                    }
                 ],
             },
             {
                 "value": "gemini",
                 "interfaces": [
-                    {"value": "api", "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"], "enabled": True}
+                    {
+                        "value": "api",
+                        "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+                        "enabled": True,
+                    }
                 ],
             },
         ]
@@ -134,7 +146,9 @@ class ConfigLoader:
                 "options": default_options,
             }
 
-        legacy_selected = settings.get("selected") if isinstance(settings.get("selected"), dict) else None
+        legacy_selected = (
+            settings.get("selected") if isinstance(settings.get("selected"), dict) else None
+        )
 
         def pick_interface(provider: str, requested: Optional[str]) -> str:
             provider_opt = next((p for p in default_options if p.get("value") == provider), None)
@@ -142,15 +156,19 @@ class ConfigLoader:
             if requested and any(i.get("value") == requested for i in interfaces):
                 return requested
             if interfaces:
-                return interfaces[0].get("value", default_selection["interface"])
-            return default_selection["interface"]
+                return cast(str, interfaces[0].get("value") or default_selection["interface"])
+            return cast(str, default_selection["interface"])
 
         def pick_model(provider: str, interface: str, requested: Optional[str]) -> str:
             provider_opt = next((p for p in default_options if p.get("value") == provider), None)
             iface_opt = None
             if provider_opt:
-                iface_opt = next((i for i in provider_opt.get("interfaces", []) if i.get("value") == interface), None)
-            models = iface_opt.get("models", []) if iface_opt else []
+                iface_opt = next(
+                    (i for i in provider_opt.get("interfaces", []) if i.get("value") == interface),
+                    None,
+                )
+            raw_models = iface_opt.get("models", []) if iface_opt else []
+            models = [str(m) for m in raw_models] if isinstance(raw_models, list) else []
             if requested in models:
                 return requested
             if models:
@@ -163,14 +181,21 @@ class ConfigLoader:
             model = pick_model(provider, interface, (selected or {}).get("model"))
             return {"provider": provider, "interface": interface, "model": model}
 
-        worker_selected = build_selection((settings.get("worker") or {}).get("selected") or legacy_selected)
+        worker_selected = build_selection(
+            (settings.get("worker") or {}).get("selected") or legacy_selected
+        )
         doc_selected = build_selection(
             (settings.get("documentGenerator") or {}).get("selected")
-            or settings.get("document_generator")
+            or (settings.get("document_generator") or {}).get("selected")
+            or legacy_selected
             or worker_selected
         )
 
-        options = settings.get("options") if isinstance(settings.get("options"), list) else default_options
+        options = (
+            settings.get("options")
+            if isinstance(settings.get("options"), list)
+            else default_options
+        )
 
         return {
             "worker": {"selected": worker_selected},

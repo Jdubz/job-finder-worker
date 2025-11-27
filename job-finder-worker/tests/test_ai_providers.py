@@ -83,7 +83,10 @@ class TestCreateProviderFromConfig:
         except ImportError:
             pytest.skip("google-generativeai package not installed")
 
-            with patch("google.generativeai.configure"), patch("google.generativeai.GenerativeModel"):
+            with (
+                patch("google.generativeai.configure"),
+                patch("google.generativeai.GenerativeModel"),
+            ):
                 ai_settings = {
                     "worker": {
                         "selected": {

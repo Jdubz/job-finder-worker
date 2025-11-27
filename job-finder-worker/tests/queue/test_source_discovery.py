@@ -48,7 +48,9 @@ def mock_dependencies() -> Dict[str, Any]:
     config_loader.get_stop_list.return_value = _default_stop_list()
     config_loader.get_ai_settings.return_value = {
         "worker": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
-        "documentGenerator": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
+        "documentGenerator": {
+            "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
+        },
         "options": [],
     }
 
