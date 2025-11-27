@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor, fireEvent } from "@testing-library/react"
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { BrowserRouter } from "react-router-dom"
 import { JobFinderConfigPage } from "../JobFinderConfigPage"
@@ -23,7 +23,7 @@ vi.mock("@/api/config-client", () => ({
     getTechnologyRanks: vi.fn(),
     getSchedulerSettings: vi.fn(),
     getCompanyScoring: vi.fn(),
-    getWorkerSettings: vi.fn(),
+    getPersonalInfo: vi.fn(),
     updateStopList: vi.fn(),
     updateQueueSettings: vi.fn(),
     updateAISettings: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock("@/api/config-client", () => ({
     updateTechnologyRanks: vi.fn(),
     updateSchedulerSettings: vi.fn(),
     updateCompanyScoring: vi.fn(),
-    updateWorkerSettings: vi.fn(),
+    updatePersonalInfo: vi.fn(),
   },
 }))
 
@@ -54,6 +54,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 // Helper function to render with router
 const renderWithRouter = (component: React.ReactElement) => {
+  window.history.replaceState({}, "", "/job-finder-config")
   return render(<BrowserRouter>{component}</BrowserRouter>)
 }
 
@@ -146,25 +147,15 @@ const mockCompanyScoring = {
   priorityThresholds: { high: 85, medium: 70 },
 }
 
-const mockWorkerSettings = {
-  scraping: {
-    requestTimeoutSeconds: 30,
-    rateLimitDelaySeconds: 2,
-    maxRetries: 3,
-    maxHtmlSampleLength: 20000,
-    maxHtmlSampleLengthSmall: 15000,
-  },
-  health: { maxConsecutiveFailures: 5, healthCheckIntervalSeconds: 3600 },
-  cache: { companyInfoTtlSeconds: 86400, sourceConfigTtlSeconds: 3600 },
-  textLimits: {
-    minCompanyPageLength: 200,
-    minSparseCompanyInfoLength: 100,
-    maxIntakeTextLength: 500,
-    maxIntakeDescriptionLength: 2000,
-    maxIntakeFieldLength: 400,
-    maxDescriptionPreviewLength: 500,
-    maxCompanyInfoTextLength: 1000,
-  },
+const mockPersonalInfo = {
+  name: "Test User",
+  email: "test@example.com",
+  phone: "555-555-5555",
+  location: "Portland, OR",
+  website: "https://example.com",
+  linkedin: "https://linkedin.com/in/test",
+  github: "https://github.com/test",
+  accentColor: "#3b82f6",
 }
 
 describe("JobFinderConfigPage", () => {
@@ -182,7 +173,7 @@ describe("JobFinderConfigPage", () => {
     vi.mocked(configClient.getTechnologyRanks).mockResolvedValue(mockTechRanks)
     vi.mocked(configClient.getSchedulerSettings).mockResolvedValue(mockScheduler)
     vi.mocked(configClient.getCompanyScoring).mockResolvedValue(mockCompanyScoring)
-    vi.mocked(configClient.getWorkerSettings).mockResolvedValue(mockWorkerSettings)
+    vi.mocked(configClient.getPersonalInfo).mockResolvedValue(mockPersonalInfo)
     vi.mocked(configClient.updateStopList).mockResolvedValue(undefined)
     vi.mocked(configClient.updateQueueSettings).mockResolvedValue(undefined)
     vi.mocked(configClient.updateAISettings).mockResolvedValue(undefined)
@@ -191,7 +182,7 @@ describe("JobFinderConfigPage", () => {
     vi.mocked(configClient.updateTechnologyRanks).mockResolvedValue(undefined)
     vi.mocked(configClient.updateSchedulerSettings).mockResolvedValue(undefined)
     vi.mocked(configClient.updateCompanyScoring).mockResolvedValue(undefined)
-    vi.mocked(configClient.updateWorkerSettings).mockResolvedValue(undefined)
+    vi.mocked(configClient.updatePersonalInfo).mockResolvedValue(mockPersonalInfo)
   })
 
   describe("rendering", () => {
@@ -211,7 +202,7 @@ describe("JobFinderConfigPage", () => {
       expect(screen.getByRole("tab", { name: "Tech" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "Scheduler" })).toBeInTheDocument()
       expect(screen.getByRole("tab", { name: "Scoring" })).toBeInTheDocument()
-      expect(screen.getByRole("tab", { name: "Worker" })).toBeInTheDocument()
+      expect(screen.getByRole("tab", { name: "Personal" })).toBeInTheDocument()
     })
 
     it("should show loading state while fetching configuration", () => {
@@ -381,8 +372,8 @@ describe("JobFinderConfigPage", () => {
         expect(screen.getByText("New Company")).toBeInTheDocument()
       })
 
-      // Reset changes
-      await user.click(screen.getByText("Reset"))
+      const resetButton = screen.getAllByRole("button", { name: "Reset" })[0]
+      await user.click(resetButton)
 
       await waitFor(() => {
         expect(screen.queryByText("New Company")).not.toBeInTheDocument()
@@ -883,8 +874,11 @@ describe("JobFinderConfigPage", () => {
 
       expect(sTierInput).toHaveValue(200)
 
-      // Reset
-      await user.click(screen.getByText("Reset"))
+      const activeReset =
+        screen.getAllByRole("button", { name: "Reset" }).find((btn) =>
+          btn.closest('[data-state="active"]')
+        ) ?? screen.getAllByRole("button", { name: "Reset" })[0]
+      await user.click(activeReset)
 
       await waitFor(() => {
         expect(screen.getByLabelText("S-Tier")).toHaveValue(150) // Original value
@@ -892,133 +886,65 @@ describe("JobFinderConfigPage", () => {
     })
   })
 
-  describe("worker settings tab", () => {
-    it("should display worker tab content when clicked", async () => {
+  describe("personal info tab", () => {
+    it("should display personal info fields when clicked", async () => {
       const user = userEvent.setup()
       renderWithRouter(<JobFinderConfigPage />)
 
       await waitFor(() => {
         expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByRole("tab", { name: "Worker" }))
+      await user.click(screen.getByRole("tab", { name: "Personal" }))
 
       await waitFor(() => {
-        expect(screen.getByText("Worker Settings")).toBeInTheDocument()
-        expect(screen.getByText("Scraping Settings")).toBeInTheDocument()
-        expect(screen.getByLabelText("Timeout (s)")).toBeInTheDocument()
+        expect(screen.getByLabelText("Name")).toBeInTheDocument()
+        expect(screen.getByLabelText("Email")).toBeInTheDocument()
+        expect(screen.getByLabelText("Accent Color")).toBeInTheDocument()
       })
     })
 
-    it("should update scraping timeout value", async () => {
+    it("should save personal info updates", async () => {
+      vi.mocked(configClient.updatePersonalInfo).mockResolvedValueOnce(mockPersonalInfo)
       const user = userEvent.setup()
       renderWithRouter(<JobFinderConfigPage />)
 
       await waitFor(() => {
         expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
       })
 
-      await user.click(screen.getByRole("tab", { name: "Worker" }))
+      await user.click(screen.getByRole("tab", { name: "Personal" }))
+
+      const nameInput = await screen.findByLabelText("Name")
+      await user.clear(nameInput)
+      await user.type(nameInput, "Updated Name")
+
+      await user.click(screen.getByText("Save"))
 
       await waitFor(() => {
-        expect(screen.getByLabelText("Timeout (s)")).toBeInTheDocument()
-      })
-
-      // Update timeout using fireEvent.change for number inputs
-      const timeoutInput = screen.getByLabelText("Timeout (s)")
-      fireEvent.change(timeoutInput, { target: { value: "60" } })
-
-      expect(timeoutInput).toHaveValue(60)
-    })
-
-    it("should save worker settings", async () => {
-      vi.mocked(configClient.updateWorkerSettings).mockResolvedValueOnce(undefined)
-
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Worker" }))
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("Timeout (s)")).toBeInTheDocument()
-      })
-
-      // Update timeout using fireEvent.change for number inputs
-      const timeoutInput = screen.getByLabelText("Timeout (s)")
-      fireEvent.change(timeoutInput, { target: { value: "60" } })
-
-      // Save changes
-      await user.click(screen.getByText("Save Changes"))
-
-      await waitFor(() => {
-        expect(screen.getByText("Worker settings saved successfully!")).toBeInTheDocument()
-      })
-
-      expect(configClient.updateWorkerSettings).toHaveBeenCalled()
-    })
-
-    it("should show error when saving worker settings fails", async () => {
-      vi.mocked(configClient.updateWorkerSettings).mockRejectedValueOnce(new Error("Save failed"))
-
-      const user = userEvent.setup()
-      renderWithRouter(<JobFinderConfigPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
-
-      await user.click(screen.getByRole("tab", { name: "Worker" }))
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("Timeout (s)")).toBeInTheDocument()
-      })
-
-      // Update timeout using fireEvent.change for number inputs
-      const timeoutInput = screen.getByLabelText("Timeout (s)")
-      fireEvent.change(timeoutInput, { target: { value: "60" } })
-
-      // Save changes
-      await user.click(screen.getByText("Save Changes"))
-
-      await waitFor(() => {
-        expect(screen.getByText("Failed to save worker settings")).toBeInTheDocument()
+        expect(configClient.updatePersonalInfo).toHaveBeenCalled()
       })
     })
 
-    it("should reset worker settings to original values", async () => {
+    it("should reset personal info to original values", async () => {
       const user = userEvent.setup()
       renderWithRouter(<JobFinderConfigPage />)
 
-      await waitFor(() => {
-        expect(screen.getByText("Job Finder Configuration")).toBeInTheDocument()
-        expect(screen.queryByText("Loading configuration...")).not.toBeInTheDocument()
-      })
+      await user.click(await screen.findByRole("tab", { name: "Personal" }))
 
-      await user.click(screen.getByRole("tab", { name: "Worker" }))
+      const nameInput = await screen.findByLabelText("Name")
+      await user.clear(nameInput)
+      await user.type(nameInput, "Changed Name")
+      expect(nameInput).toHaveValue("Changed Name")
 
-      await waitFor(() => {
-        expect(screen.getByLabelText("Timeout (s)")).toBeInTheDocument()
-      })
-
-      // Update timeout using fireEvent.change for number inputs
-      const timeoutInput = screen.getByLabelText("Timeout (s)")
-      fireEvent.change(timeoutInput, { target: { value: "60" } })
-
-      expect(timeoutInput).toHaveValue(60)
-
-      // Reset
-      await user.click(screen.getByText("Reset"))
+      const personalReset =
+        screen.getAllByRole("button", { name: "Reset" }).find((btn) =>
+          btn.closest('[data-state="active"]')
+        ) ?? screen.getAllByRole("button", { name: "Reset" })[0]
+      await user.click(personalReset)
 
       await waitFor(() => {
-        expect(screen.getByLabelText("Timeout (s)")).toHaveValue(30) // Original value
+        expect(screen.getByLabelText("Name")).toHaveValue(mockPersonalInfo.name)
       })
     })
   })

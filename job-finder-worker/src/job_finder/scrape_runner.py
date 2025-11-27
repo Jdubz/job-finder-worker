@@ -91,8 +91,8 @@ class ScrapeRunner:
 
     def run_scrape(
         self,
-        target_matches: Optional[int] = 5,
-        max_sources: Optional[int] = 20,
+        target_matches: Optional[int] = None,
+        max_sources: Optional[int] = None,
         source_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
@@ -136,7 +136,14 @@ class ScrapeRunner:
                 break
 
             try:
-                source_stats = self._scrape_source(source)
+                remaining_needed = (
+                    None if target_matches is None else max(target_matches - potential_matches, 0)
+                )
+                if remaining_needed == 0:
+                    logger.info("Reached target before scraping next source; stopping early")
+                    break
+
+                source_stats = self._scrape_source(source, remaining_needed)
 
                 # Update source bookkeeping
                 self.sources_manager.update_scrape_status(
@@ -184,6 +191,8 @@ class ScrapeRunner:
                     sources.append(source)
                 else:
                     logger.warning(f"Source not found: {source_id}")
+            if max_sources is not None:
+                return sources[:max_sources]
             return sources
         return self._get_next_sources_by_rotation(max_sources)
 
@@ -215,7 +224,9 @@ class ScrapeRunner:
             return sources
         return sources[:limit]
 
-    def _scrape_source(self, source: Dict[str, Any]) -> Dict[str, Any]:
+    def _scrape_source(
+        self, source: Dict[str, Any], remaining_matches: Optional[int]
+    ) -> Dict[str, Any]:
         """
         Scrape a single source using GenericScraper.
 
@@ -287,6 +298,7 @@ class ScrapeRunner:
             source_label=source_label,
             source_type=source_type,
             company_id=company_id,
+            max_to_add=remaining_matches,
         )
         stats["jobs_submitted"] = jobs_submitted
         logger.info(f"  Submitted {jobs_submitted} jobs to queue from {source_name}")

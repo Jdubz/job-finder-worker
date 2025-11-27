@@ -1,4 +1,5 @@
 import type { TimestampLike } from "./time.types"
+import type { PersonalInfo } from "./generator.types"
 
 export interface JobFinderConfigEntry<TPayload = unknown> {
   id: string
@@ -290,7 +291,7 @@ export type JobFinderConfigPayloadMap = {
   "queue-settings": QueueSettings
   "ai-settings": AISettings
   "ai-prompts": PromptConfig
-  "personal-info": Record<string, unknown>
+  "personal-info": PersonalInfo
   "job-filters": JobFiltersConfig
   "job-match": JobMatchConfig
   "technology-ranks": TechnologyRanksConfig
@@ -339,6 +340,12 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
     selected: { ...DEFAULT_AI_SELECTION },
   },
   options: AI_PROVIDER_OPTIONS,
+}
+
+export const DEFAULT_PERSONAL_INFO: PersonalInfo = {
+  name: "",
+  email: "",
+  accentColor: "#3b82f6",
 }
 
 export const DEFAULT_JOB_MATCH: JobMatchConfig = {
