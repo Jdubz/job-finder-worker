@@ -11,6 +11,8 @@ export { configClient, ConfigClient } from "./config-client"
 export { promptsClient, PromptsClient } from "./prompts-client"
 export { contentItemsClient, ContentItemsClient } from "./content-items-client"
 export { queueClient, QueueClient } from "./queue-client"
+export { companiesClient, CompaniesClient } from "./companies-client"
+export { jobSourcesClient, JobSourcesClient } from "./job-sources-client"
 export { generatorDocumentsClient, GeneratorDocumentsClient } from "./generator-documents-client"
 
 export type { RequestOptions } from "./base-client"

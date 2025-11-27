@@ -6,6 +6,8 @@ import { healthHandler } from './routes/health'
 import { buildContentItemRouter } from './modules/content-items/content-item.routes'
 import { buildJobQueueRouter } from './modules/job-queue/job-queue.routes'
 import { buildJobMatchRouter } from './modules/job-matches/job-match.routes'
+import { buildCompanyRouter } from './modules/companies/company.routes'
+import { buildJobSourceRouter } from './modules/job-sources/job-source.routes'
 import { buildConfigRouter } from './modules/config/config.routes'
 import { buildGeneratorRouter } from './modules/generator/generator.routes'
 import { buildGeneratorApiRouter } from './modules/generator/generator.api'
@@ -98,6 +100,8 @@ export function buildApp() {
   app.use('/api/content-items', buildContentItemRouter())
   app.use('/api/queue', buildJobQueueRouter())
   app.use('/api/job-matches', buildJobMatchRouter())
+  app.use('/api/companies', buildCompanyRouter())
+  app.use('/api/job-sources', buildJobSourceRouter())
   app.use('/api/config', requireRole('admin'), buildConfigRouter())
   app.use('/api/generator-docs', buildGeneratorRouter())
 
