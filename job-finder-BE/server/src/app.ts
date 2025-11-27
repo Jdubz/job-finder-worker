@@ -18,6 +18,7 @@ import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
 import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError, apiErrorHandler } from './middleware/api-error'
+import { buildAuthRouter } from './routes/auth.routes'
 
 export function buildApp() {
   const app = express()
@@ -94,6 +95,9 @@ export function buildApp() {
 
   // Lifecycle events route - public by design so the frontend can detect deploys/restarts
   app.use('/api/lifecycle', buildLifecycleRouter())
+
+  // Auth/session utilities
+  app.use('/api/auth', buildAuthRouter())
 
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)

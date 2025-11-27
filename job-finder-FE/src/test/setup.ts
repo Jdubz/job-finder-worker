@@ -44,6 +44,15 @@ const GoogleLogin = (props: MockGoogleLoginProps) =>
   return { GoogleOAuthProvider, GoogleLogin, googleLogout }
 })
 
+vi.mock("@/api/auth-client", () => {
+  return {
+    authClient: {
+      fetchSession: vi.fn(() => Promise.reject({ statusCode: 401 })),
+      logout: vi.fn(() => Promise.resolve({ loggedOut: true })),
+    },
+  }
+})
+
 vi.mock("@/lib/auth-storage", () => {
   let token: string | null = null
   return {

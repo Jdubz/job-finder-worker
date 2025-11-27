@@ -9,6 +9,15 @@ vi.stubEnv("VITE_GOOGLE_OAUTH_CLIENT_ID", "test-client-id")
 // Unmock AuthContext first (it's mocked globally in setup.ts)
 vi.unmock("@/contexts/AuthContext")
 
+vi.mock("@/api/auth-client", () => {
+  return {
+    authClient: {
+      fetchSession: vi.fn(() => Promise.reject({ statusCode: 401 })),
+      logout: vi.fn(() => Promise.resolve({ loggedOut: true })),
+    },
+  }
+})
+
 vi.mock("@/config/admins.json", () => ({
   default: {
     adminEmails: ["owner@test.dev"],
@@ -50,6 +59,7 @@ vi.mock("@/lib/jwt", () => ({
 const { storeAuthToken, clearStoredAuthToken } = await import("@/lib/auth-storage")
 const { decodeJwt } = await import("@/lib/jwt")
 const { googleLogout } = await import("@react-oauth/google")
+const { authClient } = await import("@/api/auth-client")
 const { AuthProvider, useAuth } = await import("../AuthContext")
 
 const TestComponent = () => {
@@ -79,6 +89,8 @@ describe("AuthContext", () => {
     vi.mocked(clearStoredAuthToken).mockClear()
     vi.mocked(decodeJwt).mockClear()
     vi.mocked(googleLogout).mockClear()
+    vi.mocked(authClient.fetchSession).mockClear()
+    vi.mocked(authClient.logout).mockClear()
   })
 
   it("shows unauthenticated state by default", async () => {
@@ -101,7 +113,8 @@ describe("AuthContext", () => {
       </AuthProvider>
     )
 
-    await user.click(screen.getByTestId("sign-in"))
+    const signInButton = await screen.findByTestId("sign-in")
+    await user.click(signInButton)
 
     await waitFor(() => {
       expect(storeAuthToken).toHaveBeenCalledWith("test-token")
@@ -117,12 +130,14 @@ describe("AuthContext", () => {
       </AuthProvider>
     )
 
-    await user.click(screen.getByTestId("sign-in"))
+    const signInButton = await screen.findByTestId("sign-in")
+    await user.click(signInButton)
     await waitFor(() => expect(screen.getByTestId("user-email")).toHaveTextContent("owner@test.dev"))
 
     await user.click(screen.getByTestId("sign-out"))
 
     await waitFor(() => {
+      expect(authClient.logout).toHaveBeenCalled()
       expect(clearStoredAuthToken).toHaveBeenCalled()
       expect(googleLogout).toHaveBeenCalled()
       expect(screen.getByTestId("user-email")).toHaveTextContent("No user")

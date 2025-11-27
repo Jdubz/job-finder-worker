@@ -139,6 +139,14 @@ export class UserRepository {
       .run(token, expiresAt, Date.parse(expiresAt), userId)
   }
 
+  clearSession(userId: string): void {
+    this.db
+      .prepare(
+        "UPDATE users SET session_token = NULL, session_expires_at = NULL, session_expires_at_ms = NULL, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(userId)
+  }
+
   findBySessionToken(token: string): UserRecord | null {
     const row = this.db
       .prepare(
