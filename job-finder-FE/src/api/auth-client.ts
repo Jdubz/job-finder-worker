@@ -16,16 +16,17 @@ export interface SessionResponse {
 
 class AuthClient extends BaseApiClient {
   async fetchSession(): Promise<SessionResponse> {
-    return this.get<SessionResponse>("/auth/session", { retryAttempts: 1 })
+    return this.get<SessionResponse>("/auth/session")
   }
 
   async logout(): Promise<{ loggedOut: boolean }> {
-    return this.post<{ loggedOut: boolean }>("/auth/logout", undefined, { retryAttempts: 1 })
+    return this.post<{ loggedOut: boolean }>("/auth/logout")
   }
 }
 
 export const authClient = new AuthClient(API_CONFIG.baseUrl, {
   timeout: API_CONFIG.timeout,
-  retryAttempts: 1,
-  retryDelay: 250,
+  // Auth restoration should survive brief API restarts during deploys.
+  retryAttempts: 3,
+  retryDelay: 400,
 })
