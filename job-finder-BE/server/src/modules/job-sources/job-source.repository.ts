@@ -252,17 +252,15 @@ export class JobSourceRepository {
       .prepare('SELECT status, COUNT(*) as count FROM job_sources GROUP BY status')
       .all() as Array<{ status: string; count: number }>
 
-    const totalRow = this.db
-      .prepare('SELECT COUNT(*) as total FROM job_sources')
-      .get() as { total: number }
-
     const byStatus: Record<string, number> = {}
+    let total = 0
     for (const row of statusRows) {
       byStatus[row.status] = row.count
+      total += row.count
     }
 
     return {
-      total: totalRow.total,
+      total,
       byStatus
     }
   }
