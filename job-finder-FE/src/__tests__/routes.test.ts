@@ -15,7 +15,6 @@ describe("Routes Configuration", () => {
       expect(ROUTES.CONTENT_ITEMS).toBe("/content-items")
       expect(ROUTES.DOCUMENT_BUILDER).toBe("/document-builder")
       expect(ROUTES.AI_PROMPTS).toBe("/ai-prompts")
-      expect(ROUTES.SETTINGS).toBe("/settings")
       expect(ROUTES.UNAUTHORIZED).toBe("/unauthorized")
     })
 
@@ -60,7 +59,6 @@ describe("Routes Configuration", () => {
       expect(PUBLIC_ROUTES).toContain(ROUTES.CONTENT_ITEMS)
       expect(PUBLIC_ROUTES).toContain(ROUTES.DOCUMENT_BUILDER)
       expect(PUBLIC_ROUTES).toContain(ROUTES.AI_PROMPTS)
-      expect(PUBLIC_ROUTES).toContain(ROUTES.SETTINGS)
       expect(PUBLIC_ROUTES).toContain(ROUTES.UNAUTHORIZED)
     })
 

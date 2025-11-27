@@ -27,9 +27,6 @@ const AIPromptsPage = lazyWithRetry(() =>
     default: m.AIPromptsPage,
   }))
 )
-const SettingsPage = lazyWithRetry(() =>
-  import("@/pages/settings/SettingsPage").then((m) => ({ default: m.SettingsPage }))
-)
 const JobApplicationsPage = lazyWithRetry(() =>
   import("@/pages/job-applications/JobApplicationsPage").then((m) => ({
     default: m.JobApplicationsPage,
@@ -199,14 +196,6 @@ export const router = createBrowserRouter([
             element: (
               <LazyPage>
                 <JobFinderConfigPage />
-              </LazyPage>
-            ),
-          },
-          {
-            path: ROUTES.SETTINGS,
-            element: (
-              <LazyPage>
-                <SettingsPage />
               </LazyPage>
             ),
           },

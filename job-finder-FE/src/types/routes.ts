@@ -4,7 +4,6 @@ export const ROUTES = {
   CONTENT_ITEMS: "/content-items",
   DOCUMENT_BUILDER: "/document-builder",
   AI_PROMPTS: "/ai-prompts",
-  SETTINGS: "/settings",
   // Editor-only routes
   JOB_APPLICATIONS: "/job-applications",
   JOB_FINDER: "/job-finder",
@@ -42,7 +41,6 @@ export const PUBLIC_ROUTES: RoutePath[] = [
   ROUTES.CONTENT_ITEMS,
   ROUTES.DOCUMENT_BUILDER,
   ROUTES.AI_PROMPTS,
-  ROUTES.SETTINGS,
   ROUTES.TERMS_OF_USE,
   ROUTES.PRIVACY_POLICY,
   ROUTES.COOKIE_POLICY,

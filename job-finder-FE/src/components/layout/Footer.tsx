@@ -100,14 +100,6 @@ export function Footer() {
             <h3 className="text-lg font-semibold">Support</h3>
             <ul className="space-y-2">
               <li>
-                <Link
-                  to={ROUTES.SETTINGS}
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Settings
-                </Link>
-              </li>
-              <li>
                 <a
                   href="mailto:support@jobfinderapp.com"
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors"

@@ -70,7 +70,6 @@ describe("ROUTES configuration", () => {
         "DOCUMENT_BUILDER",
         "JOB_APPLICATIONS",
         "JOB_FINDER",
-        "SETTINGS",
       ]
 
       requiredRoutes.forEach((route) => {

@@ -10,7 +10,6 @@ vi.mock("@/types/routes", () => ({
     HOW_IT_WORKS: "/how-it-works",
     CONTENT_ITEMS: "/content-items",
     DOCUMENT_BUILDER: "/document-builder",
-    SETTINGS: "/settings",
     TERMS_OF_USE: "/terms-of-use",
     PRIVACY_POLICY: "/privacy-policy",
     COOKIE_POLICY: "/cookie-policy",
@@ -70,7 +69,6 @@ describe("Footer", () => {
     renderFooter()
 
     expect(screen.getByText("Support")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Contact Support" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "GitHub" })).toBeInTheDocument()
   })
@@ -91,7 +89,6 @@ describe("Footer", () => {
       "href",
       "/document-builder"
     )
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings")
     expect(screen.getByRole("link", { name: "Terms of Use" })).toHaveAttribute(
       "href",
       "/terms-of-use"
