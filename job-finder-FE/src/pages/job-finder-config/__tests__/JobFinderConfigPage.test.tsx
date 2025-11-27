@@ -496,8 +496,8 @@ describe("JobFinderConfigPage", () => {
       await user.type(scoreInput, "80")
 
       // Save changes
-      const saveButtons = screen.getAllByText("Save Changes")
-      await user.click(saveButtons[0])
+      const saveButton = screen.getByText("Save Changes")
+      await user.click(saveButton)
 
       await waitFor(() => {
         expect(configClient.updateJobMatch).toHaveBeenCalled()

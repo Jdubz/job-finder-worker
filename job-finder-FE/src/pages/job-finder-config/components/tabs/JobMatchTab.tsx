@@ -146,6 +146,7 @@ export function JobMatchTab({
         isSaving={isSaving}
         onSave={handleSaveJobMatch}
         onReset={handleResetJobMatch}
+        showActions={false}
       >
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-2">

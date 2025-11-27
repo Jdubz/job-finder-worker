@@ -125,14 +125,14 @@ describe("JobMatchTab", () => {
     it("should disable save button when no changes", () => {
       render(<JobMatchTab {...defaultProps} hasJobMatchChanges={false} />)
 
-      const saveButton = screen.getAllByText("Save Changes")[0]
+      const saveButton = screen.getByText("Save Changes")
       expect(saveButton).toBeDisabled()
     })
 
     it("should enable save button when there are changes", () => {
       render(<JobMatchTab {...defaultProps} hasJobMatchChanges={true} />)
 
-      const saveButton = screen.getAllByText("Save Changes")[0]
+      const saveButton = screen.getByText("Save Changes")
       expect(saveButton).not.toBeDisabled()
     })
 
@@ -140,7 +140,7 @@ describe("JobMatchTab", () => {
       render(<JobMatchTab {...defaultProps} isSaving={true} hasJobMatchChanges={true} />)
 
       // Button text changes to Saving... when isSaving is true
-      const savingButton = screen.getAllByText("Saving...")[0]
+      const savingButton = screen.getByText("Saving...")
       expect(savingButton).toBeDisabled()
     })
 
@@ -156,7 +156,7 @@ describe("JobMatchTab", () => {
         />
       )
 
-      const saveButton = screen.getAllByText("Save Changes")[0]
+      const saveButton = screen.getByText("Save Changes")
       await user.click(saveButton)
 
       expect(handleSaveJobMatch).toHaveBeenCalled()
@@ -165,14 +165,14 @@ describe("JobMatchTab", () => {
     it("should disable reset button when no changes", () => {
       render(<JobMatchTab {...defaultProps} hasJobMatchChanges={false} />)
 
-      const resetButton = screen.getAllByText("Reset")[0]
+      const resetButton = screen.getByText("Reset")
       expect(resetButton).toBeDisabled()
     })
 
     it("should enable reset button when there are changes", () => {
       render(<JobMatchTab {...defaultProps} hasJobMatchChanges={true} />)
 
-      const resetButton = screen.getAllByText("Reset")[0]
+      const resetButton = screen.getByText("Reset")
       expect(resetButton).not.toBeDisabled()
     })
 
@@ -188,7 +188,7 @@ describe("JobMatchTab", () => {
         />
       )
 
-      const resetButton = screen.getAllByText("Reset")[0]
+      const resetButton = screen.getByText("Reset")
       await user.click(resetButton)
 
       expect(handleResetJobMatch).toHaveBeenCalled()
