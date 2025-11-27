@@ -388,6 +388,14 @@ class QueueManager:
                 ),
             )
 
+        # Notify FE of the company sub-task transition
+        if self.notifier:
+            updated_item = self.get_item(item_id)
+            if updated_item:
+                self.notifier.send_event(
+                    "item.updated", {"queueItem": updated_item.model_dump(mode="json")}
+                )
+
     def requeue_with_state(
         self,
         item_id: str,
@@ -410,3 +418,11 @@ class QueueManager:
                     item_id,
                 ),
             )
+
+        # Notify FE of the stage transition so queue UI stays in sync
+        if self.notifier:
+            updated_item = self.get_item(item_id)
+            if updated_item:
+                self.notifier.send_event(
+                    "item.updated", {"queueItem": updated_item.model_dump(mode="json")}
+                )
