@@ -181,6 +181,16 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         }
         buffer += decoder.decode()
         processBuffer()
+
+        // Stream ended gracefully (e.g., Cloudflare timeout) - reconnect
+        if (!cancelled) {
+          console.log("Queue event stream ended gracefully; reconnecting...")
+          fetchQueueItems()
+          setTimeout(() => {
+            if (!cancelled) void startStream()
+          }, 1000)
+        }
+        return
       } catch (error) {
         // Skip reconnects if intentionally aborted during unmount
         if (error instanceof DOMException && error.name === "AbortError") {
