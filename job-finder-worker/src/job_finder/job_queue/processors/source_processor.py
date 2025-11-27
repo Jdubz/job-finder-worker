@@ -270,7 +270,9 @@ class SourceProcessor(BaseProcessor):
                     if healed_config:
                         self.sources_manager.update_config(source.get("id"), healed_config)
                         expanded_config = expand_config(source_type, healed_config)
-                        source_config = SourceConfig.from_dict(expanded_config, company_name=company_name)
+                        source_config = SourceConfig.from_dict(
+                            expanded_config, company_name=company_name
+                        )
                         scraper = GenericScraper(source_config)
                         jobs = scraper.scrape()
 
@@ -343,9 +345,7 @@ class SourceProcessor(BaseProcessor):
         missing = [f for f in required_fields if not sample.get(f)]
         return bool(missing)
 
-    def _self_heal_source_config(
-        self, source: dict, url: str, company_name: str
-    ) -> Optional[dict]:
+    def _self_heal_source_config(self, source: dict, url: str, company_name: str) -> Optional[dict]:
         """
         Use AI discovery to repair/improve a weak source config.
 
