@@ -297,6 +297,7 @@ export function QueueManagementPage() {
             <StatPill label="Pending" value={queueStats.pending} tone="amber" />
             <StatPill label="Processing" value={queueStats.processing} tone="blue" />
             <StatPill label="Failed" value={queueStats.failed} tone="red" />
+            <StatPill label="Skipped" value={queueStats.skipped} tone="gray" />
             <StatPill label="Success" value={queueStats.success} tone="green" />
             <StatPill
               label="Success Rate"
@@ -520,7 +521,7 @@ export function QueueManagementPage() {
   )
 }
 
-type StatTone = "default" | "amber" | "blue" | "red" | "green"
+type StatTone = "default" | "amber" | "blue" | "red" | "green" | "gray"
 
 interface StatPillProps {
   label: string
@@ -535,6 +536,7 @@ function StatPill({ label, value, tone = "default" }: StatPillProps) {
     blue: "border-blue-200 bg-blue-50 text-blue-800",
     red: "border-red-200 bg-red-50 text-red-800",
     green: "border-green-200 bg-green-50 text-green-800",
+    gray: "border-gray-200 bg-gray-50 text-gray-700",
   }
 
   return (
