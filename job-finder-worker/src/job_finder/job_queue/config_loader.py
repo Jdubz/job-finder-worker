@@ -106,6 +106,7 @@ class ConfigLoader:
                 "excludedSeniority": [],
                 "excludedCompanies": [],
                 "excludedKeywords": [],
+                "requiredTitleKeywords": ["software", "developer", "engineer", "frontend", "full stack", "fullstack"],
                 "minSalaryFloor": 100000,
                 "rejectCommissionOnly": True,
             },
