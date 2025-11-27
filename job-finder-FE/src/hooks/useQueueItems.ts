@@ -10,11 +10,24 @@ interface UseQueueItemsOptions {
   status?: string
 }
 
+interface SubmitCompanyParams {
+  companyName: string
+  websiteUrl: string
+}
+
+interface SubmitSourceDiscoveryParams {
+  url: string
+  companyName?: string
+  companyId?: string | null
+}
+
 interface UseQueueItemsResult {
   queueItems: QueueItem[]
   loading: boolean
   error: Error | null
   submitJob: (url: string, companyName?: string, generationId?: string) => Promise<string>
+  submitCompany: (params: SubmitCompanyParams) => Promise<string>
+  submitSourceDiscovery: (params: SubmitSourceDiscoveryParams) => Promise<string>
   updateQueueItem: (id: string, data: Partial<QueueItem>) => Promise<void>
   deleteQueueItem: (id: string) => Promise<void>
   refetch: () => Promise<void>
@@ -218,6 +231,44 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     [normalizeQueueItem]
   )
 
+  const submitCompany = useCallback(
+    async (params: SubmitCompanyParams): Promise<string> => {
+      const queueItem = await queueClient.submitCompany({
+        companyName: params.companyName,
+        websiteUrl: params.websiteUrl,
+        source: "user_request",
+      })
+
+      const normalized = normalizeQueueItem(queueItem)
+      setQueueItems((prev) => [normalized, ...prev])
+      const id = normalized.id ?? queueItem.id
+      if (!id) {
+        throw new Error('Queue item ID not returned from server')
+      }
+      return id
+    },
+    [normalizeQueueItem]
+  )
+
+  const submitSourceDiscovery = useCallback(
+    async (params: SubmitSourceDiscoveryParams): Promise<string> => {
+      const queueItem = await queueClient.submitSourceDiscovery({
+        url: params.url,
+        companyName: params.companyName,
+        companyId: params.companyId,
+      })
+
+      const normalized = normalizeQueueItem(queueItem)
+      setQueueItems((prev) => [normalized, ...prev])
+      const id = normalized.id ?? queueItem.id
+      if (!id) {
+        throw new Error('Queue item ID not returned from server')
+      }
+      return id
+    },
+    [normalizeQueueItem]
+  )
+
   const updateQueueItem = useCallback(
     async (id: string, data: Partial<QueueItem>) => {
       const updated = await queueClient.updateQueueItem(id, data)
@@ -258,6 +309,8 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     loading,
     error,
     submitJob,
+    submitCompany,
+    submitSourceDiscovery,
     updateQueueItem,
     deleteQueueItem,
     refetch,

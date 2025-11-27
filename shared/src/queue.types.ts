@@ -307,6 +307,28 @@ export interface SubmitCompanyResponse {
   queueItem?: QueueItem
 }
 
+/**
+ * Source discovery submission request body (API)
+ */
+export interface SubmitSourceDiscoveryRequest {
+  url: string
+  companyName?: string
+  companyId?: string | null
+  typeHint?: SourceTypeHint
+  autoEnable?: boolean
+  validationRequired?: boolean
+}
+
+/**
+ * Source discovery submission response (API)
+ */
+export interface SubmitSourceDiscoveryResponse {
+  status: "success" | "error"
+  message: string
+  queueItemId?: string
+  queueItem?: QueueItem
+}
+
 // Type guard helpers
 export function isQueueStatus(status: string): status is QueueStatus {
   return ["pending", "processing", "success", "failed", "skipped", "filtered"].includes(status)
