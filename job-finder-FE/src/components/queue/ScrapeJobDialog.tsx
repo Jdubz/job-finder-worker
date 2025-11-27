@@ -17,7 +17,8 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, X } from "lucide-react"
+import { AlertCircle, Loader2, X } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 type ScrapeJobDialogProps = {
   open: boolean
@@ -33,6 +34,7 @@ type ScrapeFormState = {
   targetMatches: string
   maxSources: string
   selectedSourceIds: string[]
+  error: string | null
 }
 
 export function ScrapeJobDialog({
@@ -47,6 +49,7 @@ export function ScrapeJobDialog({
     targetMatches: "",
     maxSources: "",
     selectedSourceIds: prefillSourceId ? [prefillSourceId] : [],
+    error: null,
   })
   const [sourceSearch, setSourceSearch] = useState("")
 
@@ -57,12 +60,13 @@ export function ScrapeJobDialog({
 
   const sources = useMemo(() => providedSources ?? fetchedSources, [providedSources, fetchedSources])
 
-  // Keep prefill in sync when dialog opens
+  // Keep prefill in sync and clear error when dialog opens
   useEffect(() => {
     if (open) {
       setForm((prev) => ({
         ...prev,
         selectedSourceIds: prefillSourceId ? [prefillSourceId] : [],
+        error: null,
       }))
     }
   }, [open, prefillSourceId])
@@ -108,8 +112,10 @@ export function ScrapeJobDialog({
       await queueClient.submitScrape({ scrapeConfig: config })
       await onSubmitted?.()
       onOpenChange(false)
-    } catch (error) {
-      console.error("Failed to create scrape job", error)
+    } catch (err) {
+      console.error("Failed to create scrape job", err)
+      const message = err instanceof Error ? err.message : "Failed to create scrape job"
+      setForm((prev) => ({ ...prev, error: message }))
     } finally {
       setSubmitting(false)
     }
@@ -139,6 +145,13 @@ export function ScrapeJobDialog({
             Pick target thresholds and which sources to include. Leave limits blank for no cap.
           </DialogDescription>
         </DialogHeader>
+
+        {form.error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{form.error}</AlertDescription>
+          </Alert>
+        )}
 
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
