@@ -20,12 +20,14 @@ type ServerPhase = 'starting' | 'ready' | 'draining' | 'restarting'
 
 const clients = new Set<Client>()
 let phase: ServerPhase = 'starting'
+let ready = false
 
 const serializeEvent = (payload: LifecyclePayload) =>
   `id: ${payload.id}\nevent: ${payload.event}\ndata: ${JSON.stringify(payload.data)}\n\n`
 
 const baseStatus = () => ({
   phase,
+  ready,
   since: new Date().toISOString(),
 })
 
@@ -51,9 +53,6 @@ export function setLifecyclePhase(next: ServerPhase, data: Record<string, unknow
   phase = next
   const payload = { ...baseStatus(), ...data }
   broadcastLifecycleEvent('status', payload)
-  if (next === 'restarting') {
-    broadcastLifecycleEvent('restarting', payload)
-  }
   if (next === 'draining') {
     broadcastLifecycleEvent('draining.start', payload)
   }
@@ -94,12 +93,23 @@ export function getLifecyclePhase(): ServerPhase {
   return phase
 }
 
+export function setReady(isReady: boolean, data: Record<string, unknown> = {}) {
+  ready = isReady
+  broadcastLifecycleEvent('status', { ...baseStatus(), ...data })
+}
+
+export function isReady(): boolean {
+  return ready
+}
+
 process.on('uncaughtException', (error) => {
   logger.error({ error }, 'Uncaught exception - broadcasting restart')
   setLifecyclePhase('restarting', { reason: 'uncaughtException' })
+  broadcastLifecycleEvent('restarting', { reason: 'uncaughtException' })
 })
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason }, 'Unhandled rejection - broadcasting restart')
   setLifecyclePhase('restarting', { reason: 'unhandledRejection' })
+  broadcastLifecycleEvent('restarting', { reason: 'unhandledRejection' })
 })
