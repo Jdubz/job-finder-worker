@@ -60,16 +60,22 @@ export function ScrapeJobDialog({
 
   const sources = useMemo(() => providedSources ?? fetchedSources, [providedSources, fetchedSources])
 
-  // Keep prefill in sync and clear error when dialog opens
+  // Keep prefill in sync when dialog opens
   useEffect(() => {
     if (open) {
       setForm((prev) => ({
         ...prev,
         selectedSourceIds: prefillSourceId ? [prefillSourceId] : [],
-        error: null,
       }))
     }
   }, [open, prefillSourceId])
+
+  // Clear error when dialog opens
+  useEffect(() => {
+    if (open) {
+      setForm((prev) => ({ ...prev, error: null }))
+    }
+  }, [open])
 
   const toggleSource = (id: string) => {
     setForm((prev) => {
