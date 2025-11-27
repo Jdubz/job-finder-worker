@@ -179,7 +179,7 @@ class SourceDiscovery:
             return None
 
         jobs = data.get("jobs") if isinstance(data, dict) else None
-        if not jobs:
+        if jobs is None:
             return None
 
         return {
