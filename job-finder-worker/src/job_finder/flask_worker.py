@@ -254,9 +254,11 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     provider = create_provider_from_config(ai_settings)
 
     # Use the same AI settings section for all downstream AI users (matcher + company fetcher)
-    worker_ai_config = {}
+    worker_ai_config: Dict[str, Any] = {}
     if isinstance(ai_settings, dict):
-        worker_ai_config = ai_settings.get("worker") or ai_settings
+        candidate = ai_settings.get("worker") or ai_settings
+        if isinstance(candidate, dict):
+            worker_ai_config = candidate
 
     # Get job match settings (defaults)
     job_match = {
