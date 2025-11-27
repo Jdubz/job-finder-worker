@@ -293,11 +293,6 @@ export function buildConfigRouter() {
       const userEmail = (req as typeof req & { user?: { email?: string } }).user?.email ?? null
 
       let entry = repo.get(id)
-      // Fallback to underscore or hyphen variants to gracefully handle legacy keys
-      if (!entry) {
-        const altId = id.includes('-') ? (id.replace(/-/g, '_') as JobFinderConfigId) : (id.replace(/_/g, '-') as JobFinderConfigId)
-        entry = repo.get(altId)
-      }
 
       // Auto-create personal-info with defaults to avoid 404s in settings UI
       if (!entry && id === 'personal-info') {
