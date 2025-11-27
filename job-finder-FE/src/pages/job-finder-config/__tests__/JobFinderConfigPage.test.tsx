@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor, fireEvent } from "@testing-library/react"
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { BrowserRouter } from "react-router-dom"
 import { JobFinderConfigPage } from "../JobFinderConfigPage"
@@ -54,6 +54,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 // Helper function to render with router
 const renderWithRouter = (component: React.ReactElement) => {
+  window.history.replaceState({}, "", "/job-finder-config")
   return render(<BrowserRouter>{component}</BrowserRouter>)
 }
 
@@ -371,8 +372,8 @@ describe("JobFinderConfigPage", () => {
         expect(screen.getByText("New Company")).toBeInTheDocument()
       })
 
-      // Reset changes
-      await user.click(screen.getByText("Reset"))
+      const resetButton = screen.getAllByRole("button", { name: "Reset" })[0]
+      await user.click(resetButton)
 
       await waitFor(() => {
         expect(screen.queryByText("New Company")).not.toBeInTheDocument()
@@ -873,8 +874,11 @@ describe("JobFinderConfigPage", () => {
 
       expect(sTierInput).toHaveValue(200)
 
-      // Reset
-      await user.click(screen.getByText("Reset"))
+      const activeReset =
+        screen.getAllByRole("button", { name: "Reset" }).find((btn) =>
+          btn.closest('[data-state="active"]')
+        ) ?? screen.getAllByRole("button", { name: "Reset" })[0]
+      await user.click(activeReset)
 
       await waitFor(() => {
         expect(screen.getByLabelText("S-Tier")).toHaveValue(150) // Original value
@@ -933,7 +937,11 @@ describe("JobFinderConfigPage", () => {
       await user.type(nameInput, "Changed Name")
       expect(nameInput).toHaveValue("Changed Name")
 
-      await user.click(screen.getByText("Reset"))
+      const personalReset =
+        screen.getAllByRole("button", { name: "Reset" }).find((btn) =>
+          btn.closest('[data-state="active"]')
+        ) ?? screen.getAllByRole("button", { name: "Reset" })[0]
+      await user.click(personalReset)
 
       await waitFor(() => {
         expect(screen.getByLabelText("Name")).toHaveValue(mockPersonalInfo.name)
