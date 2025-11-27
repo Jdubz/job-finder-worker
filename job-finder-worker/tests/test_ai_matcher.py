@@ -239,7 +239,9 @@ class TestAnalyzeMatch:
         assert "Python" in analysis["matched_skills"]
         mock_provider.generate.assert_called_once()
 
-    def test_analyze_match_propagates_ai_provider_error(self, mock_provider, mock_profile, sample_job):
+    def test_analyze_match_propagates_ai_provider_error(
+        self, mock_provider, mock_profile, sample_job
+    ):
         """Test that AIProviderError is re-raised instead of being caught.
 
         CRITICAL: AI infrastructure failures must bubble up to cause task FAILURE,

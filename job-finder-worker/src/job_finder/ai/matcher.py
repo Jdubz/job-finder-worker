@@ -398,6 +398,7 @@ class AIJobMatcher:
             # Re-raise AIProviderError so infrastructure failures bubble up
             # and cause the task to FAIL (not be silently skipped)
             from job_finder.exceptions import AIProviderError
+
             if isinstance(e, AIProviderError):
                 logger.error(f"AI provider error during match analysis: {str(e)}")
                 raise  # Let caller handle - this should FAIL the task
@@ -477,6 +478,7 @@ class AIJobMatcher:
         except Exception as e:
             # Re-raise AIProviderError so infrastructure failures bubble up
             from job_finder.exceptions import AIProviderError
+
             if isinstance(e, AIProviderError):
                 logger.error(f"AI provider error generating intake data: {str(e)}")
                 raise  # Let caller handle - this should FAIL the task
