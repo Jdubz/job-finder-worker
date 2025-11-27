@@ -201,6 +201,15 @@ class CodexCLIProvider(AIProvider):
             raise AIProviderError("Failed to parse Codex CLI JSON response") from exc
 
 
+# Provider dispatch map: (provider, interface) -> provider class
+_PROVIDER_MAP: Dict[tuple, type] = {
+    ("codex", "cli"): CodexCLIProvider,
+    ("claude", "api"): ClaudeProvider,
+    ("openai", "api"): OpenAIProvider,
+    ("gemini", "api"): GeminiProvider,
+}
+
+
 def create_provider_from_config(ai_settings: Dict[str, Any]) -> AIProvider:
     """
     Create an AI provider from the ai-settings configuration.
@@ -220,23 +229,14 @@ def create_provider_from_config(ai_settings: Dict[str, Any]) -> AIProvider:
     interface_type = selected.get("interface", "cli")
     model = selected.get("model", "gpt-4o-mini")
 
-    # Codex CLI
-    if provider_type == "codex" and interface_type == "cli":
-        return CodexCLIProvider(model=model)
+    provider_key = (provider_type, interface_type)
+    provider_class = _PROVIDER_MAP.get(provider_key)
 
-    # Claude API
-    if provider_type == "claude" and interface_type == "api":
-        return ClaudeProvider(model=model)
+    if provider_class:
+        return provider_class(model=model)
 
-    # OpenAI API
-    if provider_type == "openai" and interface_type == "api":
-        return OpenAIProvider(model=model)
-
-    # Gemini API
-    if provider_type == "gemini" and interface_type == "api":
-        return GeminiProvider(model=model)
-
+    supported = ", ".join(f"{p}/{i}" for p, i in _PROVIDER_MAP.keys())
     raise AIProviderError(
         f"Unsupported provider/interface combination: {provider_type}/{interface_type}. "
-        f"Supported: codex/cli, claude/api, openai/api, gemini/api"
+        f"Supported: {supported}"
     )

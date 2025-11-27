@@ -74,10 +74,9 @@ export function AISettingsTab({
   const availableInterfaces = getInterfacesForProvider(selectedProvider)
   const availableModels = getModelsForSelection(selectedProvider, selectedInterface)
 
-  // Check if a provider is enabled
+  // Check if a provider is enabled (true if any interface for the provider is available)
   const isProviderEnabled = (provider: AIProviderType): boolean => {
-    const status = providers.find((p) => p.provider === provider)
-    return status?.enabled ?? false
+    return providers.some((p) => p.provider === provider && p.enabled)
   }
 
   // Get reason why provider is disabled
@@ -157,7 +156,7 @@ export function AISettingsTab({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(["codex", "claude", "openai", "gemini"] as AIProviderType[]).map(
+                {(Object.keys(AI_PROVIDER_MODELS) as AIProviderType[]).map(
                   (provider) => {
                     const enabled = isProviderEnabled(provider)
                     const reason = getDisabledReason(provider)

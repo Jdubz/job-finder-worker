@@ -21,12 +21,8 @@ from job_finder.exceptions import AIProviderError
 class TestCreateProviderFromConfig:
     """Test create_provider_from_config with various configurations."""
 
-    @patch("job_finder.ai.providers.CodexCLIProvider")
-    def test_creates_codex_cli_provider(self, mock_codex):
+    def test_creates_codex_cli_provider(self):
         """Should create CodexCLIProvider for codex/cli combination."""
-        mock_instance = MagicMock(spec=CodexCLIProvider)
-        mock_codex.return_value = mock_instance
-
         ai_settings = {
             "selected": {
                 "provider": "codex",
@@ -37,15 +33,13 @@ class TestCreateProviderFromConfig:
 
         provider = create_provider_from_config(ai_settings)
 
-        mock_codex.assert_called_once_with(model="gpt-4o-mini")
-        assert provider == mock_instance
+        assert isinstance(provider, CodexCLIProvider)
+        assert provider.model == "gpt-4o-mini"
 
-    @patch("job_finder.ai.providers.ClaudeProvider")
-    def test_creates_claude_api_provider(self, mock_claude):
+    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"})
+    @patch("job_finder.ai.providers.Anthropic")
+    def test_creates_claude_api_provider(self, mock_anthropic):
         """Should create ClaudeProvider for claude/api combination."""
-        mock_instance = MagicMock(spec=ClaudeProvider)
-        mock_claude.return_value = mock_instance
-
         ai_settings = {
             "selected": {
                 "provider": "claude",
@@ -56,15 +50,13 @@ class TestCreateProviderFromConfig:
 
         provider = create_provider_from_config(ai_settings)
 
-        mock_claude.assert_called_once_with(model="claude-sonnet-4-5-20250929")
-        assert provider == mock_instance
+        assert isinstance(provider, ClaudeProvider)
+        assert provider.model == "claude-sonnet-4-5-20250929"
 
-    @patch("job_finder.ai.providers.OpenAIProvider")
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
+    @patch("job_finder.ai.providers.OpenAI")
     def test_creates_openai_api_provider(self, mock_openai):
         """Should create OpenAIProvider for openai/api combination."""
-        mock_instance = MagicMock(spec=OpenAIProvider)
-        mock_openai.return_value = mock_instance
-
         ai_settings = {
             "selected": {
                 "provider": "openai",
@@ -75,27 +67,30 @@ class TestCreateProviderFromConfig:
 
         provider = create_provider_from_config(ai_settings)
 
-        mock_openai.assert_called_once_with(model="gpt-4o")
-        assert provider == mock_instance
+        assert isinstance(provider, OpenAIProvider)
+        assert provider.model == "gpt-4o"
 
-    @patch("job_finder.ai.providers.GeminiProvider")
-    def test_creates_gemini_api_provider(self, mock_gemini):
+    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"})
+    def test_creates_gemini_api_provider(self):
         """Should create GeminiProvider for gemini/api combination."""
-        mock_instance = MagicMock(spec=GeminiProvider)
-        mock_gemini.return_value = mock_instance
+        try:
+            import google.generativeai  # noqa: F401
+        except ImportError:
+            pytest.skip("google-generativeai package not installed")
 
-        ai_settings = {
-            "selected": {
-                "provider": "gemini",
-                "interface": "api",
-                "model": "gemini-2.0-flash",
+        with patch("google.generativeai.configure"), patch("google.generativeai.GenerativeModel"):
+            ai_settings = {
+                "selected": {
+                    "provider": "gemini",
+                    "interface": "api",
+                    "model": "gemini-2.0-flash",
+                }
             }
-        }
 
-        provider = create_provider_from_config(ai_settings)
+            provider = create_provider_from_config(ai_settings)
 
-        mock_gemini.assert_called_once_with(model="gemini-2.0-flash")
-        assert provider == mock_instance
+            assert isinstance(provider, GeminiProvider)
+            assert provider.model == "gemini-2.0-flash"
 
     def test_raises_error_for_unsupported_provider_interface(self):
         """Should raise AIProviderError for unsupported combinations."""
@@ -136,25 +131,18 @@ class TestCreateProviderFromConfig:
         with pytest.raises(AIProviderError, match="Unsupported provider/interface"):
             create_provider_from_config(ai_settings)
 
-    @patch("job_finder.ai.providers.CodexCLIProvider")
-    def test_uses_defaults_when_selected_missing(self, mock_codex):
+    def test_uses_defaults_when_selected_missing(self):
         """Should use default values when selected config is missing."""
-        mock_instance = MagicMock(spec=CodexCLIProvider)
-        mock_codex.return_value = mock_instance
-
         ai_settings = {}  # Empty config
 
         provider = create_provider_from_config(ai_settings)
 
         # Defaults to codex/cli/gpt-4o-mini
-        mock_codex.assert_called_once_with(model="gpt-4o-mini")
+        assert isinstance(provider, CodexCLIProvider)
+        assert provider.model == "gpt-4o-mini"
 
-    @patch("job_finder.ai.providers.CodexCLIProvider")
-    def test_uses_defaults_for_partial_selected(self, mock_codex):
+    def test_uses_defaults_for_partial_selected(self):
         """Should use defaults for missing fields in selected config."""
-        mock_instance = MagicMock(spec=CodexCLIProvider)
-        mock_codex.return_value = mock_instance
-
         ai_settings = {
             "selected": {
                 "provider": "codex",
@@ -165,7 +153,8 @@ class TestCreateProviderFromConfig:
         provider = create_provider_from_config(ai_settings)
 
         # Defaults interface to cli and model to gpt-4o-mini
-        mock_codex.assert_called_once_with(model="gpt-4o-mini")
+        assert isinstance(provider, CodexCLIProvider)
+        assert provider.model == "gpt-4o-mini"
 
 
 class TestCodexCLIProvider:
