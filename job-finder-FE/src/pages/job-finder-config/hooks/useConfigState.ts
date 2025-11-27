@@ -6,9 +6,10 @@ import {
   DEFAULT_JOB_MATCH,
   DEFAULT_TECH_RANKS,
   DEFAULT_SCHEDULER_SETTINGS,
-  DEFAULT_COMPANY_SCORING,
   DEFAULT_AI_SETTINGS,
   DEFAULT_PERSONAL_INFO,
+  DEFAULT_STOP_LIST,
+  DEFAULT_QUEUE_SETTINGS,
 } from "@shared/types"
 import type {
   StopList,
@@ -19,7 +20,6 @@ import type {
   TechnologyRanksConfig,
   SchedulerSettings,
   TechnologyRank,
-  CompanyScoringConfig,
 } from "@shared/types"
 import type { PersonalInfo } from "@shared/types"
 import { deepClone, stableStringify, createSaveHandler, createResetHandler } from "../utils/config-helpers"
@@ -66,10 +66,6 @@ export function useConfigState() {
   const [schedulerSettings, setSchedulerSettings] = useState<SchedulerSettings | null>(null)
   const [originalSchedulerSettings, setOriginalSchedulerSettings] = useState<SchedulerSettings | null>(null)
 
-  // Company Scoring
-  const [companyScoring, setCompanyScoring] = useState<CompanyScoringConfig | null>(null)
-  const [originalCompanyScoring, setOriginalCompanyScoring] = useState<CompanyScoringConfig | null>(null)
-
   // Personal Info
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo | null>(null)
   const [originalPersonalInfo, setOriginalPersonalInfo] = useState<PersonalInfo | null>(null)
@@ -79,48 +75,47 @@ export function useConfigState() {
     setError(null)
 
     try {
-      const [stopListData, queueData, aiData, jobMatchData, filtersData, techData, schedulerData, scoringData, personalInfoData] = await Promise.all([
-        configClient.getStopList(),
-        configClient.getQueueSettings(),
-        configClient.getAISettings(),
-        configClient.getJobMatch(),
-        configClient.getJobFilters(),
-        configClient.getTechnologyRanks(),
-        configClient.getSchedulerSettings(),
-        configClient.getCompanyScoring(),
-        configClient.getPersonalInfo(),
-      ])
+      const entries = await configClient.listEntries()
+      const configMap = entries.reduce<Record<string, unknown>>((acc, entry) => {
+        acc[entry.id] = entry.payload
+        return acc
+      }, {})
 
-      setStopList(stopListData)
-      setOriginalStopList(stopListData)
-      setQueueSettings(queueData)
-      setOriginalQueueSettings(queueData)
-      setAISettings(aiData)
-      setOriginalAISettings(aiData)
+      const getConfig = <T>(id: string, fallback: T): T => {
+        const value = configMap[id]
+        return deepClone((value as T | undefined) ?? fallback)
+      }
 
-      const jobMatchPayload = deepClone(jobMatchData ?? DEFAULT_JOB_MATCH)
+      const stopListPayload = getConfig<StopList>("stop-list", DEFAULT_STOP_LIST)
+      setStopList(stopListPayload)
+      setOriginalStopList(deepClone(stopListPayload))
+
+      const queuePayload = getConfig<QueueSettings>("queue-settings", DEFAULT_QUEUE_SETTINGS)
+      setQueueSettings(queuePayload)
+      setOriginalQueueSettings(deepClone(queuePayload))
+
+      const aiPayload = getConfig<AISettings>("ai-settings", DEFAULT_AI_SETTINGS)
+      setAISettings(aiPayload)
+      setOriginalAISettings(deepClone(aiPayload))
+
+      const jobMatchPayload = getConfig<JobMatchConfig>("job-match", DEFAULT_JOB_MATCH)
       setJobMatch(jobMatchPayload)
       setOriginalJobMatch(deepClone(jobMatchPayload))
 
-      const filtersPayload = deepClone(filtersData ?? DEFAULT_JOB_FILTERS)
+      const filtersPayload = getConfig<JobFiltersConfig>("job-filters", DEFAULT_JOB_FILTERS)
       setJobFilters(filtersPayload)
       setOriginalJobFilters(deepClone(filtersPayload))
 
-      const techPayload = deepClone(techData ?? DEFAULT_TECH_RANKS)
+      const techPayload = getConfig<TechnologyRanksConfig>("technology-ranks", DEFAULT_TECH_RANKS)
       setTechRanks(techPayload)
       setOriginalTechRanks(deepClone(techPayload))
 
-      const schedulerPayload = deepClone(schedulerData ?? DEFAULT_SCHEDULER_SETTINGS)
+      const schedulerPayload = getConfig<SchedulerSettings>("scheduler-settings", DEFAULT_SCHEDULER_SETTINGS)
       setSchedulerSettings(schedulerPayload)
       setOriginalSchedulerSettings(deepClone(schedulerPayload))
 
-      const scoringPayload = deepClone(scoringData ?? DEFAULT_COMPANY_SCORING)
-      setCompanyScoring(scoringPayload)
-      setOriginalCompanyScoring(deepClone(scoringPayload))
-
-      const personalPayload = deepClone(
-        personalInfoData ?? { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
-      )
+      const personalFallback = { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
+      const personalPayload = getConfig<PersonalInfo>("personal-info", personalFallback)
       setPersonalInfo(personalPayload)
       setOriginalPersonalInfo(deepClone(personalPayload))
     } catch (err) {
@@ -159,9 +154,6 @@ export function useConfigState() {
     }))
   }
 
-  const updateCompanyScoringState = (updater: (current: CompanyScoringConfig) => CompanyScoringConfig) => {
-    setCompanyScoring((prev) => updater(prev ?? deepClone(DEFAULT_COMPANY_SCORING)))
-  }
   const updatePersonalInfoState = (updates: Partial<PersonalInfo>) => {
     setPersonalInfo((prev) => ({
       ...(prev ?? { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }),
@@ -242,17 +234,6 @@ export function useConfigState() {
       updateFn: configClient.updateSchedulerSettings,
       setOriginal: setOriginalSchedulerSettings,
       configName: "scheduler settings",
-      setIsSaving,
-      setError,
-      setSuccess,
-    })
-
-  const handleSaveCompanyScoring = () =>
-    createSaveHandler({
-      data: companyScoring,
-      updateFn: configClient.updateCompanyScoring,
-      setOriginal: setOriginalCompanyScoring,
-      configName: "company scoring",
       setIsSaving,
       setError,
       setSuccess,
@@ -382,15 +363,6 @@ export function useConfigState() {
       setSuccess
     )
 
-  const handleResetCompanyScoring = () =>
-    createResetHandler(
-      setCompanyScoring,
-      originalCompanyScoring,
-      DEFAULT_COMPANY_SCORING,
-      setError,
-      setSuccess
-    )
-
   const handleResetPersonalInfo = () =>
     createResetHandler(
       setPersonalInfo,
@@ -429,7 +401,6 @@ export function useConfigState() {
   const hasJobFilterChanges = stableStringify(jobFilters) !== stableStringify(originalJobFilters)
   const hasTechRankChanges = stableStringify(techRanks) !== stableStringify(originalTechRanks)
   const hasSchedulerChanges = stableStringify(schedulerSettings) !== stableStringify(originalSchedulerSettings)
-  const hasCompanyScoringChanges = stableStringify(companyScoring) !== stableStringify(originalCompanyScoring)
   const hasPersonalInfoChanges = stableStringify(personalInfo) !== stableStringify(originalPersonalInfo)
 
   // Current values with defaults
@@ -439,7 +410,6 @@ export function useConfigState() {
     strikes: { ...DEFAULT_TECH_RANKS.strikes },
   }
   const currentScheduler = schedulerSettings ?? DEFAULT_SCHEDULER_SETTINGS
-  const currentScoring = companyScoring ?? DEFAULT_COMPANY_SCORING
   const currentPersonalInfo =
     personalInfo ?? { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
 
@@ -519,14 +489,6 @@ export function useConfigState() {
     updateSchedulerState,
     handleSaveScheduler,
     handleResetSchedulerSettings,
-
-    // Company Scoring
-    companyScoring,
-    currentScoring,
-    hasCompanyScoringChanges,
-    updateCompanyScoringState,
-    handleSaveCompanyScoring,
-    handleResetCompanyScoring,
 
     // Personal Info
     personalInfo,

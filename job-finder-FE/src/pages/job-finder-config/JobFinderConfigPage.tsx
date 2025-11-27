@@ -12,7 +12,6 @@ import {
   JobFiltersTab,
   TechnologyRanksTab,
   SchedulerTab,
-  CompanyScoringTab,
   PersonalInfoTab,
 } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
@@ -25,7 +24,6 @@ type TabType =
   | "filters"
   | "tech"
   | "scheduler"
-  | "scoring"
   | "personal"
 
 export function JobFinderConfigPage() {
@@ -86,7 +84,7 @@ export function JobFinderConfigPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Job Finder Configuration</h1>
-          <p className="text-muted-foreground">Manage filtering rules, queues, scheduling, scoring, and profile defaults.</p>
+          <p className="text-muted-foreground">Manage filtering rules, queues, scheduling, and profile defaults.</p>
         </div>
       </div>
 
@@ -103,7 +101,7 @@ export function JobFinderConfigPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-9">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="stop-list">Stop List</TabsTrigger>
           <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
@@ -111,7 +109,6 @@ export function JobFinderConfigPage() {
           <TabsTrigger value="filters">Filters</TabsTrigger>
           <TabsTrigger value="tech">Tech</TabsTrigger>
           <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
-          <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="personal">Personal</TabsTrigger>
         </TabsList>
 
@@ -194,15 +191,6 @@ export function JobFinderConfigPage() {
           updateSchedulerState={configState.updateSchedulerState}
           handleSaveScheduler={configState.handleSaveScheduler}
           handleResetSchedulerSettings={configState.handleResetSchedulerSettings}
-        />
-
-        <CompanyScoringTab
-          isSaving={configState.isSaving}
-          currentScoring={configState.currentScoring}
-          hasCompanyScoringChanges={configState.hasCompanyScoringChanges}
-          updateCompanyScoringState={configState.updateCompanyScoringState}
-          handleSaveCompanyScoring={configState.handleSaveCompanyScoring}
-          handleResetCompanyScoring={configState.handleResetCompanyScoring}
         />
 
         <PersonalInfoTab
