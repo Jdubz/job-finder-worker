@@ -87,7 +87,7 @@ class QueueManager:
                 """
                 SELECT * FROM job_queue
                 WHERE status = ?
-                ORDER BY datetime(created_at) ASC
+                ORDER BY datetime(updated_at) ASC
                 LIMIT ?
                 """,
                 (QueueStatus.PENDING.value, limit),
