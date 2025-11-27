@@ -296,7 +296,7 @@ export function buildConfigRouter() {
 
       // Auto-create personal-info with defaults to avoid 404s in settings UI
       if (!entry && id === 'personal-info') {
-        entry = repo.upsert(id, { name: '', email: userEmail ?? '', accentColor: '#3b82f6' }, { updatedBy: userEmail ?? undefined, name: 'Personal Info' })
+        entry = repo.upsert(id, { name: '', email: userEmail ?? '', accentColor: '#3b82f6' }, { updatedBy: userEmail ?? undefined })
       }
 
       if (!entry) {
