@@ -1,5 +1,4 @@
 import { TabsContent } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -9,7 +8,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { TabCard } from "../shared"
-import type { AISettings } from "@shared/types"
+import type { AISettings, AIProviderType, AIInterfaceType } from "@shared/types"
+import { AI_PROVIDER_MODELS } from "@shared/types"
 import type { ConfigState } from "../../hooks/useConfigState"
 
 type AISettingsTabProps = Pick<
@@ -22,6 +22,18 @@ type AISettingsTabProps = Pick<
   | "handleResetAISettings"
 >
 
+const PROVIDER_LABELS: Record<AIProviderType, string> = {
+  codex: "Codex CLI (OpenAI Pro)",
+  claude: "Claude (Anthropic)",
+  openai: "OpenAI API",
+  gemini: "Google Gemini",
+}
+
+const INTERFACE_LABELS: Record<AIInterfaceType, string> = {
+  cli: "CLI (Command Line)",
+  api: "API (Direct)",
+}
+
 export function AISettingsTab({
   isSaving,
   aiSettings,
@@ -30,131 +42,208 @@ export function AISettingsTab({
   handleSaveAISettings,
   handleResetAISettings,
 }: AISettingsTabProps) {
+  const selectedProvider = aiSettings?.selected?.provider ?? "codex"
+  const selectedInterface = aiSettings?.selected?.interface ?? "cli"
+  const selectedModel = aiSettings?.selected?.model ?? "gpt-4o-mini"
+  const providers = aiSettings?.providers ?? []
+
+  // Get the current provider's status
+  const currentProviderStatus = providers.find(
+    (p) => p.provider === selectedProvider && p.interface === selectedInterface
+  )
+
+  // Get available interfaces for the selected provider
+  const getInterfacesForProvider = (provider: AIProviderType): AIInterfaceType[] => {
+    const interfaces = Object.keys(
+      AI_PROVIDER_MODELS[provider] ?? {}
+    ) as AIInterfaceType[]
+    return interfaces.length > 0 ? interfaces : ["api"]
+  }
+
+  // Get available models for the selected provider/interface
+  const getModelsForSelection = (
+    provider: AIProviderType,
+    iface: AIInterfaceType
+  ): string[] => {
+    const providerModels = AI_PROVIDER_MODELS[provider]
+    if (!providerModels) return []
+    const interfaceModels = (providerModels as Record<string, readonly string[]>)[iface]
+    return interfaceModels ? [...interfaceModels] : []
+  }
+
+  const availableInterfaces = getInterfacesForProvider(selectedProvider)
+  const availableModels = getModelsForSelection(selectedProvider, selectedInterface)
+
+  // Check if a provider is enabled (true if any interface for the provider is available)
+  const isProviderEnabled = (provider: AIProviderType): boolean => {
+    return providers.some((p) => p.provider === provider && p.enabled)
+  }
+
+  // Get reason why provider is disabled
+  const getDisabledReason = (provider: AIProviderType): string | undefined => {
+    const status = providers.find((p) => p.provider === provider)
+    return status?.reason
+  }
+
+  const handleProviderChange = (newProvider: AIProviderType) => {
+    const newInterfaces = getInterfacesForProvider(newProvider)
+    const newInterface = newInterfaces[0] ?? "api"
+    const newModels = getModelsForSelection(newProvider, newInterface)
+    const newModel = newModels[0] ?? ""
+
+    setAISettings((prev: AISettings | null) =>
+      prev
+        ? {
+            ...prev,
+            selected: {
+              provider: newProvider,
+              interface: newInterface,
+              model: newModel,
+            },
+          }
+        : null
+    )
+  }
+
+  const handleInterfaceChange = (newInterface: AIInterfaceType) => {
+    const newModels = getModelsForSelection(selectedProvider, newInterface)
+    const newModel = newModels[0] ?? ""
+
+    setAISettings((prev: AISettings | null) =>
+      prev
+        ? {
+            ...prev,
+            selected: {
+              ...prev.selected,
+              interface: newInterface,
+              model: newModel,
+            },
+          }
+        : null
+    )
+  }
+
+  const handleModelChange = (newModel: string) => {
+    setAISettings((prev: AISettings | null) =>
+      prev
+        ? {
+            ...prev,
+            selected: {
+              ...prev.selected,
+              model: newModel,
+            },
+          }
+        : null
+    )
+  }
+
   return (
     <TabsContent value="ai" className="space-y-4 mt-4">
       <TabCard
-        title="AI Configuration"
-        description="Configure AI provider, model selection, and matching parameters"
+        title="AI Provider Configuration"
+        description="Select the AI provider, interface, and model for job matching and document generation"
         hasChanges={hasAIChanges}
         isSaving={isSaving}
         onSave={handleSaveAISettings}
         onReset={handleResetAISettings}
       >
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-3 gap-6">
+          {/* Provider Selection */}
           <div className="space-y-2">
-            <Label htmlFor="provider">AI Provider</Label>
-            <Select
-              value={aiSettings?.provider || "claude"}
-              onValueChange={(value) =>
-                setAISettings((prev: AISettings | null) =>
-                  prev ? { ...prev, provider: value as "claude" | "openai" | "gemini" } : null
-                )
-              }
-            >
+            <Label htmlFor="provider">Provider</Label>
+            <Select value={selectedProvider} onValueChange={handleProviderChange}>
               <SelectTrigger id="provider">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="claude">Claude (Anthropic)</SelectItem>
-                <SelectItem value="openai">OpenAI (GPT)</SelectItem>
-                <SelectItem value="gemini">Google Gemini</SelectItem>
+                {(Object.keys(AI_PROVIDER_MODELS) as AIProviderType[]).map(
+                  (provider) => {
+                    const enabled = isProviderEnabled(provider)
+                    const reason = getDisabledReason(provider)
+
+                    return (
+                      <SelectItem
+                        key={provider}
+                        value={provider}
+                        disabled={!enabled}
+                        className={!enabled ? "text-gray-400" : ""}
+                      >
+                        {PROVIDER_LABELS[provider]}
+                        {!enabled && reason && (
+                          <span className="ml-2 text-xs text-gray-400">({reason})</span>
+                        )}
+                      </SelectItem>
+                    )
+                  }
+                )}
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-500">
-              AI provider for job matching and document generation
+              AI service provider for all AI operations
             </p>
           </div>
 
+          {/* Interface Selection */}
           <div className="space-y-2">
-            <Label htmlFor="model">Model</Label>
-            <Input
-              id="model"
-              value={aiSettings?.model || "claude-sonnet-4"}
-              onChange={(e) =>
-                setAISettings((prev: AISettings | null) =>
-                  prev ? { ...prev, model: e.target.value } : null
-                )
-              }
-              placeholder="e.g., claude-sonnet-4, gpt-4, gemini-pro"
-            />
-            <p className="text-xs text-gray-500">Specific model version to use</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="minMatchScore">Minimum Match Score</Label>
-            <Input
-              id="minMatchScore"
-              type="number"
-              min="0"
-              max="100"
-              value={aiSettings?.minMatchScore || 70}
-              onChange={(e) =>
-                setAISettings((prev: AISettings | null) =>
-                  prev ? { ...prev, minMatchScore: parseInt(e.target.value) || 70 } : null
-                )
-              }
-            />
-            <p className="text-xs text-gray-500">
-              Minimum score required to create a job match (0-100)
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="generateIntake">Generate Intake Data</Label>
+            <Label htmlFor="interface">Interface</Label>
             <Select
-              value={aiSettings?.generateIntakeData ? "yes" : "no"}
-              onValueChange={(value) =>
-                setAISettings((prev: AISettings | null) =>
-                  prev ? { ...prev, generateIntakeData: value === "yes" } : null
-                )
-              }
+              value={selectedInterface}
+              onValueChange={(v) => handleInterfaceChange(v as AIInterfaceType)}
             >
-              <SelectTrigger id="generateIntake">
+              <SelectTrigger id="interface">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="yes">Yes</SelectItem>
-                <SelectItem value="no">No</SelectItem>
+                {availableInterfaces.map((iface) => (
+                  <SelectItem key={iface} value={iface}>
+                    {INTERFACE_LABELS[iface]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-gray-500">Toggle AI resume intake generation</p>
+            <p className="text-xs text-gray-500">
+              How to connect to the provider
+            </p>
           </div>
 
+          {/* Model Selection */}
           <div className="space-y-2">
-            <Label htmlFor="portlandBonus">Portland Office Bonus</Label>
-            <Input
-              id="portlandBonus"
-              type="number"
-              value={aiSettings?.portlandOfficeBonus ?? 15}
-              onChange={(e) =>
-                setAISettings((prev: AISettings | null) =>
-                  prev
-                    ? { ...prev, portlandOfficeBonus: parseInt(e.target.value) || 0 }
-                    : null
-                )
-              }
-            />
-            <p className="text-xs text-gray-500">Bonus points for Portland offices</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="userTimezone">User Timezone Offset</Label>
-            <Input
-              id="userTimezone"
-              type="number"
-              step="0.5"
-              value={aiSettings?.userTimezone ?? -8}
-              onChange={(e) =>
-                setAISettings((prev: AISettings | null) =>
-                  prev
-                    ? { ...prev, userTimezone: parseFloat(e.target.value) }
-                    : null
-                )
-              }
-            />
-            <p className="text-xs text-gray-500">Offset from UTC (e.g., -8 for PT)</p>
+            <Label htmlFor="model">Model</Label>
+            <Select value={selectedModel} onValueChange={handleModelChange}>
+              <SelectTrigger id="model">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableModels.map((model) => (
+                  <SelectItem key={model} value={model}>
+                    {model}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500">
+              Specific model version to use
+            </p>
           </div>
         </div>
+
+        {/* Provider Status */}
+        {currentProviderStatus && (
+          <div className="mt-4 p-3 rounded-md bg-gray-50 dark:bg-gray-900">
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  currentProviderStatus.enabled ? "bg-green-500" : "bg-red-500"
+                }`}
+              />
+              <span className="text-sm">
+                {currentProviderStatus.enabled
+                  ? "Provider is enabled and ready"
+                  : `Provider unavailable: ${currentProviderStatus.reason}`}
+              </span>
+            </div>
+          </div>
+        )}
       </TabCard>
     </TabsContent>
   )

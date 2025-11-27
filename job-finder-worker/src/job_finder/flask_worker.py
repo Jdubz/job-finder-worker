@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
 from job_finder.ai import AIJobMatcher
-from job_finder.ai.providers import create_provider
+from job_finder.ai.providers import create_provider_from_config
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.logging_config import get_structured_logger, setup_logging
 from job_finder.maintenance import run_maintenance
@@ -107,39 +107,29 @@ def load_config() -> Dict[str, Any]:
 
 def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
     """Reload dynamic settings from the database into in-memory components."""
+    # Load AI provider settings
     try:
         ai_settings = config_loader.get_ai_settings()
+        ai_matcher.provider = create_provider_from_config(ai_settings)
     except Exception as exc:  # pragma: no cover - defensive
-        slogger.worker_status("ai_settings_load_failed", {"error": str(exc)})
-        ai_settings = None
+        slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
 
-    if ai_settings:
-        provider_type = ai_settings.get("provider", "openai")
-        model = ai_settings.get("model")
-        try:
-            ai_matcher.provider = create_provider(provider_type, model=model)
-        except Exception as exc:  # pragma: no cover - defensive
-            slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
+    # Load job match settings (scoring preferences)
+    try:
+        job_match = config_loader.get_job_match()
+        ai_matcher.min_match_score = job_match.get("minMatchScore", ai_matcher.min_match_score)
+        ai_matcher.generate_intake = job_match.get("generateIntakeData", ai_matcher.generate_intake)
+        ai_matcher.portland_office_bonus = job_match.get(
+            "portlandOfficeBonus", ai_matcher.portland_office_bonus
+        )
+        ai_matcher.user_timezone = job_match.get("userTimezone", ai_matcher.user_timezone)
+        ai_matcher.prefer_large_companies = job_match.get(
+            "preferLargeCompanies", ai_matcher.prefer_large_companies
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        slogger.worker_status("job_match_settings_load_failed", {"error": str(exc)})
 
-        if "minMatchScore" in ai_settings:
-            ai_matcher.min_match_score = ai_settings.get(
-                "minMatchScore", ai_matcher.min_match_score
-            )
-        if "generateIntakeData" in ai_settings:
-            ai_matcher.generate_intake = ai_settings.get(
-                "generateIntakeData", ai_matcher.generate_intake
-            )
-        if "portlandOfficeBonus" in ai_settings:
-            ai_matcher.portland_office_bonus = ai_settings.get(
-                "portlandOfficeBonus", ai_matcher.portland_office_bonus
-            )
-        if "userTimezone" in ai_settings:
-            ai_matcher.user_timezone = ai_settings.get("userTimezone", ai_matcher.user_timezone)
-        if "preferLargeCompanies" in ai_settings:
-            ai_matcher.prefer_large_companies = ai_settings.get(
-                "preferLargeCompanies", ai_matcher.prefer_large_companies
-            )
-
+    # Load scheduler settings
     try:
         scheduler_settings = config_loader.get_scheduler_settings()
         if scheduler_settings and "pollIntervalSeconds" in scheduler_settings:
@@ -187,39 +177,49 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
             preferences=None,
         )
 
-    # Initialize AI components (defaults, then override with DB)
-    ai_config = {
-        "provider": "claude",
-        "model": "claude-sonnet-4",
-        "min_match_score": 70,
-        "generate_intake_data": True,
-        "portland_office_bonus": 15,
-        "user_timezone": -8,
-        "prefer_large_companies": True,
-        **config.get("ai", {}),
-    }
+    # Initialize AI components with defaults (will be overridden by DB settings)
+    config_loader = ConfigLoader(db_path)
 
-    # Prefer Codex CLI (OpenAI) when enabled so we use the pro account session
-    if os.getenv("USE_CODEX_CLI", "0") == "1":
-        ai_config["provider"] = "openai"
-        ai_config.setdefault("model", "gpt-4o-mini")
-    provider = create_provider(ai_config.get("provider", "openai"), model=ai_config.get("model"))
+    # Get AI provider settings (defaults to codex/cli/gpt-4o-mini)
+    ai_settings = {
+        "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o-mini"},
+        "providers": [],
+    }
+    try:
+        ai_settings = config_loader.get_ai_settings()
+    except Exception as exc:
+        slogger.worker_status("ai_settings_init_failed", {"error": str(exc)})
+
+    provider = create_provider_from_config(ai_settings)
+
+    # Get job match settings (defaults)
+    job_match = {
+        "minMatchScore": 70,
+        "portlandOfficeBonus": 15,
+        "userTimezone": -8,
+        "preferLargeCompanies": True,
+        "generateIntakeData": True,
+    }
+    try:
+        job_match = config_loader.get_job_match()
+    except Exception as exc:
+        slogger.worker_status("job_match_init_failed", {"error": str(exc)})
+
     ai_matcher = AIJobMatcher(
         provider=provider,
-        min_match_score=ai_config.get("min_match_score", 70),
-        generate_intake=ai_config.get("generate_intake_data", True),
-        portland_office_bonus=ai_config.get("portland_office_bonus", 15),
+        min_match_score=job_match.get("minMatchScore", 70),
+        generate_intake=job_match.get("generateIntakeData", True),
+        portland_office_bonus=job_match.get("portlandOfficeBonus", 15),
         profile=profile,
-        user_timezone=ai_config.get("user_timezone", -8),
-        prefer_large_companies=ai_config.get("prefer_large_companies", True),
-        config=ai_config,
+        user_timezone=job_match.get("userTimezone", -8),
+        prefer_large_companies=job_match.get("preferLargeCompanies", True),
+        config=job_match,
     )
 
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
     notifier = QueueEventNotifier()
     queue_manager = QueueManager(db_path, notifier=notifier)
     notifier.on_command = queue_manager.handle_command
-    config_loader = ConfigLoader(db_path)
     processor = QueueItemProcessor(
         queue_manager=queue_manager,
         config_loader=config_loader,

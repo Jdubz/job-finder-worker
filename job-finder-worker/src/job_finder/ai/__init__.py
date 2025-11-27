@@ -3,12 +3,11 @@
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 from job_finder.ai.providers import (
     AIProvider,
-    AITask,
     ClaudeProvider,
-    ModelTier,
+    CodexCLIProvider,
+    GeminiProvider,
     OpenAIProvider,
-    create_provider,
-    get_model_for_task,
+    create_provider_from_config,
 )
 from job_finder.ai.source_discovery import SourceDiscovery
 
@@ -16,11 +15,10 @@ __all__ = [
     "AIJobMatcher",
     "JobMatchResult",
     "AIProvider",
-    "AITask",
-    "ModelTier",
     "ClaudeProvider",
+    "CodexCLIProvider",
+    "GeminiProvider",
     "OpenAIProvider",
     "SourceDiscovery",
-    "create_provider",
-    "get_model_for_task",
+    "create_provider_from_config",
 ]

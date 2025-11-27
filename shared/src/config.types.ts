@@ -35,16 +35,78 @@ export interface QueueSettings {
   updatedBy?: string | null
 }
 
-export type AIProvider = "claude" | "openai" | "gemini"
+// -----------------------------------------------------------
+// AI Provider Configuration
+// -----------------------------------------------------------
 
-export interface AISettings {
-  provider: AIProvider
+/** Supported AI providers */
+export type AIProviderType = "codex" | "claude" | "openai" | "gemini"
+
+/** Interface types for connecting to providers */
+export type AIInterfaceType = "cli" | "api"
+
+/** Available models per provider and interface */
+export const AI_PROVIDER_MODELS = {
+  codex: {
+    cli: ["o3", "o4-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"],
+  },
+  claude: {
+    api: [
+      "claude-sonnet-4-5-20250929",
+      "claude-sonnet-4-20250514",
+      "claude-3-5-sonnet-20241022",
+      "claude-3-5-haiku-20241022",
+    ],
+  },
+  openai: {
+    api: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+  },
+  gemini: {
+    api: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+  },
+} as const
+
+/** Provider availability status (populated dynamically on GET) */
+export interface AIProviderStatus {
+  provider: AIProviderType
+  interface: AIInterfaceType
+  enabled: boolean
+  reason?: string // e.g., "API key not set", "CLI not authenticated"
+  models: string[]
+}
+
+/** Selected provider configuration */
+export interface AIProviderSelection {
+  provider: AIProviderType
+  interface: AIInterfaceType
   model: string
+}
+
+/** AI Settings - provider configuration only */
+export interface AISettings {
+  /** Current provider selection */
+  selected: AIProviderSelection
+  /** Provider availability (populated on GET, read-only for client) */
+  providers: AIProviderStatus[]
+  updatedAt?: TimestampLike
+  updatedBy?: string | null
+}
+
+// -----------------------------------------------------------
+// Job Match Configuration (scoring preferences)
+// -----------------------------------------------------------
+
+export interface JobMatchConfig {
+  /** Minimum match score threshold (0-100) */
   minMatchScore: number
-  generateIntakeData?: boolean
-  portlandOfficeBonus?: number
-  userTimezone?: number
-  preferLargeCompanies?: boolean
+  /** Bonus points for Portland office jobs */
+  portlandOfficeBonus: number
+  /** User's timezone offset from UTC (e.g., -8 for PST) */
+  userTimezone: number
+  /** Whether to prefer larger companies in scoring */
+  preferLargeCompanies: boolean
+  /** Whether to generate resume intake data for matches */
+  generateIntakeData: boolean
   updatedAt?: TimestampLike
   updatedBy?: string | null
 }
@@ -208,6 +270,7 @@ export type JobFinderConfigId =
   | "ai-prompts"
   | "personal-info"
   | "job-filters"
+  | "job-match"
   | "technology-ranks"
   | "scheduler-settings"
   | "company-scoring"
@@ -220,6 +283,7 @@ export type JobFinderConfigPayloadMap = {
   "ai-prompts": PromptConfig
   "personal-info": Record<string, unknown>
   "job-filters": JobFiltersConfig
+  "job-match": JobMatchConfig
   "technology-ranks": TechnologyRanksConfig
   "scheduler-settings": SchedulerSettings
   "company-scoring": CompanyScoringConfig
@@ -241,13 +305,20 @@ export const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
 }
 
 export const DEFAULT_AI_SETTINGS: AISettings = {
-  provider: "claude",
-  model: "claude-sonnet-4",
+  selected: {
+    provider: "codex",
+    interface: "cli",
+    model: "gpt-4o-mini",
+  },
+  providers: [], // Populated dynamically on GET
+}
+
+export const DEFAULT_JOB_MATCH: JobMatchConfig = {
   minMatchScore: 70,
-  generateIntakeData: true,
   portlandOfficeBonus: 15,
   userTimezone: -8,
   preferLargeCompanies: true,
+  generateIntakeData: true,
 }
 
 export const DEFAULT_JOB_FILTERS: JobFiltersConfig = {

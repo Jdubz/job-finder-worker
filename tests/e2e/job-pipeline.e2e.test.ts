@@ -301,10 +301,12 @@ describe("Configuration flows", () => {
     const queueSettings = await configClient.getQueueSettings()
     expect(queueSettings?.processingTimeoutSeconds).toBe(1200)
 
-    await configClient.updateAISettings({ provider: "openai", model: "gpt-e2e" })
+    await configClient.updateAISettings({
+      selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" },
+    })
     const aiSettings = await configClient.getAISettings()
-    expect(aiSettings?.provider).toBe("openai")
-    expect(aiSettings?.model).toBe("gpt-e2e")
+    expect(aiSettings?.selected?.provider).toBe("openai")
+    expect(aiSettings?.selected?.model).toBe("gpt-4o-mini")
 
     const personalInfo = await configClient.updatePersonalInfo(
       {

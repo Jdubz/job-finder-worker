@@ -20,12 +20,14 @@ import type {
   StopList,
   QueueSettings,
   AISettings,
-  AIProvider,
 } from "./queue.types"
 import type {
   JobFiltersConfig,
   TechnologyRanksConfig,
   SchedulerSettings,
+  JobMatchConfig,
+  AIProviderType,
+  AIInterfaceType,
 } from "./config.types"
 import type { PersonalInfo } from "./generator.types"
 // Import and re-export type guards from queue.types for convenience
@@ -49,11 +51,7 @@ import type {
   GapMitigation,
 } from "./job.types"
 import type { ContentItem } from "./content-item.types"
-import type {
-  GenerationType,
-  AIProviderType,
-  GenerationStepStatus,
-} from "./generator.types"
+import type { GenerationType, GenerationStepStatus } from "./generator.types"
 import type { ApiResponse, ApiSuccessResponse, ApiErrorResponse } from "./api.types"
 
 /**
@@ -162,10 +160,17 @@ export function isQueueSettings(value: unknown): value is QueueSettings {
 }
 
 /**
- * Type guard for AIProvider
+ * Type guard for AIProviderType
  */
-export function isAIProvider(value: unknown): value is AIProvider {
-  return typeof value === "string" && ["claude", "openai", "gemini"].includes(value)
+export function isAIProviderType(value: unknown): value is AIProviderType {
+  return typeof value === "string" && ["codex", "claude", "openai", "gemini"].includes(value)
+}
+
+/**
+ * Type guard for AIInterfaceType
+ */
+export function isAIInterfaceType(value: unknown): value is AIInterfaceType {
+  return typeof value === "string" && ["cli", "api"].includes(value)
 }
 
 /**
@@ -176,15 +181,33 @@ export function isAISettings(value: unknown): value is AISettings {
 
   const settings = value as Partial<AISettings>
 
+  // Validate selected provider configuration
+  if (!isObject(settings.selected)) return false
+  const selected = settings.selected as Record<string, unknown>
+  if (!isAIProviderType(selected.provider)) return false
+  if (!isAIInterfaceType(selected.interface)) return false
+  if (typeof selected.model !== "string") return false
+
+  // Validate providers array (can be empty, populated on GET)
+  if (!Array.isArray(settings.providers)) return false
+
+  return true
+}
+
+/**
+ * Type guard for JobMatchConfig
+ */
+export function isJobMatchConfig(value: unknown): value is JobMatchConfig {
+  if (!isObject(value)) return false
+
+  const config = value as Partial<JobMatchConfig>
+
   return (
-    isAIProvider(settings.provider) &&
-    typeof settings.model === "string" &&
-    typeof settings.minMatchScore === "number" &&
-    (settings.generateIntakeData === undefined || typeof settings.generateIntakeData === "boolean") &&
-    (settings.portlandOfficeBonus === undefined || typeof settings.portlandOfficeBonus === "number") &&
-    (settings.userTimezone === undefined || typeof settings.userTimezone === "number") &&
-    (settings.preferLargeCompanies === undefined || typeof settings.preferLargeCompanies === "boolean") &&
-    true
+    typeof config.minMatchScore === "number" &&
+    typeof config.portlandOfficeBonus === "number" &&
+    typeof config.userTimezone === "number" &&
+    typeof config.preferLargeCompanies === "boolean" &&
+    typeof config.generateIntakeData === "boolean"
   )
 }
 
@@ -276,12 +299,8 @@ export function isGenerationType(value: unknown): value is GenerationType {
   return typeof value === "string" && ["resume", "coverLetter", "both"].includes(value)
 }
 
-/**
- * Type guard for AIProviderType
- */
-export function isAIProviderType(value: unknown): value is AIProviderType {
-  return typeof value === "string" && ["openai", "gemini"].includes(value)
-}
+// Note: isAIProviderType is defined above with config types (codex, claude, openai, gemini)
+// and covers all generator use cases
 
 /**
  * Type guard for GenerationStepStatus

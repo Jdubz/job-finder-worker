@@ -206,12 +206,26 @@ Queue processing configuration.
 - `processingTimeoutSeconds: number` - Max processing time (seconds)
 
 #### `AISettings`
-AI provider configuration.
+AI provider configuration with multi-tier selection.
 
 **Fields:**
-- `provider: "claude" | "openai"` - AI provider
-- `model: string` - Model identifier
+- `selected: AIProviderSelection` - Currently selected provider configuration
+  - `provider: AIProviderType` - Provider (codex, claude, openai, gemini)
+  - `interface: AIInterfaceType` - Interface (cli, api)
+  - `model: string` - Model identifier
+- `providers: AIProviderStatus[]` - Available providers with enabled status
+- `updatedAt?: TimestampLike` - Last update timestamp
+- `updatedBy?: string | null` - User who last updated
+
+#### `JobMatchConfig`
+Job matching configuration.
+
+**Fields:**
 - `minMatchScore: number` - Minimum match score (0-100)
+- `portlandOfficeBonus: number` - Bonus for Portland office jobs
+- `userTimezone: number` - User timezone offset from UTC
+- `preferLargeCompanies: boolean` - Apply bonus for large companies
+- `generateIntakeData: boolean` - Generate resume intake data for matches
 
 ### Helper Types
 

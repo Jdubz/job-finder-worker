@@ -4,6 +4,7 @@ import type {
   StopList,
   QueueSettings,
   AISettings,
+  JobMatchConfig,
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
   UpsertConfigEntryResponse,
@@ -76,15 +77,33 @@ export class ConfigClient extends BaseApiClient {
 
   async updateAISettings(settings: Partial<AISettings>): Promise<void> {
     const existing = (await this.getAISettings()) ?? {
-      provider: "claude",
-      model: "claude-sonnet-4",
+      selected: { provider: "codex", interface: "cli", model: "gpt-4o-mini" },
+      providers: [],
+    }
+    await this.updateConfigEntry("ai-settings", {
+      ...existing,
+      ...settings,
+      // Deep merge the selected object
+      selected: {
+        ...existing.selected,
+        ...(settings.selected ?? {}),
+      },
+    })
+  }
+
+  async getJobMatch(): Promise<JobMatchConfig | null> {
+    return this.getConfigEntry<JobMatchConfig>("job-match")
+  }
+
+  async updateJobMatch(settings: Partial<JobMatchConfig>): Promise<void> {
+    const existing = (await this.getJobMatch()) ?? {
       minMatchScore: 70,
-      generateIntakeData: true,
       portlandOfficeBonus: 15,
       userTimezone: -8,
       preferLargeCompanies: true,
+      generateIntakeData: true,
     }
-    await this.updateConfigEntry("ai-settings", {
+    await this.updateConfigEntry("job-match", {
       ...existing,
       ...settings,
     })
