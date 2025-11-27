@@ -129,7 +129,7 @@ export function useConfigState() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [user?.email])
 
   // Load all settings on mount
   useEffect(() => {
