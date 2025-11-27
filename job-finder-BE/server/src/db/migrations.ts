@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type Database from 'better-sqlite3'
+import { logger } from '../logger'
 
 const defaultMigrationsDir = process.env.JF_SQLITE_MIGRATIONS_DIR
   ? path.resolve(process.env.JF_SQLITE_MIGRATIONS_DIR)
@@ -24,6 +25,8 @@ function loadApplied(db: Database.Database): Set<string> {
 }
 
 export function runMigrations(db: Database.Database, migrationsDir: string = defaultMigrationsDir): string[] {
+  logger.info({ migrationsDir }, '[migrations] checking for pending migrations')
+
   if (!fs.existsSync(migrationsDir)) {
     throw new Error(`[migrations] directory not found at ${migrationsDir}`)
   }
@@ -34,6 +37,7 @@ export function runMigrations(db: Database.Database, migrationsDir: string = def
     .sort((a, b) => a.localeCompare(b))
 
   if (!files.length) {
+    logger.info('[migrations] no migration files found')
     return []
   }
 
@@ -41,13 +45,22 @@ export function runMigrations(db: Database.Database, migrationsDir: string = def
   const applied = loadApplied(db)
   const pending = files.filter((file) => !applied.has(file))
 
+  if (!pending.length) {
+    logger.info({ appliedCount: applied.size }, '[migrations] database is up to date')
+    return []
+  }
+
+  logger.info({ pending }, '[migrations] applying pending migrations')
+
   const appliedNow: string[] = []
   for (const file of pending) {
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8')
     db.exec(sql)
     db.prepare('INSERT INTO schema_migrations (name) VALUES (?)').run(file)
     appliedNow.push(file)
+    logger.info({ migration: file }, '[migrations] applied migration')
   }
 
+  logger.info({ count: appliedNow.length }, '[migrations] completed applying migrations')
   return appliedNow
 }
