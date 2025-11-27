@@ -17,8 +17,6 @@ export interface ListCompaniesRequest extends PaginationParams {
   industry?: string
   /** Filter by tier (S/A/B/C/D) */
   tier?: Company["tier"]
-  /** Filter by analysis status */
-  analysisStatus?: Company["analysisStatus"]
   /** Search by name (partial match) */
   search?: string
   /** Sort field */

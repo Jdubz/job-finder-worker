@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { Company, TimestampLike } from '@shared/types'
+import type { Company } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
 type CompanyRow = {
@@ -11,16 +11,13 @@ type CompanyRow = {
   about: string | null
   culture: string | null
   mission: string | null
-  size: string | null
   company_size_category: string | null
-  founded: string | null
   industry: string | null
   headquarters_location: string | null
   has_portland_office: number
   tech_stack: string | null
   tier: string | null
   priority_score: number | null
-  analysis_status: string | null
   created_at: string
   updated_at: string
 }
@@ -51,11 +48,9 @@ const buildCompany = (row: CompanyRow): Company => ({
   industry: row.industry,
   headquartersLocation: row.headquarters_location,
   companySizeCategory: row.company_size_category as Company['companySizeCategory'],
-  founded: row.founded ? parseInt(row.founded, 10) : null,
   techStack: parseJsonArray(row.tech_stack),
   tier: row.tier as Company['tier'],
   priorityScore: row.priority_score,
-  analysisStatus: row.analysis_status as Company['analysisStatus'],
   createdAt: parseTimestamp(row.created_at),
   updatedAt: parseTimestamp(row.updated_at)
 })
@@ -63,20 +58,11 @@ const buildCompany = (row: CompanyRow): Company => ({
 export type CreateCompanyInput = Omit<Company, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
 export type UpdateCompanyInput = Partial<Omit<Company, 'id' | 'createdAt' | 'updatedAt'>>
 
-const toIsoString = (value: TimestampLike | string | Date | undefined): string => {
-  if (!value) return new Date().toISOString()
-  if (value instanceof Date) return value.toISOString()
-  if (typeof value === 'string') return new Date(value).toISOString()
-  if ('toDate' in value) return value.toDate().toISOString()
-  return new Date().toISOString()
-}
-
 export interface CompanyListOptions {
   limit?: number
   offset?: number
   industry?: string
   tier?: Company['tier']
-  analysisStatus?: Company['analysisStatus']
   search?: string
   sortBy?: 'name' | 'created_at' | 'updated_at' | 'priority_score' | 'tier'
   sortOrder?: 'asc' | 'desc'
@@ -95,7 +81,6 @@ export class CompanyRepository {
       offset = 0,
       industry,
       tier,
-      analysisStatus,
       search,
       sortBy = 'created_at',
       sortOrder = 'desc'
@@ -112,11 +97,6 @@ export class CompanyRepository {
     if (tier) {
       conditions.push('tier = ?')
       params.push(tier)
-    }
-
-    if (analysisStatus) {
-      conditions.push('analysis_status = ?')
-      params.push(analysisStatus)
     }
 
     if (search) {
@@ -177,11 +157,11 @@ export class CompanyRepository {
 
     const stmt = this.db.prepare(`
       INSERT INTO companies (
-        id, name, name_lower, website, about, culture, mission, size,
-        company_size_category, founded, industry, headquarters_location,
-        has_portland_office, tech_stack, tier, priority_score, analysis_status,
+        id, name, name_lower, website, about, culture, mission,
+        company_size_category, industry, headquarters_location,
+        has_portland_office, tech_stack, tier, priority_score,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -192,16 +172,13 @@ export class CompanyRepository {
       input.about ?? null,
       input.culture ?? null,
       input.mission ?? null,
-      null, // size
       input.companySizeCategory ?? null,
-      input.founded?.toString() ?? null,
       input.industry ?? null,
       input.headquartersLocation ?? null,
       0, // has_portland_office
       input.techStack ? JSON.stringify(input.techStack) : null,
       input.tier ?? null,
       input.priorityScore ?? null,
-      input.analysisStatus ?? 'pending',
       now,
       now
     )
@@ -257,11 +234,6 @@ export class CompanyRepository {
       params.push(updates.companySizeCategory)
     }
 
-    if (updates.founded !== undefined) {
-      setClauses.push('founded = ?')
-      params.push(updates.founded?.toString() ?? null)
-    }
-
     if (updates.techStack !== undefined) {
       setClauses.push('tech_stack = ?')
       params.push(updates.techStack ? JSON.stringify(updates.techStack) : null)
@@ -275,11 +247,6 @@ export class CompanyRepository {
     if (updates.priorityScore !== undefined) {
       setClauses.push('priority_score = ?')
       params.push(updates.priorityScore)
-    }
-
-    if (updates.analysisStatus !== undefined) {
-      setClauses.push('analysis_status = ?')
-      params.push(updates.analysisStatus)
     }
 
     params.push(id)

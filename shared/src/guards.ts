@@ -124,8 +124,6 @@ export function isQueueItem(value: unknown): value is QueueItem {
     (item.company_id === null || typeof item.company_id === "string") &&
     isQueueSource(item.source) &&
     (item.submitted_by === null || typeof item.submitted_by === "string") &&
-    typeof item.retry_count === "number" &&
-    typeof item.max_retries === "number" &&
     isDateLike(item.created_at) &&
     isDateLike(item.updated_at)
   )

@@ -63,11 +63,36 @@ const tierColors: Record<string, string> = {
   D: "bg-gray-100 text-gray-800",
 }
 
-const statusColors: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-800",
-  in_progress: "bg-blue-100 text-blue-800",
-  complete: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800",
+/** Thresholds for company data quality assessment */
+const DATA_QUALITY_THRESHOLDS = {
+  COMPLETE: { ABOUT: 100, CULTURE: 50 },
+  PARTIAL: { ABOUT: 50, CULTURE: 25 },
+} as const
+
+/**
+ * Derive company data status from content completeness.
+ * A company has "good" data if it has meaningful about/culture content.
+ */
+function getDataStatus(company: Company): { label: string; color: string } {
+  const aboutLength = (company.about || "").length
+  const cultureLength = (company.culture || "").length
+
+  // Good quality: substantial about AND culture content
+  if (aboutLength > DATA_QUALITY_THRESHOLDS.COMPLETE.ABOUT && cultureLength > DATA_QUALITY_THRESHOLDS.COMPLETE.CULTURE) {
+    return { label: "Complete", color: "bg-green-100 text-green-800" }
+  }
+  // Minimal quality: some meaningful content
+  if (aboutLength > DATA_QUALITY_THRESHOLDS.PARTIAL.ABOUT || cultureLength > DATA_QUALITY_THRESHOLDS.PARTIAL.CULTURE) {
+    return { label: "Partial", color: "bg-yellow-100 text-yellow-800" }
+  }
+  // Missing: no meaningful content
+  return { label: "Pending", color: "bg-gray-100 text-gray-800" }
+}
+
+/** Badge component showing company data completeness status */
+function CompanyStatusBadge({ company }: { company: Company }) {
+  const status = getDataStatus(company)
+  return <Badge className={status.color}>{status.label}</Badge>
 }
 
 export function CompaniesPage() {
@@ -344,13 +369,7 @@ export function CompaniesPage() {
                       {company.industry || "—"}
                     </TableCell>
                     <TableCell>
-                      {company.analysisStatus ? (
-                        <Badge className={statusColors[company.analysisStatus] ?? statusColors.pending}>
-                          {company.analysisStatus.replace("_", " ")}
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
+                      <CompanyStatusBadge company={company} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -374,11 +393,7 @@ export function CompaniesPage() {
                     </DialogDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    {selectedCompany.analysisStatus && (
-                      <Badge className={statusColors[selectedCompany.analysisStatus] ?? statusColors.pending}>
-                        {selectedCompany.analysisStatus.replace("_", " ")}
-                      </Badge>
-                    )}
+                    <CompanyStatusBadge company={selectedCompany} />
                     {selectedCompany.tier && (
                       <Badge className={tierColors[selectedCompany.tier] ?? tierColors.D}>
                         {selectedCompany.tier}

@@ -25,8 +25,6 @@ const mockQueueItem: QueueItem = {
   company_name: 'Test Company',
   company_id: null,
   source: 'user_submission',
-  retry_count: 0,
-  max_retries: 0,
   created_at: new Date(),
   updated_at: new Date(),
 }

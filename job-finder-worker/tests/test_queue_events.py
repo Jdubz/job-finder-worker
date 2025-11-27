@@ -35,8 +35,6 @@ CREATE TABLE IF NOT EXISTS job_queue (
     company_id TEXT,
     source TEXT DEFAULT 'manual_submission',
     submitted_by TEXT,
-    retry_count INTEGER DEFAULT 0,
-    max_retries INTEGER DEFAULT 0,
     result_message TEXT,
     error_details TEXT,
     created_at TEXT,
@@ -50,16 +48,11 @@ CREATE TABLE IF NOT EXISTS job_queue (
     source_type TEXT,
     source_config TEXT,
     source_tier TEXT,
-    sub_task TEXT,
     pipeline_state TEXT,
     parent_item_id TEXT,
     company_sub_task TEXT,
     metadata TEXT,
-    pipeline_stage TEXT,
-    tracking_id TEXT,
-    ancestry_chain TEXT,
-    spawn_depth INTEGER DEFAULT 0,
-    max_spawn_depth INTEGER DEFAULT 5
+    tracking_id TEXT
 )
 """
 
@@ -92,8 +85,8 @@ def db_with_item(db_path):
     now = datetime.now(timezone.utc).isoformat()
     conn = sqlite3.connect(db_path)
     conn.execute(
-        """INSERT INTO job_queue (id, type, status, url, company_name, created_at, updated_at, tracking_id, ancestry_chain)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO job_queue (id, type, status, url, company_name, created_at, updated_at, tracking_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             "test-item-1",
             "job",
@@ -103,7 +96,6 @@ def db_with_item(db_path):
             now,
             now,
             "track-1",
-            '["test-item-1"]',
         ),
     )
     conn.commit()
@@ -154,7 +146,6 @@ class TestEventPayloadStructure:
             status=QueueStatus.PROCESSING,
             url="https://example.com/job/456",
             company_name="Another Company",
-            pipeline_stage="scrape",
         )
 
         payload = {"queueItem": queue_item.model_dump(mode="json")}
@@ -162,7 +153,6 @@ class TestEventPayloadStructure:
         # Verify structure
         assert "queueItem" in payload
         assert payload["queueItem"]["status"] == "processing"
-        assert payload["queueItem"]["pipeline_stage"] == "scrape"
 
     def test_item_deleted_payload_structure(self):
         """
@@ -298,7 +288,6 @@ class TestManagerEventEmission:
         manager.requeue_with_state(
             "test-item-1",
             pipeline_state={"job_data": {"title": "Test Job"}},
-            next_stage="filter",
         )
 
         # Verify event was emitted
@@ -307,7 +296,6 @@ class TestManagerEventEmission:
 
         assert call_args[0][0] == "item.updated"
         assert "queueItem" in call_args[0][1]
-        assert call_args[0][1]["queueItem"]["pipeline_stage"] == "filter"
         assert call_args[0][1]["queueItem"]["status"] == "pending"
 
 

@@ -36,9 +36,10 @@ describe("CompaniesPage", () => {
       website: "https://acme.com",
       tier: "A",
       industry: "Technology",
-      analysisStatus: "complete",
       techStack: ["React", "Node.js", "PostgreSQL"],
-      about: "A leading technology company",
+      // Complete data: about > 100 chars AND culture > 50 chars
+      about: "A leading technology company that specializes in building innovative software solutions for enterprise clients. Founded in 2010, we have grown to serve Fortune 500 companies worldwide.",
+      culture: "We foster a collaborative environment where creativity thrives. Our team values include innovation, integrity, and inclusion.",
       headquartersLocation: "San Francisco, CA",
       companySizeCategory: "1000-5000",
       createdAt: new Date(),
@@ -50,8 +51,10 @@ describe("CompaniesPage", () => {
       website: "https://techcorp.io",
       tier: "S",
       industry: "Software",
-      analysisStatus: "complete",
       techStack: ["Python", "Django"],
+      // Partial data: about > 50 chars (but no culture)
+      about: "A fast-growing software company focused on developer tools and productivity solutions.",
+      culture: "",
       createdAt: new Date(),
       updatedAt: new Date(),
     },
@@ -61,8 +64,10 @@ describe("CompaniesPage", () => {
       website: "https://startupxyz.com",
       tier: "D",
       industry: null,
-      analysisStatus: "pending",
       techStack: [],
+      // Pending data: no meaningful about or culture
+      about: "",
+      culture: "",
       createdAt: new Date(),
       updatedAt: new Date(),
     },
@@ -220,7 +225,7 @@ describe("CompaniesPage", () => {
       await user.click(row!)
 
       await waitFor(() => {
-        expect(screen.getByText("A leading technology company")).toBeInTheDocument()
+        expect(screen.getByText(/A leading technology company that specializes/i)).toBeInTheDocument()
       })
     })
 

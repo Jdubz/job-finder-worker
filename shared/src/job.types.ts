@@ -305,9 +305,6 @@ export interface Company {
   /** Company size category (large/medium/small) */
   companySizeCategory?: "large" | "medium" | "small" | null
 
-  /** Year founded */
-  founded?: number | null
-
   /** Detected technology stack */
   techStack?: string[]
 
@@ -316,9 +313,6 @@ export interface Company {
 
   /** Priority score (0-200+) */
   priorityScore?: number | null
-
-  /** Analysis status */
-  analysisStatus?: "pending" | "in_progress" | "complete" | "failed" | null
 
   /** When company was added */
   createdAt?: TimestampLike
