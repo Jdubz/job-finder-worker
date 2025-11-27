@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { resolveApiBaseUrl } from "@/config/api"
 import { persistAppSnapshot } from "@/lib/restart-persistence"
+import { markAppRestarting } from "@/lib/restart-state"
 
 type RestartState =
   | { status: "idle" }
@@ -50,6 +51,7 @@ export function RestartOverlay() {
     const beginBlocking = async (reason?: string) => {
       if (restartTriggered.current) return
       restartTriggered.current = true
+      markAppRestarting(reason)
       setState({ status: "waiting", reason })
       persistAppSnapshot(reason ?? "server-restarting")
       const ready = await pollUntilReady(healthUrl)

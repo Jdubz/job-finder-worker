@@ -3,6 +3,7 @@
  *
  * Sends structured error logs to the backend for storage in log files.
  */
+import { isAppRestarting } from "@/lib/restart-state"
 
 interface LogEntry {
   level: 'debug' | 'info' | 'warning' | 'error'
@@ -108,6 +109,11 @@ class FrontendLogger {
 
   private async flush(): Promise<void> {
     if (this.logBuffer.length === 0) return
+    if (isAppRestarting()) {
+      // During a restart the API may be offline; drop pending logs to avoid noisy console errors.
+      this.logBuffer = []
+      return
+    }
 
     const logs = [...this.logBuffer]
     this.logBuffer = []
@@ -127,7 +133,9 @@ class FrontendLogger {
     } catch (error) {
       // Failed to send logs, put them back in the buffer for retry
       this.logBuffer = [...logs, ...this.logBuffer]
-      console.error('Failed to send logs:', error)
+      if (!isAppRestarting()) {
+        console.error('Failed to send logs:', error)
+      }
     }
   }
 

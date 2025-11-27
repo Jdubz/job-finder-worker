@@ -119,6 +119,7 @@ def reset_stuck_processing_items(
         slogger.worker_status("startup_recovered_processing", {"count": 0})
     return reset_count
 
+
 # Global components (initialized in main)
 queue_manager: Optional[QueueManager] = None
 processor: Optional[QueueItemProcessor] = None

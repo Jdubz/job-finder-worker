@@ -2,6 +2,7 @@ import { ApiErrorCode, getApiErrorDefinition, type ApiErrorResponse } from "@sha
 import { ApiError } from "@/api/base-client"
 import { toast } from "@/components/toast"
 import { logger } from "@/services/logging/FrontendLogger"
+import { isAppRestarting } from "@/lib/restart-state"
 
 export interface NormalizedApiError {
   code: ApiErrorCode | string
@@ -65,22 +66,25 @@ export const handleApiError = (
 ): NormalizedApiError => {
   const normalized = normalizeApiError(error, options?.fallbackMessage)
   const definition = getApiErrorDefinition(normalized.code)
+  const restarting = isAppRestarting()
 
-  logger.error("client", "api_error", normalized.message, {
-    error: error instanceof Error
-      ? { type: error.name, message: error.message, stack: error.stack }
-      : undefined,
-    details: {
-      context: options?.context,
-      code: normalized.code,
-      status: normalized.status,
-      retryable: definition.retryable ?? false,
-      ...options?.details,
-      raw: normalized.raw as Record<string, unknown> | undefined,
-    },
-  })
+  if (!restarting) {
+    logger.error("client", "api_error", normalized.message, {
+      error: error instanceof Error
+        ? { type: error.name, message: error.message, stack: error.stack }
+        : undefined,
+      details: {
+        context: options?.context,
+        code: normalized.code,
+        status: normalized.status,
+        retryable: definition.retryable ?? false,
+        ...options?.details,
+        raw: normalized.raw as Record<string, unknown> | undefined,
+      },
+    })
+  }
 
-  if (!options?.silent) {
+  if (!options?.silent && !restarting) {
     toast.error({
       title: options?.toastTitle ?? definition.userMessage ?? normalized.message,
       description: options?.toastTitle ? normalized.message : undefined,

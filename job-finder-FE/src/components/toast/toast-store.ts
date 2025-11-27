@@ -59,6 +59,12 @@ export const pushToast = (options: ToastOptions): string => {
     window.setTimeout(() => dismissToast(id), toast.duration)
   }
 
+  if (import.meta.env.DEV) {
+    // Handy breadcrumb for debugging why toasts may not be showing
+    // eslint-disable-next-line no-console
+    console.info("[toast] pushed", { id, variant: toast.variant, title: toast.title })
+  }
+
   return id
 }
 
@@ -88,4 +94,18 @@ export const useToastStore = () => {
   }, [])
 
   return { toasts, dismissToast, clearToasts }
+}
+
+// Dev-only helpers so we can easily confirm the UI renderer is working
+if (typeof window !== "undefined" && import.meta.env.DEV) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(window as any).__toast = toast
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(window as any).__showToast = (opts?: Partial<ToastOptions>) =>
+    toast.info({
+      title: "Toast debug",
+      description: "If you see this, the viewport is rendering fine.",
+      duration: 5000,
+      ...opts,
+    })
 }
