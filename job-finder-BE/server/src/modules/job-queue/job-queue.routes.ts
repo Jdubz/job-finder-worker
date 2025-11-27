@@ -63,9 +63,7 @@ const submitSourceDiscoverySchema = z.object({
   url: z.string().url(),
   companyName: z.string().optional(),
   companyId: z.string().nullable().optional(),
-  typeHint: z.enum(sourceTypeHints).optional(),
-  autoEnable: z.boolean().optional(),
-  validationRequired: z.boolean().optional()
+  typeHint: z.enum(sourceTypeHints).optional()
 })
 
 const listQueueSchema = z.object({

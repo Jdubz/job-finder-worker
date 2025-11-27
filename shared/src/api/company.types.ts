@@ -15,12 +15,10 @@ import type { Company } from "../job.types"
 export interface ListCompaniesRequest extends PaginationParams {
   /** Filter by industry */
   industry?: string
-  /** Filter by tier (S/A/B/C/D) */
-  tier?: Company["tier"]
   /** Search by name (partial match) */
   search?: string
   /** Sort field */
-  sortBy?: "name" | "created_at" | "updated_at" | "priority_score" | "tier"
+  sortBy?: "name" | "created_at" | "updated_at"
   /** Sort order */
   sortOrder?: "asc" | "desc"
 }

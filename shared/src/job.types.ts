@@ -308,12 +308,6 @@ export interface Company {
   /** Detected technology stack */
   techStack?: string[]
 
-  /** Priority tier (S/A/B/C/D) for scraping rotation */
-  tier?: "S" | "A" | "B" | "C" | "D" | null
-
-  /** Priority score (0-200+) */
-  priorityScore?: number | null
-
   /** When company was added */
   createdAt?: TimestampLike
 
@@ -381,12 +375,6 @@ export interface JobSource {
   /** Error message from last failed scrape */
   lastScrapedError?: string | null
 
-  /** Total jobs found from this source */
-  totalJobsFound: number
-
-  /** Total jobs that matched filters */
-  totalJobsMatched: number
-
   /** Number of consecutive failed scrapes */
   consecutiveFailures: number
 
@@ -401,12 +389,6 @@ export interface JobSource {
 
   /** Queue item ID that created this source */
   discoveryQueueItemId?: string | null
-
-  /** Whether manual validation is required before enabling */
-  validationRequired: boolean
-
-  /** Priority tier for scheduling (S/A/B/C/D) */
-  tier: "S" | "A" | "B" | "C" | "D"
 
   /** Health metrics and status */
   health?: JobSourceHealth | null

@@ -25,7 +25,7 @@ def _bootstrap_db(path: Path):
               discovered_via TEXT,
               discovered_by TEXT,
               discovery_queue_item_id TEXT,
-              validation_required INTEGER NOT NULL DEFAULT 0,
+              health_json TEXT DEFAULT '{}',
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -48,7 +48,6 @@ def test_create_from_discovery_persists_metadata(tmp_path):
         discovery_queue_item_id="queue-1",
         company_id="comp-1",
         company_name="Acme",
-        validation_required=True,
         tags=["gh"],
     )
 
@@ -58,5 +57,4 @@ def test_create_from_discovery_persists_metadata(tmp_path):
     assert stored["discoveredBy"] == "tester"
     assert stored["discoveryConfidence"] == "high"
     assert stored["discoveryQueueItemId"] == "queue-1"
-    assert stored["validationRequired"] is True
-    assert stored["status"] == "pending_validation"
+    assert stored["status"] == "active"

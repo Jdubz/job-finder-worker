@@ -92,8 +92,6 @@ def make_discovery_item(
     url: str,
     type_hint: SourceTypeHint = SourceTypeHint.AUTO,
     company_name: str = "Example Corp",
-    auto_enable: bool = True,
-    validation_required: bool = False,
 ) -> JobQueueItem:
     """Build a SOURCE_DISCOVERY queue item for tests."""
     config = SourceDiscoveryConfig(
@@ -101,8 +99,6 @@ def make_discovery_item(
         type_hint=type_hint,
         company_id="company-123",
         company_name=company_name,
-        auto_enable=auto_enable,
-        validation_required=validation_required,
     )
     return JobQueueItem(
         id="queue-123",

@@ -142,8 +142,6 @@ class ScrapeRunner:
                 self.sources_manager.update_scrape_status(
                     source["id"],
                     status="success",
-                    jobs_found=source_stats["jobs_found"],
-                    jobs_matched=0,
                 )
 
                 stats["sources_scraped"] += 1
@@ -314,7 +312,6 @@ class ScrapeRunner:
             company_id=company_id,
             company_name=company_name,
             type_hint=SourceTypeHint.AUTO,
-            validation_required=True,
         )
 
         discovery_item = JobQueueItem(

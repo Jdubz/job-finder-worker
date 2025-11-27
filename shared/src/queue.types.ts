@@ -121,8 +121,6 @@ export interface SourceDiscoveryConfig {
   type_hint?: SourceTypeHint | null // Optional hint about source type (default: "auto")
   company_id?: string | null // Optional company reference
   company_name?: string | null // Optional company name
-  auto_enable?: boolean // Auto-enable if discovery succeeds (default: true)
-  validation_required?: boolean // Require manual validation before enabling (default: false)
 }
 
 /**
@@ -259,8 +257,6 @@ export interface SubmitSourceDiscoveryRequest {
   companyName?: string
   companyId?: string | null
   typeHint?: SourceTypeHint
-  autoEnable?: boolean
-  validationRequired?: boolean
 }
 
 /**

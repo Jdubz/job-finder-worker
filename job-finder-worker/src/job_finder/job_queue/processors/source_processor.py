@@ -128,7 +128,6 @@ class SourceProcessor(BaseProcessor):
                 discovery_queue_item_id=item.id,
                 company_id=config.company_id,
                 company_name=company_name,
-                validation_required=config.validation_required,
             )
 
             # Spawn SCRAPE_SOURCE to immediately scrape the new source

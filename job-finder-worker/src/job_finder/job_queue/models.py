@@ -55,15 +55,14 @@ class SourceStatus(str, Enum):
     """
     Status for job source records in SQLite.
 
-    Tracks the validation and operational state of a scraping source.
+    Tracks the operational state of a scraping source.
 
     TypeScript equivalent: SourceStatus in queue.types.ts
     """
 
-    PENDING_VALIDATION = "pending_validation"  # Discovered but needs manual validation
-    ACTIVE = "active"  # Validated and enabled for scraping
+    ACTIVE = "active"  # Enabled for scraping
     DISABLED = "disabled"  # Manually or automatically disabled
-    FAILED = "failed"  # Permanently failed validation or operation
+    FAILED = "failed"  # Permanently failed operation
 
 
 class SourceTier(str, Enum):
@@ -200,12 +199,6 @@ class SourceDiscoveryConfig(BaseModel):
     )
     company_id: Optional[str] = Field(default=None, description="Optional company reference")
     company_name: Optional[str] = Field(default=None, description="Optional company name")
-    auto_enable: bool = Field(
-        default=True, description="Auto-enable if discovery succeeds (default: true)"
-    )
-    validation_required: bool = Field(
-        default=False, description="Require manual validation before enabling (default: false)"
-    )
 
     model_config = ConfigDict(use_enum_values=True)
 

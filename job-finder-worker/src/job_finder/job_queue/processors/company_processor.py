@@ -386,8 +386,6 @@ class CompanyProcessor(BaseProcessor):
                     type_hint=SourceTypeHint.AUTO,
                     company_id=company_id,
                     company_name=company_name,
-                    auto_enable=True,
-                    validation_required=False,
                 )
 
                 source_item = JobQueueItem(

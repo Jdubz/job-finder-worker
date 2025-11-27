@@ -85,14 +85,6 @@ const statusColors: Record<JobSourceStatus, string> = {
   error: "bg-red-100 text-red-800",
 }
 
-const tierColors: Record<string, string> = {
-  S: "bg-purple-100 text-purple-800",
-  A: "bg-blue-100 text-blue-800",
-  B: "bg-green-100 text-green-800",
-  C: "bg-yellow-100 text-yellow-800",
-  D: "bg-gray-100 text-gray-800",
-}
-
 const sourceTypeLabels: Record<string, string> = {
   api: "API",
   rss: "RSS",
@@ -113,7 +105,6 @@ export function SourcesPage() {
   const [selectedSource, setSelectedSource] = useState<JobSource | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [tierFilter, setTierFilter] = useState<string>("all")
 
   // Form state
   const [sourceUrl, setSourceUrl] = useState("")
@@ -184,7 +175,6 @@ export function SourcesPage() {
     setFilters({
       search: searchTerm || undefined,
       status: statusFilter !== "all" ? (statusFilter as JobSourceStatus) : undefined,
-      tier: tierFilter !== "all" ? (tierFilter as JobSource["tier"]) : undefined,
       limit: 100,
     })
   }
@@ -196,9 +186,6 @@ export function SourcesPage() {
       return false
     }
     if (statusFilter !== "all" && source.status !== statusFilter) {
-      return false
-    }
-    if (tierFilter !== "all" && source.tier !== tierFilter) {
       return false
     }
     return true
@@ -352,19 +339,6 @@ export function SourcesPage() {
                   <SelectItem value="error">Error</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={tierFilter} onValueChange={setTierFilter}>
-                <SelectTrigger className="w-[100px]">
-                  <SelectValue placeholder="Tier" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Tiers</SelectItem>
-                  <SelectItem value="S">S Tier</SelectItem>
-                  <SelectItem value="A">A Tier</SelectItem>
-                  <SelectItem value="B">B Tier</SelectItem>
-                  <SelectItem value="C">C Tier</SelectItem>
-                  <SelectItem value="D">D Tier</SelectItem>
-                </SelectContent>
-              </Select>
               <Button variant="outline" size="icon" onClick={handleSearch}>
                 <Search className="h-4 w-4" />
               </Button>
@@ -389,7 +363,6 @@ export function SourcesPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Tier</TableHead>
                   <TableHead className="hidden md:table-cell">Company</TableHead>
                 </TableRow>
               </TableHeader>
@@ -409,11 +382,6 @@ export function SourcesPage() {
                     <TableCell>
                       <Badge className={statusColors[source.status]}>
                         {source.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={tierColors[source.tier]}>
-                        {source.tier}
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
@@ -440,14 +408,9 @@ export function SourcesPage() {
                       {selectedSource.companyName || "No company associated"}
                     </DialogDescription>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={statusColors[selectedSource.status]}>
-                      {selectedSource.status}
-                    </Badge>
-                    <Badge className={tierColors[selectedSource.tier]}>
-                      {selectedSource.tier}
-                    </Badge>
-                  </div>
+                  <Badge className={statusColors[selectedSource.status]}>
+                    {selectedSource.status}
+                  </Badge>
                 </div>
               </DialogHeader>
 
@@ -468,18 +431,10 @@ export function SourcesPage() {
                   </div>
                 )}
 
-                {/* Type and Stats */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Type</Label>
-                    <p className="mt-1">{sourceTypeLabels[selectedSource.sourceType] || selectedSource.sourceType}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Jobs Found</Label>
-                    <p className="mt-1">
-                      {selectedSource.totalJobsFound} total / {selectedSource.totalJobsMatched} matched
-                    </p>
-                  </div>
+                {/* Type */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Type</Label>
+                  <p className="mt-1">{sourceTypeLabels[selectedSource.sourceType] || selectedSource.sourceType}</p>
                 </div>
 
                 {/* Scraping Info */}
@@ -493,14 +448,6 @@ export function SourcesPage() {
                     <p className="mt-1">{selectedSource.consecutiveFailures}</p>
                   </div>
                 </div>
-
-                {/* Validation Status */}
-                {selectedSource.validationRequired && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>This source requires validation before it can be used.</AlertDescription>
-                  </Alert>
-                )}
 
                 {/* Tags */}
                 {selectedSource.tags && selectedSource.tags.length > 0 && (

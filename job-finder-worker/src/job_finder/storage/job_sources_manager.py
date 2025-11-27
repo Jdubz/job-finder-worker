@@ -20,18 +20,12 @@ def _utcnow_iso() -> str:
 
 
 VALID_SOURCE_TRANSITIONS = {
-    SourceStatus.PENDING_VALIDATION: {
-        SourceStatus.ACTIVE,
-        SourceStatus.FAILED,
-        SourceStatus.DISABLED,
-    },
     SourceStatus.ACTIVE: {
         SourceStatus.DISABLED,
         SourceStatus.FAILED,
-        SourceStatus.PENDING_VALIDATION,
     },
-    SourceStatus.DISABLED: {SourceStatus.ACTIVE, SourceStatus.PENDING_VALIDATION},
-    SourceStatus.FAILED: {SourceStatus.PENDING_VALIDATION, SourceStatus.ACTIVE},
+    SourceStatus.DISABLED: {SourceStatus.ACTIVE},
+    SourceStatus.FAILED: {SourceStatus.ACTIVE},
 }
 
 
@@ -80,7 +74,6 @@ class JobSourcesManager:
             "discoveredVia": row.get("discovered_via"),
             "discoveredBy": row.get("discovered_by"),
             "discoveryQueueItemId": row.get("discovery_queue_item_id"),
-            "validationRequired": bool(row.get("validation_required", 0)),
         }
 
     # ------------------------------------------------------------------ #
@@ -95,17 +88,11 @@ class JobSourcesManager:
         company_id: Optional[str] = None,
         company_name: Optional[str] = None,
         tags: Optional[List[str]] = None,
-        validation_required: bool = False,
         discovery_confidence: Optional[str] = None,
         discovered_via: Optional[str] = None,
         discovered_by: Optional[str] = None,
         discovery_queue_item_id: Optional[str] = None,
     ) -> str:
-        if validation_required:
-            status = SourceStatus.PENDING_VALIDATION.value
-        else:
-            status = SourceStatus.ACTIVE.value
-
         source_id = str(uuid4())
         now = _utcnow_iso()
 
@@ -118,16 +105,16 @@ class JobSourcesManager:
                     last_scraped_at, last_scraped_status, last_scraped_error,
                     consecutive_failures,
                     discovery_confidence, discovered_via, discovered_by, discovery_queue_item_id,
-                    validation_required,
+                    health_json,
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0,
-                          ?, ?, ?, ?, ?, ?, ?)
+                          ?, ?, ?, ?, '{}', ?, ?)
                 """,
                 (
                     source_id,
                     name,
                     source_type,
-                    status,
+                    SourceStatus.ACTIVE.value,
                     json.dumps(config),
                     json.dumps(tags or []),
                     company_id,
@@ -136,7 +123,6 @@ class JobSourcesManager:
                     discovered_via,
                     discovered_by,
                     discovery_queue_item_id,
-                    1 if validation_required else 0,
                     now,
                     now,
                 ),
@@ -215,8 +201,6 @@ class JobSourcesManager:
             normalized_status = SourceStatus.ACTIVE
         elif status_lower in ("error", "failed", SourceStatus.FAILED.value):
             normalized_status = SourceStatus.FAILED
-        elif status_lower == SourceStatus.PENDING_VALIDATION.value:
-            normalized_status = SourceStatus.PENDING_VALIDATION
         elif status_lower == SourceStatus.DISABLED.value:
             normalized_status = SourceStatus.DISABLED
         else:
@@ -285,7 +269,6 @@ class JobSourcesManager:
         discovery_queue_item_id: Optional[str],
         company_id: Optional[str],
         company_name: Optional[str],
-        validation_required: bool,
         tags: Optional[List[str]] = None,
     ) -> str:
         return self.add_source(
@@ -295,7 +278,6 @@ class JobSourcesManager:
             company_id=company_id,
             company_name=company_name,
             tags=tags,
-            validation_required=validation_required,
             discovery_confidence=discovery_confidence,
             discovered_via=discovered_via,
             discovered_by=discovered_by,

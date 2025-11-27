@@ -26,7 +26,7 @@ def _bootstrap_db(path: Path):
               discovered_via TEXT,
               discovered_by TEXT,
               discovery_queue_item_id TEXT,
-              validation_required INTEGER NOT NULL DEFAULT 0,
+              health_json TEXT DEFAULT '{}',
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );

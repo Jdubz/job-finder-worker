@@ -34,7 +34,6 @@ describe("CompaniesPage", () => {
       id: "company-1",
       name: "Acme Corporation",
       website: "https://acme.com",
-      tier: "A",
       industry: "Technology",
       techStack: ["React", "Node.js", "PostgreSQL"],
       // Complete data: about > 100 chars AND culture > 50 chars
@@ -49,7 +48,6 @@ describe("CompaniesPage", () => {
       id: "company-2",
       name: "TechCorp",
       website: "https://techcorp.io",
-      tier: "S",
       industry: "Software",
       techStack: ["Python", "Django"],
       // Partial data: about > 50 chars (but no culture)
@@ -62,7 +60,6 @@ describe("CompaniesPage", () => {
       id: "company-3",
       name: "StartupXYZ",
       website: "https://startupxyz.com",
-      tier: "D",
       industry: null,
       techStack: [],
       // Pending data: no meaningful about or culture
@@ -135,24 +132,13 @@ describe("CompaniesPage", () => {
       })
     })
 
-    it("should display essential columns: Name, Tier, Industry, Status", async () => {
+    it("should display essential columns: Name, Industry, Status", async () => {
       render(<CompaniesPage />)
 
       await waitFor(() => {
         // Check table headers
         expect(screen.getByRole("columnheader", { name: /name/i })).toBeInTheDocument()
-        expect(screen.getByRole("columnheader", { name: /tier/i })).toBeInTheDocument()
         expect(screen.getByRole("columnheader", { name: /status/i })).toBeInTheDocument()
-      })
-    })
-
-    it("should display tier badges for each company", async () => {
-      render(<CompaniesPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("A")).toBeInTheDocument()
-        expect(screen.getByText("S")).toBeInTheDocument()
-        expect(screen.getByText("D")).toBeInTheDocument()
       })
     })
 
@@ -346,14 +332,6 @@ describe("CompaniesPage", () => {
   })
 
   describe("Filtering", () => {
-    it("should have tier filter dropdown", async () => {
-      render(<CompaniesPage />)
-
-      await waitFor(() => {
-        expect(screen.getByRole("combobox")).toBeInTheDocument()
-      })
-    })
-
     it("should have search input", async () => {
       render(<CompaniesPage />)
 

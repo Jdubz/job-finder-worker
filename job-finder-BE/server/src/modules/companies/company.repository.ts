@@ -16,8 +16,6 @@ type CompanyRow = {
   headquarters_location: string | null
   has_portland_office: number
   tech_stack: string | null
-  tier: string | null
-  priority_score: number | null
   created_at: string
   updated_at: string
 }
@@ -49,8 +47,6 @@ const buildCompany = (row: CompanyRow): Company => ({
   headquartersLocation: row.headquarters_location,
   companySizeCategory: row.company_size_category as Company['companySizeCategory'],
   techStack: parseJsonArray(row.tech_stack),
-  tier: row.tier as Company['tier'],
-  priorityScore: row.priority_score,
   createdAt: parseTimestamp(row.created_at),
   updatedAt: parseTimestamp(row.updated_at)
 })
@@ -62,9 +58,8 @@ export interface CompanyListOptions {
   limit?: number
   offset?: number
   industry?: string
-  tier?: Company['tier']
   search?: string
-  sortBy?: 'name' | 'created_at' | 'updated_at' | 'priority_score' | 'tier'
+  sortBy?: 'name' | 'created_at' | 'updated_at'
   sortOrder?: 'asc' | 'desc'
 }
 
@@ -80,7 +75,6 @@ export class CompanyRepository {
       limit = 50,
       offset = 0,
       industry,
-      tier,
       search,
       sortBy = 'created_at',
       sortOrder = 'desc'
@@ -92,11 +86,6 @@ export class CompanyRepository {
     if (industry) {
       conditions.push('LOWER(industry) = ?')
       params.push(industry.toLowerCase())
-    }
-
-    if (tier) {
-      conditions.push('tier = ?')
-      params.push(tier)
     }
 
     if (search) {
@@ -111,9 +100,7 @@ export class CompanyRepository {
     const sortColumnMap: Record<string, string> = {
       name: 'name_lower',
       created_at: 'created_at',
-      updated_at: 'updated_at',
-      priority_score: 'priority_score',
-      tier: 'tier'
+      updated_at: 'updated_at'
     }
     const orderColumn = sortColumnMap[sortBy] ?? 'created_at'
     const orderDirection = (sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
@@ -159,9 +146,9 @@ export class CompanyRepository {
       INSERT INTO companies (
         id, name, name_lower, website, about, culture, mission,
         company_size_category, industry, headquarters_location,
-        has_portland_office, tech_stack, tier, priority_score,
+        has_portland_office, tech_stack,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -177,8 +164,6 @@ export class CompanyRepository {
       input.headquartersLocation ?? null,
       0, // has_portland_office
       input.techStack ? JSON.stringify(input.techStack) : null,
-      input.tier ?? null,
-      input.priorityScore ?? null,
       now,
       now
     )
@@ -237,16 +222,6 @@ export class CompanyRepository {
     if (updates.techStack !== undefined) {
       setClauses.push('tech_stack = ?')
       params.push(updates.techStack ? JSON.stringify(updates.techStack) : null)
-    }
-
-    if (updates.tier !== undefined) {
-      setClauses.push('tier = ?')
-      params.push(updates.tier)
-    }
-
-    if (updates.priorityScore !== undefined) {
-      setClauses.push('priority_score = ?')
-      params.push(updates.priorityScore)
     }
 
     params.push(id)

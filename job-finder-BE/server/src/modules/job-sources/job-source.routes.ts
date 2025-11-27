@@ -19,16 +19,9 @@ const listQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   status: z.enum(['active', 'paused', 'disabled', 'error']).optional(),
   sourceType: z.string().min(1).optional(),
-  tier: z.enum(['S', 'A', 'B', 'C', 'D']).optional(),
   companyId: z.string().uuid().optional(),
-  validationRequired: z
-    .string()
-    .transform((v) => v === 'true')
-    .optional(),
   search: z.string().min(1).optional(),
-  sortBy: z
-    .enum(['name', 'created_at', 'updated_at', 'last_scraped_at', 'total_jobs_found', 'tier'])
-    .optional(),
+  sortBy: z.enum(['name', 'created_at', 'updated_at', 'last_scraped_at']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional()
 })
 
@@ -39,9 +32,7 @@ const updateSchema = z.object({
   configJson: z.record(z.unknown()).optional(),
   tags: z.array(z.string()).nullable().optional(),
   companyId: z.string().nullable().optional(),
-  companyName: z.string().nullable().optional(),
-  validationRequired: z.boolean().optional(),
-  tier: z.enum(['S', 'A', 'B', 'C', 'D']).optional()
+  companyName: z.string().nullable().optional()
 })
 
 export function buildJobSourceRouter() {
@@ -73,10 +64,7 @@ export function buildJobSourceRouter() {
       const response: GetJobSourceStatsResponse = {
         stats: {
           total: stats.total,
-          byStatus: stats.byStatus as Record<'active' | 'paused' | 'disabled' | 'error', number>,
-          byTier: stats.byTier as Record<'S' | 'A' | 'B' | 'C' | 'D', number>,
-          totalJobsFound: stats.totalJobsFound,
-          totalJobsMatched: stats.totalJobsMatched
+          byStatus: stats.byStatus as Record<'active' | 'paused' | 'disabled' | 'error', number>
         }
       }
       res.json(success(response))
