@@ -147,23 +147,21 @@ class GeminiProvider(AIProvider):
 
 class CodexCLIProvider(AIProvider):
     """
-    Codex CLI provider: uses the `codex` CLI (pro account session) instead of per-request API keys.
+    Codex CLI provider: uses the `codex` CLI instead of HTTP APIs.
 
-    Requires the `codex` binary on PATH and that the user is already authenticated
-    (via `codex login`).
+    Only supports models that the logged-in Codex account can access. We target
+    the `completion` subcommand (supported by Codex CLI) rather than
+    `chat/completions`, which is not available in this environment.
     """
 
-    def __init__(self, model: str = "gpt-4o-mini", timeout: int = 60):
+    def __init__(self, model: str = "gpt-4o", timeout: int = 60):
         self.model = model
         self.timeout = timeout
 
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
         body = {
             "model": self.model,
-            "messages": [
-                {"role": "system", "content": "You are a helpful assistant for job processing."},
-                {"role": "user", "content": prompt},
-            ],
+            "prompt": prompt,
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
@@ -173,7 +171,7 @@ class CodexCLIProvider(AIProvider):
                 [
                     "codex",
                     "api",
-                    "chat/completions",
+                    "completion",
                     "-m",
                     self.model,
                     "-d",
@@ -190,7 +188,7 @@ class CodexCLIProvider(AIProvider):
                 )
 
             parsed = json.loads(result.stdout)
-            content = parsed.get("choices", [{}])[0].get("message", {}).get("content", "")
+            content = parsed.get("choices", [{}])[0].get("text", "")
             if not content:
                 raise AIProviderError("Codex CLI returned empty content")
             return content
@@ -233,9 +231,17 @@ def create_provider_from_config(ai_settings: Dict[str, Any]) -> AIProvider:
     interface_type = selected.get("interface")
     model = selected.get("model", "gpt-4o-mini")
 
-    # Prefer API interface for hosted models when not specified
+    # Prefer CLI for codex (only supported interface here); otherwise default to API
     if not interface_type:
-        interface_type = "api" if provider_type in {"claude", "openai", "gemini"} else "cli"
+        interface_type = "cli" if provider_type == "codex" else "api"
+
+    # Enforce supported combinations to avoid invalid invocations
+    supported_keys = set(_PROVIDER_MAP.keys())
+    if (provider_type, interface_type) not in supported_keys:
+        raise AIProviderError(
+            f"Unsupported provider/interface combination: {provider_type}/{interface_type}. "
+            f"Supported: {', '.join(f'{p}/{i}' for p,i in supported_keys)}"
+        )
 
     provider_key = (provider_type, interface_type)
     provider_class = _PROVIDER_MAP.get(provider_key)
