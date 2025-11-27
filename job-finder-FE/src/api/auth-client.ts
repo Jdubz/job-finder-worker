@@ -16,11 +16,11 @@ export interface SessionResponse {
 
 class AuthClient extends BaseApiClient {
   async fetchSession(): Promise<SessionResponse> {
-    return this.get<SessionResponse>("/auth/session", { retryAttempts: 1 })
+    return this.get<SessionResponse>("/auth/session")
   }
 
   async logout(): Promise<{ loggedOut: boolean }> {
-    return this.post<{ loggedOut: boolean }>("/auth/logout", undefined, { retryAttempts: 1 })
+    return this.post<{ loggedOut: boolean }>("/auth/logout")
   }
 }
 

@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    return null
+    throw new Error("restoreSessionWithRetry exited unexpectedly")
   }
 
   useEffect(() => {
