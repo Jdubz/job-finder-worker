@@ -8,7 +8,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from job_finder.ai.providers import (
-    AIProvider,
     ClaudeProvider,
     CodexCLIProvider,
     GeminiProvider,
@@ -208,6 +207,7 @@ class TestCodexCLIProvider:
     def test_generate_timeout(self, mock_run):
         """Should raise AIProviderError on timeout."""
         import subprocess
+
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=60)
 
         provider = CodexCLIProvider()
@@ -224,12 +224,14 @@ class TestClaudeProvider:
     def test_init_with_env_key(self, mock_anthropic):
         """Should use API key from environment."""
         provider = ClaudeProvider()
+        assert provider.api_key == "test-key"
         mock_anthropic.assert_called_once_with(api_key="test-key")
 
     @patch("job_finder.ai.providers.Anthropic")
     def test_init_with_explicit_key(self, mock_anthropic):
         """Should use explicitly provided API key."""
         provider = ClaudeProvider(api_key="explicit-key")
+        assert provider.api_key == "explicit-key"
         mock_anthropic.assert_called_once_with(api_key="explicit-key")
 
     @patch.dict("os.environ", {}, clear=True)
@@ -237,6 +239,7 @@ class TestClaudeProvider:
         """Should raise error when no API key available."""
         # Clear ANTHROPIC_API_KEY if it exists
         import os
+
         os.environ.pop("ANTHROPIC_API_KEY", None)
 
         with pytest.raises(AIProviderError, match="API key must be provided"):
@@ -258,12 +261,14 @@ class TestOpenAIProvider:
     def test_init_with_env_key(self, mock_openai):
         """Should use API key from environment."""
         provider = OpenAIProvider()
+        assert provider.api_key == "test-key"
         mock_openai.assert_called_once_with(api_key="test-key")
 
     @patch.dict("os.environ", {}, clear=True)
     def test_init_raises_without_key(self):
         """Should raise error when no API key available."""
         import os
+
         os.environ.pop("OPENAI_API_KEY", None)
 
         with pytest.raises(AIProviderError, match="API key must be provided"):
@@ -296,6 +301,7 @@ class TestGeminiProvider:
     def test_init_with_gemini_api_key(self, mock_model, mock_configure):
         """Should fall back to GEMINI_API_KEY."""
         import os
+
         os.environ.pop("GOOGLE_API_KEY", None)
         provider = GeminiProvider()
         assert provider.api_key == "gemini-key"
@@ -305,6 +311,7 @@ class TestGeminiProvider:
     def test_init_raises_without_key(self):
         """Should raise error when no API key available."""
         import os
+
         os.environ.pop("GOOGLE_API_KEY", None)
         os.environ.pop("GEMINI_API_KEY", None)
 
