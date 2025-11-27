@@ -11,14 +11,19 @@ import logging
 import re
 import traceback
 import uuid
+from typing import Optional
 from urllib.parse import urlparse
 
+from job_finder.ai.providers import create_provider_from_config
+from job_finder.ai.source_discovery import SourceDiscovery
 from job_finder.exceptions import QueueProcessingError
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.config_expander import expand_config
+from job_finder.scrapers.generic_scraper import GenericScraper
+from job_finder.scrapers.source_config import SourceConfig
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
 from .base_processor import BaseProcessor
@@ -233,9 +238,6 @@ class SourceProcessor(BaseProcessor):
 
             # Scrape using GenericScraper
             try:
-                from job_finder.scrapers.generic_scraper import GenericScraper
-                from job_finder.scrapers.source_config import SourceConfig
-
                 # Get company name for override
                 company_id = source.get("companyId") or source.get("company_id")
                 company_name = (
@@ -258,10 +260,24 @@ class SourceProcessor(BaseProcessor):
                 scraper = GenericScraper(source_config)
                 jobs = scraper.scrape()
 
+                # If scrape is sparse/empty, try AI self-heal to improve config, then retry once
+                if self._is_sparse_jobs(jobs):
+                    healed_config = self._self_heal_source_config(
+                        source,
+                        source_url or config.get("url") or item.url,
+                        company_name,
+                    )
+                    if healed_config:
+                        self.sources_manager.update_config(source.get("id"), healed_config)
+                        expanded_config = expand_config(source_type, healed_config)
+                        source_config = SourceConfig.from_dict(expanded_config, company_name=company_name)
+                        scraper = GenericScraper(source_config)
+                        jobs = scraper.scrape()
+
                 logger.info(f"Found {len(jobs)} jobs from {source_name}")
 
                 # Submit jobs to queue
-                if jobs:
+                if jobs and not self._is_sparse_jobs(jobs):
                     source_label = f"{source_type}:{source_name}"
                     jobs_added = self.scraper_intake.submit_jobs(
                         jobs=jobs,
@@ -286,14 +302,13 @@ class SourceProcessor(BaseProcessor):
                         },
                     )
                 else:
-                    # No jobs found - still success
-                    logger.info(f"No jobs found from {source_name}")
+                    logger.info(f"Scrape yielded no usable jobs for {source_name}")
                     self.queue_manager.update_status(
                         item.id,
-                        QueueStatus.SUCCESS,
-                        "No jobs found",
+                        QueueStatus.FAILED,
+                        "Scrape produced no usable jobs; consider reviewing source config",
                         scraped_data={
-                            "jobs_found": 0,
+                            "jobs_found": len(jobs) if jobs else 0,
                             "source_name": source_name,
                         },
                     )
@@ -314,3 +329,45 @@ class SourceProcessor(BaseProcessor):
         except Exception as e:
             logger.error(f"Error in SCRAPE_SOURCE: {e}")
             raise
+
+    # ============================================================
+    # HELPERS
+    # ============================================================
+
+    def _is_sparse_jobs(self, jobs: list) -> bool:
+        """Detect whether scrape results are empty or missing key fields."""
+        if not jobs:
+            return True
+        sample = jobs[0] or {}
+        required_fields = ["title", "url", "description"]
+        missing = [f for f in required_fields if not sample.get(f)]
+        return bool(missing)
+
+    def _self_heal_source_config(
+        self, source: dict, url: str, company_name: str
+    ) -> Optional[dict]:
+        """
+        Use AI discovery to repair/improve a weak source config.
+
+        Returns a new config dict or None if healing failed/disabled.
+        """
+        try:
+            ai_settings = self.config_loader.get_ai_settings()
+            provider = create_provider_from_config(ai_settings)
+        except Exception as exc:  # pragma: no cover - defensive path
+            logger.warning("AI provider unavailable for self-heal: %s", exc)
+            return None
+
+        discovery = SourceDiscovery(provider)
+        healed_config = discovery.discover(url)
+
+        if healed_config:
+            logger.info(
+                "Updated source config via self-heal for %s (id=%s)",
+                company_name or source.get("name", "unknown"),
+                source.get("id"),
+            )
+            return healed_config
+
+        logger.info("Self-heal could not produce a better config for %s", url)
+        return None

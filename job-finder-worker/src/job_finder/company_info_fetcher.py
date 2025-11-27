@@ -189,12 +189,14 @@ class CompanyInfoFetcher:
             "founded": "",
         }
 
-        # If we have AI provider, use it for better extraction
-        if self.ai_provider:
-            result = self._extract_with_ai(content, company_name)
-        else:
-            # Fallback to simple heuristics
-            result = self._extract_with_heuristics(content)
+        # Start with heuristics to avoid AI cost; only call AI when info is sparse
+        result = self._extract_with_heuristics(content)
+
+        # Consider AI only if we have a provider and the heuristic result is sparse
+        if self.ai_provider and self._is_sparse_company_info(result):
+            ai_result = self._extract_with_ai(content, company_name)
+            if ai_result and not self._is_sparse_company_info(ai_result):
+                return ai_result
 
         return result
 
@@ -282,6 +284,24 @@ Return ONLY valid JSON in this format:
                 exc_info=True,
             )
             return self._extract_with_heuristics(content)
+
+    def _is_sparse_company_info(self, info: Dict[str, str]) -> bool:
+        """
+        Determine if extracted company info is too sparse to be useful.
+
+        Uses length thresholds from config; triggers AI enrichment when below.
+        """
+        text_limits = get_text_limits()
+        min_about = text_limits.get("minCompanyPageLength", 200)
+        min_sparse = text_limits.get("minSparseCompanyInfoLength", 100)
+
+        about_len = len(info.get("about", "") or "")
+        culture_len = len(info.get("culture", "") or "")
+        mission_len = len(info.get("mission", "") or "")
+
+        # Treat as sparse if about is short OR sum of sections is very small
+        total_len = about_len + culture_len + mission_len
+        return about_len < min_about or total_len < min_sparse
 
     def _extract_with_heuristics(self, content: str) -> Dict[str, str]:
         """

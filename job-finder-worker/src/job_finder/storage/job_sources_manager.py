@@ -271,3 +271,17 @@ class JobSourcesManager:
                 """,
                 (status.value, _utcnow_iso(), source_id),
             )
+
+    def update_config(self, source_id: str, config: Dict[str, Any]) -> None:
+        """Persist a new config for an existing source."""
+        with sqlite_connection(self.db_path) as conn:
+            updated = conn.execute(
+                """
+                UPDATE job_sources
+                SET config_json = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (json.dumps(config), _utcnow_iso(), source_id),
+            )
+            if updated.rowcount == 0:
+                raise StorageError(f"Source {source_id} not found")
