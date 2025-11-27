@@ -24,6 +24,7 @@ import {
   getCompanyName,
   getDomain,
   getJobTitle,
+  getScrapeTitle,
   getSourceLabel,
   getStageLabel,
   getTaskTypeLabel,
@@ -350,7 +351,8 @@ export function QueueManagementPage() {
               <TableBody>
                 {displayItems.map((item) => {
                   if (!item.id) return null
-                  const title = getJobTitle(item) || getDomain(item.url) || "Untitled task"
+                  const title =
+                    getJobTitle(item) || getScrapeTitle(item) || getDomain(item.url) || "Untitled task"
                   const company = getCompanyName(item)
                   const source = getSourceLabel(item)
                   const typeLabel = getTaskTypeLabel(item)
