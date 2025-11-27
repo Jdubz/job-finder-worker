@@ -64,6 +64,7 @@ class ScraperIntake:
         source_label: Optional[str] = None,
         source_type: Optional[str] = None,
         company_id: Optional[str] = None,
+        max_to_add: Optional[int] = None,
     ) -> int:
         """
         Submit multiple jobs to the queue with pre-filtering.
@@ -113,6 +114,12 @@ class ScraperIntake:
         prefilter_reasons: Dict[str, int] = {}
 
         for job in jobs:
+            if max_to_add is not None and added_count >= max_to_add:
+                logger.info(
+                    "Reached target_matches cap (%s); skipping remaining jobs from this source",
+                    max_to_add,
+                )
+                break
             try:
                 # Validate URL exists and is non-empty
                 url = job.get("url", "").strip()
@@ -184,6 +191,13 @@ class ScraperIntake:
                 # Add to queue
                 doc_id = self.queue_manager.add_item(queue_item)
                 added_count += 1
+
+                if max_to_add is not None and added_count >= max_to_add:
+                    logger.debug(
+                        "Hit max_to_add cap (%s) while processing jobs; stopping intake for source",
+                        max_to_add,
+                    )
+                    break
 
             except DuplicateQueueItemError:
                 # Race condition - another process added this URL between our check and insert

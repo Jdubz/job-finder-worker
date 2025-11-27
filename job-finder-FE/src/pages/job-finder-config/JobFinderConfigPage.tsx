@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -12,12 +13,42 @@ import {
   TechnologyRanksTab,
   SchedulerTab,
   CompanyScoringTab,
-  WorkerSettingsTab,
+  PersonalInfoTab,
 } from "./components/tabs"
+import { useSearchParams } from "react-router-dom"
+
+type TabType =
+  | "stop-list"
+  | "queue"
+  | "ai"
+  | "job-match"
+  | "filters"
+  | "tech"
+  | "scheduler"
+  | "scoring"
+  | "personal"
 
 export function JobFinderConfigPage() {
   const { user, isOwner } = useAuth()
   const configState = useConfigState()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = (searchParams.get("tab") as TabType | null) ?? "stop-list"
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab)
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab") as TabType | null
+    if (tabParam && tabParam !== activeTab) {
+      setActiveTab(tabParam)
+    }
+  }, [searchParams, activeTab])
+
+  const handleTabChange = (value: string) => {
+    const tabValue = (value as TabType) ?? "stop-list"
+    setActiveTab(tabValue)
+    const params = new URLSearchParams(searchParams)
+    params.set("tab", tabValue)
+    setSearchParams(params, { replace: true })
+  }
 
   if (!user) {
     return (
@@ -55,7 +86,7 @@ export function JobFinderConfigPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Job Finder Configuration</h1>
-          <p className="text-muted-foreground">Manage filtering rules, technology rankings, and worker settings</p>
+          <p className="text-muted-foreground">Manage filtering rules, queues, scheduling, scoring, and profile defaults.</p>
         </div>
       </div>
 
@@ -71,7 +102,7 @@ export function JobFinderConfigPage() {
         </Alert>
       )}
 
-      <Tabs defaultValue="stop-list" className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="stop-list">Stop List</TabsTrigger>
           <TabsTrigger value="queue">Queue</TabsTrigger>
@@ -81,7 +112,7 @@ export function JobFinderConfigPage() {
           <TabsTrigger value="tech">Tech</TabsTrigger>
           <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
-          <TabsTrigger value="worker">Worker</TabsTrigger>
+          <TabsTrigger value="personal">Personal</TabsTrigger>
         </TabsList>
 
         <StopListTab
@@ -174,13 +205,13 @@ export function JobFinderConfigPage() {
           handleResetCompanyScoring={configState.handleResetCompanyScoring}
         />
 
-        <WorkerSettingsTab
+        <PersonalInfoTab
           isSaving={configState.isSaving}
-          currentWorker={configState.currentWorker}
-          hasWorkerSettingsChanges={configState.hasWorkerSettingsChanges}
-          updateWorkerSettingsState={configState.updateWorkerSettingsState}
-          handleSaveWorkerSettings={configState.handleSaveWorkerSettings}
-          handleResetWorkerSettings={configState.handleResetWorkerSettings}
+          currentPersonalInfo={configState.currentPersonalInfo}
+          hasPersonalInfoChanges={configState.hasPersonalInfoChanges}
+          updatePersonalInfoState={configState.updatePersonalInfoState}
+          handleSavePersonalInfo={configState.handleSavePersonalInfo}
+          handleResetPersonalInfo={configState.handleResetPersonalInfo}
         />
       </Tabs>
     </div>

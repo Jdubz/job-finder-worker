@@ -24,17 +24,17 @@ const DEV_TOKENS: Record<string, { email: string; roles: UserRole[]; name: strin
   },
 }
 
-interface AuthenticatedUser extends GoogleUser {
+export interface AuthenticatedUser extends GoogleUser {
   roles: UserRole[]
 }
 
-interface AuthenticatedRequest extends Request {
+export interface AuthenticatedRequest extends Request {
   user?: AuthenticatedUser
 }
 
 const userRepository = new UserRepository()
 let cachedBypassEmail: string | null = null
-const SESSION_COOKIE = "jf_session"
+export const SESSION_COOKIE = "jf_session"
 const SESSION_TTL_DAYS = env.SESSION_TTL_DAYS
 
 function resolveBypassEmail(): string | undefined {

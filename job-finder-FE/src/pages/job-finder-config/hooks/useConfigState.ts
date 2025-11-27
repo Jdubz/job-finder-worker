@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useAuth } from "@/contexts/AuthContext"
 import { configClient } from "@/api/config-client"
 import {
   DEFAULT_JOB_FILTERS,
@@ -6,8 +7,8 @@ import {
   DEFAULT_TECH_RANKS,
   DEFAULT_SCHEDULER_SETTINGS,
   DEFAULT_COMPANY_SCORING,
-  DEFAULT_WORKER_SETTINGS,
   DEFAULT_AI_SETTINGS,
+  DEFAULT_PERSONAL_INFO,
 } from "@shared/types"
 import type {
   StopList,
@@ -19,19 +20,17 @@ import type {
   SchedulerSettings,
   TechnologyRank,
   CompanyScoringConfig,
-  WorkerSettings,
 } from "@shared/types"
+import type { PersonalInfo } from "@shared/types"
 import { deepClone, stableStringify, createSaveHandler, createResetHandler } from "../utils/config-helpers"
 
-export type TabType = "stop-list" | "queue" | "ai" | "job-match" | "filters" | "tech" | "scheduler" | "scoring" | "worker"
-
 export function useConfigState() {
+  const { user } = useAuth()
   // UI state
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<TabType>("stop-list")
 
   // Stop List state
   const [stopList, setStopList] = useState<StopList | null>(null)
@@ -71,9 +70,9 @@ export function useConfigState() {
   const [companyScoring, setCompanyScoring] = useState<CompanyScoringConfig | null>(null)
   const [originalCompanyScoring, setOriginalCompanyScoring] = useState<CompanyScoringConfig | null>(null)
 
-  // Worker Settings
-  const [workerSettings, setWorkerSettings] = useState<WorkerSettings | null>(null)
-  const [originalWorkerSettings, setOriginalWorkerSettings] = useState<WorkerSettings | null>(null)
+  // Personal Info
+  const [personalInfo, setPersonalInfo] = useState<PersonalInfo | null>(null)
+  const [originalPersonalInfo, setOriginalPersonalInfo] = useState<PersonalInfo | null>(null)
 
   // Load all settings on mount
   useEffect(() => {
@@ -85,7 +84,7 @@ export function useConfigState() {
     setError(null)
 
     try {
-      const [stopListData, queueData, aiData, jobMatchData, filtersData, techData, schedulerData, scoringData, workerData] = await Promise.all([
+      const [stopListData, queueData, aiData, jobMatchData, filtersData, techData, schedulerData, scoringData, personalInfoData] = await Promise.all([
         configClient.getStopList(),
         configClient.getQueueSettings(),
         configClient.getAISettings(),
@@ -94,7 +93,7 @@ export function useConfigState() {
         configClient.getTechnologyRanks(),
         configClient.getSchedulerSettings(),
         configClient.getCompanyScoring(),
-        configClient.getWorkerSettings(),
+        configClient.getPersonalInfo(),
       ])
 
       setStopList(stopListData)
@@ -124,9 +123,11 @@ export function useConfigState() {
       setCompanyScoring(scoringPayload)
       setOriginalCompanyScoring(deepClone(scoringPayload))
 
-      const workerPayload = deepClone(workerData ?? DEFAULT_WORKER_SETTINGS)
-      setWorkerSettings(workerPayload)
-      setOriginalWorkerSettings(deepClone(workerPayload))
+      const personalPayload = deepClone(
+        personalInfoData ?? { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
+      )
+      setPersonalInfo(personalPayload)
+      setOriginalPersonalInfo(deepClone(personalPayload))
     } catch (err) {
       setError("Failed to load configuration settings")
       console.error("Error loading settings:", err)
@@ -161,9 +162,11 @@ export function useConfigState() {
   const updateCompanyScoringState = (updater: (current: CompanyScoringConfig) => CompanyScoringConfig) => {
     setCompanyScoring((prev) => updater(prev ?? deepClone(DEFAULT_COMPANY_SCORING)))
   }
-
-  const updateWorkerSettingsState = (updater: (current: WorkerSettings) => WorkerSettings) => {
-    setWorkerSettings((prev) => updater(prev ?? deepClone(DEFAULT_WORKER_SETTINGS)))
+  const updatePersonalInfoState = (updates: Partial<PersonalInfo>) => {
+    setPersonalInfo((prev) => ({
+      ...(prev ?? { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }),
+      ...updates,
+    }))
   }
 
   // Save handlers
@@ -255,12 +258,15 @@ export function useConfigState() {
       setSuccess,
     })
 
-  const handleSaveWorkerSettings = () =>
+  const handleSavePersonalInfo = () =>
     createSaveHandler({
-      data: workerSettings,
-      updateFn: configClient.updateWorkerSettings,
-      setOriginal: setOriginalWorkerSettings,
-      configName: "worker settings",
+      data: personalInfo,
+      // personal info requires user email for creation
+      updateFn: async (payload) => {
+        await configClient.updatePersonalInfo(payload ?? {}, user?.email ?? "")
+      },
+      setOriginal: setOriginalPersonalInfo,
+      configName: "personal info",
       setIsSaving,
       setError,
       setSuccess,
@@ -385,11 +391,11 @@ export function useConfigState() {
       setSuccess
     )
 
-  const handleResetWorkerSettings = () =>
+  const handleResetPersonalInfo = () =>
     createResetHandler(
-      setWorkerSettings,
-      originalWorkerSettings,
-      DEFAULT_WORKER_SETTINGS,
+      setPersonalInfo,
+      originalPersonalInfo,
+      { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email },
       setError,
       setSuccess
     )
@@ -424,7 +430,7 @@ export function useConfigState() {
   const hasTechRankChanges = stableStringify(techRanks) !== stableStringify(originalTechRanks)
   const hasSchedulerChanges = stableStringify(schedulerSettings) !== stableStringify(originalSchedulerSettings)
   const hasCompanyScoringChanges = stableStringify(companyScoring) !== stableStringify(originalCompanyScoring)
-  const hasWorkerSettingsChanges = stableStringify(workerSettings) !== stableStringify(originalWorkerSettings)
+  const hasPersonalInfoChanges = stableStringify(personalInfo) !== stableStringify(originalPersonalInfo)
 
   // Current values with defaults
   const currentJobFilters = jobFilters ?? DEFAULT_JOB_FILTERS
@@ -434,7 +440,8 @@ export function useConfigState() {
   }
   const currentScheduler = schedulerSettings ?? DEFAULT_SCHEDULER_SETTINGS
   const currentScoring = companyScoring ?? DEFAULT_COMPANY_SCORING
-  const currentWorker = workerSettings ?? DEFAULT_WORKER_SETTINGS
+  const currentPersonalInfo =
+    personalInfo ?? { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
 
   return {
     // UI state
@@ -442,9 +449,6 @@ export function useConfigState() {
     isSaving,
     error,
     success,
-    activeTab,
-    setActiveTab,
-
     // Stop List
     stopList,
     setStopList,
@@ -524,13 +528,13 @@ export function useConfigState() {
     handleSaveCompanyScoring,
     handleResetCompanyScoring,
 
-    // Worker Settings
-    workerSettings,
-    currentWorker,
-    hasWorkerSettingsChanges,
-    updateWorkerSettingsState,
-    handleSaveWorkerSettings,
-    handleResetWorkerSettings,
+    // Personal Info
+    personalInfo,
+    currentPersonalInfo,
+    hasPersonalInfoChanges,
+    updatePersonalInfoState,
+    handleSavePersonalInfo,
+    handleResetPersonalInfo,
   }
 }
 

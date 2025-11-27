@@ -478,7 +478,7 @@ def test_process_scrape_no_config(processor, mock_managers):
 
     # Should call scrape runner with defaults (from ScrapeConfig())
     processor.scrape_runner.run_scrape.assert_called_once_with(
-        target_matches=5, max_sources=20, source_ids=None
+        target_matches=None, max_sources=None, source_ids=None
     )
 
 

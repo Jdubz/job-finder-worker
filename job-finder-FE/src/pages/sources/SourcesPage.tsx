@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobSources } from "@/hooks/useJobSources"
 import { useQueueItems } from "@/hooks/useQueueItems"
+import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -105,6 +106,8 @@ export function SourcesPage() {
   const [selectedSource, setSelectedSource] = useState<JobSource | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false)
+  const [scrapePrefillSourceId, setScrapePrefillSourceId] = useState<string | null>(null)
 
   // Form state
   const [sourceUrl, setSourceUrl] = useState("")
@@ -364,6 +367,7 @@ export function SourcesPage() {
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="hidden md:table-cell">Company</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -386,6 +390,22 @@ export function SourcesPage() {
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
                       {source.companyName || "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (source.id) {
+                            setScrapePrefillSourceId(source.id)
+                            setScrapeDialogOpen(true)
+                          }
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        New scrape
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -419,15 +439,23 @@ export function SourcesPage() {
                 {getSourceUrl(selectedSource) && (
                   <div>
                     <Label className="text-muted-foreground text-xs uppercase tracking-wide">Source URL</Label>
-                    <a
-                      href={getSourceUrl(selectedSource)!}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center text-blue-600 hover:underline mt-1"
-                    >
-                      {getSourceUrl(selectedSource)}
-                      <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
-                    </a>
+                    {(() => {
+                      const url = getSourceUrl(selectedSource)
+                      if (!url) {
+                        return <span className="text-muted-foreground mt-1 inline-block">Not provided</span>
+                      }
+                      return (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center text-blue-600 hover:underline mt-1"
+                      >
+                        {url}
+                        <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
+                      </a>
+                      )
+                    })()}
                   </div>
                 )}
 
@@ -504,6 +532,14 @@ export function SourcesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ScrapeJobDialog
+        open={scrapeDialogOpen}
+        onOpenChange={setScrapeDialogOpen}
+        prefillSourceId={scrapePrefillSourceId}
+        onSubmitted={refetch}
+        sources={sources}
+      />
     </div>
   )
 }

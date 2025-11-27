@@ -133,7 +133,7 @@ def test_queue_scrape_end_to_end(temp_db):
     scrape_runner = processor.job_processor.scrape_runner
 
     # Avoid real network scraping; submit a deterministic job into the queue.
-    def fake_scrape_source(source):
+    def fake_scrape_source(source, remaining_matches=None):
         job = {
             "title": "E2E Pipeline Engineer",
             "company": "E2E Co",

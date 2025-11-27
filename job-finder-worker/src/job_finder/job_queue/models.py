@@ -144,11 +144,11 @@ class ScrapeConfig(BaseModel):
     """
 
     target_matches: Optional[int] = Field(
-        default=5,
+        default=None,
         description="Stop after finding this many potential matches (None = no limit)",
     )
     max_sources: Optional[int] = Field(
-        default=20,
+        default=None,
         description="Maximum number of sources to scrape (None = unlimited)",
     )
     source_ids: Optional[List[str]] = Field(

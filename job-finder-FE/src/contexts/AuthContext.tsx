@@ -9,6 +9,7 @@ import {
   TEST_AUTH_TOKEN_KEY,
 } from "@/config/testing"
 import adminConfig from "@/config/admins.json"
+import { authClient } from "@/api/auth-client"
 
 // Create a Set for O(1) admin email lookup
 const adminEmailSet = new Set(
@@ -54,37 +55,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [googleClientId])
 
   useEffect(() => {
+    let isMounted = true
+
     if (AUTH_BYPASS_ENABLED && typeof window !== "undefined") {
       const bypassState = readBypassState()
-      if (bypassState) {
-        const bypassUser = buildBypassUser(bypassState)
-        setUser(bypassUser)
-        setIsOwner(bypassState.isOwner ?? adminEmailSet.has(bypassUser.email))
-      } else {
-        setUser(null)
-        setIsOwner(false)
+      if (isMounted) {
+        if (bypassState) {
+          const bypassUser = buildBypassUser(bypassState)
+          setUser(bypassUser)
+          setIsOwner(bypassState.isOwner ?? adminEmailSet.has(bypassUser.email))
+        } else {
+          setUser(null)
+          setIsOwner(false)
+        }
+        setLoading(false)
       }
-      setLoading(false)
-      return
+      return () => {
+        isMounted = false
+      }
     }
 
-    const storedToken = getStoredAuthToken()
-    if (storedToken) {
-      const payload = decodeJwt(storedToken)
-      const expiresAtMs = payload.exp ? payload.exp * 1000 : null
-      if (expiresAtMs && Date.now() >= expiresAtMs) {
-        console.warn("Stored auth token has expired; clearing session")
-        clearStoredAuthToken()
-        setUser(null)
-        setIsOwner(false)
-        setLoading(false)
-        return
+    const bootstrapAuth = async () => {
+      const storedToken = getStoredAuthToken()
+      if (storedToken) {
+        const payload = decodeJwt(storedToken)
+        const expiresAtMs = payload.exp ? payload.exp * 1000 : null
+        if (expiresAtMs && Date.now() >= expiresAtMs) {
+          console.warn("Stored auth token has expired; clearing session")
+          clearStoredAuthToken()
+        } else {
+          const restoredUser = buildUserFromToken(storedToken, payload)
+          if (isMounted) {
+            setUser(restoredUser)
+            setIsOwner(restoredUser?.email ? adminEmailSet.has(restoredUser.email) : false)
+            setLoading(false)
+          }
+          return
+        }
       }
-      const restoredUser = buildUserFromToken(storedToken, payload)
-      setUser(restoredUser)
-      setIsOwner(restoredUser?.email ? adminEmailSet.has(restoredUser.email) : false)
+
+      // No valid JWT in storage - attempt to restore from server-side session cookie
+      try {
+        const session = await authClient.fetchSession()
+        if (!isMounted) return
+        if (session?.user?.email) {
+          const restoredUser: AuthUser = {
+            id: session.user.uid ?? session.user.email,
+            uid: session.user.uid,
+            email: session.user.email,
+            name: session.user.name,
+            picture: session.user.picture,
+            emailVerified: session.user.emailVerified ?? true,
+          }
+          setUser(restoredUser)
+          setIsOwner(adminEmailSet.has(restoredUser.email))
+        } else {
+          setUser(null)
+          setIsOwner(false)
+        }
+      } catch (error) {
+        // 401s are expected when no session cookie exists; only log unexpected errors
+        if ((error as { statusCode?: number })?.statusCode !== 401) {
+          console.warn("Failed to restore session from cookie", error)
+        }
+        if (isMounted) {
+          setUser(null)
+          setIsOwner(false)
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
     }
-    setLoading(false)
+
+    void bootstrapAuth()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   const authenticateWithGoogle = (credential: string) => {
@@ -108,6 +157,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null)
       setIsOwner(false)
       return
+    }
+
+    try {
+      await authClient.logout()
+    } catch (error) {
+      console.warn("Failed to revoke server session", error)
     }
 
     try {
