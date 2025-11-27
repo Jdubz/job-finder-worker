@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import { randomUUID } from 'crypto'
 import { logger } from '../../logger'
+import { HEARTBEAT_INTERVAL_MS, initSseStream, type SseClient } from '../shared/sse'
 
 type LifecycleEventName = 'restarting' | 'ready' | 'draining.start' | 'draining.complete' | 'status'
 
@@ -11,14 +12,9 @@ type LifecyclePayload = {
   ts: string
 }
 
-type Client = {
-  id: string
-  res: Response
-}
-
 type ServerPhase = 'starting' | 'ready' | 'draining' | 'restarting'
 
-const clients = new Set<Client>()
+const clients = new Set<SseClient>()
 let phase: ServerPhase = 'starting'
 let ready = false
 
@@ -62,11 +58,7 @@ export function setLifecyclePhase(next: ServerPhase, data: Record<string, unknow
 }
 
 export function handleLifecycleEventsSse(req: Request, res: Response) {
-  const clientId = randomUUID()
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders?.()
+  initSseStream(req, res, clients, HEARTBEAT_INTERVAL_MS)
 
   // Faster client retries on disconnect
   res.write('retry: 1500\n\n')
@@ -79,14 +71,6 @@ export function handleLifecycleEventsSse(req: Request, res: Response) {
     ts: new Date().toISOString(),
   }
   res.write(serializeEvent(snapshot))
-
-  const client: Client = { id: clientId, res }
-  clients.add(client)
-
-  req.on('close', () => {
-    clients.delete(client)
-    res.end()
-  })
 }
 
 export function getLifecyclePhase(): ServerPhase {

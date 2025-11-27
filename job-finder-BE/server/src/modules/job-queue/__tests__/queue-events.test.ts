@@ -28,8 +28,8 @@ const mockQueueItem: QueueItem = {
   source: 'user_submission',
   retry_count: 0,
   max_retries: 0,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
+  created_at: new Date(),
+  updated_at: new Date(),
 }
 
 describe('Queue Event Type Guards', () => {
