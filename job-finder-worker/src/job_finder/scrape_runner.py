@@ -26,6 +26,7 @@ from job_finder.job_queue.models import (
     SourceTypeHint,
 )
 from job_finder.job_queue.scraper_intake import ScraperIntake
+from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.storage import JobStorage
@@ -224,44 +225,39 @@ class ScrapeRunner:
             Stats dict with jobs_found and jobs_submitted counts
         """
         source_name = source.get("name", "Unknown")
+        source_type = source.get("sourceType", "api")
         config = source.get("config", {})
 
         # Get company metadata
         company_id = source.get("company_id") or source.get("companyId")
-        company_name = source.get("company_name") or source_name
+        company_name = source.get("company_name") or source.get("companyName") or source_name
         if company_id:
             company = self.companies_manager.get_company_by_id(company_id)
             if company:
                 company_name = company.get("name") or company_name
 
-        logger.info(f"\nScraping source: {source_name}")
+        logger.info(f"\nScraping source: {source_name} (type={source_type})")
 
         stats = {
             "jobs_found": 0,
             "jobs_submitted": 0,
         }
 
-        # Check if config has new format (type field)
-        if "type" not in config:
-            # Config needs migration - spawn discovery
-            logger.warning(f"Source '{source_name}' has legacy config format. Spawning discovery.")
-            self._spawn_source_discovery(
-                url=source.get("url") or config.get("url") or config.get("base_url", ""),
-                company_id=company_id,
-                company_name=company_name,
-                discovered_via=source.get("discovered_via") or "config_migration",
-            )
-            return stats
+        # Expand config based on source_type (converts simple configs to full scraper configs)
+        try:
+            expanded_config = expand_config(source_type, config)
+        except ValueError as e:
+            raise ConfigurationError(f"Invalid config for source {source_name}: {e}")
 
-        # Validate config has required fields
-        if "url" not in config:
+        # Validate expanded config has required fields
+        if "url" not in expanded_config:
             raise ConfigurationError(f"Source {source_name} missing 'url' in config")
-        if "fields" not in config:
+        if "fields" not in expanded_config:
             raise ConfigurationError(f"Source {source_name} missing 'fields' in config")
 
         # Create SourceConfig with company name override
         try:
-            source_config = SourceConfig.from_dict(config, company_name=company_name)
+            source_config = SourceConfig.from_dict(expanded_config, company_name=company_name)
         except Exception as e:
             raise ConfigurationError(f"Invalid config for source {source_name}: {e}")
 
@@ -275,8 +271,7 @@ class ScrapeRunner:
         if not jobs:
             return stats
 
-        # Submit jobs to queue
-        source_type = config.get("type", "unknown")
+        # Submit jobs to queue - use source_type from database as the authoritative type
         source_label = f"{source_type}:{source_name}"
         jobs_submitted = self.scraper_intake.submit_jobs(
             jobs=jobs,
