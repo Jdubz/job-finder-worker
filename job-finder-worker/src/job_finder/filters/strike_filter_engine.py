@@ -44,6 +44,10 @@ class StrikeFilterEngine:
         self.excluded_seniority = [s.lower() for s in hard_rej.get("excludedSeniority", [])]
         self.excluded_companies = [c.lower() for c in hard_rej.get("excludedCompanies", [])]
         self.excluded_keywords = [k.lower() for k in hard_rej.get("excludedKeywords", [])]
+        # Whitelist: job titles must contain at least one of these keywords
+        self.required_title_keywords = [
+            k.lower() for k in hard_rej.get("requiredTitleKeywords", [])
+        ]
         self.min_salary_floor = hard_rej.get("minSalaryFloor", 100000)
         self.reject_commission_only = hard_rej.get("rejectCommissionOnly", True)
 
@@ -112,6 +116,11 @@ class StrikeFilterEngine:
         posted_date_str = job_data.get("posted_date", "")
 
         # === PHASE 1: Hard Rejections (immediate fail) ===
+
+        # Check required title keywords (whitelist) - FIRST check
+        # Job title must contain at least one of the required keywords
+        if self._missing_required_title_keyword(title, result):
+            return result
 
         # Check job type
         if self._is_excluded_job_type(title, description, result):
@@ -185,6 +194,44 @@ class StrikeFilterEngine:
         return result
 
     # === Hard Rejection Checks ===
+
+    def _missing_required_title_keyword(self, title: str, result: FilterResult) -> bool:
+        """
+        Check if job title is missing all required keywords (whitelist check).
+
+        Job title MUST contain at least one of the required keywords to be considered.
+        This is a pre-filter to ensure we only process relevant software/engineering jobs.
+        """
+        # If no required keywords configured, skip this check
+        if not self.required_title_keywords:
+            return False
+
+        title_lower = title.lower()
+
+        # Check if title contains at least one required keyword
+        def is_match(keyword: str) -> bool:
+            if " " in keyword:
+                # Multi-word phrase (e.g., "full stack") - substring match
+                return keyword in title_lower
+            else:
+                # Single word - use lookarounds to avoid partial matches
+                # and handle non-alphanumeric keywords like c++, c#
+                pattern = r"(?<!\w)" + re.escape(keyword) + r"(?!\w)"
+                return bool(re.search(pattern, title_lower))
+
+        if any(is_match(k) for k in self.required_title_keywords):
+            return False  # Found a match, job passes
+
+        # No required keywords found - reject
+        result.add_rejection(
+            filter_category="hard_reject",
+            filter_name="missing_required_title_keyword",
+            reason="Title missing required keywords",
+            detail=f"Title '{title}' does not contain any of: {', '.join(self.required_title_keywords)}",
+            severity="hard_reject",
+            points=0,
+        )
+        return True
 
     def _is_excluded_job_type(self, title: str, description: str, result: FilterResult) -> bool:
         """Check if job is excluded type (sales, HR, etc.)."""

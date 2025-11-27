@@ -81,6 +81,22 @@ export function JobFiltersTab({
           </div>
         </div>
 
+        {/* Required Title Keywords (Whitelist) - Most important filter */}
+        <div className="p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <StringListEditor
+            label="Required Title Keywords (Whitelist)"
+            values={hardRejections.requiredTitleKeywords ?? []}
+            placeholder="software, developer, engineer..."
+            description="Job titles MUST contain at least one of these keywords. Jobs without any of these words are immediately rejected."
+            onChange={(values) =>
+              updateJobFiltersState((current) => ({
+                ...current,
+                hardRejections: { ...current.hardRejections, requiredTitleKeywords: values },
+              }))
+            }
+          />
+        </div>
+
         <div className="grid grid-cols-2 gap-6">
           <StringListEditor
             label="Excluded Job Types"
