@@ -167,9 +167,19 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         }
         buffer += decoder.decode()
         processBuffer()
-      } catch {
+      } catch (error) {
+        // Skip reconnects if intentionally aborted during unmount
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+
         if (!cancelled) {
+          console.error("Queue event stream disconnected; retrying shortly", error)
           fetchQueueItems()
+          // Attempt to reconnect after backoff
+          setTimeout(() => {
+            if (!cancelled) void startStream()
+          }, 5000)
         }
       }
     }

@@ -1,4 +1,4 @@
-import type { Server } from 'http'
+import type { Server, IncomingMessage } from 'http'
 import { WebSocketServer, type WebSocket, type RawData } from 'ws'
 import { logger } from '../../logger'
 import { env } from '../../config/env'
@@ -16,8 +16,8 @@ type WorkerMessage = {
 export function initWorkerSocket(server: Server) {
   const wss = new WebSocketServer({ server, path: '/worker/stream' })
 
-  wss.on('connection', (ws: WebSocket & { _req?: { headers?: Record<string, string | string[] | undefined> } }) => {
-    const tokenHeader = ws._req?.headers?.authorization as string | undefined
+  wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+    const tokenHeader = req.headers.authorization as string | undefined
     const token = tokenHeader?.startsWith('Bearer ') ? tokenHeader.slice(7) : undefined
     if (env.WORKER_WS_TOKEN && token !== env.WORKER_WS_TOKEN) {
       logger.warn('Worker WS connection rejected: invalid token')
