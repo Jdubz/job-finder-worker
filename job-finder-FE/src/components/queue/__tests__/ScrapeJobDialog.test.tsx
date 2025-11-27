@@ -47,9 +47,15 @@ describe("ScrapeJobDialog", () => {
   it("submits scrape job successfully and closes dialog", async () => {
     const user = userEvent.setup()
     vi.mocked(queueClient.submitScrape).mockResolvedValueOnce({
-      status: "success",
-      message: "Scrape submitted",
-      queueItemId: "test-id",
+      id: "test-id",
+      type: "scrape",
+      status: "pending",
+      url: "",
+      company_name: "",
+      company_id: null,
+      source: "user_submission",
+      created_at: new Date(),
+      updated_at: new Date(),
     })
 
     render(
