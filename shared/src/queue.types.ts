@@ -236,6 +236,7 @@ export interface SubmitScrapeResponse {
 export interface SubmitCompanyRequest {
   companyName: string
   websiteUrl: string
+  companyId?: string | null // Optional: existing company ID for re-analysis
   source?: "manual_submission" | "user_request" | "automated_scan"
 }
 
