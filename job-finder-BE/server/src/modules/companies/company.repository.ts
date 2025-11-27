@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { Company, TimestampLike } from '@shared/types'
+import type { Company } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
 type CompanyRow = {
