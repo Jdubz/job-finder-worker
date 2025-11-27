@@ -48,6 +48,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isOwner, setIsOwner] = useState(false)
   const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
 
+  // When the API restarts during deploys we may get transient 5xx/connection errors.
+  // Retry a few times before declaring the session missing so we don't log users out unnecessarily.
+  const restoreSessionWithRetry = async (): Promise<AuthUser | null> => {
+    const MAX_ATTEMPTS = 3
+    const BASE_DELAY_MS = 500
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const session = await authClient.fetchSession()
+        if (session?.user?.email) {
+          return {
+            id: session.user.uid ?? session.user.email,
+            uid: session.user.uid,
+            email: session.user.email,
+            name: session.user.name,
+            picture: session.user.picture,
+            emailVerified: session.user.emailVerified ?? true,
+          }
+        }
+        return null
+      } catch (error) {
+        const status = (error as { statusCode?: number })?.statusCode
+        const isAuthFailure = status === 401
+        if (isAuthFailure || attempt === MAX_ATTEMPTS - 1) {
+          throw error
+        }
+
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+
+    return null
+  }
+
   useEffect(() => {
     if (!AUTH_BYPASS_ENABLED && !googleClientId) {
       console.error("VITE_GOOGLE_OAUTH_CLIENT_ID is required for authentication.")
@@ -96,17 +131,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // No valid JWT in storage - attempt to restore from server-side session cookie
       try {
-        const session = await authClient.fetchSession()
+        const restoredUser = await restoreSessionWithRetry()
         if (!isMounted) return
-        if (session?.user?.email) {
-          const restoredUser: AuthUser = {
-            id: session.user.uid ?? session.user.email,
-            uid: session.user.uid,
-            email: session.user.email,
-            name: session.user.name,
-            picture: session.user.picture,
-            emailVerified: session.user.emailVerified ?? true,
-          }
+
+        if (restoredUser) {
           setUser(restoredUser)
           setIsOwner(adminEmailSet.has(restoredUser.email))
         } else {
