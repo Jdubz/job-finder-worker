@@ -209,11 +209,9 @@ Queue processing configuration.
 AI provider configuration with multi-tier selection.
 
 **Fields:**
-- `selected: AIProviderSelection` - Currently selected provider configuration
-  - `provider: AIProviderType` - Provider (codex, claude, openai, gemini)
-  - `interface: AIInterfaceType` - Interface (cli, api)
-  - `model: string` - Model identifier
-- `providers: AIProviderStatus[]` - Available providers with enabled status
+- `worker.selected: AIProviderSelection` - Provider/interface/model used by the worker pipeline
+- `documentGenerator.selected: AIProviderSelection` - Provider/interface/model for document generation
+- `options: AIProviderOption[]` - Tiered provider → interface → models list (each interface has `enabled`/`reason`)
 - `updatedAt?: TimestampLike` - Last update timestamp
 - `updatedBy?: string | null` - User who last updated
 

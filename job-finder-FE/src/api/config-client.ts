@@ -16,6 +16,7 @@ import type {
   CompanyScoringConfig,
   WorkerSettings,
 } from "@shared/types"
+import { DEFAULT_AI_SETTINGS } from "@shared/types"
 
 export class ConfigClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
@@ -76,18 +77,23 @@ export class ConfigClient extends BaseApiClient {
   }
 
   async updateAISettings(settings: Partial<AISettings>): Promise<void> {
-    const existing = (await this.getAISettings()) ?? {
-      selected: { provider: "codex", interface: "cli", model: "gpt-4o-mini" },
-      providers: [],
-    }
+    const existing = (await this.getAISettings()) ?? DEFAULT_AI_SETTINGS
+    const legacySelected = (settings as Partial<{ selected: AISettings["worker"]["selected"] }>).selected
+
     await this.updateConfigEntry("ai-settings", {
-      ...existing,
-      ...settings,
-      // Deep merge the selected object
-      selected: {
-        ...existing.selected,
-        ...(settings.selected ?? {}),
+      worker: {
+        selected: {
+          ...existing.worker.selected,
+          ...(settings.worker?.selected ?? legacySelected ?? {}),
+        },
       },
+      documentGenerator: {
+        selected: {
+          ...existing.documentGenerator.selected,
+          ...(settings.documentGenerator?.selected ?? legacySelected ?? {}),
+        },
+      },
+      options: existing.options ?? DEFAULT_AI_SETTINGS.options,
     })
   }
 

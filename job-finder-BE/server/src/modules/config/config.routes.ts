@@ -8,7 +8,6 @@ import type {
   StopList,
   QueueSettings,
   AISettings,
-  AIProviderStatus,
   JobFiltersConfig,
   JobMatchConfig,
   TechnologyRanksConfig,
@@ -26,7 +25,7 @@ import {
   DEFAULT_TECH_RANKS,
   DEFAULT_SCHEDULER_SETTINGS,
   DEFAULT_PROMPTS,
-  AI_PROVIDER_MODELS,
+  AI_PROVIDER_OPTIONS,
   isStopList,
   isQueueSettings,
   isAISettings,
@@ -60,8 +59,8 @@ type KnownPayload =
 /**
  * Check provider availability based on API keys and CLI auth status
  */
-function getProviderAvailability(): AIProviderStatus[] {
-  const providers: AIProviderStatus[] = []
+function buildProviderOptionsWithAvailability() {
+  const availability: Record<string, { enabled: boolean; reason?: string }> = {}
 
   // Codex CLI - check login status
   let codexEnabled = false
@@ -75,45 +74,31 @@ function getProviderAvailability(): AIProviderStatus[] {
   } catch {
     codexReason = 'Codex CLI not available'
   }
-  providers.push({
-    provider: 'codex',
-    interface: 'cli',
-    enabled: codexEnabled,
-    reason: codexEnabled ? undefined : codexReason,
-    models: [...AI_PROVIDER_MODELS.codex.cli],
-  })
+  availability['codex/cli'] = { enabled: codexEnabled, reason: codexEnabled ? undefined : codexReason }
 
   // Claude API - check ANTHROPIC_API_KEY
   const claudeEnabled = !!process.env.ANTHROPIC_API_KEY
-  providers.push({
-    provider: 'claude',
-    interface: 'api',
-    enabled: claudeEnabled,
-    reason: claudeEnabled ? undefined : 'ANTHROPIC_API_KEY not set',
-    models: [...AI_PROVIDER_MODELS.claude.api],
-  })
+  availability['claude/api'] = { enabled: claudeEnabled, reason: claudeEnabled ? undefined : 'ANTHROPIC_API_KEY not set' }
 
   // OpenAI API - check OPENAI_API_KEY
   const openaiEnabled = !!process.env.OPENAI_API_KEY
-  providers.push({
-    provider: 'openai',
-    interface: 'api',
-    enabled: openaiEnabled,
-    reason: openaiEnabled ? undefined : 'OPENAI_API_KEY not set',
-    models: [...AI_PROVIDER_MODELS.openai.api],
-  })
+  availability['openai/api'] = { enabled: openaiEnabled, reason: openaiEnabled ? undefined : 'OPENAI_API_KEY not set' }
 
   // Gemini API - check GOOGLE_API_KEY or GEMINI_API_KEY
   const geminiEnabled = !!(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)
-  providers.push({
-    provider: 'gemini',
-    interface: 'api',
-    enabled: geminiEnabled,
-    reason: geminiEnabled ? undefined : 'GOOGLE_API_KEY or GEMINI_API_KEY not set',
-    models: [...AI_PROVIDER_MODELS.gemini.api],
-  })
+  availability['gemini/api'] = { enabled: geminiEnabled, reason: geminiEnabled ? undefined : 'GOOGLE_API_KEY or GEMINI_API_KEY not set' }
 
-  return providers
+  return AI_PROVIDER_OPTIONS.map((provider) => ({
+    ...provider,
+    interfaces: provider.interfaces.map((iface) => {
+      const status = availability[`${provider.value}/${iface.value}`]
+      return {
+        ...iface,
+        enabled: status?.enabled ?? false,
+        reason: status?.reason,
+      }
+    }),
+  }))
 }
 
 function toCamelCaseKey(key: string): string {
@@ -157,13 +142,19 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
     }
     case 'ai-settings': {
       const normalized = normalizeKeys<Partial<AISettings>>(payload)
-      // Merge selected configuration, providers are populated on GET
+      const legacySelected = (normalized as any).selected
+      const mergedWorkerSelected = {
+        ...DEFAULT_AI_SETTINGS.worker.selected,
+        ...(normalized.worker?.selected ?? legacySelected ?? {}),
+      }
+      const mergedDocSelected = {
+        ...DEFAULT_AI_SETTINGS.documentGenerator.selected,
+        ...(normalized.documentGenerator?.selected ?? legacySelected ?? {}),
+      }
       return {
-        selected: {
-          ...DEFAULT_AI_SETTINGS.selected,
-          ...(normalized.selected ?? {}),
-        },
-        providers: [], // Always populated dynamically on GET
+        worker: { selected: mergedWorkerSelected },
+        documentGenerator: { selected: mergedDocSelected },
+        options: AI_PROVIDER_OPTIONS,
       }
     }
     case 'job-match': {
@@ -292,14 +283,14 @@ export function buildConfigRouter() {
         return
       }
 
-      // For ai-settings, populate provider availability dynamically
+      // For ai-settings, populate provider/interface availability dynamically
       if (id === 'ai-settings') {
         const aiPayload = entry.payload as AISettings
         entry = {
           ...entry,
           payload: {
             ...aiPayload,
-            providers: getProviderAvailability(),
+            options: buildProviderOptionsWithAvailability(),
           },
         }
       }

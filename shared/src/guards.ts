@@ -181,17 +181,61 @@ export function isAISettings(value: unknown): value is AISettings {
 
   const settings = value as Partial<AISettings>
 
-  // Validate selected provider configuration
-  if (!isObject(settings.selected)) return false
-  const selected = settings.selected as Record<string, unknown>
-  if (!isAIProviderType(selected.provider)) return false
-  if (!isAIInterfaceType(selected.interface)) return false
-  if (typeof selected.model !== "string") return false
+  const sections: Array<keyof AISettings> = ["worker", "documentGenerator"]
 
-  // Validate providers array (can be empty, populated on GET)
-  if (!Array.isArray(settings.providers)) return false
+  const isValidSelection = (sel: any): sel is AISettings["worker"]["selected"] =>
+    isObject(sel) &&
+    isAIProviderType(sel.provider) &&
+    isAIInterfaceType(sel.interface) &&
+    typeof sel.model === "string"
 
-  return true
+  for (const section of sections) {
+    const payload = (settings as any)[section]
+    if (!isObject(payload) || !isValidSelection((payload as any).selected)) return false
+  }
+
+  if (!Array.isArray(settings.options)) return false
+
+  for (const provider of settings.options) {
+    if (
+      !isObject(provider) ||
+      !isAIProviderType((provider as any).value) ||
+      !Array.isArray((provider as any).interfaces)
+    ) {
+      return false
+    }
+
+    for (const iface of (provider as any).interfaces) {
+      if (
+        !isObject(iface) ||
+        !isAIInterfaceType((iface as any).value) ||
+        typeof (iface as any).enabled !== "boolean" ||
+        !Array.isArray((iface as any).models) ||
+        !(iface as any).models.every((m: unknown) => typeof m === "string")
+      ) {
+        return false
+      }
+      if ((iface as any).reason !== undefined && typeof (iface as any).reason !== "string") {
+        return false
+      }
+    }
+  }
+
+  // Ensure selections match available tiered options
+  const hasValidCombination = (sel: any) =>
+    settings.options!.some(
+      (provider) =>
+        provider.value === sel.provider &&
+        provider.interfaces.some(
+          (iface) => iface.value === sel.interface && iface.models.includes(sel.model)
+        )
+    )
+
+  return (
+    hasValidCombination((settings.worker as any).selected) &&
+    hasValidCombination((settings.documentGenerator as any).selected)
+  )
+
 }
 
 /**

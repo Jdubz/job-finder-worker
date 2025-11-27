@@ -12,6 +12,10 @@ import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import { buildCoverLetterPrompt, buildResumePrompt } from './prompts'
 import { runCliProvider } from './services/cli-runner'
+import type { CliProvider } from './services/cli-runner'
+import { ConfigRepository } from '../../config/config.repository'
+import type { AISettings } from '@shared/types'
+import { DEFAULT_AI_SETTINGS } from '@shared/types'
 
 export class UserFacingError extends Error {}
 
@@ -62,6 +66,7 @@ export class GeneratorWorkflowService {
     private readonly personalInfoStore = new PersonalInfoStore(),
     private readonly contentItemRepo = new ContentItemRepository(),
     private readonly jobMatchRepo = new JobMatchRepository(),
+    private readonly configRepo = new ConfigRepository(),
     private readonly log: Logger = logger
   ) {}
 
@@ -350,7 +355,8 @@ export class GeneratorWorkflowService {
     const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
     const prompt = buildResumePrompt(payload, personalInfo, contentItems, jobMatch)
-    const cliResult = await runCliProvider(prompt, 'codex')
+    const provider = this.getDocumentGeneratorCliProvider()
+    const cliResult = await runCliProvider(prompt, provider)
 
     if (!cliResult.success) {
       this.log.error({ error: cliResult.error }, 'AI resume generation failed')
@@ -516,7 +522,8 @@ export class GeneratorWorkflowService {
     const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
     const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
-    const cliResult = await runCliProvider(prompt, 'codex')
+    const provider = this.getDocumentGeneratorCliProvider()
+    const cliResult = await runCliProvider(prompt, provider)
 
     if (!cliResult.success) {
       this.log.error({ error: cliResult.error }, 'AI cover letter generation failed')
@@ -530,5 +537,28 @@ export class GeneratorWorkflowService {
       this.log.error({ err: error, output: cliResult.output.slice(0, 500) }, 'Failed to parse AI cover letter output as JSON')
       throw new Error('AI returned invalid JSON for cover letter content', { cause: error })
     }
+  }
+  private getDocumentGeneratorCliProvider(): CliProvider {
+    const config = this.configRepo.get<AISettings>('ai-settings')
+    const selection =
+      config?.payload?.documentGenerator?.selected ?? DEFAULT_AI_SETTINGS.documentGenerator.selected
+
+    const provider = selection.provider
+    const interfaceType = selection.interface
+
+    if (interfaceType !== 'cli') {
+      this.log.warn(
+        { provider, interface: interfaceType },
+        'Document generator interface not supported in CLI runner; falling back to codex/cli'
+      )
+      return 'codex'
+    }
+
+    if (provider === 'codex' || provider === 'gemini' || provider === 'claude') {
+      return provider
+    }
+
+    this.log.warn({ provider }, 'Document generator provider not supported; falling back to codex')
+    return 'codex'
   }
 }

@@ -38,12 +38,21 @@ class TestConfigLoaderAISettings:
         # Insert AI settings
         conn = sqlite3.connect(db_path)
         payload = {
-            "selected": {
-                "provider": "claude",
-                "interface": "api",
-                "model": "claude-sonnet-4-5-20250929",
+            "worker": {
+                "selected": {
+                    "provider": "claude",
+                    "interface": "api",
+                    "model": "claude-sonnet-4-5-20250929",
+                },
             },
-            "providers": [],
+            "documentGenerator": {
+                "selected": {
+                    "provider": "openai",
+                    "interface": "api",
+                    "model": "gpt-4o",
+                },
+            },
+            "options": [],
         }
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
@@ -55,9 +64,10 @@ class TestConfigLoaderAISettings:
         loader = ConfigLoader(db_path)
         ai_settings = loader.get_ai_settings()
 
-        assert ai_settings["selected"]["provider"] == "claude"
-        assert ai_settings["selected"]["interface"] == "api"
-        assert ai_settings["selected"]["model"] == "claude-sonnet-4-5-20250929"
+        assert ai_settings["worker"]["selected"]["provider"] == "claude"
+        assert ai_settings["worker"]["selected"]["interface"] == "api"
+        assert ai_settings["worker"]["selected"]["model"] == "claude-sonnet-4-5-20250929"
+        assert ai_settings["documentGenerator"]["selected"]["provider"] == "openai"
 
     def test_get_ai_settings_returns_defaults_when_missing(self, db_path):
         """Should return default AI settings when not configured."""
@@ -65,28 +75,28 @@ class TestConfigLoaderAISettings:
         ai_settings = loader.get_ai_settings()
 
         # Default is codex/cli
-        assert ai_settings["selected"]["provider"] == "codex"
-        assert ai_settings["selected"]["interface"] == "cli"
-        assert ai_settings["selected"]["model"] == "gpt-4o-mini"
+        assert ai_settings["worker"]["selected"]["provider"] == "codex"
+        assert ai_settings["worker"]["selected"]["interface"] == "cli"
+        assert ai_settings["worker"]["selected"]["model"] == "gpt-4o"
 
     def test_get_ai_settings_with_full_config(self, db_path):
         """Should handle full AI settings with providers array."""
         conn = sqlite3.connect(db_path)
         payload = {
-            "selected": {
-                "provider": "openai",
-                "interface": "api",
-                "model": "gpt-4o",
+            "worker": {
+                "selected": {
+                    "provider": "openai",
+                    "interface": "api",
+                    "model": "gpt-4o",
+                }
             },
-            "providers": [
-                {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "enabled": True,
-                    "models": ["gpt-4o-mini"],
-                },
-                {"provider": "openai", "interface": "api", "enabled": True, "models": ["gpt-4o"]},
-            ],
+            "documentGenerator": {
+                "selected": {
+                    "provider": "claude",
+                    "interface": "api",
+                    "model": "claude-sonnet-4-5-20250929",
+                }
+            },
         }
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
@@ -98,8 +108,9 @@ class TestConfigLoaderAISettings:
         loader = ConfigLoader(db_path)
         ai_settings = loader.get_ai_settings()
 
-        assert ai_settings["selected"]["provider"] == "openai"
-        assert len(ai_settings["providers"]) == 2
+        assert ai_settings["worker"]["selected"]["provider"] == "openai"
+        assert ai_settings["documentGenerator"]["selected"]["provider"] == "claude"
+        assert "options" in ai_settings
 
 
 class TestConfigLoaderJobMatch:
@@ -294,13 +305,13 @@ class TestConfigLoaderIntegration:
         job_match = loader.get_job_match()
 
         # Verify they are separate
-        assert ai_settings["selected"]["provider"] == "claude"
+        assert ai_settings["worker"]["selected"]["provider"] == "claude"
         assert job_match["minMatchScore"] == 90
 
         # AI settings should not have job match fields
         assert "minMatchScore" not in ai_settings
         # Job match should not have AI settings fields
-        assert "selected" not in job_match
+        assert "worker" not in job_match
 
     def test_loading_multiple_times_is_consistent(self, db_path):
         """Should return consistent results across multiple calls."""

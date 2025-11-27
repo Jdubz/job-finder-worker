@@ -180,10 +180,13 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     # Initialize AI components with defaults (will be overridden by DB settings)
     config_loader = ConfigLoader(db_path)
 
-    # Get AI provider settings (defaults to codex/cli/gpt-4o-mini)
+    # Get AI provider settings (defaults to codex/cli/gpt-4o for both worker and doc gen)
     ai_settings = {
-        "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o-mini"},
-        "providers": [],
+        "worker": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
+        "documentGenerator": {
+            "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
+        },
+        "options": [],
     }
     try:
         ai_settings = config_loader.get_ai_settings()

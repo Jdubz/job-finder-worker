@@ -6,7 +6,9 @@ import type { ContentItemRepository } from '../../content-items/content-item.rep
 import type { PdfMakeService } from '../workflow/services/pdfmake.service'
 import { storageService } from '../workflow/services/storage.service'
 import { runCliProvider } from '../workflow/services/cli-runner'
-import type { PersonalInfo, ContentItem } from '@shared/types'
+import type { PersonalInfo, ContentItem, AISettings } from '@shared/types'
+import { DEFAULT_AI_SETTINGS } from '@shared/types'
+import type { ConfigRepository } from '../../config/config.repository'
 
 vi.mock('../workflow/services/cli-runner', () => {
   const runCliProvider = vi.fn().mockImplementation((prompt: string) => {
@@ -48,6 +50,20 @@ vi.mock('../workflow/services/cli-runner', () => {
     })
   })
   return { runCliProvider }
+})
+
+vi.mock('../../prompts/prompts.repository', () => {
+  class PromptsRepository {
+    getPrompts() {
+      return {
+        resumeGeneration: 'resume template',
+        coverLetterGeneration: 'cover letter template',
+        jobScraping: '',
+        jobMatching: ''
+      }
+    }
+  }
+  return { PromptsRepository }
 })
 
 class InMemoryRepo {
@@ -146,6 +162,13 @@ class FakeContentItemRepository {
   }
 }
 
+class FakeConfigRepository {
+  aiSettings: AISettings = DEFAULT_AI_SETTINGS
+  get() {
+    return { id: 'ai-settings', payload: this.aiSettings, updatedAt: new Date().toISOString() }
+  }
+}
+
 const payload: GenerateDocumentPayload = {
   generateType: 'resume',
   job: {
@@ -162,6 +185,15 @@ const pdfService: PdfMakeService = {
   generateResumePDF: vi.fn().mockResolvedValue(Buffer.from('resume')),
   generateCoverLetterPDF: vi.fn().mockResolvedValue(Buffer.from('cover'))
 } as unknown as PdfMakeService
+const configRepo = new FakeConfigRepository() as unknown as ConfigRepository
+const mockLog = {
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn()
+}
+const fakeJobMatchRepo = {
+  getById: () => null
+} as any
 
 const mockResumeContent = {
   personalInfo: {
@@ -244,8 +276,19 @@ const mockCoverLetterContent = {
     repo.mockArtifacts = []
   })
 
+  const createService = () =>
+    new GeneratorWorkflowService(
+      pdfService,
+      repo as unknown as GeneratorWorkflowRepository,
+      personalInfoStore as unknown as PersonalInfoStore,
+      contentItemRepo as unknown as ContentItemRepository,
+      fakeJobMatchRepo,
+      configRepo,
+      mockLog as unknown as any
+    )
+
   it('creates a request and tracks steps in memory', async () => {
-    const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore, contentItemRepo as unknown as ContentItemRepository)
+    const service = createService()
     const { requestId } = await service.createRequest(payload)
     const request = repo.getRequest(requestId)
     expect(request).toBeTruthy()
@@ -258,7 +301,7 @@ const mockCoverLetterContent = {
   })
 
   it('runNextStep completes collect-data step first', async () => {
-    const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore, contentItemRepo as unknown as ContentItemRepository)
+    const service = createService()
     const { requestId } = await service.createRequest(payload)
 
     const result = await service.runNextStep(requestId)
@@ -267,7 +310,7 @@ const mockCoverLetterContent = {
   })
 
   it('runNextStep generates resume and stores artifact/url', async () => {
-    const service = new GeneratorWorkflowService(pdfService, repo as unknown as GeneratorWorkflowRepository, personalInfoStore as unknown as PersonalInfoStore, contentItemRepo as unknown as ContentItemRepository)
+    const service = createService()
     const { requestId } = await service.createRequest(payload)
     // complete collect-data
     await service.runNextStep(requestId)
@@ -280,12 +323,7 @@ const mockCoverLetterContent = {
   })
 
   it('runNextStep generates cover letter and stores artifact/url', async () => {
-    const service = new GeneratorWorkflowService(
-      pdfService,
-      repo as unknown as GeneratorWorkflowRepository,
-      personalInfoStore as unknown as PersonalInfoStore,
-      contentItemRepo as unknown as ContentItemRepository
-    )
+    const service = createService()
     const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
     await service.runNextStep(requestId) // collect-data
     const coverResult = await service.runNextStep(requestId)
@@ -294,5 +332,31 @@ const mockCoverLetterContent = {
     const request = repo.getRequest(requestId)
     expect(request?.coverLetterUrl).toBe('http://example.com/resume.pdf')
     expect(repo.listArtifacts(requestId)).toHaveLength(1)
+  })
+
+  it('uses documentGenerator selection when provider is supported CLI', () => {
+    const service = createService()
+    ;(configRepo as any).aiSettings = {
+      ...DEFAULT_AI_SETTINGS,
+      documentGenerator: { selected: { provider: 'claude', interface: 'cli', model: 'claude-sonnet-4-5-20250929' } },
+      worker: DEFAULT_AI_SETTINGS.worker,
+      options: DEFAULT_AI_SETTINGS.options
+    }
+
+    const provider = (service as any).getDocumentGeneratorCliProvider()
+    expect(provider).toBe('claude')
+  })
+
+  it('falls back to codex when documentGenerator interface is api', () => {
+    const service = createService()
+    ;(configRepo as any).aiSettings = {
+      ...DEFAULT_AI_SETTINGS,
+      documentGenerator: { selected: { provider: 'claude', interface: 'api', model: 'claude-sonnet-4-5-20250929' } },
+      worker: DEFAULT_AI_SETTINGS.worker,
+      options: DEFAULT_AI_SETTINGS.options
+    }
+
+    const provider = (service as any).getDocumentGeneratorCliProvider()
+    expect(provider).toBe('codex')
   })
 })
