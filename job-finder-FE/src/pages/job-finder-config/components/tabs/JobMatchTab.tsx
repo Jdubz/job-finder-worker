@@ -8,6 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { Loader2, Save, RotateCcw } from "lucide-react"
 import { TabCard } from "../shared"
 import type { JobMatchConfig } from "@shared/types"
 import type { ConfigState } from "../../hooks/useConfigState"
@@ -39,6 +41,7 @@ export function JobMatchTab({
         isSaving={isSaving}
         onSave={handleSaveJobMatch}
         onReset={handleResetJobMatch}
+        showActions={false}
       >
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-2">
@@ -475,6 +478,30 @@ export function JobMatchTab({
           </div>
         </div>
       </TabCard>
+
+      <div className="flex justify-end gap-2">
+        <Button
+          variant="outline"
+          onClick={handleResetJobMatch}
+          disabled={!hasJobMatchChanges || isSaving}
+        >
+          <RotateCcw className="h-4 w-4 mr-2" />
+          Reset
+        </Button>
+        <Button onClick={handleSaveJobMatch} disabled={!hasJobMatchChanges || isSaving}>
+          {isSaving ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Save Changes
+            </>
+          )}
+        </Button>
+      </div>
     </TabsContent>
   )
 }
