@@ -51,10 +51,15 @@ class SourceProcessor(BaseProcessor):
         logger.info(f"SOURCE_DISCOVERY: Processing {url}")
 
         try:
+            from job_finder.ai.providers import create_provider_from_config
             from job_finder.ai.source_discovery import SourceDiscovery
 
+            # Get AI settings and create provider
+            ai_settings = self.config_loader.get_ai_settings()
+            provider = create_provider_from_config(ai_settings)
+
             # Run AI-powered discovery
-            discovery = SourceDiscovery()
+            discovery = SourceDiscovery(provider)
             source_config = discovery.discover(url)
 
             if not source_config:
