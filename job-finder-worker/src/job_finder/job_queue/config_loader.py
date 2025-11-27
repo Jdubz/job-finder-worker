@@ -279,36 +279,6 @@ class ConfigLoader:
             logger.warning("Scheduler settings missing; seeding defaults")
             return self._seed_config("scheduler-settings", default)
 
-    def get_company_scoring(self) -> Dict[str, Any]:
-        default = {
-            "tierThresholds": {"s": 150, "a": 100, "b": 70, "c": 50},
-            "priorityBonuses": {
-                "portlandOffice": 50,
-                "remoteFirst": 15,
-                "aiMlFocus": 10,
-                "techStackMax": 100,
-            },
-            "matchAdjustments": {
-                "largeCompanyBonus": 10,
-                "smallCompanyPenalty": -5,
-                "largeCompanyThreshold": 10000,
-                "smallCompanyThreshold": 100,
-            },
-            "timezoneAdjustments": {
-                "sameTimezone": 5,
-                "diff1to2hr": -2,
-                "diff3to4hr": -5,
-                "diff5to8hr": -10,
-                "diff9plusHr": -15,
-            },
-            "priorityThresholds": {"high": 85, "medium": 70},
-        }
-        try:
-            return self._get_config("company-scoring")
-        except InitializationError:
-            logger.warning("Company scoring config missing; seeding defaults")
-            return self._seed_config("company-scoring", default)
-
     def get_worker_settings(self) -> Dict[str, Any]:
         default = {
             "scraping": {

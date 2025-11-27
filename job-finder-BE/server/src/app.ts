@@ -5,6 +5,7 @@ import { httpLogger, logger } from './logger'
 import { healthHandler } from './routes/health'
 import { buildContentItemRouter } from './modules/content-items/content-item.routes'
 import { buildJobQueueRouter } from './modules/job-queue/job-queue.routes'
+import { buildWorkerRouter } from './modules/job-queue/worker.routes'
 import { buildJobMatchRouter } from './modules/job-matches/job-match.routes'
 import { buildCompanyRouter } from './modules/companies/company.routes'
 import { buildJobSourceRouter } from './modules/job-sources/job-source.routes'
@@ -96,6 +97,9 @@ export function buildApp() {
 
   // Lifecycle events route - public by design so the frontend can detect deploys/restarts
   app.use('/api/lifecycle', buildLifecycleRouter())
+
+  // Worker routes use worker token auth (not Google OAuth) for worker-to-API communication
+  app.use('/api/queue/worker', buildWorkerRouter())
 
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)

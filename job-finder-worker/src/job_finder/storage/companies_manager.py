@@ -55,8 +55,6 @@ class CompaniesManager:
             "headquartersLocation": row.get("headquarters_location"),
             "hasPortlandOffice": bool(row.get("has_portland_office", 0)),
             "techStack": tech_stack,
-            "tier": row.get("tier"),
-            "priorityScore": row.get("priority_score"),
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
         }
@@ -140,9 +138,6 @@ class CompaniesManager:
             or company_data.get("headquarters_location"),
             "has_portland_office": 1 if has_portland_office else 0,
             "tech_stack": json.dumps(tech_stack),
-            "tier": company_data.get("tier"),
-            "priority_score": company_data.get("priorityScore")
-            or company_data.get("priority_score"),
         }
 
         if company_id:
@@ -181,6 +176,22 @@ class CompaniesManager:
     # ------------------------------------------------------------------ #
 
     def has_good_company_data(self, company_data: Dict[str, Any]) -> bool:
+        """Check if company has been processed or has sufficient data.
+
+        Returns True if either:
+        1. Company was updated after creation (fetch/analyze was attempted)
+        2. OR has meaningful content in about/culture fields
+
+        This ensures jobs don't wait indefinitely for companies whose websites
+        don't expose about/culture information publicly.
+        """
+        # Check if company was processed (updated after initial stub creation)
+        created_at = company_data.get("created_at") or company_data.get("createdAt")
+        updated_at = company_data.get("updated_at") or company_data.get("updatedAt")
+        if created_at and updated_at and str(updated_at) != str(created_at):
+            return True
+
+        # Fallback: check for content quality
         about_length = len(company_data.get("about", "") or "")
         culture_length = len(company_data.get("culture", "") or "")
         has_good_quality = about_length > 100 and culture_length > 50
@@ -198,8 +209,6 @@ class CompaniesManager:
             "companySizeCategory": None,
             "headquartersLocation": "",
             "industry": "",
-            "tier": "D",
-            "priorityScore": 0,
         }
         company_id = self.save_company(stub_data)
         stub_data["id"] = company_id

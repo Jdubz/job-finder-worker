@@ -20,16 +20,12 @@ def _bootstrap_db(path: Path):
               last_scraped_at TEXT,
               last_scraped_status TEXT,
               last_scraped_error TEXT,
-              total_jobs_found INTEGER NOT NULL DEFAULT 0,
-              total_jobs_matched INTEGER NOT NULL DEFAULT 0,
               consecutive_failures INTEGER NOT NULL DEFAULT 0,
               discovery_confidence TEXT,
               discovered_via TEXT,
               discovered_by TEXT,
               discovery_queue_item_id TEXT,
               validation_required INTEGER NOT NULL DEFAULT 0,
-              tier TEXT NOT NULL DEFAULT 'D',
-              health_json TEXT DEFAULT '{}',
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -54,7 +50,6 @@ def test_create_from_discovery_persists_metadata(tmp_path):
         company_name="Acme",
         validation_required=True,
         tags=["gh"],
-        tier="B",
     )
 
     stored = mgr.get_source_by_id(source_id)
@@ -64,5 +59,4 @@ def test_create_from_discovery_persists_metadata(tmp_path):
     assert stored["discoveryConfidence"] == "high"
     assert stored["discoveryQueueItemId"] == "queue-1"
     assert stored["validationRequired"] is True
-    assert stored["tier"] == "B"
     assert stored["status"] == "pending_validation"

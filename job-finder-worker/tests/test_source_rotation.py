@@ -38,8 +38,6 @@ def make_source(
     source_id: str,
     name: str,
     last_scraped: datetime = None,
-    health_score: float = 1.0,
-    tier: str = "B",
     company_id: str = None,
 ):
     """Create a mock source for testing."""
@@ -47,21 +45,16 @@ def make_source(
         "id": source_id,
         "name": name,
         "lastScrapedAt": last_scraped.isoformat() if last_scraped else None,
-        "health": {"healthScore": health_score},
-        "tier": tier,
         "companyId": company_id,
         "config": {"type": "api", "url": "https://example.com", "fields": {}},
     }
 
 
 class TestSourceRotation:
-    """Test that sources are rotated evenly."""
+    """Test that sources are rotated chronologically (oldest first)."""
 
-    @patch("job_finder.utils.source_health.CompanyScrapeTracker")
-    def test_oldest_sources_come_first(self, mock_tracker, scrape_runner, mock_dependencies):
+    def test_oldest_sources_come_first(self, scrape_runner, mock_dependencies):
         """Sources that haven't been scraped recently should come first."""
-        mock_tracker.return_value.get_scrape_frequency.return_value = 0.0
-
         now = datetime.now(timezone.utc)
         sources = [
             make_source("1", "Recent", last_scraped=now - timedelta(hours=1)),
@@ -77,55 +70,8 @@ class TestSourceRotation:
         assert result[1]["name"] == "Old"
         assert result[2]["name"] == "Recent"
 
-    @patch("job_finder.utils.source_health.CompanyScrapeTracker")
-    def test_unhealthy_sources_last(self, mock_tracker, scrape_runner, mock_dependencies):
-        """Sources with low health should be deprioritized."""
-        mock_tracker.return_value.get_scrape_frequency.return_value = 0.0
-
-        now = datetime.now(timezone.utc)
-        sources = [
-            make_source("1", "Healthy-Old", last_scraped=now - timedelta(days=5), health_score=0.9),
-            make_source(
-                "2", "Unhealthy-Older", last_scraped=now - timedelta(days=10), health_score=0.2
-            ),
-            make_source(
-                "3", "Healthy-Recent", last_scraped=now - timedelta(hours=1), health_score=1.0
-            ),
-        ]
-        mock_dependencies["sources_manager"].get_active_sources.return_value = sources
-
-        result = scrape_runner._get_next_sources_by_rotation(limit=None)
-
-        # Healthy sources first (sorted by last_scraped), then unhealthy
-        assert result[0]["name"] == "Healthy-Old"
-        assert result[1]["name"] == "Healthy-Recent"
-        assert result[2]["name"] == "Unhealthy-Older"  # Despite being oldest, it's unhealthy
-
-    @patch("job_finder.utils.source_health.CompanyScrapeTracker")
-    def test_tier_as_tiebreaker(self, mock_tracker, scrape_runner, mock_dependencies):
-        """When last_scraped is the same, higher tier wins."""
-        mock_tracker.return_value.get_scrape_frequency.return_value = 0.0
-
-        same_time = datetime.now(timezone.utc) - timedelta(days=3)
-        sources = [
-            make_source("1", "Tier-D", last_scraped=same_time, tier="D"),
-            make_source("2", "Tier-A", last_scraped=same_time, tier="A"),
-            make_source("3", "Tier-S", last_scraped=same_time, tier="S"),
-        ]
-        mock_dependencies["sources_manager"].get_active_sources.return_value = sources
-
-        result = scrape_runner._get_next_sources_by_rotation(limit=None)
-
-        # Same last_scraped, so sorted by tier priority
-        assert result[0]["name"] == "Tier-S"
-        assert result[1]["name"] == "Tier-A"
-        assert result[2]["name"] == "Tier-D"
-
-    @patch("job_finder.utils.source_health.CompanyScrapeTracker")
-    def test_limit_respects_rotation_order(self, mock_tracker, scrape_runner, mock_dependencies):
+    def test_limit_respects_rotation_order(self, scrape_runner, mock_dependencies):
         """Limit should return the top N sources by rotation order."""
-        mock_tracker.return_value.get_scrape_frequency.return_value = 0.0
-
         now = datetime.now(timezone.utc)
         sources = [
             make_source("1", "Source-1", last_scraped=now - timedelta(days=1)),
@@ -142,13 +88,8 @@ class TestSourceRotation:
         assert result[0]["name"] == "Source-2"  # 5 days old
         assert result[1]["name"] == "Source-3"  # 3 days old
 
-    @patch("job_finder.utils.source_health.CompanyScrapeTracker")
-    def test_never_scraped_sources_prioritized(
-        self, mock_tracker, scrape_runner, mock_dependencies
-    ):
+    def test_never_scraped_sources_prioritized(self, scrape_runner, mock_dependencies):
         """Sources that have never been scraped should be at the front."""
-        mock_tracker.return_value.get_scrape_frequency.return_value = 0.0
-
         now = datetime.now(timezone.utc)
         sources = [
             make_source("1", "Scraped-1", last_scraped=now - timedelta(days=30)),
@@ -164,3 +105,25 @@ class TestSourceRotation:
         names = [s["name"] for s in result]
         assert names.index("Never-1") < names.index("Scraped-1")
         assert names.index("Never-2") < names.index("Scraped-1")
+
+    def test_empty_sources_returns_empty_list(self, scrape_runner, mock_dependencies):
+        """Empty source list should return empty result."""
+        mock_dependencies["sources_manager"].get_active_sources.return_value = []
+
+        result = scrape_runner._get_next_sources_by_rotation(limit=None)
+
+        assert result == []
+
+    def test_limit_none_returns_all(self, scrape_runner, mock_dependencies):
+        """limit=None should return all sources."""
+        now = datetime.now(timezone.utc)
+        sources = [
+            make_source("1", "Source-1", last_scraped=now - timedelta(days=1)),
+            make_source("2", "Source-2", last_scraped=now - timedelta(days=2)),
+            make_source("3", "Source-3", last_scraped=now - timedelta(days=3)),
+        ]
+        mock_dependencies["sources_manager"].get_active_sources.return_value = sources
+
+        result = scrape_runner._get_next_sources_by_rotation(limit=None)
+
+        assert len(result) == 3
