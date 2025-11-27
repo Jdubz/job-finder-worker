@@ -379,20 +379,35 @@ class StrikeFilterEngine:
         combined = f"{description_lower} {location_lower}"
 
         # Detect work arrangement
+        # Check for strong remote indicators first
         is_remote = any(
             ind in combined
             for ind in [
                 "fully remote",
                 "100% remote",
                 "remote position",
+                "remote role",
+                "remote job",
+                "remote opportunity",
+                "remote work",
+                "remote only",
+                "remote-only",
                 "work from home",
+                "work from anywhere",
                 "wfh",
                 "remote-first",
+                "remote friendly",
+                "remote-friendly",
             ]
         )
 
+        # Also check for "remote" in location field specifically (e.g., "Remote - US", "US, Remote")
+        if not is_remote and "remote" in location_lower:
+            # Avoid false positives like "remote access" in description
+            is_remote = True
+
         is_hybrid = any(
-            ind in combined for ind in ["hybrid", "flexible work", "days in office", "days remote"]
+            ind in combined for ind in ["hybrid", "days in office", "days remote"]
         )
 
         is_portland = "portland" in combined and ("or" in combined or "oregon" in combined)
