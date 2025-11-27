@@ -9,11 +9,10 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
-from job_finder.exceptions import DuplicateQueueItemError, InvalidStateTransition
+from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name
 from job_finder.job_queue.models import (
-    CompanyStatus,
     CompanySubTask,
     JobQueueItem,
     QueueItemType,
