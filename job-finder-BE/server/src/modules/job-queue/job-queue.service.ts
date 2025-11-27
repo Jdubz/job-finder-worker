@@ -24,6 +24,15 @@ export type SubmitScrapeInput = {
   scrapeConfig?: ScrapeConfig
 }
 
+export type SubmitSourceDiscoveryInput = {
+  url: string
+  companyName?: string
+  companyId?: string | null
+  typeHint?: 'auto' | 'greenhouse' | 'workday' | 'rss' | 'generic'
+  autoEnable?: boolean
+  validationRequired?: boolean
+}
+
 type ListQueueOptions = {
   status?: QueueStatus | QueueStatus[]
   type?: QueueItem['type']
@@ -104,6 +113,33 @@ export class JobQueueService {
       scrape_config: input.scrapeConfig ?? {
         target_matches: 5,
         max_sources: 20
+      }
+    }
+
+    return this.repo.enqueue(item)
+  }
+
+  submitSourceDiscovery(input: SubmitSourceDiscoveryInput): QueueItem {
+    const now = new Date()
+    const item: NewQueueItem = {
+      type: 'source_discovery',
+      status: 'pending',
+      url: input.url,
+      company_name: input.companyName ?? '',
+      company_id: input.companyId ?? null,
+      source: 'user_submission',
+      submitted_by: null,
+      retry_count: 0,
+      max_retries: DEFAULT_MAX_RETRIES,
+      created_at: now,
+      updated_at: now,
+      source_discovery_config: {
+        url: input.url,
+        type_hint: input.typeHint ?? 'auto',
+        company_id: input.companyId ?? null,
+        company_name: input.companyName ?? null,
+        auto_enable: input.autoEnable ?? true,
+        validation_required: input.validationRequired ?? false
       }
     }
 

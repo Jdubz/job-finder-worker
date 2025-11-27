@@ -46,6 +46,10 @@ def mock_dependencies() -> Dict[str, Any]:
     }
     config_loader.get_technology_ranks.return_value = {"technologies": {}, "strikes": {}}
     config_loader.get_stop_list.return_value = _default_stop_list()
+    config_loader.get_ai_settings.return_value = {
+        "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o-mini"},
+        "providers": [],
+    }
 
     job_storage = MagicMock()
     job_storage.job_exists.return_value = False
@@ -145,8 +149,11 @@ class TestQueueRouting:
 class TestSourceDiscoverySuccess:
     """Test successful source discovery scenarios."""
 
+    @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
-    def test_discovers_api_source(self, mock_discovery_class, source_processor, mock_dependencies):
+    def test_discovers_api_source(
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+    ):
         """Test discovering an API source (like Greenhouse)."""
         mock_discovery = Mock()
         mock_discovery.discover.return_value = {
@@ -177,8 +184,11 @@ class TestSourceDiscoverySuccess:
         queue_item_arg = mock_dependencies["queue_manager"].add_item.call_args.args[0]
         assert queue_item_arg.type == QueueItemType.SCRAPE_SOURCE
 
+    @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
-    def test_discovers_rss_source(self, mock_discovery_class, source_processor, mock_dependencies):
+    def test_discovers_rss_source(
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+    ):
         """Test discovering an RSS source."""
         mock_discovery = Mock()
         mock_discovery.discover.return_value = {
@@ -198,8 +208,11 @@ class TestSourceDiscoverySuccess:
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
+    @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
-    def test_discovers_html_source(self, mock_discovery_class, source_processor, mock_dependencies):
+    def test_discovers_html_source(
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+    ):
         """Test discovering an HTML source."""
         mock_discovery = Mock()
         mock_discovery.discover.return_value = {
@@ -224,9 +237,10 @@ class TestSourceDiscoverySuccess:
 class TestSourceDiscoveryFailure:
     """Test source discovery failure scenarios."""
 
+    @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_handles_discovery_failure(
-        self, mock_discovery_class, source_processor, mock_dependencies
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
     ):
         """Test handling when discovery returns None."""
         mock_discovery = Mock()
@@ -244,9 +258,10 @@ class TestSourceDiscoveryFailure:
         # Should not spawn SCRAPE_SOURCE
         mock_dependencies["queue_manager"].add_item.assert_not_called()
 
+    @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_handles_discovery_exception(
-        self, mock_discovery_class, source_processor, mock_dependencies
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
     ):
         """Test handling when discovery raises an exception."""
         mock_discovery = Mock()

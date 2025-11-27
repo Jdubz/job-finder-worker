@@ -8,6 +8,8 @@ import type {
   SubmitCompanyResponse,
   SubmitScrapeRequest,
   SubmitScrapeResponse,
+  SubmitSourceDiscoveryRequest,
+  SubmitSourceDiscoveryResponse,
   GetQueueStatsResponse,
   GetQueueItemResponse,
   ListQueueItemsResponse,
@@ -54,6 +56,17 @@ const submitCompanySchema = z.object({
 const submitScrapeSchema = z.object({
   scrapeConfig: z.record(z.unknown()).optional(),
   scrape_config: z.record(z.unknown()).optional()
+})
+
+const sourceTypeHints = ['auto', 'greenhouse', 'workday', 'rss', 'generic'] as const
+
+const submitSourceDiscoverySchema = z.object({
+  url: z.string().url(),
+  companyName: z.string().optional(),
+  companyId: z.string().nullable().optional(),
+  typeHint: z.enum(sourceTypeHints).optional(),
+  autoEnable: z.boolean().optional(),
+  validationRequired: z.boolean().optional()
 })
 
 const listQueueSchema = z.object({
@@ -182,6 +195,22 @@ export function buildJobQueueRouter() {
       const response: SubmitScrapeResponse = {
         status: 'success',
         message: 'Scrape submission queued',
+        queueItemId: item.id,
+        queueItem: item
+      }
+      broadcastQueueEvent('item.created', { queueItem: item })
+      res.status(201).json(success(response))
+    })
+  )
+
+  router.post(
+    '/sources/discover',
+    asyncHandler((req, res) => {
+      const payload = submitSourceDiscoverySchema.parse(req.body) as SubmitSourceDiscoveryRequest
+      const item = service.submitSourceDiscovery(payload)
+      const response: SubmitSourceDiscoveryResponse = {
+        status: 'success',
+        message: 'Source discovery queued',
         queueItemId: item.id,
         queueItem: item
       }

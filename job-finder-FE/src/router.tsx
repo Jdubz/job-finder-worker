@@ -38,6 +38,12 @@ const JobApplicationsPage = lazyWithRetry(() =>
 const JobFinderPage = lazyWithRetry(() =>
   import("@/pages/job-finder/JobFinderPage").then((m) => ({ default: m.JobFinderPage }))
 )
+const CompaniesPage = lazyWithRetry(() =>
+  import("@/pages/companies/CompaniesPage").then((m) => ({ default: m.CompaniesPage }))
+)
+const SourcesPage = lazyWithRetry(() =>
+  import("@/pages/sources/SourcesPage").then((m) => ({ default: m.SourcesPage }))
+)
 const QueueManagementPage = lazyWithRetry(() =>
   import("@/pages/queue-management/QueueManagementPage").then((m) => ({
     default: m.QueueManagementPage,
@@ -116,6 +122,22 @@ export const router = createBrowserRouter([
         element: (
           <LazyPage>
             <JobFinderPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.COMPANIES,
+        element: (
+          <LazyPage>
+            <CompaniesPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.SOURCES,
+        element: (
+          <LazyPage>
+            <SourcesPage />
           </LazyPage>
         ),
       },
