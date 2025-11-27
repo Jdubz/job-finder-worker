@@ -1,3 +1,4 @@
+import * as crypto from 'crypto'
 import type { NextFunction, Request, Response } from 'express'
 import { env } from '../config/env'
 import { ApiErrorCode } from '@shared/types'
@@ -19,7 +20,10 @@ export function verifyWorkerToken(req: Request, _res: Response, next: NextFuncti
   }
 
   const token = authHeader.slice('Bearer '.length)
-  if (token !== env.WORKER_WS_TOKEN) {
+  if (
+    token.length !== env.WORKER_WS_TOKEN.length ||
+    !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(env.WORKER_WS_TOKEN))
+  ) {
     return next(new ApiHttpError(ApiErrorCode.INVALID_TOKEN, 'Invalid worker token', { status: 401 }))
   }
 

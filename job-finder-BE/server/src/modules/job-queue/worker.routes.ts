@@ -3,7 +3,7 @@
  * These endpoints use worker token auth instead of Google OAuth.
  */
 import { Router } from 'express'
-import { ApiErrorCode } from '@shared/types'
+import { ApiErrorCode, isWorkerEventName } from '@shared/types'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { broadcastQueueEvent, takePendingCommands } from './queue-events'
@@ -29,12 +29,12 @@ export function buildWorkerRouter() {
   router.post(
     '/events',
     asyncHandler((req, res) => {
-      const { event, data } = req.body as { event?: string; data?: Record<string, unknown> }
-      if (!event) {
-        res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Missing event'))
+      const { event, data } = req.body
+      if (!isWorkerEventName(event)) {
+        res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Missing or invalid event name'))
         return
       }
-      broadcastQueueEvent(event as any, data ?? {})
+      broadcastQueueEvent(event, data ?? {})
       res.json(success({ received: true }))
     })
   )
