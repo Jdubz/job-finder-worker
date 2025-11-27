@@ -377,7 +377,9 @@ class JobProcessor(BaseProcessor):
                 "waiting_for_company_id": company_id,
             }
             self.queue_manager.requeue_with_state(item.id, updated_state, "wait_company")
-            logger.info("JOB_ANALYZE: Waiting for company %s (id=%s)", company_name_clean, company_id)
+            logger.info(
+                "JOB_ANALYZE: Waiting for company %s (id=%s)", company_name_clean, company_id
+            )
 
         # Get or create company record
         company = self.companies_manager.get_company(company_name_clean)
