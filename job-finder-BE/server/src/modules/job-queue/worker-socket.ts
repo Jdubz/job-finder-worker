@@ -3,7 +3,7 @@ import { WebSocketServer, type WebSocket, type RawData } from 'ws'
 import { logger } from '../../logger'
 import { env } from '../../config/env'
 import { broadcastQueueEvent, sendCommandToWorker, setWorkerSocket } from './queue-events'
-import type { WorkerMessage, WorkerEventName } from '@shared/types'
+import type { WorkerMessage } from '@shared/types'
 import { isWorkerEventName } from '@shared/types'
 
 export function initWorkerSocket(server: Server) {

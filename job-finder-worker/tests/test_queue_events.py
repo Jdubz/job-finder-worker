@@ -9,11 +9,8 @@ Event flow:
 3. BE receives via WebSocket or HTTP and broadcasts to FE via SSE
 """
 
-import json
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
-
-import pytest
 
 from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.manager import QueueManager
@@ -96,33 +93,33 @@ class TestEventPayloadStructure:
 class TestNotifierPayloadFormat:
     """Test that QueueEventNotifier formats payloads correctly."""
 
-    @patch.object(QueueEventNotifier, '_start_ws')
+    @patch.object(QueueEventNotifier, "_start_ws")
     def test_send_event_adds_worker_id(self, mock_start_ws):
         """Test that send_event adds workerId to payload."""
         notifier = QueueEventNotifier(worker_id="test-worker")
         notifier._ws_connected = False  # Force HTTP path for testing
 
-        with patch('requests.post') as mock_post:
+        with patch("requests.post") as mock_post:
             mock_post.return_value = MagicMock(status_code=200)
 
             notifier.send_event("item.created", {"queueItem": {"id": "123"}})
 
             # Verify the payload structure sent to HTTP endpoint
             call_args = mock_post.call_args
-            sent_payload = call_args.kwargs.get('json') or call_args[1].get('json')
+            sent_payload = call_args.kwargs.get("json") or call_args[1].get("json")
 
             assert sent_payload["event"] == "item.created"
             assert "data" in sent_payload
             assert sent_payload["data"]["workerId"] == "test-worker"
             assert sent_payload["data"]["queueItem"]["id"] == "123"
 
-    @patch.object(QueueEventNotifier, '_start_ws')
+    @patch.object(QueueEventNotifier, "_start_ws")
     def test_send_event_preserves_existing_data(self, mock_start_ws):
         """Test that send_event preserves all data fields."""
         notifier = QueueEventNotifier(worker_id="worker-1")
         notifier._ws_connected = False
 
-        with patch('requests.post') as mock_post:
+        with patch("requests.post") as mock_post:
             mock_post.return_value = MagicMock(status_code=200)
 
             original_data = {
@@ -139,7 +136,7 @@ class TestNotifierPayloadFormat:
             notifier.send_event("item.updated", original_data)
 
             call_args = mock_post.call_args
-            sent_payload = call_args.kwargs.get('json') or call_args[1].get('json')
+            sent_payload = call_args.kwargs.get("json") or call_args[1].get("json")
 
             # All original fields should be preserved
             assert sent_payload["data"]["queueItem"]["id"] == "456"
@@ -156,8 +153,10 @@ class TestManagerEventEmission:
 
         # Create the table
         import sqlite3
+
         conn = sqlite3.connect(db_path)
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS job_queue (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,
@@ -193,7 +192,8 @@ class TestManagerEventEmission:
                 spawn_depth INTEGER DEFAULT 0,
                 max_spawn_depth INTEGER DEFAULT 5
             )
-        """)
+        """
+        )
         conn.close()
 
         mock_notifier = MagicMock()
@@ -221,9 +221,11 @@ class TestManagerEventEmission:
 
         # Create the table and insert a test item
         import sqlite3
+
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS job_queue (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,
@@ -259,12 +261,23 @@ class TestManagerEventEmission:
                 spawn_depth INTEGER DEFAULT 0,
                 max_spawn_depth INTEGER DEFAULT 5
             )
-        """)
+        """
+        )
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             """INSERT INTO job_queue (id, type, status, url, company_name, created_at, updated_at, tracking_id, ancestry_chain)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("test-item-1", "job", "pending", "https://example.com", "Test", now, now, "track-1", '["test-item-1"]')
+            (
+                "test-item-1",
+                "job",
+                "pending",
+                "https://example.com",
+                "Test",
+                now,
+                now,
+                "track-1",
+                '["test-item-1"]',
+            ),
         )
         conn.commit()
         conn.close()
@@ -288,8 +301,10 @@ class TestManagerEventEmission:
 
         # Create the table and insert a test item
         import sqlite3
+
         conn = sqlite3.connect(db_path)
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS job_queue (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,
@@ -325,12 +340,13 @@ class TestManagerEventEmission:
                 spawn_depth INTEGER DEFAULT 0,
                 max_spawn_depth INTEGER DEFAULT 5
             )
-        """)
+        """
+        )
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             """INSERT INTO job_queue (id, type, status, url, company_name, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            ("delete-me", "job", "pending", "https://example.com", "Test", now, now)
+            ("delete-me", "job", "pending", "https://example.com", "Test", now, now),
         )
         conn.commit()
         conn.close()
@@ -353,9 +369,11 @@ class TestManagerEventEmission:
 
         # Create the table and insert a test item
         import sqlite3
+
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS job_queue (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,
@@ -391,12 +409,23 @@ class TestManagerEventEmission:
                 spawn_depth INTEGER DEFAULT 0,
                 max_spawn_depth INTEGER DEFAULT 5
             )
-        """)
+        """
+        )
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             """INSERT INTO job_queue (id, type, status, url, company_name, created_at, updated_at, tracking_id, ancestry_chain)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("requeue-item", "job", "processing", "https://example.com", "Test", now, now, "track-1", '["requeue-item"]')
+            (
+                "requeue-item",
+                "job",
+                "processing",
+                "https://example.com",
+                "Test",
+                now,
+                now,
+                "track-1",
+                '["requeue-item"]',
+            ),
         )
         conn.commit()
         conn.close()
@@ -405,9 +434,7 @@ class TestManagerEventEmission:
         manager = QueueManager(db_path=db_path, notifier=mock_notifier)
 
         manager.requeue_with_state(
-            "requeue-item",
-            pipeline_state={"job_data": {"title": "Test Job"}},
-            next_stage="filter"
+            "requeue-item", pipeline_state={"job_data": {"title": "Test Job"}}, next_stage="filter"
         )
 
         # Verify event was emitted

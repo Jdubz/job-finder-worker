@@ -12,7 +12,6 @@ import {
   type ItemDeletedEventData,
   type SnapshotEventData,
   type HeartbeatEventData,
-  type ProgressEventData,
   type QueueSsePayload,
   type WorkerMessage,
 } from '@shared/types'
