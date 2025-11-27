@@ -18,7 +18,8 @@ class TestConfigLoaderAISettings:
         """Create a temporary SQLite database with config table."""
         db_file = tmp_path / "test.db"
         conn = sqlite3.connect(str(db_file))
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS job_finder_config (
                 id TEXT PRIMARY KEY,
                 payload_json TEXT NOT NULL,
@@ -26,7 +27,8 @@ class TestConfigLoaderAISettings:
                 updated_at TEXT,
                 updated_by TEXT
             )
-        """)
+        """
+        )
         conn.commit()
         conn.close()
         return str(db_file)
@@ -77,7 +79,12 @@ class TestConfigLoaderAISettings:
                 "model": "gpt-4o",
             },
             "providers": [
-                {"provider": "codex", "interface": "cli", "enabled": True, "models": ["gpt-4o-mini"]},
+                {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "enabled": True,
+                    "models": ["gpt-4o-mini"],
+                },
                 {"provider": "openai", "interface": "api", "enabled": True, "models": ["gpt-4o"]},
             ],
         }
@@ -103,7 +110,8 @@ class TestConfigLoaderJobMatch:
         """Create a temporary SQLite database with config table."""
         db_file = tmp_path / "test.db"
         conn = sqlite3.connect(str(db_file))
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS job_finder_config (
                 id TEXT PRIMARY KEY,
                 payload_json TEXT NOT NULL,
@@ -111,7 +119,8 @@ class TestConfigLoaderJobMatch:
                 updated_at TEXT,
                 updated_by TEXT
             )
-        """)
+        """
+        )
         conn.commit()
         conn.close()
         return str(db_file)
@@ -176,7 +185,9 @@ class TestConfigLoaderJobMatch:
         assert job_match["minMatchScore"] == 85
         assert job_match["generateIntakeData"] is False
         # Missing fields are not in the result (consumer is responsible for defaults)
-        assert "portlandOfficeBonus" not in job_match or job_match.get("portlandOfficeBonus") is None
+        assert (
+            "portlandOfficeBonus" not in job_match or job_match.get("portlandOfficeBonus") is None
+        )
 
     def test_get_job_match_handles_invalid_json(self, db_path):
         """Should return defaults when stored JSON is invalid."""
@@ -237,7 +248,8 @@ class TestConfigLoaderIntegration:
         """Create a temporary SQLite database with config table."""
         db_file = tmp_path / "test.db"
         conn = sqlite3.connect(str(db_file))
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS job_finder_config (
                 id TEXT PRIMARY KEY,
                 payload_json TEXT NOT NULL,
@@ -245,7 +257,8 @@ class TestConfigLoaderIntegration:
                 updated_at TEXT,
                 updated_by TEXT
             )
-        """)
+        """
+        )
         conn.commit()
         conn.close()
         return str(db_file)
