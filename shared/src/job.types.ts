@@ -317,9 +317,6 @@ export interface Company {
   /** Priority score (0-200+) */
   priorityScore?: number | null
 
-  /** Analysis status */
-  analysisStatus?: "pending" | "in_progress" | "complete" | "failed" | null
-
   /** When company was added */
   createdAt?: TimestampLike
 

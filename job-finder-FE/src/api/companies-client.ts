@@ -26,7 +26,6 @@ export class CompaniesClient extends BaseApiClient {
 
     if (params.industry) search.append("industry", params.industry)
     if (params.tier) search.append("tier", params.tier)
-    if (params.analysisStatus) search.append("analysisStatus", params.analysisStatus)
     if (params.search) search.append("search", params.search)
     if (params.sortBy) search.append("sortBy", params.sortBy)
     if (params.sortOrder) search.append("sortOrder", params.sortOrder)

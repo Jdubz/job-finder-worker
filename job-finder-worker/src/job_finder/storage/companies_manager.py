@@ -8,8 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from job_finder.exceptions import InvalidStateTransition, StorageError
-from job_finder.job_queue.models import CompanyStatus
+from job_finder.exceptions import StorageError
 from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.utils.company_name_utils import clean_company_name, normalize_company_name
 
@@ -21,13 +20,6 @@ DEFAULT_ANALYSIS_PROGRESS = {
     "extract": False,
     "analyze": False,
     "save": False,
-}
-
-VALID_COMPANY_TRANSITIONS = {
-    CompanyStatus.PENDING: {CompanyStatus.ANALYZING},
-    CompanyStatus.ANALYZING: {CompanyStatus.ACTIVE, CompanyStatus.FAILED},
-    CompanyStatus.ACTIVE: {CompanyStatus.ANALYZING},  # Allows re-analysis
-    CompanyStatus.FAILED: {CompanyStatus.PENDING},
 }
 
 
@@ -84,7 +76,6 @@ class CompaniesManager:
             "techStack": tech_stack,
             "tier": row.get("tier"),
             "priorityScore": row.get("priority_score"),
-            "analysis_status": row.get("analysis_status"),
             "analysis_progress": progress,
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
@@ -92,13 +83,6 @@ class CompaniesManager:
 
     def _normalize_name(self, name: str) -> str:
         return normalize_company_name(name)
-
-    def _validate_transition(self, current: CompanyStatus, new: CompanyStatus) -> None:
-        allowed = VALID_COMPANY_TRANSITIONS.get(current, set()) | {current}
-        if new not in allowed:
-            raise InvalidStateTransition(
-                f"Cannot transition company from {current.value} to {new.value}"
-            )
 
     def _serialize_progress(self, progress: Optional[Dict[str, Any]]) -> str:
         merged = DEFAULT_ANALYSIS_PROGRESS.copy()
@@ -109,32 +93,6 @@ class CompaniesManager:
     # ------------------------------------------------------------------ #
     # State helpers
     # ------------------------------------------------------------------ #
-
-    def transition_status(self, company_id: str, new_status: CompanyStatus) -> None:
-        company = self.get_company_by_id(company_id)
-        try:
-            current_status = (
-                CompanyStatus(company["analysis_status"] or CompanyStatus.PENDING.value)
-                if company
-                else CompanyStatus.PENDING
-            )
-        except Exception:
-            current_status = CompanyStatus.PENDING
-
-        # Validate transition (allows no-op)
-        self._validate_transition(current_status, new_status)
-
-        if current_status == new_status:
-            return
-
-        with sqlite_connection(self.db_path) as conn:
-            conn.execute(
-                "UPDATE companies SET analysis_status = ?, updated_at = ? WHERE id = ?",
-                (new_status.value, _utcnow_iso(), company_id),
-            )
-        logger.debug(
-            "Company %s status %s → %s", company_id, current_status.value, new_status.value
-        )
 
     def update_analysis_progress(self, company_id: str, **stage_updates: bool) -> Dict[str, bool]:
         company = self.get_company_by_id(company_id) or {}
@@ -209,17 +167,6 @@ class CompaniesManager:
         existing_progress = existing.get("analysis_progress") if existing else None
         progress_payload = company_data.get("analysis_progress", existing_progress)
 
-        desired_status_value = company_data.get("analysis_status") or (
-            existing.get("analysis_status") if existing else CompanyStatus.PENDING.value
-        )
-        desired_status = CompanyStatus(desired_status_value)
-
-        if existing:
-            current_status = CompanyStatus(
-                existing.get("analysis_status") or CompanyStatus.PENDING.value
-            )
-            self._validate_transition(current_status, desired_status)
-
         now = _utcnow_iso()
         has_portland_office = bool(
             company_data.get("hasPortlandOffice") or company_data.get("has_portland_office")
@@ -248,7 +195,6 @@ class CompaniesManager:
             "tier": company_data.get("tier"),
             "priority_score": company_data.get("priorityScore")
             or company_data.get("priority_score"),
-            "analysis_status": desired_status.value,
             "analysis_progress": self._serialize_progress(progress_payload),
         }
 
@@ -308,7 +254,6 @@ class CompaniesManager:
             "industry": "",
             "tier": "D",
             "priorityScore": 0,
-            "analysis_status": CompanyStatus.PENDING.value,
             "analysis_progress": DEFAULT_ANALYSIS_PROGRESS.copy(),
         }
         company_id = self.save_company(stub_data)

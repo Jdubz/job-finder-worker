@@ -41,11 +41,11 @@ function insertCompanies(db, docs) {
   const stmt = db.prepare(`INSERT INTO companies (
     id, name, name_lower, website, about, culture, mission, size, company_size_category,
     founded, industry, headquarters_location, has_portland_office, tech_stack, tier,
-    priority_score, analysis_status, created_at, updated_at
+    priority_score, created_at, updated_at
   ) VALUES (
     @id, @name, @name_lower, @website, @about, @culture, @mission, @size, @company_size_category,
     @founded, @industry, @headquarters_location, @has_portland_office, @tech_stack, @tier,
-    @priority_score, @analysis_status, @created_at, @updated_at
+    @priority_score, @created_at, @updated_at
   )
   ON CONFLICT(id) DO UPDATE SET
     name=excluded.name,
@@ -63,7 +63,6 @@ function insertCompanies(db, docs) {
     tech_stack=excluded.tech_stack,
     tier=excluded.tier,
     priority_score=excluded.priority_score,
-    analysis_status=excluded.analysis_status,
     updated_at=excluded.updated_at
   `)
 
@@ -84,7 +83,6 @@ function insertCompanies(db, docs) {
     tech_stack: d.techStack ? JSON.stringify(d.techStack) : null,
     tier: d.tier ?? null,
     priority_score: d.priorityScore ?? null,
-    analysis_status: d.analysis_status ?? d.analysisStatus ?? null,
     created_at: toIso(d.createdAt) ?? new Date().toISOString(),
     updated_at: toIso(d.updatedAt) ?? new Date().toISOString()
   }))

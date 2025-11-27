@@ -74,21 +74,6 @@ class CompanySubTask(str, Enum):
     SAVE = "save"
 
 
-class CompanyStatus(str, Enum):
-    """
-    Status for company records in SQLite.
-
-    Tracks the analysis state of a company.
-
-    TypeScript equivalent: CompanyStatus in queue.types.ts
-    """
-
-    PENDING = "pending"  # Initial state, not yet analyzed
-    ANALYZING = "analyzing"  # Currently being processed through pipeline
-    ACTIVE = "active"  # Analysis complete, ready for use
-    FAILED = "failed"  # Analysis failed after retries
-
-
 class SourceStatus(str, Enum):
     """
     Status for job source records in SQLite.

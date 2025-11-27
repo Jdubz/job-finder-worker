@@ -17,11 +17,10 @@ import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
-from job_finder.exceptions import InvalidStateTransition, QueueProcessingError
+from job_finder.exceptions import QueueProcessingError
 from job_finder.settings import get_text_limits
 from job_finder.logging_config import format_company_name
 from job_finder.job_queue.models import (
-    CompanyStatus,
     CompanySubTask,
     JobQueueItem,
     QueueItemType,
@@ -87,19 +86,10 @@ class CompanyProcessor(BaseProcessor):
 
         company_id = item.company_id or (item.pipeline_state or {}).get("company_id")
 
-        # Mark company as analyzing
-        if company_id:
-            try:
-                self.companies_manager.transition_status(company_id, CompanyStatus.ANALYZING)
-            except InvalidStateTransition as exc:
-                logger.warning("Company %s transition to analyzing blocked: %s", company_id, exc)
-
         with self._handle_company_failure(company_id):
             if not item.url:
                 error_msg = "No company website URL provided"
                 self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
-                if company_id:
-                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
                 return
 
             # Fetch HTML content from company pages
@@ -140,13 +130,6 @@ class CompanyProcessor(BaseProcessor):
                     self.queue_manager.update_status(
                         item.id, QueueStatus.FAILED, error_msg, error_details=error_details
                     )
-                    if company_id:
-                        try:
-                            self.companies_manager.transition_status(
-                                company_id, CompanyStatus.FAILED
-                            )
-                        except InvalidStateTransition:
-                            pass
                     return
 
             # Prepare pipeline state for next step
@@ -377,7 +360,6 @@ class CompanyProcessor(BaseProcessor):
                 "techStack": analysis_result.get("tech_stack", []),
                 "tier": analysis_result.get("tier", "D"),
                 "priorityScore": analysis_result.get("priority_score", 0),
-                "analysis_status": CompanyStatus.ACTIVE.value,
                 "analysis_progress": {
                     "fetch": True,
                     "extract": True,
@@ -434,17 +416,11 @@ class CompanyProcessor(BaseProcessor):
 
     @contextmanager
     def _handle_company_failure(self, company_id: Optional[str]):
-        """Ensure company status moves to FAILED on unhandled errors."""
-
+        """Log and re-raise company pipeline errors."""
         try:
             yield
         except Exception as exc:
-            if company_id:
-                try:
-                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
-                except InvalidStateTransition:
-                    pass
-            logger.error("Company pipeline error: %s", exc)
+            logger.error("Company pipeline error (company_id=%s): %s", company_id, exc)
             raise
 
     def _detect_tech_stack(
