@@ -17,7 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { generatorClient } from "@/api"
 
 async function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -25,6 +24,30 @@ async function fileToDataUrl(file: File): Promise<string> {
     reader.onload = () => resolve(reader.result as string)
     reader.onerror = reject
     reader.readAsDataURL(file)
+  })
+}
+
+async function resizeDataUrl(dataUrl: string, maxDimension: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement("canvas")
+      const scale = Math.min(1, maxDimension / Math.max(img.width, img.height))
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return reject(new Error("Canvas not available"))
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+      const mimeMatch = dataUrl.match(/^data:(.*?);base64,/)
+      const mime = mimeMatch?.[1] || "image/png"
+      // Use jpeg for better compression unless original was png/svg
+      const outputMime = mime.includes("png") || mime.includes("svg") ? mime : "image/jpeg"
+      const compressed = canvas.toDataURL(outputMime, outputMime === "image/png" ? undefined : 0.88)
+      resolve(compressed)
+    }
+    img.onerror = reject
+    img.src = dataUrl
   })
 }
 
@@ -447,9 +470,11 @@ export function SettingsPage() {
                 {userDefaults.avatar ? (
                   <img
                     src={
-                      userDefaults.avatar.startsWith('http')
+                      userDefaults.avatar.startsWith('data:')
                         ? userDefaults.avatar
-                        : `/api/generator/artifacts${userDefaults.avatar}`
+                        : userDefaults.avatar.startsWith('http')
+                          ? userDefaults.avatar
+                          : `/api/generator/artifacts${userDefaults.avatar}`
                     }
                     alt="avatar"
                     className="h-14 w-14 rounded-full object-cover border shadow-sm"
@@ -470,11 +495,11 @@ export function SettingsPage() {
                         if (!file) return
                         try {
                           setUploading((p) => ({ ...p, avatar: true }))
-                          const dataUrl = await fileToDataUrl(file)
-                          const res = await generatorClient.uploadAsset({ type: "avatar", dataUrl })
+                          const rawDataUrl = await fileToDataUrl(file)
+                          const resized = await resizeDataUrl(rawDataUrl, 512)
 
-                          // Persist to backend and refresh defaults so the UI stays in sync
-                          await updatePersonalInfo({ avatar: res.path })
+                          await updatePersonalInfo({ avatar: resized })
+                          setUserDefaults((prev) => ({ ...prev, avatar: resized }))
                           setSuccess("Avatar uploaded")
                           setError(null)
                         } catch (err) {
@@ -505,9 +530,11 @@ export function SettingsPage() {
                 {userDefaults.logo ? (
                   <img
                     src={
-                      userDefaults.logo.startsWith('http')
+                      userDefaults.logo.startsWith('data:')
                         ? userDefaults.logo
-                        : `/api/generator/artifacts${userDefaults.logo}`
+                        : userDefaults.logo.startsWith('http')
+                          ? userDefaults.logo
+                          : `/api/generator/artifacts${userDefaults.logo}`
                     }
                     alt="logo"
                     className="h-12 w-12 object-contain border rounded bg-white p-1 shadow-sm"
@@ -526,11 +553,11 @@ export function SettingsPage() {
                         if (!file) return
                         try {
                           setUploading((p) => ({ ...p, logo: true }))
-                          const dataUrl = await fileToDataUrl(file)
-                          const res = await generatorClient.uploadAsset({ type: "logo", dataUrl })
+                          const rawDataUrl = await fileToDataUrl(file)
+                          const resized = await resizeDataUrl(rawDataUrl, 640)
 
-                          await updatePersonalInfo({ logo: res.path })
-                          setUserDefaults((prev) => ({ ...prev, logo: res.path }))
+                          await updatePersonalInfo({ logo: resized })
+                          setUserDefaults((prev) => ({ ...prev, logo: resized }))
                           setSuccess("Logo uploaded")
                           setError(null)
                         } catch (err) {

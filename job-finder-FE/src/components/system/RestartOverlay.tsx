@@ -9,18 +9,26 @@ type RestartState =
 
 const pollUntilReady = async (healthUrl: string) => {
   const start = Date.now()
+  let consecutiveOk = 0
+
   while (true) {
     try {
       const res = await fetch(healthUrl, { cache: "no-store" })
-      if (res.ok) return
+      if (res.ok) {
+        consecutiveOk += 1
+        if (consecutiveOk >= 3) return true
+      } else {
+        consecutiveOk = 0
+      }
     } catch {
       /* swallow and retry */
+      consecutiveOk = 0
     }
     // Avoid hammering the server while it spins up
     await new Promise((resolve) => setTimeout(resolve, 1200))
-    // Safety timeout after ~60s
-    if (Date.now() - start > 60000) {
-      return
+    // Safety timeout after ~90s
+    if (Date.now() - start > 90000) {
+      return false
     }
   }
 }
@@ -42,9 +50,15 @@ export function RestartOverlay() {
       restartTriggered.current = true
       setState({ status: "waiting", reason })
       persistAppSnapshot(reason ?? "server-restarting")
-      await pollUntilReady(healthUrl)
-      // Hard refresh to pick up new bundle
-      window.location.replace(window.location.href)
+      const ready = await pollUntilReady(healthUrl)
+      if (ready) {
+        // Hard refresh to pick up new bundle
+        window.location.replace(window.location.href)
+      } else {
+        // Stay on the page; user can manually refresh once they’re ready
+        setState({ status: "waiting", reason: "Still waiting for the API to come back up…" })
+        restartTriggered.current = false
+      }
     }
 
     source.addEventListener("restarting", (event) => {
