@@ -152,7 +152,7 @@ class TestSourceDiscoverySuccess:
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_discovers_api_source(
-        self, mock_discovery_class, mock_create_provider, source_processor, mock_dependencies
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
     ):
         """Test discovering an API source (like Greenhouse)."""
         mock_discovery = Mock()
@@ -187,7 +187,7 @@ class TestSourceDiscoverySuccess:
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_discovers_rss_source(
-        self, mock_discovery_class, mock_create_provider, source_processor, mock_dependencies
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
     ):
         """Test discovering an RSS source."""
         mock_discovery = Mock()
@@ -211,7 +211,7 @@ class TestSourceDiscoverySuccess:
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_discovers_html_source(
-        self, mock_discovery_class, mock_create_provider, source_processor, mock_dependencies
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
     ):
         """Test discovering an HTML source."""
         mock_discovery = Mock()
@@ -240,7 +240,7 @@ class TestSourceDiscoveryFailure:
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_handles_discovery_failure(
-        self, mock_discovery_class, mock_create_provider, source_processor, mock_dependencies
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
     ):
         """Test handling when discovery returns None."""
         mock_discovery = Mock()
@@ -261,7 +261,7 @@ class TestSourceDiscoveryFailure:
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_handles_discovery_exception(
-        self, mock_discovery_class, mock_create_provider, source_processor, mock_dependencies
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
     ):
         """Test handling when discovery raises an exception."""
         mock_discovery = Mock()

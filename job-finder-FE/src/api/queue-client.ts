@@ -8,6 +8,8 @@ import type {
   SubmitCompanyResponse,
   SubmitScrapeRequest,
   SubmitScrapeResponse,
+  SubmitSourceDiscoveryRequest,
+  SubmitSourceDiscoveryResponse,
   GetQueueStatsResponse,
   GetQueueItemResponse,
   UpdateJobStatusResponse,
@@ -73,6 +75,17 @@ export class QueueClient extends BaseApiClient {
   async submitScrape(request: SubmitScrapeRequest): Promise<QueueItem> {
     const response = await this.post<ApiSuccessResponse<SubmitScrapeResponse>>(
       `/queue/scrape`,
+      request
+    )
+    if (!response.data.queueItem) {
+      throw new Error('Queue item not returned from server')
+    }
+    return response.data.queueItem
+  }
+
+  async submitSourceDiscovery(request: SubmitSourceDiscoveryRequest): Promise<QueueItem> {
+    const response = await this.post<ApiSuccessResponse<SubmitSourceDiscoveryResponse>>(
+      `/queue/sources/discover`,
       request
     )
     if (!response.data.queueItem) {

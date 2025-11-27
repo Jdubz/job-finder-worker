@@ -382,7 +382,7 @@ class StrikeFilterEngine:
         # Check for strong remote indicators first
         is_remote = any(
             ind in combined
-            for ind in [
+            for ind in (
                 "fully remote",
                 "100% remote",
                 "remote position",
@@ -400,7 +400,7 @@ class StrikeFilterEngine:
                 "remote-friendly",
                 "remotely",
                 "hiring remote",
-            ]
+            )
         )
 
         # Also check for "remote" in location field specifically (e.g., "Remote - US", "US, Remote")
@@ -408,9 +408,7 @@ class StrikeFilterEngine:
             # Avoid false positives like "remote access" in description
             is_remote = True
 
-        is_hybrid = any(
-            ind in combined for ind in ["hybrid", "days in office", "days remote"]
-        )
+        is_hybrid = any(ind in combined for ind in ["hybrid", "days in office", "days remote"])
 
         is_portland = "portland" in combined and ("or" in combined or "oregon" in combined)
 
