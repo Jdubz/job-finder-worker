@@ -66,36 +66,39 @@ class CompanyInfoFetcher:
             "founded": "",
         }
 
-        if not company_website:
-            logger.warning(f"No website provided for {company_display}")
-            return result
-
         try:
-            # Try to fetch from common company pages
-            pages_to_try = [
-                f"{company_website}/about",
-                f"{company_website}/about-us",
-                f"{company_website}/company",
-                f"{company_website}/careers",
-                company_website,  # Homepage as fallback
-            ]
-
+            # Try to fetch from company site first when provided
             content = None
-            for page_url in pages_to_try:
-                try:
-                    content = self._fetch_page_content(page_url)
-                    text_limits = get_text_limits()
-                    min_page_length = text_limits.get("minCompanyPageLength", 200)
-                    if content and len(content) > min_page_length:  # Got meaningful content
-                        logger.info(f"Successfully fetched content from {page_url}")
-                        break
-                except (requests.RequestException, ValueError, AttributeError) as e:
-                    # HTTP errors, parsing errors, or invalid URL - try next page
-                    logger.debug(f"Failed to fetch {page_url}: {e}")
-                    continue
+            if company_website:
+                pages_to_try = [
+                    f"{company_website}/about",
+                    f"{company_website}/about-us",
+                    f"{company_website}/company",
+                    f"{company_website}/careers",
+                    company_website,  # Homepage as fallback
+                ]
+
+                for page_url in pages_to_try:
+                    try:
+                        content = self._fetch_page_content(page_url)
+                        text_limits = get_text_limits()
+                        min_page_length = text_limits.get("minCompanyPageLength", 200)
+                        if content and len(content) > min_page_length:  # Got meaningful content
+                            logger.info(f"Successfully fetched content from {page_url}")
+                            break
+                    except (requests.RequestException, ValueError, AttributeError) as e:
+                        logger.debug(f"Failed to fetch {page_url}: {e}")
+                        continue
+
+            # If site scrape was empty or no URL provided, fall back to AI web search
+            if not content and self.ai_provider:
+                logger.info("Company site content sparse; running AI web search for %s", company_display)
+                search_info = self._search_company_web(company_name)
+                if search_info:
+                    result.update(search_info)
+                    return result
 
             if content:
-                # Extract information from content
                 extracted = self._extract_company_info(content, company_name)
                 result.update(extracted)
 
@@ -110,11 +113,9 @@ class CompanyInfoFetcher:
                 logger.warning(f"Could not fetch any content for {company_display}")
 
         except (requests.RequestException, ValueError, AttributeError) as e:
-            # HTTP, parsing, or data errors - return empty result
             _, company_display = format_company_name(company_name)
             logger.error(f"Error fetching company info for {company_display}: {e}")
         except Exception as e:
-            # Unexpected errors - log with traceback
             logger.error(
                 f"Unexpected error fetching company info for {company_name} ({type(e).__name__}): {e}",
                 exc_info=True,
@@ -284,6 +285,40 @@ Return ONLY valid JSON in this format:
                 exc_info=True,
             )
             return self._extract_with_heuristics(content)
+
+    def _search_company_web(self, company_name: str) -> Optional[Dict[str, str]]:
+        """Use AI provider with web-search tools to gather company info beyond the site."""
+        try:
+            prompt = f"""
+Use web search to gather concise facts about {company_name}. You have browsing tools.
+Return ONLY JSON with these keys: about, culture, mission, size, industry, founded, sources.
+- about: 2-3 sentences
+- culture: 1-2 sentences
+- mission: mission statement if available
+- size: employee count or range
+- industry: primary sector
+- founded: year
+- sources: array of up to 3 URLs you used
+
+Respond with JSON only.
+"""
+            response = self.ai_provider.generate(prompt, max_tokens=800, temperature=0.2)
+
+            response_clean = response.strip()
+            if response_clean.startswith("```"):
+                start = response_clean.find("{")
+                end = response_clean.rfind("}") + 1
+                response_clean = response_clean[start:end]
+
+            data = json.loads(response_clean)
+            # Normalize expected fields
+            for key in ["about", "culture", "mission", "size", "industry", "founded"]:
+                data.setdefault(key, "")
+            data.setdefault("sources", [])
+            return data
+        except Exception as exc:
+            logger.warning("AI web search for %s failed: %s", company_name, exc)
+            return None
 
     def _is_sparse_company_info(self, info: Dict[str, str]) -> bool:
         """
