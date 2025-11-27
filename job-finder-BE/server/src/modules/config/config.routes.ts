@@ -14,6 +14,8 @@ import type {
   SchedulerSettings,
   JobFinderConfigId,
   PromptConfig,
+  CompanyScoringConfig,
+  WorkerSettings,
 } from '@shared/types'
 import {
   ApiErrorCode,
@@ -26,6 +28,8 @@ import {
   DEFAULT_SCHEDULER_SETTINGS,
   DEFAULT_PROMPTS,
   AI_PROVIDER_OPTIONS,
+  DEFAULT_COMPANY_SCORING,
+  DEFAULT_WORKER_SETTINGS,
   isStopList,
   isQueueSettings,
   isAISettings,
@@ -34,6 +38,8 @@ import {
   isTechnologyRanksConfig,
   isSchedulerSettings,
   isPersonalInfo,
+  isCompanyScoringConfig,
+  isWorkerSettings,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -54,6 +60,8 @@ type KnownPayload =
   | TechnologyRanksConfig
   | SchedulerSettings
   | PromptConfig
+  | CompanyScoringConfig
+  | WorkerSettings
   | Record<string, unknown>
 
 /**
@@ -120,6 +128,7 @@ function seedDefaults(repo: ConfigRepository) {
     ['technology-ranks', DEFAULT_TECH_RANKS],
     ['scheduler-settings', DEFAULT_SCHEDULER_SETTINGS],
     ['ai-prompts', DEFAULT_PROMPTS],
+    // We deliberately do not seed company-scoring or worker-settings; prod DB already holds them.
   ]
 
   for (const [id, payload] of seeds) {
@@ -203,6 +212,14 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
     }
     case 'ai-prompts':
       return payload
+    case 'company-scoring': {
+      const normalized = normalizeKeys<CompanyScoringConfig>(payload)
+      return { ...DEFAULT_COMPANY_SCORING, ...normalized }
+    }
+    case 'worker-settings': {
+      const normalized = normalizeKeys<WorkerSettings>(payload)
+      return { ...DEFAULT_WORKER_SETTINGS, ...normalized }
+    }
     case 'personal-info':
     default:
       return payload
@@ -227,6 +244,10 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
       return isSchedulerSettings(payload)
     case 'ai-prompts':
       return true
+    case 'company-scoring':
+      return isCompanyScoringConfig(payload)
+    case 'worker-settings':
+      return isWorkerSettings(payload)
     case 'personal-info':
       return isPersonalInfo(payload)
     default:
@@ -272,6 +293,11 @@ export function buildConfigRouter() {
       const userEmail = (req as typeof req & { user?: { email?: string } }).user?.email ?? null
 
       let entry = repo.get(id)
+      // Fallback to underscore or hyphen variants to gracefully handle legacy keys
+      if (!entry) {
+        const altId = id.includes('-') ? (id.replace(/-/g, '_') as JobFinderConfigId) : (id.replace(/_/g, '-') as JobFinderConfigId)
+        entry = repo.get(altId)
+      }
 
       // Auto-create personal-info with defaults to avoid 404s in settings UI
       if (!entry && id === 'personal-info') {
