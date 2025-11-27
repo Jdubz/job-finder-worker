@@ -240,7 +240,7 @@ def create_provider_from_config(ai_settings: Dict[str, Any]) -> AIProvider:
     if (provider_type, interface_type) not in supported_keys:
         raise AIProviderError(
             f"Unsupported provider/interface combination: {provider_type}/{interface_type}. "
-            f"Supported: {', '.join(f'{p}/{i}' for p,i in supported_keys)}"
+            f"Supported: {', '.join(f'{p}/{i}' for p, i in supported_keys)}"
         )
 
     provider_key = (provider_type, interface_type)
