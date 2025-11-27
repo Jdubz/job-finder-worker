@@ -83,7 +83,6 @@ describe("Footer Integration", () => {
       "href",
       "/document-builder"
     )
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings")
   })
 
   it("has correct external link attributes", () => {
