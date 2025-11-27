@@ -72,10 +72,17 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   useEffect(() => {
     let cancelled = false
 
-    const handleEvent = (eventName: string, data: unknown) => {
+    type QueueEventData = Partial<{
+      items: QueueItem[]
+      queueItem: QueueItem
+      queueItemId: string
+    }> &
+      Record<string, unknown>
+
+    const handleEvent = (eventName: string, data?: QueueEventData) => {
       if (cancelled) return
-      if (eventName === "snapshot" && (data as { items?: QueueItem[] })?.items) {
-        const items = (data as { items?: QueueItem[] }).items ?? []
+      if (eventName === "snapshot" && data?.items) {
+        const items = data.items ?? []
         setQueueItems(items.map(normalizeQueueItem))
         setLoading(false)
         return
@@ -93,9 +100,9 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       }
 
       if (eventName === "item.created" && data?.queueItem) {
-        upsert(data.queueItem as QueueItem)
+        upsert(data.queueItem)
       } else if (eventName === "item.updated" && data?.queueItem) {
-        upsert(data.queueItem as QueueItem)
+        upsert(data.queueItem)
       } else if (eventName === "item.deleted" && data?.queueItemId) {
         setQueueItems((prev) => prev.filter((i) => i.id !== data.queueItemId))
       }
