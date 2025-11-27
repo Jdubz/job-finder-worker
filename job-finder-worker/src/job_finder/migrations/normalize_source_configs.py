@@ -48,7 +48,7 @@ def extract_greenhouse_board_token(config: Dict[str, Any]) -> Optional[str]:
 def is_greenhouse_source(config: Dict[str, Any]) -> bool:
     """Check if config is actually a Greenhouse source."""
     url = config.get("url", "")
-    return "greenhouse.io" in url or config.get("board_token")
+    return "greenhouse.io" in url or bool(config.get("board_token"))
 
 
 def normalize_greenhouse_config(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -288,7 +288,9 @@ def run_migration(db_path: str, dry_run: bool = False) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python -m job_finder.migrations.normalize_source_configs <db_path> [--dry-run]")
+        print(
+            "Usage: python -m job_finder.migrations.normalize_source_configs <db_path> [--dry-run]"
+        )
         sys.exit(1)
 
     db_path = sys.argv[1]

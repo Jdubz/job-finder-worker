@@ -4,7 +4,6 @@ import pytest
 
 from job_finder.scrapers.config_expander import (
     GREENHOUSE_FIELDS,
-    RSS_FIELDS,
     expand_config,
 )
 
