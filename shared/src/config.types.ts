@@ -31,6 +31,7 @@ export interface StopList {
 
 export interface QueueSettings {
   processingTimeoutSeconds: number
+  isProcessingEnabled?: boolean // Controls whether the worker processes queue items (defaults to true)
   updatedAt?: TimestampLike
   updatedBy?: string | null
 }
@@ -311,6 +312,7 @@ export const DEFAULT_STOP_LIST: StopList = {
 
 export const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
   processingTimeoutSeconds: 1800,
+  isProcessingEnabled: true,
 }
 
 /** Canonical provider options built from AI_PROVIDER_MODELS */

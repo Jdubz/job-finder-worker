@@ -1,7 +1,8 @@
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import type { QueueItem, QueueStats } from "@shared/types"
 import { useQueueItems } from "@/hooks/useQueueItems"
+import { configClient } from "@/api/config-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -16,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AlertCircle, Activity, Loader2, Plus, Trash2 } from "lucide-react"
+import { AlertCircle, Activity, Loader2, Plus, Trash2, Play, Pause } from "lucide-react"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
 import {
@@ -39,6 +40,9 @@ export function QueueManagementPage() {
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null)
+  const [isProcessingEnabled, setIsProcessingEnabled] = useState<boolean | null>(null)
+  const [isTogglingProcessing, setIsTogglingProcessing] = useState(false)
+  const [confirmToggleOpen, setConfirmToggleOpen] = useState(false)
 
   // Calculate stats when queue items change
   useEffect(() => {
@@ -66,6 +70,43 @@ export function QueueManagementPage() {
       setAlert(null)
     }
   }, [queueItems, error])
+
+  // Load queue settings on mount
+  useEffect(() => {
+    const loadQueueSettings = async () => {
+      try {
+        const settings = await configClient.getQueueSettings()
+        // Default to true if not set
+        setIsProcessingEnabled(settings?.isProcessingEnabled ?? true)
+      } catch (err) {
+        console.error("Failed to load queue settings:", err)
+        setIsProcessingEnabled(true) // Default to enabled
+      }
+    }
+    loadQueueSettings()
+  }, [])
+
+  const handleToggleProcessing = useCallback(async () => {
+    const newValue = !isProcessingEnabled
+    setIsTogglingProcessing(true)
+    try {
+      await configClient.updateQueueSettings({ isProcessingEnabled: newValue })
+      setIsProcessingEnabled(newValue)
+      setAlert({
+        type: "success",
+        message: newValue ? "Queue processing started" : "Queue processing paused",
+      })
+    } catch (err) {
+      console.error("Failed to toggle processing:", err)
+      setAlert({
+        type: "error",
+        message: "Failed to update queue processing state",
+      })
+    } finally {
+      setIsTogglingProcessing(false)
+      setConfirmToggleOpen(false)
+    }
+  }, [isProcessingEnabled])
 
   const statusOrder = useMemo(
     () => ({
@@ -185,13 +226,21 @@ export function QueueManagementPage() {
             <h1 className="text-3xl font-bold tracking-tight">Queue Management</h1>
             <Badge
               variant="outline"
-              className="flex items-center gap-1 bg-green-50 text-green-700 border-green-200"
+              className={`flex items-center gap-1 ${
+                isProcessingEnabled === false
+                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                  : "bg-green-50 text-green-700 border-green-200"
+              }`}
             >
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                {isProcessingEnabled !== false && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                )}
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                  isProcessingEnabled === false ? "bg-amber-500" : "bg-green-500"
+                }`}></span>
               </span>
-              Live
+              {isProcessingEnabled === false ? "Paused" : "Live"}
             </Badge>
           </div>
           <p className="text-muted-foreground mt-2">
@@ -201,6 +250,24 @@ export function QueueManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isProcessingEnabled !== null && (
+            <Button
+              size="sm"
+              variant={isProcessingEnabled ? "outline" : "default"}
+              onClick={() => setConfirmToggleOpen(true)}
+              disabled={isTogglingProcessing}
+              className={isProcessingEnabled ? "border-amber-300 hover:bg-amber-50" : ""}
+            >
+              {isTogglingProcessing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : isProcessingEnabled ? (
+                <Pause className="h-4 w-4 mr-2" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {isProcessingEnabled ? "Pause Queue" : "Start Queue"}
+            </Button>
+          )}
           <Button size="sm" onClick={() => setCreateOpen(true)} className="shadow-sm">
             <Plus className="h-4 w-4 mr-2" />
             Create Scrape Job
@@ -347,6 +414,41 @@ export function QueueManagementPage() {
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <ScrapeJobDialog open={createOpen} onOpenChange={setCreateOpen} onSubmitted={refetch} />
+      </Dialog>
+
+      {/* Confirm Toggle Processing Modal */}
+      <Dialog open={confirmToggleOpen} onOpenChange={setConfirmToggleOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>
+              {isProcessingEnabled ? "Pause Queue Processing?" : "Start Queue Processing?"}
+            </DialogTitle>
+            <DialogDescription>
+              {isProcessingEnabled
+                ? "The worker will stop picking up new tasks from the queue. Items currently being processed will complete. Pending items will remain in the queue."
+                : "The worker will resume processing pending items in the queue."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" onClick={() => setConfirmToggleOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant={isProcessingEnabled ? "destructive" : "default"}
+              onClick={handleToggleProcessing}
+              disabled={isTogglingProcessing}
+            >
+              {isTogglingProcessing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : isProcessingEnabled ? (
+                <Pause className="h-4 w-4 mr-2" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {isProcessingEnabled ? "Pause Processing" : "Start Processing"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
       <Dialog open={Boolean(selectedItem)} onOpenChange={(open) => !open && setSelectedItem(null)}>

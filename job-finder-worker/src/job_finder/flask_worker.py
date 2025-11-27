@@ -331,6 +331,15 @@ def worker_loop():
                 # Refresh timeout from DB each loop (allows runtime changes)
                 processing_timeout = get_processing_timeout(config_loader)
 
+                # Check if processing is enabled (allows pausing via config)
+                if not config_loader.is_processing_enabled():
+                    slogger.worker_status(
+                        "processing_paused",
+                        {"iteration": worker_state["iteration"]},
+                    )
+                    time.sleep(worker_state["poll_interval"])
+                    continue
+
                 # Drain the queue before sleeping
                 items = queue_manager.get_pending_items()
                 if not items:
