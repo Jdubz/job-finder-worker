@@ -340,4 +340,138 @@ describe("CompaniesPage", () => {
       })
     })
   })
+
+  describe("Re-analyze Feature", () => {
+    it("should show Re-analyze button in detail modal", async () => {
+      const user = userEvent.setup()
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("Acme Corporation").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /re-analyze/i })).toBeInTheDocument()
+      })
+    })
+
+    it("should call submitCompany with companyId when Re-analyze is clicked", async () => {
+      const user = userEvent.setup()
+      mockSubmitCompany.mockResolvedValueOnce("queue-item-123")
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("Acme Corporation").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /re-analyze/i })).toBeInTheDocument()
+      })
+
+      const reanalyzeButton = screen.getByRole("button", { name: /re-analyze/i })
+      await user.click(reanalyzeButton)
+
+      await waitFor(() => {
+        expect(mockSubmitCompany).toHaveBeenCalledWith({
+          companyName: "Acme Corporation",
+          websiteUrl: "https://acme.com",
+          companyId: "company-1",
+        })
+      })
+    })
+
+    it("should show success message after successful re-analyze submission", async () => {
+      const user = userEvent.setup()
+      mockSubmitCompany.mockResolvedValueOnce("queue-item-123")
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("Acme Corporation").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /re-analyze/i })).toBeInTheDocument()
+      })
+
+      const reanalyzeButton = screen.getByRole("button", { name: /re-analyze/i })
+      await user.click(reanalyzeButton)
+
+      await waitFor(() => {
+        expect(screen.getByText(/re-analysis task queued/i)).toBeInTheDocument()
+      })
+    })
+
+    it("should show error message when re-analyze fails", async () => {
+      const user = userEvent.setup()
+      mockSubmitCompany.mockRejectedValueOnce(new Error("Network error"))
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("Acme Corporation").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /re-analyze/i })).toBeInTheDocument()
+      })
+
+      const reanalyzeButton = screen.getByRole("button", { name: /re-analyze/i })
+      await user.click(reanalyzeButton)
+
+      await waitFor(() => {
+        expect(screen.getByText(/network error/i)).toBeInTheDocument()
+      })
+    })
+
+    it("should disable Re-analyze button for company without website", async () => {
+      const companyWithoutWebsite = {
+        id: "company-no-website",
+        name: "No Website Corp",
+        website: null,
+        industry: "Technology",
+        techStack: [],
+        about: "",
+        culture: "",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+
+      vi.mocked(useCompanies).mockReturnValue({
+        companies: [companyWithoutWebsite] as any,
+        loading: false,
+        error: null,
+        pagination: { limit: 100, offset: 0, total: 1, hasMore: false },
+        updateCompany: vi.fn(),
+        deleteCompany: mockDeleteCompany,
+        refetch: mockRefetch,
+        setFilters: mockSetFilters,
+      } as any)
+
+      const user = userEvent.setup()
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("No Website Corp")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("No Website Corp").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        const reanalyzeButton = screen.getByRole("button", { name: /re-analyze/i })
+        expect(reanalyzeButton).toBeDisabled()
+      })
+    })
+  })
 })

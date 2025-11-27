@@ -10,9 +10,16 @@ import userEvent from "@testing-library/user-event"
 import { QueueManagementPage } from "../QueueManagementPage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useQueueItems } from "@/hooks/useQueueItems"
+import { configClient } from "@/api/config-client"
 
 vi.mock("@/contexts/AuthContext")
 vi.mock("@/hooks/useQueueItems")
+vi.mock("@/api/config-client", () => ({
+  configClient: {
+    getQueueSettings: vi.fn(),
+    updateQueueSettings: vi.fn(),
+  },
+}))
 
 describe("QueueManagementPage", () => {
   const mockUser = {
@@ -90,6 +97,13 @@ describe("QueueManagementPage", () => {
       updateQueueItem: mockUpdateQueueItem,
       refetch: vi.fn(),
     } as any)
+
+    // Default: queue processing is enabled
+    vi.mocked(configClient.getQueueSettings).mockResolvedValue({
+      processingTimeoutSeconds: 1800,
+      isProcessingEnabled: true,
+    })
+    vi.mocked(configClient.updateQueueSettings).mockResolvedValue()
   })
 
   describe("Initial Rendering", () => {
@@ -253,11 +267,211 @@ describe("QueueManagementPage", () => {
   })
 
   describe("Live Badge", () => {
-    it("shows Live badge when data is loaded", async () => {
+    it("shows Live badge when processing is enabled", async () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
         expect(screen.getByText("Live")).toBeInTheDocument()
+      })
+    })
+
+    it("shows Paused badge when processing is disabled", async () => {
+      vi.mocked(configClient.getQueueSettings).mockResolvedValue({
+        processingTimeoutSeconds: 1800,
+        isProcessingEnabled: false,
+      })
+
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Paused")).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe("Queue Processing Toggle", () => {
+    it("shows Pause Queue button when processing is enabled", async () => {
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
+      })
+    })
+
+    it("shows Start Queue button when processing is disabled", async () => {
+      vi.mocked(configClient.getQueueSettings).mockResolvedValue({
+        processingTimeoutSeconds: 1800,
+        isProcessingEnabled: false,
+      })
+
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /start queue/i })).toBeInTheDocument()
+      })
+    })
+
+    it("opens confirmation modal when Pause Queue is clicked", async () => {
+      const user = userEvent.setup()
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("button", { name: /pause queue/i }))
+
+      await waitFor(() => {
+        expect(screen.getByText(/pause queue processing\?/i)).toBeInTheDocument()
+        expect(screen.getByText(/stop picking up new tasks/i)).toBeInTheDocument()
+      })
+    })
+
+    it("opens confirmation modal when Start Queue is clicked", async () => {
+      vi.mocked(configClient.getQueueSettings).mockResolvedValue({
+        processingTimeoutSeconds: 1800,
+        isProcessingEnabled: false,
+      })
+
+      const user = userEvent.setup()
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /start queue/i })).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("button", { name: /start queue/i }))
+
+      await waitFor(() => {
+        expect(screen.getByText(/start queue processing\?/i)).toBeInTheDocument()
+        expect(screen.getByText(/resume processing pending items/i)).toBeInTheDocument()
+      })
+    })
+
+    it("closes confirmation modal when Cancel is clicked", async () => {
+      const user = userEvent.setup()
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("button", { name: /pause queue/i }))
+
+      await waitFor(() => {
+        expect(screen.getByText(/pause queue processing\?/i)).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("button", { name: /^cancel$/i }))
+
+      await waitFor(() => {
+        expect(screen.queryByText(/pause queue processing\?/i)).not.toBeInTheDocument()
+      })
+    })
+
+    it("pauses processing when confirmed", async () => {
+      const user = userEvent.setup()
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("button", { name: /pause queue/i }))
+
+      await waitFor(() => {
+        expect(screen.getByText(/pause queue processing\?/i)).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("button", { name: /pause processing/i }))
+
+      await waitFor(() => {
+        expect(configClient.updateQueueSettings).toHaveBeenCalledWith({
+          isProcessingEnabled: false,
+        })
+      })
+
+      await waitFor(() => {
+        expect(screen.getByText(/queue processing paused/i)).toBeInTheDocument()
+      })
+    })
+
+    it("starts processing when confirmed", async () => {
+      vi.mocked(configClient.getQueueSettings).mockResolvedValue({
+        processingTimeoutSeconds: 1800,
+        isProcessingEnabled: false,
+      })
+
+      const user = userEvent.setup()
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /start queue/i })).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("button", { name: /start queue/i }))
+
+      await waitFor(() => {
+        expect(screen.getByText(/start queue processing\?/i)).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("button", { name: /start processing/i }))
+
+      await waitFor(() => {
+        expect(configClient.updateQueueSettings).toHaveBeenCalledWith({
+          isProcessingEnabled: true,
+        })
+      })
+
+      await waitFor(() => {
+        expect(screen.getByText(/queue processing started/i)).toBeInTheDocument()
+      })
+    })
+
+    it("shows error message when toggle fails", async () => {
+      vi.mocked(configClient.updateQueueSettings).mockRejectedValue(new Error("Network error"))
+
+      const user = userEvent.setup()
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("button", { name: /pause queue/i }))
+
+      await waitFor(() => {
+        expect(screen.getByText(/pause queue processing\?/i)).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole("button", { name: /pause processing/i }))
+
+      await waitFor(() => {
+        expect(screen.getByText(/failed to update queue processing state/i)).toBeInTheDocument()
+      })
+    })
+
+    it("defaults to enabled when getQueueSettings fails", async () => {
+      vi.mocked(configClient.getQueueSettings).mockRejectedValue(new Error("Failed to load"))
+
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Live")).toBeInTheDocument()
+        expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
+      })
+    })
+
+    it("defaults to enabled when isProcessingEnabled is not set", async () => {
+      vi.mocked(configClient.getQueueSettings).mockResolvedValue({
+        processingTimeoutSeconds: 1800,
+      } as any)
+
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Live")).toBeInTheDocument()
+        expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
       })
     })
   })

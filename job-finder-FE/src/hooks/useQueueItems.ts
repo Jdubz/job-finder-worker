@@ -13,6 +13,7 @@ interface UseQueueItemsOptions {
 interface SubmitCompanyParams {
   companyName: string
   websiteUrl: string
+  companyId?: string | null
 }
 
 interface SubmitSourceDiscoveryParams {
@@ -236,6 +237,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       const queueItem = await queueClient.submitCompany({
         companyName: params.companyName,
         websiteUrl: params.websiteUrl,
+        companyId: params.companyId,
         source: "user_request",
       })
 

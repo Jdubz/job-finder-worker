@@ -59,12 +59,24 @@ class ConfigLoader:
             return self._seed_config("stop-list", default)
 
     def get_queue_settings(self) -> Dict[str, Any]:
-        default = {"processingTimeoutSeconds": 1800}
+        default = {"processingTimeoutSeconds": 1800, "isProcessingEnabled": True}
         try:
-            return self._get_config("queue-settings")
+            settings = self._get_config("queue-settings")
+            # Ensure isProcessingEnabled defaults to True if not present
+            if "isProcessingEnabled" not in settings:
+                settings["isProcessingEnabled"] = True
+            return settings
         except InitializationError:
             logger.warning("Queue settings missing; seeding defaults")
             return self._seed_config("queue-settings", default)
+
+    def is_processing_enabled(self) -> bool:
+        """Check if queue processing is enabled. Defaults to True if not set."""
+        try:
+            settings = self.get_queue_settings()
+            return settings.get("isProcessingEnabled", True)
+        except Exception:
+            return True  # Default to enabled if config can't be read
 
     def get_ai_settings(self) -> Dict[str, Any]:
         """Get AI provider configuration (provider selection only)."""

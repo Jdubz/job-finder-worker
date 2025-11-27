@@ -15,6 +15,7 @@ export type SubmitJobInput = {
 export type SubmitCompanyInput = {
   companyName: string
   websiteUrl: string
+  companyId?: string | null
   source?: QueueSource
 }
 
@@ -77,7 +78,7 @@ export class JobQueueService {
       status: 'pending',
       url: input.websiteUrl,
       company_name: input.companyName,
-      company_id: null,
+      company_id: input.companyId ?? null,
       source: input.source ?? 'manual_submission',
       submitted_by: null,
       created_at: now,
