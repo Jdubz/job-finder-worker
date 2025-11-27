@@ -421,27 +421,27 @@ export function CompaniesPage() {
                   )}
                 </div>
 
-                {/* Description if available */}
-                {selectedCompany.description && (
+                {/* About/Mission if available */}
+                {(selectedCompany.about || selectedCompany.mission) && (
                   <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Description</Label>
-                    <p className="mt-1 text-sm">{selectedCompany.description}</p>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">About</Label>
+                    <p className="mt-1 text-sm">{selectedCompany.about || selectedCompany.mission}</p>
                   </div>
                 )}
 
                 {/* Headquarters/Location if available */}
-                {selectedCompany.headquarters && (
+                {selectedCompany.headquartersLocation && (
                   <div>
                     <Label className="text-muted-foreground text-xs uppercase tracking-wide">Headquarters</Label>
-                    <p className="mt-1">{selectedCompany.headquarters}</p>
+                    <p className="mt-1">{selectedCompany.headquartersLocation}</p>
                   </div>
                 )}
 
                 {/* Size if available */}
-                {selectedCompany.size && (
+                {selectedCompany.companySizeCategory && (
                   <div>
                     <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company Size</Label>
-                    <p className="mt-1">{selectedCompany.size}</p>
+                    <p className="mt-1 capitalize">{selectedCompany.companySizeCategory}</p>
                   </div>
                 )}
 
