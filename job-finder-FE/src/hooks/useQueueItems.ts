@@ -22,10 +22,13 @@ interface SubmitSourceDiscoveryParams {
   companyId?: string | null
 }
 
+export type ConnectionStatus = "connecting" | "connected" | "disconnected"
+
 interface UseQueueItemsResult {
   queueItems: QueueItem[]
   loading: boolean
   error: Error | null
+  connectionStatus: ConnectionStatus
   submitJob: (url: string, companyName?: string, generationId?: string) => Promise<string>
   submitCompany: (params: SubmitCompanyParams) => Promise<string>
   submitSourceDiscovery: (params: SubmitSourceDiscoveryParams) => Promise<string>
@@ -40,6 +43,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   const [queueItems, setQueueItems] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<Error | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting")
   const savedQueueItems = useMemo(() => consumeSavedProviderState<QueueItem[]>("queue-items"), [])
   const streamAbortRef = useRef<AbortController | null>(null)
 
@@ -123,11 +127,15 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     }
 
     const startStream = async () => {
+      setConnectionStatus("connecting")
       // Kick off an initial fetch so UI is responsive if SSE fails
       await fetchQueueItems()
 
       const token = getStoredAuthToken()
-      if (!token) return
+      if (!token) {
+        setConnectionStatus("disconnected")
+        return
+      }
 
       try {
         const controller = new AbortController()
@@ -139,10 +147,12 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         })
 
         if (!res.ok || !res.body) {
+          setConnectionStatus("disconnected")
           await fetchQueueItems()
           return
         }
 
+        setConnectionStatus("connected")
         const reader = res.body.getReader()
         const decoder = new TextDecoder("utf-8")
         let buffer = ""
@@ -184,6 +194,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
 
         // Stream ended gracefully (e.g., Cloudflare timeout) - reconnect
         if (!cancelled) {
+          setConnectionStatus("connecting")
           console.log("Queue event stream ended gracefully; reconnecting...")
           fetchQueueItems()
           setTimeout(() => {
@@ -194,10 +205,12 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       } catch (error) {
         // Skip reconnects if intentionally aborted during unmount
         if (error instanceof DOMException && error.name === "AbortError") {
+          setConnectionStatus("disconnected")
           return
         }
 
         if (!cancelled) {
+          setConnectionStatus("connecting")
           console.error("Queue event stream disconnected; retrying shortly", error)
           fetchQueueItems()
           // Attempt to reconnect after backoff
@@ -320,6 +333,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     queueItems,
     loading,
     error,
+    connectionStatus,
     submitJob,
     submitCompany,
     submitSourceDiscovery,
