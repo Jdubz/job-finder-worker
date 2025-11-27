@@ -435,16 +435,21 @@ export function SourcesPage() {
               </DialogHeader>
 
               <div className="space-y-4">
+                {/* ID */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">ID</Label>
+                  <p className="mt-1 text-sm font-mono text-muted-foreground">{selectedSource.id || "—"}</p>
+                </div>
+
                 {/* Source URL */}
-                {getSourceUrl(selectedSource) && (
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Source URL</Label>
-                    {(() => {
-                      const url = getSourceUrl(selectedSource)
-                      if (!url) {
-                        return <span className="text-muted-foreground mt-1 inline-block">Not provided</span>
-                      }
-                      return (
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Source URL</Label>
+                  {(() => {
+                    const url = getSourceUrl(selectedSource)
+                    if (!url) {
+                      return <p className="mt-1 text-muted-foreground">—</p>
+                    }
+                    return (
                       <a
                         href={url}
                         target="_blank"
@@ -454,10 +459,9 @@ export function SourcesPage() {
                         {url}
                         <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
                       </a>
-                      )
-                    })()}
-                  </div>
-                )}
+                    )
+                  })()}
+                </div>
 
                 {/* Type */}
                 <div>
@@ -465,16 +469,32 @@ export function SourcesPage() {
                   <p className="mt-1">{sourceTypeLabels[selectedSource.sourceType] || selectedSource.sourceType}</p>
                 </div>
 
-                {/* Scraping Info */}
+                {/* Status */}
                 <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Last Scraped</Label>
-                  <p className="mt-1">{formatRelativeTime(selectedSource.lastScrapedAt)}</p>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Status</Label>
+                  <p className="mt-1">
+                    <Badge className={statusColors[selectedSource.status]}>
+                      {selectedSource.status}
+                    </Badge>
+                  </p>
+                </div>
+
+                {/* Company ID */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company ID</Label>
+                  <p className="mt-1 text-sm font-mono text-muted-foreground">{selectedSource.companyId || "—"}</p>
+                </div>
+
+                {/* Company Name */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company Name</Label>
+                  <p className="mt-1">{selectedSource.companyName || "—"}</p>
                 </div>
 
                 {/* Tags */}
-                {selectedSource.tags && selectedSource.tags.length > 0 && (
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Tags</Label>
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Tags</Label>
+                  {selectedSource.tags && selectedSource.tags.length > 0 ? (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {selectedSource.tags.map((tag) => (
                         <Badge key={tag} variant="outline" className="text-xs">
@@ -482,8 +502,24 @@ export function SourcesPage() {
                         </Badge>
                       ))}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <p className="mt-1 text-muted-foreground">—</p>
+                  )}
+                </div>
+
+                {/* Config JSON */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Config</Label>
+                  <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-40">
+                    {JSON.stringify(selectedSource.configJson, null, 2)}
+                  </pre>
+                </div>
+
+                {/* Scraping Info */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Last Scraped</Label>
+                  <p className="mt-1">{formatRelativeTime(selectedSource.lastScrapedAt)}</p>
+                </div>
 
                 {/* Timestamps */}
                 <div className="grid grid-cols-2 gap-4 pt-2 border-t">
