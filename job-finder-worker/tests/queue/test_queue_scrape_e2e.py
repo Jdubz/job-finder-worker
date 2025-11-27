@@ -87,7 +87,7 @@ def test_queue_scrape_end_to_end(temp_db):
     company_info_fetcher = CompanyInfoFetcher(companies_manager)
     ai_matcher = DummyMatcher(score=88)
 
-    # Pre-populate an ACTIVE company so the job pipeline doesn't spawn a company task
+    # Pre-populate a company with good data so the job pipeline doesn't spawn a company task
     # Note: name_lower must match normalize_company_name("E2E Co") = "e2e"
     now_iso = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(db_path) as conn:
@@ -95,18 +95,17 @@ def test_queue_scrape_end_to_end(temp_db):
             """
             INSERT INTO companies (
                 id, name, name_lower, website, about, culture,
-                analysis_status, created_at, updated_at
+                created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "e2e-company-id",
                 "E2E Co",
                 "e2e",  # normalized: " Co" suffix is stripped
                 "https://e2e.example.com",
-                "We build E2E pipelines",
-                "Remote-first",
-                "active",
+                "We build E2E pipelines with extensive testing and monitoring capabilities.",
+                "Remote-first culture with quarterly meetups.",
                 now_iso,
                 now_iso,
             ),
@@ -130,7 +129,6 @@ def test_queue_scrape_end_to_end(temp_db):
         sources_manager=sources_manager,
         company_info_fetcher=company_info_fetcher,
         ai_matcher=ai_matcher,
-        profile=object(),  # not used in this flow
     )
 
     scrape_runner = processor.job_processor.scrape_runner

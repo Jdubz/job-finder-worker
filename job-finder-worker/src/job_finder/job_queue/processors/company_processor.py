@@ -17,11 +17,14 @@ import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
-from job_finder.exceptions import InvalidStateTransition, QueueProcessingError
+from job_finder.company_info_fetcher import CompanyInfoFetcher
+from job_finder.exceptions import QueueProcessingError
+from job_finder.job_queue.config_loader import ConfigLoader
+from job_finder.job_queue.manager import QueueManager
 from job_finder.settings import get_text_limits
 from job_finder.logging_config import format_company_name
+from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.job_queue.models import (
-    CompanyStatus,
     CompanySubTask,
     JobQueueItem,
     QueueItemType,
@@ -37,6 +40,27 @@ logger = logging.getLogger(__name__)
 
 class CompanyProcessor(BaseProcessor):
     """Processor for company queue items."""
+
+    def __init__(
+        self,
+        queue_manager: QueueManager,
+        config_loader: ConfigLoader,
+        companies_manager: CompaniesManager,
+        company_info_fetcher: CompanyInfoFetcher,
+    ):
+        """
+        Initialize company processor with its specific dependencies.
+
+        Args:
+            queue_manager: Queue manager for updating item status
+            config_loader: Configuration loader for stop lists and filters
+            companies_manager: Company data manager
+            company_info_fetcher: Company info scraper
+        """
+        super().__init__(queue_manager, config_loader)
+
+        self.companies_manager = companies_manager
+        self.company_info_fetcher = company_info_fetcher
 
     # ============================================================
     # MAIN ROUTING
@@ -87,19 +111,10 @@ class CompanyProcessor(BaseProcessor):
 
         company_id = item.company_id or (item.pipeline_state or {}).get("company_id")
 
-        # Mark company as analyzing
-        if company_id:
-            try:
-                self.companies_manager.transition_status(company_id, CompanyStatus.ANALYZING)
-            except InvalidStateTransition as exc:
-                logger.warning("Company %s transition to analyzing blocked: %s", company_id, exc)
-
         with self._handle_company_failure(company_id):
             if not item.url:
                 error_msg = "No company website URL provided"
                 self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
-                if company_id:
-                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
                 return
 
             # Fetch HTML content from company pages
@@ -140,13 +155,6 @@ class CompanyProcessor(BaseProcessor):
                     self.queue_manager.update_status(
                         item.id, QueueStatus.FAILED, error_msg, error_details=error_details
                     )
-                    if company_id:
-                        try:
-                            self.companies_manager.transition_status(
-                                company_id, CompanyStatus.FAILED
-                            )
-                        except InvalidStateTransition:
-                            pass
                     return
 
             # Prepare pipeline state for next step
@@ -163,9 +171,6 @@ class CompanyProcessor(BaseProcessor):
                 QueueStatus.SUCCESS,
                 f"Fetched {len(html_content)} pages from company website",
             )
-
-            if company_id:
-                self.companies_manager.update_analysis_progress(company_id, fetch=True)
 
             # Spawn next pipeline step (EXTRACT)
             self.queue_manager.spawn_next_pipeline_step(
@@ -239,9 +244,6 @@ class CompanyProcessor(BaseProcessor):
                 "Company information extracted successfully",
             )
 
-            if company_id:
-                self.companies_manager.update_analysis_progress(company_id, extract=True)
-
             # Spawn next pipeline step (ANALYZE)
             self.queue_manager.spawn_next_pipeline_step(
                 current_item=item,
@@ -298,17 +300,10 @@ class CompanyProcessor(BaseProcessor):
             # Detect job board URLs
             job_board_url = self._detect_job_board(company_website, html_content)
 
-            # Calculate priority score
-            priority_score, tier = self._calculate_company_priority(
-                company_name, extracted_info, tech_stack
-            )
-
             # Prepare analysis results
             analysis_result = {
                 "tech_stack": tech_stack,
                 "job_board_url": job_board_url,
-                "priority_score": priority_score,
-                "tier": tier,
             }
 
             # Prepare pipeline state with analysis
@@ -321,11 +316,8 @@ class CompanyProcessor(BaseProcessor):
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.SUCCESS,
-                f"Company analyzed (Tier {tier}, Score: {priority_score})",
+                f"Company analyzed, Tech Stack: {len(tech_stack)} items",
             )
-
-            if company_id:
-                self.companies_manager.update_analysis_progress(company_id, analyze=True)
 
             # If job board found, spawn SOURCE_DISCOVERY
             if job_board_url:
@@ -342,8 +334,7 @@ class CompanyProcessor(BaseProcessor):
             )
 
             logger.info(
-                f"COMPANY_ANALYZE complete: {company_name} - Tier {tier}, "
-                f"Score {priority_score}, Tech Stack: {len(tech_stack)} items"
+                f"COMPANY_ANALYZE complete: {company_name}, Tech Stack: {len(tech_stack)} items"
             )
 
     def process_company_save(self, item: JobQueueItem) -> None:
@@ -375,15 +366,6 @@ class CompanyProcessor(BaseProcessor):
                 "website": company_website,
                 **extracted_info,
                 "techStack": analysis_result.get("tech_stack", []),
-                "tier": analysis_result.get("tier", "D"),
-                "priorityScore": analysis_result.get("priority_score", 0),
-                "analysis_status": CompanyStatus.ACTIVE.value,
-                "analysis_progress": {
-                    "fetch": True,
-                    "extract": True,
-                    "analyze": True,
-                    "save": True,
-                },
             }
 
             if company_id:
@@ -434,17 +416,11 @@ class CompanyProcessor(BaseProcessor):
 
     @contextmanager
     def _handle_company_failure(self, company_id: Optional[str]):
-        """Ensure company status moves to FAILED on unhandled errors."""
-
+        """Log and re-raise company pipeline errors."""
         try:
             yield
         except Exception as exc:
-            if company_id:
-                try:
-                    self.companies_manager.transition_status(company_id, CompanyStatus.FAILED)
-                except InvalidStateTransition:
-                    pass
-            logger.error("Company pipeline error: %s", exc)
+            logger.error("Company pipeline error (company_id=%s): %s", company_id, exc)
             raise
 
     def _detect_tech_stack(
@@ -572,79 +548,3 @@ class CompanyProcessor(BaseProcessor):
                 return f"{company_website}/{page_type}"
 
         return None
-
-    def _calculate_company_priority(
-        self,
-        company_name: str,
-        extracted_info: Dict[str, Any],
-        tech_stack: list,
-    ) -> tuple[int, str]:
-        """
-        Calculate company priority score and tier.
-
-        Args:
-            company_name: Company name
-            extracted_info: Extracted company information
-            tech_stack: Detected tech stack
-
-        Returns:
-            Tuple of (priority_score, tier)
-        """
-        score = 0
-
-        # Portland office bonus (+50)
-        location_text = " ".join(
-            [
-                extracted_info.get("about", ""),
-                extracted_info.get("culture", ""),
-            ]
-        ).lower()
-
-        if "portland" in location_text or "oregon" in location_text:
-            score += 50
-            logger.debug(f"{company_name}: +50 for Portland office")
-
-        # Tech stack alignment (up to +100)
-        # User's tech ranks from config
-        tech_ranks = self.config_loader.get_technology_ranks()
-
-        for tech in tech_stack:
-            tech_lower = tech.lower()
-            for rank_tech, rank_score in tech_ranks.items():
-                if rank_tech.lower() in tech_lower or tech_lower in rank_tech.lower():
-                    score += rank_score
-                    logger.debug(f"{company_name}: +{rank_score} for {tech}")
-
-        # Company attributes
-        all_text = " ".join(
-            [
-                extracted_info.get("about", ""),
-                extracted_info.get("culture", ""),
-                extracted_info.get("mission", ""),
-            ]
-        ).lower()
-
-        if any(keyword in all_text for keyword in ["remote-first", "remote first", "fully remote"]):
-            score += 15
-            logger.debug(f"{company_name}: +15 for remote-first")
-
-        if any(
-            keyword in all_text
-            for keyword in ["ai", "machine learning", "artificial intelligence", "ml"]
-        ):
-            score += 10
-            logger.debug(f"{company_name}: +10 for AI/ML focus")
-
-        # Determine tier
-        if score >= 150:
-            tier = "S"
-        elif score >= 100:
-            tier = "A"
-        elif score >= 70:
-            tier = "B"
-        elif score >= 50:
-            tier = "C"
-        else:
-            tier = "D"
-
-        return score, tier

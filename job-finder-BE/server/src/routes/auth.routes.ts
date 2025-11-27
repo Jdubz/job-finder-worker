@@ -12,7 +12,7 @@ export function buildAuthRouter() {
   const router = Router()
 
   router.get('/session', verifyFirebaseAuth, (req, res) => {
-    const user = (req as AuthenticatedRequest).user
+    const user = (req as AuthenticatedRequest).user!
 
     return res.json(
       success({

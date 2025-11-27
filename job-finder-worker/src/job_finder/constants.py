@@ -46,13 +46,6 @@ MIN_MATCH_SCORE = 80  # Minimum match score to accept job
 HIGH_PRIORITY_THRESHOLD = 85  # Score threshold for high priority
 MEDIUM_PRIORITY_THRESHOLD = 70  # Score threshold for medium priority
 
-# Company Priority Tiers
-TIER_S_THRESHOLD = 150  # Points needed for S-tier company
-TIER_A_THRESHOLD = 100  # Points needed for A-tier company
-TIER_B_THRESHOLD = 70  # Points needed for B-tier company
-TIER_C_THRESHOLD = 50  # Points needed for C-tier company
-# Below 50 = Tier D
-
 # Queue/Pipeline
 GRANULAR_PIPELINE_MEMORY_KB = 100  # Average memory per granular pipeline step
 MONOLITHIC_PIPELINE_MEMORY_KB = 585  # Memory for old monolithic pipeline

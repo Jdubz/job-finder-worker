@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react"
+import { useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
+import { useJobSources } from "@/hooks/useJobSources"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +15,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import {
   Table,
@@ -24,8 +24,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AlertCircle, CheckCircle2, Loader2, Plus, Rss, Clock, ExternalLink } from "lucide-react"
-import type { QueueItem, QueueStatus } from "@shared/types"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { AlertCircle, CheckCircle2, Loader2, Plus, Rss, ExternalLink, Trash2, Search, Pause, Play } from "lucide-react"
+import type { JobSource, JobSourceStatus } from "@shared/types"
 
 function formatRelativeTime(date: unknown): string {
   if (!date) return "—"
@@ -50,32 +57,67 @@ function formatRelativeTime(date: unknown): string {
   return `${diffDays}d ago`
 }
 
-const statusVariants: Record<QueueStatus, string> = {
-  pending: "bg-yellow-100 text-yellow-800",
-  processing: "bg-blue-100 text-blue-800",
-  success: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800",
-  skipped: "bg-gray-100 text-gray-800",
-  filtered: "bg-orange-100 text-orange-800",
+function formatDate(date: unknown): string {
+  if (!date) return "—"
+  let d: Date
+  if (date instanceof Date) {
+    d = date
+  } else if (typeof date === "string" || typeof date === "number") {
+    d = new Date(date)
+  } else if (typeof date === "object" && date !== null && "toDate" in date && typeof (date as { toDate: () => Date }).toDate === "function") {
+    d = (date as { toDate: () => Date }).toDate()
+  } else {
+    return "—"
+  }
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+const statusColors: Record<JobSourceStatus, string> = {
+  active: "bg-green-100 text-green-800",
+  paused: "bg-yellow-100 text-yellow-800",
+  disabled: "bg-gray-100 text-gray-800",
+  error: "bg-red-100 text-red-800",
+}
+
+const tierColors: Record<string, string> = {
+  S: "bg-purple-100 text-purple-800",
+  A: "bg-blue-100 text-blue-800",
+  B: "bg-green-100 text-green-800",
+  C: "bg-yellow-100 text-yellow-800",
+  D: "bg-gray-100 text-gray-800",
+}
+
+const sourceTypeLabels: Record<string, string> = {
+  api: "API",
+  rss: "RSS",
+  html: "HTML",
+  greenhouse: "Greenhouse",
+  workday: "Workday",
+  lever: "Lever",
 }
 
 export function SourcesPage() {
   const { user } = useAuth()
-  const { queueItems, loading, submitSourceDiscovery } = useQueueItems()
+  const { sources, loading, updateSource, deleteSource, refetch, setFilters } = useJobSources({ limit: 100 })
+  const { submitSourceDiscovery } = useQueueItems()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [selectedSource, setSelectedSource] = useState<JobSource | null>(null)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [tierFilter, setTierFilter] = useState<string>("all")
 
   // Form state
   const [sourceUrl, setSourceUrl] = useState("")
   const [companyName, setCompanyName] = useState("")
-
-  // Filter to only show source discovery tasks
-  const sourceTasks = useMemo(
-    () => queueItems.filter((item) => item.type === "source_discovery"),
-    [queueItems]
-  )
 
   const resetForm = () => {
     setSourceUrl("")
@@ -101,11 +143,12 @@ export function SourcesPage() {
         companyName: companyName.trim() || undefined,
       })
 
-      setSuccess("Source discovery task created!")
+      setSuccess("Source discovery task created! The source will appear here once configured.")
       setTimeout(() => {
         resetForm()
-        setIsModalOpen(false)
-      }, 1500)
+        setIsAddModalOpen(false)
+        refetch()
+      }, 2000)
     } catch (err) {
       console.error("Failed to submit source:", err)
       setError(err instanceof Error ? err.message : "Failed to submit. Please try again.")
@@ -114,18 +157,73 @@ export function SourcesPage() {
     }
   }
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this source?")) return
+    try {
+      await deleteSource(id)
+      setSelectedSource(null)
+    } catch (err) {
+      console.error("Failed to delete source:", err)
+    }
+  }
+
+  const handleToggleStatus = async (source: JobSource) => {
+    if (!source.id) return
+    const newStatus: JobSourceStatus = source.status === "active" ? "paused" : "active"
+    try {
+      const updated = await updateSource(source.id, { status: newStatus })
+      if (selectedSource?.id === source.id) {
+        setSelectedSource(updated)
+      }
+    } catch (err) {
+      console.error("Failed to update source status:", err)
+    }
+  }
+
+  const handleSearch = () => {
+    setFilters({
+      search: searchTerm || undefined,
+      status: statusFilter !== "all" ? (statusFilter as JobSourceStatus) : undefined,
+      tier: tierFilter !== "all" ? (tierFilter as JobSource["tier"]) : undefined,
+      limit: 100,
+    })
+  }
+
+  // Filter sources locally for search (in addition to server-side filtering)
+  const filteredSources = sources.filter((source) => {
+    if (searchTerm && !source.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        !source.companyName?.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return false
+    }
+    if (statusFilter !== "all" && source.status !== statusFilter) {
+      return false
+    }
+    if (tierFilter !== "all" && source.tier !== tierFilter) {
+      return false
+    }
+    return true
+  })
+
+  const getSourceUrl = (source: JobSource): string | null => {
+    if (typeof source.configJson === "object" && source.configJson !== null) {
+      const config = source.configJson as Record<string, unknown>
+      if (typeof config.url === "string") return config.url
+    }
+    return null
+  }
+
   if (!user) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Sources</h1>
           <p className="text-muted-foreground mt-2">
-            Discover job sources and feeds (sign in required)
+            Manage job sources and feeds (sign in required)
           </p>
         </div>
         <Alert>
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Sign in to discover sources.</AlertDescription>
+          <AlertDescription>Sign in to view sources.</AlertDescription>
         </Alert>
       </div>
     )
@@ -138,22 +236,20 @@ export function SourcesPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Sources</h1>
           <p className="text-muted-foreground mt-2">
-            Discover and configure job sources for automated scraping
+            Job sources configured for automated scraping
           </p>
         </div>
+        <Button onClick={() => setIsAddModalOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Source
+        </Button>
         <Dialog
-          open={isModalOpen}
+          open={isAddModalOpen}
           onOpenChange={(open) => {
-            setIsModalOpen(open)
+            setIsAddModalOpen(open)
             if (!open) resetForm()
           }}
         >
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Source
-            </Button>
-          </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Discover Source</DialogTitle>
@@ -226,66 +322,102 @@ export function SourcesPage() {
         </Dialog>
       </div>
 
-      {/* Source Tasks List */}
+      {/* Sources List */}
       <Card>
         <CardHeader>
-          <CardTitle>Source Discovery Tasks</CardTitle>
-          <CardDescription>Track source configuration and validation</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Configured Sources</CardTitle>
+              <CardDescription>
+                Click on a source to view details
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Search sources..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="w-[200px]"
+              />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[110px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="paused">Paused</SelectItem>
+                  <SelectItem value="disabled">Disabled</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={tierFilter} onValueChange={setTierFilter}>
+                <SelectTrigger className="w-[100px]">
+                  <SelectValue placeholder="Tier" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tiers</SelectItem>
+                  <SelectItem value="S">S Tier</SelectItem>
+                  <SelectItem value="A">A Tier</SelectItem>
+                  <SelectItem value="B">B Tier</SelectItem>
+                  <SelectItem value="C">C Tier</SelectItem>
+                  <SelectItem value="D">D Tier</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="icon" onClick={handleSearch}>
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : sourceTasks.length === 0 ? (
+          ) : filteredSources.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Rss className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No source discovery tasks yet.</p>
-              <p className="text-sm">Click "Add Source" to get started.</p>
+              <p>No sources found.</p>
+              <p className="text-sm">Click "Add Source" to discover new sources.</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Source URL</TableHead>
-                  <TableHead className="hidden md:table-cell">Company</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Updated</TableHead>
-                  <TableHead className="hidden md:table-cell">Result</TableHead>
+                  <TableHead>Tier</TableHead>
+                  <TableHead className="hidden md:table-cell">Company</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sourceTasks.map((item: QueueItem) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium max-w-[200px] truncate">
-                      {item.url ? (
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center text-blue-600 hover:underline"
-                        >
-                          {new URL(item.url).hostname}
-                          <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
-                        </a>
-                      ) : (
-                        "Unknown"
-                      )}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {item.company_name || "—"}
+                {filteredSources.map((source: JobSource) => (
+                  <TableRow
+                    key={source.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setSelectedSource(source)}
+                  >
+                    <TableCell className="font-medium">{source.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {sourceTypeLabels[source.sourceType] || source.sourceType}
+                      </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge className={statusVariants[item.status]}>{item.status}</Badge>
+                      <Badge className={statusColors[source.status]}>
+                        {source.status}
+                      </Badge>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <span className="flex items-center text-muted-foreground">
-                        <Clock className="mr-1 h-3 w-3" />
-                        {formatRelativeTime(item.updated_at)}
-                      </span>
+                    <TableCell>
+                      <Badge className={tierColors[source.tier]}>
+                        {source.tier}
+                      </Badge>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell max-w-[200px] truncate">
-                      {item.result_message || "—"}
+                    <TableCell className="hidden md:table-cell text-muted-foreground">
+                      {source.companyName || "—"}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -294,6 +426,143 @@ export function SourcesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Detail Modal */}
+      <Dialog open={!!selectedSource} onOpenChange={(open) => !open && setSelectedSource(null)}>
+        <DialogContent className="sm:max-w-[600px]">
+          {selectedSource && (
+            <>
+              <DialogHeader>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <DialogTitle className="text-xl">{selectedSource.name}</DialogTitle>
+                    <DialogDescription className="mt-1">
+                      {selectedSource.companyName || "No company associated"}
+                    </DialogDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge className={statusColors[selectedSource.status]}>
+                      {selectedSource.status}
+                    </Badge>
+                    <Badge className={tierColors[selectedSource.tier]}>
+                      {selectedSource.tier}
+                    </Badge>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {/* Source URL */}
+                {getSourceUrl(selectedSource) && (
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Source URL</Label>
+                    <a
+                      href={getSourceUrl(selectedSource)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center text-blue-600 hover:underline mt-1"
+                    >
+                      {getSourceUrl(selectedSource)}
+                      <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
+                    </a>
+                  </div>
+                )}
+
+                {/* Type and Stats */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Type</Label>
+                    <p className="mt-1">{sourceTypeLabels[selectedSource.sourceType] || selectedSource.sourceType}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Jobs Found</Label>
+                    <p className="mt-1">
+                      {selectedSource.totalJobsFound} total / {selectedSource.totalJobsMatched} matched
+                    </p>
+                  </div>
+                </div>
+
+                {/* Scraping Info */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Last Scraped</Label>
+                    <p className="mt-1">{formatRelativeTime(selectedSource.lastScrapedAt)}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Consecutive Failures</Label>
+                    <p className="mt-1">{selectedSource.consecutiveFailures}</p>
+                  </div>
+                </div>
+
+                {/* Validation Status */}
+                {selectedSource.validationRequired && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>This source requires validation before it can be used.</AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Tags */}
+                {selectedSource.tags && selectedSource.tags.length > 0 && (
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Tags</Label>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {selectedSource.tags.map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Timestamps */}
+                <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Created</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedSource.createdAt)}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Updated</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedSource.updatedAt)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter className="flex justify-between sm:justify-between">
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleToggleStatus(selectedSource)}
+                  >
+                    {selectedSource.status === "active" ? (
+                      <>
+                        <Pause className="mr-2 h-4 w-4" />
+                        Pause
+                      </>
+                    ) : (
+                      <>
+                        <Play className="mr-2 h-4 w-4" />
+                        Activate
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => selectedSource.id && handleDelete(selectedSource.id)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
+                </div>
+                <Button variant="ghost" onClick={() => setSelectedSource(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

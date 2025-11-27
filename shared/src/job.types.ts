@@ -305,9 +305,6 @@ export interface Company {
   /** Company size category (large/medium/small) */
   companySizeCategory?: "large" | "medium" | "small" | null
 
-  /** Year founded */
-  founded?: number | null
-
   /** Detected technology stack */
   techStack?: string[]
 
@@ -317,12 +314,106 @@ export interface Company {
   /** Priority score (0-200+) */
   priorityScore?: number | null
 
-  /** Analysis status */
-  analysisStatus?: "pending" | "in_progress" | "complete" | "failed" | null
-
   /** When company was added */
   createdAt?: TimestampLike
 
   /** When company record was last updated */
+  updatedAt?: TimestampLike
+}
+
+/**
+ * Job source status for scrapers/APIs.
+ */
+export type JobSourceStatus = "active" | "paused" | "disabled" | "error"
+
+/**
+ * Discovery confidence level for job sources.
+ */
+export type DiscoveryConfidence = "high" | "medium" | "low"
+
+/**
+ * Health status for a job source.
+ */
+export interface JobSourceHealth {
+  lastCheck?: TimestampLike
+  status?: "healthy" | "degraded" | "unhealthy"
+  errorRate?: number
+  avgResponseTime?: number
+}
+
+/**
+ * Job source record (job_sources table).
+ *
+ * Represents a configured source for scraping job listings.
+ * Can be an API endpoint, RSS feed, or HTML scraper configuration.
+ */
+export interface JobSource {
+  /** Database record ID */
+  id?: string
+
+  /** Human-readable source name */
+  name: string
+
+  /** Source type (api, rss, html, greenhouse, workday, lever) */
+  sourceType: string
+
+  /** Source status */
+  status: JobSourceStatus
+
+  /** Configuration blob (type-specific) */
+  configJson: Record<string, unknown>
+
+  /** Tags for categorization */
+  tags?: string[] | null
+
+  /** Associated company ID */
+  companyId?: string | null
+
+  /** Associated company name */
+  companyName?: string | null
+
+  /** When source was last scraped */
+  lastScrapedAt?: TimestampLike | null
+
+  /** Status of last scrape (success/failed) */
+  lastScrapedStatus?: string | null
+
+  /** Error message from last failed scrape */
+  lastScrapedError?: string | null
+
+  /** Total jobs found from this source */
+  totalJobsFound: number
+
+  /** Total jobs that matched filters */
+  totalJobsMatched: number
+
+  /** Number of consecutive failed scrapes */
+  consecutiveFailures: number
+
+  /** Discovery confidence level */
+  discoveryConfidence?: DiscoveryConfidence | null
+
+  /** How the source was discovered (manual, ai, pattern) */
+  discoveredVia?: string | null
+
+  /** Who/what discovered the source */
+  discoveredBy?: string | null
+
+  /** Queue item ID that created this source */
+  discoveryQueueItemId?: string | null
+
+  /** Whether manual validation is required before enabling */
+  validationRequired: boolean
+
+  /** Priority tier for scheduling (S/A/B/C/D) */
+  tier: "S" | "A" | "B" | "C" | "D"
+
+  /** Health metrics and status */
+  health?: JobSourceHealth | null
+
+  /** When source was created */
+  createdAt?: TimestampLike
+
+  /** When source was last updated */
   updatedAt?: TimestampLike
 }

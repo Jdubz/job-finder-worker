@@ -26,7 +26,6 @@ class TestCompanyPipeline:
             "sources_manager": Mock(),
             "company_info_fetcher": Mock(),
             "ai_matcher": Mock(),
-            "profile": Mock(),
         }
 
     @pytest.fixture
@@ -147,10 +146,6 @@ class TestCompanyPipeline:
         assert "python" in analysis_result["tech_stack"]
         assert "react" in analysis_result["tech_stack"]
 
-        # Verify priority score calculated (Portland bonus + tech stack)
-        assert analysis_result["priority_score"] > 50  # At least Portland bonus
-        assert analysis_result["tier"] in ["S", "A", "B", "C", "D"]
-
         # Verify job board detected
         assert analysis_result["job_board_url"] is not None
 
@@ -173,8 +168,6 @@ class TestCompanyPipeline:
                 "analysis_result": {
                     "tech_stack": ["python", "react"],
                     "job_board_url": "https://boards.greenhouse.io/examplecorp",
-                    "priority_score": 85,
-                    "tier": "B",
                 },
             },
         )
@@ -189,8 +182,6 @@ class TestCompanyPipeline:
         assert mock_dependencies["companies_manager"].save_company.called
         save_call = mock_dependencies["companies_manager"].save_company.call_args[0][0]
         assert save_call["name"] == "Example Corp"
-        assert save_call["tier"] == "B"
-        assert save_call["priorityScore"] == 85
         assert save_call["techStack"] == ["python", "react"]
 
         # Verify SOURCE_DISCOVERY spawned
@@ -226,23 +217,6 @@ class TestCompanyPipeline:
         job_board_url = processor._detect_job_board("https://example.com", html_content)
 
         assert job_board_url == "https://boards.greenhouse.io/examplecorp"
-
-    def test_calculate_company_priority(self, processor, mock_dependencies):
-        """Test company priority score calculation."""
-        # Portland office + Python + React should score high
-        extracted_info = {
-            "about": "Portland office",
-            "culture": "Great team",
-        }
-        tech_stack = ["python", "react", "docker"]
-
-        score, tier = processor._calculate_company_priority(
-            "Example Corp", extracted_info, tech_stack
-        )
-
-        # Portland (+50) + Python (30) + React (25) + Docker (20) = 125
-        assert score >= 100  # Should be in A tier range
-        assert tier in ["S", "A"]
 
     def test_company_without_sub_task_raises_error(self, processor, mock_dependencies):
         """Test that company items without company_sub_task raise an error."""

@@ -126,6 +126,8 @@ export interface JobFiltersConfig {
     excludedSeniority?: string[]
     excludedCompanies?: string[]
     excludedKeywords?: string[]
+    /** Whitelist: Job title MUST contain at least one of these keywords to be considered */
+    requiredTitleKeywords?: string[]
     minSalaryFloor?: number
     rejectCommissionOnly?: boolean
   }
@@ -355,6 +357,7 @@ export const DEFAULT_JOB_FILTERS: JobFiltersConfig = {
     excludedSeniority: [],
     excludedCompanies: [],
     excludedKeywords: [],
+    requiredTitleKeywords: ["software", "developer", "engineer", "frontend", "full stack", "fullstack"],
     minSalaryFloor: 100000,
     rejectCommissionOnly: true,
   },

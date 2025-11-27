@@ -9,11 +9,20 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
-from job_finder.exceptions import InvalidStateTransition
+from job_finder.ai.matcher import AIJobMatcher
+from job_finder.company_info_fetcher import CompanyInfoFetcher
+from job_finder.exceptions import DuplicateQueueItemError
+from job_finder.filters.strike_filter_engine import StrikeFilterEngine
+from job_finder.job_queue.config_loader import ConfigLoader
+from job_finder.job_queue.manager import QueueManager
+from job_finder.job_queue.scraper_intake import ScraperIntake
+from job_finder.scrape_runner import ScrapeRunner
+from job_finder.storage.companies_manager import CompaniesManager
+from job_finder.storage.job_storage import JobStorage
+from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name
 from job_finder.job_queue.models import (
-    CompanyStatus,
     CompanySubTask,
     JobQueueItem,
     QueueItemType,
@@ -27,6 +36,58 @@ logger = logging.getLogger(__name__)
 
 class JobProcessor(BaseProcessor):
     """Processor for job queue items."""
+
+    def __init__(
+        self,
+        queue_manager: QueueManager,
+        config_loader: ConfigLoader,
+        job_storage: JobStorage,
+        companies_manager: CompaniesManager,
+        sources_manager: JobSourcesManager,
+        company_info_fetcher: CompanyInfoFetcher,
+        ai_matcher: AIJobMatcher,
+    ):
+        """
+        Initialize job processor with its specific dependencies.
+
+        Args:
+            queue_manager: Queue manager for updating item status
+            config_loader: Configuration loader for stop lists and filters
+            job_storage: Job storage implementation
+            companies_manager: Company data manager
+            sources_manager: Job sources manager
+            company_info_fetcher: Company info fetcher (for ScrapeRunner)
+            ai_matcher: AI job matcher
+        """
+        super().__init__(queue_manager, config_loader)
+
+        self.job_storage = job_storage
+        self.companies_manager = companies_manager
+        self.sources_manager = sources_manager
+        self.ai_matcher = ai_matcher
+
+        # Initialize strike-based filter engine
+        filter_config = config_loader.get_job_filters()
+        tech_ranks = config_loader.get_technology_ranks()
+        self.filter_engine = StrikeFilterEngine(filter_config, tech_ranks)
+
+        # Initialize scrape runner with shared filter engine for pre-filtering
+        self.scrape_runner = ScrapeRunner(
+            queue_manager=queue_manager,
+            job_storage=job_storage,
+            companies_manager=companies_manager,
+            sources_manager=sources_manager,
+            company_info_fetcher=company_info_fetcher,
+            filter_engine=self.filter_engine,
+        )
+
+        # Initialize scraper intake with filter engine for pre-filtering
+        self.scraper_intake = ScraperIntake(
+            queue_manager=queue_manager,
+            job_storage=job_storage,
+            companies_manager=companies_manager,
+            filter_engine=self.filter_engine,
+        )
 
     # ============================================================
     # MAIN ROUTING
@@ -132,12 +193,11 @@ class JobProcessor(BaseProcessor):
                 "scrape_method": source.get("name") if source else "generic",
             }
 
-            # Mark this step complete and set pipeline_stage
+            # Mark this step complete
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.SUCCESS,
                 "Job data scraped successfully",
-                pipeline_stage="scrape",
             )
 
             # Re-spawn same URL with updated state
@@ -206,7 +266,6 @@ class JobProcessor(BaseProcessor):
                     QueueStatus.FILTERED,
                     f"Rejected by filters: {rejection_summary}",
                     scraped_data={"job_data": job_data, "filter_result": rejection_data},
-                    pipeline_stage="filter",
                 )
                 return
 
@@ -221,7 +280,6 @@ class JobProcessor(BaseProcessor):
                 item.id,
                 QueueStatus.SUCCESS,
                 "Passed filtering",
-                pipeline_stage="filter",
             )
 
             # Re-spawn same URL with filter result
@@ -293,7 +351,6 @@ class JobProcessor(BaseProcessor):
                     item.id,
                     QueueStatus.SKIPPED,
                     f"Job score below threshold (< {self.ai_matcher.min_match_score})",
-                    pipeline_stage="analyze",
                 )
                 return
 
@@ -308,7 +365,6 @@ class JobProcessor(BaseProcessor):
                 item.id,
                 QueueStatus.SUCCESS,
                 f"AI analysis complete (score: {result.match_score})",
-                pipeline_stage="analyze",
             )
 
             # Re-spawn same URL with match result
@@ -348,15 +404,13 @@ class JobProcessor(BaseProcessor):
 
     def _ensure_company_dependency(self, item: JobQueueItem, job_data: Dict[str, Any]) -> bool:
         """
-        Ensure a company pipeline runs before job analysis.
+        Ensure company data is available before job analysis.
 
-        - If company is unknown, create a stub and spawn a COMPANY_FETCH task.
-        - If a dependency is already tracked, wait until the company becomes ACTIVE.
-        - If the company analysis fails, mark the job as failed to avoid looping.
+        Checks if the company record has sufficient data (about, culture, etc.) for
+        document generation and job ranking. If not, spawns an analysis task.
 
         Returns True when company data is ready for analysis.
         """
-
         company_name_raw = job_data.get("company", item.company_name)
         company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
 
@@ -364,122 +418,88 @@ class JobProcessor(BaseProcessor):
         company_name_clean = clean_company_name(company_name_base) or company_name_base.strip()
         job_data["company"] = company_name_clean
 
-        pipeline_state = item.pipeline_state or {}
-        dependency = pipeline_state.get("company_dependency")
+        if not company_name_clean:
+            # No company context; allow analysis to proceed without company info
+            return True
 
-        def _requeue_wait(dep_state: Dict[str, Any]) -> None:
+        pipeline_state = item.pipeline_state or {}
+
+        def _requeue_wait(company_id: str) -> None:
+            """Requeue this job to wait for company data to be populated."""
             updated_state = {
                 **pipeline_state,
                 "job_data": job_data,
-                "company_dependency": dep_state,
+                "waiting_for_company_id": company_id,
             }
-            self.queue_manager.requeue_with_state(item.id, updated_state, "wait_company")
+            self.queue_manager.requeue_with_state(item.id, updated_state)
             logger.info(
-                "JOB_ANALYZE: Waiting for company %s (dep=%s)", company_name_clean, dep_state
+                "JOB_ANALYZE: Waiting for company data %s (id=%s)",
+                company_name_clean,
+                company_id,
             )
 
-        if dependency:
-            company_id = dependency.get("company_id")
-            company = self.companies_manager.get_company_by_id(company_id) if company_id else None
-            status = (company or {}).get("analysis_status")
+        # Get or create company record
+        company = self.companies_manager.get_company(company_name_clean)
 
-            if status == CompanyStatus.ACTIVE.value:
-                job_data["company_id"] = company_id
-                job_data["companyId"] = company_id
-                job_data["company_info"] = build_company_info_string(company or {})
-                return True
+        if not company:
+            # Create stub for new company
+            stub = self.companies_manager.create_company_stub(company_name_clean, company_website)
+            company = stub
 
-            if status == CompanyStatus.FAILED.value:
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.FAILED,
-                    f"Company analysis failed for {company_name_clean}",
-                    pipeline_stage="wait_company",
-                    error_details=f"Company {company_name_clean} failed analysis (id={company_id})",
-                )
-                return False
+        company_id = company.get("id")
 
-            # Still pending/analyzing
-            _requeue_wait({**dependency, "company_status": status})
-            return False
+        # Check if company has sufficient data for job analysis
+        if self.companies_manager.has_good_company_data(company):
+            job_data["company_id"] = company_id
+            job_data["companyId"] = company_id
+            job_data["company_info"] = build_company_info_string(company)
+            return True
 
-        # No tracked dependency yet
-        existing_company = (
-            self.companies_manager.get_company(company_name_clean) if company_name_clean else None
-        )
+        # Company data is incomplete - spawn analysis task (fire and forget), then wait
+        # Task may fail to spawn (duplicate, blocked) - that's fine, we just wait
+        self._try_spawn_company_task(item, company_id, company_name_clean, company_website)
+        _requeue_wait(company_id)
+        return False
 
-        if existing_company:
-            status = existing_company.get("analysis_status")
-            if status == CompanyStatus.ACTIVE.value:
-                company_id = existing_company.get("id")
-                job_data["company_id"] = company_id
-                job_data["companyId"] = company_id
-                job_data["company_info"] = build_company_info_string(existing_company)
-                return True
+    def _try_spawn_company_task(
+        self,
+        item: JobQueueItem,
+        company_id: str,
+        company_name: str,
+        company_website: str,
+    ) -> None:
+        """
+        Try to spawn a COMPANY task (fire and forget).
 
-            # If company is pending or failed, spawn a fresh pipeline pass
-            company_id = existing_company.get("id")
-            if status == CompanyStatus.FAILED.value:
-                try:
-                    self.companies_manager.transition_status(company_id, CompanyStatus.PENDING)
-                except InvalidStateTransition:
-                    pass
+        This is best-effort - if spawning fails for any reason (duplicate URL,
+        spawn depth exceeded, etc.), we silently ignore it. The caller will
+        wait for the company to become ACTIVE regardless.
+        """
+        company_url = company_website or item.url
 
-            company_task_id = self.queue_manager.spawn_item_safely(
+        try:
+            task_id = self.queue_manager.spawn_item_safely(
                 current_item=item,
                 new_item_data={
                     "type": QueueItemType.COMPANY,
-                    "url": company_website or item.url,
-                    "company_name": company_name_clean,
+                    "url": company_url,
+                    "company_name": company_name,
                     "company_id": company_id,
                     "source": item.source,
                     "company_sub_task": CompanySubTask.FETCH,
                     "pipeline_state": {
-                        "company_name": company_name_clean,
-                        "company_website": company_website or item.url,
+                        "company_name": company_name,
+                        "company_website": company_url,
                         "company_id": company_id,
                     },
                 },
             )
-
-            dependency_state = {
-                "company_id": company_id,
-                "company_task_id": company_task_id,
-                "company_status": status,
-            }
-            _requeue_wait(dependency_state)
-            return False
-
-        if not company_name_clean:
-            # No company context to spawn; allow analysis to proceed.
-            return True
-
-        # Create stub + spawn COMPANY pipeline
-        stub = self.companies_manager.create_company_stub(company_name_clean, company_website)
-        company_task_id = self.queue_manager.spawn_item_safely(
-            current_item=item,
-            new_item_data={
-                "type": QueueItemType.COMPANY,
-                "url": company_website or item.url,
-                "company_name": company_name_clean,
-                "company_id": stub.get("id"),
-                "source": item.source,
-                "company_sub_task": CompanySubTask.FETCH,
-                "pipeline_state": {
-                    "company_name": company_name_clean,
-                    "company_website": company_website or item.url,
-                    "company_id": stub.get("id"),
-                },
-            },
-        )
-
-        dependency_state = {
-            "company_id": stub.get("id"),
-            "company_task_id": company_task_id,
-            "company_status": CompanyStatus.PENDING.value,
-        }
-        _requeue_wait(dependency_state)
-        return False
+            if task_id:
+                logger.debug("Spawned company task %s for %s", task_id, company_name)
+        except DuplicateQueueItemError:
+            logger.debug("Company task for %s already in queue, skipping spawn", company_name)
+        except Exception as e:
+            logger.debug("Could not spawn company task for %s: %s", company_name, e)
 
     def _do_job_save(self, item: JobQueueItem) -> None:
         """
@@ -529,7 +549,6 @@ class JobProcessor(BaseProcessor):
                 item.id,
                 QueueStatus.SUCCESS,
                 f"Job saved successfully (ID: {doc_id}, Score: {result.match_score})",
-                pipeline_stage="save",
             )
 
             self.slogger.pipeline_stage(
@@ -582,7 +601,7 @@ class JobProcessor(BaseProcessor):
 
         # Update the same item with new state and mark as pending for re-processing
         try:
-            self.queue_manager.requeue_with_state(current_item.id, updated_state, next_stage)
+            self.queue_manager.requeue_with_state(current_item.id, updated_state)
             logger.info(
                 f"Requeued item {current_item.id} for {next_stage}: {current_item.url[:50]}"
             )

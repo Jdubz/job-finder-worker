@@ -189,90 +189,31 @@ class ScrapeRunner:
 
     def _get_next_sources_by_rotation(self, limit: Optional[int]) -> List[Dict[str, Any]]:
         """
-        Get sources sorted for even rotation.
+        Get sources sorted by chronological rotation (oldest scraped first).
 
-        Sort priority (for fair rotation):
-        1. last_scraped (oldest first) - ensures all sources get scraped
-        2. tier_priority (S > A > B > C > D) - high-value sources as tiebreaker
-        3. health_score (healthier first) - prefer reliable sources when tied
-        4. company_scrape_freq (less frequent first) - spread across companies
-
-        Sources with health_score < 0.3 are deprioritized (moved to end).
+        Simple fair rotation - each source gets scraped in turn based on
+        when it was last scraped. Never-scraped sources come first.
         """
         from datetime import datetime, timezone
 
-        from job_finder.utils.source_health import CompanyScrapeTracker
-
         sources = self.sources_manager.get_active_sources()
-        scored_sources = []
         min_datetime = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
-        for source in sources:
-            health = source.get("health", {})
-            health_score = health.get("healthScore", 1.0)
-
-            # Adjust health by discovery confidence
-            confidence = source.get("discoveryConfidence") or "medium"
-            if confidence == "high":
-                health_score = min(1.0, health_score + 0.05)
-            elif confidence == "low":
-                health_score = max(0.1, health_score - 0.1)
-
-            tier = source.get("tier", "D")
-            tier_priority = {"S": 0, "A": 1, "B": 2, "C": 3, "D": 4}.get(tier, 4)
-
-            # Parse last_scraped to datetime for consistent comparison
+        def get_last_scraped(source: Dict[str, Any]) -> datetime:
             last_scraped_str = source.get("lastScrapedAt") or source.get("scraped_at")
             if last_scraped_str:
                 try:
-                    # Handle ISO format strings
-                    last_scraped = datetime.fromisoformat(last_scraped_str.replace("Z", "+00:00"))
+                    return datetime.fromisoformat(last_scraped_str.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
-                    last_scraped = min_datetime
-            else:
-                last_scraped = min_datetime
+                    return min_datetime
+            return min_datetime
 
-            company_id = source.get("company_id") or source.get("companyId", "")
-            try:
-                tracker = CompanyScrapeTracker(self.job_storage.db_path)
-                company_scrape_freq = tracker.get_scrape_frequency(company_id)
-            except Exception as e:
-                logger.warning(f"Error getting company scrape frequency: {e}")
-                company_scrape_freq = 0.0
-
-            # Deprioritize unhealthy sources (health < 0.3)
-            is_unhealthy = health_score < 0.3
-
-            scored_sources.append(
-                {
-                    "source": source,
-                    "is_unhealthy": is_unhealthy,
-                    "last_scraped": last_scraped,
-                    "tier_priority": tier_priority,
-                    "health_score": health_score,
-                    "company_scrape_freq": company_scrape_freq,
-                }
-            )
-
-        # Sort for even rotation:
-        # 1. Unhealthy sources last
-        # 2. Oldest scraped first (primary rotation key)
-        # 3. Higher tier first (S=0 < A=1 < ...)
-        # 4. Higher health first (tiebreaker)
-        # 5. Lower company frequency first
-        scored_sources.sort(
-            key=lambda x: (
-                x["is_unhealthy"],  # Healthy sources first
-                x["last_scraped"],  # Oldest scraped first (ROTATION)
-                x["tier_priority"],  # Higher tier first
-                -x["health_score"],  # Higher health first
-                x["company_scrape_freq"],  # Less frequently scraped companies first
-            )
-        )
+        # Sort by last_scraped ascending (oldest first, never-scraped first)
+        sources.sort(key=get_last_scraped)
 
         if limit is None:
-            return [s["source"] for s in scored_sources]
-        return [s["source"] for s in scored_sources[:limit]]
+            return sources
+        return sources[:limit]
 
     def _scrape_source(self, source: Dict[str, Any]) -> Dict[str, Any]:
         """

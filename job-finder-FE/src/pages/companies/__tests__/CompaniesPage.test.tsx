@@ -1,12 +1,13 @@
 /**
  * Companies Page Tests
  *
- * Tests for company discovery page including:
- * - Rendering and display of company tasks
+ * Tests for companies page including:
+ * - Rendering and display of company database entities
+ * - Simplified list view with essential columns
+ * - Detail modal functionality
  * - Add company modal functionality
  * - Loading and empty states
  * - Authentication requirements
- * - Form validation and submission
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -14,9 +15,11 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { CompaniesPage } from "../CompaniesPage"
 import { useAuth } from "@/contexts/AuthContext"
+import { useCompanies } from "@/hooks/useCompanies"
 import { useQueueItems } from "@/hooks/useQueueItems"
 
 vi.mock("@/contexts/AuthContext")
+vi.mock("@/hooks/useCompanies")
 vi.mock("@/hooks/useQueueItems")
 
 describe("CompaniesPage", () => {
@@ -26,68 +29,54 @@ describe("CompaniesPage", () => {
     displayName: "Test User",
   }
 
-  const mockCompanyTasks = [
+  const mockCompanies = [
     {
       id: "company-1",
-      type: "company",
-      status: "pending",
-      url: "https://acme.com",
-      company_name: "Acme Corporation",
-      company_id: null,
-      source: "user_request",
-      created_at: new Date(),
-      updated_at: new Date(),
-      retry_count: 0,
-      max_retries: 3,
+      name: "Acme Corporation",
+      website: "https://acme.com",
+      tier: "A",
+      industry: "Technology",
+      techStack: ["React", "Node.js", "PostgreSQL"],
+      // Complete data: about > 100 chars AND culture > 50 chars
+      about: "A leading technology company that specializes in building innovative software solutions for enterprise clients. Founded in 2010, we have grown to serve Fortune 500 companies worldwide.",
+      culture: "We foster a collaborative environment where creativity thrives. Our team values include innovation, integrity, and inclusion.",
+      headquartersLocation: "San Francisco, CA",
+      companySizeCategory: "1000-5000",
+      createdAt: new Date(),
+      updatedAt: new Date(),
     },
     {
       id: "company-2",
-      type: "company",
-      status: "success",
-      url: "https://techcorp.io",
-      company_name: "TechCorp",
-      company_id: "tech-123",
-      source: "user_request",
-      created_at: new Date(),
-      updated_at: new Date(),
-      retry_count: 0,
-      max_retries: 3,
-      result_message: "Found 3 job boards",
+      name: "TechCorp",
+      website: "https://techcorp.io",
+      tier: "S",
+      industry: "Software",
+      techStack: ["Python", "Django"],
+      // Partial data: about > 50 chars (but no culture)
+      about: "A fast-growing software company focused on developer tools and productivity solutions.",
+      culture: "",
+      createdAt: new Date(),
+      updatedAt: new Date(),
     },
     {
       id: "company-3",
-      type: "company",
-      status: "failed",
-      url: "https://badurl.invalid",
-      company_name: "BadCompany",
-      company_id: null,
-      source: "user_request",
-      created_at: new Date(),
-      updated_at: new Date(),
-      retry_count: 3,
-      max_retries: 3,
-      result_message: "Failed to fetch website",
-    },
-  ]
-
-  const mockJobTasks = [
-    {
-      id: "job-1",
-      type: "job",
-      status: "pending",
-      url: "https://jobs.example.com/123",
-      company_name: "Other Corp",
-      company_id: null,
-      source: "user_submission",
-      created_at: new Date(),
-      updated_at: new Date(),
-      retry_count: 0,
-      max_retries: 3,
+      name: "StartupXYZ",
+      website: "https://startupxyz.com",
+      tier: "D",
+      industry: null,
+      techStack: [],
+      // Pending data: no meaningful about or culture
+      about: "",
+      culture: "",
+      createdAt: new Date(),
+      updatedAt: new Date(),
     },
   ]
 
   const mockSubmitCompany = vi.fn()
+  const mockDeleteCompany = vi.fn()
   const mockRefetch = vi.fn()
+  const mockSetFilters = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -100,8 +89,19 @@ describe("CompaniesPage", () => {
       signInWithGoogle: vi.fn(),
     } as any)
 
+    vi.mocked(useCompanies).mockReturnValue({
+      companies: mockCompanies as any,
+      loading: false,
+      error: null,
+      pagination: { limit: 100, offset: 0, total: 3, hasMore: false },
+      updateCompany: vi.fn(),
+      deleteCompany: mockDeleteCompany,
+      refetch: mockRefetch,
+      setFilters: mockSetFilters,
+    } as any)
+
     vi.mocked(useQueueItems).mockReturnValue({
-      queueItems: [...mockCompanyTasks, ...mockJobTasks] as any,
+      queueItems: [],
       loading: false,
       error: null,
       submitJob: vi.fn(),
@@ -109,7 +109,7 @@ describe("CompaniesPage", () => {
       submitSourceDiscovery: vi.fn(),
       updateQueueItem: vi.fn(),
       deleteQueueItem: vi.fn(),
-      refetch: mockRefetch,
+      refetch: vi.fn(),
     } as any)
   })
 
@@ -120,38 +120,39 @@ describe("CompaniesPage", () => {
       await waitFor(() => {
         expect(screen.getByRole("heading", { name: /companies/i })).toBeInTheDocument()
         expect(
-          screen.getByText(/discover companies and analyze their tech stack/i)
+          screen.getByText(/companies discovered and analyzed/i)
         ).toBeInTheDocument()
       })
     })
 
-    it("should display only company tasks, not job tasks", async () => {
+    it("should display company names in simplified list", async () => {
       render(<CompaniesPage />)
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
         expect(screen.getByText("TechCorp")).toBeInTheDocument()
-        expect(screen.getByText("BadCompany")).toBeInTheDocument()
-        expect(screen.queryByText("Other Corp")).not.toBeInTheDocument()
+        expect(screen.getByText("StartupXYZ")).toBeInTheDocument()
       })
     })
 
-    it("should display status badges for each task", async () => {
+    it("should display essential columns: Name, Tier, Industry, Status", async () => {
       render(<CompaniesPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("pending")).toBeInTheDocument()
-        expect(screen.getByText("success")).toBeInTheDocument()
-        expect(screen.getByText("failed")).toBeInTheDocument()
+        // Check table headers
+        expect(screen.getByRole("columnheader", { name: /name/i })).toBeInTheDocument()
+        expect(screen.getByRole("columnheader", { name: /tier/i })).toBeInTheDocument()
+        expect(screen.getByRole("columnheader", { name: /status/i })).toBeInTheDocument()
       })
     })
 
-    it("should display result messages when available", async () => {
+    it("should display tier badges for each company", async () => {
       render(<CompaniesPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Found 3 job boards")).toBeInTheDocument()
-        expect(screen.getByText("Failed to fetch website")).toBeInTheDocument()
+        expect(screen.getByText("A")).toBeInTheDocument()
+        expect(screen.getByText("S")).toBeInTheDocument()
+        expect(screen.getByText("D")).toBeInTheDocument()
       })
     })
 
@@ -162,47 +163,157 @@ describe("CompaniesPage", () => {
         expect(screen.getByRole("button", { name: /add company/i })).toBeInTheDocument()
       })
     })
+
+    it("should show clickable rows instruction", async () => {
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/click on a company to view details/i)).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe("Detail Modal", () => {
+    it("should open detail modal when clicking on a row", async () => {
+      const user = userEvent.setup()
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("Acme Corporation").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        // Modal should show the company name as title
+        expect(screen.getAllByText("Acme Corporation").length).toBeGreaterThan(1)
+        // Modal should show industry
+        expect(screen.getAllByText("Technology").length).toBeGreaterThan(0)
+      })
+    })
+
+    it("should show detailed information in modal", async () => {
+      const user = userEvent.setup()
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("Acme Corporation").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        // Should show website
+        expect(screen.getByText("https://acme.com")).toBeInTheDocument()
+        // Should show tech stack
+        expect(screen.getByText("React")).toBeInTheDocument()
+        expect(screen.getByText("Node.js")).toBeInTheDocument()
+      })
+    })
+
+    it("should show description when available", async () => {
+      const user = userEvent.setup()
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("Acme Corporation").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        expect(screen.getByText(/A leading technology company that specializes/i)).toBeInTheDocument()
+      })
+    })
+
+    it("should show headquarters when available", async () => {
+      const user = userEvent.setup()
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("Acme Corporation").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        expect(screen.getByText("San Francisco, CA")).toBeInTheDocument()
+      })
+    })
+
+    it("should show delete button in modal", async () => {
+      const user = userEvent.setup()
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("Acme Corporation").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument()
+      })
+    })
+
+    it("should show 'No tech stack' message when tech stack is empty", async () => {
+      const user = userEvent.setup()
+      render(<CompaniesPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("StartupXYZ")).toBeInTheDocument()
+      })
+
+      const row = screen.getByText("StartupXYZ").closest("tr")
+      await user.click(row!)
+
+      await waitFor(() => {
+        expect(screen.getByText(/no tech stack information/i)).toBeInTheDocument()
+      })
+    })
   })
 
   describe("Loading State", () => {
     it("should show loading spinner when loading", () => {
-      vi.mocked(useQueueItems).mockReturnValue({
-        queueItems: [],
+      vi.mocked(useCompanies).mockReturnValue({
+        companies: [],
         loading: true,
         error: null,
-        submitJob: vi.fn(),
-        submitCompany: mockSubmitCompany,
-        submitSourceDiscovery: vi.fn(),
-        updateQueueItem: vi.fn(),
-        deleteQueueItem: vi.fn(),
+        pagination: null,
+        updateCompany: vi.fn(),
+        deleteCompany: mockDeleteCompany,
         refetch: mockRefetch,
+        setFilters: mockSetFilters,
       } as any)
 
       render(<CompaniesPage />)
 
-      // Page title should still be present
       expect(screen.getByRole("heading", { name: /companies/i })).toBeInTheDocument()
     })
   })
 
   describe("Empty State", () => {
-    it("should show empty state when no company tasks exist", async () => {
-      vi.mocked(useQueueItems).mockReturnValue({
-        queueItems: mockJobTasks as any, // Only job tasks, no company tasks
+    it("should show empty state when no companies exist", async () => {
+      vi.mocked(useCompanies).mockReturnValue({
+        companies: [],
         loading: false,
         error: null,
-        submitJob: vi.fn(),
-        submitCompany: mockSubmitCompany,
-        submitSourceDiscovery: vi.fn(),
-        updateQueueItem: vi.fn(),
-        deleteQueueItem: vi.fn(),
+        pagination: { limit: 100, offset: 0, total: 0, hasMore: false },
+        updateCompany: vi.fn(),
+        deleteCompany: mockDeleteCompany,
         refetch: mockRefetch,
+        setFilters: mockSetFilters,
       } as any)
 
       render(<CompaniesPage />)
 
       await waitFor(() => {
-        expect(screen.getByText(/no company discovery tasks yet/i)).toBeInTheDocument()
+        expect(screen.getByText(/no companies found/i)).toBeInTheDocument()
       })
     })
   })
@@ -219,257 +330,35 @@ describe("CompaniesPage", () => {
 
       render(<CompaniesPage />)
 
-      expect(screen.getByText(/sign in to discover companies/i)).toBeInTheDocument()
+      expect(screen.getByText(/sign in to view companies/i)).toBeInTheDocument()
       expect(screen.queryByRole("button", { name: /add company/i })).not.toBeInTheDocument()
     })
   })
 
-  describe("Add Company Modal", () => {
-    it("should open modal when Add Company button is clicked", async () => {
-      const user = userEvent.setup()
+  describe("Add Company Button", () => {
+    it("should render Add Company button", async () => {
       render(<CompaniesPage />)
 
-      const addButton = screen.getByRole("button", { name: /add company/i })
-      await user.click(addButton)
-
-      // Dialog title should appear
       await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument()
-      })
-    })
-
-    it("should have form fields in modal", async () => {
-      const user = userEvent.setup()
-      render(<CompaniesPage />)
-
-      const addButton = screen.getByRole("button", { name: /add company/i })
-      await user.click(addButton)
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument()
-      })
-
-      // Find inputs by their IDs
-      expect(document.getElementById("companyName")).toBeInTheDocument()
-      expect(document.getElementById("websiteUrl")).toBeInTheDocument()
-    })
-
-    it("should have required attribute on company name input", async () => {
-      const user = userEvent.setup()
-      render(<CompaniesPage />)
-
-      const addButton = screen.getByRole("button", { name: /add company/i })
-      await user.click(addButton)
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument()
-      })
-
-      const companyInput = document.getElementById("companyName") as HTMLInputElement
-      expect(companyInput).toHaveAttribute("required")
-    })
-
-    it("should have required attribute on website URL input", async () => {
-      const user = userEvent.setup()
-      render(<CompaniesPage />)
-
-      const addButton = screen.getByRole("button", { name: /add company/i })
-      await user.click(addButton)
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument()
-      })
-
-      const websiteInput = document.getElementById("websiteUrl") as HTMLInputElement
-      expect(websiteInput).toHaveAttribute("required")
-      expect(websiteInput).toHaveAttribute("type", "url")
-    })
-
-    it("should submit form with valid data", async () => {
-      const user = userEvent.setup()
-      mockSubmitCompany.mockResolvedValue("company-new-id")
-
-      render(<CompaniesPage />)
-
-      const addButton = screen.getByRole("button", { name: /add company/i })
-      await user.click(addButton)
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument()
-      })
-
-      // Fill form fields
-      const companyInput = document.getElementById("companyName") as HTMLInputElement
-      const websiteInput = document.getElementById("websiteUrl") as HTMLInputElement
-
-      await user.type(companyInput, "New Company Inc")
-      await user.type(websiteInput, "https://newcompany.com")
-
-      // Submit form
-      const submitButtons = screen.getAllByRole("button")
-      const discoverButton = submitButtons.find(
-        (btn) => btn.textContent?.toLowerCase().includes("discover")
-      )
-      await user.click(discoverButton!)
-
-      await waitFor(() => {
-        expect(mockSubmitCompany).toHaveBeenCalledWith({
-          companyName: "New Company Inc",
-          websiteUrl: "https://newcompany.com",
-        })
-      })
-    })
-
-    it("should show success message after successful submission", async () => {
-      const user = userEvent.setup()
-      mockSubmitCompany.mockResolvedValue("company-new-id")
-
-      render(<CompaniesPage />)
-
-      const addButton = screen.getByRole("button", { name: /add company/i })
-      await user.click(addButton)
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument()
-      })
-
-      // Fill form fields
-      const companyInput = document.getElementById("companyName") as HTMLInputElement
-      const websiteInput = document.getElementById("websiteUrl") as HTMLInputElement
-
-      await user.type(companyInput, "New Company Inc")
-      await user.type(websiteInput, "https://newcompany.com")
-
-      // Submit form
-      const submitButtons = screen.getAllByRole("button")
-      const discoverButton = submitButtons.find(
-        (btn) => btn.textContent?.toLowerCase().includes("discover")
-      )
-      await user.click(discoverButton!)
-
-      await waitFor(() => {
-        expect(screen.getByText(/company discovery task created/i)).toBeInTheDocument()
-      })
-    })
-
-    it("should show error message when submission fails", async () => {
-      const user = userEvent.setup()
-      mockSubmitCompany.mockRejectedValue(new Error("Network error"))
-
-      render(<CompaniesPage />)
-
-      const addButton = screen.getByRole("button", { name: /add company/i })
-      await user.click(addButton)
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument()
-      })
-
-      // Fill form fields
-      const companyInput = document.getElementById("companyName") as HTMLInputElement
-      const websiteInput = document.getElementById("websiteUrl") as HTMLInputElement
-
-      await user.type(companyInput, "Test Company")
-      await user.type(websiteInput, "https://test.com")
-
-      // Submit form
-      const submitButtons = screen.getAllByRole("button")
-      const discoverButton = submitButtons.find(
-        (btn) => btn.textContent?.toLowerCase().includes("discover")
-      )
-      await user.click(discoverButton!)
-
-      await waitFor(() => {
-        expect(screen.getByText(/network error/i)).toBeInTheDocument()
-      })
-    })
-
-    it("should disable form inputs while submitting", async () => {
-      const user = userEvent.setup()
-      // Make submission hang
-      mockSubmitCompany.mockImplementation(
-        () => new Promise((resolve) => setTimeout(resolve, 10000))
-      )
-
-      render(<CompaniesPage />)
-
-      const addButton = screen.getByRole("button", { name: /add company/i })
-      await user.click(addButton)
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument()
-      })
-
-      // Fill form fields
-      const companyInput = document.getElementById("companyName") as HTMLInputElement
-      const websiteInput = document.getElementById("websiteUrl") as HTMLInputElement
-
-      await user.type(companyInput, "Test Company")
-      await user.type(websiteInput, "https://test.com")
-
-      // Submit form
-      const submitButtons = screen.getAllByRole("button")
-      const discoverButton = submitButtons.find(
-        (btn) => btn.textContent?.toLowerCase().includes("discover")
-      )
-      await user.click(discoverButton!)
-
-      // Inputs should be disabled
-      await waitFor(() => {
-        expect(companyInput).toBeDisabled()
-        expect(websiteInput).toBeDisabled()
-        expect(screen.getByText(/submitting/i)).toBeInTheDocument()
+        expect(screen.getByRole("button", { name: /add company/i })).toBeInTheDocument()
       })
     })
   })
 
-  describe("Table Display", () => {
-    it("should display website URLs as external links", async () => {
+  describe("Filtering", () => {
+    it("should have tier filter dropdown", async () => {
       render(<CompaniesPage />)
 
       await waitFor(() => {
-        const links = screen.getAllByRole("link")
-        const acmeLink = links.find((link) => link.textContent?.includes("acme.com"))
-        expect(acmeLink).toHaveAttribute("href", "https://acme.com")
-        expect(acmeLink).toHaveAttribute("target", "_blank")
-        expect(acmeLink).toHaveAttribute("rel", "noopener noreferrer")
+        expect(screen.getByRole("combobox")).toBeInTheDocument()
       })
     })
 
-    it("should show dash for missing website URL", async () => {
-      vi.mocked(useQueueItems).mockReturnValue({
-        queueItems: [
-          {
-            id: "company-no-url",
-            type: "company",
-            status: "pending",
-            url: "",
-            company_name: "No URL Corp",
-            company_id: null,
-            source: "user_request",
-            created_at: new Date(),
-            updated_at: new Date(),
-            retry_count: 0,
-            max_retries: 3,
-          },
-        ] as any,
-        loading: false,
-        error: null,
-        submitJob: vi.fn(),
-        submitCompany: mockSubmitCompany,
-        submitSourceDiscovery: vi.fn(),
-        updateQueueItem: vi.fn(),
-        deleteQueueItem: vi.fn(),
-        refetch: mockRefetch,
-      } as any)
-
+    it("should have search input", async () => {
       render(<CompaniesPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("No URL Corp")).toBeInTheDocument()
-        // The dash should appear for missing URL
-        const dashes = screen.getAllByText("—")
-        expect(dashes.length).toBeGreaterThan(0)
+        expect(screen.getByPlaceholderText(/search companies/i)).toBeInTheDocument()
       })
     })
   })

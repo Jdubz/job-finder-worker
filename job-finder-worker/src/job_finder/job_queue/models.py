@@ -28,29 +28,6 @@ class QueueItemType(str, Enum):
     SCRAPE_SOURCE = "scrape_source"  # NEW: For automated source scraping
 
 
-class JobSubTask(str, Enum):
-    """
-    Granular sub-tasks for job processing pipeline.
-
-    When a JOB queue item has a sub_task, it represents one step in the
-    multi-stage processing pipeline. Items without sub_task (legacy) are
-    processed monolithically through all stages.
-
-    Pipeline flow:
-    1. JOB_SCRAPE: Fetch HTML and extract basic job data (Claude Haiku)
-    2. JOB_FILTER: Apply strike-based filtering (no AI)
-    3. JOB_ANALYZE: AI matching and resume intake generation (Claude Sonnet)
-    4. JOB_SAVE: Save results to job-matches (no AI)
-
-    TypeScript equivalent: JobSubTask in queue.types.ts
-    """
-
-    SCRAPE = "scrape"
-    FILTER = "filter"
-    ANALYZE = "analyze"
-    SAVE = "save"
-
-
 class CompanySubTask(str, Enum):
     """
     Granular sub-tasks for company processing pipeline.
@@ -72,21 +49,6 @@ class CompanySubTask(str, Enum):
     EXTRACT = "extract"
     ANALYZE = "analyze"
     SAVE = "save"
-
-
-class CompanyStatus(str, Enum):
-    """
-    Status for company records in SQLite.
-
-    Tracks the analysis state of a company.
-
-    TypeScript equivalent: CompanyStatus in queue.types.ts
-    """
-
-    PENDING = "pending"  # Initial state, not yet analyzed
-    ANALYZING = "analyzing"  # Currently being processed through pipeline
-    ACTIVE = "active"  # Analysis complete, ready for use
-    FAILED = "failed"  # Analysis failed after retries
 
 
 class SourceStatus(str, Enum):
@@ -289,12 +251,6 @@ class JobQueueItem(BaseModel):
         default=None, description="User ID if submitted by authenticated user"
     )
 
-    # Processing data
-    retry_count: int = Field(default=0, description="Number of retry attempts (disabled)")
-    max_retries: int = Field(
-        default=0, description="Maximum retry attempts before failure (disabled)"
-    )
-
     # Timestamps (for FIFO ordering)
     created_at: Optional[datetime] = Field(default=None, description="When item was added to queue")
     updated_at: Optional[datetime] = Field(default=None, description="Last update to status/data")
@@ -333,11 +289,7 @@ class JobQueueItem(BaseModel):
         default=None, description="Priority tier (S/A/B/C/D) for scheduling optimization"
     )
 
-    # Granular pipeline fields (only used when type is JOB with sub_task)
-    sub_task: Optional[JobSubTask] = Field(
-        default=None,
-        description="Granular pipeline step (scrape/filter/analyze/save). None = legacy monolithic processing",
-    )
+    # Pipeline state for multi-step processing
     pipeline_state: Optional[Dict[str, Any]] = Field(
         default=None,
         description="State passed between pipeline steps (scraped data, filter results, etc.)",
@@ -354,26 +306,10 @@ class JobQueueItem(BaseModel):
 
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional metadata blob")
 
-    pipeline_stage: Optional[str] = Field(
-        default=None, description="Current pipeline stage (scrape/filter/analyze/save/etc.)"
-    )
-
-    # Loop prevention fields (auto-generated if not provided)
+    # Loop prevention - tracking_id links related items
     tracking_id: str = Field(
         default_factory=lambda: str(__import__("uuid").uuid4()),
         description="UUID that tracks entire job lineage. Generated at root, inherited by all spawned children.",
-    )
-    ancestry_chain: List[str] = Field(
-        default_factory=list,
-        description="Chain of parent item IDs from root to current. Used to detect circular dependencies.",
-    )
-    spawn_depth: int = Field(
-        default=0,
-        description="Recursion depth in spawn chain. Root items = 0, increments by 1 with each spawn.",
-    )
-    max_spawn_depth: int = Field(
-        default=10,
-        description="Maximum allowed spawn depth before blocking to prevent infinite loops.",
     )
 
     model_config = ConfigDict(use_enum_values=True)
@@ -404,8 +340,6 @@ class JobQueueItem(BaseModel):
             "company_id": self.company_id,
             "source": self.source,
             "submitted_by": self.submitted_by,
-            "retry_count": self.retry_count,
-            "max_retries": self.max_retries,
             "created_at": dt(self.created_at),
             "updated_at": dt(self.updated_at),
             "processed_at": dt(self.processed_at),
@@ -421,18 +355,13 @@ class JobQueueItem(BaseModel):
             "source_type": self.source_type,
             "source_config": serialize(self.source_config),
             "source_tier": enum_val(self.source_tier),
-            "sub_task": enum_val(self.sub_task),
             "pipeline_state": serialize(self.pipeline_state),
             "parent_item_id": self.parent_item_id,
             "company_sub_task": enum_val(self.company_sub_task),
             "tracking_id": self.tracking_id,
-            "ancestry_chain": serialize(self.ancestry_chain),
-            "spawn_depth": self.spawn_depth,
-            "max_spawn_depth": self.max_spawn_depth,
             "result_message": self.result_message,
             "error_details": self.error_details,
             "metadata": serialize(self.metadata),
-            "pipeline_stage": self.pipeline_stage,
         }
 
     @classmethod
@@ -447,15 +376,6 @@ class JobQueueItem(BaseModel):
             except json.JSONDecodeError:
                 return None
 
-        def parse_list(value: Optional[str]) -> List[str]:
-            if not value:
-                return []
-            try:
-                parsed = json.loads(value)
-                return parsed if isinstance(parsed, list) else []
-            except json.JSONDecodeError:
-                return []
-
         def parse_dt(value: Optional[str]) -> Optional[datetime]:
             return datetime.fromisoformat(value) if value else None
 
@@ -468,8 +388,6 @@ class JobQueueItem(BaseModel):
             company_id=record.get("company_id"),
             source=record.get("source", "scraper"),
             submitted_by=record.get("submitted_by"),
-            retry_count=record.get("retry_count", 0),
-            max_retries=record.get("max_retries", 0),
             created_at=parse_dt(record.get("created_at")),
             updated_at=parse_dt(record.get("updated_at")),
             processed_at=parse_dt(record.get("processed_at")),
@@ -481,7 +399,6 @@ class JobQueueItem(BaseModel):
             source_type=record.get("source_type"),
             source_config=parse_json(record.get("source_config")),
             source_tier=SourceTier(record["source_tier"]) if record.get("source_tier") else None,
-            sub_task=JobSubTask(record["sub_task"]) if record.get("sub_task") else None,
             pipeline_state=parse_json(record.get("pipeline_state")),
             parent_item_id=record.get("parent_item_id"),
             company_sub_task=(
@@ -490,11 +407,7 @@ class JobQueueItem(BaseModel):
                 else None
             ),
             tracking_id=record.get("tracking_id", ""),
-            ancestry_chain=parse_list(record.get("ancestry_chain")),
-            spawn_depth=record.get("spawn_depth", 0),
-            max_spawn_depth=record.get("max_spawn_depth", 10),
             result_message=record.get("result_message"),
             error_details=record.get("error_details"),
             metadata=parse_json(record.get("metadata")),
-            pipeline_stage=record.get("pipeline_stage"),
         )

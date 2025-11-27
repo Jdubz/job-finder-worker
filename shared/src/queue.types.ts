@@ -47,21 +47,6 @@ export type QueueStatus = "pending" | "processing" | "success" | "failed" | "ski
 export type QueueItemType = "job" | "company" | "scrape" | "source_discovery" | "scrape_source"
 
 /**
- * Granular sub-tasks for job processing pipeline.
- *
- * When a JOB queue item has a sub_task, it represents one step in the
- * multi-stage processing pipeline. Items without sub_task (legacy) are
- * processed monolithically through all stages.
- *
- * Pipeline flow:
- * 1. scrape: Fetch HTML and extract basic job data (Claude Haiku)
- * 2. filter: Apply strike-based filtering (no AI)
- * 3. analyze: AI matching and resume intake generation (Claude Sonnet)
- * 4. save: Save results to job-matches (no AI)
- */
-export type JobSubTask = "scrape" | "filter" | "analyze" | "save"
-
-/**
  * Granular sub-tasks for company processing pipeline.
  *
  * When a COMPANY queue item has a company_sub_task, it represents one step in the
@@ -153,16 +138,8 @@ export interface QueueItem {
   company_name: string
   company_id: string | null
   source: QueueSource
-  /**
-   * @deprecated Will be removed after 2024-12-31.
-   * Use the 'source' field to determine submission origin.
-   * User UID for user submissions (optional - single-owner system)
-   */
+  /** User UID for user submissions - tracks who submitted the item */
   submitted_by?: string | null
-  /** @deprecated Queue retries are currently disabled; value is always 0. */
-  retry_count: number
-  /** @deprecated Queue retries are currently disabled; value is always 0. */
-  max_retries: number
   result_message?: string
   error_details?: string
   created_at: TimestampLike
@@ -177,8 +154,7 @@ export interface QueueItem {
   source_config?: Record<string, unknown> | null // Serialized source configuration blob
   source_tier?: SourceTier | null // Priority tier for scheduling
 
-  // Granular pipeline fields (only used when type is "job" with sub_task)
-  sub_task?: JobSubTask | null // Granular pipeline step (scrape/filter/analyze/save). null = legacy monolithic processing
+  // Pipeline state for multi-step processing
   pipeline_state?: Record<string, any> | null // State passed between pipeline steps (scraped data, filter results, etc.)
   parent_item_id?: string | null // Document ID of parent item that spawned this sub-task
 
@@ -187,39 +163,9 @@ export interface QueueItem {
 
   // Additional metadata (for pre-generated documents or other contextual data)
   metadata?: Record<string, any> | null
-  pipeline_stage?: string | null // High-level pipeline stage (scrape/filter/analyze/save/etc.)
 
-  // Loop-prevention / provenance fields
-  tracking_id?: string // Stable identifier shared by all spawned children
-  ancestry_chain?: string[] // Ordered chain of parent IDs from root -> current
-  spawn_depth?: number // Depth within ancestry (root = 0)
-  max_spawn_depth?: number // Safety guard to prevent runaway spawning
-}
-
-/**
- * Job match result (job-matches collection)
- *
- * DEPRECATED: Use JobMatch from job.types.ts instead.
- * This interface is kept for backwards compatibility only.
- *
- * @deprecated Import JobMatch from './job.types' instead
- */
-export interface JobMatchLegacy {
-  id?: string
-  url: string
-  company_name: string
-  company_id?: string | null
-  job_title: string
-  match_score: number
-  match_reasons: string[]
-  job_description: string
-  requirements: string[]
-  location?: string | null
-  salary_range?: string | null
-  analyzed_at: Date | any
-  created_at: Date | any
-  submitted_by: string | null
-  queue_item_id: string
+  // Loop-prevention - tracking_id links related items
+  tracking_id?: string // UUID that tracks entire job lineage. Generated at root, inherited by all spawned children.
 }
 
 /**

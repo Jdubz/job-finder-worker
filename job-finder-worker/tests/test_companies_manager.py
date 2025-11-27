@@ -5,10 +5,6 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
-
-from job_finder.exceptions import InvalidStateTransition
-from job_finder.job_queue.models import CompanyStatus
 from job_finder.storage.companies_manager import CompaniesManager
 
 
@@ -56,31 +52,3 @@ def test_stub_creation_returns_clean_name(tmp_path: Path):
 
     assert row["name"] == "Cloudflare"
     assert row["name_lower"] == "cloudflare"
-
-
-def test_transition_invalid_active_to_pending(tmp_path: Path):
-    db_path = tmp_path / "companies.db"
-    _apply_migrations(db_path)
-
-    manager = CompaniesManager(str(db_path))
-    company_id = manager.save_company(
-        {"name": "Statix", "analysis_status": CompanyStatus.ACTIVE.value}
-    )
-
-    with pytest.raises(InvalidStateTransition):
-        manager.transition_status(company_id, CompanyStatus.PENDING)
-
-
-def test_save_company_blocks_invalid_transition(tmp_path: Path):
-    db_path = tmp_path / "companies.db"
-    _apply_migrations(db_path)
-
-    manager = CompaniesManager(str(db_path))
-    company_id = manager.save_company(
-        {"name": "Nova", "analysis_status": CompanyStatus.ACTIVE.value}
-    )
-
-    with pytest.raises(InvalidStateTransition):
-        manager.save_company(
-            {"id": company_id, "name": "Nova", "analysis_status": CompanyStatus.PENDING.value}
-        )

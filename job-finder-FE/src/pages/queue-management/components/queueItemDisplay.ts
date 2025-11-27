@@ -22,13 +22,19 @@ export function getTaskTypeLabel(item: QueueItem): string {
 }
 
 export function getStageLabel(item: QueueItem): string | null {
-  const { sub_task, company_sub_task, pipeline_stage, type } = item
+  const { company_sub_task, pipeline_state, type } = item
 
-  if (sub_task) return `Job · ${subTaskMap[sub_task] ?? capitalize(sub_task)}`
   if (company_sub_task)
     return `Company · ${subTaskMap[company_sub_task] ?? capitalize(company_sub_task)}`
-  if (pipeline_stage) return capitalize(pipeline_stage.replaceAll("_", " "))
 
+  // Derive stage from pipeline_state keys
+  if (pipeline_state) {
+    if ("match_result" in pipeline_state) return "Save"
+    if ("filter_result" in pipeline_state) return "Analyze"
+    if ("job_data" in pipeline_state) return "Filter"
+  }
+
+  if (type === "job") return "Scrape"
   if (type === "scrape") return "Scrape sweep"
   if (type === "source_discovery") return "Discovery"
   return null

@@ -13,7 +13,6 @@ from job_finder.exceptions import DuplicateQueueItemError, QueueProcessingError,
 from job_finder.job_queue.models import (
     CompanySubTask,
     JobQueueItem,
-    JobSubTask,
     QueueItemType,
     QueueStatus,
 )
@@ -57,10 +56,6 @@ class QueueManager:
         item.created_at = item.created_at or now
         item.updated_at = now
         item.status = item.status or QueueStatus.PENDING
-        item.pipeline_stage = item.pipeline_stage or None
-
-        if not item.ancestry_chain:
-            item.ancestry_chain = [item.id]
 
         record = item.to_record()
         columns = ", ".join(record.keys())
@@ -92,7 +87,7 @@ class QueueManager:
                 """
                 SELECT * FROM job_queue
                 WHERE status = ?
-                ORDER BY datetime(created_at) ASC
+                ORDER BY datetime(updated_at) ASC
                 LIMIT ?
                 """,
                 (QueueStatus.PENDING.value, limit),
@@ -107,7 +102,6 @@ class QueueManager:
         result_message: Optional[str] = None,
         scraped_data: Optional[dict] = None,
         error_details: Optional[str] = None,
-        pipeline_stage: Optional[str] = None,
     ) -> None:
         now = _iso(_utcnow())
         update_data: Dict[str, Any] = {
@@ -121,8 +115,6 @@ class QueueManager:
             update_data["scraped_data"] = json.dumps(scraped_data)
         if error_details is not None:
             update_data["error_details"] = error_details
-        if pipeline_stage is not None:
-            update_data["pipeline_stage"] = pipeline_stage
 
         if status == QueueStatus.PROCESSING:
             update_data["processed_at"] = now
@@ -141,30 +133,21 @@ class QueueManager:
             conn.execute(f"UPDATE job_queue SET {assignments} WHERE id = ?", values)
 
         logger.debug("Updated queue item %s -> %s", item_id, status.value)
+        self._notify_item_updated(item_id)
 
+    def get_item(self, item_id: str) -> Optional[JobQueueItem]:
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute("SELECT * FROM job_queue WHERE id = ?", (item_id,)).fetchone()
+        return JobQueueItem.from_record(dict(row)) if row else None
+
+    def _notify_item_updated(self, item_id: str) -> None:
+        """Fetch an item and send an 'item.updated' notification if it exists."""
         if self.notifier:
             updated_item = self.get_item(item_id)
             if updated_item:
                 self.notifier.send_event(
                     "item.updated", {"queueItem": updated_item.model_dump(mode="json")}
                 )
-
-    def increment_retry(self, item_id: str) -> None:
-        with sqlite_connection(self.db_path) as conn:
-            conn.execute(
-                """
-                UPDATE job_queue
-                SET retry_count = retry_count + 1,
-                    updated_at = ?
-                WHERE id = ?
-                """,
-                (_iso(_utcnow()), item_id),
-            )
-
-    def get_item(self, item_id: str) -> Optional[JobQueueItem]:
-        with sqlite_connection(self.db_path) as conn:
-            row = conn.execute("SELECT * FROM job_queue WHERE id = ?", (item_id,)).fetchone()
-        return JobQueueItem.from_record(dict(row)) if row else None
 
     def url_exists_in_queue(self, url: str) -> bool:
         with sqlite_connection(self.db_path) as conn:
@@ -269,9 +252,7 @@ class QueueManager:
     def can_spawn_item(
         self, current_item: JobQueueItem, target_url: str, target_type: QueueItemType
     ) -> Tuple[bool, str]:
-        if current_item.spawn_depth >= current_item.max_spawn_depth:
-            return False, f"Max spawn depth ({current_item.max_spawn_depth}) reached"
-
+        """Check if spawning a new item is allowed (prevents duplicates within same lineage)."""
         if self.has_pending_work_for_url(target_url, target_type, current_item.tracking_id):
             return False, f"Duplicate work already queued for {target_url}"
 
@@ -287,18 +268,15 @@ class QueueManager:
             current_item.tracking_id, status_filter=[QueueStatus.SUCCESS]
         )
         for item in completed:
-            if (
-                item.url == target_url
-                and item.type == target_type
-                and item.pipeline_stage == "save"
-            ):
-                return False, "Already saved successfully"
+            if item.url == target_url and item.type == target_type:
+                return False, "Already completed successfully"
 
         return True, "OK"
 
     def spawn_item_safely(
         self, current_item: JobQueueItem, new_item_data: Dict[str, Any]
     ) -> Optional[str]:
+        """Spawn a child item if allowed by loop prevention rules."""
         target_url = new_item_data.get("url", "")
         target_type = new_item_data.get("type")
         if not target_type:
@@ -314,9 +292,8 @@ class QueueManager:
             logger.warning("Blocked spawn: %s", reason)
             return None
 
+        # Inherit tracking_id for lineage, set parent_item_id for direct relationship
         new_item_data.setdefault("tracking_id", current_item.tracking_id)
-        new_item_data.setdefault("ancestry_chain", current_item.ancestry_chain + [current_item.id])
-        new_item_data.setdefault("spawn_depth", current_item.spawn_depth + 1)
         new_item_data.setdefault("parent_item_id", current_item.id)
 
         new_item = JobQueueItem(**new_item_data)
@@ -325,49 +302,39 @@ class QueueManager:
     def spawn_next_pipeline_step(
         self,
         current_item: JobQueueItem,
-        next_sub_task: Optional[JobSubTask] = None,
+        next_sub_task: CompanySubTask,
         pipeline_state: Optional[Dict[str, Any]] = None,
-        is_company: bool = False,
+        is_company: bool = True,
     ) -> Optional[str]:
-        if is_company:
-            if not isinstance(next_sub_task, CompanySubTask):
-                raise QueueProcessingError(
-                    "next_sub_task must be CompanySubTask for company pipelines"
-                )
-            new_item_data = {
-                "type": QueueItemType.COMPANY,
-                "url": current_item.url,
-                "company_name": current_item.company_name,
-                "company_id": current_item.company_id,
-                "source": current_item.source,
-                "company_sub_task": next_sub_task,
-                "pipeline_state": pipeline_state,
-            }
-        else:
-            new_item_data = {
-                "type": QueueItemType.JOB,
-                "url": current_item.url,
-                "company_name": current_item.company_name,
-                "company_id": current_item.company_id,
-                "source": current_item.source,
-                "sub_task": next_sub_task,
-                "pipeline_state": pipeline_state,
-            }
+        """Spawn the next step in the company pipeline."""
+        if not is_company:
+            raise QueueProcessingError("spawn_next_pipeline_step only supports company pipelines")
+
+        if not isinstance(next_sub_task, CompanySubTask):
+            raise QueueProcessingError("next_sub_task must be CompanySubTask")
+
+        new_item_data = {
+            "type": QueueItemType.COMPANY,
+            "url": current_item.url,
+            "company_name": current_item.company_name,
+            "company_id": current_item.company_id,
+            "source": current_item.source,
+            "company_sub_task": next_sub_task,
+            "pipeline_state": pipeline_state,
+        }
         try:
             return self.spawn_item_safely(current_item, new_item_data)
         except StorageError as exc:
             # If a unique URL constraint blocks granular company steps, fall back to
             # requeueing the same item in-place with the next sub_task.
-            if is_company:
-                self._requeue_company_step(current_item.id, next_sub_task, pipeline_state)
-                logger.debug(
-                    "Requeued company %s in-place for sub_task=%s due to %s",
-                    current_item.id,
-                    next_sub_task,
-                    exc,
-                )
-                return current_item.id
-            raise
+            self._requeue_company_step(current_item.id, next_sub_task, pipeline_state)
+            logger.debug(
+                "Requeued company %s in-place for sub_task=%s due to %s",
+                current_item.id,
+                next_sub_task,
+                exc,
+            )
+            return current_item.id
 
     def _requeue_company_step(
         self, item_id: str, next_sub_task: CompanySubTask, pipeline_state: Optional[Dict[str, Any]]
@@ -388,25 +355,29 @@ class QueueManager:
                 ),
             )
 
+        # Notify FE of the company sub-task transition
+        self._notify_item_updated(item_id)
+
     def requeue_with_state(
         self,
         item_id: str,
         pipeline_state: Dict[str, Any],
-        next_stage: str,
     ) -> None:
         """Update a queue item in-place to progress to the next pipeline stage."""
         with sqlite_connection(self.db_path) as conn:
             conn.execute(
                 """
                 UPDATE job_queue
-                SET pipeline_state = ?, pipeline_stage = ?, status = ?, updated_at = ?
+                SET pipeline_state = ?, status = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
                     json.dumps(pipeline_state),
-                    next_stage,
                     QueueStatus.PENDING.value,
                     _iso(_utcnow()),
                     item_id,
                 ),
             )
+
+        # Notify FE of the stage transition so queue UI stays in sync
+        self._notify_item_updated(item_id)

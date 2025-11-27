@@ -6,6 +6,7 @@
 
 // Core types
 export * from "./queue.types"
+export * from "./queue-events.types"
 export * from "./job.types"
 export * from "./logging.types"
 export * from "./generator.types"
@@ -23,6 +24,8 @@ export * from "./api/job-match.types"
 export * from "./api/contact.types"
 export * from "./api/config.types"
 export * from "./api/prompts.types"
+export * from "./api/company.types"
+export * from "./api/job-source.types"
 
 // Type guards and utilities
 export * from "./guards"

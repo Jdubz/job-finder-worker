@@ -8,27 +8,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from job_finder.exceptions import InvalidStateTransition, StorageError
-from job_finder.job_queue.models import CompanyStatus
+from job_finder.exceptions import StorageError
 from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.utils.company_name_utils import clean_company_name, normalize_company_name
 
 logger = logging.getLogger(__name__)
-
-
-DEFAULT_ANALYSIS_PROGRESS = {
-    "fetch": False,
-    "extract": False,
-    "analyze": False,
-    "save": False,
-}
-
-VALID_COMPANY_TRANSITIONS = {
-    CompanyStatus.PENDING: {CompanyStatus.ANALYZING},
-    CompanyStatus.ANALYZING: {CompanyStatus.ACTIVE, CompanyStatus.FAILED},
-    CompanyStatus.ACTIVE: {CompanyStatus.ANALYZING},  # Allows re-analysis
-    CompanyStatus.FAILED: {CompanyStatus.PENDING},
-}
 
 
 def _utcnow_iso() -> str:
@@ -58,15 +42,6 @@ class CompaniesManager:
             except json.JSONDecodeError:
                 tech_stack = []
 
-        progress = DEFAULT_ANALYSIS_PROGRESS.copy()
-        if row.get("analysis_progress"):
-            try:
-                parsed_progress = json.loads(row["analysis_progress"])
-                if isinstance(parsed_progress, dict):
-                    progress.update({k: bool(v) for k, v in parsed_progress.items()})
-            except json.JSONDecodeError:
-                pass
-
         return {
             "id": row["id"],
             "name": row["name"],
@@ -75,83 +50,17 @@ class CompaniesManager:
             "about": row.get("about"),
             "culture": row.get("culture"),
             "mission": row.get("mission"),
-            "size": row.get("size"),
             "companySizeCategory": row.get("company_size_category"),
-            "founded": row.get("founded"),
             "industry": row.get("industry"),
             "headquartersLocation": row.get("headquarters_location"),
             "hasPortlandOffice": bool(row.get("has_portland_office", 0)),
             "techStack": tech_stack,
-            "tier": row.get("tier"),
-            "priorityScore": row.get("priority_score"),
-            "analysis_status": row.get("analysis_status"),
-            "analysis_progress": progress,
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
         }
 
     def _normalize_name(self, name: str) -> str:
         return normalize_company_name(name)
-
-    def _validate_transition(self, current: CompanyStatus, new: CompanyStatus) -> None:
-        allowed = VALID_COMPANY_TRANSITIONS.get(current, set()) | {current}
-        if new not in allowed:
-            raise InvalidStateTransition(
-                f"Cannot transition company from {current.value} to {new.value}"
-            )
-
-    def _serialize_progress(self, progress: Optional[Dict[str, Any]]) -> str:
-        merged = DEFAULT_ANALYSIS_PROGRESS.copy()
-        if isinstance(progress, dict):
-            merged.update({k: bool(v) for k, v in progress.items()})
-        return json.dumps(merged)
-
-    # ------------------------------------------------------------------ #
-    # State helpers
-    # ------------------------------------------------------------------ #
-
-    def transition_status(self, company_id: str, new_status: CompanyStatus) -> None:
-        company = self.get_company_by_id(company_id)
-        try:
-            current_status = (
-                CompanyStatus(company["analysis_status"] or CompanyStatus.PENDING.value)
-                if company
-                else CompanyStatus.PENDING
-            )
-        except Exception:
-            current_status = CompanyStatus.PENDING
-
-        # Validate transition (allows no-op)
-        self._validate_transition(current_status, new_status)
-
-        if current_status == new_status:
-            return
-
-        with sqlite_connection(self.db_path) as conn:
-            conn.execute(
-                "UPDATE companies SET analysis_status = ?, updated_at = ? WHERE id = ?",
-                (new_status.value, _utcnow_iso(), company_id),
-            )
-        logger.debug(
-            "Company %s status %s → %s", company_id, current_status.value, new_status.value
-        )
-
-    def update_analysis_progress(self, company_id: str, **stage_updates: bool) -> Dict[str, bool]:
-        company = self.get_company_by_id(company_id) or {}
-        current_progress = company.get("analysis_progress") or DEFAULT_ANALYSIS_PROGRESS.copy()
-        updated_progress = {**DEFAULT_ANALYSIS_PROGRESS, **current_progress}
-
-        for stage, done in stage_updates.items():
-            if stage in updated_progress:
-                updated_progress[stage] = bool(done)
-
-        with sqlite_connection(self.db_path) as conn:
-            conn.execute(
-                "UPDATE companies SET analysis_progress = ?, updated_at = ? WHERE id = ?",
-                (json.dumps(updated_progress), _utcnow_iso(), company_id),
-            )
-
-        return updated_progress
 
     # ------------------------------------------------------------------ #
     # Queries
@@ -206,20 +115,6 @@ class CompaniesManager:
         if existing and not company_id:
             company_id = existing["id"]
 
-        existing_progress = existing.get("analysis_progress") if existing else None
-        progress_payload = company_data.get("analysis_progress", existing_progress)
-
-        desired_status_value = company_data.get("analysis_status") or (
-            existing.get("analysis_status") if existing else CompanyStatus.PENDING.value
-        )
-        desired_status = CompanyStatus(desired_status_value)
-
-        if existing:
-            current_status = CompanyStatus(
-                existing.get("analysis_status") or CompanyStatus.PENDING.value
-            )
-            self._validate_transition(current_status, desired_status)
-
         now = _utcnow_iso()
         has_portland_office = bool(
             company_data.get("hasPortlandOffice") or company_data.get("has_portland_office")
@@ -236,20 +131,13 @@ class CompaniesManager:
             "about": company_data.get("about"),
             "culture": company_data.get("culture"),
             "mission": company_data.get("mission"),
-            "size": company_data.get("size"),
             "company_size_category": company_data.get("companySizeCategory")
             or company_data.get("company_size_category"),
-            "founded": company_data.get("founded"),
             "industry": company_data.get("industry"),
             "headquarters_location": company_data.get("headquartersLocation")
             or company_data.get("headquarters_location"),
             "has_portland_office": 1 if has_portland_office else 0,
             "tech_stack": json.dumps(tech_stack),
-            "tier": company_data.get("tier"),
-            "priority_score": company_data.get("priorityScore")
-            or company_data.get("priority_score"),
-            "analysis_status": desired_status.value,
-            "analysis_progress": self._serialize_progress(progress_payload),
         }
 
         if company_id:
@@ -288,6 +176,22 @@ class CompaniesManager:
     # ------------------------------------------------------------------ #
 
     def has_good_company_data(self, company_data: Dict[str, Any]) -> bool:
+        """Check if company has been processed or has sufficient data.
+
+        Returns True if either:
+        1. Company was updated after creation (fetch/analyze was attempted)
+        2. OR has meaningful content in about/culture fields
+
+        This ensures jobs don't wait indefinitely for companies whose websites
+        don't expose about/culture information publicly.
+        """
+        # Check if company was processed (updated after initial stub creation)
+        created_at = company_data.get("created_at") or company_data.get("createdAt")
+        updated_at = company_data.get("updated_at") or company_data.get("updatedAt")
+        if created_at and updated_at and str(updated_at) != str(created_at):
+            return True
+
+        # Fallback: check for content quality
         about_length = len(company_data.get("about", "") or "")
         culture_length = len(company_data.get("culture", "") or "")
         has_good_quality = about_length > 100 and culture_length > 50
@@ -302,14 +206,9 @@ class CompaniesManager:
             "about": "",
             "culture": "",
             "mission": "",
-            "size": "",
             "companySizeCategory": None,
             "headquartersLocation": "",
             "industry": "",
-            "tier": "D",
-            "priorityScore": 0,
-            "analysis_status": CompanyStatus.PENDING.value,
-            "analysis_progress": DEFAULT_ANALYSIS_PROGRESS.copy(),
         }
         company_id = self.save_company(stub_data)
         stub_data["id"] = company_id

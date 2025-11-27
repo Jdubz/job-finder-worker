@@ -19,7 +19,6 @@ def mock_managers():
         "sources_manager": MagicMock(),
         "company_info_fetcher": MagicMock(),
         "ai_matcher": MagicMock(),
-        "profile": MagicMock(),
     }
 
 
@@ -28,7 +27,7 @@ def processor(mock_managers):
     """Create processor with mocked dependencies."""
     # Patch ScrapeRunner to avoid creating real instance
     with patch(
-        "job_finder.job_queue.processors.base_processor.ScrapeRunner"
+        "job_finder.job_queue.processors.job_processor.ScrapeRunner"
     ) as mock_scrape_runner_class:
         mock_scrape_runner_instance = MagicMock()
         mock_scrape_runner_class.return_value = mock_scrape_runner_instance
@@ -200,14 +199,13 @@ def test_process_job_already_exists(processor, mock_managers, sample_job_item):
 
 
 def test_handle_failure_retry(processor, mock_managers):
-    """Test failure handling with retry logic."""
+    """Test failure handling."""
     item = JobQueueItem(
         id="test-123",
         type=QueueItemType.JOB,
         url="https://example.com/job",
         company_name="Test Corp",
         source="scraper",
-        retry_count=1,
     )
 
     processor._handle_failure(item, "Test error")
@@ -219,14 +217,13 @@ def test_handle_failure_retry(processor, mock_managers):
 
 
 def test_handle_failure_max_retries(processor, mock_managers):
-    """Test failure handling when max retries exceeded."""
+    """Test failure handling marks item as failed."""
     item = JobQueueItem(
         id="test-123",
         type=QueueItemType.JOB,
         url="https://example.com/job",
         company_name="Test Corp",
         source="scraper",
-        retry_count=2,
     )
 
     processor._handle_failure(item, "Test error")
@@ -237,7 +234,17 @@ def test_handle_failure_max_retries(processor, mock_managers):
 
 
 def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_job_item):
-    """Job analyze should spawn company pipeline and requeue when company is unknown."""
+    """Job analyze should spawn company pipeline when company data is incomplete."""
+    # Company exists but has incomplete data (no about/culture)
+    incomplete_company = {
+        "id": "comp-incomplete",
+        "name": "Spawn Co",
+        "about": "",  # Empty - triggers analysis
+        "culture": "",
+    }
+    mock_managers["companies_manager"].get_company.return_value = incomplete_company
+    mock_managers["companies_manager"].has_good_company_data.return_value = False
+
     sample_job_item.pipeline_state = {
         "job_data": {
             "title": "Engineer",
@@ -252,16 +259,17 @@ def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_
 
     processor.job_processor._do_job_analyze(sample_job_item)
 
-    # Should enqueue company task and requeue job to wait
+    # Should enqueue company task and requeue job to wait for data
     assert mock_managers["queue_manager"].spawn_item_safely.called
     mock_managers["queue_manager"].requeue_with_state.assert_called()
-    _, _, next_stage = mock_managers["queue_manager"].requeue_with_state.call_args[0]
-    assert next_stage == "wait_company"
+    # requeue_with_state now takes only (item_id, pipeline_state)
+    item_id, updated_state = mock_managers["queue_manager"].requeue_with_state.call_args[0]
+    assert "waiting_for_company_id" in updated_state
     processor.job_processor.ai_matcher.analyze_job.assert_not_called()
 
 
 def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sample_job_item):
-    """Job analyze should proceed when company dependency is active."""
+    """Job analyze should proceed when company has good data."""
 
     class DummyResult:
         match_score = 95
@@ -273,14 +281,16 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
                 "application_priority": self.application_priority,
             }
 
-    active_company = {
+    complete_company = {
         "id": "comp-1",
-        "analysis_status": "active",
-        "about": "About text",
-        "culture": "Culture text",
+        "name": "Ready Co",
+        "about": "About text with enough content to pass the quality check",
+        "culture": "Culture text with enough content",
     }
 
-    mock_managers["companies_manager"].get_company_by_id.return_value = active_company
+    # Data-based check: company has good data, so proceed with analysis
+    mock_managers["companies_manager"].get_company.return_value = complete_company
+    mock_managers["companies_manager"].has_good_company_data.return_value = True
     processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
 
     sample_job_item.pipeline_state = {
@@ -291,7 +301,6 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
             "description": "A" * 200,
         },
         "filter_result": {"passed": True},
-        "company_dependency": {"company_id": "comp-1"},
     }
 
     processor.job_processor._do_job_analyze(sample_job_item)

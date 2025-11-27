@@ -124,7 +124,6 @@ def main():
         sources_manager=sources_manager,
         company_info_fetcher=company_info_fetcher,
         ai_matcher=ai_matcher,
-        profile=profile,
     )
 
     # Enqueue SCRAPE request
