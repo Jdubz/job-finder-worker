@@ -348,11 +348,10 @@ class JobProcessor(BaseProcessor):
 
     def _ensure_company_dependency(self, item: JobQueueItem, job_data: Dict[str, Any]) -> bool:
         """
-        Ensure company data is ready before job analysis (state-based, not dependency-chain).
+        Ensure company data is available before job analysis.
 
-        This method is purely state-based - it only checks the company's status in the DB.
-        Spawning a company task is "fire and forget" - if it fails, we don't care, we just
-        wait for the company to become ACTIVE (some other task will complete it).
+        Checks if the company record has sufficient data (about, culture, etc.) for
+        document generation and job ranking. If not, spawns an analysis task.
 
         Returns True when company data is ready for analysis.
         """
@@ -370,7 +369,7 @@ class JobProcessor(BaseProcessor):
         pipeline_state = item.pipeline_state or {}
 
         def _requeue_wait(company_id: str) -> None:
-            """Requeue this job to wait for company to become ACTIVE."""
+            """Requeue this job to wait for company data to be populated."""
             updated_state = {
                 **pipeline_state,
                 "job_data": job_data,
@@ -378,7 +377,9 @@ class JobProcessor(BaseProcessor):
             }
             self.queue_manager.requeue_with_state(item.id, updated_state, "wait_company")
             logger.info(
-                "JOB_ANALYZE: Waiting for company %s (id=%s)", company_name_clean, company_id
+                "JOB_ANALYZE: Waiting for company data %s (id=%s)",
+                company_name_clean,
+                company_id,
             )
 
         # Get or create company record
@@ -390,24 +391,16 @@ class JobProcessor(BaseProcessor):
             company = stub
 
         company_id = company.get("id")
-        status = company.get("analysis_status")
 
-        # Company is ACTIVE - ready to use
-        if status == CompanyStatus.ACTIVE.value:
+        # Check if company has sufficient data for job analysis
+        if self.companies_manager.has_good_company_data(company):
             job_data["company_id"] = company_id
             job_data["companyId"] = company_id
             job_data["company_info"] = build_company_info_string(company)
             return True
 
-        # Company is FAILED - reset to PENDING so it can be retried
-        if status == CompanyStatus.FAILED.value:
-            try:
-                self.companies_manager.transition_status(company_id, CompanyStatus.PENDING)
-            except InvalidStateTransition:
-                pass
-
-        # Company is not ACTIVE - try to spawn a task (fire and forget), then wait
-        # Spawning may fail (duplicate, blocked, etc.) - that's fine, we just wait
+        # Company data is incomplete - spawn analysis task (fire and forget), then wait
+        # Task may fail to spawn (duplicate, blocked) - that's fine, we just wait
         self._try_spawn_company_task(item, company_id, company_name_clean, company_website)
         _requeue_wait(company_id)
         return False
