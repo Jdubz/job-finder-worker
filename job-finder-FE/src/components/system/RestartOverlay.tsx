@@ -92,20 +92,20 @@ export function RestartOverlay() {
     }
 
       // Only treat repeated failures + failing healthcheck as a restart
-      source.onerror = async () => {
-        errorStreak.current += 1
-        // quick health probe to avoid false positives from transient network hiccups
-        const healthy = await fetch(healthUrl, { cache: "no-store" })
-          .then((r) => r.ok)
-          .catch(() => false)
-        if (!healthy && errorStreak.current >= 2) {
-          beginBlocking("lifecycle stream disconnected & healthcheck failed")
-        }
-        // If a restart was pending but health remained good, retry confirmation now
-        if (restartPending.current && !healthy) {
-          beginBlocking(restartPending.current.reason)
-        }
+    source.onerror = async () => {
+      errorStreak.current += 1
+      // quick health probe to avoid false positives from transient network hiccups
+      const healthy = await fetch(healthUrl, { cache: "no-store" })
+        .then((r) => r.ok)
+        .catch(() => false)
+      if (!healthy && errorStreak.current >= 2) {
+        beginBlocking("lifecycle stream disconnected & healthcheck failed")
       }
+      // If a restart was pending but health remained good, retry confirmation now
+      if (restartPending.current && !healthy) {
+        beginBlocking(restartPending.current.reason)
+      }
+    }
 
     return () => {
       source.close()

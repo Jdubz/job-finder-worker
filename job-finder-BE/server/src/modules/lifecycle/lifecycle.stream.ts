@@ -105,9 +105,11 @@ export function isReady(): boolean {
 process.on('uncaughtException', (error) => {
   logger.error({ error }, 'Uncaught exception - broadcasting restart')
   setLifecyclePhase('restarting', { reason: 'uncaughtException' })
+  broadcastLifecycleEvent('restarting', { reason: 'uncaughtException' })
 })
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason }, 'Unhandled rejection - broadcasting restart')
   setLifecyclePhase('restarting', { reason: 'unhandledRejection' })
+  broadcastLifecycleEvent('restarting', { reason: 'unhandledRejection' })
 })
