@@ -1,5 +1,4 @@
 export { StopListTab } from "./StopListTab"
-export { QueueSettingsTab } from "./QueueSettingsTab"
 export { AISettingsTab } from "./AISettingsTab"
 export { JobMatchTab } from "./JobMatchTab"
 export { JobFiltersTab } from "./JobFiltersTab"

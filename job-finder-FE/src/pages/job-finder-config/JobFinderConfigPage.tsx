@@ -6,7 +6,6 @@ import { Loader2 } from "lucide-react"
 import { useConfigState } from "./hooks/useConfigState"
 import {
   StopListTab,
-  QueueSettingsTab,
   AISettingsTab,
   JobMatchTab,
   JobFiltersTab,
@@ -19,7 +18,6 @@ import { useSearchParams } from "react-router-dom"
 
 type TabType =
   | "stop-list"
-  | "queue"
   | "ai"
   | "job-match"
   | "filters"
@@ -103,9 +101,8 @@ export function JobFinderConfigPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-9">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="stop-list">Stop List</TabsTrigger>
-          <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
           <TabsTrigger value="job-match">Match</TabsTrigger>
           <TabsTrigger value="filters">Filters</TabsTrigger>
@@ -133,15 +130,6 @@ export function JobFinderConfigPage() {
           handleRemoveDomain={configState.handleRemoveDomain}
           handleSaveStopList={configState.handleSaveStopList}
           handleResetStopList={configState.handleResetStopList}
-        />
-
-        <QueueSettingsTab
-          isSaving={configState.isSaving}
-          queueSettings={configState.queueSettings}
-          setQueueSettings={configState.setQueueSettings}
-          hasQueueChanges={configState.hasQueueChanges}
-          handleSaveQueueSettings={configState.handleSaveQueueSettings}
-          handleResetQueueSettings={configState.handleResetQueueSettings}
         />
 
         <AISettingsTab
