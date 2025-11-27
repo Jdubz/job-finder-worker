@@ -50,6 +50,71 @@ export async function seedQueueJob(
   return data.queueItemId
 }
 
+export async function updateQueueItem(
+  request: APIRequestContext,
+  id: string,
+  payload: Record<string, unknown>
+) {
+  const response = await request.patch(`${API_BASE}/queue/${id}`, {
+    data: payload,
+    headers: {
+      Authorization: `Bearer ${AUTH_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+  })
+
+  if (!response.ok()) {
+    const body = await response.text()
+    throw new Error(`Failed to update queue item ${id}: ${response.status()} ${body}`)
+  }
+}
+
+export async function fetchQueueItem(
+  request: APIRequestContext,
+  id: string
+): Promise<Record<string, unknown>> {
+  const response = await request.get(`${API_BASE}/queue/${id}`, {
+    headers: {
+      Authorization: `Bearer ${AUTH_TOKEN}`,
+    },
+  })
+
+  if (!response.ok()) {
+    const body = await response.text()
+    throw new Error(`Failed to fetch queue item ${id}: ${response.status()} ${body}`)
+  }
+
+  const body = (await response.json()) as ApiSuccess<{ queueItem: Record<string, unknown> }>
+  return body.data.queueItem
+}
+
+export async function sendWorkerQueueEvent(
+  request: APIRequestContext,
+  payload: { event: string; data: Record<string, unknown> }
+) {
+  await apiPost(request, `/queue/worker/events`, payload)
+}
+
+export async function clearQueue(request: APIRequestContext) {
+  const response = await request.get(`${API_BASE}/queue`, {
+    headers: {
+      Authorization: `Bearer ${AUTH_TOKEN}`,
+    },
+  })
+
+  if (!response.ok()) return
+
+  const body = (await response.json()) as ApiSuccess<{ items: Array<{ id: string }> }>
+  const ids = body.data.items?.map((i) => i.id).filter(Boolean) || []
+  await Promise.all(
+    ids.map((id) =>
+      request.delete(`${API_BASE}/queue/${id}`, {
+        headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+      })
+    )
+  )
+}
+
 export async function seedContentItem(
   request: APIRequestContext,
   overrides: Record<string, unknown> & { itemData?: Record<string, unknown> } = {}

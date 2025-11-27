@@ -8,7 +8,8 @@ const API_PORT = process.env.JF_E2E_API_PORT || "5080"
 const AUTH_TOKEN = process.env.JF_E2E_AUTH_TOKEN || "e2e-test-token"
 
 const dbName = `jobfinder-e2e-${process.pid}-${Date.now()}`
-const dbPath = `file:${path.join(os.tmpdir(), dbName)}?mode=memory&cache=shared`
+// Shared in-memory DB; keep URI simple to avoid path directory checks in better-sqlite3
+const dbPath = `file:${dbName}?mode=memory&cache=shared`
 const migrationsDir = path.resolve(process.cwd(), "infra/sqlite/migrations")
 
 const childEnv = {

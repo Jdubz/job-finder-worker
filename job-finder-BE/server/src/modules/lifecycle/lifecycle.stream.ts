@@ -87,7 +87,9 @@ export function isReady(): boolean {
 }
 
 process.on('uncaughtException', (error) => {
-  logger.error({ error }, 'Uncaught exception - broadcasting restart')
+  // Extra console for CI visibility when pino redacts
+  console.error('UNCaught exception', error)
+  logger.error({ error, stack: (error as any)?.stack }, 'Uncaught exception - broadcasting restart')
   setLifecyclePhase('restarting', { reason: 'uncaughtException' })
   broadcastLifecycleEvent('restarting', { reason: 'uncaughtException' })
 })
