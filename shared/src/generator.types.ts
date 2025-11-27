@@ -4,11 +4,14 @@
  * Type definitions for AI-powered resume and cover letter generation.
  * Used by both job-finder-BE (Cloud Functions) and job-finder-FE.
  *
- * NOTE: Gemini provider temporarily removed - OpenAI only for now
- * NOTE: Blurb service deprecated - using content items directly
+ * Provider configuration is shared with job-finder worker via AISettings.
  */
 
 import type { TimestampLike } from "./time.types"
+import type { AIProviderType } from "./config.types"
+
+// Re-export for backwards compatibility in generator contexts
+export type { AIProviderType } from "./config.types"
 
 export interface GeneratorDocumentRecord {
   id: string
@@ -22,12 +25,6 @@ export interface GeneratorDocumentRecord {
  * Generation type - what to generate
  */
 export type GenerationType = "resume" | "coverLetter" | "both"
-
-/**
- * AI Provider type
- * NOTE: OpenAI is the primary provider; legacy Gemini hooks remain in Cloud Functions.
- */
-export type AIProviderType = "openai" | "gemini"
 
 /**
  * Token usage tracking for AI generation

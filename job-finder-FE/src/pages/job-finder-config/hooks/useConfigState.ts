@@ -2,15 +2,18 @@ import { useState, useEffect } from "react"
 import { configClient } from "@/api/config-client"
 import {
   DEFAULT_JOB_FILTERS,
+  DEFAULT_JOB_MATCH,
   DEFAULT_TECH_RANKS,
   DEFAULT_SCHEDULER_SETTINGS,
   DEFAULT_COMPANY_SCORING,
   DEFAULT_WORKER_SETTINGS,
+  DEFAULT_AI_SETTINGS,
 } from "@shared/types"
 import type {
   StopList,
   QueueSettings,
   AISettings,
+  JobMatchConfig,
   JobFiltersConfig,
   TechnologyRanksConfig,
   SchedulerSettings,
@@ -20,7 +23,7 @@ import type {
 } from "@shared/types"
 import { deepClone, stableStringify, createSaveHandler, createResetHandler } from "../utils/config-helpers"
 
-export type TabType = "stop-list" | "queue" | "ai" | "filters" | "tech" | "scheduler" | "scoring" | "worker"
+export type TabType = "stop-list" | "queue" | "ai" | "job-match" | "filters" | "tech" | "scheduler" | "scoring" | "worker"
 
 export function useConfigState() {
   // UI state
@@ -44,6 +47,10 @@ export function useConfigState() {
   // AI Settings state
   const [aiSettings, setAISettings] = useState<AISettings | null>(null)
   const [originalAISettings, setOriginalAISettings] = useState<AISettings | null>(null)
+
+  // Job Match state
+  const [jobMatch, setJobMatch] = useState<JobMatchConfig | null>(null)
+  const [originalJobMatch, setOriginalJobMatch] = useState<JobMatchConfig | null>(null)
 
   // Job Filters
   const [jobFilters, setJobFilters] = useState<JobFiltersConfig | null>(null)
@@ -78,10 +85,11 @@ export function useConfigState() {
     setError(null)
 
     try {
-      const [stopListData, queueData, aiData, filtersData, techData, schedulerData, scoringData, workerData] = await Promise.all([
+      const [stopListData, queueData, aiData, jobMatchData, filtersData, techData, schedulerData, scoringData, workerData] = await Promise.all([
         configClient.getStopList(),
         configClient.getQueueSettings(),
         configClient.getAISettings(),
+        configClient.getJobMatch(),
         configClient.getJobFilters(),
         configClient.getTechnologyRanks(),
         configClient.getSchedulerSettings(),
@@ -95,6 +103,10 @@ export function useConfigState() {
       setOriginalQueueSettings(queueData)
       setAISettings(aiData)
       setOriginalAISettings(aiData)
+
+      const jobMatchPayload = deepClone(jobMatchData ?? DEFAULT_JOB_MATCH)
+      setJobMatch(jobMatchPayload)
+      setOriginalJobMatch(deepClone(jobMatchPayload))
 
       const filtersPayload = deepClone(filtersData ?? DEFAULT_JOB_FILTERS)
       setJobFilters(filtersPayload)
@@ -183,6 +195,17 @@ export function useConfigState() {
       updateFn: configClient.updateAISettings,
       setOriginal: setOriginalAISettings,
       configName: "AI settings",
+      setIsSaving,
+      setError,
+      setSuccess,
+    })
+
+  const handleSaveJobMatch = () =>
+    createSaveHandler({
+      data: jobMatch,
+      updateFn: configClient.updateJobMatch,
+      setOriginal: setOriginalJobMatch,
+      configName: "job match settings",
       setIsSaving,
       setError,
       setSuccess,
@@ -318,7 +341,16 @@ export function useConfigState() {
     createResetHandler(
       setAISettings,
       originalAISettings,
-      { provider: "claude", model: "claude-sonnet-4", minMatchScore: 70 },
+      DEFAULT_AI_SETTINGS,
+      setError,
+      setSuccess
+    )
+
+  const handleResetJobMatch = () =>
+    createResetHandler(
+      setJobMatch,
+      originalJobMatch,
+      DEFAULT_JOB_MATCH,
       setError,
       setSuccess
     )
@@ -387,6 +419,7 @@ export function useConfigState() {
   const hasStopListChanges = stableStringify(stopList) !== stableStringify(originalStopList)
   const hasQueueChanges = stableStringify(queueSettings) !== stableStringify(originalQueueSettings)
   const hasAIChanges = stableStringify(aiSettings) !== stableStringify(originalAISettings)
+  const hasJobMatchChanges = stableStringify(jobMatch) !== stableStringify(originalJobMatch)
   const hasJobFilterChanges = stableStringify(jobFilters) !== stableStringify(originalJobFilters)
   const hasTechRankChanges = stableStringify(techRanks) !== stableStringify(originalTechRanks)
   const hasSchedulerChanges = stableStringify(schedulerSettings) !== stableStringify(originalSchedulerSettings)
@@ -444,6 +477,13 @@ export function useConfigState() {
     hasAIChanges,
     handleSaveAISettings,
     handleResetAISettings,
+
+    // Job Match
+    jobMatch,
+    setJobMatch,
+    hasJobMatchChanges,
+    handleSaveJobMatch,
+    handleResetJobMatch,
 
     // Job Filters
     jobFilters,

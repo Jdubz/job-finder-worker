@@ -1,64 +1,19 @@
-"""AI provider abstractions for different LLM services."""
+"""AI provider abstractions for different LLM services.
+
+Provider configuration is managed via the ai-settings config entry.
+The selected provider/interface/model is used for all AI tasks.
+"""
 
 import json
 import os
 import subprocess
 from abc import ABC, abstractmethod
-from enum import Enum
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from anthropic import Anthropic
 from openai import OpenAI
 
 from job_finder.exceptions import AIProviderError
-
-
-class AITask(str, Enum):
-    """
-    Types of AI tasks with different model requirements.
-
-    Different tasks have different cost/quality tradeoffs:
-    - SCRAPE: Extract structured data from HTML (cheap, fast - Haiku)
-    - FILTER: Not used (filtering is rule-based)
-    - ANALYZE: Match job to profile (cheap, fast - Haiku, 95% cost savings vs Sonnet)
-    - SOURCE_DISCOVERY: Discover source config and field mappings (cheap, one-time - Haiku)
-    """
-
-    SCRAPE = "scrape"
-    ANALYZE = "analyze"
-    SOURCE_DISCOVERY = "source_discovery"
-
-
-class ModelTier(str, Enum):
-    """
-    Model performance tiers.
-
-    - FAST: Cheap, fast models for simple extraction (Haiku, GPT-4o-mini)
-    - SMART: Expensive, capable models for complex analysis (Sonnet, GPT-4)
-    """
-
-    FAST = "fast"
-    SMART = "smart"
-
-
-# Model mappings by provider and tier
-MODEL_SELECTION = {
-    "claude": {
-        ModelTier.FAST: "claude-3-5-haiku-20241022",  # $0.001/1K tokens
-        ModelTier.SMART: "claude-3-5-sonnet-20241022",  # $0.015-0.075/1K tokens
-    },
-    "openai": {
-        ModelTier.FAST: "gpt-4o-mini",  # $0.00015-0.0006/1K tokens
-        ModelTier.SMART: "gpt-4o",  # $0.0025-0.01/1K tokens
-    },
-}
-
-# Task to tier mapping
-TASK_MODEL_TIERS = {
-    AITask.SCRAPE: ModelTier.FAST,
-    AITask.ANALYZE: ModelTier.FAST,  # Changed to FAST - Haiku handles job analysis well at 95% cost savings
-    AITask.SOURCE_DISCOVERY: ModelTier.FAST,
-}
 
 
 class AIProvider(ABC):
@@ -81,15 +36,15 @@ class AIProvider(ABC):
 
 
 class ClaudeProvider(AIProvider):
-    """Anthropic Claude provider."""
+    """Anthropic Claude provider (API interface)."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-opus-4-20250514"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-5-20250929"):
         """
         Initialize Claude provider.
 
         Args:
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var).
-            model: Model identifier (default: claude-opus-4-20250514, the most capable model).
+            model: Model identifier.
         """
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
@@ -115,7 +70,7 @@ class ClaudeProvider(AIProvider):
 
 
 class OpenAIProvider(AIProvider):
-    """OpenAI GPT provider."""
+    """OpenAI GPT provider (API interface)."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o"):
         """
@@ -148,16 +103,58 @@ class OpenAIProvider(AIProvider):
             raise AIProviderError(f"OpenAI API error: {str(e)}") from e
 
 
+class GeminiProvider(AIProvider):
+    """Google Gemini provider (API interface)."""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash"):
+        """
+        Initialize Gemini provider.
+
+        Args:
+            api_key: Google API key (defaults to GOOGLE_API_KEY or GEMINI_API_KEY env var).
+            model: Model identifier.
+        """
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            raise AIProviderError(
+                "Google API key must be provided or set in GOOGLE_API_KEY/GEMINI_API_KEY environment variable"
+            )
+
+        self.model = model
+        # Lazy import to avoid dependency if not used
+        try:
+            import google.generativeai as genai
+
+            genai.configure(api_key=self.api_key)
+            self.client = genai.GenerativeModel(self.model)
+        except ImportError:
+            raise AIProviderError("google-generativeai package not installed")
+
+    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+        """Generate a response using Gemini."""
+        try:
+            response = self.client.generate_content(
+                prompt,
+                generation_config={
+                    "max_output_tokens": max_tokens,
+                    "temperature": temperature,
+                },
+            )
+            return response.text or ""
+        except Exception as e:
+            raise AIProviderError(f"Gemini API error: {str(e)}") from e
+
+
 class CodexCLIProvider(AIProvider):
     """
     Codex CLI provider: uses the `codex` CLI (pro account session) instead of per-request API keys.
 
-    Requires the `codex` binary on PATH and that the user is already authenticated (e.g., via the
-    same credential copy flow used by the backend).
+    Requires the `codex` binary on PATH and that the user is already authenticated
+    (via `codex login`).
     """
 
     def __init__(self, model: str = "gpt-4o-mini", timeout: int = 60):
-        self.model = model or os.getenv("CODEX_CLI_MODEL", "gpt-4o-mini")
+        self.model = model
         self.timeout = timeout
 
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
@@ -204,104 +201,42 @@ class CodexCLIProvider(AIProvider):
             raise AIProviderError("Failed to parse Codex CLI JSON response") from exc
 
 
-def get_model_for_task(provider_type: str, task: AITask) -> str:
-    """
-    Get the appropriate model for a specific task.
+# Provider dispatch map: (provider, interface) -> provider class
+_PROVIDER_MAP: Dict[tuple, type] = {
+    ("codex", "cli"): CodexCLIProvider,
+    ("claude", "api"): ClaudeProvider,
+    ("openai", "api"): OpenAIProvider,
+    ("gemini", "api"): GeminiProvider,
+}
 
-    Uses cost-optimized model selection:
-    - Fast/cheap models (Haiku, GPT-4o-mini) for ALL tasks (95% cost savings)
-    - Haiku handles job analysis well despite being cheaper than Sonnet
+
+def create_provider_from_config(ai_settings: Dict[str, Any]) -> AIProvider:
+    """
+    Create an AI provider from the ai-settings configuration.
 
     Args:
-        provider_type: Type of provider ('claude', 'openai')
-        task: The AI task to perform
+        ai_settings: The ai-settings config dict with 'selected' key containing
+                     provider, interface, and model.
 
     Returns:
-        Model identifier string
+        AIProvider instance configured according to settings.
 
     Raises:
-        ValueError: If provider_type is not supported
-
-    Example:
-        >>> get_model_for_task("claude", AITask.SCRAPE)
-        'claude-3-5-haiku-20241022'
-        >>> get_model_for_task("claude", AITask.ANALYZE)
-        'claude-3-5-haiku-20241022'
+        AIProviderError: If provider/interface combination is invalid or not available.
     """
-    provider_type = provider_type.lower()
+    selected = ai_settings.get("selected", {})
+    provider_type = selected.get("provider", "codex")
+    interface_type = selected.get("interface", "cli")
+    model = selected.get("model", "gpt-4o-mini")
 
-    if provider_type not in MODEL_SELECTION:
-        raise AIProviderError(
-            f"Unsupported AI provider: {provider_type}. Supported providers: {list(MODEL_SELECTION.keys())}"
-        )
+    provider_key = (provider_type, interface_type)
+    provider_class = _PROVIDER_MAP.get(provider_key)
 
-    tier = TASK_MODEL_TIERS[task]
-    return MODEL_SELECTION[provider_type][tier]
+    if provider_class:
+        return provider_class(model=model)
 
-
-def create_provider(
-    provider_type: str,
-    api_key: Optional[str] = None,
-    model: Optional[str] = None,
-    task: Optional[AITask] = None,
-) -> AIProvider:
-    """
-    Factory function to create AI provider instances.
-
-    Args:
-        provider_type: Type of provider ('claude', 'openai').
-        api_key: Optional API key (otherwise uses environment variable).
-        model: Optional explicit model name (overrides task-based selection).
-        task: Optional task type for automatic model selection (ignored if model is provided).
-
-    Returns:
-        AIProvider instance.
-
-    Raises:
-        ValueError: If provider_type is not supported.
-
-    Example:
-        # Automatic model selection for scraping (uses Haiku)
-        provider = create_provider("claude", task=AITask.SCRAPE)
-
-        # Automatic model selection for analysis (uses Sonnet)
-        provider = create_provider("claude", task=AITask.ANALYZE)
-
-        # Explicit model override
-        provider = create_provider("claude", model="claude-opus-4-20250514")
-    """
-    provider_type = provider_type.lower()
-    use_codex_cli = os.getenv("USE_CODEX_CLI", "0") == "1"
-
-    # Determine model
-    if model:
-        # Explicit model provided, use it
-        selected_model = model
-    elif task:
-        # Task provided, select appropriate model
-        selected_model = get_model_for_task(provider_type, task)
-    else:
-        # No model or task provided, use None to trigger provider default
-        selected_model = None
-
-    if use_codex_cli and provider_type in ("openai", "codex", "codex_cli"):
-        # Use CLI-based Codex to leverage pro account without per-request API keys
-        cli_model = selected_model or get_model_for_task("openai", AITask.ANALYZE)
-        return CodexCLIProvider(model=cli_model)
-
-    if provider_type == "claude":
-        kwargs = {"api_key": api_key} if api_key else {}
-        if selected_model:
-            kwargs["model"] = selected_model
-        return ClaudeProvider(**kwargs)
-
-    elif provider_type == "openai":
-        kwargs = {"api_key": api_key} if api_key else {}
-        if selected_model:
-            kwargs["model"] = selected_model
-        return OpenAIProvider(**kwargs)
-
-    else:
-        raise AIProviderError(
-            f"Unsupported AI provider: {provider_type}. Supported providers: claude, openai"
-        )
+    supported = ", ".join(f"{p}/{i}" for p, i in _PROVIDER_MAP.keys())
+    raise AIProviderError(
+        f"Unsupported provider/interface combination: {provider_type}/{interface_type}. "
+        f"Supported: {supported}"
+    )

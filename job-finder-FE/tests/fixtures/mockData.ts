@@ -251,9 +251,17 @@ export const mockQueueSettings: QueueSettings = {
 }
 
 export const mockAISettings: AISettings = {
-  provider: "claude",
-  model: "claude-3-5-sonnet-20241022",
-  minMatchScore: 70,
+  selected: {
+    provider: "codex",
+    interface: "cli",
+    model: "gpt-4o-mini",
+  },
+  providers: [
+    { provider: "codex", interface: "cli", enabled: true, models: ["o3", "o4-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"] },
+    { provider: "claude", interface: "api", enabled: false, reason: "Missing ANTHROPIC_API_KEY", models: ["claude-sonnet-4-5-20250929"] },
+    { provider: "openai", interface: "api", enabled: false, reason: "Missing OPENAI_API_KEY", models: ["gpt-4o", "gpt-4o-mini"] },
+    { provider: "gemini", interface: "api", enabled: false, reason: "Missing GEMINI_API_KEY", models: ["gemini-2.0-flash"] },
+  ],
 }
 
 /**
