@@ -209,17 +209,18 @@ class StrikeFilterEngine:
         title_lower = title.lower()
 
         # Check if title contains at least one required keyword
-        for keyword in self.required_title_keywords:
-            # Use word boundary for single words, substring match for phrases
+        def is_match(keyword: str) -> bool:
             if " " in keyword:
                 # Multi-word phrase (e.g., "full stack") - substring match
-                if keyword in title_lower:
-                    return False  # Found a match, job passes
+                return keyword in title_lower
             else:
-                # Single word - use word boundary to avoid partial matches
-                pattern = r"\b" + re.escape(keyword) + r"\b"
-                if re.search(pattern, title_lower):
-                    return False  # Found a match, job passes
+                # Single word - use lookarounds to avoid partial matches
+                # and handle non-alphanumeric keywords like c++, c#
+                pattern = r"(?<!\w)" + re.escape(keyword) + r"(?!\w)"
+                return bool(re.search(pattern, title_lower))
+
+        if any(is_match(k) for k in self.required_title_keywords):
+            return False  # Found a match, job passes
 
         # No required keywords found - reject
         result.add_rejection(
