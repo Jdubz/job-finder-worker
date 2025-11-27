@@ -30,8 +30,6 @@ describe("useQueueItems", () => {
       company_id: null,
       source: "user_submission",
       submitted_by: "user-123",
-      retry_count: 0,
-      max_retries: 3,
       created_at: "2025-01-01T00:00:00.000Z",
       updated_at: "2025-01-01T00:00:00.000Z",
     },
