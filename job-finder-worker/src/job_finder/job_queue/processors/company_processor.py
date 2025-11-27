@@ -17,9 +17,13 @@ import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
+from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import QueueProcessingError
+from job_finder.job_queue.config_loader import ConfigLoader
+from job_finder.job_queue.manager import QueueManager
 from job_finder.settings import get_text_limits
 from job_finder.logging_config import format_company_name
+from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.job_queue.models import (
     CompanySubTask,
     JobQueueItem,
@@ -36,6 +40,27 @@ logger = logging.getLogger(__name__)
 
 class CompanyProcessor(BaseProcessor):
     """Processor for company queue items."""
+
+    def __init__(
+        self,
+        queue_manager: QueueManager,
+        config_loader: ConfigLoader,
+        companies_manager: CompaniesManager,
+        company_info_fetcher: CompanyInfoFetcher,
+    ):
+        """
+        Initialize company processor with its specific dependencies.
+
+        Args:
+            queue_manager: Queue manager for updating item status
+            config_loader: Configuration loader for stop lists and filters
+            companies_manager: Company data manager
+            company_info_fetcher: Company info scraper
+        """
+        super().__init__(queue_manager, config_loader)
+
+        self.companies_manager = companies_manager
+        self.company_info_fetcher = company_info_fetcher
 
     # ============================================================
     # MAIN ROUTING

@@ -19,7 +19,6 @@ def mock_managers():
         "sources_manager": MagicMock(),
         "company_info_fetcher": MagicMock(),
         "ai_matcher": MagicMock(),
-        "profile": MagicMock(),
     }
 
 
@@ -28,7 +27,7 @@ def processor(mock_managers):
     """Create processor with mocked dependencies."""
     # Patch ScrapeRunner to avoid creating real instance
     with patch(
-        "job_finder.job_queue.processors.base_processor.ScrapeRunner"
+        "job_finder.job_queue.processors.job_processor.ScrapeRunner"
     ) as mock_scrape_runner_class:
         mock_scrape_runner_instance = MagicMock()
         mock_scrape_runner_class.return_value = mock_scrape_runner_instance

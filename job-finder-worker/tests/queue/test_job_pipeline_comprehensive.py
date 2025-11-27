@@ -107,7 +107,6 @@ def test_job_pipeline_full_path(tmp_path: Path):
         sources_manager=sources_manager,
         company_info_fetcher=company_info_fetcher,
         ai_matcher=ai_matcher,
-        profile=object(),  # not used in this flow
     )
 
     # Patch internals to keep the run deterministic

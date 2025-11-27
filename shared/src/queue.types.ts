@@ -138,11 +138,7 @@ export interface QueueItem {
   company_name: string
   company_id: string | null
   source: QueueSource
-  /**
-   * @deprecated Will be removed after 2024-12-31.
-   * Use the 'source' field to determine submission origin.
-   * User UID for user submissions (optional - single-owner system)
-   */
+  /** User UID for user submissions - tracks who submitted the item */
   submitted_by?: string | null
   result_message?: string
   error_details?: string

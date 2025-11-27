@@ -63,7 +63,6 @@ def mock_dependencies() -> Dict[str, Any]:
 
     company_info_fetcher = MagicMock()
     ai_matcher = MagicMock()
-    profile = MagicMock()
 
     return {
         "queue_manager": queue_manager,
@@ -73,7 +72,6 @@ def mock_dependencies() -> Dict[str, Any]:
         "sources_manager": sources_manager,
         "company_info_fetcher": company_info_fetcher,
         "ai_matcher": ai_matcher,
-        "profile": profile,
     }
 
 

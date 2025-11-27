@@ -26,7 +26,6 @@ class TestCompanyPipeline:
             "sources_manager": Mock(),
             "company_info_fetcher": Mock(),
             "ai_matcher": Mock(),
-            "profile": Mock(),
         }
 
     @pytest.fixture
