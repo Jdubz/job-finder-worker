@@ -1,8 +1,6 @@
 import type { QueueItem, QueueSource, QueueStats, QueueStatus, ScrapeConfig } from '@shared/types'
 import { JobQueueRepository, type NewQueueItem, type QueueItemUpdate } from './job-queue.repository'
 
-// Queue retries are disabled until recovery is implemented.
-const DEFAULT_MAX_RETRIES = 0
 
 export type SubmitJobInput = {
   url: string
@@ -64,8 +62,6 @@ export class JobQueueService {
       company_id: input.companyId ?? null,
       source: input.source ?? 'user_submission',
       submitted_by: null,
-      retry_count: 0,
-      max_retries: DEFAULT_MAX_RETRIES,
       created_at: now,
       updated_at: now,
       metadata: Object.keys(metadata).length ? metadata : undefined,
@@ -86,8 +82,6 @@ export class JobQueueService {
       company_id: null,
       source: input.source ?? 'manual_submission',
       submitted_by: null,
-      retry_count: 0,
-      max_retries: DEFAULT_MAX_RETRIES,
       created_at: now,
       updated_at: now,
       company_sub_task: 'fetch'
@@ -106,8 +100,6 @@ export class JobQueueService {
       company_id: null,
       source: 'automated_scan',
       submitted_by: null,
-      retry_count: 0,
-      max_retries: DEFAULT_MAX_RETRIES,
       created_at: now,
       updated_at: now,
       scrape_config: input.scrapeConfig ?? {
@@ -129,8 +121,6 @@ export class JobQueueService {
       company_id: input.companyId ?? null,
       source: 'user_submission',
       submitted_by: null,
-      retry_count: 0,
-      max_retries: DEFAULT_MAX_RETRIES,
       created_at: now,
       updated_at: now,
       source_discovery_config: {
@@ -162,10 +152,6 @@ export class JobQueueService {
 
     if (updates.status === 'pending' && existing.status !== 'pending') {
       throw new Error('Retry is disabled; items cannot be moved back to pending')
-    }
-
-    if (updates.retry_count !== undefined || updates.max_retries !== undefined) {
-      throw new Error('Retry counters are read-only while retry is disabled')
     }
 
     return this.repo.update(id, updates)

@@ -11,9 +11,7 @@ type CompanyRow = {
   about: string | null
   culture: string | null
   mission: string | null
-  size: string | null
   company_size_category: string | null
-  founded: string | null
   industry: string | null
   headquarters_location: string | null
   has_portland_office: number
@@ -50,7 +48,6 @@ const buildCompany = (row: CompanyRow): Company => ({
   industry: row.industry,
   headquartersLocation: row.headquarters_location,
   companySizeCategory: row.company_size_category as Company['companySizeCategory'],
-  founded: row.founded ? parseInt(row.founded, 10) : null,
   techStack: parseJsonArray(row.tech_stack),
   tier: row.tier as Company['tier'],
   priorityScore: row.priority_score,
@@ -160,11 +157,11 @@ export class CompanyRepository {
 
     const stmt = this.db.prepare(`
       INSERT INTO companies (
-        id, name, name_lower, website, about, culture, mission, size,
-        company_size_category, founded, industry, headquarters_location,
+        id, name, name_lower, website, about, culture, mission,
+        company_size_category, industry, headquarters_location,
         has_portland_office, tech_stack, tier, priority_score,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -175,9 +172,7 @@ export class CompanyRepository {
       input.about ?? null,
       input.culture ?? null,
       input.mission ?? null,
-      null, // size
       input.companySizeCategory ?? null,
-      input.founded?.toString() ?? null,
       input.industry ?? null,
       input.headquartersLocation ?? null,
       0, // has_portland_office
@@ -237,11 +232,6 @@ export class CompanyRepository {
     if (updates.companySizeCategory !== undefined) {
       setClauses.push('company_size_category = ?')
       params.push(updates.companySizeCategory)
-    }
-
-    if (updates.founded !== undefined) {
-      setClauses.push('founded = ?')
-      params.push(updates.founded?.toString() ?? null)
     }
 
     if (updates.techStack !== undefined) {

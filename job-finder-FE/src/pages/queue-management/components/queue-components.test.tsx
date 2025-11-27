@@ -14,8 +14,6 @@ const makeItem = (overrides: Partial<QueueItem> = {}): QueueItem => ({
   company_name: "Example Co",
   company_id: "comp-1",
   source: "automated_scan",
-  retry_count: 0,
-  max_retries: 0,
   created_at: baseDate,
   updated_at: baseDate,
   ...overrides,
@@ -40,16 +38,15 @@ describe("ActiveQueueItem", () => {
     vi.useFakeTimers().setSystemTime(new Date("2025-01-02T12:00:00Z"))
 
     const item = makeItem({
-      sub_task: "analyze",
       source_type: "greenhouse",
-      pipeline_state: { job_data: { title: "Senior Engineer", company: "Example Co" } },
+      pipeline_state: { job_data: { title: "Senior Engineer", company: "Example Co" }, filter_result: { passed: true } },
       processed_at: new Date("2025-01-02T11:00:00Z"),
     })
 
     render(<ActiveQueueItem item={item} onCancel={vi.fn()} />)
 
     expect(screen.getByText("Processing")).toBeInTheDocument()
-    expect(screen.getByText("Job · Analyze")).toBeInTheDocument()
+    expect(screen.getByText("Analyze")).toBeInTheDocument()
     expect(screen.getByText("Greenhouse")).toBeInTheDocument()
     expect(screen.getByText("Senior Engineer")).toBeInTheDocument()
     expect(screen.getAllByText(/Example Co/).length).toBeGreaterThan(0)
