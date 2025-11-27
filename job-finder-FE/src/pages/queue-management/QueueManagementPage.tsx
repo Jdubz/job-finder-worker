@@ -110,7 +110,7 @@ export function QueueManagementPage() {
         const bDate = normalizeDate(b.created_at ?? b.updated_at)
         return aDate.getTime() - bDate.getTime()
       }) as QueueItem[]
-  }, [queueItems])
+  }, [queueItems, statusOrder])
 
   const processingItem = useMemo(() => {
     return [...queueItems]
@@ -381,14 +381,14 @@ export function QueueManagementPage() {
                         {item.result_message ?? "—"}
                       </TableCell>
                       <TableCell className="text-right">
-                        {canCancel && (
+                        {canCancel && item.id && (
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-8"
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleCancelItem(item.id as string)
+                              handleCancelItem(item.id)
                             }}
                           >
                             <Trash2 className="h-4 w-4" />

@@ -14,8 +14,6 @@ const waitForProcessingText = async (page: Page, text: string) => {
 
 test.describe("Queue events live updates", () => {
   test.beforeEach(async ({ page, request }) => {
-    page.on("console", (msg) => console.log("[page console]", msg.type(), msg.text()))
-    page.on("pageerror", (err) => console.log("[page error]", err.message))
     await applyAuthState(page, ownerAuthState())
     await clearQueue(request)
   })
@@ -27,36 +25,33 @@ test.describe("Queue events live updates", () => {
     const firstId = await seedQueueJob(request, {
       metadata: { job_title: firstTitle },
     })
-    await new Promise((r) => setTimeout(r, 15))
     const secondId = await seedQueueJob(request, {
       metadata: { job_title: secondTitle },
     })
 
+    // Compute expected top based on created_at to avoid timing flakiness
+    const [firstItem, secondItem] = await Promise.all([
+      fetchQueueItem(request, firstId),
+      fetchQueueItem(request, secondId),
+    ])
+    const expectedTop =
+      new Date(firstItem.created_at ?? 0) <= new Date(secondItem.created_at ?? 0)
+        ? { id: firstId, title: firstTitle }
+        : { id: secondId, title: secondTitle }
+
     await page.goto("/queue-management")
-    const apiStatus = await page.evaluate(async () => {
-      const token = window.localStorage.getItem("__JF_E2E_AUTH_TOKEN__") || ""
-      const res = await fetch("/api/queue", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      return { status: res.status, ok: res.ok }
-    })
-    console.log("/api/queue from page", apiStatus)
-    const bodyText = await page.textContent("body")
-    console.log("body text snapshot", bodyText?.slice(0, 400))
+    await expect(page.getByRole("heading", { name: /queue management/i })).toBeVisible({ timeout: 15000 })
 
     await expect(page.getByRole("heading", { name: /queue management/i })).toBeVisible({ timeout: 15000 })
 
     const firstRow = page.getByTestId(`queue-item-${firstId}`)
     const secondRow = page.getByTestId(`queue-item-${secondId}`)
 
-    const tableDump = await page.locator("tbody").evaluate((node) => node?.innerHTML)
-    console.log("table body html", tableDump)
-
     await expect(firstRow).toBeVisible({ timeout: 15000 })
     await expect(secondRow).toBeVisible({ timeout: 15000 })
 
     const tableFirst = page.locator("tbody tr").first()
-    await expect(tableFirst).toContainText(firstTitle)
+    await expect(tableFirst).toContainText(expectedTop.title)
 
     // Promote first item to processing and verify Now Processing populates via SSE update
     await updateQueueItem(request, firstId, {
