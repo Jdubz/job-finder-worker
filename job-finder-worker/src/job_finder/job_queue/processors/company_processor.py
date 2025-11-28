@@ -101,6 +101,12 @@ class CompanyProcessor(BaseProcessor):
                 "techStack": tech_stack,
             }
 
+            # Normalize keys for storage expectations
+            if extracted_info.get("headquarters") and not extracted_info.get("headquartersLocation"):
+                company_record["headquartersLocation"] = extracted_info.get("headquarters")
+            if extracted_info.get("companySizeCategory"):
+                company_record["companySizeCategory"] = extracted_info.get("companySizeCategory")
+
             company_id = self.companies_manager.save_company(company_record)
             logger.info(f"Company saved: {company_display} (ID: {company_id})")
 
