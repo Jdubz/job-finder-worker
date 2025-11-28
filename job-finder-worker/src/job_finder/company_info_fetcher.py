@@ -431,8 +431,6 @@ Respond with JSON only.
         result["aiMlFocus"] = any(pat in content_lower for pat in ai_patterns)
 
         # Employee count detection (simple numeric heuristic)
-        import re
-
         employee_match = re.search(
             r"(over|more than|approximately|around)?\s*(\d{2,5})\s+employees", content_lower
         )
