@@ -80,9 +80,11 @@ services:
         source: ./tests
         target: /app/tests
       # Codex CLI auth (ChatGPT Pro session tokens)
+      # Mount to /home/node/.codex - container runs as node user (uid 1000)
+      # to prevent session files from being locked by root
       - type: bind
         source: ${HOME}/.codex
-        target: /root/.codex
+        target: /home/node/.codex
       # Share migrations from monorepo infra so tests can apply schema without duplication
       - type: bind
         source: ../infra/sqlite

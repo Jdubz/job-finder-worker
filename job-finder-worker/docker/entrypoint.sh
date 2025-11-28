@@ -2,7 +2,7 @@
 set -e
 
 echo "========================================="
-echo "Job Finder Container Starting"
+echo "Job Finder Worker Container Starting"
 echo "========================================="
 echo "Current time: $(date)"
 echo "Timezone: $TZ"
@@ -10,35 +10,45 @@ echo "Environment: $ENVIRONMENT"
 echo "Queue Mode: ${ENABLE_QUEUE_MODE:-false}"
 echo ""
 
-# Copy Codex CLI credentials from host-mounted location if present.
-copy_codex_creds() {
-  # Preferred source can be overridden; fallbacks align with backend CLI flow.
-  CANDIDATES=(
-    "${CODEX_CONFIG_SOURCE}"
-    "/host/.config/codex"
-    "/codex/.config/codex"
-    "/credentials/.config/codex"
-    "/credentials/codex"
-  )
+# Fix ownership of mounted volumes (runs as root initially)
+# The node user (uid 1000) needs write access to data directories
+echo "=== Fixing volume permissions ==="
+chown -R node:node /data 2>/dev/null || true
+chown -R node:node /app/data 2>/dev/null || true
+chown -R node:node /app/logs 2>/dev/null || true
 
-  for src in "${CANDIDATES[@]}"; do
-    if [ -n "$src" ] && [ -d "$src" ]; then
-      mkdir -p /root/.config
-      rm -rf /root/.config/codex
-      cp -r "$src" /root/.config/codex
-      echo "✓ Codex CLI credentials copied from $src"
-      return
+# Codex CLI auth: mount ~/.codex from host (contains OAuth tokens for ChatGPT Pro)
+# The mount must be read-write so codex can refresh expired tokens
+# Uses same approach as API container for consistency
+CODEX_REQUIRED=${CODEX_REQUIRED:-false}
+echo "=== Codex CLI Setup ==="
+echo "CODEX_HOME=${CODEX_HOME:-/home/node/.codex}"
+
+if [ -d "/home/node/.codex" ]; then
+    chown -R node:node /home/node/.codex
+    echo "Codex config directory: EXISTS"
+    ls -la /home/node/.codex/ 2>/dev/null || true
+
+    if [ -f "/home/node/.codex/auth.json" ]; then
+        echo "auth.json: EXISTS"
+        echo "Checking codex login status..."
+        if ! gosu node codex login status 2>/dev/null; then
+            echo "WARNING: Codex login status check failed (token may need refresh)"
+            [ "$CODEX_REQUIRED" = "true" ] && exit 1
+        else
+            echo "✓ Codex authenticated"
+        fi
+    else
+        echo "WARNING: /home/node/.codex/auth.json not found"
+        [ "$CODEX_REQUIRED" = "true" ] && exit 1
     fi
-  done
-
-  if [ -d "/root/.config/codex" ]; then
-    echo "Codex CLI credentials already present in container."
-  else
-    echo "⚠ Codex CLI credentials not found. Set CODEX_CONFIG_SOURCE or mount ~/.config/codex."
-  fi
-}
-
-copy_codex_creds
+else
+    echo "WARNING: /home/node/.codex directory not mounted"
+    echo "AI features using Codex CLI will not work"
+    echo "Mount your ~/.codex folder to /home/node/.codex"
+    [ "$CODEX_REQUIRED" = "true" ] && exit 1
+fi
+echo "=== End Codex Setup ==="
 
 # Check if cron should be enabled (default: true for backward compatibility)
 ENABLE_CRON=${ENABLE_CRON:-true}
@@ -92,11 +102,12 @@ if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then
     echo "Status endpoint: http://localhost:5555/status"
     echo ""
 
-    # Ensure logs directory exists
+    # Ensure logs directory exists with proper ownership
     mkdir -p /app/logs
+    chown -R node:node /app/logs
 
-    # Start Flask worker in background
-    /usr/local/bin/python /app/src/job_finder/flask_worker.py >> /app/logs/flask_worker.log 2>&1 &
+    # Start Flask worker in background as node user
+    gosu node /home/node/.local/bin/python /app/src/job_finder/flask_worker.py >> /app/logs/flask_worker.log 2>&1 &
     FLASK_WORKER_PID=$!
 
     # Wait a moment and check if it started
@@ -128,11 +139,12 @@ elif [ "${ENABLE_QUEUE_MODE}" = "true" ]; then
     echo "Queue worker will process jobs from SQLite queue"
     echo ""
 
-    # Ensure logs directory exists
+    # Ensure logs directory exists with proper ownership
     mkdir -p /app/logs
+    chown -R node:node /app/logs
 
-    # Start queue worker in background
-    /usr/local/bin/python /app/scripts/workers/queue_worker.py >> /app/logs/queue_worker.log 2>&1 &
+    # Start queue worker in background as node user
+    gosu node /home/node/.local/bin/python /app/scripts/workers/queue_worker.py >> /app/logs/queue_worker.log 2>&1 &
     QUEUE_WORKER_PID=$!
 
     # Wait a moment and check if it started

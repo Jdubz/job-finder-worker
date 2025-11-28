@@ -11,7 +11,11 @@ version: "3.9"
 #    This uses OAuth tokens from your ChatGPT Pro subscription
 # 6. Run: docker compose up -d
 #
-# IMPORTANT: The codex mount must be read-write so OAuth tokens can be refreshed
+# CODEX CLI CREDENTIALS:
+# - Both API and worker containers share the same ./codex directory
+# - Mount target is /home/node/.codex (containers run as node user, uid 1000)
+# - The mount must be read-write so OAuth tokens can be refreshed
+# - Session files will be owned by uid 1000 to prevent host lockout
 
 services:
   api:
@@ -80,6 +84,9 @@ services:
       - type: bind
         source: ./worker-data  # Change to your worker-data directory
         target: /app/data
+      - type: bind
+        source: ./codex  # Codex CLI OAuth tokens (ChatGPT Pro) - shared with API container
+        target: /home/node/.codex
     networks:
       - jobfinder
     labels:
