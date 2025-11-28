@@ -90,17 +90,29 @@ class CompanyProcessor(BaseProcessor):
             if not extracted_info:
                 return  # status already updated
 
-            # If an AI provider is configured but required fields remain sparse, fail fast
+            # If AI provider is configured and heuristic extraction left sparse fields, try AI enrichment
             if (
                 self.company_info_fetcher.ai_provider
                 and self.company_info_fetcher._needs_ai_enrichment(extracted_info)
             ):
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.FAILED,
-                    "AI enrichment failed to populate required company fields",
+                logger.info(f"Attempting AI enrichment for {company_display}")
+                combined_content = " ".join(html_content.values())
+                ai_enriched = self.company_info_fetcher._extract_with_ai(
+                    combined_content, company_name
                 )
-                return
+                # Merge AI results into extracted_info (AI values take precedence for empty fields)
+                for key, value in ai_enriched.items():
+                    if value and not extracted_info.get(key):
+                        extracted_info[key] = value
+
+                # Check again after AI enrichment - fail if still sparse
+                if self.company_info_fetcher._needs_ai_enrichment(extracted_info):
+                    self.queue_manager.update_status(
+                        item.id,
+                        QueueStatus.FAILED,
+                        "AI enrichment failed to populate required company fields",
+                    )
+                    return
 
             tech_stack = self._detect_tech_stack(extracted_info, html_content)
             job_board_url = self._detect_job_board(company_website, html_content)

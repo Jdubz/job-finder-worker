@@ -137,8 +137,52 @@ class TestCompanyPipeline:
 
         processor.company_processor.process_company(item)
 
+        # Verify AI enrichment was attempted
+        mock_dependencies["company_info_fetcher"]._extract_with_ai.assert_called_once()
         mock_dependencies["queue_manager"].update_status.assert_any_call(
             "c4", QueueStatus.FAILED, "AI enrichment failed to populate required company fields"
+        )
+
+    def test_ai_enrichment_success(self, processor, mock_dependencies):
+        """Test that AI enrichment populates sparse fields and allows success."""
+        item = JobQueueItem(
+            id="c5",
+            type=QueueItemType.COMPANY,
+            url="https://example.com",
+            company_name="Example",
+            status=QueueStatus.PROCESSING,
+        )
+
+        # Skip network: provide fetched pages directly
+        processor.company_processor._fetch_company_pages = Mock(
+            return_value={"about": "stub content long enough"}
+        )
+        mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = {
+            "about": "short",
+            "culture": "",
+            "mission": "",
+        }
+        mock_dependencies["company_info_fetcher"].ai_provider = object()
+        # First check says needs AI; after AI enrichment, fields are sufficient
+        mock_dependencies["company_info_fetcher"]._needs_ai_enrichment.side_effect = [True, False]
+        # AI provides good data
+        mock_dependencies["company_info_fetcher"]._extract_with_ai.return_value = {
+            "about": "A comprehensive company description from AI",
+            "culture": "Great culture values",
+            "mission": "To build great things",
+            "industry": "Technology",
+        }
+        mock_dependencies["companies_manager"].save_company.return_value = "company-123"
+
+        processor.company_processor.process_company(item)
+
+        # Verify AI enrichment was called
+        mock_dependencies["company_info_fetcher"]._extract_with_ai.assert_called_once()
+        # Company should be saved
+        mock_dependencies["companies_manager"].save_company.assert_called_once()
+        # Status should be success
+        mock_dependencies["queue_manager"].update_status.assert_called_with(
+            "c5", QueueStatus.SUCCESS, ANY
         )
 
     def test_detect_tech_stack(self, processor):
