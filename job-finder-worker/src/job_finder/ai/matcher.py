@@ -93,7 +93,7 @@ class AIJobMatcher:
         self.prefer_large_companies = prefer_large_companies
         self.config = config or {}
         self.company_weights = company_weights or {
-            "bonuses": {"remoteFirst": 15, "aiMlFocus": 10, "techStackMax": 100},
+            "bonuses": {"remoteFirst": 15, "aiMlFocus": 10},
             "sizeAdjustments": {
                 "largeCompanyBonus": 10,
                 "smallCompanyPenalty": -5,

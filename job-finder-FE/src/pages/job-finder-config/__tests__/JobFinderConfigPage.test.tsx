@@ -101,7 +101,6 @@ const mockJobMatch = {
     bonuses: {
       remoteFirst: 15,
       aiMlFocus: 10,
-      techStackMax: 100,
     },
     sizeAdjustments: {
       largeCompanyBonus: 10,

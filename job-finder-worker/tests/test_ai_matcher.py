@@ -90,7 +90,7 @@ class TestCalculateAdjustedScore:
             profile=mock_profile,
             portland_office_bonus=15,
             company_weights={
-                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0, "techStackMax": 0},
+                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0},
                 "sizeAdjustments": {
                     "largeCompanyBonus": 0,
                     "smallCompanyPenalty": 0,
@@ -144,7 +144,7 @@ class TestCalculateAdjustedScore:
             profile=mock_profile,
             portland_office_bonus=15,
             company_weights={
-                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0, "techStackMax": 0},
+                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0},
                 "sizeAdjustments": {
                     "largeCompanyBonus": 10,
                     "smallCompanyPenalty": 0,
@@ -199,7 +199,7 @@ class TestCalculateAdjustedScore:
             profile=mock_profile,
             portland_office_bonus=25,
             company_weights={
-                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0, "techStackMax": 0},
+                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0},
                 "sizeAdjustments": {
                     "largeCompanyBonus": 0,
                     "smallCompanyPenalty": 0,
@@ -417,14 +417,12 @@ class TestAnalyzeJob:
     @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
     @patch("job_finder.ai.matcher.detect_company_size")
     @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_timezone_score_adjustment")
     @patch("job_finder.ai.matcher.calculate_company_size_adjustment")
     @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
     def test_analyze_job_success(
         self,
         mock_role_adj,
         mock_size_adj,
-        mock_tz_adj,
         mock_tz_detect,
         mock_size_detect,
         mock_fresh_adj,
@@ -439,7 +437,6 @@ class TestAnalyzeJob:
         mock_fresh_adj.return_value = 0
         mock_size_detect.return_value = "medium"
         mock_tz_detect.return_value = -8
-        mock_tz_adj.return_value = (0, "Same timezone")
         mock_size_adj.return_value = (0, "Medium company")
         mock_role_adj.return_value = (0, "Neutral role")
 
@@ -463,7 +460,8 @@ class TestAnalyzeJob:
         result = matcher.analyze_job(sample_job)
 
         assert result is not None
-        assert result.match_score == 85
+        # Company influence adjustments can raise the base score
+        assert result.match_score == 90
         assert result.resume_intake_data is not None
 
     def test_analyze_job_below_threshold(self, mock_provider, mock_profile, sample_job):

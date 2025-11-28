@@ -114,7 +114,6 @@ export interface CompanyMatchWeights {
   bonuses: {
     remoteFirst: number
     aiMlFocus: number
-    techStackMax: number
   }
   sizeAdjustments: {
     largeCompanyBonus: number
@@ -321,7 +320,6 @@ export const DEFAULT_JOB_MATCH: JobMatchConfig = {
     bonuses: {
       remoteFirst: 15,
       aiMlFocus: 10,
-      techStackMax: 100,
     },
     sizeAdjustments: {
       largeCompanyBonus: 10,
