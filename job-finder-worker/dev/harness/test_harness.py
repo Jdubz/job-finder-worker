@@ -404,7 +404,7 @@ def watch_item(tracking_id: str, timeout: int = 300, poll_interval: int = 2):
         while time.time() - start_time < timeout:
             cursor.execute(
                 """
-                SELECT id, type, status, url, company_name, sub_task,
+                SELECT id, type, status, url, company_name,
                        result_message, error_details, updated_at
                 FROM job_queue
                 WHERE tracking_id = ?
@@ -433,7 +433,7 @@ def watch_item(tracking_id: str, timeout: int = 300, poll_interval: int = 2):
 
                 print(
                     f"[{elapsed:3}s] {status_color}{item['status']}{Colors.RESET} "
-                    f"sub_task={item['sub_task'] or '-'}"
+                    f"type={item['type']}"
                 )
 
                 if item["result_message"]:

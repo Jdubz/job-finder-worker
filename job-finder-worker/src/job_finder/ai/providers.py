@@ -151,54 +151,99 @@ class CodexCLIProvider(AIProvider):
 
     Requires the `codex` binary on PATH and that the user is already authenticated
     (via `codex login`).
+
+    NOTE: The Codex CLI has recently removed the `api chat/completions` surface. We now call
+    `codex exec --json` and parse the streamed JSON events to retrieve the final agent message.
+    Some ChatGPT accounts only support Codex-specific models (e.g., gpt-5-codex); if a supplied
+    model is rejected, we automatically retry using the CLI default model.
     """
 
-    def __init__(self, model: str = "gpt-4o", timeout: int = 60):
+    def __init__(self, model: str = "gpt-5-codex", timeout: int = 60):
         self.model = model
         self.timeout = timeout
 
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
-        body = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": "You are a helpful assistant for job processing."},
-                {"role": "user", "content": prompt},
-            ],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
+        """
+        Invoke codex exec and return the final agent message text.
 
-        try:
-            result = subprocess.run(
-                [
-                    "codex",
-                    "api",
-                    "chat/completions",
-                    "-m",
-                    self.model,
-                    "-d",
-                    json.dumps(body),
-                ],
+        We request JSONL output and scan for the last agent_message item. If the CLI rejects the
+        configured model for ChatGPT accounts, we retry once without a model flag to let Codex pick
+        the default from config.toml.
+        """
+
+        def run_codex(include_model: bool = True) -> subprocess.CompletedProcess:
+            workdir = os.getenv("CODEX_WORKDIR") or os.getcwd()
+            cmd = [
+                "codex",
+                "exec",
+                "--json",
+                "--skip-git-repo-check",
+                "--cd",
+                workdir,
+            ]
+            if include_model and self.model:
+                cmd.extend(["--model", self.model])
+            # Temperature/max_tokens not exposed in CLI; rely on prompt discipline.
+            cmd.extend(["--", prompt])
+            return subprocess.run(
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
             )
 
+        def parse_stdout(stdout: str) -> str:
+            final_text = ""
+            for line in stdout.splitlines():
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                if payload.get("type") in ("item.completed", "message.completed"):
+                    item = payload.get("item", {})
+                    item_type = item.get("type") or payload.get("item_type")
+                    text = item.get("text") or payload.get("text")
+                    if item_type in ("agent_message", "message", "final") and text:
+                        final_text = text
+                elif payload.get("type") == "turn.completed" and final_text:
+                    break
+
+            if not final_text:
+                raise AIProviderError("Codex CLI returned no message content")
+            return final_text
+
+        try:
+            result = run_codex(include_model=True)
+            if result.returncode != 0 and "not supported when using Codex with a ChatGPT account" in (
+                result.stderr + result.stdout
+            ):
+                # Retry without model flag to fall back to CLI default (usually gpt-5-codex)
+                result = run_codex(include_model=False)
+
+            parsed_text = ""
+            parse_error: Optional[Exception] = None
+            try:
+                parsed_text = parse_stdout(result.stdout)
+            except Exception as exc:  # capture parse error but still evaluate exit code
+                parse_error = exc
+
+            if parsed_text:
+                return parsed_text
+
             if result.returncode != 0:
                 raise AIProviderError(
-                    f"Codex CLI failed (exit {result.returncode}): {result.stderr.strip()}"
+                    f"Codex CLI failed (exit {result.returncode}): {result.stderr.strip() or result.stdout.strip()}"
                 )
 
-            parsed = json.loads(result.stdout)
-            content = (parsed.get("choices") or [{}])[0].get("message", {}).get("content", "")
-            if not content:
-                raise AIProviderError("Codex CLI returned empty content")
-            return content
+            # If exit code succeeded but no text was parsed, surface parse error
+            if parse_error:
+                raise parse_error
+
+            raise AIProviderError("Codex CLI returned no message content")
 
         except subprocess.TimeoutExpired as exc:
             raise AIProviderError(f"Codex CLI timed out after {self.timeout}s") from exc
-        except json.JSONDecodeError as exc:
-            raise AIProviderError("Failed to parse Codex CLI JSON response") from exc
 
 
 # Provider dispatch map: (provider, interface) -> provider class
@@ -233,12 +278,12 @@ def create_provider_from_config(ai_settings: Dict[str, Any], section: str = "wor
         selected = {
             "provider": ai_settings.get("provider", "codex"),
             "interface": ai_settings.get("interface"),
-            "model": ai_settings.get("model", "gpt-4o"),
+            "model": ai_settings.get("model", "gpt-5-codex"),
         }
 
     provider_type = selected.get("provider", "codex")
     interface_type = selected.get("interface")
-    model = selected.get("model", "gpt-4o")
+    model = selected.get("model", "gpt-5-codex")
 
     # Prefer CLI for codex (only supported interface here); otherwise default to API
     if not interface_type:

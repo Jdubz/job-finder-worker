@@ -33,3 +33,6 @@
 ## Progress Log
 - 2025-11-28 17:55 UTC: Plan drafted and recorded.
 - 2025-11-28 18:25 UTC: Implemented single-pass company processing (worker, shared types, API/FE queue UI), removed company_sub_task plumbing, updated tests (pytest: tests/test_company_pipeline.py), rebuilt shared dist.
+- 2025-11-28 20:45 UTC: Fixed dev harness watch (removed sub_task column), validated dev worker mounts host Codex creds.
+- 2025-11-28 21:15 UTC: Updated Codex provider to new `codex exec --json` flow with ChatGPT-friendly models (default gpt-5-codex), retried on unsupported models, refreshed AI config defaults/options and tests; reran dev company task to capture failure reason (CLI subcommand mismatch).
+- 2025-11-28 21:35 UTC: Retested in dev with Codex CLI; Redis company task succeeded (about/culture/mission/industry/HQ/size/timezone/job board + source discovery). MongoDB failure now tied to missing fields after AI parse when exit code 1; provider updated to parse output even on non-zero exit.

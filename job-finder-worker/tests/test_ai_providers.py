@@ -27,7 +27,7 @@ class TestCreateProviderFromConfig:
                 "selected": {
                     "provider": "codex",
                     "interface": "cli",
-                    "model": "gpt-4o-mini",
+                    "model": "gpt-5-codex",
                 }
             }
         }
@@ -35,7 +35,7 @@ class TestCreateProviderFromConfig:
         provider = create_provider_from_config(ai_settings)
 
         assert isinstance(provider, CodexCLIProvider)
-        assert provider.model == "gpt-4o-mini"
+        assert provider.model == "gpt-5-codex"
 
     @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"})
     @patch("job_finder.ai.providers.Anthropic")
@@ -153,9 +153,9 @@ class TestCreateProviderFromConfig:
 
         provider = create_provider_from_config(ai_settings)
 
-        # Defaults to codex/cli/gpt-4o
+        # Defaults to codex/cli/gpt-5-codex
         assert isinstance(provider, CodexCLIProvider)
-        assert provider.model == "gpt-4o"
+        assert provider.model == "gpt-5-codex"
 
     def test_uses_defaults_for_partial_selected(self):
         """Should use defaults for missing fields in selected config."""
@@ -170,9 +170,9 @@ class TestCreateProviderFromConfig:
 
         provider = create_provider_from_config(ai_settings)
 
-        # Defaults interface to cli and model to gpt-4o
+        # Defaults interface to cli and model to gpt-5-codex
         assert isinstance(provider, CodexCLIProvider)
-        assert provider.model == "gpt-4o"
+        assert provider.model == "gpt-5-codex"
 
 
 class TestCodexCLIProvider:
@@ -180,13 +180,13 @@ class TestCodexCLIProvider:
 
     def test_init_with_model(self):
         """Should initialize with specified model."""
-        provider = CodexCLIProvider(model="gpt-4o")
-        assert provider.model == "gpt-4o"
+        provider = CodexCLIProvider(model="gpt-5-codex")
+        assert provider.model == "gpt-5-codex"
 
     def test_init_with_default_model(self):
         """Should use default model when not specified."""
         provider = CodexCLIProvider()
-        assert provider.model == "gpt-4o"
+        assert provider.model == "gpt-5-codex"
 
     def test_init_with_timeout(self):
         """Should accept custom timeout."""
@@ -195,11 +195,16 @@ class TestCodexCLIProvider:
 
     @patch("subprocess.run")
     def test_generate_success(self, mock_run):
-        """Should successfully generate with codex CLI chat/completions."""
-        # Response format for chat/completions API
+        """Should successfully parse agent message from codex exec JSONL."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='{"choices": [{"message": {"content": "Test response"}}]}',
+            stdout="\n".join(
+                [
+                    '{"type":"turn.started"}',
+                    '{"type":"item.completed","item":{"type":"agent_message","text":"Test response"}}',
+                    '{"type":"turn.completed"}',
+                ]
+            ),
             stderr="",
         )
 
@@ -210,64 +215,45 @@ class TestCodexCLIProvider:
         mock_run.assert_called_once()
 
     @patch("subprocess.run")
-    def test_generate_uses_correct_cli_command(self, mock_run):
-        """Should invoke 'codex api chat/completions' with correct arguments.
-
-        CRITICAL: This test prevents regressions like using 'completion' instead
-        of 'chat/completions', which breaks the CLI invocation entirely.
-        """
+    def test_generate_uses_correct_cli_command(self, mock_run, tmp_path):
+        """Should invoke 'codex exec --json' with cwd and model flags."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='{"choices": [{"message": {"content": "Test response"}}]}',
+            stdout='{"type":"item.completed","item":{"type":"agent_message","text":"Test response"}}',
             stderr="",
         )
 
-        provider = CodexCLIProvider(model="gpt-4o")
-        provider.generate("Test prompt")
+        with patch.dict("os.environ", {"CODEX_WORKDIR": str(tmp_path)}):
+            provider = CodexCLIProvider(model="gpt-5-codex")
+            provider.generate("Test prompt")
 
-        # Extract the command that was called
-        call_args = mock_run.call_args
-        cmd = call_args[0][0]  # First positional arg is the command list
-
-        # Verify the exact command structure
-        assert cmd[0] == "codex", "Must use codex binary"
-        assert cmd[1] == "api", "Must use api subcommand"
-        assert cmd[2] == "chat/completions", "MUST use chat/completions, NOT completion"
-        assert "-m" in cmd, "Must specify model with -m flag"
-        assert "-d" in cmd, "Must pass data with -d flag"
+        cmd = mock_run.call_args[0][0]
+        assert cmd[:4] == ["codex", "exec", "--json", "--skip-git-repo-check"]
+        assert "--cd" in cmd and str(tmp_path) in cmd
+        assert "--model" in cmd and "gpt-5-codex" in cmd
+        assert cmd[-2:] == ["--", "Test prompt"]
 
     @patch("subprocess.run")
-    def test_generate_passes_correct_request_body(self, mock_run):
-        """Should pass messages array in chat/completions format."""
-        import json as json_module
-
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"choices": [{"message": {"content": "Test response"}}]}',
-            stderr="",
-        )
+    def test_generate_retries_without_model_when_unsupported(self, mock_run):
+        """Retry without model flag when ChatGPT account rejects model."""
+        mock_run.side_effect = [
+            MagicMock(
+                returncode=1,
+                stdout="",
+                stderr="The 'gpt-4o' model is not supported when using Codex with a ChatGPT account.",
+            ),
+            MagicMock(
+                returncode=0,
+                stdout='{"type":"item.completed","item":{"type":"agent_message","text":"Fallback response"}}',
+                stderr="",
+            ),
+        ]
 
         provider = CodexCLIProvider(model="gpt-4o")
-        provider.generate("Test prompt", max_tokens=500, temperature=0.5)
+        result = provider.generate("Test prompt")
 
-        call_args = mock_run.call_args
-        cmd = call_args[0][0]
-
-        # Find the data argument (after -d flag)
-        d_index = cmd.index("-d")
-        body_json = cmd[d_index + 1]
-        body = json_module.loads(body_json)
-
-        # Verify chat/completions format (messages array, not prompt string)
-        assert "messages" in body, "Must use messages array for chat/completions"
-        assert "prompt" not in body, "Should NOT use prompt (that's for completion API)"
-        assert body["model"] == "gpt-4o"
-        assert body["max_tokens"] == 500
-        assert body["temperature"] == 0.5
-        assert len(body["messages"]) == 2  # system + user message
-        assert body["messages"][0]["role"] == "system"
-        assert body["messages"][1]["role"] == "user"
-        assert body["messages"][1]["content"] == "Test prompt"
+        assert result == "Fallback response"
+        assert mock_run.call_count == 2
 
     @patch("subprocess.run")
     def test_generate_cli_error(self, mock_run):
@@ -300,13 +286,13 @@ class TestCodexCLIProvider:
         """Should raise AIProviderError when CLI returns empty content."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='{"choices": [{"message": {"content": ""}}]}',
+            stdout='{"type":"turn.completed"}',
             stderr="",
         )
 
         provider = CodexCLIProvider()
 
-        with pytest.raises(AIProviderError, match="empty content"):
+        with pytest.raises(AIProviderError, match="no message content"):
             provider.generate("Test prompt")
 
     @patch("subprocess.run")
@@ -320,7 +306,7 @@ class TestCodexCLIProvider:
 
         provider = CodexCLIProvider()
 
-        with pytest.raises(AIProviderError, match="parse.*JSON"):
+        with pytest.raises(AIProviderError, match="no message content"):
             provider.generate("Test prompt")
 
 
