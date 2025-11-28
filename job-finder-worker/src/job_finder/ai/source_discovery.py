@@ -35,7 +35,7 @@ class SourceDiscovery:
         """
         self.provider = provider
 
-    def discover(self, url: str) -> Optional[Dict[str, Any]]:
+    def discover(self, url: str) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
         """
         Discover source configuration for a URL.
 
@@ -43,7 +43,7 @@ class SourceDiscovery:
             url: URL to analyze
 
         Returns:
-            SourceConfig dict or None if discovery failed
+            Tuple of (SourceConfig dict or None, metadata dict)
         """
         try:
             # Step 1: Detect source type and fetch sample
@@ -51,7 +51,7 @@ class SourceDiscovery:
 
             if not sample:
                 logger.warning(f"Could not fetch content from {url}")
-                return None
+                return None, {}
 
             logger.info(f"Detected source type '{source_type}' for {url}")
 
@@ -60,19 +60,20 @@ class SourceDiscovery:
 
             if not config:
                 logger.warning(f"AI could not generate config for {url}")
-                return None
+                return None, {}
 
             # Step 3: Validate config
-            if self._validate_config(config):
+            validation = self._validate_config(config)
+            if validation.get("success"):
                 logger.info(f"Successfully discovered config for {url}")
-                return config
+                return config, validation
 
             logger.warning(f"Config validation failed for {url}")
-            return None
+            return None, validation
 
         except Exception as e:
             logger.error(f"Error discovering source {url}: {e}")
-            return None
+            return None, {}
 
     def _detect_and_fetch(self, url: str) -> Tuple[str, Optional[str]]:
         """
@@ -291,7 +292,7 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
             logger.debug(f"Response was: {response[:500]}")
             return None
 
-    def _validate_config(self, config: Dict[str, Any]) -> bool:
+    def _validate_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validate config by attempting a test scrape.
 
@@ -299,37 +300,90 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
             config: Configuration to validate
 
         Returns:
-            True if config produces valid results
+            Dict with success flag and validation metadata
         """
+        meta: Dict[str, Any] = {
+            "success": False,
+            "parsed_length": 0,
+            "needs_api_key": False,
+            "error": "",
+        }
+
         try:
             # Create SourceConfig and validate schema
             source_config = SourceConfig.from_dict(config)
             source_config.validate()
 
-            # Attempt test scrape
-            scraper = GenericScraper(source_config)
-            jobs = scraper.scrape()
+            # Detect auth requirement for APIs before scraping
+            if source_config.type == "api":
+                api_ok, api_jobs, needs_key = self._probe_api(source_config)
+                if needs_key:
+                    meta["needs_api_key"] = True
+                    meta["error"] = "auth_required"
+                    return meta
+                if not api_ok:
+                    meta["error"] = "api_probe_failed"
+                    return meta
+                jobs = api_jobs
+            else:
+                scraper = GenericScraper(source_config)
+                jobs = scraper.scrape()
 
-            # Check that we got some results
-            if not jobs:
-                logger.warning("Test scrape returned no jobs")
-                return False
+            meta["parsed_length"] = len(jobs)
 
-            # Check that jobs have required fields
-            for job in jobs[:3]:  # Check first few
-                if not job.get("title") or not job.get("url"):
-                    logger.warning(f"Job missing required fields: {job}")
-                    return False
+            # Structural check: ensure mapping yields title/url if jobs exist
+            if jobs:
+                valid_sample = any(job.get("title") and job.get("url") for job in jobs[:3])
+                if not valid_sample:
+                    meta["error"] = "missing_required_fields"
+                    return meta
 
-            logger.info(f"Config validated: found {len(jobs)} jobs")
-            return True
+            # Empty handling
+            policy = config.get("validation_policy", "fail_on_empty")
+            if len(jobs) == 0 and policy == "fail_on_empty":
+                meta["error"] = "empty_results"
+                return meta
+
+            meta["success"] = True
+            return meta
 
         except Exception as e:
             logger.error(f"Config validation failed: {e}")
-            return False
+            meta["error"] = str(e)
+            return meta
+
+    def _probe_api(self, source_config: SourceConfig) -> Tuple[bool, list, bool]:
+        """
+        Make a single API call to detect auth needs and return parsed jobs or errors.
+        """
+        headers = {**source_config.headers}
+        url = source_config.url
+
+        if source_config.api_key:
+            if source_config.auth_type == "bearer":
+                headers["Authorization"] = f"Bearer {source_config.api_key}"
+            elif source_config.auth_type == "header" and source_config.auth_param:
+                headers[source_config.auth_param] = source_config.api_key
+            elif source_config.auth_type == "query" and source_config.auth_param:
+                sep = "&" if "?" in url else "?"
+                url = f"{url}{sep}{source_config.auth_param}={source_config.api_key}"
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=30)
+            if resp.status_code in (401, 403):
+                return False, [], True
+            resp.raise_for_status()
+            data = resp.json()
+            jobs = GenericScraper(source_config)._navigate_path(data, source_config.response_path)
+            return True, jobs, False
+        except (requests.RequestException, json.JSONDecodeError) as exc:
+            logger.warning("API probe failed for %s: %s", source_config.url, exc)
+            return False, [], False
 
 
-def discover_source(url: str, provider: AIProvider) -> Optional[Dict[str, Any]]:
+def discover_source(
+    url: str, provider: AIProvider
+) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
     """
     Convenience function to discover source configuration.
 
@@ -338,7 +392,7 @@ def discover_source(url: str, provider: AIProvider) -> Optional[Dict[str, Any]]:
         provider: AI provider instance to use
 
     Returns:
-        SourceConfig dict or None
+        Tuple of SourceConfig dict (or None) and validation metadata
     """
     discovery = SourceDiscovery(provider)
     return discovery.discover(url)

@@ -55,18 +55,21 @@ class JobSourcesManager:
             except json.JSONDecodeError:
                 return default
 
+        config = parse_json(row["config_json"], {})
+
         return {
             "id": row["id"],
             "name": row["name"],
             "sourceType": row["source_type"],
             "status": row["status"],
-            "config": parse_json(row["config_json"], {}),
+            "config": config,
             "tags": parse_json(row.get("tags"), []),
             "companyId": row.get("company_id"),
             "companyName": row.get("company_name"),
             "lastScrapedAt": row.get("last_scraped_at"),
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
+            "disabledNotes": config.get("disabled_notes"),
         }
 
     # ------------------------------------------------------------------ #
@@ -81,10 +84,13 @@ class JobSourcesManager:
         company_id: Optional[str] = None,
         company_name: Optional[str] = None,
         tags: Optional[List[str]] = None,
+        status: SourceStatus = SourceStatus.ACTIVE,
     ) -> str:
         source_id = str(uuid4())
         now = _utcnow_iso()
 
+        # Persist disabled_notes in config for visibility (no dedicated column yet)
+        disabled_notes = config.get("disabled_notes")
         with sqlite_connection(self.db_path) as conn:
             conn.execute(
                 """
@@ -98,7 +104,7 @@ class JobSourcesManager:
                     source_id,
                     name,
                     source_type,
-                    SourceStatus.ACTIVE.value,
+                    status.value,
                     json.dumps(config),
                     json.dumps(tags or []),
                     company_id,
@@ -109,6 +115,8 @@ class JobSourcesManager:
             )
 
         logger.info("Added job source %s (%s)", name, source_id)
+        if disabled_notes:
+            logger.info("Source %s created disabled: %s", source_id, disabled_notes)
         return source_id
 
     def get_active_sources(
@@ -237,6 +245,7 @@ class JobSourcesManager:
         company_id: Optional[str],
         company_name: Optional[str],
         tags: Optional[List[str]] = None,
+        status: SourceStatus = SourceStatus.ACTIVE,
         # Legacy parameters - ignored but kept for backwards compatibility during transition
         discovered_via: Optional[str] = None,
         discovered_by: Optional[str] = None,
@@ -250,6 +259,7 @@ class JobSourcesManager:
             company_id=company_id,
             company_name=company_name,
             tags=tags,
+            status=status,
         )
 
     def update_source_status(self, source_id: str, status: SourceStatus) -> None:
