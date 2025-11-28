@@ -39,7 +39,24 @@ export function JobMatchTab({
     setJobMatch((prev) => {
       const base = prev ?? { ...DEFAULT_JOB_MATCH }
       const weights: CompanyMatchWeights =
-        (base.companyWeights ?? DEFAULT_JOB_MATCH.companyWeights)!
+        base.companyWeights ??
+        DEFAULT_JOB_MATCH.companyWeights ?? {
+          bonuses: { remoteFirst: 0, aiMlFocus: 0 },
+          sizeAdjustments: {
+            largeCompanyBonus: 0,
+            smallCompanyPenalty: 0,
+            largeCompanyThreshold: 0,
+            smallCompanyThreshold: 0,
+          },
+          timezoneAdjustments: {
+            sameTimezone: 0,
+            diff1to2hr: 0,
+            diff3to4hr: 0,
+            diff5to8hr: 0,
+            diff9plusHr: 0,
+          },
+          priorityThresholds: { high: 0, medium: 0 },
+        }
 
       return {
         ...base,
