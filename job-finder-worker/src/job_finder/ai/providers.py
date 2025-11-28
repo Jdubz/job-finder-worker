@@ -215,8 +215,10 @@ class CodexCLIProvider(AIProvider):
 
         try:
             result = run_codex(include_model=True)
-            if result.returncode != 0 and "not supported when using Codex with a ChatGPT account" in (
-                result.stderr + result.stdout
+            if (
+                result.returncode != 0
+                and "not supported when using Codex with a ChatGPT account"
+                in (result.stderr + result.stdout)
             ):
                 # Retry without model flag to fall back to CLI default (usually gpt-5-codex)
                 result = run_codex(include_model=False)

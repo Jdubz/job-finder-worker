@@ -267,7 +267,7 @@ Return ONLY JSON with keys: about, culture, mission, size, industry, founded, he
                 end = response_clean.rfind("}") + 1
                 response_clean = response_clean[start:end]
 
-            data = json.loads(response_clean)
+            data = cast(Dict[str, Any], json.loads(response_clean))
             for key in [
                 "about",
                 "culture",
@@ -284,6 +284,7 @@ Return ONLY JSON with keys: about, culture, mission, size, industry, founded, he
                 "products",
                 "jobBoardUrl",
             ]:
+                default: Any
                 if key in ["employeeCount", "timezoneOffset"]:
                     default = None
                 elif key == "products":

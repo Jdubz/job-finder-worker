@@ -55,6 +55,7 @@ class CompanyProcessor(BaseProcessor):
         self.companies_manager = companies_manager
         self.sources_manager = sources_manager
         self.company_info_fetcher = company_info_fetcher
+
     # ============================================================
     # SINGLE-PASS PROCESSOR
     # ============================================================
@@ -89,8 +90,9 @@ class CompanyProcessor(BaseProcessor):
                 return  # status already updated
 
             # If an AI provider is configured but required fields remain sparse, fail fast
-            if self.company_info_fetcher.ai_provider and self.company_info_fetcher._needs_ai_enrichment(
-                extracted_info
+            if (
+                self.company_info_fetcher.ai_provider
+                and self.company_info_fetcher._needs_ai_enrichment(extracted_info)
             ):
                 self.queue_manager.update_status(
                     item.id,
@@ -111,7 +113,9 @@ class CompanyProcessor(BaseProcessor):
             }
 
             # Normalize keys for storage expectations
-            if extracted_info.get("headquarters") and not extracted_info.get("headquartersLocation"):
+            if extracted_info.get("headquarters") and not extracted_info.get(
+                "headquartersLocation"
+            ):
                 company_record["headquartersLocation"] = extracted_info.get("headquarters")
             if extracted_info.get("companySizeCategory"):
                 company_record["companySizeCategory"] = extracted_info.get("companySizeCategory")
@@ -143,12 +147,12 @@ class CompanyProcessor(BaseProcessor):
 
                     self.queue_manager.add_item(source_item)
                     source_spawned = True
-                    logger.info(
-                        f"Spawned SOURCE_DISCOVERY for {company_display}: {job_board_url}"
-                    )
+                    logger.info(f"Spawned SOURCE_DISCOVERY for {company_display}: {job_board_url}")
                 else:
                     logger.info(
-                        "Source already exists for %s (source_id=%s)", job_board_url, existing.get("id")
+                        "Source already exists for %s (source_id=%s)",
+                        job_board_url,
+                        existing.get("id"),
                     )
 
             result_parts = [f"Fetched {len(html_content)} pages"]
@@ -157,13 +161,9 @@ class CompanyProcessor(BaseProcessor):
             )
             result_parts.append(f"tech_stack={len(tech_stack)}")
             if job_board_url:
-                result_parts.append(
-                    "job_board_spawned" if source_spawned else "job_board_exists"
-                )
+                result_parts.append("job_board_spawned" if source_spawned else "job_board_exists")
 
-            self.queue_manager.update_status(
-                item.id, QueueStatus.SUCCESS, "; ".join(result_parts)
-            )
+            self.queue_manager.update_status(item.id, QueueStatus.SUCCESS, "; ".join(result_parts))
 
     # ============================================================
     # HELPER METHODS
