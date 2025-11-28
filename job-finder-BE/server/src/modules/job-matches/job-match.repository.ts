@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3'
 import type { JobMatch, JobMatchWithListing, TimestampLike } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 import { JobListingRepository } from '../job-listings/job-listing.repository'
+import { CompanyRepository } from '../companies/company.repository'
 
 type JobMatchRow = {
   id: string
@@ -82,10 +83,12 @@ interface JobMatchListOptions {
 export class JobMatchRepository {
   private db: Database.Database
   private listingRepo: JobListingRepository
+  private companyRepo: CompanyRepository
 
   constructor() {
     this.db = getDb()
     this.listingRepo = new JobListingRepository()
+    this.companyRepo = new CompanyRepository()
   }
 
   list(options: JobMatchListOptions = {}): JobMatch[] {
@@ -137,7 +140,7 @@ export class JobMatchRepository {
   }
 
   /**
-   * List job matches with their associated listing data.
+   * List job matches with their associated listing and company data.
    * This is the preferred method for API responses.
    */
   listWithListings(options: JobMatchListOptions = {}): JobMatchWithListing[] {
@@ -147,9 +150,11 @@ export class JobMatchRepository {
       if (!listing) {
         throw new Error(`Job listing ${match.jobListingId} not found for match ${match.id}`)
       }
+      const company = listing.companyId ? this.companyRepo.getById(listing.companyId) : null
       return {
         ...match,
-        listing
+        listing,
+        company
       }
     })
   }
@@ -166,7 +171,10 @@ export class JobMatchRepository {
     const listing = this.listingRepo.getById(match.jobListingId)
     if (!listing) return null
 
-    return { ...match, listing }
+    // Fetch company data if companyId exists on the listing
+    const company = listing.companyId ? this.companyRepo.getById(listing.companyId) : null
+
+    return { ...match, listing, company }
   }
 
   getByJobListingId(jobListingId: string): JobMatch | null {
