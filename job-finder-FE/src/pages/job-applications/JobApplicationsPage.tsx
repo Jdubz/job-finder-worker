@@ -4,6 +4,8 @@ import { useAuth } from "@/contexts/AuthContext"
 import { jobMatchesClient } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select,
   SelectContent,
@@ -11,15 +13,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Search, SlidersHorizontal } from "lucide-react"
-import { JobMatchCard } from "./components/JobMatchCard"
+import { AlertCircle, Loader2, Search, Briefcase } from "lucide-react"
 import { JobDetailsDialog } from "./components/JobDetailsDialog"
 import { ROUTES } from "@/types/routes"
 import type { JobMatchWithListing } from "@shared/types"
 import { logger } from "@/services/logging"
 import { toDate } from "@/utils/dateFormat"
+
+function getPriorityBadge(priority: string) {
+  switch (priority) {
+    case "High":
+      return <Badge className="bg-red-500 hover:bg-red-600">High</Badge>
+    case "Medium":
+      return <Badge className="bg-yellow-500 hover:bg-yellow-600">Medium</Badge>
+    case "Low":
+      return <Badge className="bg-green-500 hover:bg-green-600">Low</Badge>
+    default:
+      return <Badge variant="secondary">{priority}</Badge>
+  }
+}
+
+function getScoreColor(score: number) {
+  if (score >= 85) return "text-green-600 font-bold"
+  if (score >= 70) return "text-yellow-600 font-semibold"
+  return "text-orange-600"
+}
 
 export function JobApplicationsPage() {
   const { user } = useAuth()
@@ -134,7 +161,7 @@ export function JobApplicationsPage() {
     setFilteredMatches(filtered)
   }, [matches, searchQuery, priorityFilter, sortBy])
 
-  const handleViewDetails = (match: JobMatchWithListing) => {
+  const handleRowClick = (match: JobMatchWithListing) => {
     setSelectedMatch(match)
     setDialogOpen(true)
   }
@@ -188,43 +215,6 @@ export function JobApplicationsPage() {
         </div>
       )}
 
-      {/* Filters and Search */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by company or job title..."
-            value={searchQuery}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SlidersHorizontal className="mr-2 h-4 w-4" />
-            <SelectValue placeholder="Priority" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Priorities</SelectItem>
-            <SelectItem value="High">High Priority</SelectItem>
-            <SelectItem value="Medium">Medium Priority</SelectItem>
-            <SelectItem value="Low">Low Priority</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="score">Match Score</SelectItem>
-            <SelectItem value="date">Date Added</SelectItem>
-            <SelectItem value="company">Company Name</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Error State */}
       {error && !loading && (
         <Alert variant="destructive">
@@ -233,68 +223,112 @@ export function JobApplicationsPage() {
         </Alert>
       )}
 
-      {/* Loading State */}
-      {loading && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="space-y-3">
-              <Skeleton className="h-[200px] w-full rounded-lg" />
+      {/* Job Matches List */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle>Job Matches</CardTitle>
+              <CardDescription>Click on a match to view details</CardDescription>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Empty State */}
-      {!loading && matches.length === 0 && (
-        <div className="text-center py-12">
-          <div className="text-muted-foreground mb-4">
-            <svg
-              className="mx-auto h-12 w-12"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search jobs..."
+                  value={searchQuery}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                  className="pl-10 w-full sm:w-[200px]"
+                />
+              </div>
+              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                <SelectTrigger className="w-full sm:w-[140px]">
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="High">High</SelectItem>
+                  <SelectItem value="Medium">Medium</SelectItem>
+                  <SelectItem value="Low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-full sm:w-[140px]">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="score">Score</SelectItem>
+                  <SelectItem value="date">Date</SelectItem>
+                  <SelectItem value="company">Company</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <h3 className="text-lg font-semibold mb-2">No job matches yet</h3>
-          <p className="text-muted-foreground mb-4">
-            Submit job URLs in Job Listings to get AI-powered matches
-          </p>
-          <Button onClick={() => navigate(ROUTES.JOB_LISTINGS)}>Go to Job Listings</Button>
-        </div>
-      )}
-
-      {/* No Results After Filter */}
-      {!loading && matches.length > 0 && filteredMatches.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">No matches found for your current filters</p>
-          <Button
-            variant="outline"
-            className="mt-4"
-            onClick={() => {
-              setSearchQuery("")
-              setPriorityFilter("all")
-            }}
-          >
-            Clear Filters
-          </Button>
-        </div>
-      )}
-
-      {/* Job Matches Grid */}
-      {!loading && filteredMatches.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredMatches.map((match) => (
-            <JobMatchCard key={match.id} match={match} onViewDetails={handleViewDetails} />
-          ))}
-        </div>
-      )}
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : matches.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Briefcase className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p className="font-semibold">No job matches yet</p>
+              <p className="text-sm mt-1">Submit job URLs in Job Listings to get AI-powered matches</p>
+              <Button className="mt-4" onClick={() => navigate(ROUTES.JOB_LISTINGS)}>
+                Go to Job Listings
+              </Button>
+            </div>
+          ) : filteredMatches.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No matches found for your current filters</p>
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={() => {
+                  setSearchQuery("")
+                  setPriorityFilter("all")
+                }}
+              >
+                Clear Filters
+              </Button>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Job Title</TableHead>
+                  <TableHead>Company</TableHead>
+                  <TableHead className="hidden md:table-cell">Location</TableHead>
+                  <TableHead className="text-center">Score</TableHead>
+                  <TableHead>Priority</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredMatches.map((match) => (
+                  <TableRow
+                    key={match.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleRowClick(match)}
+                  >
+                    <TableCell className="font-medium">{match.listing.title}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {match.listing.companyName}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground">
+                      {match.listing.location || "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className={getScoreColor(match.matchScore)}>{match.matchScore}%</span>
+                    </TableCell>
+                    <TableCell>{getPriorityBadge(match.applicationPriority)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Job Details Dialog */}
       <JobDetailsDialog
