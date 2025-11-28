@@ -19,7 +19,7 @@ from job_finder.ai.source_discovery import SourceDiscovery
 from job_finder.exceptions import QueueProcessingError
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
-from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
+from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus, SourceStatus
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
@@ -100,7 +100,11 @@ class SourceProcessor(BaseProcessor):
 
             # Run AI-powered discovery
             discovery = SourceDiscovery(provider)
-            source_config = discovery.discover(url)
+            discovery_result = discovery.discover(url)
+            if isinstance(discovery_result, tuple):
+                source_config, validation_meta = discovery_result
+            else:
+                source_config, validation_meta = discovery_result, {}
 
             if not source_config:
                 self.queue_manager.update_status(
@@ -124,6 +128,14 @@ class SourceProcessor(BaseProcessor):
             # Create source
             source_name = f"{company_name} Jobs" if company_name else f"Source ({source_type})"
 
+            needs_api_key = bool(validation_meta.get("needs_api_key"))
+            disabled_notes = (
+                "needs api key" if needs_api_key else source_config.get("disabled_notes", "")
+            )
+            initial_status = SourceStatus.DISABLED if needs_api_key else SourceStatus.ACTIVE
+            if disabled_notes:
+                source_config["disabled_notes"] = disabled_notes
+
             source_id = self.sources_manager.create_from_discovery(
                 name=source_name,
                 source_type=source_type,
@@ -134,26 +146,38 @@ class SourceProcessor(BaseProcessor):
                 discovery_queue_item_id=item.id,
                 company_id=config.company_id,
                 company_name=company_name,
+                status=initial_status,
             )
 
-            # Spawn SCRAPE_SOURCE to immediately scrape the new source
-            scrape_item = JobQueueItem(
-                type=QueueItemType.SCRAPE_SOURCE,
-                url="",
-                company_name=company_name or "Unknown",
-                source="automated_scan",
-                scraped_data={"source_id": source_id},
-                tracking_id=str(uuid.uuid4()),
-            )
-            scrape_item_id = self.queue_manager.add_item(scrape_item)
-            logger.info(f"Spawned SCRAPE_SOURCE item {scrape_item_id} for source {source_id}")
+            if initial_status == SourceStatus.ACTIVE:
+                # Spawn SCRAPE_SOURCE to immediately scrape the new source
+                scrape_item = JobQueueItem(
+                    type=QueueItemType.SCRAPE_SOURCE,
+                    url="",
+                    company_name=company_name or "Unknown",
+                    source="automated_scan",
+                    scraped_data={"source_id": source_id},
+                    tracking_id=str(uuid.uuid4()),
+                )
+                scrape_item_id = self.queue_manager.add_item(scrape_item)
+                logger.info(f"Spawned SCRAPE_SOURCE item {scrape_item_id} for source {source_id}")
+            else:
+                logger.info(
+                    "Created source %s disabled (%s); skipping immediate scrape",
+                    source_id,
+                    disabled_notes,
+                )
 
             # Update queue item with success
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.SUCCESS,
                 source_id,
-                scraped_data={"source_id": source_id, "source_type": source_type},
+                scraped_data={
+                    "source_id": source_id,
+                    "source_type": source_type,
+                    "disabled_notes": disabled_notes or "",
+                },
             )
             logger.info(f"SOURCE_DISCOVERY complete: Created source {source_id}")
 

@@ -12,6 +12,7 @@ from job_finder.job_queue.models import (
     QueueItemType,
     QueueStatus,
     SourceDiscoveryConfig,
+    SourceStatus,
     SourceTypeHint,
 )
 from job_finder.job_queue.processor import QueueItemProcessor
@@ -228,6 +229,34 @@ class TestSourceDiscoverySuccess:
 
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
+
+    @patch("job_finder.ai.providers.create_provider_from_config")
+    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    def test_creates_disabled_when_api_key_needed(
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+    ):
+        """Sources needing API keys should be created disabled with notes and no scrape spawn."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = (
+            {
+                "type": "api",
+                "url": "https://api.example.com/jobs",
+                "response_path": "jobs",
+                "fields": {"title": "title", "url": "link"},
+            },
+            {"needs_api_key": True},
+        )
+        mock_discovery_class.return_value = mock_discovery
+
+        item = make_discovery_item(url="https://api.example.com/jobs")
+        source_processor.process_source_discovery(item)
+
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["status"] == SourceStatus.DISABLED
+        assert create_kwargs["config"]["disabled_notes"] == "needs api key"
+
+        # Should NOT spawn scrape item when disabled
+        mock_dependencies["queue_manager"].add_item.assert_not_called()
 
 
 class TestSourceDiscoveryFailure:
