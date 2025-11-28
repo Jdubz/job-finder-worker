@@ -267,11 +267,13 @@ class ScraperIntake:
                     tracking_id=tracking_id,  # Root tracking ID
                     ancestry_chain=[],  # Root has no ancestors
                     spawn_depth=0,  # Root starts at depth 0
-                    metadata={
-                        "source_label": source_label,
-                        "job_listing_id": listing_id,
-                    } if source_label or listing_id else (
-                        {"job_listing_id": listing_id} if listing_id else None
+                    metadata=(
+                        {
+                            "source_label": source_label,
+                            "job_listing_id": listing_id,
+                        }
+                        if source_label or listing_id
+                        else ({"job_listing_id": listing_id} if listing_id else None)
                     ),
                 )
 

@@ -156,9 +156,7 @@ class JobListingStorage:
     def get_by_id(self, listing_id: str) -> Optional[Dict[str, Any]]:
         """Get a job listing by ID."""
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT * FROM job_listings WHERE id = ?", (listing_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM job_listings WHERE id = ?", (listing_id,)).fetchone()
             return dict(row) if row else None
 
     def get_by_url(self, url: str) -> Optional[Dict[str, Any]]:
