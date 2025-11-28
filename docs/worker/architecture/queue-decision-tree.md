@@ -227,8 +227,8 @@ Executed inside one queue item (no company_sub_task field, no spawned stages).
 4. Save company record with extracted fields and tech stack.
 5. If a job board URL is detected and no existing source matches, enqueue a SOURCE_DISCOVERY item.
 
-**Success**: Spawn `COMPANY_EXTRACT`
-**Failure**: Mark FAILED (retry up to 3 times)
+**Success**: Company record saved; if a job board is detected and no source exists, spawn SOURCE_DISCOVERY.
+**Failure**: Mark FAILED (retry up to 3 times) with error details; no additional company stages are spawned.
 
 ---
 

@@ -9,6 +9,7 @@ import os
 import re
 from contextlib import contextmanager
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue.config_loader import ConfigLoader
@@ -186,7 +187,7 @@ class CompanyProcessor(BaseProcessor):
             try:
                 content = self.company_info_fetcher._fetch_page_content(page_url)
                 if content and len(content) > min_page_length:
-                    page_type = page_url.split("/")[-1] if "/" in page_url else "homepage"
+                    page_type = urlparse(page_url).path.strip("/").split("/")[-1] or "homepage"
                     html_content[page_type] = content
                     logger.debug("Fetched %d chars from %s", len(content), page_url)
             except Exception as exc:
