@@ -47,6 +47,9 @@ class TestCompanyPipeline:
         mock_dependencies["sources_manager"].get_source_for_url.return_value = None
         mock_dependencies["companies_manager"].save_company.return_value = "company-123"
 
+        # AI deemed sufficient
+        mock_dependencies["company_info_fetcher"]._needs_ai_enrichment.return_value = False
+
         processor.company_processor.process_company(item)
 
         # company saved
@@ -98,6 +101,35 @@ class TestCompanyPipeline:
 
         mock_dependencies["queue_manager"].update_status.assert_any_call(
             "c3", QueueStatus.FAILED, "Could not fetch any content from company website", error_details=ANY
+        )
+
+    def test_ai_missing_fields_marks_failed(self, processor, mock_dependencies):
+        item = JobQueueItem(
+            id="c4",
+            type=QueueItemType.COMPANY,
+            url="https://example.com",
+            company_name="Example",
+            status=QueueStatus.PROCESSING,
+        )
+
+        # Heuristics produce data but AI enrichment still required
+        # Skip network: provide fetched pages directly
+        processor.company_processor._fetch_company_pages = Mock(return_value={"about": "stub content long enough"})
+        mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = {
+            "about": "short",
+            "culture": "",
+            "mission": "",
+        }
+        mock_dependencies["company_info_fetcher"].ai_provider = object()
+        # Heuristic pass says needs AI; after AI still sparse
+        mock_dependencies["company_info_fetcher"]._needs_ai_enrichment.side_effect = [True, True]
+        # Simulate AI call returning empty dict (did not populate)
+        mock_dependencies["company_info_fetcher"]._extract_with_ai.return_value = {}
+
+        processor.company_processor.process_company(item)
+
+        mock_dependencies["queue_manager"].update_status.assert_any_call(
+            "c4", QueueStatus.FAILED, "AI enrichment failed to populate required company fields"
         )
 
     def test_detect_tech_stack(self, processor):
