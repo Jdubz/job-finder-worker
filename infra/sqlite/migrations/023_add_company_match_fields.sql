@@ -4,6 +4,3 @@ ALTER TABLE companies ADD COLUMN is_remote_first INTEGER DEFAULT 0;
 ALTER TABLE companies ADD COLUMN ai_ml_focus INTEGER DEFAULT 0;
 ALTER TABLE companies ADD COLUMN employee_count INTEGER;
 ALTER TABLE companies ADD COLUMN timezone_offset REAL;
-
--- Remove deprecated company-scoring config entry if present
-DELETE FROM job_finder_config WHERE id = 'company-scoring';
