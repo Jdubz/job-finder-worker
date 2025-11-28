@@ -1,13 +1,10 @@
 """Company queue item processor.
 
-This processor handles all company-related queue items and pipeline stages:
-- Company data fetching (scraping website HTML)
-- Company information extraction (AI-powered)
-- Company analysis (tech stack, job board detection, priority scoring)
-- Company persistence (save to SQLite, spawn source discovery)
-
-It implements the granular 4-step company pipeline:
-COMPANY_FETCH → COMPANY_EXTRACT → COMPANY_ANALYZE → COMPANY_SAVE
+This processor handles company queue items in a single-pass approach:
+1. Fetch website HTML content from company pages
+2. Extract company information using AI
+3. Analyze tech stack and detect job boards
+4. Save to SQLite and spawn source discovery if job board found
 """
 
 import logging
@@ -18,14 +15,12 @@ from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
 from job_finder.company_info_fetcher import CompanyInfoFetcher
-from job_finder.exceptions import QueueProcessingError
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.settings import get_text_limits
 from job_finder.logging_config import format_company_name
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.job_queue.models import (
-    CompanySubTask,
     JobQueueItem,
     QueueItemType,
     QueueStatus,
@@ -66,40 +61,15 @@ class CompanyProcessor(BaseProcessor):
     # MAIN ROUTING
     # ============================================================
 
-    def process_granular_company(self, item: JobQueueItem) -> None:
+    def process_company(self, item: JobQueueItem) -> None:
         """
-        Route granular pipeline company to appropriate processor.
+        Process company in a single pass: fetch, extract, analyze, save.
+
+        This is the main entry point for company processing. It performs
+        all pipeline steps in sequence without spawning intermediate items.
 
         Args:
-            item: Company queue item with company_sub_task specified
-        """
-        if not item.company_sub_task:
-            raise QueueProcessingError("company_sub_task required for granular processing")
-
-        if item.company_sub_task == CompanySubTask.FETCH:
-            self.process_company_fetch(item)
-        elif item.company_sub_task == CompanySubTask.EXTRACT:
-            self.process_company_extract(item)
-        elif item.company_sub_task == CompanySubTask.ANALYZE:
-            self.process_company_analyze(item)
-        elif item.company_sub_task == CompanySubTask.SAVE:
-            self.process_company_save(item)
-        else:
-            raise QueueProcessingError(f"Unknown company_sub_task: {item.company_sub_task}")
-
-    # ============================================================
-    # PIPELINE STEPS
-    # ============================================================
-
-    def process_company_fetch(self, item: JobQueueItem) -> None:
-        """
-        COMPANY_FETCH: Fetch website HTML content.
-
-        Uses cheap AI (Haiku) for dynamic content if needed.
-        Spawns COMPANY_EXTRACT as next step.
-
-        Args:
-            item: Company queue item with company_sub_task=FETCH
+            item: Company queue item
         """
         if not item.id:
             logger.error("Cannot process item without ID")
@@ -107,17 +77,17 @@ class CompanyProcessor(BaseProcessor):
 
         company_name = item.company_name or "Unknown Company"
         _, company_display = format_company_name(company_name)
-        logger.info(f"COMPANY_FETCH: Fetching website content for {company_display}")
+        company_id = item.company_id
 
-        company_id = item.company_id or (item.pipeline_state or {}).get("company_id")
+        logger.info(f"COMPANY: Processing {company_display} (single pass)")
 
         with self._handle_company_failure(company_id):
+            # === STEP 1: FETCH ===
             if not item.url:
                 error_msg = "No company website URL provided"
                 self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
                 return
 
-            # Fetch HTML content from company pages
             pages_to_try = [
                 f"{item.url}/about",
                 f"{item.url}/about-us",
@@ -133,7 +103,6 @@ class CompanyProcessor(BaseProcessor):
                 try:
                     content = self.company_info_fetcher._fetch_page_content(page_url)
                     if content and len(content) > min_page_length:
-                        # Extract page type from URL
                         page_type = page_url.split("/")[-1] if "/" in page_url else "homepage"
                         html_content[page_type] = content
                         logger.debug(f"Fetched {len(content)} chars from {page_url}")
@@ -157,60 +126,10 @@ class CompanyProcessor(BaseProcessor):
                     )
                     return
 
-            # Prepare pipeline state for next step
-            pipeline_state = {
-                "company_name": company_name,
-                "company_website": item.url,
-                "company_id": company_id,
-                "html_content": html_content,
-            }
+            logger.info(f"COMPANY: Fetched {len(html_content)} pages for {company_display}")
 
-            # Mark this step complete
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.SUCCESS,
-                f"Fetched {len(html_content)} pages from company website",
-            )
-
-            # Spawn next pipeline step (EXTRACT)
-            self.queue_manager.spawn_next_pipeline_step(
-                current_item=item,
-                next_sub_task=CompanySubTask.EXTRACT,
-                pipeline_state=pipeline_state,
-                is_company=True,
-            )
-
-            _, company_display = format_company_name(company_name)
-            logger.info(
-                f"COMPANY_FETCH complete: Fetched {len(html_content)} pages for {company_display}"
-            )
-
-    def process_company_extract(self, item: JobQueueItem) -> None:
-        """
-        COMPANY_EXTRACT: Extract company info using AI.
-
-        Uses expensive AI (Sonnet) for accurate extraction.
-        Spawns COMPANY_ANALYZE as next step.
-
-        Args:
-            item: Company queue item with company_sub_task=EXTRACT
-        """
-        if not item.id or not item.pipeline_state:
-            logger.error("Cannot process EXTRACT without ID or pipeline_state")
-            return
-
-        company_name = item.pipeline_state.get("company_name", "Unknown Company")
-        html_content = item.pipeline_state.get("html_content", {})
-        company_id = item.pipeline_state.get("company_id") or item.company_id
-
-        _, company_display = format_company_name(company_name)
-        logger.info(f"COMPANY_EXTRACT: Extracting company info for {company_display}")
-
-        with self._handle_company_failure(company_id):
-            # Combine all HTML content
+            # === STEP 2: EXTRACT ===
             combined_content = " ".join(html_content.values())
-
-            # Extract company information using AI
             extracted_info = self.company_info_fetcher._extract_company_info(
                 combined_content, company_name
             )
@@ -231,156 +150,33 @@ class CompanyProcessor(BaseProcessor):
                     self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
                     return
 
-            # Prepare pipeline state with extracted info
-            pipeline_state = {
-                **item.pipeline_state,
-                "extracted_info": extracted_info,
-            }
-
-            # Mark this step complete
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.SUCCESS,
-                "Company information extracted successfully",
-            )
-
-            # Spawn next pipeline step (ANALYZE)
-            self.queue_manager.spawn_next_pipeline_step(
-                current_item=item,
-                next_sub_task=CompanySubTask.ANALYZE,
-                pipeline_state=pipeline_state,
-                is_company=True,
-            )
-
-            _, company_display = format_company_name(company_name)
             logger.info(
-                f"COMPANY_EXTRACT complete: Extracted {len(extracted_info.get('about', ''))} chars "
-                f"about, {len(extracted_info.get('culture', ''))} chars culture for {company_display}"
+                f"COMPANY: Extracted {len(extracted_info.get('about', ''))} chars about, "
+                f"{len(extracted_info.get('culture', ''))} chars culture for {company_display}"
             )
 
-    def process_company_analyze(self, item: JobQueueItem) -> None:
-        """
-        COMPANY_ANALYZE: Analyze tech stack, job board, and priority scoring.
-
-        Rule-based analysis (no AI cost).
-        Spawns COMPANY_SAVE as next step.
-        May also spawn SOURCE_DISCOVERY if job board found.
-
-        Args:
-            item: Company queue item with company_sub_task=ANALYZE
-
-        TODO: Consider parallelizing company parameter fetches for optimization:
-            Could spawn multiple queue items:
-              - COMPANY_SIZE (web search for employee count)
-              - COMPANY_LOCATION (web search for offices)
-              - COMPANY_CULTURE (scrape about page)
-              - COMPANY_JOB_BOARD (scrape careers page)
-            Benefits: Parallel processing, fine-grained retry
-            Trade-offs: Complex coordination, partial success handling
-            Decision: Start with serial, optimize if it becomes a bottleneck
-            See: dev-monitor/docs/decision-tree.md#performance-optimization
-        """
-        if not item.id or not item.pipeline_state:
-            logger.error("Cannot process ANALYZE without ID or pipeline_state")
-            return
-
-        company_name = item.pipeline_state.get("company_name", "Unknown Company")
-        company_website = item.pipeline_state.get("company_website", "")
-        extracted_info = item.pipeline_state.get("extracted_info", {})
-        html_content = item.pipeline_state.get("html_content", {})
-        company_id = item.pipeline_state.get("company_id") or item.company_id
-
-        _, company_display = format_company_name(company_name)
-        logger.info(f"COMPANY_ANALYZE: Analyzing {company_display}")
-
-        with self._handle_company_failure(company_id):
-            # Detect tech stack from company info
+            # === STEP 3: ANALYZE ===
             tech_stack = self._detect_tech_stack(extracted_info, html_content)
+            job_board_url = self._detect_job_board(item.url, html_content)
 
-            # Detect job board URLs
-            job_board_url = self._detect_job_board(company_website, html_content)
+            logger.info(f"COMPANY: Analyzed {company_display}, Tech Stack: {len(tech_stack)} items")
 
-            # Prepare analysis results
-            analysis_result = {
-                "tech_stack": tech_stack,
-                "job_board_url": job_board_url,
-            }
-
-            # Prepare pipeline state with analysis
-            pipeline_state = {
-                **item.pipeline_state,
-                "analysis_result": analysis_result,
-            }
-
-            # Mark this step complete
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.SUCCESS,
-                f"Company analyzed, Tech Stack: {len(tech_stack)} items",
-            )
-
-            # If job board found, spawn SOURCE_DISCOVERY
-            if job_board_url:
-                _, company_display = format_company_name(company_name)
-                logger.info(f"Found job board for {company_display}: {job_board_url}")
-                # Will be handled in COMPANY_SAVE step
-
-            # Spawn next pipeline step (SAVE)
-            self.queue_manager.spawn_next_pipeline_step(
-                current_item=item,
-                next_sub_task=CompanySubTask.SAVE,
-                pipeline_state=pipeline_state,
-                is_company=True,
-            )
-
-            logger.info(
-                f"COMPANY_ANALYZE complete: {company_name}, Tech Stack: {len(tech_stack)} items"
-            )
-
-    def process_company_save(self, item: JobQueueItem) -> None:
-        """
-        COMPANY_SAVE: Save company to SQLite and spawn source discovery if needed.
-
-        Final step - may spawn SOURCE_DISCOVERY if job board found.
-
-        Args:
-            item: Company queue item with company_sub_task=SAVE
-        """
-        if not item.id or not item.pipeline_state:
-            logger.error("Cannot process SAVE without ID or pipeline_state")
-            return
-
-        company_name = item.pipeline_state.get("company_name", "Unknown Company")
-        company_website = item.pipeline_state.get("company_website", "")
-        extracted_info = item.pipeline_state.get("extracted_info", {})
-        analysis_result = item.pipeline_state.get("analysis_result", {})
-        company_id = item.pipeline_state.get("company_id") or item.company_id
-
-        _, company_display = format_company_name(company_name)
-        logger.info(f"COMPANY_SAVE: Saving {company_display}")
-
-        with self._handle_company_failure(company_id):
-            # Build complete company record
+            # === STEP 4: SAVE ===
             company_info = {
                 "name": company_name,
-                "website": company_website,
+                "website": item.url,
                 **extracted_info,
-                "techStack": analysis_result.get("tech_stack", []),
+                "techStack": tech_stack,
             }
 
             if company_id:
                 company_info["id"] = company_id
 
-            # Save to companies collection
             company_id = self.companies_manager.save_company(company_info)
-
-            _, company_display = format_company_name(company_name)
             logger.info(f"Company saved: {company_display} (ID: {company_id})")
 
             # If job board found, spawn SOURCE_DISCOVERY
-            job_board_url = analysis_result.get("job_board_url")
             if job_board_url:
-                # Create source discovery queue item
                 discovery_config = SourceDiscoveryConfig(
                     url=job_board_url,
                     type_hint=SourceTypeHint.AUTO,
@@ -390,16 +186,15 @@ class CompanyProcessor(BaseProcessor):
 
                 source_item = JobQueueItem(
                     type=QueueItemType.SOURCE_DISCOVERY,
-                    url="",  # Not used for source_discovery
+                    url="",
                     company_name=company_name,
                     company_id=company_id,
                     source="automated_scan",
                     source_discovery_config=discovery_config,
-                    tracking_id=str(uuid.uuid4()),  # Required for loop prevention
+                    tracking_id=str(uuid.uuid4()),
                 )
 
                 self.queue_manager.add_item(source_item)
-                _, company_display = format_company_name(company_name)
                 logger.info(f"Spawned SOURCE_DISCOVERY for {company_display}: {job_board_url}")
 
             self.queue_manager.update_status(

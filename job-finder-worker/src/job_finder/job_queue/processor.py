@@ -133,13 +133,7 @@ class QueueItemProcessor:
             # Note: Job deduplication is handled in scraper_intake (for scraped jobs) and
             # get_or_create_listing (for direct submissions). No duplicate check needed here.
             if item.type == QueueItemType.COMPANY:
-                # All company items must use granular pipeline
-                if not item.company_sub_task:
-                    raise QueueProcessingError(
-                        "Company items must have company_sub_task set. "
-                        "Use submit_company() which creates granular pipeline items."
-                    )
-                self.company_processor.process_granular_company(item)
+                self.company_processor.process_company(item)
             elif item.type == QueueItemType.JOB:
                 # Use decision tree routing based on pipeline_state
                 self.job_processor.process_job(item)
@@ -213,23 +207,7 @@ class QueueItemProcessor:
 
     # Legacy job delegation removed; state-driven pipeline is the only path.
 
-    # Company processor delegations
-    def _process_company_fetch(self, item: JobQueueItem) -> None:
-        """Delegate to company processor."""
-        return self.company_processor.process_company_fetch(item)
-
-    def _process_company_extract(self, item: JobQueueItem) -> None:
-        """Delegate to company processor."""
-        return self.company_processor.process_company_extract(item)
-
-    def _process_company_analyze(self, item: JobQueueItem) -> None:
-        """Delegate to company processor."""
-        return self.company_processor.process_company_analyze(item)
-
-    def _process_company_save(self, item: JobQueueItem) -> None:
-        """Delegate to company processor."""
-        return self.company_processor.process_company_save(item)
-
+    # Company processor helper delegations (for testing)
     def _detect_tech_stack(
         self, extracted_info: Dict[str, Any], html_content: Optional[str] = None
     ) -> list:
