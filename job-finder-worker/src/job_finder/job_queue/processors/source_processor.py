@@ -31,6 +31,16 @@ from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
+SOURCE_AGENT_PROMPT = (
+    "You are the primary agent for source discovery/validation."
+    " Probe results are in scraped_data."
+    " Your tasks: (1) research the company/source URL,"
+    " (2) produce/verify a working SourceConfig (correct type, selectors/fields, pagination, date/location/title/company mapping),"
+    " (3) test or reason about the config, noting any blockers (auth/api keys/CORS/JS-only),"
+    " (4) recommend status (active vs disabled with notes),"
+    " (5) capture the canonical careers URL and company metadata if missing."
+)
+
 
 class SourceProcessor(BaseProcessor):
     """Processor for source discovery and scraping queue items."""
@@ -111,16 +121,12 @@ class SourceProcessor(BaseProcessor):
                 source_config, validation_meta = discovery_result, {}
 
             if not source_config:
-                self._spawn_agent_review(
+                self._handoff_to_agent_review(
                     item,
+                    SOURCE_AGENT_PROMPT,
                     reason="Source discovery produced no config",
                     context={"url": url, "type_hint": config.type_hint},
-                )
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.NEEDS_REVIEW,
-                    "Agent review required: discovery produced no config",
-                    error_details=f"URL: {url}",
+                    status_message="Agent review required: discovery produced no config",
                 )
                 return
 
@@ -232,6 +238,7 @@ class SourceProcessor(BaseProcessor):
             # Always hand off to agent for validation/verification with probe context
             self._spawn_agent_review(
                 item,
+                SOURCE_AGENT_PROMPT,
                 reason="Source discovery probe completed",
                 context={
                     "source_id": source_id,
@@ -442,6 +449,7 @@ class SourceProcessor(BaseProcessor):
                 )
                 self._spawn_agent_review(
                     item,
+                    SOURCE_AGENT_PROMPT,
                     reason="Source scrape failed",
                     context={"source_id": source.get("id"), "error": str(scrape_error)},
                 )
@@ -493,32 +501,3 @@ class SourceProcessor(BaseProcessor):
 
         logger.info("Self-heal could not produce a better config for %s", url)
         return None
-
-    def _spawn_agent_review(self, item: JobQueueItem, reason: str, context: dict) -> None:
-        prompt = (
-            "You are the primary agent for source discovery/validation."
-            " Probe results are in scraped_data."
-            " Your tasks: (1) research the company/source URL,"
-            " (2) produce/verify a working SourceConfig (correct type, selectors/fields, pagination, date/location/title/company mapping),"
-            " (3) test or reason about the config, noting any blockers (auth/api keys/CORS/JS-only),"
-            " (4) recommend status (active vs disabled with notes),"
-            " (5) capture the canonical careers URL and company metadata if missing."
-        )
-
-        review_item = JobQueueItem(
-            type=QueueItemType.AGENT_REVIEW,
-            url=item.url,
-            company_name=item.company_name,
-            company_id=item.company_id,
-            source=item.source,
-            status=QueueStatus.PENDING,
-            result_message=reason,
-            scraped_data={**context, "agent_prompt": prompt},
-            parent_item_id=item.id,
-            tracking_id=item.tracking_id,
-        )
-        try:
-            review_id = self.queue_manager.add_item(review_item)
-            logger.info("Spawned AGENT_REVIEW %s for %s (%s)", review_id, item.url or item.id, reason)
-        except Exception as exc:
-            logger.error("Failed to spawn agent review task for %s: %s", item.id, exc)
