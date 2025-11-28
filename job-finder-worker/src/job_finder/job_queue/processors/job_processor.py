@@ -449,9 +449,7 @@ class JobProcessor(BaseProcessor):
 
             # Check threshold after recording the score
             if result.match_score < self.ai_matcher.min_match_score:
-                self._update_listing_status(
-                    listing_id, "skipped", analysis_result=result.to_dict()
-                )
+                self._update_listing_status(listing_id, "skipped", analysis_result=result.to_dict())
 
                 self.queue_manager.update_status(
                     item.id,
@@ -462,9 +460,7 @@ class JobProcessor(BaseProcessor):
 
             # Match passed - update state and continue
             # Update job_listing status to 'analyzed'
-            self._update_listing_status(
-                listing_id, "analyzed", analysis_result=result.to_dict()
-            )
+            self._update_listing_status(listing_id, "analyzed", analysis_result=result.to_dict())
 
             updated_state = {
                 **item.pipeline_state,
