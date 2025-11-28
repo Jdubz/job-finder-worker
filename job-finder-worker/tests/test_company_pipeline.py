@@ -14,7 +14,10 @@ class TestCompanyPipeline:
     def mock_dependencies(self):
         return {
             "queue_manager": Mock(),
-            "config_loader": Mock(get_job_filters=Mock(return_value={}), get_technology_ranks=Mock(return_value={"python": 30, "react": 25, "docker": 20})),
+            "config_loader": Mock(
+                get_job_filters=Mock(return_value={}),
+                get_technology_ranks=Mock(return_value={"python": 30, "react": 25, "docker": 20}),
+            ),
             "job_storage": Mock(),
             "job_listing_storage": Mock(),
             "companies_manager": Mock(),
@@ -37,7 +40,8 @@ class TestCompanyPipeline:
         )
 
         mock_dependencies["company_info_fetcher"]._fetch_page_content.return_value = (
-            "Example builds with Python and React. Careers at https://boards.greenhouse.io/example" * 5
+            "Example builds with Python and React. Careers at https://boards.greenhouse.io/example"
+            * 5
         )
         mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = {
             "about": "We build things",
@@ -100,7 +104,10 @@ class TestCompanyPipeline:
         processor.company_processor.process_company(item)
 
         mock_dependencies["queue_manager"].update_status.assert_any_call(
-            "c3", QueueStatus.FAILED, "Could not fetch any content from company website", error_details=ANY
+            "c3",
+            QueueStatus.FAILED,
+            "Could not fetch any content from company website",
+            error_details=ANY,
         )
 
     def test_ai_missing_fields_marks_failed(self, processor, mock_dependencies):
@@ -114,7 +121,9 @@ class TestCompanyPipeline:
 
         # Heuristics produce data but AI enrichment still required
         # Skip network: provide fetched pages directly
-        processor.company_processor._fetch_company_pages = Mock(return_value={"about": "stub content long enough"})
+        processor.company_processor._fetch_company_pages = Mock(
+            return_value={"about": "stub content long enough"}
+        )
         mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = {
             "about": "short",
             "culture": "",

@@ -247,7 +247,9 @@ If a field is unknown, use empty string, null, or false as appropriate.
 
         except Exception as e:
             logger.warning(
-                "AI extraction error (%s), falling back to heuristics", type(e).__name__, exc_info=True
+                "AI extraction error (%s), falling back to heuristics",
+                type(e).__name__,
+                exc_info=True,
             )
             return self._extract_with_heuristics(content)
 
@@ -329,8 +331,8 @@ Return ONLY JSON with keys: about, culture, mission, size, industry, founded, he
         min_sparse = text_limits.get("minSparseCompanyInfoLength", 100)
 
         about_len = len(info.get("about", "") or "")
-        total_len = about_len + len(info.get("culture", "") or "") + len(
-            info.get("mission", "") or ""
+        total_len = (
+            about_len + len(info.get("culture", "") or "") + len(info.get("mission", "") or "")
         )
 
         if about_len < min_about or total_len < min_sparse:
