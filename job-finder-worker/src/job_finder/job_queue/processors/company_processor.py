@@ -84,13 +84,42 @@ class CompanyProcessor(BaseProcessor):
 
             html_content = self._fetch_company_pages(company_name, company_website, item.id)
             if not html_content:
-                return  # status already updated to FAILED inside helper
+                # No content fetched; hand off to agent for research with probe context
+                self._spawn_agent_review(
+                    item,
+                    reason="No company pages fetched",
+                    context={
+                        "attempted_urls": self._build_pages_to_try(company_website),
+                        "company_name": company_name,
+                    },
+                )
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.NEEDS_REVIEW,
+                    "Agent review required: no company pages fetched",
+                )
+                return
 
             extracted_info = self._extract_company_info(
                 company_name, html_content, item.id, company_website
             )
             if not extracted_info:
-                return  # status already updated
+                # AI extraction failed; hand off to agent with fetched HTML
+                self._spawn_agent_review(
+                    item,
+                    reason="Company extraction failed",
+                    context={
+                        "html_samples": {k: v[:5000] for k, v in html_content.items()},
+                        "company_name": company_name,
+                        "company_website": company_website,
+                    },
+                )
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.NEEDS_REVIEW,
+                    "Agent review required: company extraction failed",
+                )
+                return
 
             # If AI provider is configured and heuristic extraction left sparse fields, try AI enrichment
             if (
@@ -109,10 +138,18 @@ class CompanyProcessor(BaseProcessor):
 
                 # Check again after AI enrichment - fail if still sparse
                 if self.company_info_fetcher._needs_ai_enrichment(extracted_info):
+                    self._spawn_agent_review(
+                        item,
+                        reason="Company fields still sparse after AI enrichment",
+                        context={
+                            "extracted_info": extracted_info,
+                            "html_samples": {k: v[:5000] for k, v in html_content.items()},
+                        },
+                    )
                     self.queue_manager.update_status(
                         item.id,
-                        QueueStatus.FAILED,
-                        "AI enrichment failed to populate required company fields",
+                        QueueStatus.NEEDS_REVIEW,
+                        "Agent review required: enrichment still sparse",
                     )
                     return
 
@@ -178,7 +215,22 @@ class CompanyProcessor(BaseProcessor):
             if job_board_url:
                 result_parts.append("job_board_spawned" if source_spawned else "job_board_exists")
 
-            self.queue_manager.update_status(item.id, QueueStatus.SUCCESS, "; ".join(result_parts))
+            self.queue_manager.update_status(
+                item.id,
+                QueueStatus.NEEDS_REVIEW,
+                "; ".join(result_parts),
+            )
+
+            # Always hand off to agent for validation/enrichment review with probe results
+            self._spawn_agent_review(
+                item,
+                reason="Company probe completed",
+                context={
+                    "extracted_info": extracted_info,
+                    "tech_stack": tech_stack,
+                    "job_board_url": job_board_url,
+                },
+            )
 
     # ============================================================
     # HELPER METHODS
@@ -226,6 +278,35 @@ class CompanyProcessor(BaseProcessor):
                 return {}
 
         return html_content
+
+    def _build_pages_to_try(self, website: str) -> list:
+        return [
+            f"{website}/about",
+            f"{website}/about-us",
+            f"{website}/company",
+            f"{website}/careers",
+            website,
+        ]
+
+    def _spawn_agent_review(self, item: JobQueueItem, reason: str, context: Dict[str, Any]) -> None:
+        """Create an agent review task carrying probe context."""
+        review_item = JobQueueItem(
+            type=QueueItemType.AGENT_REVIEW,
+            url=item.url,
+            company_name=item.company_name,
+            company_id=item.company_id,
+            source=item.source,
+            status=QueueStatus.PENDING,
+            result_message=reason,
+            scraped_data=context,
+            parent_item_id=item.id,
+            tracking_id=item.tracking_id,
+        )
+        try:
+            review_id = self.queue_manager.add_item(review_item)
+            logger.info("Spawned AGENT_REVIEW %s for %s (%s)", review_id, item.company_name, reason)
+        except Exception as exc:
+            logger.error("Failed to spawn agent review task for %s: %s", item.id, exc)
 
     def _extract_company_info(
         self, company_name: str, html_content: Dict[str, str], item_id: str, company_website: str

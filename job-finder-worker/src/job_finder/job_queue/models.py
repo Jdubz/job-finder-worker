@@ -26,6 +26,7 @@ class QueueItemType(str, Enum):
     SCRAPE = "scrape"
     SOURCE_DISCOVERY = "source_discovery"
     SCRAPE_SOURCE = "scrape_source"  # NEW: For automated source scraping
+    AGENT_REVIEW = "agent_review"  # New: agent-only review/recovery task
 
 
 class SourceStatus(str, Enum):
@@ -90,6 +91,7 @@ class QueueStatus(str, Enum):
     SKIPPED = "skipped"
     FAILED = "failed"
     SUCCESS = "success"
+    NEEDS_REVIEW = "needs_review"  # Requires agent intervention
 
 
 # QueueSource type - matches TypeScript literal type

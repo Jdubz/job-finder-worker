@@ -111,10 +111,15 @@ class SourceProcessor(BaseProcessor):
                 source_config, validation_meta = discovery_result, {}
 
             if not source_config:
+                self._spawn_agent_review(
+                    item,
+                    reason="Source discovery produced no config",
+                    context={"url": url, "type_hint": config.type_hint},
+                )
                 self.queue_manager.update_status(
                     item.id,
-                    QueueStatus.FAILED,
-                    "Discovery failed - could not generate valid config",
+                    QueueStatus.NEEDS_REVIEW,
+                    "Agent review required: discovery produced no config",
                     error_details=f"URL: {url}",
                 )
                 return
@@ -214,15 +219,28 @@ class SourceProcessor(BaseProcessor):
             # Update queue item with success
             self.queue_manager.update_status(
                 item.id,
-                QueueStatus.SUCCESS,
+                QueueStatus.NEEDS_REVIEW,
                 source_id,
                 scraped_data={
                     "source_id": source_id,
                     "source_type": source_type,
                     "disabled_notes": disabled_notes or "",
                 },
+                result_message="Agent review required: source discovery probe completed",
             )
-            logger.info(f"SOURCE_DISCOVERY complete: Created source {source_id}")
+
+            # Always hand off to agent for validation/verification with probe context
+            self._spawn_agent_review(
+                item,
+                reason="Source discovery probe completed",
+                context={
+                    "source_id": source_id,
+                    "source_type": source_type,
+                    "config": source_config,
+                    "validation_meta": validation_meta,
+                    "needs_api_key": needs_api_key,
+                },
+            )
 
         except Exception as e:
             logger.error(f"Error in SOURCE_DISCOVERY: {e}")
@@ -418,14 +436,19 @@ class SourceProcessor(BaseProcessor):
                 )
                 self.queue_manager.update_status(
                     item.id,
-                    QueueStatus.FAILED,
-                    f"Scraping failed: {str(scrape_error)}",
+                    QueueStatus.NEEDS_REVIEW,
+                    f"Agent review required: scraping failed: {str(scrape_error)}",
                     error_details=traceback.format_exc(),
+                )
+                self._spawn_agent_review(
+                    item,
+                    reason="Source scrape failed",
+                    context={"source_id": source.get("id"), "error": str(scrape_error)},
                 )
 
         except Exception as e:
             logger.error(f"Error in SCRAPE_SOURCE: {e}")
-            raise
+                raise
 
     # ============================================================
     # HELPERS
@@ -470,3 +493,22 @@ class SourceProcessor(BaseProcessor):
 
         logger.info("Self-heal could not produce a better config for %s", url)
         return None
+
+    def _spawn_agent_review(self, item: JobQueueItem, reason: str, context: dict) -> None:
+        review_item = JobQueueItem(
+            type=QueueItemType.AGENT_REVIEW,
+            url=item.url,
+            company_name=item.company_name,
+            company_id=item.company_id,
+            source=item.source,
+            status=QueueStatus.PENDING,
+            result_message=reason,
+            scraped_data=context,
+            parent_item_id=item.id,
+            tracking_id=item.tracking_id,
+        )
+        try:
+            review_id = self.queue_manager.add_item(review_item)
+            logger.info("Spawned AGENT_REVIEW %s for %s (%s)", review_id, item.url or item.id, reason)
+        except Exception as exc:
+            logger.error("Failed to spawn agent review task for %s: %s", item.id, exc)
