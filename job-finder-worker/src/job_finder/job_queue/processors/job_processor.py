@@ -519,20 +519,6 @@ class JobProcessor(BaseProcessor):
 
         pipeline_state = item.pipeline_state or {}
 
-        def _requeue_wait(company_id: str) -> None:
-            """Requeue this job to wait for company data to be populated."""
-            updated_state = {
-                **pipeline_state,
-                "job_data": job_data,
-                "waiting_for_company_id": company_id,
-            }
-            self.queue_manager.requeue_with_state(item.id, updated_state)
-            logger.info(
-                "JOB_ANALYZE: Waiting for company data %s (id=%s)",
-                company_name_clean,
-                company_id,
-            )
-
         # Get or create company record
         company = self.companies_manager.get_company(company_name_clean)
 
@@ -548,19 +534,16 @@ class JobProcessor(BaseProcessor):
         if listing_id and company_id:
             self.job_listing_storage.update_company_id(listing_id, company_id)
 
-        # Check if company has sufficient data for job analysis
-        if self.companies_manager.has_good_company_data(company):
-            job_data["company_id"] = company_id
-            job_data["companyId"] = company_id
-            job_data["company_info"] = build_company_info_string(company)
-            job_data["company_data"] = company
-            return True
+        # Company exists - proceed with job analysis using available data
+        # Spawn enrichment task in background if data is sparse (fire and forget)
+        if not self.companies_manager.has_good_company_data(company):
+            self._try_spawn_company_task(item, company_id, company_name_clean, company_website)
 
-        # Company data is incomplete - spawn analysis task (fire and forget), then wait
-        # Task may fail to spawn (duplicate, blocked) - that's fine, we just wait
-        self._try_spawn_company_task(item, company_id, company_name_clean, company_website)
-        _requeue_wait(company_id)
-        return False
+        job_data["company_id"] = company_id
+        job_data["companyId"] = company_id
+        job_data["company_info"] = build_company_info_string(company)
+        job_data["company_data"] = company
+        return True
 
     def _try_spawn_company_task(
         self,
