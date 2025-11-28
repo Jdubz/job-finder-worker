@@ -380,6 +380,8 @@ Respond with JSON only.
             "size": "",
             "industry": "",
             "founded": "",
+            "timezoneOffset": None,
+            "employeeCount": None,
         }
 
         # Try to find common patterns
@@ -427,5 +429,13 @@ Respond with JSON only.
                 result["employeeCount"] = int(employee_match.group(2))
             except ValueError:
                 result["employeeCount"] = None
+
+        # Timezone offset detection (simple UTC±N parsing)
+        tz_match = re.search(r"utc\s*([+-]?\d{1,2})", content_lower)
+        if tz_match:
+            try:
+                result["timezoneOffset"] = int(tz_match.group(1))
+            except ValueError:
+                result["timezoneOffset"] = None
 
         return result

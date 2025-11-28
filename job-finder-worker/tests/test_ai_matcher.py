@@ -437,7 +437,7 @@ class TestAnalyzeJob:
         mock_fresh_adj.return_value = 0
         mock_size_detect.return_value = "medium"
         mock_tz_detect.return_value = -8
-        mock_size_adj.return_value = (0, "Medium company")
+        mock_size_adj.return_value = (5, "Large company bonus")
         mock_role_adj.return_value = (0, "Neutral role")
 
         mock_provider.generate.side_effect = [
