@@ -1,0 +1,142 @@
+# Development docker-compose - mirrors production as closely as possible
+#
+# USAGE:
+#   1. Clone prod DB:    make dev-clone-db
+#   2. Start containers: make dev-up
+#   3. Watch logs:       make dev-logs
+#   4. Run validation:   make dev-validate
+#   5. Stop containers:  make dev-down
+#
+# HOT RELOAD:
+#   - Use PROFILE=hotreload for live source code mounting
+#   - Changes to TypeScript files trigger automatic restart via nodemon
+#
+# DIRECTORY STRUCTURE (all gitignored):
+#   .dev/
+#   ├── data/              # SQLite database (cloned from prod)
+#   │   └── jobfinder.db
+#   ├── artifacts/         # Generated PDFs and assets
+#   ├── logs/              # Container logs
+#   └── output/            # Validation test output
+
+version: "3.9"
+name: job-finder-api-dev
+
+x-api-env: &api-env
+  NODE_ENV: production
+  PORT: 8080
+  DATABASE_PATH: /data/sqlite/jobfinder.db
+  JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
+  GENERATOR_ARTIFACTS_DIR: /data/artifacts
+  GENERATOR_ARTIFACTS_PUBLIC_BASE: ${GENERATOR_ARTIFACTS_PUBLIC_BASE:-http://localhost:${API_PORT:-18080}/api/generator/artifacts}
+  GENERATOR_ASSETS_DIR: /data/artifacts/assets
+
+services:
+  sqlite-migrator:
+    image: ghcr.io/jdubz/job-finder-worker/api:latest
+    env_file:
+      - .env.dev
+    environment:
+      <<: *api-env
+    command: ["node", "dist/scripts/migrate.js"]
+    volumes:
+      - type: bind
+        source: ./.dev/data
+        target: /data/sqlite
+    profiles: ["prod", "hotreload"]
+
+  api:
+    image: ghcr.io/jdubz/job-finder-worker/api:latest
+    container_name: job-finder-api-dev
+    env_file:
+      - .env.dev
+    environment:
+      <<: *api-env
+    ports:
+      - "${API_PORT:-18080}:8080"
+    volumes:
+      - type: bind
+        source: ./.dev/data
+        target: /data/sqlite
+      - type: bind
+        source: ./.dev/artifacts
+        target: /data/artifacts
+      - type: bind
+        source: ./.dev/logs
+        target: /srv/job-finder/logs
+      # Codex CLI auth (ChatGPT Pro session tokens)
+      # Mount to /home/node/.codex - container runs as node user (uid 1000)
+      # to prevent session files from being locked by root
+      - type: bind
+        source: ${HOME}/.codex
+        target: /home/node/.codex
+    extra_hosts:
+      # Force IPv4 for ChatGPT endpoints (IPv6 sometimes blocked in local Docker)
+      - "chatgpt.com:104.18.32.47"
+      - "www.chatgpt.com:104.18.32.47"
+    depends_on:
+      sqlite-migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    profiles: ["prod"]
+
+  api-hotreload:
+    build:
+      context: ../..
+      dockerfile: job-finder-BE/server/Dockerfile
+      target: base
+    container_name: job-finder-api-dev-hotreload
+    working_dir: /app
+    command: npm run dev
+    env_file:
+      - .env.dev
+    environment:
+      <<: *api-env
+      NODE_ENV: development
+    ports:
+      - "${API_PORT:-18080}:8080"
+    volumes:
+      # Source code - mounted for hot reload
+      - type: bind
+        source: ./src
+        target: /app/src
+      - type: bind
+        source: ../../shared
+        target: /app/shared
+      - type: bind
+        source: ./.dev/data
+        target: /data/sqlite
+      - type: bind
+        source: ./.dev/artifacts
+        target: /data/artifacts
+      - type: bind
+        source: ./.dev/logs
+        target: /srv/job-finder/logs
+      # Codex CLI auth (ChatGPT Pro session tokens)
+      # Mount to /home/node/.codex - container runs as node user (uid 1000)
+      # to prevent session files from being locked by root
+      - type: bind
+        source: ${HOME}/.codex
+        target: /home/node/.codex
+    extra_hosts:
+      - "chatgpt.com:104.18.32.47"
+      - "www.chatgpt.com:104.18.32.47"
+    depends_on:
+      sqlite-migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    profiles: ["hotreload"]
+
+networks:
+  default:
+    name: job-finder-api-dev

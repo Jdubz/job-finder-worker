@@ -25,22 +25,35 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies (cron for scheduling, procps for pgrep, curl for healthcheck)
+# Install runtime dependencies (cron for scheduling, procps for pgrep, curl for healthcheck, gosu for privilege dropping)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cron \
     procps \
     curl \
     ca-certificates \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /root/.local
+# Create non-root user matching API container (node user, uid 1000)
+# This ensures codex session files have consistent ownership across containers
+RUN groupadd --gid 1000 node \
+    && useradd --uid 1000 --gid node --shell /bin/bash --create-home node
+
+# Codex config directory (mount from host for auth credentials)
+ENV CODEX_HOME=/home/node/.codex
+
+# Copy Python packages from builder to node user's home
+COPY --from=builder /root/.local /home/node/.local
 
 # Copy codex CLI + minimal node runtime (no npm in final image)
 COPY --from=codex-builder /usr/local/bin/node /usr/local/bin/node
 COPY --from=codex-builder /usr/local/bin/codex /usr/local/bin/codex
 COPY --from=codex-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=codex-builder /usr/local/lib/node_modules/@openai/codex/vendor /usr/local/vendor
+
+# Create directories for codex and data with proper ownership
+RUN mkdir -p /home/node/.codex /data/sqlite \
+    && chown -R node:node /home/node/.codex /home/node/.local /data
 
 # Copy application code
 COPY src/ ./src/
@@ -59,12 +72,13 @@ RUN chmod 0644 /etc/cron.d/job-finder-cron && \
     chmod +x /app/entrypoint.sh && \
     chmod +x /app/docker/run-now.sh
 
-# Make PATH include user-installed packages
-ENV PATH=/root/.local/bin:$PATH
+# Make PATH include user-installed packages (node user)
+ENV PATH=/home/node/.local/bin:$PATH
 ENV PYTHONPATH=/app/src:/app
 
-# Create data and logs directories
-RUN mkdir -p /app/data /app/logs
+# Create data and logs directories with proper ownership
+RUN mkdir -p /app/data /app/logs \
+    && chown -R node:node /app
 
 # Healthcheck - check Flask worker health endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
