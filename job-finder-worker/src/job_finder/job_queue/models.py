@@ -28,7 +28,6 @@ class QueueItemType(str, Enum):
     SCRAPE_SOURCE = "scrape_source"  # NEW: For automated source scraping
 
 
-
 class SourceStatus(str, Enum):
     """
     Status for job source records in SQLite.

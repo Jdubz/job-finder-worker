@@ -7,12 +7,10 @@ fetch → extract → analyze → save (and optionally spawn source discovery).
 import logging
 import os
 import re
-import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
 from job_finder.company_info_fetcher import CompanyInfoFetcher
-from job_finder.exceptions import QueueProcessingError
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.settings import get_text_limits
