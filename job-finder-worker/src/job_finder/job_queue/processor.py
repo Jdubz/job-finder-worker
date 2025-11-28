@@ -86,6 +86,7 @@ class QueueItemProcessor:
             queue_manager=queue_manager,
             config_loader=config_loader,
             companies_manager=companies_manager,
+            sources_manager=sources_manager,
             company_info_fetcher=company_info_fetcher,
         )
 
@@ -133,13 +134,7 @@ class QueueItemProcessor:
             # Note: Job deduplication is handled in scraper_intake (for scraped jobs) and
             # get_or_create_listing (for direct submissions). No duplicate check needed here.
             if item.type == QueueItemType.COMPANY:
-                # All company items must use granular pipeline
-                if not item.company_sub_task:
-                    raise QueueProcessingError(
-                        "Company items must have company_sub_task set. "
-                        "Use submit_company() which creates granular pipeline items."
-                    )
-                self.company_processor.process_granular_company(item)
+                self.company_processor.process_company(item)
             elif item.type == QueueItemType.JOB:
                 # Use decision tree routing based on pipeline_state
                 self.job_processor.process_job(item)

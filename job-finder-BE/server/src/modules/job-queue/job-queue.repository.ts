@@ -5,7 +5,6 @@ import type {
   QueueStats,
   QueueStatus,
   QueueSource,
-  CompanySubTask,
   SourceTier
 } from '@shared/types'
 import { getDb } from '../../db/sqlite'
@@ -27,7 +26,6 @@ type QueueItemRow = {
   source_discovery_config: string | null
   pipeline_state: string | null
   parent_item_id: string | null
-  company_sub_task: CompanySubTask | null
   source_id: string | null
   source_type: string | null
   source_config: string | null
@@ -99,7 +97,6 @@ const buildQueueItem = (row: QueueItemRow): QueueItem => {
     source_discovery_config: parseJson(row.source_discovery_config) ?? undefined,
     pipeline_state: parseJson(row.pipeline_state) ?? undefined,
     parent_item_id: row.parent_item_id ?? undefined,
-    company_sub_task: row.company_sub_task ?? undefined,
     source_id: row.source_id ?? undefined,
     source_type: row.source_type ?? undefined,
     source_config: parseJson(row.source_config) ?? undefined,
@@ -132,14 +129,14 @@ export class JobQueueRepository {
         id, type, status, url, company_name, source,
         submitted_by, company_id, metadata, scrape_config, scraped_data,
         source_discovery_config, pipeline_state, parent_item_id,
-        company_sub_task, source_id, source_type, source_config, source_tier,
+        source_id, source_type, source_config, source_tier,
         tracking_id, created_at, updated_at, processed_at, completed_at,
         result_message, error_details
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?
       )
@@ -160,7 +157,6 @@ export class JobQueueRepository {
       serializeJson(data.source_discovery_config),
       serializeJson(data.pipeline_state),
       data.parent_item_id ?? null,
-      data.company_sub_task ?? null,
       data.source_id ?? null,
       data.source_type ?? null,
       serializeJson(data.source_config),
@@ -260,7 +256,6 @@ export class JobQueueRepository {
       assign('source_discovery_config', serializeJson(updates.source_discovery_config))
     if (updates.pipeline_state !== undefined) assign('pipeline_state', serializeJson(updates.pipeline_state))
     if (updates.parent_item_id !== undefined) assign('parent_item_id', updates.parent_item_id ?? null)
-    if (updates.company_sub_task !== undefined) assign('company_sub_task', updates.company_sub_task ?? null)
     if (updates.company_id !== undefined) assign('company_id', updates.company_id ?? null)
     if (updates.submitted_by !== undefined) assign('submitted_by', updates.submitted_by ?? null)
     if (updates.source_id !== undefined) assign('source_id', updates.source_id ?? null)

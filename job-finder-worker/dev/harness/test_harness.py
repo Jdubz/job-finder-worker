@@ -152,8 +152,8 @@ def submit_company_item(
         """
         INSERT INTO job_queue (
             id, type, status, url, company_name, source, tracking_id,
-            submitted_by, metadata, company_sub_task, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            submitted_by, metadata, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
             item_id,
@@ -165,7 +165,6 @@ def submit_company_item(
             tracking_id,
             "test_harness",
             json.dumps(metadata) if metadata else None,
-            "fetch",
             now,
             now,
         ),

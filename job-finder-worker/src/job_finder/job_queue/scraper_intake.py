@@ -361,9 +361,6 @@ class ScraperIntake:
                     )
                     return None
 
-            # Import CompanySubTask
-            from job_finder.job_queue.models import CompanySubTask
-
             company_id = None
             if self.companies_manager:
                 stub = self.companies_manager.create_company_stub(cleaned_name, normalized_url)
@@ -372,23 +369,20 @@ class ScraperIntake:
             # Generate tracking_id for this root company (all spawned items will inherit it)
             tracking_id = str(uuid.uuid4())
 
-            # Create granular pipeline item starting with FETCH
+            # Create single-pass company item
             queue_item = JobQueueItem(
                 type=QueueItemType.COMPANY,
                 url=normalized_url,
                 company_name=cleaned_name,
                 company_id=company_id,
                 source=source,
-                company_sub_task=CompanySubTask.FETCH,
                 tracking_id=tracking_id,  # Root tracking ID
-                ancestry_chain=[],  # Root has no ancestors
-                spawn_depth=0,  # Root starts at depth 0
             )
 
             # Add to queue
             doc_id = self.queue_manager.add_item(queue_item)
             logger.info(
-                f"Submitted company to granular pipeline: {cleaned_name} (ID: {doc_id}, tracking_id: {tracking_id})"
+                f"Submitted company to single-pass pipeline: {cleaned_name} (ID: {doc_id}, tracking_id: {tracking_id})"
             )
             return doc_id
 
