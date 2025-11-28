@@ -211,12 +211,12 @@ def test_handle_failure_max_retries(processor, mock_managers):
 
 
 def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_job_item):
-    """Job analyze should spawn company pipeline when company data is incomplete."""
+    """Job analyze should spawn company enrichment in background but proceed with analysis."""
     # Company exists but has incomplete data (no about/culture)
     incomplete_company = {
         "id": "comp-incomplete",
         "name": "Spawn Co",
-        "about": "",  # Empty - triggers analysis
+        "about": "",  # Empty - triggers background enrichment
         "culture": "",
     }
     mock_managers["companies_manager"].get_company.return_value = incomplete_company
@@ -232,17 +232,28 @@ def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_
         "filter_result": {"passed": True},
     }
 
-    processor.job_processor.ai_matcher.analyze_job = MagicMock()
+    class DummyResult:
+        match_score = 85
+        application_priority = "Medium"
+
+        def to_dict(self):
+            return {
+                "match_score": self.match_score,
+                "application_priority": self.application_priority,
+            }
+
+    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
 
     processor.job_processor._do_job_analyze(sample_job_item)
 
-    # Should enqueue company task and requeue job to wait for data
+    # Should spawn company task in background but proceed with job analysis
     assert mock_managers["queue_manager"].spawn_item_safely.called
-    mock_managers["queue_manager"].requeue_with_state.assert_called()
-    # requeue_with_state now takes only (item_id, pipeline_state)
-    item_id, updated_state = mock_managers["queue_manager"].requeue_with_state.call_args[0]
-    assert "waiting_for_company_id" in updated_state
-    processor.job_processor.ai_matcher.analyze_job.assert_not_called()
+    # Should proceed with analysis - no waiting_for_company_id in final state
+    processor.job_processor.ai_matcher.analyze_job.assert_called()
+    # Should proceed to 'save' stage, so requeue is expected
+    mock_managers["queue_manager"].requeue_with_state.assert_called_once()
+    _, updated_state = mock_managers["queue_manager"].requeue_with_state.call_args[0]
+    assert "waiting_for_company_id" not in updated_state
 
 
 def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sample_job_item):
