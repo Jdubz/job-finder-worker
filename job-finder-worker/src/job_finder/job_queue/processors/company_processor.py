@@ -86,7 +86,9 @@ class CompanyProcessor(BaseProcessor):
             if not html_content:
                 return  # status already updated to FAILED inside helper
 
-            extracted_info = self._extract_company_info(company_name, html_content, item.id)
+            extracted_info = self._extract_company_info(
+                company_name, html_content, item.id, company_website
+            )
             if not extracted_info:
                 return  # status already updated
 
@@ -226,11 +228,11 @@ class CompanyProcessor(BaseProcessor):
         return html_content
 
     def _extract_company_info(
-        self, company_name: str, html_content: Dict[str, str], item_id: str
+        self, company_name: str, html_content: Dict[str, str], item_id: str, company_website: str
     ) -> Dict[str, Any]:
         combined_content = " ".join(html_content.values())
         extracted_info = self.company_info_fetcher._extract_company_info(
-            combined_content, company_name
+            combined_content, company_name, company_website
         )
 
         if not extracted_info:

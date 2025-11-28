@@ -36,7 +36,7 @@ class DummyMatcher:
     def __init__(self, score: int = 88):
         self.min_match_score = score
 
-    def analyze_job(self, job: dict) -> JobMatchResult:
+    def analyze_job(self, job: dict, **_kwargs) -> JobMatchResult:
         return JobMatchResult(
             job_title=job.get("title", "Unknown"),
             job_company=job.get("company", "Unknown"),

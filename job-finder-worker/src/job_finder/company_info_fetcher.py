@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from typing import Any, Dict, Optional, cast
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -31,6 +32,21 @@ class CompanyInfoFetcher:
         self.session.headers.update(
             {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         )
+
+        # Known job-board domains; used to detect when we need to look up the true company site
+        self.job_board_domains = [
+            "greenhouse.io",
+            "boards.greenhouse.io",
+            "lever.co",
+            "workday",
+            "myworkdayjobs.com",
+            "smartrecruiters.com",
+            "ashbyhq.com",
+            "jobs.ashbyhq.com",
+            "breezy.hr",
+            "applytojob.com",
+            "jobvite.com",
+        ]
 
     def fetch_company_info(self, company_name: str, company_website: str) -> Dict[str, Any]:
         """
@@ -102,12 +118,12 @@ class CompanyInfoFetcher:
                         continue
 
             if content:
-                scraped_info = self._extract_company_info(content, company_name)
+                scraped_info = self._extract_company_info(content, company_name, company_website)
 
             # Always run AI web search (when available) to widen coverage beyond the career site
             if self.ai_provider:
                 logger.info("Running AI web search for %s to enrich company data", company_display)
-                search_info = self._search_company_web(company_name) or {}
+                search_info = self._search_company_web(company_name, company_website) or {}
 
             # Merge scraped + searched info, prefer non-empty factual fields, carry sources if present
             merged = self._merge_company_info(scraped_info, search_info)
@@ -179,17 +195,22 @@ class CompanyInfoFetcher:
             logger.debug(f"Unexpected error fetching {url} ({type(e).__name__}): {e}")
             return None
 
-    def _extract_company_info(self, content: str, company_name: str) -> Dict[str, Any]:
+    def _extract_company_info(
+        self, content: str, company_name: str, company_website: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Extract company info using heuristics → AI → web-search (gap fill)."""
+
+        # If the starting URL is a job board, force enrichment so we can hunt for the real site
+        force_enrichment = self._is_job_board_url(company_website)
         result: Dict[str, Any] = self._extract_with_heuristics(content)
 
-        if self.ai_provider and self._needs_ai_enrichment(result):
+        if self.ai_provider and (self._needs_ai_enrichment(result) or force_enrichment):
             ai_result = self._extract_with_ai(content, company_name)
             if ai_result:
                 result = self._merge_company_info(result, ai_result)
 
-        if self.ai_provider and self._needs_ai_enrichment(result):
-            search_result = self._search_company_web(company_name)
+        if self.ai_provider and (self._needs_ai_enrichment(result) or force_enrichment):
+            search_result = self._search_company_web(company_name, company_website)
             if search_result:
                 result = self._merge_company_info(result, search_result)
 
@@ -206,7 +227,7 @@ class CompanyInfoFetcher:
 Company Website Content:
 {truncated_content}
 
-Return JSON with these keys:
+Return JSON with these keys (fill every field you can; leave empty string/null/false only when truly unknown):
 - about: 2-3 sentence summary
 - culture: 1-2 sentences on culture/values
 - mission: mission statement if present, else ""
@@ -222,6 +243,7 @@ Return JSON with these keys:
 - products: list (<=3) of flagship products/services
 - jobBoardUrl: careers/board URL if clearly present
 - sources: array (may be empty)
+ - website: the primary company homepage (NOT a job board/careers host); omit tracking params
 
 If a field is unknown, use empty string, null, or false as appropriate.
 """
@@ -253,13 +275,16 @@ If a field is unknown, use empty string, null, or false as appropriate.
             )
             return self._extract_with_heuristics(content)
 
-    def _search_company_web(self, company_name: str) -> Optional[Dict[str, str]]:
-        """Use AI + web search to fill missing company fields."""
+    def _search_company_web(
+        self, company_name: str, company_website: Optional[str] = None
+    ) -> Optional[Dict[str, str]]:
+        """Use AI + web search to fill missing company fields (including real homepage)."""
         try:
             prompt = f"""
-Use web search to gather concise, factual info about {company_name}. You have browsing tools.
+Use web search to gather concise, factual info about {company_name}.
+Goal: find the company's primary homepage (not a job board) and all profile fields. If starting URL is a job board ({company_website}), override it with the real website.
 DO NOT GUESS. If unknown, use "" or null.
-Return ONLY JSON with keys: about, culture, mission, size, industry, founded, headquarters, employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, products, sources, jobBoardUrl.
+Return ONLY JSON with keys: website, about, culture, mission, size, industry, founded, headquarters, employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, products, sources, jobBoardUrl.
 """
             response = self.ai_provider.generate(prompt, max_tokens=800, temperature=0.2)
 
@@ -271,6 +296,7 @@ Return ONLY JSON with keys: about, culture, mission, size, industry, founded, he
 
             data = cast(Dict[str, Any], json.loads(response_clean))
             for key in [
+                "website",
                 "about",
                 "culture",
                 "mission",
@@ -291,6 +317,8 @@ Return ONLY JSON with keys: about, culture, mission, size, industry, founded, he
                     default = None
                 elif key == "products":
                     default = []
+                elif key == "website":
+                    default = ""
                 else:
                     default = ""
                 data.setdefault(key, default)
@@ -306,6 +334,13 @@ Return ONLY JSON with keys: about, culture, mission, size, industry, founded, he
         """Combine two info dicts, preferring existing/non-empty values in primary."""
         merged = dict(primary)
         for key, val in secondary.items():
+            if key == "website":
+                # Replace job-board URLs with the primary website when available
+                if val and (
+                    not merged.get("website") or self._is_job_board_url(merged.get("website", ""))
+                ):
+                    merged["website"] = val
+                continue
             if key == "sources":
                 merged["sources"] = val or merged.get("sources") or []
                 continue
@@ -455,3 +490,13 @@ Return ONLY JSON with keys: about, culture, mission, size, industry, founded, he
                 result["timezoneOffset"] = None
 
         return result
+
+    def _is_job_board_url(self, url: Optional[str]) -> bool:
+        """Check if a URL points to a known job board/careers host."""
+        if not url:
+            return False
+        try:
+            netloc = urlparse(url.lower()).netloc
+        except Exception:
+            netloc = url.lower()
+        return any(netloc.endswith(domain) for domain in self.job_board_domains)

@@ -95,7 +95,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
     class DummyMatcher:
         min_match_score = 50
 
-        def analyze_job(self, job: dict) -> JobMatchResult:
+        def analyze_job(self, job: dict, **_kwargs) -> JobMatchResult:
             return JobMatchResult(
                 job_title=job.get("title", "Unknown"),
                 job_company=job.get("company", ""),
