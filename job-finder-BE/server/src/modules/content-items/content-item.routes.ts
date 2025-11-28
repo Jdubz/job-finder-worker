@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express'
+import { Router, type RequestHandler, type Response } from 'express'
 import { z } from 'zod'
 import { ApiErrorCode } from '@shared/types'
 import type {
@@ -79,9 +79,18 @@ function buildTree(items: ContentItem[]): ContentItemNode[] {
   return roots
 }
 
-export function buildContentItemRouter() {
+interface ContentItemRouterOptions {
+  /**
+   * Middleware applied to mutating routes (POST/PATCH/DELETE/reorder). Use this
+   * to enforce authentication/authorization while keeping GET public.
+   */
+  mutationsMiddleware?: RequestHandler[]
+}
+
+export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
   const router = Router()
   const repo = new ContentItemRepository()
+  const mutationsMiddleware = options.mutationsMiddleware ?? []
 
   router.get(
     '/',
@@ -123,6 +132,7 @@ export function buildContentItemRouter() {
 
   router.post(
     '/',
+    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       const payload = createRequestSchema.parse(req.body) as CreateContentItemRequest
       const item = repo.create({ ...payload.itemData, userEmail: payload.userEmail })
@@ -133,6 +143,7 @@ export function buildContentItemRouter() {
 
   router.patch(
     '/:id',
+    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
         const payload = updateRequestSchema.parse(req.body) as UpdateContentItemRequest
@@ -148,6 +159,7 @@ export function buildContentItemRouter() {
 
   router.delete(
     '/:id',
+    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
         repo.delete(req.params.id)
@@ -166,6 +178,7 @@ export function buildContentItemRouter() {
 
   router.post(
     '/:id/reorder',
+    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
         const payload = reorderRequestSchema.parse(req.body)

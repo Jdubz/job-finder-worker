@@ -106,9 +106,12 @@ export function buildApp() {
   // Auth/session utilities
   app.use('/api/auth', buildAuthRouter())
 
+  // Content items should be publicly readable. Mutations require admin role.
+  const contentItemMutationGuards = [verifyFirebaseAuth, requireRole('admin')] as const
+  app.use('/api/content-items', buildContentItemRouter({ mutationsMiddleware: contentItemMutationGuards }))
+
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)
-  app.use('/api/content-items', buildContentItemRouter())
   app.use('/api/queue', buildJobQueueRouter())
   app.use('/api/job-matches', buildJobMatchRouter())
   app.use('/api/job-listings', buildJobListingRouter())
