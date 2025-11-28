@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { parse as parseCookie } from 'cookie'
 import { env } from '../config/env'
+import { DEV_TOKENS } from '../config/dev-tokens'
 import { UserRepository, type UserRole } from '../modules/users/user.repository'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError } from './api-error'
@@ -9,29 +10,9 @@ import { SESSION_COOKIE } from '../routes/auth.routes'
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
 const IS_TEST = env.NODE_ENV === 'test'
 
-// Dev tokens for local development and tests without session cookies
-const DEV_TOKENS: Record<string, { email: string; roles: UserRole[]; name: string }> = {
-  'dev-admin-token': {
-    email: 'dev-admin@jobfinder.dev',
-    roles: ['admin', 'viewer'],
-    name: 'Dev Admin',
-  },
-  'dev-viewer-token': {
-    email: 'dev-viewer@jobfinder.dev',
-    roles: ['viewer'],
-    name: 'Dev Viewer',
-  },
-  'bypass-token': {
-    email: 'test@jobfinder.dev',
-    roles: ['admin', 'viewer'],
-    name: 'Test User',
-  },
-}
-
 export interface AuthenticatedUser {
   uid: string
   email: string
-  emailVerified: boolean
   name?: string
   picture?: string
   roles: UserRole[]
@@ -86,7 +67,6 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
       const user: AuthenticatedUser = {
         uid: `dev-${devConfig.email}`,
         email: devConfig.email,
-        emailVerified: true,
         name: devConfig.name,
         roles: devConfig.roles,
       }
@@ -128,7 +108,6 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   const user: AuthenticatedUser = {
     uid: sessionUser.id,
     email: sessionUser.email,
-    emailVerified: true,
     name: sessionUser.displayName,
     picture: sessionUser.avatarUrl,
     roles: sessionUser.roles.length ? sessionUser.roles : ['viewer'],

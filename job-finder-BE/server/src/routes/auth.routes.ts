@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { verifyGoogleIdToken } from '../config/google-oauth'
 import { success } from '../utils/api-response'
 import { env } from '../config/env'
+import { DEV_TOKENS } from '../config/dev-tokens'
 import { UserRepository } from '../modules/users/user.repository'
 import { logger } from '../logger'
 import { ApiErrorCode } from '@shared/types'
@@ -13,20 +14,6 @@ import { ApiHttpError } from '../middleware/api-error'
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
 const SESSION_TTL_DAYS = env.SESSION_TTL_DAYS
 export const SESSION_COOKIE = 'jf_session'
-
-// Dev tokens for local development without Google OAuth
-const DEV_TOKENS: Record<string, { email: string; roles: string[]; name: string }> = {
-  'dev-admin-token': {
-    email: 'dev-admin@jobfinder.dev',
-    roles: ['admin', 'viewer'],
-    name: 'Dev Admin',
-  },
-  'dev-viewer-token': {
-    email: 'dev-viewer@jobfinder.dev',
-    roles: ['viewer'],
-    name: 'Dev Viewer',
-  },
-}
 
 const userRepository = new UserRepository()
 
