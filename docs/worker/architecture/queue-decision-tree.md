@@ -347,7 +347,7 @@ Sources are discovered either:
 ### SOURCE_DISCOVERY Task
 **Input**: `source_discovery_config` with:
 - `url`: URL to analyze
-- `type_hint`: `'auto'`, `'greenhouse'`, `'workday'`, `'rss'`, `'generic'`
+- `type_hint`: `'auto'`, `'greenhouse'`, `'ashby'`, `'workday'`, `'rss'`, `'generic'`
 - `company_id`: Optional company reference
 - `company_name`: Optional company name
 - `auto_enable`: Whether to enable if high confidence (default: true)

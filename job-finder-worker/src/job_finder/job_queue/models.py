@@ -148,6 +148,7 @@ class SourceTypeHint(str, Enum):
 
     AUTO = "auto"
     GREENHOUSE = "greenhouse"
+    ASHBY = "ashby"
     WORKDAY = "workday"
     RSS = "rss"
     GENERIC = "generic"
@@ -161,7 +162,7 @@ class SourceDiscoveryConfig(BaseModel):
 
     Flow:
     1. job-finder-FE submits URL for discovery
-    2. Job-finder detects source type (greenhouse, workday, rss, generic)
+    2. Job-finder detects source type (greenhouse, ashby, workday, rss, generic)
     3. For known types: validate and create config
     4. For generic: use AI selector discovery
     5. Test scrape to validate
@@ -250,7 +251,8 @@ class JobQueueItem(BaseModel):
         description="Reference to job-sources table entry (for SCRAPE_SOURCE type)",
     )
     source_type: Optional[str] = Field(
-        default=None, description="Type of source: greenhouse, rss, workday, lever, api, scraper"
+        default=None,
+        description="Generic scraping method: api, rss, html (vendor auto-detected from config)",
     )
     source_config: Optional[Dict[str, Any]] = Field(
         default=None, description="Source-specific configuration (selectors, API keys, etc.)"

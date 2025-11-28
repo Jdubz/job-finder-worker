@@ -81,7 +81,7 @@ export interface ScrapeConfig {
 /**
  * Source type hint for discovery
  */
-export type SourceTypeHint = "auto" | "greenhouse" | "workday" | "rss" | "generic"
+export type SourceTypeHint = "auto" | "greenhouse" | "ashby" | "workday" | "rss" | "generic"
 
 /**
  * Source priority tier for scheduling.
@@ -95,7 +95,7 @@ export type SourceTier = "S" | "A" | "B" | "C" | "D"
  *
  * Flow:
  * 1. job-finder-FE submits URL for discovery
- * 2. Job-finder detects source type (greenhouse, workday, rss, generic)
+ * 2. Job-finder detects source type (greenhouse, ashby, workday, rss, generic)
  * 3. For known types: validate and create config
  * 4. For generic: use AI selector discovery
  * 5. Test scrape to validate
@@ -133,7 +133,7 @@ export interface QueueItem {
   scraped_data?: Record<string, any> | null // Pre-scraped job or company data
   source_discovery_config?: SourceDiscoveryConfig | null // Configuration for source discovery (only used when type is "source_discovery")
   source_id?: string | null // job_sources row reference when spawned from source scheduler
-  source_type?: string | null // greenhouse, workday, rss, lever, api, scraper
+  source_type?: string | null // Generic scraping method: "api" | "rss" | "html" (vendor auto-detected from config)
   source_config?: Record<string, unknown> | null // Serialized source configuration blob
   source_tier?: SourceTier | null // Priority tier for scheduling
 
@@ -262,5 +262,5 @@ export function isQueueItemType(type: string): type is QueueItemType {
 }
 
 export function isSourceTypeHint(hint: string): hint is SourceTypeHint {
-  return ["auto", "greenhouse", "workday", "rss", "generic"].includes(hint)
+  return ["auto", "greenhouse", "ashby", "workday", "rss", "generic"].includes(hint)
 }

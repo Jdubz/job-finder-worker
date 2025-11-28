@@ -24,6 +24,7 @@ from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
+from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
 from .base_processor import BaseProcessor
@@ -39,6 +40,7 @@ class SourceProcessor(BaseProcessor):
         queue_manager: QueueManager,
         config_loader: ConfigLoader,
         sources_manager: JobSourcesManager,
+        companies_manager: CompaniesManager,
     ):
         """
         Initialize source processor with its specific dependencies.
@@ -47,10 +49,12 @@ class SourceProcessor(BaseProcessor):
             queue_manager: Queue manager for updating item status
             config_loader: Configuration loader for AI settings
             sources_manager: Job sources manager
+            companies_manager: Companies manager for company lookup/creation
         """
         super().__init__(queue_manager, config_loader)
 
         self.sources_manager = sources_manager
+        self.companies_manager = companies_manager
 
         # Initialize scraper intake without filter_engine
         # Jobs will be filtered when processed by JobProcessor
@@ -120,6 +124,26 @@ class SourceProcessor(BaseProcessor):
             if not company_name:
                 company_name = self._extract_company_from_url(url)
 
+            # Resolve company_id: look up existing company or create stub
+            company_id = config.company_id
+            company_created = False
+            if not company_id and company_name:
+                # Try to find or create company record
+                company_website = self._extract_base_url(url)
+                company_record = self.companies_manager.get_or_create_company(
+                    company_name=company_name,
+                    company_website=company_website,
+                )
+                company_id = company_record.get("id")
+                # Check if this is a newly created stub (minimal data)
+                company_created = not company_record.get("about")
+                logger.info(
+                    "Resolved company for source: %s -> %s (created=%s)",
+                    company_name,
+                    company_id,
+                    company_created,
+                )
+
             source_type = source_config.get("type", "unknown")
 
             # Determine confidence based on source type
@@ -144,7 +168,7 @@ class SourceProcessor(BaseProcessor):
                 discovered_by=item.submitted_by,
                 discovery_confidence=confidence,
                 discovery_queue_item_id=item.id,
-                company_id=config.company_id,
+                company_id=company_id,
                 company_name=company_name,
                 status=initial_status,
             )
@@ -166,6 +190,25 @@ class SourceProcessor(BaseProcessor):
                     "Created source %s disabled (%s); skipping immediate scrape",
                     source_id,
                     disabled_notes,
+                )
+
+            # If we created a new company stub, spawn COMPANY task to enrich it
+            if company_created and company_id:
+                company_website = self._extract_base_url(url)
+                company_item = JobQueueItem(
+                    type=QueueItemType.COMPANY,
+                    url=company_website,
+                    company_name=company_name,
+                    company_id=company_id,
+                    source="automated_scan",
+                    tracking_id=item.tracking_id,
+                    parent_item_id=item.id,
+                )
+                company_item_id = self.queue_manager.add_item(company_item)
+                logger.info(
+                    "Spawned COMPANY item %s to enrich stub for %s",
+                    company_item_id,
+                    company_name,
                 )
 
             # Update queue item with success
@@ -207,6 +250,30 @@ class SourceProcessor(BaseProcessor):
             return " ".join(capitalized) if len(capitalized) > 2 else "".join(capitalized)
         except Exception:
             return ""
+
+    def _extract_base_url(self, url: str) -> str:
+        """Extract base URL (scheme + netloc) from a full URL."""
+        try:
+            parsed = urlparse(url)
+            # For job board URLs like boards.greenhouse.io/company, try to get company website
+            # For most cases, just return scheme + netloc
+            if "greenhouse.io" in parsed.netloc or "lever.co" in parsed.netloc:
+                # These are job board URLs, not company websites
+                # Try to construct a likely company website
+                path_parts = parsed.path.strip("/").split("/")
+                if path_parts and path_parts[0]:
+                    return f"https://{path_parts[0]}.com"
+            if "ashbyhq.com" in parsed.netloc:
+                path_parts = parsed.path.strip("/").split("/")
+                if len(path_parts) >= 2:
+                    return f"https://{path_parts[1]}.com"
+            if "myworkdayjobs.com" in parsed.netloc:
+                # Workday URLs are like company.wd5.myworkdayjobs.com
+                tenant = parsed.netloc.split(".")[0]
+                return f"https://{tenant}.com"
+            return f"{parsed.scheme}://{parsed.netloc}"
+        except Exception:
+            return url
 
     # ============================================================
     # SOURCE SCRAPING

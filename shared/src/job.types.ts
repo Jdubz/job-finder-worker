@@ -397,7 +397,7 @@ export interface JobSource {
   /** Human-readable source name */
   name: string
 
-  /** Source type (api, rss, html, greenhouse, workday, lever) */
+  /** Source type - generic scraping method: "api" | "rss" | "html" (vendor auto-detected from config) */
   sourceType: string
 
   /** Source status */

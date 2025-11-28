@@ -48,9 +48,16 @@ class SourceConfig:
     # Salary handling
     salary_min_field: str = ""
     salary_max_field: str = ""
-    # Discovery/runtime hints (optional, backward compatible)
+
+    # HTTP method and body (for POST APIs like Workday)
+    method: str = "GET"  # "GET" | "POST"
+    post_body: Dict[str, Any] = field(default_factory=dict)
+
+    # Base URL for constructing full URLs from relative paths (e.g., Workday)
+    base_url: str = ""
+
+    # Discovery/validation hints
     validation_policy: str = "fail_on_empty"  # "fail_on_empty" | "allow_empty"
-    content_strategy: str = ""  # e.g., "static_html", "embedded_json", "remote_api"
     disabled_notes: str = ""
 
     @classmethod
@@ -78,8 +85,10 @@ class SourceConfig:
             auth_param=data.get("auth_param", ""),
             salary_min_field=data.get("salary_min_field", ""),
             salary_max_field=data.get("salary_max_field", ""),
+            method=data.get("method", "GET"),
+            post_body=data.get("post_body", {}),
+            base_url=data.get("base_url", ""),
             validation_policy=data.get("validation_policy", "fail_on_empty"),
-            content_strategy=data.get("content_strategy", data.get("strategy", "")),
             disabled_notes=data.get("disabled_notes", ""),
         )
 
@@ -110,10 +119,14 @@ class SourceConfig:
             result["salary_min_field"] = self.salary_min_field
         if self.salary_max_field:
             result["salary_max_field"] = self.salary_max_field
+        if self.method and self.method != "GET":
+            result["method"] = self.method
+        if self.post_body:
+            result["post_body"] = self.post_body
+        if self.base_url:
+            result["base_url"] = self.base_url
         if self.validation_policy:
             result["validation_policy"] = self.validation_policy
-        if self.content_strategy:
-            result["content_strategy"] = self.content_strategy
         if self.disabled_notes:
             result["disabled_notes"] = self.disabled_notes
 
