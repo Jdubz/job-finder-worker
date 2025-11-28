@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from "react"
+import { useMemo, useState, useEffect, useCallback, useRef } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import type { QueueItem, QueueStats } from "@shared/types"
 import { useQueueItems, type ConnectionStatus } from "@/hooks/useQueueItems"
@@ -47,6 +47,9 @@ export function QueueManagementPage() {
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null)
+  const [activeProcessingId, setActiveProcessingId] = useState<string | null>(null)
+  const [processingConflictCount, setProcessingConflictCount] = useState<number>(0)
+  const conflictRefetched = useRef(false)
   const [isProcessingEnabled, setIsProcessingEnabled] = useState<boolean | null>(null)
   const [isTogglingProcessing, setIsTogglingProcessing] = useState(false)
   const [confirmToggleOpen, setConfirmToggleOpen] = useState(false)
@@ -167,15 +170,46 @@ export function QueueManagementPage() {
       }) as QueueItem[]
   }, [queueItems, completedStatusFilter])
 
-  const processingItem = useMemo(() => {
+  const processingItems = useMemo(() => {
     return [...queueItems]
-      .filter((i) => i.status === "processing")
+      .filter((i) => i.status === "processing" && i.id)
       .sort((a, b) => {
         const aDate = normalizeDate(a.processed_at ?? a.updated_at ?? a.created_at)
         const bDate = normalizeDate(b.processed_at ?? b.updated_at ?? b.created_at)
-        return bDate.getTime() - aDate.getTime()
-      })[0]
+        return aDate.getTime() - bDate.getTime() // oldest first for continuity
+      }) as QueueItem[]
   }, [queueItems])
+
+  const processingItem = useMemo(() => {
+    if (!activeProcessingId) return null
+    return queueItems.find((i) => i.id === activeProcessingId) ?? null
+  }, [activeProcessingId, queueItems])
+
+  // Keep a stable "now processing" item and detect conflicts
+  useEffect(() => {
+    setProcessingConflictCount(processingItems.length > 1 ? processingItems.length : 0)
+
+    // Auto-resync once if multiple items report as processing (should not happen)
+    if (processingItems.length > 1 && !conflictRefetched.current) {
+      conflictRefetched.current = true
+      void refetch()
+    }
+
+    if (processingItems.length <= 1) {
+      conflictRefetched.current = false
+    }
+
+    if (processingItems.length === 0) {
+      if (activeProcessingId !== null) setActiveProcessingId(null)
+      return
+    }
+
+    // If current is still processing, keep it; otherwise pick the oldest in-flight item
+    const stillCurrent = processingItems.find((i) => i.id === activeProcessingId)
+    if (stillCurrent) return
+
+    setActiveProcessingId(processingItems[0].id ?? null)
+  }, [activeProcessingId, processingItems])
 
   const handleCancelItem = async (id: string) => {
     try {
@@ -355,6 +389,11 @@ export function QueueManagementPage() {
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <Activity className="h-4 w-4" />
           Now Processing
+          {processingConflictCount > 1 && (
+            <Badge variant="destructive" className="text-[11px]">
+              Unexpected: {processingConflictCount} tasks marked processing
+            </Badge>
+          )}
         </div>
         <ActiveQueueItem
           item={processingItem}

@@ -6,7 +6,7 @@ export function Footer() {
 
   return (
     <footer data-testid="footer" className="bg-muted/50 border-t">
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Company Info */}
           <div className="space-y-4">

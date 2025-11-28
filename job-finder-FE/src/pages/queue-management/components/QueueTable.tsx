@@ -24,12 +24,12 @@ type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skippe
 
 function statusTone(status: string): string {
   const tones: Record<QueueStatusTone, string> = {
-    pending: "bg-yellow-100 text-yellow-800",
-    processing: "bg-blue-100 text-blue-800",
-    success: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
-    skipped: "bg-gray-100 text-gray-800",
-    filtered: "bg-orange-100 text-orange-800",
+    pending: "bg-amber-100 text-amber-900 border border-amber-200",
+    processing: "bg-blue-100 text-blue-900 border border-blue-200",
+    success: "bg-emerald-100 text-emerald-900 border border-emerald-200",
+    failed: "bg-rose-100 text-rose-900 border border-rose-200",
+    skipped: "bg-slate-100 text-slate-900 border border-slate-200",
+    filtered: "bg-orange-100 text-orange-900 border border-orange-200",
   }
   return tones[status as QueueStatusTone] ?? "bg-muted text-foreground"
 }
@@ -43,9 +43,9 @@ export interface QueueTableProps {
 
 export function QueueTable({ items, onRowClick, onCancel, formatRelativeTime }: QueueTableProps) {
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
+    <Table className="rounded-lg border border-border/70 bg-card/60 shadow-sm">
+      <TableHeader className="bg-muted/40">
+        <TableRow className="hover:bg-muted/40">
           <TableHead>Task</TableHead>
           <TableHead className="hidden md:table-cell">Type</TableHead>
           <TableHead>Status</TableHead>
@@ -69,7 +69,7 @@ export function QueueTable({ items, onRowClick, onCancel, formatRelativeTime }: 
             <TableRow
               key={item.id}
               data-testid={`queue-item-${item.id}`}
-              className="cursor-pointer hover:bg-muted/60"
+              className="cursor-pointer even:bg-muted/30 odd:bg-card hover:bg-primary/5"
               onClick={() => onRowClick(item)}
             >
               <TableCell className="font-medium max-w-[220px]">

@@ -2,76 +2,70 @@
 @import "./styles/utilities.css";
 
 @theme {
-  /* Light Mode - Modern Minimal Green Theme */
-  --color-background: oklch(99% 0.005 160);
-  --color-foreground: oklch(15% 0.02 160);
+  /* Light mode: higher contrast neutrals with emerald accent */
+  --color-background: oklch(97% 0.01 165);
+  --color-foreground: oklch(20% 0.05 160);
   --color-card: oklch(100% 0 0);
-  --color-card-foreground: oklch(15% 0.02 160);
-  --color-popover: oklch(100% 0 0);
-  --color-popover-foreground: oklch(15% 0.02 160);
+  --color-card-foreground: oklch(17% 0.05 165);
+  --color-popover: oklch(99% 0.01 165);
+  --color-popover-foreground: oklch(18% 0.05 165);
 
-  /* Primary - Emerald Green */
-  --color-primary: oklch(55% 0.18 160);
-  --color-primary-foreground: oklch(99% 0 0);
+  /* Primary - Emerald */
+  --color-primary: oklch(60% 0.18 150);
+  --color-primary-foreground: oklch(98% 0.01 150);
 
-  /* Secondary - Light Green */
-  --color-secondary: oklch(95% 0.03 160);
-  --color-secondary-foreground: oklch(30% 0.08 160);
+  /* Secondary - Mist */
+  --color-secondary: oklch(93% 0.03 165);
+  --color-secondary-foreground: oklch(32% 0.07 165);
 
-  /* Muted - Soft Green */
-  --color-muted: oklch(96% 0.02 160);
-  --color-muted-foreground: oklch(50% 0.04 160);
+  /* Muted */
+  --color-muted: oklch(94% 0.02 170);
+  --color-muted-foreground: oklch(42% 0.04 170);
 
-  /* Accent - Vibrant Green */
-  --color-accent: oklch(92% 0.05 160);
-  --color-accent-foreground: oklch(30% 0.08 160);
+  /* Accent */
+  --color-accent: oklch(90% 0.05 170);
+  --color-accent-foreground: oklch(32% 0.07 170);
 
-  /* Destructive - Red (unchanged) */
+  /* Destructive */
   --color-destructive: oklch(55.81% 0.228 29.23);
   --color-destructive-foreground: oklch(98% 0 0);
 
-  /* Borders & Inputs - Subtle Green */
-  --color-border: oklch(88% 0.02 160);
-  --color-input: oklch(88% 0.02 160);
-  --color-ring: oklch(55% 0.18 160);
+  /* Borders & Inputs */
+  --color-border: oklch(88% 0.02 170);
+  --color-input: oklch(88% 0.02 170);
+  --color-ring: oklch(62% 0.16 150);
 
   --radius: 0.5rem;
 }
 
 @media (prefers-color-scheme: dark) {
   @theme {
-    /* Dark Mode - Modern Minimal Green Theme */
-    --color-background: oklch(12% 0.02 160);
-    --color-foreground: oklch(95% 0.01 160);
-    --color-card: oklch(15% 0.02 160);
-    --color-card-foreground: oklch(95% 0.01 160);
-    --color-popover: oklch(15% 0.02 160);
-    --color-popover-foreground: oklch(95% 0.01 160);
+    /* Dark mode: richer contrast and clearer muted text */
+    --color-background: oklch(14% 0.03 170);
+    --color-foreground: oklch(94% 0.015 170);
+    --color-card: oklch(18% 0.03 170);
+    --color-card-foreground: oklch(94% 0.015 170);
+    --color-popover: oklch(18% 0.03 170);
+    --color-popover-foreground: oklch(94% 0.015 170);
 
-    /* Primary - Bright Emerald Green */
-    --color-primary: oklch(65% 0.2 160);
-    --color-primary-foreground: oklch(10% 0.02 160);
+    --color-primary: oklch(70% 0.2 150);
+    --color-primary-foreground: oklch(10% 0.015 150);
 
-    /* Secondary - Dark Green */
-    --color-secondary: oklch(22% 0.05 160);
-    --color-secondary-foreground: oklch(95% 0.01 160);
+    --color-secondary: oklch(26% 0.05 170);
+    --color-secondary-foreground: oklch(90% 0.01 170);
 
-    /* Muted - Muted Green */
-    --color-muted: oklch(22% 0.05 160);
-    --color-muted-foreground: oklch(70% 0.04 160);
+    --color-muted: oklch(26% 0.03 180);
+    --color-muted-foreground: oklch(78% 0.02 180);
 
-    /* Accent - Vibrant Green */
-    --color-accent: oklch(28% 0.08 160);
-    --color-accent-foreground: oklch(95% 0.01 160);
+    --color-accent: oklch(32% 0.07 170);
+    --color-accent-foreground: oklch(92% 0.01 170);
 
-    /* Destructive - Red (unchanged) */
-    --color-destructive: oklch(45% 0.2 29.23);
+    --color-destructive: oklch(48% 0.2 29.23);
     --color-destructive-foreground: oklch(98% 0 0);
 
-    /* Borders & Inputs - Dark Green */
-    --color-border: oklch(25% 0.04 160);
-    --color-input: oklch(25% 0.04 160);
-    --color-ring: oklch(65% 0.2 160);
+    --color-border: oklch(32% 0.03 170);
+    --color-input: oklch(32% 0.03 170);
+    --color-ring: oklch(72% 0.18 150);
   }
 }
 
@@ -82,6 +76,10 @@
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
+  background-image: radial-gradient(circle at 20% 20%, color-mix(in oklch, var(--color-primary) 12%, transparent), transparent 25%),
+    radial-gradient(circle at 80% 0%, color-mix(in oklch, var(--color-primary) 10%, transparent), transparent 30%),
+    linear-gradient(180deg, color-mix(in oklch, var(--color-background) 92%, var(--color-primary) 8%), var(--color-background));
+  background-attachment: fixed;
 }
 
 @keyframes toastShrink {
