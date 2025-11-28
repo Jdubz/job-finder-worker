@@ -170,7 +170,9 @@ class TestCompanyPipeline:
             "culture": "",
             "mission": "",
         }
-        mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = sparse_heuristic_data
+        mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = (
+            sparse_heuristic_data
+        )
         mock_dependencies["company_info_fetcher"].ai_provider = object()
 
         # AI provides comprehensive data that should overwrite sparse heuristic values
@@ -180,7 +182,9 @@ class TestCompanyPipeline:
             "mission": "To build great things and deliver value",
             "industry": "Technology",
         }
-        mock_dependencies["company_info_fetcher"]._extract_with_ai.return_value = comprehensive_ai_data
+        mock_dependencies["company_info_fetcher"]._extract_with_ai.return_value = (
+            comprehensive_ai_data
+        )
 
         # First check: needs AI (sparse heuristics). Second check: sufficient (after AI merge)
         mock_dependencies["company_info_fetcher"]._needs_ai_enrichment.side_effect = [True, False]
@@ -196,8 +200,9 @@ class TestCompanyPipeline:
         saved_company = mock_dependencies["companies_manager"].save_company.call_args[0][0]
 
         # AI "about" should overwrite sparse heuristic "about" (key behavior being tested)
-        assert saved_company["about"] == comprehensive_ai_data["about"], \
-            "AI values should overwrite sparse heuristic values, not just empty ones"
+        assert (
+            saved_company["about"] == comprehensive_ai_data["about"]
+        ), "AI values should overwrite sparse heuristic values, not just empty ones"
         assert saved_company["culture"] == comprehensive_ai_data["culture"]
         assert saved_company["mission"] == comprehensive_ai_data["mission"]
         assert saved_company["industry"] == comprehensive_ai_data["industry"]
