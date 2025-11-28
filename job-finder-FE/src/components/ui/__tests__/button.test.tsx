@@ -2,18 +2,13 @@
  * Button Component Tests
  *
  * Comprehensive tests for the Button component functionality
- *
- * NOTE: These tests are temporarily skipped due to React 19 + @testing-library/react compatibility.
- * The issue is that @testing-library/react 16.3.0 uses react-dom/test-utils which expects React.act
- * from the React package, but React 19 changed how act is exported. These will be re-enabled when
- * @testing-library/react releases a fully React 19 compatible version or we downgrade to React 18.
  */
 
 import { describe, it, expect, vi } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { Button, buttonVariants } from "../button"
 
-describe.skip("Button", () => {
+describe("Button", () => {
   describe("rendering", () => {
     it("should render button with default props", () => {
       render(<Button>Click me</Button>)
