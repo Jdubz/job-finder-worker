@@ -28,29 +28,6 @@ class QueueItemType(str, Enum):
     SCRAPE_SOURCE = "scrape_source"  # NEW: For automated source scraping
 
 
-class CompanySubTask(str, Enum):
-    """
-    Granular sub-tasks for company processing pipeline.
-
-    When a COMPANY queue item has a company_sub_task, it represents one step in the
-    multi-stage processing pipeline. Items without company_sub_task (legacy) are
-    processed monolithically through all stages.
-
-    Pipeline flow:
-    1. FETCH: Fetch website HTML content (cheap AI if needed)
-    2. EXTRACT: Extract company info using AI (expensive AI)
-    3. ANALYZE: Tech stack detection, job board discovery, priority scoring (rule-based)
-    4. SAVE: Save to SQLite, spawn source_discovery if job board found (no AI)
-
-    TypeScript equivalent: CompanySubTask in queue.types.ts
-    """
-
-    FETCH = "fetch"
-    EXTRACT = "extract"
-    ANALYZE = "analyze"
-    SAVE = "save"
-
-
 class SourceStatus(str, Enum):
     """
     Status for job source records in SQLite.
@@ -291,12 +268,6 @@ class JobQueueItem(BaseModel):
         default=None, description="Document ID of parent item that spawned this sub-task"
     )
 
-    # Company granular pipeline fields (only used when type is COMPANY with company_sub_task)
-    company_sub_task: Optional[CompanySubTask] = Field(
-        default=None,
-        description="Company pipeline step (fetch/extract/analyze/save). None = legacy monolithic processing",
-    )
-
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional metadata blob")
 
     # Loop prevention - tracking_id links related items
@@ -350,7 +321,6 @@ class JobQueueItem(BaseModel):
             "source_tier": enum_val(self.source_tier),
             "pipeline_state": serialize(self.pipeline_state),
             "parent_item_id": self.parent_item_id,
-            "company_sub_task": enum_val(self.company_sub_task),
             "tracking_id": self.tracking_id,
             "result_message": self.result_message,
             "error_details": self.error_details,
@@ -394,11 +364,6 @@ class JobQueueItem(BaseModel):
             source_tier=SourceTier(record["source_tier"]) if record.get("source_tier") else None,
             pipeline_state=parse_json(record.get("pipeline_state")),
             parent_item_id=record.get("parent_item_id"),
-            company_sub_task=(
-                CompanySubTask(record["company_sub_task"])
-                if record.get("company_sub_task")
-                else None
-            ),
             tracking_id=record.get("tracking_id", ""),
             result_message=record.get("result_message"),
             error_details=record.get("error_details"),

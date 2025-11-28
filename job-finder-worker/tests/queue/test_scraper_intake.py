@@ -129,7 +129,6 @@ def test_submit_company_success(scraper_intake, mock_queue_manager):
     assert call_args.type == "company"
     assert call_args.company_name == "Test Corp"
     assert call_args.url == "https://testcorp.com"
-    assert call_args.company_sub_task == "fetch"  # Should start with FETCH step
 
 
 def test_submit_company_duplicate(scraper_intake, mock_queue_manager):

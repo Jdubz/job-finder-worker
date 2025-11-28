@@ -92,8 +92,7 @@ const updateQueueItemSchema = z
     processed_at: z.union([z.string().datetime(), z.coerce.date()]).optional(),
     completed_at: z.union([z.string().datetime(), z.coerce.date()]).optional(),
     metadata: z.record(z.unknown()).optional(),
-    pipeline_state: z.record(z.unknown()).optional(),
-    company_sub_task: z.enum(['fetch', 'extract', 'analyze', 'save']).optional()
+    pipeline_state: z.record(z.unknown()).optional()
   })
   .refine((data) => Object.keys(data).length > 0, { message: 'No fields provided for update' })
 

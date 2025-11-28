@@ -8,24 +8,12 @@ const titleMap: Record<string, string> = {
   scrape_source: "Scrape Source",
 }
 
-const subTaskMap: Record<string, string> = {
-  scrape: "Scrape",
-  filter: "Filter",
-  analyze: "Analyze",
-  save: "Save",
-  fetch: "Fetch",
-  extract: "Extract",
-}
-
 export function getTaskTypeLabel(item: QueueItem): string {
   return titleMap[item.type] ?? item.type
 }
 
 export function getStageLabel(item: QueueItem): string | null {
-  const { company_sub_task, pipeline_state, type } = item
-
-  if (company_sub_task)
-    return `Company · ${subTaskMap[company_sub_task] ?? capitalize(company_sub_task)}`
+  const { pipeline_state, type } = item
 
   // Derive stage from pipeline_state keys
   if (pipeline_state) {
@@ -34,6 +22,7 @@ export function getStageLabel(item: QueueItem): string | null {
     if ("job_data" in pipeline_state) return "Filter"
   }
 
+  if (type === "company") return "Company"
   if (type === "job") return "Scrape"
   if (type === "scrape") return "Scrape sweep"
   if (type === "source_discovery") return "Discovery"

@@ -82,8 +82,7 @@ export class JobQueueService {
       source: input.source ?? 'manual_submission',
       submitted_by: null,
       created_at: now,
-      updated_at: now,
-      company_sub_task: 'fetch'
+      updated_at: now
     }
 
     return this.repo.enqueue(item)

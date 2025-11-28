@@ -9,13 +9,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-from job_finder.exceptions import DuplicateQueueItemError, QueueProcessingError, StorageError
-from job_finder.job_queue.models import (
-    CompanySubTask,
-    JobQueueItem,
-    QueueItemType,
-    QueueStatus,
-)
+from job_finder.exceptions import DuplicateQueueItemError, StorageError
+from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.job_queue.notifier import QueueEventNotifier
 
@@ -298,65 +293,6 @@ class QueueManager:
 
         new_item = JobQueueItem(**new_item_data)
         return self.add_item(new_item)
-
-    def spawn_next_pipeline_step(
-        self,
-        current_item: JobQueueItem,
-        next_sub_task: CompanySubTask,
-        pipeline_state: Optional[Dict[str, Any]] = None,
-        is_company: bool = True,
-    ) -> Optional[str]:
-        """Spawn the next step in the company pipeline."""
-        if not is_company:
-            raise QueueProcessingError("spawn_next_pipeline_step only supports company pipelines")
-
-        if not isinstance(next_sub_task, CompanySubTask):
-            raise QueueProcessingError("next_sub_task must be CompanySubTask")
-
-        new_item_data = {
-            "type": QueueItemType.COMPANY,
-            "url": current_item.url,
-            "company_name": current_item.company_name,
-            "company_id": current_item.company_id,
-            "source": current_item.source,
-            "company_sub_task": next_sub_task,
-            "pipeline_state": pipeline_state,
-        }
-        try:
-            return self.spawn_item_safely(current_item, new_item_data)
-        except StorageError as exc:
-            # If a unique URL constraint blocks granular company steps, fall back to
-            # requeueing the same item in-place with the next sub_task.
-            self._requeue_company_step(current_item.id, next_sub_task, pipeline_state)
-            logger.debug(
-                "Requeued company %s in-place for sub_task=%s due to %s",
-                current_item.id,
-                next_sub_task,
-                exc,
-            )
-            return current_item.id
-
-    def _requeue_company_step(
-        self, item_id: str, next_sub_task: CompanySubTask, pipeline_state: Optional[Dict[str, Any]]
-    ) -> None:
-        with sqlite_connection(self.db_path) as conn:
-            conn.execute(
-                """
-                UPDATE job_queue
-                SET company_sub_task = ?, pipeline_state = ?, status = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    next_sub_task.value,
-                    json.dumps(pipeline_state or {}),
-                    QueueStatus.PENDING.value,
-                    _iso(_utcnow()),
-                    item_id,
-                ),
-            )
-
-        # Notify FE of the company sub-task transition
-        self._notify_item_updated(item_id)
 
     def requeue_with_state(
         self,
