@@ -46,7 +46,7 @@ describe("MainLayout", () => {
     )
 
     const rootDiv = container.firstChild
-    expect(rootDiv).toHaveClass("min-h-screen", "bg-background", "flex", "flex-col")
+    expect(rootDiv).toHaveClass("min-h-screen", "bg-background/90", "flex", "flex-col")
   })
 
   it("has proper main content styling", () => {
@@ -117,7 +117,7 @@ describe("MainLayout", () => {
     )
 
     const rootDiv = container.firstChild
-    expect(rootDiv).toHaveClass("bg-background")
+    expect(rootDiv).toHaveClass("bg-background/90")
   })
 
   it("has minimum height styling", () => {

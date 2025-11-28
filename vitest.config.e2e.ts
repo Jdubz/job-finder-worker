@@ -53,7 +53,7 @@ export default defineConfig({
       VITE_FIREBASE_MEASUREMENT_ID: literal('G-TEST'),
       VITE_OWNER_EMAIL: literal('owner@jobfinder.dev'),
       VITE_AUTH_BYPASS: literal('true'),
-      VITE_E2E_AUTH_TOKEN: literal('e2e-test-token'),
+      VITE_E2E_AUTH_TOKEN: literal('dev-admin-token'),
       VITE_RECAPTCHA_SITE_KEY: literal('test-recaptcha'),
     },
   },

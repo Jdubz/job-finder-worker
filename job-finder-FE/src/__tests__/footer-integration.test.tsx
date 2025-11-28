@@ -195,7 +195,7 @@ describe("Footer Integration", () => {
     )
 
     const container = screen.getByTestId("navigation").parentElement
-    expect(container).toHaveClass("min-h-screen", "bg-background", "flex", "flex-col")
+    expect(container).toHaveClass("min-h-screen", "bg-background/90", "flex", "flex-col")
 
     const main = screen.getByTestId("page-content").parentElement
     expect(main).toHaveClass("flex-1")

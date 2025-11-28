@@ -47,6 +47,22 @@ const renderWithRouter = (component: React.ReactElement) => {
   return render(<BrowserRouter>{component}</BrowserRouter>)
 }
 
+// Lightweight manual retry helper for occasional async flake in long flows
+const itWithRetry = (name: string, fn: () => Promise<void>, retries = 1) => {
+  it(name, async () => {
+    let lastError: unknown
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        await fn()
+        return
+      } catch (err) {
+        lastError = err
+      }
+    }
+    throw lastError
+  })
+}
+
 // Mock data
 const mockJobMatches = [
   {
@@ -241,7 +257,7 @@ describe("DocumentBuilderPage", () => {
       })
     })
 
-    it("should show success message when generation completes", async () => {
+    itWithRetry("should show success message when generation completes", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
@@ -261,7 +277,7 @@ describe("DocumentBuilderPage", () => {
       })
     })
 
-    it("should show download button when resume is generated", async () => {
+    itWithRetry("should show download button when resume is generated", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 

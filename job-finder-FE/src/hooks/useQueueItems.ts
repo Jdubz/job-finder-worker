@@ -45,6 +45,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting")
   const savedQueueItems = useMemo(() => consumeSavedProviderState<QueueItem[]>("queue-items"), [])
   const streamAbortRef = useRef<AbortController | null>(null)
+  const initialLoadDoneRef = useRef(false)
 
   const normalizeQueueItem = useCallback((item: QueueItem): QueueItem => {
     const normalize = (value: unknown): Date | null => {
@@ -73,8 +74,9 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     }
   }, [normalizeQueueItem, savedQueueItems])
 
-  const fetchQueueItems = useCallback(async () => {
-    setLoading(true)
+  const fetchQueueItems = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true
+    if (!silent) setLoading(true)
     try {
       const response = await queueClient.listQueueItems({ status, limit })
       setQueueItems(response.items.map(normalizeQueueItem))
@@ -82,7 +84,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     } catch (err) {
       setError(err as Error)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [limit, normalizeQueueItem, status])
 
@@ -127,8 +129,9 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
 
     const startStream = async () => {
       setConnectionStatus("connecting")
-      // Kick off an initial fetch so UI is responsive if SSE fails
-      await fetchQueueItems()
+      // Kick off an initial fetch so UI is responsive if SSE fails.
+      await fetchQueueItems({ silent: initialLoadDoneRef.current })
+      initialLoadDoneRef.current = true
 
       try {
         const controller = new AbortController()
@@ -189,7 +192,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         if (!cancelled) {
           setConnectionStatus("connecting")
           console.log("Queue event stream ended gracefully; reconnecting...")
-          fetchQueueItems()
+          fetchQueueItems({ silent: true })
           setTimeout(() => {
             if (!cancelled) void startStream()
           }, 1000)
@@ -205,7 +208,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         if (!cancelled) {
           setConnectionStatus("connecting")
           console.error("Queue event stream disconnected; retrying shortly", error)
-          fetchQueueItems()
+          fetchQueueItems({ silent: true })
           // Attempt to reconnect after backoff
           setTimeout(() => {
             if (!cancelled) void startStream()

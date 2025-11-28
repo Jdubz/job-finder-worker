@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { googleLogout } from '@react-oauth/google'
 import { authClient, AuthError } from '@/api/auth-client'
