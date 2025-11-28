@@ -50,7 +50,6 @@ CREATE TABLE IF NOT EXISTS job_queue (
     source_tier TEXT,
     pipeline_state TEXT,
     parent_item_id TEXT,
-    company_sub_task TEXT,
     metadata TEXT,
     tracking_id TEXT
 )

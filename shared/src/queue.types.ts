@@ -47,21 +47,6 @@ export type QueueStatus = "pending" | "processing" | "success" | "failed" | "ski
 export type QueueItemType = "job" | "company" | "scrape" | "source_discovery" | "scrape_source"
 
 /**
- * Granular sub-tasks for company processing pipeline.
- *
- * When a COMPANY queue item has a company_sub_task, it represents one step in the
- * multi-stage processing pipeline. Items without company_sub_task (legacy) are
- * processed monolithically through all stages.
- *
- * Pipeline flow:
- * 1. fetch: Fetch website HTML content (cheap AI if needed)
- * 2. extract: Extract company info using AI (expensive AI)
- * 3. analyze: Tech stack detection, job board discovery, priority scoring (rule-based)
- * 4. save: Persist to database, spawn source_discovery if job board found (no AI)
- */
-export type CompanySubTask = "fetch" | "extract" | "analyze" | "save"
-
-/**
  * Source of queue submission
  */
 export type QueueSource =
@@ -155,9 +140,6 @@ export interface QueueItem {
   // Pipeline state for multi-step processing
   pipeline_state?: Record<string, any> | null // State passed between pipeline steps (scraped data, filter results, etc.)
   parent_item_id?: string | null // Document ID of parent item that spawned this sub-task
-
-  // Company granular pipeline fields (only used when type is "company" with company_sub_task)
-  company_sub_task?: CompanySubTask | null // Company pipeline step (fetch/extract/analyze/save). null = legacy monolithic processing
 
   // Additional metadata (for pre-generated documents or other contextual data)
   metadata?: Record<string, any> | null

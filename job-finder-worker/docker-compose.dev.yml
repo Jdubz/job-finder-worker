@@ -79,6 +79,10 @@ services:
       - type: bind
         source: ./tests
         target: /app/tests
+      # Codex CLI auth (ChatGPT Pro session tokens)
+      - type: bind
+        source: ${HOME}/.codex
+        target: /root/.codex
       # Share migrations from monorepo infra so tests can apply schema without duplication
       - type: bind
         source: ../infra/sqlite

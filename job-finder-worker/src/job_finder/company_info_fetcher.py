@@ -65,6 +65,13 @@ class CompanyInfoFetcher:
             "size": "",
             "industry": "",
             "founded": "",
+            "headquarters": "",
+            "employeeCount": None,
+            "companySizeCategory": "",
+            "isRemoteFirst": False,
+            "aiMlFocus": False,
+            "timezoneOffset": None,
+            "products": [],
         }
 
         try:
@@ -173,141 +180,86 @@ class CompanyInfoFetcher:
             return None
 
     def _extract_company_info(self, content: str, company_name: str) -> Dict[str, Any]:
-        """
-        Extract company information from page content using AI or heuristics.
+        """Extract company info using heuristics → AI → web-search (gap fill)."""
+        result: Dict[str, Any] = self._extract_with_heuristics(content)
 
-        Args:
-            content: Page text content
-            company_name: Company name
-
-        Returns:
-            Dictionary with extracted fields
-        """
-        result: Dict[str, Any] = {
-            "about": "",
-            "culture": "",
-            "mission": "",
-            "size": "",
-            "industry": "",
-            "founded": "",
-            "isRemoteFirst": False,
-            "aiMlFocus": False,
-            "employeeCount": None,
-            "timezoneOffset": None,
-        }
-
-        # Start with heuristics to avoid AI cost; only call AI when info is sparse
-        result = self._extract_with_heuristics(content)
-
-        # Consider AI only if we have a provider and the heuristic result is sparse
-        if self.ai_provider and self._is_sparse_company_info(result):
+        if self.ai_provider and self._needs_ai_enrichment(result):
             ai_result = self._extract_with_ai(content, company_name)
-            if ai_result and not self._is_sparse_company_info(ai_result):
-                return ai_result
+            if ai_result:
+                result = self._merge_company_info(result, ai_result)
+
+        if self.ai_provider and self._needs_ai_enrichment(result):
+            search_result = self._search_company_web(company_name)
+            if search_result:
+                result = self._merge_company_info(result, search_result)
 
         return result
 
     def _extract_with_ai(self, content: str, company_name: str) -> Dict[str, Any]:
-        """
-        Use AI to extract company information from content.
-
-        Args:
-            content: Page text content
-            company_name: Company name
-
-        Returns:
-            Dictionary with extracted fields
-        """
+        """Use AI to extract enriched company fields from on-site content."""
         try:
-            # Truncate content to reasonable length for AI
             max_chars = 5000
             truncated_content = content[:max_chars]
 
-            prompt = f"""Extract company information from the following text about {company_name}.
+            prompt = f"""Extract company information from the following text about {company_name}. Respond with JSON only.
 
 Company Website Content:
 {truncated_content}
 
-Extract the following information and return as JSON:
-1. "about": 2-3 sentence summary of what the company does
-2. "culture": 1-2 sentences about company culture, values, or work environment
-3. "mission": Company mission statement if mentioned (or empty string)
-4. "size": Company size/employees if mentioned (e.g., "500-1000 employees")
-5. "industry": Industry/sector (e.g., "Fintech", "E-commerce", "SaaS")
-6. "founded": Year founded if mentioned
+Return JSON with these keys:
+- about: 2-3 sentence summary
+- culture: 1-2 sentences on culture/values
+- mission: mission statement if present, else ""
+- size: size or range string (e.g., "500-1000 employees" or funding + size)
+- industry: primary sector
+- founded: year founded if present
+- headquarters: city/state/country HQ string
+- employeeCount: integer if stated, else null
+- companySizeCategory: one of ["small","medium","large"] if derivable, else ""
+- isRemoteFirst: boolean if explicitly remote/remote-first
+- aiMlFocus: boolean if core products use AI/ML
+- timezoneOffset: numeric UTC offset if stated (e.g., -8)
+- products: list (<=3) of flagship products/services
+- jobBoardUrl: careers/board URL if clearly present
+- sources: array (may be empty)
 
-Be concise and factual. If information is not found, use empty string.
+If a field is unknown, use empty string, null, or false as appropriate.
+"""
 
-Return ONLY valid JSON in this format:
-{{
-  "about": "...",
-  "culture": "...",
-  "mission": "...",
-  "size": "...",
-  "industry": "...",
-  "founded": "..."
-}}"""
-
-            # Get model-specific settings or use fallback
             model_name = self.ai_config.get("model", "")
             models_config = self.ai_config.get("models", {})
             model_settings = models_config.get(model_name, {})
-
-            # Use conservative token limit for company info extraction
             max_tokens = min(model_settings.get("max_tokens", 1000), 1000)
-            temperature = 0.2  # Lower temperature for factual extraction
+            temperature = 0.2
 
             response = self.ai_provider.generate(
                 prompt, max_tokens=max_tokens, temperature=temperature
             )
 
-            # Parse JSON response
             response_clean = response.strip()
-            if "```json" in response_clean:
-                start = response_clean.find("```json") + 7
-                end = response_clean.find("```", start)
-                response_clean = response_clean[start:end].strip()
-            elif "```" in response_clean:
-                start = response_clean.find("```") + 3
-                end = response_clean.find("```", start)
-                response_clean = response_clean[start:end].strip()
+            if response_clean.startswith("```"):
+                start = response_clean.find("{")
+                end = response_clean.rfind("}") + 1
+                response_clean = response_clean[start:end]
 
             extracted = json.loads(response_clean)
-            logger.info(f"AI extracted company info successfully")
             return extracted
 
-        except json.JSONDecodeError as e:
-            # AI returned invalid JSON - fall back to heuristics
-            logger.warning(f"AI returned invalid JSON, falling back to heuristics: {e}")
-            return self._extract_with_heuristics(content)
-        except (ValueError, KeyError, AttributeError) as e:
-            # AI provider errors or missing response fields
-            logger.warning(f"AI extraction error, falling back to heuristics: {e}")
-            return self._extract_with_heuristics(content)
         except Exception as e:
-            # Unexpected errors - log and fall back
             logger.warning(
-                f"Unexpected AI extraction error ({type(e).__name__}), falling back to heuristics: {e}",
+                "AI extraction error (%s), falling back to heuristics",
+                type(e).__name__,
                 exc_info=True,
             )
             return self._extract_with_heuristics(content)
 
     def _search_company_web(self, company_name: str) -> Optional[Dict[str, str]]:
-        """Use AI provider with web-search tools to gather company info beyond the site."""
+        """Use AI + web search to fill missing company fields."""
         try:
             prompt = f"""
 Use web search to gather concise, factual info about {company_name}. You have browsing tools.
-CRITICAL: Do NOT invent or guess. If a field is unknown, leave it "".
-Return ONLY JSON with these keys: about, culture, mission, size, industry, founded, sources.
-- about: 2-3 sentence factual summary (no hype)
-- culture: 1-2 sentences (cite actual claims, else "")
-- mission: mission statement if available, else ""
-- size: employee count or range if found, else ""
-- industry: primary sector if found, else ""
-- founded: year if found, else ""
-- sources: array of up to 3 URLs actually used
-
-Respond with JSON only.
+DO NOT GUESS. If unknown, use "" or null.
+Return ONLY JSON with keys: about, culture, mission, size, industry, founded, headquarters, employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, products, sources, jobBoardUrl.
 """
             response = self.ai_provider.generate(prompt, max_tokens=800, temperature=0.2)
 
@@ -317,10 +269,31 @@ Respond with JSON only.
                 end = response_clean.rfind("}") + 1
                 response_clean = response_clean[start:end]
 
-            data = json.loads(response_clean)
-            # Normalize expected fields
-            for key in ["about", "culture", "mission", "size", "industry", "founded"]:
-                data.setdefault(key, "")
+            data = cast(Dict[str, Any], json.loads(response_clean))
+            for key in [
+                "about",
+                "culture",
+                "mission",
+                "size",
+                "industry",
+                "founded",
+                "headquarters",
+                "employeeCount",
+                "companySizeCategory",
+                "isRemoteFirst",
+                "aiMlFocus",
+                "timezoneOffset",
+                "products",
+                "jobBoardUrl",
+            ]:
+                default: Any
+                if key in ["employeeCount", "timezoneOffset"]:
+                    default = None
+                elif key == "products":
+                    default = []
+                else:
+                    default = ""
+                data.setdefault(key, default)
             data.setdefault("sources", [])
             return data
         except Exception as exc:
@@ -328,41 +301,54 @@ Respond with JSON only.
             return None
 
     def _merge_company_info(
-        self, scraped: Dict[str, Any], searched: Dict[str, Any]
+        self, primary: Dict[str, Any], secondary: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Combine scraped and searched fields, preferring non-empty values and keeping sources."""
-        merged = {
-            "about": scraped.get("about") or searched.get("about") or "",
-            "culture": scraped.get("culture") or searched.get("culture") or "",
-            "mission": scraped.get("mission") or searched.get("mission") or "",
-            "size": scraped.get("size") or searched.get("size") or "",
-            "industry": scraped.get("industry") or searched.get("industry") or "",
-            "founded": scraped.get("founded") or searched.get("founded") or "",
-        }
-
-        # Preserve source URLs from search when available
-        if searched.get("sources"):
-            merged["sources"] = searched.get("sources")
-
+        """Combine two info dicts, preferring existing/non-empty values in primary."""
+        merged = dict(primary)
+        for key, val in secondary.items():
+            if key == "sources":
+                merged["sources"] = val or merged.get("sources") or []
+                continue
+            if merged.get(key) in (None, "", []):
+                merged[key] = val
         return merged
 
-    def _is_sparse_company_info(self, info: Dict[str, str]) -> bool:
-        """
-        Determine if extracted company info is too sparse to be useful.
+    def _needs_ai_enrichment(self, info: Dict[str, Any]) -> bool:
+        required_text = [
+            "about",
+            "culture",
+            "mission",
+            "industry",
+            "size",
+            "founded",
+            "headquarters",
+        ]
+        numeric_fields = ["employeeCount", "timezoneOffset"]
+        bool_fields = ["isRemoteFirst", "aiMlFocus"]
 
-        Uses length thresholds from config; triggers AI enrichment when below.
-        """
         text_limits = get_text_limits()
         min_about = text_limits.get("minCompanyPageLength", 200)
         min_sparse = text_limits.get("minSparseCompanyInfoLength", 100)
 
         about_len = len(info.get("about", "") or "")
-        culture_len = len(info.get("culture", "") or "")
-        mission_len = len(info.get("mission", "") or "")
+        total_len = (
+            about_len + len(info.get("culture", "") or "") + len(info.get("mission", "") or "")
+        )
 
-        # Treat as sparse if about is short OR sum of sections is very small
-        total_len = about_len + culture_len + mission_len
-        return about_len < min_about or total_len < min_sparse
+        if about_len < min_about or total_len < min_sparse:
+            return True
+
+        for key in required_text:
+            if not info.get(key):
+                return True
+        for key in numeric_fields:
+            if info.get(key) in (None, ""):
+                return True
+        for key in bool_fields:
+            if info.get(key) is None:
+                return True
+
+        return False
 
     def _extract_with_heuristics(self, content: str) -> Dict[str, Any]:
         """
@@ -381,10 +367,13 @@ Respond with JSON only.
             "size": "",
             "industry": "",
             "founded": "",
+            "headquarters": "",
             "timezoneOffset": None,
             "employeeCount": None,
             "isRemoteFirst": False,
             "aiMlFocus": False,
+            "companySizeCategory": "",
+            "products": [],
         }
 
         # Try to find common patterns
@@ -439,6 +428,23 @@ Respond with JSON only.
                 result["employeeCount"] = cast(Any, int(employee_match.group(2)))
             except ValueError:
                 result["employeeCount"] = None
+
+        # Company size category from employee count if available
+        count = result.get("employeeCount")
+        if isinstance(count, int):
+            if count < 100:
+                result["companySizeCategory"] = "small"
+            elif count < 1000:
+                result["companySizeCategory"] = "medium"
+            else:
+                result["companySizeCategory"] = "large"
+
+        # Headquarters detection (simple pattern)
+        hq_match = re.search(
+            r"headquarters(?:\s*[:\-]?\s*|\s+in\s+)([A-Za-z ,]+)", content, re.IGNORECASE
+        )
+        if hq_match:
+            result["headquarters"] = hq_match.group(1).strip()[:120]
 
         # Timezone offset detection (simple UTC±N parsing)
         tz_match = re.search(r"utc\s*([+-]?\d{1,2})", content_lower)

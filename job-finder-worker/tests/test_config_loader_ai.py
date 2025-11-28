@@ -77,7 +77,7 @@ class TestConfigLoaderAISettings:
         # Default is codex/cli
         assert ai_settings["worker"]["selected"]["provider"] == "codex"
         assert ai_settings["worker"]["selected"]["interface"] == "cli"
-        assert ai_settings["worker"]["selected"]["model"] == "gpt-4o"
+        assert ai_settings["worker"]["selected"]["model"] == "gpt-5-codex"
 
     def test_get_ai_settings_with_full_config(self, db_path):
         """Should handle full AI settings with providers array."""

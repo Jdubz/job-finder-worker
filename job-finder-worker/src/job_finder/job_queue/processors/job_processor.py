@@ -30,7 +30,6 @@ from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name
 from job_finder.utils.url_utils import normalize_url
 from job_finder.job_queue.models import (
-    CompanySubTask,
     JobQueueItem,
     QueueItemType,
     QueueStatus,
@@ -588,12 +587,6 @@ class JobProcessor(BaseProcessor):
                     "company_name": company_name,
                     "company_id": company_id,
                     "source": item.source,
-                    "company_sub_task": CompanySubTask.FETCH,
-                    "pipeline_state": {
-                        "company_name": company_name,
-                        "company_website": company_url,
-                        "company_id": company_id,
-                    },
                 },
             )
             if task_id:

@@ -1,25 +1,21 @@
 """Company queue item processor.
 
-This processor handles company queue items in a single-pass approach:
-1. Fetch website HTML content from company pages
-2. Extract company information using AI
-3. Analyze tech stack and detect job boards
-4. Save to SQLite and spawn source discovery if job board found
+This processor handles company queue items end-to-end in a single pass:
+fetch → extract → analyze → save (and optionally spawn source discovery).
 """
 
 import logging
 import os
 import re
-import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.settings import get_text_limits
 from job_finder.logging_config import format_company_name
-from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.job_queue.models import (
     JobQueueItem,
     QueueItemType,
@@ -27,6 +23,8 @@ from job_finder.job_queue.models import (
     SourceDiscoveryConfig,
     SourceTypeHint,
 )
+from job_finder.storage.companies_manager import CompaniesManager
+from job_finder.storage.job_sources_manager import JobSourcesManager
 
 from .base_processor import BaseProcessor
 
@@ -41,6 +39,7 @@ class CompanyProcessor(BaseProcessor):
         queue_manager: QueueManager,
         config_loader: ConfigLoader,
         companies_manager: CompaniesManager,
+        sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
     ):
         """
@@ -55,157 +54,189 @@ class CompanyProcessor(BaseProcessor):
         super().__init__(queue_manager, config_loader)
 
         self.companies_manager = companies_manager
+        self.sources_manager = sources_manager
         self.company_info_fetcher = company_info_fetcher
 
     # ============================================================
-    # MAIN ROUTING
+    # SINGLE-PASS PROCESSOR
     # ============================================================
 
     def process_company(self, item: JobQueueItem) -> None:
         """
-        Process company in a single pass: fetch, extract, analyze, save.
-
-        This is the main entry point for company processing. It performs
-        all pipeline steps in sequence without spawning intermediate items.
-
-        Args:
-            item: Company queue item
+        Run the full company pipeline in one go: fetch → extract → analyze → save.
         """
         if not item.id:
             logger.error("Cannot process item without ID")
             return
 
         company_name = item.company_name or "Unknown Company"
-        _, company_display = format_company_name(company_name)
+        company_website = item.url
         company_id = item.company_id
 
-        logger.info(f"COMPANY: Processing {company_display} (single pass)")
+        _, company_display = format_company_name(company_name)
+        logger.info(f"COMPANY: Processing {company_display}")
 
         with self._handle_company_failure(company_id):
-            # === STEP 1: FETCH ===
-            if not item.url:
+            if not company_website:
                 error_msg = "No company website URL provided"
                 self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
                 return
 
-            pages_to_try = [
-                f"{item.url}/about",
-                f"{item.url}/about-us",
-                f"{item.url}/company",
-                f"{item.url}/careers",
-                item.url,  # Homepage as fallback
-            ]
-
-            html_content = {}
-            text_limits = get_text_limits()
-            min_page_length = text_limits.get("minCompanyPageLength", 200)
-            for page_url in pages_to_try:
-                try:
-                    content = self.company_info_fetcher._fetch_page_content(page_url)
-                    if content and len(content) > min_page_length:
-                        page_type = page_url.split("/")[-1] if "/" in page_url else "homepage"
-                        html_content[page_type] = content
-                        logger.debug(f"Fetched {len(content)} chars from {page_url}")
-                except Exception as e:
-                    logger.debug(f"Failed to fetch {page_url}: {e}")
-                    continue
-
+            html_content = self._fetch_company_pages(company_name, company_website, item.id)
             if not html_content:
-                allow_stub = bool(os.environ.get("ALLOW_COMPANY_FETCH_STUB"))
-                if allow_stub:
-                    html_content = {"about": "Stub company page for dev"}
-                    logger.warning(
-                        "Using stub company content for %s (ALLOW_COMPANY_FETCH_STUB=1)",
-                        company_name,
-                    )
-                else:
-                    error_msg = "Could not fetch any content from company website"
-                    error_details = f"Tried pages: {', '.join(pages_to_try)}"
-                    self.queue_manager.update_status(
-                        item.id, QueueStatus.FAILED, error_msg, error_details=error_details
-                    )
-                    return
+                return  # status already updated to FAILED inside helper
 
-            logger.info(f"COMPANY: Fetched {len(html_content)} pages for {company_display}")
-
-            # === STEP 2: EXTRACT ===
-            combined_content = " ".join(html_content.values())
-            extracted_info = self.company_info_fetcher._extract_company_info(
-                combined_content, company_name
-            )
-
+            extracted_info = self._extract_company_info(company_name, html_content, item.id)
             if not extracted_info:
-                if os.environ.get("ALLOW_COMPANY_FETCH_STUB"):
-                    extracted_info = {
-                        "about": "Stub about for dev",
-                        "culture": "Stub culture",
-                        "mission": "Stub mission",
-                    }
-                    logger.warning(
-                        "Using stub extracted info for %s (ALLOW_COMPANY_FETCH_STUB=1)",
-                        company_name,
-                    )
-                else:
-                    error_msg = "AI extraction failed to produce company information"
-                    self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
-                    return
+                return  # status already updated
 
-            logger.info(
-                f"COMPANY: Extracted {len(extracted_info.get('about', ''))} chars about, "
-                f"{len(extracted_info.get('culture', ''))} chars culture for {company_display}"
-            )
+            # If an AI provider is configured but required fields remain sparse, fail fast
+            if (
+                self.company_info_fetcher.ai_provider
+                and self.company_info_fetcher._needs_ai_enrichment(extracted_info)
+            ):
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    "AI enrichment failed to populate required company fields",
+                )
+                return
 
-            # === STEP 3: ANALYZE ===
             tech_stack = self._detect_tech_stack(extracted_info, html_content)
-            job_board_url = self._detect_job_board(item.url, html_content)
+            job_board_url = self._detect_job_board(company_website, html_content)
 
-            logger.info(f"COMPANY: Analyzed {company_display}, Tech Stack: {len(tech_stack)} items")
-
-            # === STEP 4: SAVE ===
-            company_info = {
+            company_record = {
+                "id": company_id,
                 "name": company_name,
                 "website": item.url,
                 **extracted_info,
                 "techStack": tech_stack,
             }
 
-            if company_id:
-                company_info["id"] = company_id
+            # Normalize keys for storage expectations
+            if extracted_info.get("headquarters") and not extracted_info.get(
+                "headquartersLocation"
+            ):
+                company_record["headquartersLocation"] = extracted_info.get("headquarters")
+            if extracted_info.get("companySizeCategory"):
+                company_record["companySizeCategory"] = extracted_info.get("companySizeCategory")
 
-            company_id = self.companies_manager.save_company(company_info)
+            company_id = self.companies_manager.save_company(company_record)
             logger.info(f"Company saved: {company_display} (ID: {company_id})")
 
-            # If job board found, spawn SOURCE_DISCOVERY
+            source_spawned = False
             if job_board_url:
-                discovery_config = SourceDiscoveryConfig(
-                    url=job_board_url,
-                    type_hint=SourceTypeHint.AUTO,
-                    company_id=company_id,
-                    company_name=company_name,
-                )
+                existing = self.sources_manager.get_source_for_url(job_board_url)
+                if not existing:
+                    discovery_config = SourceDiscoveryConfig(
+                        url=job_board_url,
+                        type_hint=SourceTypeHint.AUTO,
+                        company_id=company_id,
+                        company_name=company_name,
+                    )
 
-                source_item = JobQueueItem(
-                    type=QueueItemType.SOURCE_DISCOVERY,
-                    url="",
-                    company_name=company_name,
-                    company_id=company_id,
-                    source="automated_scan",
-                    source_discovery_config=discovery_config,
-                    tracking_id=str(uuid.uuid4()),
-                )
+                    source_item = JobQueueItem(
+                        type=QueueItemType.SOURCE_DISCOVERY,
+                        url="",
+                        company_name=company_name,
+                        company_id=company_id,
+                        source="automated_scan",
+                        source_discovery_config=discovery_config,
+                        tracking_id=item.tracking_id,
+                        parent_item_id=item.id,
+                    )
 
-                self.queue_manager.add_item(source_item)
-                logger.info(f"Spawned SOURCE_DISCOVERY for {company_display}: {job_board_url}")
+                    self.queue_manager.add_item(source_item)
+                    source_spawned = True
+                    logger.info(f"Spawned SOURCE_DISCOVERY for {company_display}: {job_board_url}")
+                else:
+                    logger.info(
+                        "Source already exists for %s (source_id=%s)",
+                        job_board_url,
+                        existing.get("id"),
+                    )
 
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.SUCCESS,
-                f"Company saved successfully (ID: {company_id})",
+            result_parts = [f"Fetched {len(html_content)} pages"]
+            result_parts.append(
+                f"about={len(extracted_info.get('about', ''))} chars, culture={len(extracted_info.get('culture', ''))} chars"
             )
+            result_parts.append(f"tech_stack={len(tech_stack)}")
+            if job_board_url:
+                result_parts.append("job_board_spawned" if source_spawned else "job_board_exists")
+
+            self.queue_manager.update_status(item.id, QueueStatus.SUCCESS, "; ".join(result_parts))
 
     # ============================================================
     # HELPER METHODS
     # ============================================================
+
+    def _fetch_company_pages(self, company_name: str, website: str, item_id: str) -> Dict[str, str]:
+        pages_to_try = [
+            f"{website}/about",
+            f"{website}/about-us",
+            f"{website}/company",
+            f"{website}/careers",
+            website,  # Homepage as fallback
+        ]
+
+        html_content: Dict[str, str] = {}
+        text_limits = get_text_limits()
+        min_page_length = text_limits.get("minCompanyPageLength", 200)
+
+        for page_url in pages_to_try:
+            try:
+                content = self.company_info_fetcher._fetch_page_content(page_url)
+                if content and len(content) > min_page_length:
+                    page_type = urlparse(page_url).path.strip("/").split("/")[-1] or "homepage"
+                    html_content[page_type] = content
+                    logger.debug("Fetched %d chars from %s", len(content), page_url)
+            except Exception as exc:
+                logger.debug("Failed to fetch %s: %s", page_url, exc)
+
+        if not html_content:
+            allow_stub = bool(os.environ.get("ALLOW_COMPANY_FETCH_STUB"))
+            if allow_stub:
+                html_content = {"about": "Stub company page for dev"}
+                logger.warning(
+                    "Using stub company content for %s (ALLOW_COMPANY_FETCH_STUB=1)", company_name
+                )
+            else:
+                error_msg = "Could not fetch any content from company website"
+                error_details = f"Tried pages: {', '.join(pages_to_try)}"
+                self.queue_manager.update_status(
+                    item_id,
+                    QueueStatus.FAILED,
+                    error_msg,
+                    error_details=error_details,
+                )
+                return {}
+
+        return html_content
+
+    def _extract_company_info(
+        self, company_name: str, html_content: Dict[str, str], item_id: str
+    ) -> Dict[str, Any]:
+        combined_content = " ".join(html_content.values())
+        extracted_info = self.company_info_fetcher._extract_company_info(
+            combined_content, company_name
+        )
+
+        if not extracted_info:
+            if os.environ.get("ALLOW_COMPANY_FETCH_STUB"):
+                extracted_info = {
+                    "about": "Stub about for dev",
+                    "culture": "Stub culture",
+                    "mission": "Stub mission",
+                }
+                logger.warning(
+                    "Using stub extracted info for %s (ALLOW_COMPANY_FETCH_STUB=1)", company_name
+                )
+            else:
+                error_msg = "AI extraction failed to produce company information"
+                self.queue_manager.update_status(item_id, QueueStatus.FAILED, error_msg)
+                return {}
+
+        return extracted_info
 
     @contextmanager
     def _handle_company_failure(self, company_id: Optional[str]):

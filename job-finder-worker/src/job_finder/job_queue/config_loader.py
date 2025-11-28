@@ -83,7 +83,7 @@ class ConfigLoader:
         default_selection = {
             "provider": "codex",
             "interface": "cli",
-            "model": "gpt-4o",
+            "model": "gpt-5-codex",
         }
         default_options = [
             {
@@ -91,7 +91,14 @@ class ConfigLoader:
                 "interfaces": [
                     {
                         "value": "cli",
-                        "models": ["o3", "o4-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"],
+                        "models": [
+                            "gpt-5.1-codex",
+                            "gpt-5-codex",
+                            "o3",
+                            "o4-mini",
+                            "gpt-4o",
+                            "gpt-4o-mini",
+                        ],
                         "enabled": True,
                     }
                 ],

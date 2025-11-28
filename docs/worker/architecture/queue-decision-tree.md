@@ -86,13 +86,10 @@ The queue worker implements a **state machine** where:
 
 ### Stage Routing Patterns
 
-**Company Pipeline** - Uses explicit `company_sub_task` field:
+**Company Pipeline** - Single pass (no staging):
 ```python
-if item.company_sub_task == CompanySubTask.FETCH:
-    → process_company_fetch()
-elif item.company_sub_task == CompanySubTask.EXTRACT:
-    → process_company_extract()
-# ... etc
+if item.type == QueueItemType.COMPANY:
+    → process_company()  # fetch → extract → analyze → save
 ```
 
 **Job Listing Pipeline** - Uses state-based routing via `pipeline_state`:
@@ -219,25 +216,19 @@ PENDING ──▶ PROCESSING ──┬──▶ SUCCESS ──▶ (spawn next st
 
 ## Company Pipeline
 
-**Full pipeline**: `FETCH → EXTRACT → ANALYZE → SAVE`
+**Single-pass**: `fetch → extract → analyze → save`
 
-Each stage is an independent task with `company_sub_task` field.
-
-### Stage 1: COMPANY_FETCH
-**Input**: `company_name`, `company_website`
+Executed inside one queue item (no company_sub_task field, no spawned stages).
 
 **Process**:
-1. Create company record with status `'analyzing'` (if not exists)
-2. Attempt to fetch HTML from multiple pages:
-   - `{website}/about`
-   - `{website}/about-us`
-   - `{website}/company`
-   - `{website}/careers`
-   - `{website}` (homepage fallback)
-3. Store fetched HTML in `pipeline_state.html_content`
+1. Fetch HTML from multiple pages ({website}/about, /about-us, /company, /careers, homepage).
+2. Extract about/culture/mission via heuristics + AI fallback.
+3. Analyze tech stack and detect job board URL from fetched content.
+4. Save company record with extracted fields and tech stack.
+5. If a job board URL is detected and no existing source matches, enqueue a SOURCE_DISCOVERY item.
 
-**Success**: Spawn `COMPANY_EXTRACT`
-**Failure**: Mark FAILED (retry up to 3 times)
+**Success**: Company record saved; if a job board is detected and no source exists, spawn SOURCE_DISCOVERY.
+**Failure**: Mark FAILED (retry up to 3 times) with error details; no additional company stages are spawned.
 
 ---
 
