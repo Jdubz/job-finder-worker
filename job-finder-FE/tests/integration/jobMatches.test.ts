@@ -93,16 +93,11 @@ describeIntegration("Job Matches API Integration", () => {
   })
 
   describe("Authentication helpers", () => {
-    it("fetches matches when signed in", async () => {
-      await signInTestUser("regular")
-      const token = await jobMatchesClient.getAuthToken()
-      expect(typeof token === "string" && token.length > 0).toBe(true)
-    })
-
-    it("clears auth tokens when signed out", async () => {
-      await cleanupTestAuth()
-      const token = await jobMatchesClient.getAuthToken()
-      expect(token).toBeNull()
+    it("client is configured for cookie-based auth", () => {
+      // Auth is now handled via session cookies (credentials: include)
+      // No Bearer tokens are used - the client just needs to be configured
+      expect(jobMatchesClient).toBeDefined()
+      expect(typeof jobMatchesClient.baseUrl).toBe("string")
     })
   })
 

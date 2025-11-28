@@ -89,16 +89,11 @@ describeIntegration("Job Queue API Integration", () => {
   })
 
   describe("Authentication", () => {
-    it("returns a token when signed in", async () => {
-      await signInTestUser("regular")
-      const token = await queueClient.getAuthToken()
-      expect(typeof token === "string" && token.length > 0).toBe(true)
-    })
-
-    it("returns null when signed out", async () => {
-      await cleanupTestAuth()
-      const token = await queueClient.getAuthToken()
-      expect(token).toBeNull()
+    it("client is configured for cookie-based auth", () => {
+      // Auth is now handled via session cookies (credentials: include)
+      // No Bearer tokens are used - the client just needs to be configured
+      expect(queueClient).toBeDefined()
+      expect(typeof queueClient.baseUrl).toBe("string")
     })
   })
 

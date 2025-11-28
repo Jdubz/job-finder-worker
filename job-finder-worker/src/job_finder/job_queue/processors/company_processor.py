@@ -108,7 +108,7 @@ class CompanyProcessor(BaseProcessor):
             company_record = {
                 "id": company_id,
                 "name": company_name,
-                "website": company_website,
+                "website": item.url,
                 **extracted_info,
                 "techStack": tech_stack,
             }

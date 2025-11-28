@@ -54,25 +54,7 @@ export const api = {
   },
 }
 
-/**
- * Helper function for authenticated requests
- */
-export async function authenticatedFetch(
-  url: string,
-  options: RequestInit = {},
-  authToken: string
-): Promise<Response> {
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-      Authorization: `Bearer ${authToken}`,
-      "Content-Type": "application/json",
-    },
-  })
-}
-
-// Legacy functions endpoints removed – use the Express API exclusively.
+// Legacy authenticatedFetch removed – use cookie-based auth via credentials: include
 
 /**
  * Convert a relative artifact URL to an absolute URL

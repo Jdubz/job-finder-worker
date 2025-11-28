@@ -1,18 +1,14 @@
 /**
  * Tests for Base API Client
+ *
+ * Authentication is now handled via session cookies (credentials: include).
+ * No Bearer tokens are used.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { BaseApiClient, ApiError } from "../base-client"
-import { getStoredAuthToken } from "@/lib/auth-storage"
 import { handleApiError } from "@/lib/api-error-handler"
 import { ApiErrorCode } from "@shared/types"
-
-vi.mock("@/lib/auth-storage", () => ({
-  storeAuthToken: vi.fn(),
-  clearStoredAuthToken: vi.fn(),
-  getStoredAuthToken: vi.fn(),
-}))
 
 vi.mock("@/lib/api-error-handler", () => ({
   handleApiError: vi.fn((error: unknown) => error),
@@ -28,7 +24,6 @@ describe("BaseApiClient", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(getStoredAuthToken).mockReturnValue(null)
     client = new BaseApiClient(baseUrl)
     mockedHandleApiError.mockClear()
   })
@@ -60,24 +55,6 @@ describe("BaseApiClient", () => {
     })
   })
 
-  describe("getAuthToken", () => {
-    it("should return null when no token stored", async () => {
-      vi.mocked(getStoredAuthToken).mockReturnValue(null)
-
-      const token = await client.getAuthToken()
-
-      expect(token).toBeNull()
-    })
-
-    it("should return stored token when available", async () => {
-      vi.mocked(getStoredAuthToken).mockReturnValue("stored-token")
-
-      const token = await client.getAuthToken()
-
-      expect(token).toBe("stored-token")
-    })
-  })
-
   describe("request", () => {
     it("should make successful GET request", async () => {
       const mockData = { id: 1, name: "Test" }
@@ -96,6 +73,7 @@ describe("BaseApiClient", () => {
         `${baseUrl}/test`,
         expect.objectContaining({
           method: "GET",
+          credentials: "include",
           headers: expect.objectContaining({
             "Content-Type": "application/json",
           }),
@@ -103,9 +81,7 @@ describe("BaseApiClient", () => {
       )
     })
 
-    it("should include auth token when user is logged in", async () => {
-      const mockToken = "mock-token-123"
-      vi.mocked(getStoredAuthToken).mockReturnValue(mockToken)
+    it("should include credentials for cookie-based auth", async () => {
       ;(global.fetch as any).mockResolvedValue({
         ok: true,
         headers: {
@@ -119,9 +95,7 @@ describe("BaseApiClient", () => {
       expect(global.fetch).toHaveBeenCalledWith(
         `${baseUrl}/test`,
         expect.objectContaining({
-          headers: expect.objectContaining({
-            Authorization: `Bearer ${mockToken}`,
-          }),
+          credentials: "include",
         })
       )
     })

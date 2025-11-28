@@ -17,13 +17,32 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ open, onOpenChange }: AuthModalProps) {
-  const { user, isOwner, signOut, authenticateWithGoogle, isDevelopment, setDevRole } = useAuth()
+  const { user, isOwner, signOut, loginWithGoogle, isDevelopment, setDevRole } = useAuth()
   const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
   const handleDevRoleSelect = (role: DevRole) => {
     setDevRole(role)
     onOpenChange(false)
     setError(null)
+  }
+
+  const handleGoogleLogin = async (credential: string) => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      await loginWithGoogle(credential)
+      onOpenChange(false)
+    } catch (err: unknown) {
+      console.error("Login error:", err)
+      if (err instanceof Error) {
+        setError(err.message)
+      } else {
+        setError("Failed to sign in. Please try again.")
+      }
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleSignOut = async () => {
@@ -134,9 +153,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                       <GoogleLogin
                         onSuccess={(response) => {
                           if (response.credential) {
-                            authenticateWithGoogle(response.credential)
-                            onOpenChange(false)
-                            setError(null)
+                            handleGoogleLogin(response.credential)
                           } else {
                             setError("Missing credential from Google. Please try again.")
                           }
@@ -149,6 +166,12 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                         shape="rectangular"
                       />
                     </div>
+
+                    {isLoading && (
+                      <div className="text-sm text-muted-foreground text-center">
+                        Signing in...
+                      </div>
+                    )}
 
                     {error && (
                       <div className="text-sm text-destructive bg-destructive/10 rounded p-3">

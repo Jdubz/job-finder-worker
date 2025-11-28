@@ -26,7 +26,7 @@ export function usePersonalInfo(): UsePersonalInfoResult {
   const [error, setError] = useState<Error | null>(null)
 
   const loadPersonalInfo = useCallback(async () => {
-    if (!user?.id) {
+    if (!user?.uid) {
       setPersonalInfo(null)
       setLoading(false)
       return
@@ -44,7 +44,7 @@ export function usePersonalInfo(): UsePersonalInfoResult {
     } finally {
       setLoading(false)
     }
-  }, [user?.id])
+  }, [user?.uid])
 
   const updatePersonalInfo = useCallback(
     async (updates: Partial<Omit<PersonalInfo, "id" | "type">>) => {

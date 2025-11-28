@@ -151,7 +151,7 @@ class TestCompanyPipeline:
             "careers": "Looking for Go developers",
         }
 
-        tech_stack = processor._detect_tech_stack(extracted_info, html_content)
+        tech_stack = processor.company_processor._detect_tech_stack(extracted_info, html_content)
 
         assert "python" in tech_stack
         assert "react" in tech_stack
@@ -165,6 +165,8 @@ class TestCompanyPipeline:
             "careers": "Apply at https://boards.greenhouse.io/examplecorp/jobs/123456",
         }
 
-        job_board_url = processor._detect_job_board("https://example.com", html_content)
+        job_board_url = processor.company_processor._detect_job_board(
+            "https://example.com", html_content
+        )
 
         assert job_board_url == "https://boards.greenhouse.io/examplecorp"

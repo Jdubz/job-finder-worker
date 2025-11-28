@@ -2,16 +2,16 @@
  * Generator API Integration Tests
  *
  * Tests for document generation (resume and cover letter) API
+ * Authentication is now handled via session cookies (credentials: include)
  */
 
-import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest"
+import { describe, it, expect, beforeAll, beforeEach } from "vitest"
 import { generatorClient } from "@/api/generator-client"
 import { signInTestUser, cleanupTestAuth, generateTestId, getIntegrationDescribe } from "../utils/testHelpers"
 import { mockGenerateResumeRequest, mockGenerateCoverLetterRequest } from "../fixtures/mockData"
 
 // Skip integration tests if Firebase is mocked (unit test mode)
 const describeIntegration = getIntegrationDescribe()
-const getAuthTokenSpy = vi.spyOn(generatorClient, "getAuthToken")
 
 describeIntegration("Generator API Integration", () => {
   beforeAll(async () => {
@@ -23,7 +23,6 @@ describeIntegration("Generator API Integration", () => {
     // Clean up between tests
     await cleanupTestAuth()
     await signInTestUser("regular")
-    getAuthTokenSpy.mockReset()
   })
 
   describe("Document Generation", () => {
@@ -95,39 +94,15 @@ describeIntegration("Generator API Integration", () => {
   })
 
   describe("Authentication", () => {
-    it("should have auth token available", async () => {
-      getAuthTokenSpy.mockResolvedValueOnce("mock-token")
-      const token = await generatorClient.getAuthToken()
-
-      expect(token).toBeDefined()
-      expect(typeof token).toBe("string")
-      expect(token?.length).toBeGreaterThan(0)
-    })
-
-    it("should get fresh token after cleanup and re-signin", async () => {
-      getAuthTokenSpy.mockResolvedValueOnce("token-1").mockResolvedValueOnce("token-2")
-      const token1 = await generatorClient.getAuthToken()
-
-      await cleanupTestAuth()
-      await signInTestUser("regular")
-
-      const token2 = await generatorClient.getAuthToken()
-
-      expect(token1).toBeDefined()
-      expect(token2).toBeDefined()
-      // Tokens might be the same or different depending on timing
-      expect(typeof token2).toBe("string")
+    it("should be configured for cookie-based auth", () => {
+      // Auth is now handled via session cookies (credentials: include)
+      // No Bearer tokens are used - the client just needs to be configured
+      expect(generatorClient).toBeDefined()
+      expect(typeof generatorClient.baseUrl).toBe("string")
     })
   })
 
   describe("Error Handling", () => {
-    it("should handle missing authentication gracefully", async () => {
-      await cleanupTestAuth()
-      getAuthTokenSpy.mockResolvedValueOnce(null)
-      const token = await generatorClient.getAuthToken()
-      expect(token).toBeNull()
-    })
-
     it("should validate document type", () => {
       const validTypes = ["resume", "cover_letter"]
 

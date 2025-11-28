@@ -3,7 +3,6 @@ import { queueClient } from "@/api"
 import type { QueueItem } from "@shared/types"
 import { API_CONFIG } from "@/config/api"
 import { consumeSavedProviderState, registerStateProvider } from "@/lib/restart-persistence"
-import { getStoredAuthToken } from "@/lib/auth-storage"
 
 interface UseQueueItemsOptions {
   limit?: number
@@ -131,17 +130,11 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       // Kick off an initial fetch so UI is responsive if SSE fails
       await fetchQueueItems()
 
-      const token = getStoredAuthToken()
-      if (!token) {
-        setConnectionStatus("disconnected")
-        return
-      }
-
       try {
         const controller = new AbortController()
         streamAbortRef.current = controller
+        // Use credentials: include to send session cookie for authentication
         const res = await fetch(`${API_CONFIG.baseUrl}/queue/events`, {
-          headers: { Authorization: `Bearer ${token}` },
           credentials: "include",
           signal: controller.signal,
         })

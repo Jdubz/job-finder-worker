@@ -1,13 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { JobMatchesClient } from "../job-matches-client"
 import type { JobMatchWithListing } from "@shared/types"
-import { getStoredAuthToken } from "@/lib/auth-storage"
-
-vi.mock("@/lib/auth-storage", () => ({
-  getStoredAuthToken: vi.fn(() => null),
-  storeAuthToken: vi.fn(),
-  clearStoredAuthToken: vi.fn(),
-}))
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch as any
@@ -58,7 +51,7 @@ describe("JobMatchesClient", () => {
   })
 
   afterEach(() => {
-    vi.mocked(getStoredAuthToken).mockReturnValue(null)
+    vi.resetAllMocks()
   })
 
   it("fetches matches with query parameters", async () => {
@@ -74,7 +67,7 @@ describe("JobMatchesClient", () => {
 
     expect(global.fetch).toHaveBeenCalledWith(
       `${baseUrl}/job-matches?minScore=80`,
-      expect.objectContaining({ method: "GET" })
+      expect.objectContaining({ method: "GET", credentials: "include" })
     )
     expect(matches).toEqual(mockMatches)
   })

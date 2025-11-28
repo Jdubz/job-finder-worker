@@ -1,33 +1,23 @@
-import React, { createContext, useContext, useEffect, useState } from "react"
-import { googleLogout } from "@react-oauth/google"
-import { decodeJwt, type JwtPayload } from "@/lib/jwt"
-import { clearStoredAuthToken, getStoredAuthToken, storeAuthToken } from "@/lib/auth-storage"
-import {
-  AUTH_BYPASS_ENABLED,
-  DEFAULT_E2E_AUTH_TOKEN,
-  TEST_AUTH_STATE_KEY,
-  TEST_AUTH_TOKEN_KEY,
-} from "@/config/testing"
-import adminConfig from "@/config/admins.json"
-import { authClient } from "@/api/auth-client"
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { googleLogout } from '@react-oauth/google'
+import { authClient, AuthError } from '@/api/auth-client'
+import adminConfig from '@/config/admins.json'
 
-// Create a Set for O(1) admin email lookup
+// Admin emails for owner/admin role determination
 const adminEmailSet = new Set(
   Array.isArray(adminConfig.adminEmails) ? adminConfig.adminEmails : []
 )
 
-const BYPASS_FALLBACK_EMAIL = "owner@jobfinder.dev"
-const IS_DEVELOPMENT = import.meta.env.VITE_ENVIRONMENT === "development"
+const IS_DEVELOPMENT = import.meta.env.VITE_ENVIRONMENT === 'development'
 
-export type DevRole = "public" | "viewer" | "admin"
+export type DevRole = 'public' | 'viewer' | 'admin'
 
 interface AuthUser {
-  id: string
-  uid?: string
+  uid: string
   email: string
   name?: string
   picture?: string
-  emailVerified: boolean
+  roles?: string[]
 }
 
 interface AuthContextType {
@@ -36,7 +26,7 @@ interface AuthContextType {
   isOwner: boolean
   isDevelopment: boolean
   signOut: () => Promise<void>
-  authenticateWithGoogle: (credential: string) => void
+  loginWithGoogle: (credential: string) => Promise<void>
   setDevRole: (role: DevRole) => void
 }
 
@@ -46,278 +36,122 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [isOwner, setIsOwner] = useState(false)
-  const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
 
-  // When the API restarts during deploys we may get transient 5xx/connection errors.
-  // Retry a few times before declaring the session missing so we don't log users out unnecessarily.
-  const restoreSessionWithRetry = async (): Promise<AuthUser | null> => {
-    const MAX_ATTEMPTS = 3
-    const BASE_DELAY_MS = 500
-
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-      try {
-        const session = await authClient.fetchSession()
-        if (session?.user?.email) {
-          return {
-            id: session.user.uid ?? session.user.email,
-            uid: session.user.uid,
-            email: session.user.email,
-            name: session.user.name,
-            picture: session.user.picture,
-            emailVerified: session.user.emailVerified ?? true,
-          }
-        }
-        return null
-      } catch (error) {
-        const status = (error as { statusCode?: number })?.statusCode
-        const isAuthFailure = status === 401
-        if (isAuthFailure || attempt === MAX_ATTEMPTS - 1) {
-          throw error
-        }
-
-        const delay = BASE_DELAY_MS * Math.pow(2, attempt)
-        await new Promise((resolve) => setTimeout(resolve, delay))
-      }
-    }
-
-    throw new Error("restoreSessionWithRetry exited unexpectedly")
-  }
-
+  // Restore session from cookie on mount
   useEffect(() => {
-    if (!AUTH_BYPASS_ENABLED && !googleClientId) {
-      console.error("VITE_GOOGLE_OAUTH_CLIENT_ID is required for authentication.")
-    }
-  }, [googleClientId])
+    let mounted = true
 
-  useEffect(() => {
-    let isMounted = true
-
-    if (AUTH_BYPASS_ENABLED && typeof window !== "undefined") {
-      const bypassState = readBypassState()
-      if (isMounted) {
-        if (bypassState) {
-          const bypassUser = buildBypassUser(bypassState)
-          setUser(bypassUser)
-          setIsOwner(bypassState.isOwner ?? adminEmailSet.has(bypassUser.email))
-        } else {
-          setUser(null)
-          setIsOwner(false)
-        }
-        setLoading(false)
-      }
-      return () => {
-        isMounted = false
-      }
-    }
-
-    const bootstrapAuth = async () => {
-      const storedToken = getStoredAuthToken()
-      if (storedToken) {
-        const payload = decodeJwt(storedToken)
-        const expiresAtMs = payload.exp ? payload.exp * 1000 : null
-        if (expiresAtMs && Date.now() >= expiresAtMs) {
-          console.warn("Stored auth token has expired; clearing session")
-          clearStoredAuthToken()
-        } else {
-          const restoredUser = buildUserFromToken(storedToken, payload)
-          if (isMounted) {
-            setUser(restoredUser)
-            setIsOwner(restoredUser?.email ? adminEmailSet.has(restoredUser.email) : false)
-            setLoading(false)
-          }
-          return
-        }
-      }
-
-      // No valid JWT in storage - attempt to restore from server-side session cookie
+    const restoreSession = async () => {
       try {
-        const restoredUser = await restoreSessionWithRetry()
-        if (!isMounted) return
-
-        if (restoredUser) {
-          setUser(restoredUser)
-          setIsOwner(adminEmailSet.has(restoredUser.email))
-        } else {
-          setUser(null)
-          setIsOwner(false)
+        const response = await authClient.fetchSession()
+        if (mounted && response.user) {
+          setUser(response.user)
+          setIsOwner(adminEmailSet.has(response.user.email))
         }
       } catch (error) {
-        // 401s are expected when no session cookie exists; only log unexpected errors
-        if ((error as { statusCode?: number })?.statusCode !== 401) {
-          console.warn("Failed to restore session from cookie", error)
+        // 401 is expected when not logged in - silently ignore
+        if (error instanceof AuthError && error.statusCode === 401) {
+          // Not logged in, that's fine
+        } else {
+          console.warn('Failed to restore session:', error)
         }
-        if (isMounted) {
+        if (mounted) {
           setUser(null)
           setIsOwner(false)
         }
       } finally {
-        if (isMounted) {
+        if (mounted) {
           setLoading(false)
         }
       }
     }
 
-    void bootstrapAuth()
+    restoreSession()
 
     return () => {
-      isMounted = false
+      mounted = false
     }
   }, [])
 
-  const authenticateWithGoogle = (credential: string) => {
-    const payload = decodeJwt(credential)
-    const nextUser = buildUserFromToken(credential, payload)
-    if (!nextUser) {
-      console.error("Failed to decode Google credential.")
-      return
+  /**
+   * Login with Google OAuth credential.
+   * Sends credential to backend, which validates it and sets a session cookie.
+   */
+  const loginWithGoogle = useCallback(async (credential: string) => {
+    try {
+      const response = await authClient.login(credential)
+      setUser(response.user)
+      setIsOwner(adminEmailSet.has(response.user.email))
+    } catch (error) {
+      console.error('Login failed:', error)
+      throw error
     }
+  }, [])
 
-    storeAuthToken(credential)
-    setUser(nextUser)
-    setIsOwner(adminEmailSet.has(nextUser.email))
-    setLoading(false)
-  }
-
-  const signOut = async () => {
-    if (AUTH_BYPASS_ENABLED && typeof window !== "undefined") {
-      window.localStorage.removeItem(TEST_AUTH_STATE_KEY)
-      window.localStorage.removeItem(TEST_AUTH_TOKEN_KEY)
-      setUser(null)
-      setIsOwner(false)
-      return
-    }
-
+  /**
+   * Sign out - clear session on server and client.
+   */
+  const signOut = useCallback(async () => {
     try {
       await authClient.logout()
     } catch (error) {
-      console.warn("Failed to revoke server session", error)
+      console.warn('Logout request failed:', error)
     }
 
+    // Always clear client state, even if server request fails
     try {
       googleLogout()
     } catch (error) {
-      console.warn("Failed to sign out of Google Identity Services", error)
+      console.warn('Google logout failed:', error)
     }
 
-    clearStoredAuthToken()
     setUser(null)
     setIsOwner(false)
-  }
+  }, [])
 
-  const setDevRole = (role: DevRole) => {
+  /**
+   * Development mode: set role directly for testing.
+   */
+  const setDevRole = useCallback(async (role: DevRole) => {
     if (!IS_DEVELOPMENT) {
-      console.warn("setDevRole is only available in development mode")
+      console.warn('setDevRole is only available in development mode')
       return
     }
 
-    if (role === "public") {
-      // Sign out - no user
-      clearStoredAuthToken()
-      setUser(null)
-      setIsOwner(false)
+    if (role === 'public') {
+      await signOut()
       return
     }
 
-    const isAdmin = role === "admin"
-    const mockUser: AuthUser = {
-      id: `dev-${role}-user`,
-      uid: `dev-${role}-user`,
-      email: isAdmin ? "dev-admin@jobfinder.dev" : "dev-viewer@jobfinder.dev",
-      name: isAdmin ? "Dev Admin" : "Dev Viewer",
-      picture: undefined,
-      emailVerified: true,
+    // Use dev tokens that backend accepts in development mode
+    const devCredential = role === 'admin' ? 'dev-admin-token' : 'dev-viewer-token'
+
+    try {
+      const response = await authClient.login(devCredential)
+      setUser(response.user)
+      setIsOwner(role === 'admin')
+    } catch (error) {
+      console.error('Dev login failed:', error)
     }
+  }, [signOut])
 
-    // Store a mock token for API requests
-    storeAuthToken(`dev-${role}-token`)
-    setUser(mockUser)
-    setIsOwner(isAdmin)
-  }
-
-  const value = {
+  const value: AuthContextType = {
     user,
     loading,
     isOwner,
     isDevelopment: IS_DEVELOPMENT,
     signOut,
-    authenticateWithGoogle,
+    loginWithGoogle,
     setDevRole,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
-interface BypassAuthState {
-  uid?: string
-  email?: string
-  displayName?: string
-  isOwner?: boolean
-  emailVerified?: boolean
-  token?: string
-}
-
-function readBypassState(): BypassAuthState | null {
-  if (typeof window === "undefined") {
-    return null
-  }
-  try {
-    const raw = window.localStorage.getItem(TEST_AUTH_STATE_KEY)
-    return raw ? (JSON.parse(raw) as BypassAuthState) : null
-  } catch {
-    return null
-  }
-}
-
-function resolveBypassToken(state?: BypassAuthState): string {
-  if (state?.token) {
-    return state.token
-  }
-  if (typeof window !== "undefined") {
-    const stored = window.localStorage.getItem(TEST_AUTH_TOKEN_KEY)
-    if (stored) {
-      return stored
-    }
-  }
-  return DEFAULT_E2E_AUTH_TOKEN
-}
-
-function buildBypassUser(state: BypassAuthState): AuthUser {
-  const token = resolveBypassToken(state)
-  const email = state.email ?? BYPASS_FALLBACK_EMAIL
-
-  storeAuthToken(token)
-
-  return {
-    id: state.uid ?? "e2e-bypass-user",
-    uid: state.uid ?? "e2e-bypass-user",
-    email,
-    name: state.displayName ?? "E2E Owner",
-    picture: undefined,
-    emailVerified: state.emailVerified ?? true,
-  }
-}
-
-function buildUserFromToken(token: string, payload?: JwtPayload): AuthUser | null {
-  const claims = payload ?? decodeJwt(token)
-  if (!claims.email) {
-    return null
-  }
-  const id = claims.sub ?? claims.email
-  return {
-    id,
-    uid: id,
-    email: claims.email,
-    name: typeof claims.name === "string" ? claims.name : undefined,
-    picture: typeof claims.picture === "string" ? claims.picture : undefined,
-    emailVerified: claims.email_verified ?? true,
-  }
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
+    throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
 }

@@ -208,23 +208,7 @@ class QueueItemProcessor:
 
     # Legacy job delegation removed; state-driven pipeline is the only path.
 
-    # Company processor delegations
-    def _process_company_fetch(self, item: JobQueueItem) -> None:
-        """Delegate to company processor."""
-        return self.company_processor.process_company_fetch(item)
-
-    def _process_company_extract(self, item: JobQueueItem) -> None:
-        """Delegate to company processor."""
-        return self.company_processor.process_company_extract(item)
-
-    def _process_company_analyze(self, item: JobQueueItem) -> None:
-        """Delegate to company processor."""
-        return self.company_processor.process_company_analyze(item)
-
-    def _process_company_save(self, item: JobQueueItem) -> None:
-        """Delegate to company processor."""
-        return self.company_processor.process_company_save(item)
-
+    # Company processor helper delegations (for testing)
     def _detect_tech_stack(
         self, extracted_info: Dict[str, Any], html_content: Optional[str] = None
     ) -> list:
