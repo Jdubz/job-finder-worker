@@ -87,7 +87,8 @@ class AuthClient {
       )
     }
 
-    return response.json()
+    const json = await response.json()
+    return json.data // Unwrap from { success: true, data: { user } }
   }
 
   /**
@@ -111,7 +112,8 @@ class AuthClient {
         )
       }
 
-      return response.json()
+      const json = await response.json()
+      return json.data // Unwrap from { success: true, data: { user } }
     })
   }
 
