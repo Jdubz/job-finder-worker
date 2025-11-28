@@ -44,7 +44,6 @@ class StrikeFilterEngine:
         self.excluded_seniority = [s.lower() for s in hard_rej.get("excludedSeniority", [])]
         self.excluded_companies = [c.lower() for c in hard_rej.get("excludedCompanies", [])]
         self.excluded_keywords = [k.lower() for k in hard_rej.get("excludedKeywords", [])]
-        # Whitelist: previously hard-rejected; now treated as strikes to reduce false negatives
         self.required_title_keywords = [
             k.lower() for k in hard_rej.get("requiredTitleKeywords", [])
         ]
@@ -221,13 +220,14 @@ class StrikeFilterEngine:
         if any(is_match(k) for k in self.required_title_keywords):
             return  # Found a match, no strike
 
-        # No required keywords found - add a modest strike instead of hard rejection
-        result.add_strike(
-            filter_category="title",
+        # No required keywords found – hard reject to enforce whitelist
+        result.add_rejection(
+            filter_category="hard_reject",
             filter_name="missing_required_title_keyword",
-            reason="Title missing preferred keywords",
+            reason="Title missing required keywords",
             detail=f"Title '{title}' does not contain any of: {', '.join(self.required_title_keywords)}",
-            points=2,
+            severity="hard_reject",
+            points=0,
         )
 
     def _is_excluded_job_type(self, title: str, description: str, result: FilterResult) -> bool:

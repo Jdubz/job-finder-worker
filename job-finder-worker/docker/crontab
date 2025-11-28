@@ -8,6 +8,9 @@
 # - Recalculates match scores based on staleness (no AI)
 0 3 * * * root curl -s -X POST http://localhost:5555/maintenance >> /var/log/maintenance.log 2>&1
 
+# Rotate worker logs daily at 03:10 UTC (after maintenance)
+10 3 * * * root /bin/bash /app/docker/logrotate.sh >> /var/log/logrotate.log 2>&1
+
 # Run at specific times daily (optional - comment out if using above)
 # 0 6 * * * root /usr/sbin/gosu node /bin/bash -c 'cd /app && /home/node/.local/bin/python scheduler.py' >> /var/log/cron.log 2>&1
 # 0 12 * * * root /usr/sbin/gosu node /bin/bash -c 'cd /app && /home/node/.local/bin/python scheduler.py' >> /var/log/cron.log 2>&1
