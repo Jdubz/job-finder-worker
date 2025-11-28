@@ -4,8 +4,6 @@ import { setupTestServer } from "./helpers/test-server"
 import { runMockWorker } from "./helpers/mock-worker"
 import { TEST_AUTH_TOKEN_KEY } from "../../job-finder-FE/src/config/testing"
 
-const DEV_ADMIN_TOKEN = "dev-admin-token"
-
 interface ApiSuccess<T> {
   success: true
   data: T

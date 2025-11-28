@@ -6,7 +6,9 @@ import type {
 } from '@shared/types'
 import path from 'node:path'
 
-let listingRepo: any = null
+let listingRepo:
+  | import('../../../job-finder-BE/server/src/modules/job-listings/job-listing.repository').JobListingRepository
+  | null = null
 
 async function getListingRepo() {
   if (!listingRepo) {
