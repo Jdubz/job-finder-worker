@@ -18,22 +18,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { AlertCircle, Activity, Loader2, Plus, Trash2, Play, Pause } from "lucide-react"
+import { AlertCircle, Activity, Loader2, Plus, Play, Pause, AlertTriangle } from "lucide-react"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
+import { QueueTable } from "./components/QueueTable"
 import {
   getCompanyName,
   getDomain,
   getJobTitle,
-  getScrapeTitle,
   getSourceLabel,
   getStageLabel,
   getTaskTypeLabel,
@@ -51,6 +43,7 @@ export function QueueManagementPage() {
 
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
+  const [usingFallbackStats, setUsingFallbackStats] = useState(false)
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null)
@@ -67,9 +60,10 @@ export function QueueManagementPage() {
         setStatsLoading(true)
         const stats = await queueClient.getStats()
         setQueueStats(stats)
+        setUsingFallbackStats(false)
       } catch (err) {
         console.error("Failed to fetch queue stats:", err)
-        // Fallback to local calculation if API fails
+        // Fallback to local calculation if API fails (limited to 100 items)
         const stats: QueueStats = {
           total: queueItems.length,
           pending: queueItems.filter((i) => i.status === "pending").length,
@@ -80,6 +74,7 @@ export function QueueManagementPage() {
           filtered: queueItems.filter((i) => i.status === "filtered").length,
         }
         setQueueStats(stats)
+        setUsingFallbackStats(true)
       } finally {
         setStatsLoading(false)
       }
@@ -321,7 +316,7 @@ export function QueueManagementPage() {
         </Alert>
       )}
 
-      {/* Compact stats - now showing full counts from API */}
+      {/* Compact stats - showing full counts from API (or fallback to limited local data) */}
       {statsLoading || loading ? (
         <div className="flex flex-wrap gap-2">
           {[1, 2, 3, 4, 5, 6, 7].map((i) => (
@@ -330,7 +325,7 @@ export function QueueManagementPage() {
         </div>
       ) : (
         queueStats && (
-          <div className="flex flex-wrap gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
             <StatPill label="Total" value={queueStats.total} />
             <StatPill label="Pending" value={queueStats.pending} tone="amber" />
             <StatPill label="Processing" value={queueStats.processing} tone="blue" />
@@ -342,6 +337,15 @@ export function QueueManagementPage() {
               value={`${queueStats.total > 0 ? Math.round((queueStats.success / queueStats.total) * 100) : 0}%`}
               tone="green"
             />
+            {usingFallbackStats && (
+              <div
+                className="flex items-center gap-1 text-amber-600 cursor-help"
+                title="Stats API unavailable. Showing counts from last 100 items only."
+              >
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-xs">Partial data</span>
+              </div>
+            )}
           </div>
         )
       )}
@@ -370,10 +374,10 @@ export function QueueManagementPage() {
             <div className="flex items-center justify-between mb-4">
               <TabsList>
                 <TabsTrigger value="pending">
-                  Pending ({pendingItems.length})
+                  Pending ({queueStats ? queueStats.pending + queueStats.processing : pendingItems.length})
                 </TabsTrigger>
                 <TabsTrigger value="completed">
-                  Completed ({completedItems.length})
+                  Completed ({queueStats ? queueStats.success + queueStats.failed + queueStats.skipped + queueStats.filtered : completedItems.length})
                 </TabsTrigger>
               </TabsList>
 
@@ -542,91 +546,6 @@ export function QueueManagementPage() {
         </DialogContent>
       </Dialog>
     </div>
-  )
-}
-
-interface QueueTableProps {
-  items: QueueItem[]
-  onRowClick: (item: QueueItem) => void
-  onCancel: (id: string) => void
-  formatRelativeTime: (date: unknown) => string
-}
-
-function QueueTable({ items, onRowClick, onCancel, formatRelativeTime }: QueueTableProps) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Task</TableHead>
-          <TableHead className="hidden md:table-cell">Type</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="hidden md:table-cell">Updated</TableHead>
-          <TableHead className="hidden md:table-cell">Result</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {items.map((item) => {
-          if (!item.id) return null
-          const title =
-            getJobTitle(item) || getScrapeTitle(item) || getDomain(item.url) || "Untitled task"
-          const company = getCompanyName(item)
-          const source = getSourceLabel(item)
-          const typeLabel = getTaskTypeLabel(item)
-          const stageLabel = getStageLabel(item)
-          const canCancel = item.status === "pending" || item.status === "processing"
-
-          return (
-            <TableRow
-              key={item.id}
-              data-testid={`queue-item-${item.id}`}
-              className="cursor-pointer hover:bg-muted/60"
-              onClick={() => onRowClick(item)}
-            >
-              <TableCell className="font-medium max-w-[220px]">
-                <div className="flex flex-col gap-1">
-                  <span className="truncate">{title}</span>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {company || source || getDomain(item.url) || "No details yet"}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="hidden md:table-cell">
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <Badge variant="outline">{typeLabel}</Badge>
-                  {stageLabel && <Badge variant="secondary">{stageLabel}</Badge>}
-                  {source && <Badge variant="outline">{source}</Badge>}
-                </div>
-              </TableCell>
-              <TableCell>
-                <Badge className={statusTone(item.status)}>{item.status}</Badge>
-              </TableCell>
-              <TableCell className="hidden md:table-cell text-muted-foreground">
-                {formatRelativeTime(item.updated_at)}
-              </TableCell>
-              <TableCell className="hidden md:table-cell max-w-[240px] truncate text-muted-foreground">
-                {item.result_message ?? "—"}
-              </TableCell>
-              <TableCell className="text-right">
-                {canCancel && item.id && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onCancel(item.id as string)
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </TableCell>
-            </TableRow>
-          )
-        })}
-      </TableBody>
-    </Table>
   )
 }
 
