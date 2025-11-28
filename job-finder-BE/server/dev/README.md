@@ -36,7 +36,8 @@ job-finder-BE/server/
     ├── run-dev.sh            # Test harness script
     ├── clone-prod-db.sh      # DB cloning script
     ├── sample-request.json   # Test payload
-    └── payloads/             # Additional test payloads
+    ├── payloads/             # Additional test payloads
+    └── README.md             # This file
 ```
 
 ## Codex Credential Mounting
