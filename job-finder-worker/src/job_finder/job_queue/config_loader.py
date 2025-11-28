@@ -218,10 +218,10 @@ class ConfigLoader:
     def get_job_match(self) -> Dict[str, Any]:
         """Get job matching preferences (scoring, bonuses, thresholds)."""
         default_weights = {
-                    "bonuses": {
-                        "remoteFirst": 15,
-                        "aiMlFocus": 10,
-                    },
+            "bonuses": {
+                "remoteFirst": 15,
+                "aiMlFocus": 10,
+            },
             "sizeAdjustments": {
                 "largeCompanyBonus": 10,
                 "smallCompanyPenalty": -5,

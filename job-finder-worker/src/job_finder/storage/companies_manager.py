@@ -141,10 +141,16 @@ class CompaniesManager:
             "headquarters_location": company_data.get("headquartersLocation")
             or company_data.get("headquarters_location"),
             "has_portland_office": 1 if has_portland_office else 0,
-            "is_remote_first": 1 if company_data.get("isRemoteFirst") or company_data.get("is_remote_first") else 0,
-            "ai_ml_focus": 1 if company_data.get("aiMlFocus") or company_data.get("ai_ml_focus") else 0,
-            "employee_count": company_data.get("employeeCount") or company_data.get("employee_count"),
-            "timezone_offset": company_data.get("timezoneOffset") or company_data.get("timezone_offset"),
+            "is_remote_first": (
+                1 if company_data.get("isRemoteFirst") or company_data.get("is_remote_first") else 0
+            ),
+            "ai_ml_focus": (
+                1 if company_data.get("aiMlFocus") or company_data.get("ai_ml_focus") else 0
+            ),
+            "employee_count": company_data.get("employeeCount")
+            or company_data.get("employee_count"),
+            "timezone_offset": company_data.get("timezoneOffset")
+            or company_data.get("timezone_offset"),
             "tech_stack": json.dumps(tech_stack),
         }
 

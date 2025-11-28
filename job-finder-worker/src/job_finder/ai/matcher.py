@@ -11,10 +11,7 @@ from job_finder.ai.prompts import JobMatchPrompts
 from job_finder.ai.providers import AIProvider
 from job_finder.profile.schema import Profile
 from job_finder.settings import get_text_limits
-from job_finder.utils.company_size_utils import (
-    calculate_company_size_adjustment,
-    detect_company_size,
-)
+from job_finder.utils.company_size_utils import detect_company_size
 from job_finder.utils.date_utils import calculate_freshness_adjustment, parse_job_date
 from job_finder.utils.role_preference_utils import calculate_role_preference_adjustment
 from job_finder.utils.timezone_utils import (

@@ -11,7 +11,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Loader2, Save, RotateCcw } from "lucide-react"
 import { TabCard } from "../shared"
-import type { JobMatchConfig } from "@shared/types"
+import { DEFAULT_JOB_MATCH } from "@shared/types"
+import type { CompanyMatchWeights, JobMatchConfig } from "@shared/types"
 import type { ConfigState } from "../../hooks/useConfigState"
 
 type JobMatchTabProps = Pick<
@@ -32,6 +33,27 @@ export function JobMatchTab({
   handleSaveJobMatch,
   handleResetJobMatch,
 }: JobMatchTabProps) {
+  const updateCompanyWeights = (
+    updater: (weights: CompanyMatchWeights) => CompanyMatchWeights
+  ) => {
+    setJobMatch((prev) => {
+      const base = prev ?? { ...DEFAULT_JOB_MATCH }
+      const weights: CompanyMatchWeights =
+        (base.companyWeights ?? DEFAULT_JOB_MATCH.companyWeights)!
+
+      return {
+        ...base,
+        companyWeights: updater({
+          ...weights,
+          bonuses: { ...weights.bonuses },
+          sizeAdjustments: { ...weights.sizeAdjustments },
+          timezoneAdjustments: { ...weights.timezoneAdjustments },
+          priorityThresholds: { ...weights.priorityThresholds },
+        }),
+      }
+    })
+  }
+
   return (
     <TabsContent value="job-match" className="space-y-4 mt-4">
       <TabCard
@@ -159,20 +181,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.bonuses.remoteFirst ?? 0}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          bonuses: {
-                            ...prev.companyWeights?.bonuses,
-                            remoteFirst: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  bonuses: {
+                    ...weights.bonuses,
+                    remoteFirst: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -184,20 +199,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.bonuses.aiMlFocus ?? 0}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          bonuses: {
-                            ...prev.companyWeights?.bonuses,
-                            aiMlFocus: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  bonuses: {
+                    ...weights.bonuses,
+                    aiMlFocus: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -209,20 +217,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.sizeAdjustments.largeCompanyBonus ?? 0}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          sizeAdjustments: {
-                            ...prev.companyWeights?.sizeAdjustments,
-                            largeCompanyBonus: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  sizeAdjustments: {
+                    ...weights.sizeAdjustments,
+                    largeCompanyBonus: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -234,20 +235,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.sizeAdjustments.smallCompanyPenalty ?? 0}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          sizeAdjustments: {
-                            ...prev.companyWeights?.sizeAdjustments,
-                            smallCompanyPenalty: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  sizeAdjustments: {
+                    ...weights.sizeAdjustments,
+                    smallCompanyPenalty: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -259,20 +253,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.sizeAdjustments.largeCompanyThreshold ?? 10000}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          sizeAdjustments: {
-                            ...prev.companyWeights?.sizeAdjustments,
-                            largeCompanyThreshold: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  sizeAdjustments: {
+                    ...weights.sizeAdjustments,
+                    largeCompanyThreshold: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -284,20 +271,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.sizeAdjustments.smallCompanyThreshold ?? 100}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          sizeAdjustments: {
-                            ...prev.companyWeights?.sizeAdjustments,
-                            smallCompanyThreshold: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  sizeAdjustments: {
+                    ...weights.sizeAdjustments,
+                    smallCompanyThreshold: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -309,20 +289,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.timezoneAdjustments.sameTimezone ?? 0}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          timezoneAdjustments: {
-                            ...prev.companyWeights?.timezoneAdjustments,
-                            sameTimezone: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  timezoneAdjustments: {
+                    ...weights.timezoneAdjustments,
+                    sameTimezone: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -334,20 +307,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.timezoneAdjustments.diff1to2hr ?? 0}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          timezoneAdjustments: {
-                            ...prev.companyWeights?.timezoneAdjustments,
-                            diff1to2hr: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  timezoneAdjustments: {
+                    ...weights.timezoneAdjustments,
+                    diff1to2hr: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -359,20 +325,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.timezoneAdjustments.diff3to4hr ?? 0}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          timezoneAdjustments: {
-                            ...prev.companyWeights?.timezoneAdjustments,
-                            diff3to4hr: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  timezoneAdjustments: {
+                    ...weights.timezoneAdjustments,
+                    diff3to4hr: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -384,20 +343,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.timezoneAdjustments.diff5to8hr ?? 0}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          timezoneAdjustments: {
-                            ...prev.companyWeights?.timezoneAdjustments,
-                            diff5to8hr: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  timezoneAdjustments: {
+                    ...weights.timezoneAdjustments,
+                    diff5to8hr: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -409,20 +361,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.timezoneAdjustments.diff9plusHr ?? 0}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          timezoneAdjustments: {
-                            ...prev.companyWeights?.timezoneAdjustments,
-                            diff9plusHr: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  timezoneAdjustments: {
+                    ...weights.timezoneAdjustments,
+                    diff9plusHr: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -434,20 +379,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.priorityThresholds.high ?? 85}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          priorityThresholds: {
-                            ...prev.companyWeights?.priorityThresholds,
-                            high: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  priorityThresholds: {
+                    ...weights.priorityThresholds,
+                    high: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
@@ -459,20 +397,13 @@ export function JobMatchTab({
               type="number"
               value={jobMatch?.companyWeights?.priorityThresholds.medium ?? 70}
               onChange={(e) =>
-                setJobMatch((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        companyWeights: {
-                          ...prev.companyWeights,
-                          priorityThresholds: {
-                            ...prev.companyWeights?.priorityThresholds,
-                            medium: parseInt(e.target.value) || 0,
-                          },
-                        },
-                      }
-                    : null
-                )
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  priorityThresholds: {
+                    ...weights.priorityThresholds,
+                    medium: parseInt(e.target.value) || 0,
+                  },
+                }))
               }
             />
           </div>
