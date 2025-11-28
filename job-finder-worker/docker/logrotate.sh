@@ -16,7 +16,7 @@ for f in "$LOG_DIR"/*.log; do
     rotated="$f.$ts"
     mv "$f" "$rotated"
     gzip -9 "$rotated"
-    : > "$f"  # truncate current log
+    truncate -s 0 "$f"  # truncate current log without changing ownership
   fi
 done
 
