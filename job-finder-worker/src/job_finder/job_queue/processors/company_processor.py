@@ -100,9 +100,9 @@ class CompanyProcessor(BaseProcessor):
                 ai_enriched = self.company_info_fetcher._extract_with_ai(
                     combined_content, company_name
                 )
-                # Merge AI results into extracted_info (AI values take precedence for empty fields)
+                # Merge AI results into extracted_info (AI values take precedence)
                 for key, value in ai_enriched.items():
-                    if value and not extracted_info.get(key):
+                    if value:
                         extracted_info[key] = value
 
                 # Check again after AI enrichment - fail if still sparse
