@@ -5,11 +5,6 @@ import { vi } from "vitest"
 
 /**
  * MainLayout Component Tests
- *
- * NOTE: These tests are temporarily skipped due to React 19 + @testing-library/react compatibility.
- * The issue is that @testing-library/react 16.3.0 uses react-dom/test-utils which expects React.act
- * from the React package, but React 19 changed how act is exported. These will be re-enabled when
- * @testing-library/react releases a fully React 19 compatible version or we downgrade to React 18.
  */
 
 // Mock the child components
@@ -30,7 +25,7 @@ vi.mock("react-router-dom", async (importOriginal) => {
   }
 })
 
-describe.skip("MainLayout", () => {
+describe("MainLayout", () => {
   it("renders all layout components", () => {
     render(
       <BrowserRouter>

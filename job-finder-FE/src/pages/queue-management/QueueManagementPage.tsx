@@ -3,34 +3,38 @@ import { useAuth } from "@/contexts/AuthContext"
 import type { QueueItem, QueueStats } from "@shared/types"
 import { useQueueItems, type ConnectionStatus } from "@/hooks/useQueueItems"
 import { configClient } from "@/api/config-client"
+import { queueClient } from "@/api/queue-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { AlertCircle, Activity, Loader2, Plus, Trash2, Play, Pause } from "lucide-react"
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { AlertCircle, Activity, Loader2, Plus, Play, Pause, AlertTriangle } from "lucide-react"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
+import { QueueTable } from "./components/QueueTable"
 import {
   getCompanyName,
   getDomain,
   getJobTitle,
-  getScrapeTitle,
   getSourceLabel,
   getStageLabel,
   getTaskTypeLabel,
 } from "./components/queueItemDisplay"
 
 type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered"
+type CompletedStatus = "success" | "failed" | "skipped" | "filtered"
+
+const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered"]
 
 export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
@@ -38,36 +42,57 @@ export function QueueManagementPage() {
   const { queueItems, loading, error, connectionStatus, updateQueueItem, refetch } = useQueueItems({ limit: 100 })
 
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [usingFallbackStats, setUsingFallbackStats] = useState(false)
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null)
   const [isProcessingEnabled, setIsProcessingEnabled] = useState<boolean | null>(null)
   const [isTogglingProcessing, setIsTogglingProcessing] = useState(false)
   const [confirmToggleOpen, setConfirmToggleOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
+  const [completedStatusFilter, setCompletedStatusFilter] = useState<CompletedStatus | "all">("all")
 
-  // Calculate stats when queue items change
+  // Fetch full stats from API (not limited to 100 items)
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setStatsLoading(true)
+        const stats = await queueClient.getStats()
+        setQueueStats(stats)
+        setUsingFallbackStats(false)
+      } catch (err) {
+        console.error("Failed to fetch queue stats:", err)
+        // Fallback to local calculation if API fails (limited to 100 items)
+        const stats: QueueStats = {
+          total: queueItems.length,
+          pending: queueItems.filter((i) => i.status === "pending").length,
+          processing: queueItems.filter((i) => i.status === "processing").length,
+          success: queueItems.filter((i) => i.status === "success").length,
+          failed: queueItems.filter((i) => i.status === "failed").length,
+          skipped: queueItems.filter((i) => i.status === "skipped").length,
+          filtered: queueItems.filter((i) => i.status === "filtered").length,
+        }
+        setQueueStats(stats)
+        setUsingFallbackStats(true)
+      } finally {
+        setStatsLoading(false)
+      }
+    }
+
+    if (user && isOwner) {
+      fetchStats()
+    }
+  }, [user, isOwner, queueItems.length])
+
+  // Clear error alert when items load successfully
   useEffect(() => {
     if (error) {
       setAlert({
         type: "error",
         message: "Failed to load queue data. Please try again.",
       })
-      return
-    }
-
-    // Calculate stats locally
-    const stats: QueueStats = {
-      total: queueItems.length,
-      pending: queueItems.filter((i) => i.status === "pending").length,
-      processing: queueItems.filter((i) => i.status === "processing").length,
-      success: queueItems.filter((i) => i.status === "success").length,
-      failed: queueItems.filter((i) => i.status === "failed").length,
-      skipped: queueItems.filter((i) => i.status === "skipped").length,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      filtered: queueItems.filter((i) => (i as any).status === "filtered").length,
-    }
-    setQueueStats(stats)
-    if (queueItems.length > 0) {
+    } else if (queueItems.length > 0) {
       setAlert(null)
     }
   }, [queueItems, error])
@@ -109,31 +134,38 @@ export function QueueManagementPage() {
     }
   }, [isProcessingEnabled])
 
-  const statusOrder = useMemo(
-    () => ({
-      pending: 0,
-      processing: 1,
-      filtered: 2,
-      success: 3,
-      failed: 4,
-      skipped: 5,
-    }),
-    []
-  )
-
-  const displayItems = useMemo(() => {
+  // Pending items: pending + processing, sorted chronologically (oldest first = next up)
+  const pendingItems = useMemo(() => {
     return [...queueItems]
-      .filter((item) => Boolean(item.id))
+      .filter((item) => Boolean(item.id) && (item.status === "pending" || item.status === "processing"))
       .sort((a, b) => {
-        const aWeight = statusOrder[a.status] ?? 99
-        const bWeight = statusOrder[b.status] ?? 99
-        if (aWeight !== bWeight) return aWeight - bWeight
-
-        const aDate = normalizeDate(a.created_at ?? a.updated_at)
-        const bDate = normalizeDate(b.created_at ?? b.updated_at)
+        // Processing items first, then pending
+        if (a.status === "processing" && b.status !== "processing") return -1
+        if (b.status === "processing" && a.status !== "processing") return 1
+        // Then by created_at ascending (oldest first = next up)
+        const aDate = normalizeDate(a.created_at)
+        const bDate = normalizeDate(b.created_at)
         return aDate.getTime() - bDate.getTime()
       }) as QueueItem[]
-  }, [queueItems, statusOrder])
+  }, [queueItems])
+
+  // Completed items: success, failed, skipped, filtered - sorted by most recently updated first
+  const completedItems = useMemo(() => {
+    return [...queueItems]
+      .filter((item) => {
+        if (!item.id) return false
+        const isCompleted = COMPLETED_STATUSES.includes(item.status as CompletedStatus)
+        if (!isCompleted) return false
+        if (completedStatusFilter !== "all" && item.status !== completedStatusFilter) return false
+        return true
+      })
+      .sort((a, b) => {
+        // Most recently updated first
+        const aDate = normalizeDate(a.updated_at ?? a.completed_at ?? a.created_at)
+        const bDate = normalizeDate(b.updated_at ?? b.completed_at ?? b.created_at)
+        return bDate.getTime() - aDate.getTime()
+      }) as QueueItem[]
+  }, [queueItems, completedStatusFilter])
 
   const processingItem = useMemo(() => {
     return [...queueItems]
@@ -284,16 +316,16 @@ export function QueueManagementPage() {
         </Alert>
       )}
 
-      {/* Compact stats */}
-      {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24" />
+      {/* Compact stats - showing full counts from API (or fallback to limited local data) */}
+      {statsLoading || loading ? (
+        <div className="flex flex-wrap gap-2">
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <Skeleton key={i} className="h-10 w-24 rounded-full" />
           ))}
         </div>
       ) : (
         queueStats && (
-          <div className="flex flex-wrap gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
             <StatPill label="Total" value={queueStats.total} />
             <StatPill label="Pending" value={queueStats.pending} tone="amber" />
             <StatPill label="Processing" value={queueStats.processing} tone="blue" />
@@ -305,6 +337,15 @@ export function QueueManagementPage() {
               value={`${queueStats.total > 0 ? Math.round((queueStats.success / queueStats.total) * 100) : 0}%`}
               tone="green"
             />
+            {usingFallbackStats && (
+              <div
+                className="flex items-center gap-1 text-amber-600 cursor-help"
+                title="Stats API unavailable. Showing counts from last 100 items only."
+              >
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-xs">Partial data</span>
+              </div>
+            )}
           </div>
         )
       )}
@@ -322,97 +363,83 @@ export function QueueManagementPage() {
         />
       </div>
 
-      {/* Queue list aligned with Companies/Sources */}
+      {/* Queue list with tabs */}
       <Card>
         <CardHeader>
           <CardTitle>Task Queue</CardTitle>
           <CardDescription>Latest jobs, companies, sources, and scrape tasks</CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : displayItems.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>The queue is empty.</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Task</TableHead>
-                  <TableHead className="hidden md:table-cell">Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Updated</TableHead>
-                  <TableHead className="hidden md:table-cell">Result</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {displayItems.map((item) => {
-                  if (!item.id) return null
-                  const title =
-                    getJobTitle(item) || getScrapeTitle(item) || getDomain(item.url) || "Untitled task"
-                  const company = getCompanyName(item)
-                  const source = getSourceLabel(item)
-                  const typeLabel = getTaskTypeLabel(item)
-                  const stageLabel = getStageLabel(item)
-                  const canCancel = item.status === "pending" || item.status === "processing"
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "pending" | "completed")}>
+            <div className="flex items-center justify-between mb-4">
+              <TabsList>
+                <TabsTrigger value="pending">
+                  Pending ({queueStats ? queueStats.pending + queueStats.processing : pendingItems.length})
+                </TabsTrigger>
+                <TabsTrigger value="completed">
+                  Completed ({queueStats ? queueStats.success + queueStats.failed + queueStats.skipped + queueStats.filtered : completedItems.length})
+                </TabsTrigger>
+              </TabsList>
 
-                  return (
-                    <TableRow
-                      key={item.id}
-                      data-testid={`queue-item-${item.id}`}
-                      className="cursor-pointer hover:bg-muted/60"
-                      onClick={() => setSelectedItem(item)}
-                    >
-                      <TableCell className="font-medium max-w-[220px]">
-                        <div className="flex flex-col gap-1">
-                          <span className="truncate">{title}</span>
-                          <span className="text-xs text-muted-foreground truncate">
-                            {company || source || getDomain(item.url) || "No details yet"}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <Badge variant="outline">{typeLabel}</Badge>
-                          {stageLabel && <Badge variant="secondary">{stageLabel}</Badge>}
-                          {source && <Badge variant="outline">{source}</Badge>}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={statusTone(item.status)}>{item.status}</Badge>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground">
-                        {formatRelativeTime(item.updated_at)}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell max-w-[240px] truncate text-muted-foreground">
-                        {item.result_message ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {canCancel && item.id && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleCancelItem(item.id as string)
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          )}
+              {activeTab === "completed" && (
+                <Select
+                  value={completedStatusFilter}
+                  onValueChange={(v) => setCompletedStatusFilter(v as CompletedStatus | "all")}
+                >
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Filter status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="success">Success</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                    <SelectItem value="skipped">Skipped</SelectItem>
+                    <SelectItem value="filtered">Filtered</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <TabsContent value="pending" className="mt-0">
+              {loading ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : pendingItems.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No pending tasks in the queue.</p>
+                </div>
+              ) : (
+                <QueueTable
+                  items={pendingItems}
+                  onRowClick={setSelectedItem}
+                  onCancel={handleCancelItem}
+                  formatRelativeTime={formatRelativeTime}
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="completed" className="mt-0">
+              {loading ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : completedItems.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No completed tasks found{completedStatusFilter !== "all" ? ` with status "${completedStatusFilter}"` : ""}.</p>
+                </div>
+              ) : (
+                <QueueTable
+                  items={completedItems}
+                  onRowClick={setSelectedItem}
+                  onCancel={handleCancelItem}
+                  formatRelativeTime={formatRelativeTime}
+                />
+              )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 

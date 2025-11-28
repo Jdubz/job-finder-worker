@@ -1,12 +1,9 @@
 /**
  * Document Builder Page Tests
  *
- * Comprehensive tests for the Document Builder Page functionality
- * Rank 1 - CRITICAL: Primary user workflow
- * DISABLED: This test file has TypeScript errors that need to be fixed
+ * Tests for the Document Builder page functionality
  */
 
-/*
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -40,13 +37,9 @@ vi.mock("@/contexts/AuthContext", () => ({
   }),
 }))
 
-// Mock the GenerationProgress component
-vi.mock("@/components/GenerationProgress", () => ({
-  GenerationProgress: ({ steps }: { steps: any[] }) => (
-    <div data-testid="generation-progress">
-      {steps.length > 0 ? "Generation in progress..." : "No generation"}
-    </div>
-  ),
+// Mock the config
+vi.mock("@/config/api", () => ({
+  getAbsoluteArtifactUrl: (url: string) => url,
 }))
 
 // Helper function to render with router
@@ -63,7 +56,7 @@ const mockJobMatches = [
     location: "San Francisco, CA",
     jobDescription: "We are looking for an experienced software engineer...",
     matchScore: 85,
-    analyzedAt: new Date(),
+    analyzedAt: new Date().toISOString(),
   },
   {
     id: "match-2",
@@ -72,169 +65,139 @@ const mockJobMatches = [
     location: "Remote",
     jobDescription: "Join our growing team as a frontend developer...",
     matchScore: 78,
-    analyzedAt: new Date(),
+    analyzedAt: new Date().toISOString(),
   },
 ]
 
-const mockGenerationResponse = {
+const mockStartGenerationResponse = {
   success: true,
   data: {
     requestId: "req-123",
-    nextStep: "analyze",
+    nextStep: "generate-resume",
+    steps: [
+      { id: "collect-data", name: "Collect Data", status: "completed" },
+      { id: "generate-resume", name: "Generate Resume", status: "pending" },
+      { id: "render-pdf", name: "Render PDF", status: "pending" },
+    ],
   },
 }
 
-const mockStepResponse = {
+const mockExecuteStepResponse = {
   success: true,
   data: {
     status: "completed",
     nextStep: null,
     steps: [
-      { id: "analyze", name: "Analyzing", status: "completed" },
-      { id: "generate", name: "Generating", status: "completed" },
+      { id: "collect-data", name: "Collect Data", status: "completed" },
+      { id: "generate-resume", name: "Generate Resume", status: "completed" },
+      { id: "render-pdf", name: "Render PDF", status: "completed" },
     ],
-    resumeUrl: "https://storage.example.com/resume.pdf",
-    coverLetterUrl: "https://storage.example.com/cover-letter.pdf",
+    resumeUrl: "/artifacts/resume.pdf",
   },
 }
 
 describe("DocumentBuilderPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-
-    // Setup default mocks
-    vi.mocked(jobMatchesClient.getMatches).mockResolvedValue(mockJobMatches)
-    vi.mocked(generatorClient.startGeneration).mockResolvedValue(mockGenerationResponse)
-    vi.mocked(generatorClient.executeStep).mockResolvedValue(mockStepResponse)
+    vi.mocked(jobMatchesClient.getMatches).mockResolvedValue(mockJobMatches as any)
+    vi.mocked(generatorClient.startGeneration).mockResolvedValue(mockStartGenerationResponse as any)
+    vi.mocked(generatorClient.executeStep).mockResolvedValue(mockExecuteStepResponse as any)
   })
 
   describe("rendering", () => {
-    it("should render document builder page with all form fields", async () => {
+    it("should render document builder page with title", async () => {
       renderWithRouter(<DocumentBuilderPage />)
 
-      // Wait for job matches to load
       await waitFor(() => {
         expect(screen.getByText("Document Builder")).toBeInTheDocument()
       })
-
-      // Check form fields
-      expect(screen.getByLabelText(/document type/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/company name/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/job description/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/target summary/i)).toBeInTheDocument()
-      expect(screen.getByRole("button", { name: /generate/i })).toBeInTheDocument()
     })
 
-    it("should render job match selector when matches are available", async () => {
+    it("should render all form fields", async () => {
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Select a job match (optional)")).toBeInTheDocument()
+        expect(screen.getByText("Document Type")).toBeInTheDocument()
+        expect(screen.getByText("Select Job Match (Optional)")).toBeInTheDocument()
+        expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
+        expect(screen.getByLabelText(/company name/i)).toBeInTheDocument()
+        expect(screen.getByLabelText(/job description/i)).toBeInTheDocument()
       })
-
-      // Check if job matches are loaded
-      expect(screen.getByText("Senior Software Engineer - Tech Corp")).toBeInTheDocument()
-      expect(screen.getByText("Frontend Developer - Startup Inc")).toBeInTheDocument()
     })
 
-    it("should show loading state while fetching job matches", () => {
-      // Mock a slow response
+    it("should show loading state while fetching job matches", async () => {
       vi.mocked(jobMatchesClient.getMatches).mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve(mockJobMatches), 100))
+        () => new Promise((resolve) => setTimeout(() => resolve(mockJobMatches as any), 100))
       )
 
       renderWithRouter(<DocumentBuilderPage />)
 
-      expect(screen.getByText("Loading job matches...")).toBeInTheDocument()
+      // Initially shows loading in the select dropdown
+      expect(screen.getByText(/select a job match or enter manually/i)).toBeInTheDocument()
+    })
+
+    it("should load job matches on mount", async () => {
+      renderWithRouter(<DocumentBuilderPage />)
+
+      await waitFor(() => {
+        expect(jobMatchesClient.getMatches).toHaveBeenCalledWith({
+          minScore: 70,
+          limit: 50,
+        })
+      })
     })
   })
 
   describe("form interactions", () => {
-    it("should change available options based on document type", async () => {
+    it("should allow entering job title manually", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
       })
 
-      const documentTypeSelect = screen.getByLabelText(/document type/i)
-      await user.click(documentTypeSelect)
+      const jobTitleInput = screen.getByLabelText(/job title/i)
+      await user.type(jobTitleInput, "Custom Job Title")
 
-      // Check if all document types are available
-      expect(screen.getByText("Resume")).toBeInTheDocument()
-      expect(screen.getByText("Cover Letter")).toBeInTheDocument()
-      expect(screen.getByText("Both")).toBeInTheDocument()
+      expect(jobTitleInput).toHaveValue("Custom Job Title")
     })
 
-    it("should auto-populate fields when job match is selected", async () => {
+    it("should allow entering company name manually", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByLabelText(/company name/i)).toBeInTheDocument()
       })
 
-      // Select a job match
-      const jobMatchSelect = screen.getByLabelText(/select a job match/i)
-      await user.click(jobMatchSelect)
-      await user.click(screen.getByText("Senior Software Engineer - Tech Corp"))
+      const companyInput = screen.getByLabelText(/company name/i)
+      await user.type(companyInput, "Custom Company")
 
-      // Check if fields are auto-populated
-      expect(screen.getByDisplayValue("Senior Software Engineer")).toBeInTheDocument()
-      expect(screen.getByDisplayValue("Tech Corp")).toBeInTheDocument()
-      expect(
-        screen.getByDisplayValue("We are looking for an experienced software engineer...")
-      ).toBeInTheDocument()
+      expect(companyInput).toHaveValue("Custom Company")
     })
 
-    it("should clear fields when job match is deselected", async () => {
+    it("should clear form when Clear Form button is clicked", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
       })
 
-      // Select a job match first
-      const jobMatchSelect = screen.getByLabelText(/select a job match/i)
-      await user.click(jobMatchSelect)
-      await user.click(screen.getByText("Senior Software Engineer - Tech Corp"))
+      // Fill in some data
+      const jobTitleInput = screen.getByLabelText(/job title/i)
+      await user.type(jobTitleInput, "Test Job")
 
-      // Verify fields are populated
-      expect(screen.getByDisplayValue("Senior Software Engineer")).toBeInTheDocument()
+      // Click clear
+      await user.click(screen.getByRole("button", { name: /clear form/i }))
 
-      // Deselect job match
-      await user.click(jobMatchSelect)
-      await user.click(screen.getByText("None"))
-
-      // Check if fields are cleared
-      expect(screen.getByDisplayValue("")).toBeInTheDocument()
-    })
-
-    it("should allow manual input of job details", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<DocumentBuilderPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
-      })
-
-      // Fill in job details manually
-      await user.type(screen.getByLabelText(/job title/i), "Custom Job Title")
-      await user.type(screen.getByLabelText(/company name/i), "Custom Company")
-      await user.type(screen.getByLabelText(/job description/i), "Custom job description")
-
-      // Verify values
-      expect(screen.getByDisplayValue("Custom Job Title")).toBeInTheDocument()
-      expect(screen.getByDisplayValue("Custom Company")).toBeInTheDocument()
-      expect(screen.getByDisplayValue("Custom job description")).toBeInTheDocument()
+      expect(jobTitleInput).toHaveValue("")
     })
   })
 
   describe("generation workflow", () => {
-    it("should start generation when form is submitted", async () => {
+    it("should show validation error when required fields are missing", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
@@ -242,31 +205,20 @@ describe("DocumentBuilderPage", () => {
         expect(screen.getByText("Document Builder")).toBeInTheDocument()
       })
 
-      // Fill required fields
-      await user.type(screen.getByLabelText(/job title/i), "Test Job")
-      await user.type(screen.getByLabelText(/company name/i), "Test Company")
+      // Try to generate without filling required fields
+      await user.click(screen.getByRole("button", { name: /generate resume/i }))
 
-      // Submit form
-      await user.click(screen.getByRole("button", { name: /generate/i }))
-
-      // Verify API calls
-      expect(generatorClient.startGeneration).toHaveBeenCalledWith(
-        expect.objectContaining({
-          generateType: "resume",
-          job: {
-            role: "Test Job",
-            company: "Test Company",
-          },
-        })
-      )
+      await waitFor(() => {
+        expect(screen.getByText(/job title and company name are required/i)).toBeInTheDocument()
+      })
     })
 
-    it("should display progress during generation", async () => {
+    it("should start generation when form is submitted with required fields", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
       })
 
       // Fill required fields
@@ -274,11 +226,18 @@ describe("DocumentBuilderPage", () => {
       await user.type(screen.getByLabelText(/company name/i), "Test Company")
 
       // Submit form
-      await user.click(screen.getByRole("button", { name: /generate/i }))
+      await user.click(screen.getByRole("button", { name: /generate resume/i }))
 
-      // Check if progress is shown
       await waitFor(() => {
-        expect(screen.getByTestId("generation-progress")).toBeInTheDocument()
+        expect(generatorClient.startGeneration).toHaveBeenCalledWith(
+          expect.objectContaining({
+            generateType: "resume",
+            job: expect.objectContaining({
+              role: "Test Job",
+              company: "Test Company",
+            }),
+          })
+        )
       })
     })
 
@@ -287,7 +246,7 @@ describe("DocumentBuilderPage", () => {
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
       })
 
       // Fill required fields
@@ -295,20 +254,19 @@ describe("DocumentBuilderPage", () => {
       await user.type(screen.getByLabelText(/company name/i), "Test Company")
 
       // Submit form
-      await user.click(screen.getByRole("button", { name: /generate/i }))
+      await user.click(screen.getByRole("button", { name: /generate resume/i }))
 
-      // Wait for success message
       await waitFor(() => {
-        expect(screen.getByText("Resume generated successfully!")).toBeInTheDocument()
+        expect(screen.getByText(/resume generated successfully/i)).toBeInTheDocument()
       })
     })
 
-    it("should show download buttons when documents are ready", async () => {
+    it("should show download button when resume is generated", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
       })
 
       // Fill required fields
@@ -316,53 +274,26 @@ describe("DocumentBuilderPage", () => {
       await user.type(screen.getByLabelText(/company name/i), "Test Company")
 
       // Submit form
-      await user.click(screen.getByRole("button", { name: /generate/i }))
-
-      // Wait for download buttons
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /download resume/i })).toBeInTheDocument()
-      })
-    })
-
-    it("should reset form after successful generation", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<DocumentBuilderPage />)
+      await user.click(screen.getByRole("button", { name: /generate resume/i }))
 
       await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByRole("link", { name: /download resume/i })).toBeInTheDocument()
       })
-
-      // Fill required fields
-      await user.type(screen.getByLabelText(/job title/i), "Test Job")
-      await user.type(screen.getByLabelText(/company name/i), "Test Company")
-
-      // Submit form
-      await user.click(screen.getByRole("button", { name: /generate/i }))
-
-      // Wait for completion
-      await waitFor(() => {
-        expect(screen.getByText("Resume generated successfully!")).toBeInTheDocument()
-      })
-
-      // Check if form is reset
-      expect(screen.getByDisplayValue("")).toBeInTheDocument()
     })
   })
 
   describe("error handling", () => {
-    it("should show error message when generation fails", async () => {
-      const user = userEvent.setup()
-
-      // Mock API failure
+    it("should show error when generation fails to start", async () => {
       vi.mocked(generatorClient.startGeneration).mockResolvedValue({
         success: false,
-        error: "Generation failed",
-      })
+        data: { requestId: "", nextStep: null, steps: [] },
+      } as any)
 
+      const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
       })
 
       // Fill required fields
@@ -370,119 +301,55 @@ describe("DocumentBuilderPage", () => {
       await user.type(screen.getByLabelText(/company name/i), "Test Company")
 
       // Submit form
-      await user.click(screen.getByRole("button", { name: /generate/i }))
+      await user.click(screen.getByRole("button", { name: /generate resume/i }))
 
-      // Wait for error message
       await waitFor(() => {
-        expect(screen.getByText("Failed to start generation")).toBeInTheDocument()
+        expect(screen.getByText(/failed to start generation/i)).toBeInTheDocument()
       })
     })
 
-    it("should show validation error for missing required fields", async () => {
+    it("should show error when generation throws an exception", async () => {
+      vi.mocked(generatorClient.startGeneration).mockRejectedValue(new Error("Network error"))
+
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
       })
 
-      // Submit form without filling required fields
-      await user.click(screen.getByRole("button", { name: /generate/i }))
+      // Fill required fields
+      await user.type(screen.getByLabelText(/job title/i), "Test Job")
+      await user.type(screen.getByLabelText(/company name/i), "Test Company")
 
-      // Check for validation error
-      expect(screen.getByText("Job title and company name are required")).toBeInTheDocument()
+      // Submit form
+      await user.click(screen.getByRole("button", { name: /generate resume/i }))
+
+      await waitFor(() => {
+        expect(screen.getByText(/network error/i)).toBeInTheDocument()
+      })
     })
 
-    it("should show error when job matches fail to load", async () => {
-      // Mock API failure
-      vi.mocked(jobMatchesClient.getMatches).mockRejectedValue(new Error("Failed to load matches"))
+    it("should handle job matches load failure gracefully", async () => {
+      vi.mocked(jobMatchesClient.getMatches).mockRejectedValue(new Error("Failed to load"))
 
       renderWithRouter(<DocumentBuilderPage />)
 
-      // Should still render the form even if job matches fail
+      // Should still render the form
       await waitFor(() => {
         expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
       })
-
-      // Job match selector should show error state
-      expect(screen.getByText("Failed to load job matches")).toBeInTheDocument()
     })
   })
 
-  describe("navigation state handling", () => {
-    it("should pre-fill form when job match is passed via navigation state", () => {
-      const mockLocation = {
-        state: {
-          jobMatch: {
-            id: "match-1",
-            jobTitle: "Pre-filled Job",
-            companyName: "Pre-filled Company",
-            jobDescription: "Pre-filled description",
-          },
-          documentType: "cover_letter" as const,
-        },
-      }
-
-      // Mock useLocation
-      vi.mock("react-router-dom", async () => {
-        const actual = await vi.importActual("react-router-dom")
-        return {
-          ...actual,
-          useLocation: () => mockLocation,
-        }
-      })
-
-      renderWithRouter(<DocumentBuilderPage />)
-
-      // Check if form is pre-filled
-      expect(screen.getByDisplayValue("Pre-filled Job")).toBeInTheDocument()
-      expect(screen.getByDisplayValue("Pre-filled Company")).toBeInTheDocument()
-      expect(screen.getByDisplayValue("Pre-filled description")).toBeInTheDocument()
-    })
-  })
-
-  describe("accessibility", () => {
-    it("should have proper form labels and ARIA attributes", async () => {
+  describe("document types", () => {
+    it("should default to resume document type", async () => {
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
+        expect(screen.getByRole("button", { name: /generate resume/i })).toBeInTheDocument()
       })
-
-      // Check form accessibility
-      expect(screen.getByLabelText(/document type/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/job title/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/company name/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/job description/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/target summary/i)).toBeInTheDocument()
-    })
-
-    it("should be keyboard navigable", async () => {
-      const user = userEvent.setup()
-      renderWithRouter(<DocumentBuilderPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
-      })
-
-      // Test tab navigation
-      await user.tab()
-      expect(document.activeElement).toBeInTheDocument()
-    })
-  })
-
-  describe("responsive design", () => {
-    it("should handle different screen sizes", async () => {
-      renderWithRouter(<DocumentBuilderPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Document Builder")).toBeInTheDocument()
-      })
-
-      // Check if responsive classes are applied
-      const form = screen.getByRole("form", { hidden: true })
-      expect(form).toBeInTheDocument()
     })
   })
 })
-*/

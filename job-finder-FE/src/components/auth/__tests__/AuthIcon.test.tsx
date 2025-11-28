@@ -2,11 +2,6 @@
  * AuthIcon Component Tests
  *
  * Tests for the AuthIcon component functionality
- *
- * NOTE: These tests are temporarily skipped due to React 19 + @testing-library/react compatibility.
- * The issue is that @testing-library/react 16.3.0 uses react-dom/test-utils which expects React.act
- * from the React package, but React 19 changed how act is exported. These will be re-enabled when
- * @testing-library/react releases a fully React 19 compatible version or we downgrade to React 18.
  */
 
 import { describe, it, expect, beforeEach, vi, type Mock } from "vitest"
@@ -48,7 +43,7 @@ describe("AuthIcon", () => {
     })
   })
 
-  describe.skip("rendering", () => {
+  describe("rendering", () => {
     it("should render loading state when loading", () => {
       mockUseAuth.mockReturnValue({
         user: null,
@@ -109,7 +104,7 @@ describe("AuthIcon", () => {
     })
   })
 
-  describe.skip("interactions", () => {
+  describe("interactions", () => {
     it("should call onClick when clicked", () => {
       const mockOnClick = vi.fn()
       render(<AuthIcon onClick={mockOnClick} />)
@@ -137,7 +132,7 @@ describe("AuthIcon", () => {
     })
   })
 
-  describe.skip("accessibility", () => {
+  describe("accessibility", () => {
     it("should have proper ARIA labels for not signed in state", () => {
       mockUseAuth.mockReturnValue({
         user: null,
@@ -202,7 +197,7 @@ describe("AuthIcon", () => {
     })
   })
 
-  describe.skip("styling", () => {
+  describe("styling", () => {
     it("should apply custom className", () => {
       render(<AuthIcon {...defaultProps} className="custom-class" />)
 
@@ -233,7 +228,7 @@ describe("AuthIcon", () => {
     })
   })
 
-  describe.skip("state transitions", () => {
+  describe("state transitions", () => {
     it("should handle transition from loading to not signed in", () => {
       // Start with loading
       mockUseAuth.mockReturnValue({
@@ -315,7 +310,7 @@ describe("AuthIcon", () => {
     })
   })
 
-  describe.skip("edge cases", () => {
+  describe("edge cases", () => {
     it("should handle undefined user", () => {
       mockUseAuth.mockReturnValue({
         user: undefined,
@@ -360,7 +355,7 @@ describe("AuthIcon", () => {
     })
   })
 
-  describe.skip("responsive design", () => {
+  describe("responsive design", () => {
     it("should handle different screen sizes", () => {
       render(<AuthIcon {...defaultProps} />)
 
