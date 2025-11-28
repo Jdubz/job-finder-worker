@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { ROUTES } from "@/types/routes"
 import {
   Briefcase,
   Sparkles,
@@ -779,7 +780,7 @@ export function HowItWorksPage() {
             <ArrowRight className="h-4 w-4" />
           </a>
           <a
-            href="/job-listings"
+            href={ROUTES.JOB_LISTINGS}
             className="inline-flex items-center gap-2 px-6 py-3 border border-input rounded-lg font-medium hover:bg-accent transition-colors"
           >
             Explore Features

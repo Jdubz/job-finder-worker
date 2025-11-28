@@ -266,7 +266,7 @@ export function JobApplicationsPage() {
           <p className="text-muted-foreground mb-4">
             Submit job URLs in Job Listings to get AI-powered matches
           </p>
-          <Button onClick={() => (window.location.href = "/job-listings")}>Go to Job Listings</Button>
+          <Button onClick={() => navigate(ROUTES.JOB_LISTINGS)}>Go to Job Listings</Button>
         </div>
       )}
 
