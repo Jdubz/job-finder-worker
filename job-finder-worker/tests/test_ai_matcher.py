@@ -417,12 +417,10 @@ class TestAnalyzeJob:
     @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
     @patch("job_finder.ai.matcher.detect_company_size")
     @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_company_size_adjustment")
     @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
     def test_analyze_job_success(
         self,
         mock_role_adj,
-        mock_size_adj,
         mock_tz_detect,
         mock_size_detect,
         mock_fresh_adj,
@@ -437,7 +435,6 @@ class TestAnalyzeJob:
         mock_fresh_adj.return_value = 0
         mock_size_detect.return_value = "medium"
         mock_tz_detect.return_value = -8
-        mock_size_adj.return_value = (5, "Large company bonus")
         mock_role_adj.return_value = (0, "Neutral role")
 
         mock_provider.generate.side_effect = [
@@ -460,7 +457,7 @@ class TestAnalyzeJob:
         result = matcher.analyze_job(sample_job)
 
         assert result is not None
-        # Company influence adjustments can raise the base score
+        # Same-timezone bonus applies, raising base score to 90
         assert result.match_score == 90
         assert result.resume_intake_data is not None
 

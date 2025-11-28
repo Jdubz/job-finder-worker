@@ -6,4 +6,4 @@ ALTER TABLE companies ADD COLUMN employee_count INTEGER;
 ALTER TABLE companies ADD COLUMN timezone_offset REAL;
 
 -- Remove deprecated company-scoring config entry if present
-DELETE FROM config WHERE id = 'company-scoring';
+DELETE FROM job_finder_config WHERE id = 'company-scoring';

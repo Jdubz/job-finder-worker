@@ -195,10 +195,9 @@ class TestConfigLoaderJobMatch:
         # Stored values should be returned
         assert job_match["minMatchScore"] == 85
         assert job_match["generateIntakeData"] is False
-        # Missing fields are not in the result (consumer is responsible for defaults)
-        assert (
-            "portlandOfficeBonus" not in job_match or job_match.get("portlandOfficeBonus") is None
-        )
+        # Missing fields are backfilled with defaults when reading
+        assert job_match.get("portlandOfficeBonus") == 15
+        assert job_match["companyWeights"]["priorityThresholds"]["high"] == 85
 
     def test_get_job_match_handles_invalid_json(self, db_path):
         """Should return defaults when stored JSON is invalid."""
