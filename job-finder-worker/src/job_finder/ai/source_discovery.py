@@ -254,7 +254,9 @@ class SourceDiscovery:
         tenant, wd_instance, site_id = parsed
 
         # Construct the API URL
-        api_url = f"https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs"
+        api_url = (
+            f"https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs"
+        )
         base_url = f"https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}"
 
         # Validate by making a test POST request
@@ -263,7 +265,7 @@ class SourceDiscovery:
                 api_url,
                 headers={"Content-Type": "application/json"},
                 json={"limit": 1, "offset": 0},
-                timeout=10
+                timeout=10,
             )
             response.raise_for_status()
             data = response.json()
@@ -346,7 +348,7 @@ JSON APIs that return structured data. ALWAYS prefer using the API over HTML scr
    - Many companies have migrated away from Lever or disabled the API
    - If API returns "Document not found", the source may be unavailable
 
-4. WORKDAY ({tenant}.{wd_instance}.myworkdayjobs.com)
+4. WORKDAY ({{tenant}}.{{wd_instance}}.myworkdayjobs.com)
    - URL pattern: https://{{tenant}}.{{wd_instance}}.myworkdayjobs.com/{{site_id}}
    - API pattern: POST https://{{tenant}}.{{wd_instance}}.myworkdayjobs.com/wday/cxs/{{tenant}}/{{site_id}}/jobs
    - HTML pages require JavaScript - ALWAYS use the POST API instead

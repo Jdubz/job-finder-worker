@@ -58,9 +58,7 @@ WORKDAY_FIELDS = {
 
 # Regex to parse Workday careers URL
 # Format: https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}
-WORKDAY_URL_PATTERN = re.compile(
-    r"https?://([^.]+)\.(wd\d+)\.myworkdayjobs\.com/([^/?#]+)"
-)
+WORKDAY_URL_PATTERN = re.compile(r"https?://([^.]+)\.(wd\d+)\.myworkdayjobs\.com/([^/?#]+)")
 
 
 def parse_workday_url(url: str) -> Optional[Tuple[str, str, str]]:

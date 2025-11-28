@@ -251,7 +251,8 @@ class JobQueueItem(BaseModel):
         description="Reference to job-sources table entry (for SCRAPE_SOURCE type)",
     )
     source_type: Optional[str] = Field(
-        default=None, description="Generic scraping method: api, rss, html (vendor auto-detected from config)"
+        default=None,
+        description="Generic scraping method: api, rss, html (vendor auto-detected from config)",
     )
     source_config: Optional[Dict[str, Any]] = Field(
         default=None, description="Source-specific configuration (selectors, API keys, etc.)"

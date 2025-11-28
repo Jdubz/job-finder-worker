@@ -121,12 +121,7 @@ class GenericScraper:
         # Make request based on method
         if self.config.method.upper() == "POST":
             headers["Content-Type"] = "application/json"
-            response = requests.post(
-                url,
-                headers=headers,
-                json=self.config.post_body,
-                timeout=30
-            )
+            response = requests.post(url, headers=headers, json=self.config.post_body, timeout=30)
         else:
             response = requests.get(url, headers=headers, timeout=30)
 
