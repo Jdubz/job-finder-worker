@@ -181,9 +181,7 @@ class JobSourcesManager:
             Source dict if found, None otherwise
         """
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT * FROM job_sources WHERE name = ?", (name,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM job_sources WHERE name = ?", (name,)).fetchone()
         return self._row_to_source(dict(row)) if row else None
 
     def get_source_for_url(self, url: str) -> Optional[Dict[str, Any]]:
