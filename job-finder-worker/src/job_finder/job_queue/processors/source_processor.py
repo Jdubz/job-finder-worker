@@ -495,6 +495,16 @@ class SourceProcessor(BaseProcessor):
         return None
 
     def _spawn_agent_review(self, item: JobQueueItem, reason: str, context: dict) -> None:
+        prompt = (
+            "You are the primary agent for source discovery/validation."
+            " Probe results are in scraped_data."
+            " Your tasks: (1) research the company/source URL,"
+            " (2) produce/verify a working SourceConfig (correct type, selectors/fields, pagination, date/location/title/company mapping),"
+            " (3) test or reason about the config, noting any blockers (auth/api keys/CORS/JS-only),"
+            " (4) recommend status (active vs disabled with notes),"
+            " (5) capture the canonical careers URL and company metadata if missing."
+        )
+
         review_item = JobQueueItem(
             type=QueueItemType.AGENT_REVIEW,
             url=item.url,
@@ -503,7 +513,7 @@ class SourceProcessor(BaseProcessor):
             source=item.source,
             status=QueueStatus.PENDING,
             result_message=reason,
-            scraped_data=context,
+            scraped_data={**context, "agent_prompt": prompt},
             parent_item_id=item.id,
             tracking_id=item.tracking_id,
         )

@@ -289,7 +289,18 @@ class CompanyProcessor(BaseProcessor):
         ]
 
     def _spawn_agent_review(self, item: JobQueueItem, reason: str, context: Dict[str, Any]) -> None:
-        """Create an agent review task carrying probe context."""
+        """Create an agent review task carrying probe context and a clear prompt."""
+        prompt = (
+            "You are the primary agent for company enrichment."
+            " Probe results are attached in scraped_data."
+            " Your tasks: (1) research the company using the URL and context,"
+            " (2) fill all company fields (about, culture, mission, HQ, industry, size, employeeCount,"
+            " founded, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack if evident),"
+            " (3) validate or propose a careers/job-board URL,"
+            " (4) update/confirm company_size_category and headquartersLocation,"
+            " (5) note any missing info and why."
+        )
+
         review_item = JobQueueItem(
             type=QueueItemType.AGENT_REVIEW,
             url=item.url,
@@ -298,7 +309,7 @@ class CompanyProcessor(BaseProcessor):
             source=item.source,
             status=QueueStatus.PENDING,
             result_message=reason,
-            scraped_data=context,
+            scraped_data={**context, "agent_prompt": prompt},
             parent_item_id=item.id,
             tracking_id=item.tracking_id,
         )
