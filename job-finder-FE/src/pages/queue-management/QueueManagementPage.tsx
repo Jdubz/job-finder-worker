@@ -86,7 +86,7 @@ export function QueueManagementPage() {
     if (user && isOwner) {
       fetchStats()
     }
-  }, [user, isOwner, queueItems.length])
+  }, [user, isOwner, queueItems])
 
   // Clear error alert when items load successfully
   useEffect(() => {
@@ -209,7 +209,7 @@ export function QueueManagementPage() {
     if (stillCurrent) return
 
     setActiveProcessingId(processingItems[0].id ?? null)
-  }, [activeProcessingId, processingItems])
+  }, [activeProcessingId, processingItems, refetch])
 
   const handleCancelItem = async (id: string) => {
     try {
