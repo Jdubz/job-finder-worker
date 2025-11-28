@@ -779,7 +779,7 @@ export function HowItWorksPage() {
             <ArrowRight className="h-4 w-4" />
           </a>
           <a
-            href="/job-finder"
+            href="/job-listings"
             className="inline-flex items-center gap-2 px-6 py-3 border border-input rounded-lg font-medium hover:bg-accent transition-colors"
           >
             Explore Features

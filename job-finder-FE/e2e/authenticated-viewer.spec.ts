@@ -126,15 +126,6 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
     }
   })
 
-  test('can view job matches', async ({ page }) => {
-    await page.goto(ROUTES.JOB_FINDER, { waitUntil: 'domcontentloaded' })
-
-    // Should see job matches or empty state (not unauthorized)
-    await expect(
-      page.getByText(/job matches|no matches|find jobs|job finder/i).first()
-    ).toBeVisible({ timeout: 15000 })
-  })
-
   test('can sign out', async ({ page }) => {
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
     const authDialog = await openAuthModal(page, 'viewer')

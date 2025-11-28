@@ -41,14 +41,6 @@ test.describe('Unauthenticated User Access', () => {
     await expect(page.getByRole('heading', { name: /job applications/i })).toBeVisible()
   })
 
-  test('can access Job Finder page', async ({ page }) => {
-    await page.goto(ROUTES.JOB_FINDER)
-    await expect(page).toHaveURL(ROUTES.JOB_FINDER)
-
-    // Should see the Job Finder interface
-    await expect(page.getByRole('heading', { name: /job finder/i })).toBeVisible()
-  })
-
   test('cannot access AI Prompts page (admin only)', async ({ page }) => {
     await page.goto(ROUTES.AI_PROMPTS, { waitUntil: 'domcontentloaded' })
 

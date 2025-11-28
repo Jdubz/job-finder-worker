@@ -45,10 +45,6 @@ vi.mock("@/pages/job-applications/JobApplicationsPage", () => ({
   JobApplicationsPage: () => <div data-testid="job-applications-page">Job Applications Page</div>,
 }))
 
-vi.mock("@/pages/job-finder/JobFinderPage", () => ({
-  JobFinderPage: () => <div data-testid="job-finder-page">Job Finder Page</div>,
-}))
-
 vi.mock("@/pages/queue-management/QueueManagementPage", () => ({
   QueueManagementPage: () => <div data-testid="queue-management-page">Queue Management Page</div>,
 }))
