@@ -163,7 +163,8 @@ export class GeneratorWorkflowService {
           {
             generateType: request.generateType,
             job: request.job as GenerateDocumentPayload['job'],
-            preferences: request.preferences as GenerateDocumentPayload['preferences']
+            preferences: request.preferences as GenerateDocumentPayload['preferences'],
+            jobMatchId: request.jobMatchId ?? undefined
           },
           requestId,
           personalInfo
@@ -197,7 +198,8 @@ export class GeneratorWorkflowService {
           {
             generateType: request.generateType,
             job: request.job as GenerateDocumentPayload['job'],
-            preferences: request.preferences as GenerateDocumentPayload['preferences']
+            preferences: request.preferences as GenerateDocumentPayload['preferences'],
+            jobMatchId: request.jobMatchId ?? undefined
           },
           requestId,
           personalInfo
