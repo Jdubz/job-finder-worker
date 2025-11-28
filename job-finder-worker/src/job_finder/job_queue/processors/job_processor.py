@@ -152,12 +152,15 @@ class JobProcessor(BaseProcessor):
         listing_id: Optional[str],
         status: str,
         filter_result: Optional[Dict[str, Any]] = None,
+        analysis_result: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Update job listing status if listing_id is available."""
         if not listing_id:
             return
         try:
-            self.job_listing_storage.update_status(listing_id, status, filter_result)
+            self.job_listing_storage.update_status(
+                listing_id, status, filter_result, analysis_result
+            )
             logger.debug("Updated job listing %s status to %s", listing_id, status)
         except Exception as e:
             logger.warning("Failed to update listing %s status: %s", listing_id, e)
