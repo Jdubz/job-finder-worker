@@ -145,6 +145,13 @@ class QueueItemProcessor:
                 self.source_processor.process_source_discovery(item)
             elif item.type == QueueItemType.SCRAPE_SOURCE:
                 self.source_processor.process_scrape_source(item)
+            elif item.type == QueueItemType.AGENT_REVIEW:
+                # Agent-only tasks are left for humans; keep them visible but stop processing loop churn.
+                self.queue_manager.update_status(
+                    item.id, QueueStatus.NEEDS_REVIEW, "Agent review queued"
+                )
+                logger.info("Agent review item %s handed off to human agent", item.id)
+                return
             else:
                 raise QueueProcessingError(f"Unknown item type: {item.type}")
 
