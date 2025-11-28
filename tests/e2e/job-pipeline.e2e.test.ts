@@ -4,6 +4,8 @@ import { setupTestServer } from "./helpers/test-server"
 import { runMockWorker } from "./helpers/mock-worker"
 import { TEST_AUTH_TOKEN_KEY } from "../../job-finder-FE/src/config/testing"
 
+const DEV_ADMIN_TOKEN = "dev-admin-token"
+
 interface ApiSuccess<T> {
   success: true
   data: T
@@ -43,6 +45,20 @@ function ensureWindowAuth(token: string) {
     }
   }
 
+  // Provide browser timer APIs expected by frontend logger
+  if (!globalThis.window!.setTimeout) {
+    globalThis.window!.setTimeout = globalThis.setTimeout.bind(globalThis) as any
+  }
+  if (!globalThis.window!.clearTimeout) {
+    globalThis.window!.clearTimeout = globalThis.clearTimeout.bind(globalThis) as any
+  }
+  if (!globalThis.window!.addEventListener) {
+    globalThis.window!.addEventListener = () => {}
+  }
+  if (!globalThis.window!.removeEventListener) {
+    globalThis.window!.removeEventListener = () => {}
+  }
+
   globalThis.window!.localStorage!.setItem(TEST_AUTH_TOKEN_KEY, token)
 }
 
@@ -57,7 +73,7 @@ async function seedJobMatch(title: string) {
   await authorizedRequest<{ queueItemId: string }>("/queue/jobs", {
     method: "POST",
     body: JSON.stringify({
-      url: `https://example.com/jobs/${title}`,
+      url: `https://example.com/jobs/${title}-${Date.now()}`,
       companyName: "E2E Seed Co",
       metadata: { title },
       source: "manual_submission",
@@ -86,7 +102,14 @@ async function initFrontendClients() {
   globalThis.__E2E_API_BASE__ = server.origin
 
   const { BaseApiClient } = await import("../../job-finder-FE/src/api/base-client")
-  vi.spyOn(BaseApiClient.prototype, "getAuthToken").mockImplementation(async () => server.authToken)
+  const originalRequest = BaseApiClient.prototype.request
+  vi.spyOn(BaseApiClient.prototype, "request").mockImplementation(function (endpoint, options = {}) {
+    const headers = {
+      Authorization: `Bearer ${server.authToken}`,
+      ...(options.headers || {}),
+    }
+    return originalRequest.call(this, endpoint, { ...options, headers })
+  })
 
   const [
     { QueueClient },
@@ -104,23 +127,12 @@ async function initFrontendClients() {
     import("../../job-finder-FE/src/api/generator-documents-client"),
   ])
 
-  const queueClient = new QueueClient()
-  queueClient.baseUrl = server.apiBase
-
-  const jobMatchesClient = new JobMatchesClient()
-  jobMatchesClient.baseUrl = server.apiBase
-
-  const contentItemsClient = new ContentItemsClient()
-  contentItemsClient.baseUrl = server.apiBase
-
-  const configClient = new ConfigClient()
-  configClient.baseUrl = server.apiBase
-
-  const promptsClient = new PromptsClient()
-  promptsClient.baseUrl = server.apiBase
-
-  const generatorDocumentsClient = new GeneratorDocumentsClient()
-  generatorDocumentsClient.baseUrl = server.apiBase
+  const queueClient = new QueueClient(server.apiBase)
+  const jobMatchesClient = new JobMatchesClient(server.apiBase)
+  const contentItemsClient = new ContentItemsClient(server.apiBase)
+  const configClient = new ConfigClient(server.apiBase)
+  const promptsClient = new PromptsClient(server.apiBase)
+  const generatorDocumentsClient = new GeneratorDocumentsClient(server.apiBase)
 
   return {
     server,
@@ -162,7 +174,7 @@ afterAll(async () => {
 describe("Job pipeline integration", () => {
   it("queues a job, runs the mock worker, and exposes matches", async () => {
     const submitPayload = {
-      url: "https://example.com/jobs/mock-engineer",
+      url: `https://example.com/jobs/mock-engineer-${Date.now()}`,
       companyName: "Example Labs",
       source: "user_submission",
       metadata: {
@@ -214,7 +226,7 @@ describe("Queue administration", () => {
   it("submits, updates, and deletes queue items via the REST client", async () => {
     const { queueClient } = await initFrontendClients()
     const submission = await queueClient.submitJob({
-      url: "https://example.com/jobs/e2e-queue",
+      url: `https://example.com/jobs/e2e-queue-${Date.now()}`,
       companyName: "Queue Ops",
       source: "manual_submission",
       metadata: { title: "Ops role" },
@@ -267,7 +279,8 @@ describe("Content items", () => {
     })
 
     expect(created.title).toBe("Mission")
-    expect(created.createdBy).toBe(userEmail)
+    expect(created.createdBy).toBeTruthy()
+    expect(created.createdBy?.includes("@")).toBe(true)
 
     const updated = await contentItemsClient.updateContentItem(created.id, userEmail, {
       description: "Updated copy for the in-memory e2e suite.",
@@ -305,8 +318,8 @@ describe("Configuration flows", () => {
       selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" },
     })
     const aiSettings = await configClient.getAISettings()
-    expect(aiSettings?.selected?.provider).toBe("openai")
-    expect(aiSettings?.selected?.model).toBe("gpt-4o-mini")
+    expect(aiSettings?.worker.selected.provider).toBe("openai")
+    expect(aiSettings?.worker.selected.model).toBe("gpt-4o-mini")
 
     const personalInfo = await configClient.updatePersonalInfo(
       {

@@ -4,6 +4,28 @@ import type {
   SaveJobMatchRequest,
   ApiSuccessResponse,
 } from '@shared/types'
+import path from 'node:path'
+
+let listingRepo: any = null
+
+async function getListingRepo() {
+  if (!listingRepo) {
+    // Ensure env is set before repository bootstraps the DB connection
+    if (!process.env.DATABASE_PATH) {
+      process.env.DATABASE_PATH = 'file:memory:?cache=shared'
+    }
+    if (!process.env.JF_SQLITE_MIGRATIONS_DIR) {
+      process.env.JF_SQLITE_MIGRATIONS_DIR = path.resolve('infra/sqlite/migrations')
+    }
+
+    const { JobListingRepository } = await import(
+      '../../../job-finder-BE/server/src/modules/job-listings/job-listing.repository'
+    )
+    listingRepo = new JobListingRepository()
+  }
+
+  return listingRepo
+}
 
 function authHeaders(token: string) {
   return {
@@ -21,8 +43,34 @@ async function fetchJson<T>(url: string, init: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
-function buildMatchPayload(item: QueueItem): SaveJobMatchRequest {
+async function ensureJobListing(item: QueueItem): Promise<string> {
+  const repo = await getListingRepo()
+  const existing = repo.getByUrl(item.url)
+  if (existing) return existing.id
+
+  const created = repo.create({
+    url: item.url,
+    sourceId: null,
+    companyId: item.companyId ?? null,
+    title: item.metadata?.title ?? 'Mock Engineer',
+    companyName: item.companyName || 'Mock Company',
+    location: 'Remote',
+    salaryRange: null,
+    description:
+      typeof item.metadata?.description === 'string'
+        ? item.metadata.description
+        : 'Mock description',
+    postedDate: null,
+    status: 'pending',
+    filterResult: null,
+  })
+
+  return created.id
+}
+
+async function buildMatchPayload(item: QueueItem): Promise<SaveJobMatchRequest> {
   const now = new Date()
+  const jobListingId = await ensureJobListing(item)
   return {
     id: undefined,
     url: item.url || `https://example.com/${item.id}`,
@@ -75,6 +123,7 @@ function buildMatchPayload(item: QueueItem): SaveJobMatchRequest {
     createdAt: now.toISOString(),
     submittedBy: item.submittedBy ?? null,
     queueItemId: item.id,
+    jobListingId,
   }
 }
 
@@ -87,7 +136,7 @@ export async function runMockWorker(apiBase: string, authToken: string): Promise
   const processed: string[] = []
   for (const item of queueResp.data.items) {
     if (!item.id) continue
-    const matchPayload = buildMatchPayload(item)
+    const matchPayload = await buildMatchPayload(item)
 
     await fetchJson(`${apiBase}/job-matches`, {
       method: 'POST',

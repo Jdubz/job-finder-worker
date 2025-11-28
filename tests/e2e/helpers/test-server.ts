@@ -2,7 +2,7 @@ import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 
-const TEST_AUTH_TOKEN = "e2e-test-token"
+const TEST_AUTH_TOKEN = "dev-admin-token"
 
 export interface TestServerContext {
   origin: string
@@ -13,12 +13,15 @@ export interface TestServerContext {
 }
 
 export async function setupTestServer(): Promise<TestServerContext> {
-  const dbPath = `file:${path.join(os.tmpdir(), `jobfinder-e2e-${process.pid}-${Date.now()}`)}?mode=memory&cache=shared`
+  // Use a pure in-memory SQLite database so e2e runs stay isolated and avoid filesystem dirs.
+  const dbPath = 'file:memory:?cache=shared'
 
   process.env.NODE_ENV = "test"
   process.env.PORT = "0"
   process.env.DATABASE_PATH = dbPath
   process.env.JF_SQLITE_DB_PATH = dbPath
+  // Point migrations at the repo-level SQL files
+  process.env.JF_SQLITE_MIGRATIONS_DIR = path.resolve("infra/sqlite/migrations")
   process.env.TEST_AUTH_BYPASS_TOKEN = TEST_AUTH_TOKEN
 
   const { buildApp } = await import("../../../job-finder-BE/server/src/app")
