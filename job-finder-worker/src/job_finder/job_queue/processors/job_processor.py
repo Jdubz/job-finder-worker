@@ -448,13 +448,20 @@ class JobProcessor(BaseProcessor):
                 self.job_listing_storage.update_analysis(listing_id, result.to_dict())
 
             # Check threshold after recording the score
-            if result.match_score < self.ai_matcher.min_match_score:
+            min_score = getattr(self.ai_matcher, "min_match_score", 0)
+            if not isinstance(min_score, (int, float)):
+                try:
+                    min_score = int(min_score)
+                except Exception:
+                    min_score = 0
+
+            if result.match_score < min_score:
                 self._update_listing_status(listing_id, "skipped", analysis_result=result.to_dict())
 
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.SKIPPED,
-                    f"Job score {result.match_score} below threshold {self.ai_matcher.min_match_score}",
+                    f"Job score {result.match_score} below threshold {min_score}",
                 )
                 return
 
