@@ -67,7 +67,7 @@ const submitScrapeSchema = z.object({
   scrape_config: scrapeConfigSchema.optional()
 })
 
-const sourceTypeHints = ['auto', 'greenhouse', 'workday', 'rss', 'generic'] as const
+const sourceTypeHints = ['auto', 'greenhouse', 'ashby', 'workday', 'rss', 'generic'] as const
 
 const submitSourceDiscoverySchema = z.object({
   url: z.string().url(),

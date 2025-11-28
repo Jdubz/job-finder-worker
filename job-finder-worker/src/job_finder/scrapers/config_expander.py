@@ -4,17 +4,22 @@ Config expander for job sources.
 Converts simple source configs into full scraper configs based on source_type.
 This allows storing minimal config in the database while supporting full scraping.
 
-The source_type column is the authoritative indicator of what type of source this is.
-Config shapes by source_type:
-- greenhouse: {"board_token": "xxx"} - expands to full Greenhouse API config
-- rss: {"url": "xxx"} - expands to RSS config with standard field mappings
-- api: Full config with url, response_path, fields
-- html: Full config with url, job_selector, fields
+The source_type column indicates the SCRAPING METHOD, not the vendor:
+- api: JSON API (includes Greenhouse, Ashby, Workday, and generic APIs)
+- rss: RSS/Atom feeds
+- html: HTML page scraping with CSS selectors
+
+For API sources, the vendor is auto-detected from config contents:
+- {"board_token": "xxx"} → Greenhouse API
+- {"board_name": "xxx"} → Ashby API
+- {"careers_url": "https://company.wd5.myworkdayjobs.com/..."} → Workday API
+- {"url": "...", "fields": {...}} → Generic API
 
 The config_json should NOT contain a "type" field - that's redundant with source_type.
 """
 
-from typing import Any, Dict
+import re
+from typing import Any, Dict, Optional, Tuple
 
 # Standard Greenhouse API field mappings
 GREENHOUSE_FIELDS = {
@@ -33,29 +38,72 @@ RSS_FIELDS = {
     "posted_date": "published",
 }
 
+# Standard Ashby API field mappings
+ASHBY_FIELDS = {
+    "title": "title",
+    "location": "location",
+    "description": "descriptionHtml",
+    "url": "jobUrl",
+    "posted_date": "publishedAt",
+}
+
+# Standard Workday API field mappings
+# Note: "url" field contains relative path, needs base_url to construct full URL
+WORKDAY_FIELDS = {
+    "title": "title",
+    "location": "locationsText",
+    "url": "externalPath",
+    "posted_date": "postedOn",
+}
+
+# Regex to parse Workday careers URL
+# Format: https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}
+WORKDAY_URL_PATTERN = re.compile(
+    r"https?://([^.]+)\.(wd\d+)\.myworkdayjobs\.com/([^/?#]+)"
+)
+
+
+def parse_workday_url(url: str) -> Optional[Tuple[str, str, str]]:
+    """
+    Parse a Workday careers URL into its components.
+
+    Args:
+        url: Workday careers page URL
+
+    Returns:
+        Tuple of (tenant, wd_instance, site_id) or None if not a valid Workday URL
+    """
+    match = WORKDAY_URL_PATTERN.match(url)
+    if not match:
+        return None
+    return match.group(1), match.group(2), match.group(3)
+
 
 def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Expand a minimal config into a full scraper config.
 
     Args:
-        source_type: The source type from the database (greenhouse, rss, api, html)
+        source_type: The scraping method (api, rss, html)
         config: The config_json from the database
 
     Returns:
         Full config ready for GenericScraper with 'type' derived from source_type
     """
-    if source_type == "greenhouse":
-        return _expand_greenhouse(config)
-    elif source_type == "rss":
+    # Normalize source_type to scraping method
+    source_type = source_type.lower()
+
+    if source_type == "rss":
         return _expand_rss(config)
-    elif source_type == "api":
-        return _expand_api(config)
     elif source_type in ("html", "company-page"):
         return _expand_html(config)
+    elif source_type in ("api", "greenhouse", "ashby", "workday"):
+        # For API sources (including legacy vendor-specific types),
+        # auto-detect the vendor from config contents
+        return _expand_api(config)
     else:
-        # Unknown type - return as-is with type field
-        return {"type": "api", **config}
+        # Unknown type - try to expand as API
+        return _expand_api(config)
 
 
 def _expand_greenhouse(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -77,6 +125,75 @@ def _expand_greenhouse(config: Dict[str, Any]) -> Dict[str, Any]:
         "url": f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true",
         "response_path": "jobs",
         "fields": GREENHOUSE_FIELDS.copy(),
+    }
+
+
+def _expand_ashby(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Expand ashby config from board_name to full API config."""
+    # If already has full config (type, url, fields), return as-is
+    if "url" in config and "fields" in config:
+        expanded = {**config}
+        # Ensure type is set for GenericScraper
+        expanded["type"] = "api"
+        return expanded
+
+    # Simple config with just board_name
+    board_name = config.get("board_name", "")
+    if not board_name:
+        raise ValueError("Ashby source missing board_name in config")
+
+    return {
+        "type": "api",
+        "url": f"https://api.ashbyhq.com/posting-api/job-board/{board_name}?includeCompensation=true",
+        "response_path": "jobs",
+        "fields": ASHBY_FIELDS.copy(),
+    }
+
+
+def _expand_workday(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Expand workday config from careers_url to full API config.
+
+    Workday uses a POST API endpoint that can be derived from the careers page URL.
+
+    URL Pattern: https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}
+    API Pattern: POST https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs
+
+    The API returns job listings with relative URLs that need to be combined with
+    the base careers URL to form full job URLs.
+    """
+    # If already has full config (type, url, fields), return as-is
+    if "url" in config and "fields" in config:
+        expanded = {**config}
+        expanded["type"] = "api"
+        return expanded
+
+    # Extract careers URL
+    careers_url = config.get("careers_url", "")
+    if not careers_url:
+        raise ValueError("Workday source missing careers_url in config")
+
+    # Parse the URL into components
+    parsed = parse_workday_url(careers_url)
+    if not parsed:
+        raise ValueError(f"Invalid Workday careers URL format: {careers_url}")
+
+    tenant, wd_instance, site_id = parsed
+
+    # Construct the API URL
+    api_url = f"https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs"
+
+    # Construct the base URL for job links
+    base_url = f"https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}"
+
+    return {
+        "type": "api",
+        "url": api_url,
+        "method": "POST",
+        "post_body": {"limit": 20, "offset": 0},
+        "response_path": "jobPostings",
+        "fields": WORKDAY_FIELDS.copy(),
+        "base_url": base_url,  # Used to construct full job URLs from relative paths
     }
 
 
@@ -105,14 +222,41 @@ def _expand_rss(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _expand_api(config: Dict[str, Any]) -> Dict[str, Any]:
-    """Expand generic API config."""
-    # API configs should already be complete
+    """
+    Expand API config, auto-detecting vendor from config contents.
+
+    Detection order:
+    1. board_token → Greenhouse
+    2. board_name → Ashby
+    3. careers_url matching Workday pattern → Workday
+    4. url + fields → Generic API
+    """
+    # Auto-detect vendor from config contents
+
+    # Greenhouse: has board_token
+    if "board_token" in config:
+        return _expand_greenhouse(config)
+
+    # Ashby: has board_name
+    if "board_name" in config:
+        return _expand_ashby(config)
+
+    # Workday: has careers_url matching Workday pattern
+    if "careers_url" in config:
+        careers_url = config.get("careers_url", "")
+        if parse_workday_url(careers_url):
+            return _expand_workday(config)
+
+    # Generic API: should have url
     if "url" not in config:
         # Check for legacy base_url
         if "base_url" in config:
             config = {**config, "url": config.pop("base_url")}
         else:
-            raise ValueError("API source missing url in config")
+            raise ValueError(
+                "API source config must have one of: board_token (Greenhouse), "
+                "board_name (Ashby), careers_url (Workday), or url (generic API)"
+            )
 
     expanded = {"type": "api", **config}
 

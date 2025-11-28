@@ -100,6 +100,8 @@ class GenericScraper:
         """
         Fetch JSON API with optional authentication.
 
+        Supports both GET and POST requests.
+
         Returns:
             List of job items from API response
         """
@@ -116,7 +118,18 @@ class GenericScraper:
                 sep = "&" if "?" in url else "?"
                 url = f"{url}{sep}{self.config.auth_param}={self.config.api_key}"
 
-        response = requests.get(url, headers=headers, timeout=30)
+        # Make request based on method
+        if self.config.method.upper() == "POST":
+            headers["Content-Type"] = "application/json"
+            response = requests.post(
+                url,
+                headers=headers,
+                json=self.config.post_body,
+                timeout=30
+            )
+        else:
+            response = requests.get(url, headers=headers, timeout=30)
+
         response.raise_for_status()
         data = response.json()
 
@@ -197,6 +210,12 @@ class GenericScraper:
         # Override company name if specified
         if self.config.company_name:
             job["company"] = self.config.company_name
+
+        # Construct full URL from relative path if base_url is specified
+        if self.config.base_url and job.get("url"):
+            url = job["url"]
+            if url.startswith("/"):
+                job["url"] = f"{self.config.base_url}{url}"
 
         # Ensure required fields have defaults
         if not job.get("company"):

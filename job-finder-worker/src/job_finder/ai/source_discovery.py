@@ -8,6 +8,7 @@ import feedparser
 import requests
 
 from job_finder.ai.providers import AIProvider
+from job_finder.scrapers.config_expander import parse_workday_url
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.settings import get_scraping_settings
@@ -143,6 +144,16 @@ class SourceDiscovery:
         if heuristic_config:
             return heuristic_config
 
+        # Heuristic: Ashby API responses follow a consistent schema
+        heuristic_config = self._try_ashby_config(url, sample)
+        if heuristic_config:
+            return heuristic_config
+
+        # Heuristic: Workday URLs follow a consistent pattern and have a POST API
+        heuristic_config = self._try_workday_config(url)
+        if heuristic_config:
+            return heuristic_config
+
         # Heuristic: Standard RSS feeds can be mapped directly.
         if source_type == "rss":
             return {
@@ -197,6 +208,85 @@ class SourceDiscovery:
             },
         }
 
+    def _try_ashby_config(self, url: str, sample: str) -> Optional[Dict[str, Any]]:
+        """Return a deterministic config for Ashby API responses."""
+        if "api.ashbyhq.com/posting-api/job-board" not in url:
+            return None
+
+        try:
+            data = json.loads(sample)
+        except json.JSONDecodeError:
+            return None
+
+        jobs = data.get("jobs") if isinstance(data, dict) else None
+        # An empty jobs list is valid (no openings); only bail when the key is absent/null
+        if jobs is None:
+            return None
+
+        return {
+            "type": "api",
+            "url": url,
+            "response_path": "jobs",
+            "fields": {
+                "title": "title",
+                "location": "location",
+                "description": "descriptionHtml",
+                "url": "jobUrl",
+                "posted_date": "publishedAt",
+            },
+        }
+
+    def _try_workday_config(self, url: str) -> Optional[Dict[str, Any]]:
+        """
+        Return a deterministic config for Workday careers pages.
+
+        Workday pages are JavaScript-rendered, but we can detect them by URL pattern
+        and derive the API endpoint from the careers page URL.
+
+        URL Pattern: https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}
+        API Pattern: POST https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs
+        """
+        # Check if URL matches Workday pattern
+        parsed = parse_workday_url(url)
+        if not parsed:
+            return None
+
+        tenant, wd_instance, site_id = parsed
+
+        # Construct the API URL
+        api_url = f"https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs"
+        base_url = f"https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}"
+
+        # Validate by making a test POST request
+        try:
+            response = requests.post(
+                api_url,
+                headers={"Content-Type": "application/json"},
+                json={"limit": 1, "offset": 0},
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            if "jobPostings" not in data:
+                return None
+        except (requests.RequestException, json.JSONDecodeError):
+            return None
+
+        return {
+            "type": "api",
+            "url": api_url,
+            "method": "POST",
+            "post_body": {"limit": 20, "offset": 0},
+            "response_path": "jobPostings",
+            "base_url": base_url,
+            "fields": {
+                "title": "title",
+                "location": "locationsText",
+                "url": "externalPath",
+                "posted_date": "postedOn",
+            },
+        }
+
     def _build_prompt(self, url: str, source_type: str, sample: str) -> str:
         """Build AI prompt for config generation."""
         scraping_settings = get_scraping_settings()
@@ -213,7 +303,70 @@ Sample Content:
 {truncated_sample}
 ```
 
-Generate a JSON configuration object with these fields:
+=== KNOWN ATS PLATFORMS (use these exact configurations) ===
+
+IMPORTANT: Many job boards use JavaScript rendering for their HTML pages, but provide
+JSON APIs that return structured data. ALWAYS prefer using the API over HTML scraping.
+
+1. GREENHOUSE (boards-api.greenhouse.io)
+   - API URL pattern: https://boards-api.greenhouse.io/v1/boards/{{board_token}}/jobs?content=true
+   - The board_token is from the careers page URL (e.g., anthropic from jobs.greenhouse.io/anthropic)
+   {{
+     "type": "api",
+     "url": "https://boards-api.greenhouse.io/v1/boards/BOARD_TOKEN/jobs?content=true",
+     "response_path": "jobs",
+     "fields": {{
+       "title": "title",
+       "location": "location.name",
+       "description": "content",
+       "url": "absolute_url",
+       "posted_date": "updated_at"
+     }}
+   }}
+
+2. ASHBY (api.ashbyhq.com)
+   - API URL pattern: https://api.ashbyhq.com/posting-api/job-board/{{board_name}}?includeCompensation=true
+   - The board_name is CASE-SENSITIVE and matches jobs.ashbyhq.com/{{board_name}}
+   - HTML pages at jobs.ashbyhq.com require JavaScript - ALWAYS use the API instead
+   {{
+     "type": "api",
+     "url": "https://api.ashbyhq.com/posting-api/job-board/BOARD_NAME?includeCompensation=true",
+     "response_path": "jobs",
+     "fields": {{
+       "title": "title",
+       "location": "location",
+       "description": "descriptionHtml",
+       "url": "jobUrl",
+       "posted_date": "publishedAt"
+     }}
+   }}
+
+3. LEVER (jobs.lever.co)
+   - NOTE: Lever's public API (api.lever.co) is unreliable/deprecated for most companies
+   - Many companies have migrated away from Lever or disabled the API
+   - If API returns "Document not found", the source may be unavailable
+
+4. WORKDAY ({tenant}.{wd_instance}.myworkdayjobs.com)
+   - URL pattern: https://{{tenant}}.{{wd_instance}}.myworkdayjobs.com/{{site_id}}
+   - API pattern: POST https://{{tenant}}.{{wd_instance}}.myworkdayjobs.com/wday/cxs/{{tenant}}/{{site_id}}/jobs
+   - HTML pages require JavaScript - ALWAYS use the POST API instead
+   - Job URLs are relative paths that need the base URL prepended
+   {{
+     "type": "api",
+     "url": "https://TENANT.WD_INSTANCE.myworkdayjobs.com/wday/cxs/TENANT/SITE_ID/jobs",
+     "method": "POST",
+     "post_body": {{"limit": 20, "offset": 0}},
+     "response_path": "jobPostings",
+     "base_url": "https://TENANT.WD_INSTANCE.myworkdayjobs.com/SITE_ID",
+     "fields": {{
+       "title": "title",
+       "location": "locationsText",
+       "url": "externalPath",
+       "posted_date": "postedOn"
+     }}
+   }}
+
+=== GENERAL CONFIGURATION RULES ===
 
 For API sources:
 - type: "api"
@@ -229,33 +382,20 @@ For RSS sources:
 - fields: Object mapping standard field names to RSS entry attributes
   - Common: title, link, summary/description, published
 
-For HTML sources:
+For HTML sources (use only when no API is available):
 - type: "html"
 - url: The page URL
 - job_selector: CSS selector for job listing elements
 - fields: Object mapping standard field names to CSS selectors
   - Use ".class" or "#id" for text content
   - Use "a@href" syntax for attributes
+- NOTE: HTML scraping does NOT support JavaScript rendering. If the page requires
+  JavaScript to load content, you MUST find an API endpoint instead.
 
 Additional optional fields:
 - company_name: Static company name if not in data
 - salary_min_field: Path to min salary (for APIs with separate min/max)
 - salary_max_field: Path to max salary
-
-Example for Greenhouse API:
-{{
-  "type": "api",
-  "url": "https://boards-api.greenhouse.io/v1/boards/company/jobs?content=true",
-  "response_path": "jobs",
-  "company_name": "Company Name",
-  "fields": {{
-    "title": "title",
-    "location": "location.name",
-    "description": "content",
-    "url": "absolute_url",
-    "posted_date": "updated_at"
-  }}
-}}
 
 Return ONLY valid JSON with no explanation. Ensure all required fields are present."""
 

@@ -27,7 +27,7 @@ export type SubmitSourceDiscoveryInput = {
   url: string
   companyName?: string
   companyId?: string | null
-  typeHint?: 'auto' | 'greenhouse' | 'workday' | 'rss' | 'generic'
+  typeHint?: 'auto' | 'greenhouse' | 'ashby' | 'workday' | 'rss' | 'generic'
 }
 
 type ListQueueOptions = {
