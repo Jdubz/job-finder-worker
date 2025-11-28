@@ -158,7 +158,7 @@ class CodexCLIProvider(AIProvider):
     model is rejected, we automatically retry using the CLI default model.
     """
 
-    def __init__(self, model: str = "gpt-5-codex", timeout: int = 60):
+    def __init__(self, model: Optional[str] = "gpt-5-codex", timeout: int = 60):
         self.model = model
         self.timeout = timeout
 
@@ -301,7 +301,7 @@ def create_provider_from_config(ai_settings: Dict[str, Any], section: str = "wor
     provider_class = _PROVIDER_MAP.get(provider_key)
 
     if provider_class:
-        return provider_class(model=model)
+        return provider_class(model=model or None)
 
     supported = ", ".join(f"{p}/{i}" for p, i in _PROVIDER_MAP.keys())
     raise AIProviderError(
