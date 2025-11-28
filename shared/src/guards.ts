@@ -484,7 +484,8 @@ export function isJobListingRecord(value: unknown): value is JobListingRecord {
       listing.status === "filtered" ||
       listing.status === "analyzing" ||
       listing.status === "analyzed" ||
-      listing.status === "skipped") &&
+      listing.status === "skipped" ||
+      listing.status === "matched") &&
     isDateLike(listing.createdAt) &&
     isDateLike(listing.updatedAt)
   )

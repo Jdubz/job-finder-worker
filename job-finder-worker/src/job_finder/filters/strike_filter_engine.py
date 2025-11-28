@@ -44,7 +44,7 @@ class StrikeFilterEngine:
         self.excluded_seniority = [s.lower() for s in hard_rej.get("excludedSeniority", [])]
         self.excluded_companies = [c.lower() for c in hard_rej.get("excludedCompanies", [])]
         self.excluded_keywords = [k.lower() for k in hard_rej.get("excludedKeywords", [])]
-        # Whitelist: job titles must contain at least one of these keywords
+        # Whitelist: previously hard-rejected; now treated as strikes to reduce false negatives
         self.required_title_keywords = [
             k.lower() for k in hard_rej.get("requiredTitleKeywords", [])
         ]
@@ -55,7 +55,8 @@ class StrikeFilterEngine:
         remote = config.get("remotePolicy", {})
         self.allow_remote = remote.get("allowRemote", True)
         self.allow_hybrid_portland = remote.get("allowHybridPortland", True)
-        self.allow_onsite = remote.get("allowOnsite", False)
+        # Default to allowing onsite roles unless explicitly disabled
+        self.allow_onsite = remote.get("allowOnsite", True)
 
         # Strike: Salary
         salary_strike = config.get("salaryStrike", {})
@@ -117,10 +118,8 @@ class StrikeFilterEngine:
 
         # === PHASE 1: Hard Rejections (immediate fail) ===
 
-        # Check required title keywords (whitelist) - FIRST check
-        # Job title must contain at least one of the required keywords
-        if self._missing_required_title_keyword(title, result):
-            return result
+        # Check required title keywords (now contributes strikes instead of hard reject)
+        self._missing_required_title_keyword(title, result)
 
         # Check job type
         if self._is_excluded_job_type(title, description, result):
@@ -195,7 +194,7 @@ class StrikeFilterEngine:
 
     # === Hard Rejection Checks ===
 
-    def _missing_required_title_keyword(self, title: str, result: FilterResult) -> bool:
+    def _missing_required_title_keyword(self, title: str, result: FilterResult) -> None:
         """
         Check if job title is missing all required keywords (whitelist check).
 
@@ -204,7 +203,7 @@ class StrikeFilterEngine:
         """
         # If no required keywords configured, skip this check
         if not self.required_title_keywords:
-            return False
+            return
 
         title_lower = title.lower()
 
@@ -220,18 +219,16 @@ class StrikeFilterEngine:
                 return bool(re.search(pattern, title_lower))
 
         if any(is_match(k) for k in self.required_title_keywords):
-            return False  # Found a match, job passes
+            return  # Found a match, no strike
 
-        # No required keywords found - reject
-        result.add_rejection(
-            filter_category="hard_reject",
+        # No required keywords found - add a modest strike instead of hard rejection
+        result.add_strike(
+            filter_category="title",
             filter_name="missing_required_title_keyword",
-            reason="Title missing required keywords",
+            reason="Title missing preferred keywords",
             detail=f"Title '{title}' does not contain any of: {', '.join(self.required_title_keywords)}",
-            severity="hard_reject",
-            points=0,
+            points=2,
         )
-        return True
 
     def _is_excluded_job_type(self, title: str, description: str, result: FilterResult) -> bool:
         """Check if job is excluded type (sales, HR, etc.)."""

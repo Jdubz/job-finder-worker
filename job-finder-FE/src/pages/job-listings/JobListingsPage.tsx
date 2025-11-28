@@ -72,10 +72,24 @@ function getStatusBadge(status: JobListingStatus) {
     filtered: { label: "Filtered", color: "bg-yellow-100 text-yellow-800" },
     analyzing: { label: "Analyzing", color: "bg-blue-100 text-blue-800" },
     analyzed: { label: "Analyzed", color: "bg-green-100 text-green-800" },
+    matched: { label: "Matched", color: "bg-emerald-100 text-emerald-800" },
     skipped: { label: "Skipped", color: "bg-red-100 text-red-800" },
   }
   const config = statusConfig[status] || statusConfig.pending
   return <Badge className={config.color}>{config.label}</Badge>
+}
+
+function extractMatchScore(listing: JobListingRecord): number | null {
+  const analysis = listing.analysisResult as Record<string, unknown> | undefined
+  if (!analysis) return null
+  const raw = (analysis as { match_score?: unknown; matchScore?: unknown }).match_score ??
+    (analysis as { matchScore?: unknown }).matchScore
+  if (typeof raw === "number") return raw
+  if (typeof raw === "string") {
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
 }
 
 export function JobListingsPage() {
@@ -179,6 +193,12 @@ export function JobListingsPage() {
             </div>
             <div className="text-sm text-green-700 dark:text-green-400">Analyzed</div>
           </div>
+          <div className="bg-emerald-100 dark:bg-emerald-950 p-4 rounded-lg">
+            <div className="text-2xl font-bold text-emerald-700">
+              {listings.filter((l) => l.status === "matched").length}
+            </div>
+            <div className="text-sm text-emerald-700 dark:text-emerald-400">Matched</div>
+          </div>
           <div className="bg-red-100 dark:bg-red-950 p-4 rounded-lg">
             <div className="text-2xl font-bold text-red-600">
               {listings.filter((l) => l.status === "skipped" || l.status === "filtered").length}
@@ -215,6 +235,7 @@ export function JobListingsPage() {
                   <SelectItem value="analyzed">Analyzed</SelectItem>
                   <SelectItem value="filtered">Filtered</SelectItem>
                   <SelectItem value="skipped">Skipped</SelectItem>
+                  <SelectItem value="matched">Matched</SelectItem>
                 </SelectContent>
               </Select>
               <Button variant="outline" size="icon" onClick={handleSearch}>
@@ -241,6 +262,7 @@ export function JobListingsPage() {
                   <TableHead>Title</TableHead>
                   <TableHead className="hidden md:table-cell">Company</TableHead>
                   <TableHead className="hidden lg:table-cell">Location</TableHead>
+                  <TableHead className="hidden sm:table-cell">Score</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -259,6 +281,12 @@ export function JobListingsPage() {
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-muted-foreground">
                       {listing.location || "—"}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell text-muted-foreground">
+                      {(() => {
+                        const score = extractMatchScore(listing)
+                        return score !== null ? `${score}` : "—"
+                      })()}
                     </TableCell>
                     <TableCell>{getStatusBadge(listing.status)}</TableCell>
                   </TableRow>
@@ -365,6 +393,30 @@ export function JobListingsPage() {
                   {selectedListing.filterResult ? (
                     <pre className="mt-1 text-sm bg-muted p-2 rounded overflow-auto max-h-[100px]">
                       {JSON.stringify(selectedListing.filterResult, null, 2)}
+                    </pre>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground">—</p>
+                  )}
+                </div>
+
+                {/* Match Analysis */}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">
+                      Match Analysis
+                    </Label>
+                    {(() => {
+                      const score = extractMatchScore(selectedListing)
+                      return score !== null ? (
+                        <Badge variant="outline" className="ml-2">
+                          Score: {score}
+                        </Badge>
+                      ) : null
+                    })()}
+                  </div>
+                  {selectedListing.analysisResult ? (
+                    <pre className="mt-1 text-sm bg-muted p-2 rounded overflow-auto max-h-[240px]">
+                      {JSON.stringify(selectedListing.analysisResult, null, 2)}
                     </pre>
                   ) : (
                     <p className="mt-1 text-muted-foreground">—</p>

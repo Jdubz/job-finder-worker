@@ -110,7 +110,10 @@ class AIJobMatcher:
         self.prompts = JobMatchPrompts()
 
     def analyze_job(
-        self, job: Dict[str, Any], has_portland_office: bool = False
+        self,
+        job: Dict[str, Any],
+        has_portland_office: bool = False,
+        return_below_threshold: bool = False,
     ) -> Optional[JobMatchResult]:
         """
         Analyze a single job posting against the profile.
@@ -152,20 +155,25 @@ class AIJobMatcher:
             match_score = self._calculate_adjusted_score(match_analysis, has_portland_office, job)
 
             # Step 3: Check if adjusted score meets minimum threshold
-            if match_score < self.min_match_score:
+            below_threshold = match_score < self.min_match_score
+            if below_threshold and not return_below_threshold:
                 logger.info(
                     f"Job {job.get('title')} scored {match_score}, "
                     f"below threshold {self.min_match_score}"
                 )
                 return None
 
-            # Step 4: Generate resume intake data if enabled
+            # Step 4: Generate resume intake data if enabled (and worth keeping)
             intake_data = None
-            if self.generate_intake:
+            if self.generate_intake and (not below_threshold or return_below_threshold):
                 intake_data = self._generate_intake_data(job, match_analysis)
 
             # Step 5: Build and return result
             result = self._build_match_result(job, match_analysis, match_score, intake_data)
+
+            # If below threshold but caller wants data, downgrade priority to Low
+            if below_threshold:
+                result.application_priority = "Low"
 
             logger.info(
                 f"Successfully analyzed {job.get('title')} - "
@@ -446,7 +454,7 @@ class AIJobMatcher:
                 end = response_clean.find("```", start)
                 response_clean = response_clean[start:end].strip()
 
-            analysis = json.loads(response_clean)
+            analysis = self._safe_parse_json(response_clean)
 
             # Validate required fields
             required_fields = [
@@ -478,6 +486,21 @@ class AIJobMatcher:
             # For other unexpected errors, log and return None
             logger.error(f"Error during match analysis: {str(e)}", exc_info=True)
             return None
+
+    def _safe_parse_json(self, text: str) -> Dict[str, Any]:
+        """Parse JSON with a fallback that strips non-JSON pre/postamble."""
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            # Fallback: try to extract the first {...} block
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    return json.loads(text[start : end + 1])
+                except json.JSONDecodeError:
+                    pass
+            raise
 
     def _generate_intake_data(
         self, job: Dict[str, Any], match_analysis: Dict[str, Any]
@@ -522,7 +545,7 @@ class AIJobMatcher:
                 end = response_clean.find("```", start)
                 response_clean = response_clean[start:end].strip()
 
-            intake_data = json.loads(response_clean)
+            intake_data = self._safe_parse_json(response_clean)
 
             # Validate required fields
             required_fields = [

@@ -430,24 +430,41 @@ class JobProcessor(BaseProcessor):
             if not company_ready:
                 return
 
-            # Run AI matching (uses configured model - Sonnet by default)
-            result = self.ai_matcher.analyze_job(job_data)
+            # Run AI matching (force returning score even if below threshold)
+            result = self.ai_matcher.analyze_job(job_data, return_below_threshold=True)
 
             if not result:
-                # Below match threshold - TERMINAL STATE
-                # Update job_listing status to 'skipped'
+                # Treat as failure (often tooling/auth like 403) so we can retry and inspect
                 self._update_listing_status(listing_id, "skipped")
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    "AI analysis failed (tooling/auth)",
+                )
+                return
+
+            # Persist analysis breakdown on the listing
+            if listing_id:
+                self.job_listing_storage.update_analysis(listing_id, result.to_dict())
+
+            # Check threshold after recording the score
+            if result.match_score < self.ai_matcher.min_match_score:
+                self._update_listing_status(
+                    listing_id, "skipped", analysis_result=result.to_dict()
+                )
 
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.SKIPPED,
-                    f"Job score below threshold (< {self.ai_matcher.min_match_score})",
+                    f"Job score {result.match_score} below threshold {self.ai_matcher.min_match_score}",
                 )
                 return
 
             # Match passed - update state and continue
             # Update job_listing status to 'analyzed'
-            self._update_listing_status(listing_id, "analyzed")
+            self._update_listing_status(
+                listing_id, "analyzed", analysis_result=result.to_dict()
+            )
 
             updated_state = {
                 **item.pipeline_state,
@@ -624,6 +641,9 @@ class JobProcessor(BaseProcessor):
                 user_id=None,
                 queue_item_id=item.id,
             )
+
+            # Mark listing as matched for clearer lifecycle tracking
+            self._update_listing_status(listing_id, "matched", analysis_result=result.to_dict())
 
             logger.info(
                 f"Job matched and saved: {job_data.get('title')} at {job_data.get('company')} "

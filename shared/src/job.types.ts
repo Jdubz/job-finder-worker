@@ -14,7 +14,13 @@ import type { TimestampLike } from "./time.types"
 /**
  * Status of a job listing in the pipeline.
  */
-export type JobListingStatus = "pending" | "filtered" | "analyzing" | "analyzed" | "skipped"
+export type JobListingStatus =
+  | "pending"
+  | "filtered"
+  | "analyzing"
+  | "analyzed"
+  | "skipped"
+  | "matched"
 
 /**
  * Standard job listing structure returned by scrapers.
@@ -135,6 +141,9 @@ export interface JobListingRecord {
 
   /** Filter result details (if status=filtered) */
   filterResult?: Record<string, unknown> | null
+
+  /** Full analysis result JSON (match scores, reasons, etc.) */
+  analysisResult?: Record<string, unknown> | null
 
   /** When record was created */
   createdAt: TimestampLike
