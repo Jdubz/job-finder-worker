@@ -448,7 +448,7 @@ class SourceProcessor(BaseProcessor):
 
         except Exception as e:
             logger.error(f"Error in SCRAPE_SOURCE: {e}")
-                raise
+            raise
 
     # ============================================================
     # HELPERS
