@@ -10,6 +10,7 @@ import {
 } from "@/api/generator-client"
 import { getAbsoluteArtifactUrl } from "@/config/api"
 import type { JobMatch } from "@shared/types"
+import { AuthModal } from "@/components/auth/AuthModal"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -84,6 +85,7 @@ export function DocumentBuilderPage() {
   const [loading, setLoading] = useState(false)
   const [loadingMatches, setLoadingMatches] = useState(true)
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
 
   // Multi-step generation state
   const [generationSteps, setGenerationSteps] = useState<GenerationStep[]>([])
@@ -158,6 +160,7 @@ export function DocumentBuilderPage() {
   const handleGenerate = async () => {
     if (!user) {
       setAlert({ type: "error", message: "You must be logged in to generate documents" })
+      setAuthModalOpen(true)
       return
     }
 
@@ -572,6 +575,8 @@ export function DocumentBuilderPage() {
           )}
         </div>
       )}
+
+      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} />
     </div>
   )
 }
