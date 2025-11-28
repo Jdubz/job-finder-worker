@@ -57,6 +57,9 @@ def mock_dependencies() -> Dict[str, Any]:
     job_storage = MagicMock()
     job_storage.job_exists.return_value = False
 
+    job_listing_storage = MagicMock()
+    job_listing_storage.listing_exists.return_value = False
+
     companies_manager = MagicMock()
     sources_manager = MagicMock()
     sources_manager.create_from_discovery.return_value = "source-123"
@@ -68,6 +71,7 @@ def mock_dependencies() -> Dict[str, Any]:
         "queue_manager": queue_manager,
         "config_loader": config_loader,
         "job_storage": job_storage,
+        "job_listing_storage": job_listing_storage,
         "companies_manager": companies_manager,
         "sources_manager": sources_manager,
         "company_info_fetcher": company_info_fetcher,

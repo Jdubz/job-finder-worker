@@ -2,11 +2,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ExternalLink, Sparkles, TrendingUp, AlertCircle } from "lucide-react"
-import type { JobMatch } from "@shared/types"
+import type { JobMatchWithListing } from "@shared/types"
 
 interface JobMatchCardProps {
-  match: JobMatch
-  onViewDetails: (match: JobMatch) => void
+  match: JobMatchWithListing
+  onViewDetails: (match: JobMatchWithListing) => void
 }
 
 export function JobMatchCard({ match, onViewDetails }: JobMatchCardProps) {
@@ -34,9 +34,9 @@ export function JobMatchCard({ match, onViewDetails }: JobMatchCardProps) {
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <CardTitle className="text-xl">{match.jobTitle}</CardTitle>
+            <CardTitle className="text-xl">{match.listing.title}</CardTitle>
             <CardDescription className="text-base font-medium mt-1">
-              {match.companyName}
+              {match.listing.companyName}
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -49,10 +49,10 @@ export function JobMatchCard({ match, onViewDetails }: JobMatchCardProps) {
           </div>
         </div>
 
-        {match.location && (
+        {match.listing.location && (
           <div className="text-sm text-muted-foreground mt-2">
-            📍 {match.location}
-            {match.salaryRange && ` • 💰 ${match.salaryRange}`}
+            📍 {match.listing.location}
+            {match.listing.salaryRange && ` • 💰 ${match.listing.salaryRange}`}
           </div>
         )}
       </CardHeader>
@@ -133,7 +133,11 @@ export function JobMatchCard({ match, onViewDetails }: JobMatchCardProps) {
           <Button onClick={() => onViewDetails(match)} className="flex-1">
             View Full Details
           </Button>
-          <Button variant="outline" size="icon" onClick={() => window.open(match.url, "_blank")}>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => window.open(match.listing.url, "_blank")}
+          >
             <ExternalLink className="h-4 w-4" />
           </Button>
         </div>

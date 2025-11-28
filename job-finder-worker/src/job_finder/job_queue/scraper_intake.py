@@ -7,6 +7,12 @@ Pre-filtering behavior:
 
   Only jobs that pass hard rejection filters are queued for AI analysis.
   See docs/worker/architecture/pre-filtering.md for details.
+
+Job Listings Integration:
+  Jobs that pass pre-filter are stored in the job_listings table for deduplication.
+  This table tracks ALL discovered jobs, not just those that pass AI analysis.
+  The job_matches table only stores jobs that pass AI analysis, referencing
+  job_listings via foreign key.
 """
 
 import logging
@@ -33,28 +39,80 @@ class ScraperIntake:
       When a filter_engine is provided, jobs are pre-filtered before queueing.
       Only jobs that pass hard rejection filters are added to the queue.
       This significantly reduces queue size and AI analysis costs.
+
+    Job Listings:
+      Jobs that pass pre-filter are stored in job_listings table for deduplication.
+      This ensures we don't re-process the same job URL multiple times.
     """
 
     def __init__(
         self,
         queue_manager: QueueManager,
-        job_storage=None,
+        job_listing_storage=None,
         companies_manager=None,
         filter_engine=None,
+        # Legacy parameter - still accepted but job_listing_storage takes precedence
+        job_storage=None,
     ):
         """
         Initialize scraper intake.
 
         Args:
             queue_manager: Queue manager for adding items
-            job_storage: JobStorage for checking job existence (optional)
+            job_listing_storage: JobListingStorage for checking/storing job listings
             companies_manager: CompaniesManager for checking company existence (optional)
             filter_engine: StrikeFilterEngine for pre-filtering jobs (optional)
+            job_storage: DEPRECATED - use job_listing_storage instead
         """
         self.queue_manager = queue_manager
-        self.job_storage = job_storage
+        self.job_listing_storage = job_listing_storage
         self.companies_manager = companies_manager
         self.filter_engine = filter_engine
+        # Legacy fallback - will be removed in future version
+        self._legacy_job_storage = job_storage
+
+    def _check_job_exists(self, normalized_url: str) -> bool:
+        """Check if job URL already exists in job_listings (or legacy job_matches)."""
+        if self.job_listing_storage:
+            return self.job_listing_storage.listing_exists(normalized_url)
+        # Legacy fallback
+        if self._legacy_job_storage:
+            return self._legacy_job_storage.job_exists(normalized_url)
+        return False
+
+    def _store_job_listing(
+        self,
+        job: Dict[str, Any],
+        normalized_url: str,
+        source_id: Optional[str],
+        company_id: Optional[str],
+        filter_result: Optional[Dict[str, Any]] = None,
+        status: str = "pending",
+    ) -> Optional[str]:
+        """Store job in job_listings table. Returns listing_id or None."""
+        if not self.job_listing_storage:
+            return None
+
+        try:
+            listing_id, created = self.job_listing_storage.get_or_create_listing(
+                url=normalized_url,
+                title=job.get("title", ""),
+                company_name=job.get("company", ""),
+                description=job.get("description", ""),
+                source_id=source_id,
+                company_id=company_id,
+                location=job.get("location"),
+                salary_range=job.get("salary") or job.get("salary_range"),
+                posted_date=job.get("posted_date"),
+                status=status,
+                filter_result=filter_result,
+            )
+            if created:
+                logger.debug("Created job listing %s for %s", listing_id, normalized_url)
+            return listing_id
+        except Exception as e:
+            logger.warning("Failed to store job listing for %s: %s", normalized_url, e)
+            return None
 
     def submit_jobs(
         self,
@@ -82,6 +140,11 @@ class ScraperIntake:
             - Job age (>7 days)
             - Remote policy violations
 
+        Job Listings:
+            Jobs that pass pre-filter are stored in job_listings table with
+            status='pending'. Jobs rejected by pre-filter are stored with
+            status='filtered' and the filter result.
+
         Args:
             jobs: List of job dictionaries from scraper
             source: Source identifier (e.g., "greenhouse_scraper", "rss_feed")
@@ -89,6 +152,7 @@ class ScraperIntake:
             source_label: Optional human-readable source label
             source_type: Optional source type (greenhouse, rss, etc.)
             company_id: Optional company ID if known
+            max_to_add: Optional limit on jobs to add
 
         Returns:
             Number of jobs successfully added to queue
@@ -137,37 +201,55 @@ class ScraperIntake:
                     logger.debug(f"Job already in queue: {normalized_url}")
                     continue
 
-                # Check if job already exists in job-matches
-                if self.job_storage and self.job_storage.job_exists(normalized_url):
+                # Check if job already exists in job_listings (or legacy job_matches)
+                if self._check_job_exists(normalized_url):
                     skipped_count += 1
-                    logger.debug(f"Job already exists in job-matches: {normalized_url}")
+                    logger.debug(f"Job already exists in job_listings: {normalized_url}")
                     continue
-
-                # Pre-filter job before adding to queue
-                if self.filter_engine:
-                    filter_result = self.filter_engine.evaluate_job(job)
-                    if not filter_result.passed:
-                        prefiltered_count += 1
-                        # Track rejection reasons for logging
-                        reason = filter_result.get_rejection_summary() or "unknown"
-                        # Simplify reason for counting
-                        reason_key = reason.split(":")[0].strip() if ":" in reason else reason
-                        prefilter_reasons[reason_key] = prefilter_reasons.get(reason_key, 0) + 1
-                        logger.debug(f"Pre-filtered job: {job.get('title', 'Unknown')} - {reason}")
-                        continue
 
                 # Clean company label scraped from the listing (avoid storing "Acme Careers")
                 company_name_raw = job.get("company", "")
                 company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
                 company_name = clean_company_name(company_name_base) or company_name_base.strip()
 
+                # Update job dict with cleaned company name
+                job_payload = dict(job)
+                job_payload["company"] = company_name
+
+                # Pre-filter job before adding to queue
+                if self.filter_engine:
+                    filter_result = self.filter_engine.evaluate_job(job_payload)
+                    if not filter_result.passed:
+                        prefiltered_count += 1
+                        # Track rejection reasons for logging
+                        reason = filter_result.get_rejection_summary() or "unknown"
+                        reason_key = reason.split(":")[0].strip() if ":" in reason else reason
+                        prefilter_reasons[reason_key] = prefilter_reasons.get(reason_key, 0) + 1
+                        logger.debug(f"Pre-filtered job: {job.get('title', 'Unknown')} - {reason}")
+
+                        # Store filtered job in job_listings with status='filtered'
+                        self._store_job_listing(
+                            job=job_payload,
+                            normalized_url=normalized_url,
+                            source_id=source_id,
+                            company_id=company_id,
+                            filter_result=filter_result.to_dict(),
+                            status="filtered",
+                        )
+                        continue
+
+                # Job passed pre-filter - store in job_listings with status='pending'
+                listing_id = self._store_job_listing(
+                    job=job_payload,
+                    normalized_url=normalized_url,
+                    source_id=source_id,
+                    company_id=company_id,
+                    status="pending",
+                )
+
                 # Create queue item with normalized URL
                 # Generate tracking_id for this root job (all spawned items will inherit it)
                 tracking_id = str(uuid.uuid4())
-
-                # Preserve other scraped fields but replace company name with cleaned label
-                job_payload = dict(job)
-                job_payload["company"] = company_name
 
                 # Note: State-driven processor will determine next step based on pipeline_state
                 # If scraped_data provided, it will skip scraping and go to filtering
@@ -185,7 +267,12 @@ class ScraperIntake:
                     tracking_id=tracking_id,  # Root tracking ID
                     ancestry_chain=[],  # Root has no ancestors
                     spawn_depth=0,  # Root starts at depth 0
-                    metadata={"source_label": source_label} if source_label else None,
+                    metadata={
+                        "source_label": source_label,
+                        "job_listing_id": listing_id,
+                    } if source_label or listing_id else (
+                        {"job_listing_id": listing_id} if listing_id else None
+                    ),
                 )
 
                 # Add to queue
@@ -235,7 +322,7 @@ class ScraperIntake:
         """
         Submit a company for granular pipeline analysis to the queue.
 
-        Uses the new 4-step granular pipeline (FETCH → EXTRACT → ANALYZE → SAVE).
+        Uses the new 4-step granular pipeline (FETCH -> EXTRACT -> ANALYZE -> SAVE).
 
         Args:
             company_name: Company name

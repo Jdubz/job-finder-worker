@@ -137,14 +137,7 @@ def test_job_match_fields_cover_shared_contract():
     ts_fields = _parse_interface_fields(ts_job, "JobMatch")
 
     worker_match_fields = {
-        "url",
-        "company_name",
-        "company_id",
-        "job_title",
-        "job_description",
-        "location",
-        "salary_range",
-        "company_info",
+        "job_listing_id",  # FK to job_listings table
         "match_score",
         "matched_skills",
         "missing_skills",

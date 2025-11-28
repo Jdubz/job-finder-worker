@@ -21,7 +21,7 @@ from job_finder.job_queue.processors import (
     JobProcessor,
     SourceProcessor,
 )
-from job_finder.storage import JobStorage
+from job_finder.storage import JobStorage, JobListingStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
@@ -40,6 +40,7 @@ class QueueItemProcessor:
         queue_manager: QueueManager,
         config_loader: ConfigLoader,
         job_storage: JobStorage,
+        job_listing_storage: JobListingStorage,
         companies_manager: CompaniesManager,
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
@@ -53,7 +54,8 @@ class QueueItemProcessor:
         Args:
             queue_manager: Queue manager for updating item status
             config_loader: Configuration loader for stop lists and filters
-            job_storage: SQLite job storage
+            job_storage: SQLite job storage for saving matches
+            job_listing_storage: SQLite storage for all discovered job listings
             companies_manager: Company data manager
             sources_manager: Job sources manager
             company_info_fetcher: Company info scraper
@@ -62,6 +64,7 @@ class QueueItemProcessor:
         self.queue_manager = queue_manager
         self.config_loader = config_loader
         self.job_storage = job_storage
+        self.job_listing_storage = job_listing_storage
         self.companies_manager = companies_manager
         self.sources_manager = sources_manager
         self.company_info_fetcher = company_info_fetcher
@@ -72,6 +75,7 @@ class QueueItemProcessor:
             queue_manager=queue_manager,
             config_loader=config_loader,
             job_storage=job_storage,
+            job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             sources_manager=sources_manager,
             company_info_fetcher=company_info_fetcher,
@@ -125,14 +129,9 @@ class QueueItemProcessor:
                 )
                 return
 
-            # Check if URL already exists in job-matches
-            if item.type == QueueItemType.JOB and self.job_storage.job_exists(item.url):
-                self.queue_manager.update_status(
-                    item.id, QueueStatus.SKIPPED, "Job already exists in database"
-                )
-                return
-
             # Delegate to specialized processors
+            # Note: Job deduplication is handled in scraper_intake (for scraped jobs) and
+            # get_or_create_listing (for direct submissions). No duplicate check needed here.
             if item.type == QueueItemType.COMPANY:
                 # All company items must use granular pipeline
                 if not item.company_sub_task:

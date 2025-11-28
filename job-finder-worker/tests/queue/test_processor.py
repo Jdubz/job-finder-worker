@@ -15,6 +15,7 @@ def mock_managers():
         "queue_manager": MagicMock(),
         "config_loader": MagicMock(),
         "job_storage": MagicMock(),
+        "job_listing_storage": MagicMock(),
         "companies_manager": MagicMock(),
         "sources_manager": MagicMock(),
         "company_info_fetcher": MagicMock(),
@@ -166,33 +167,9 @@ def test_should_not_skip_by_stop_list(processor, mock_managers):
     assert processor.job_processor._should_skip_by_stop_list(item) is False
 
 
-def test_process_job_already_exists(processor, mock_managers, sample_job_item):
-    """Test that existing jobs are skipped."""
-    # Mock stop list
-    mock_managers["config_loader"].get_stop_list.return_value = {
-        "excludedCompanies": [],
-        "excludedKeywords": [],
-        "excludedDomains": [],
-    }
-
-    # Mock job already exists
-    mock_managers["job_storage"].job_exists.return_value = True
-
-    processor.process_item(sample_job_item)
-
-    # Should update to SKIPPED
-    mock_managers["queue_manager"].update_status.assert_called()
-    call_args = mock_managers["queue_manager"].update_status.call_args_list
-
-    # Find the SKIPPED status call
-    skipped_call = None
-    for call in call_args:
-        if call[0][1] == QueueStatus.SKIPPED:
-            skipped_call = call
-            break
-
-    assert skipped_call is not None
-    assert "already exists" in skipped_call[0][2].lower()
+# NOTE: test_process_job_already_exists was removed because job deduplication
+# now happens in scraper_intake.submit_jobs(), not in processor.process_item().
+# See tests/queue/test_scraper_intake.py for deduplication tests.
 
 
 # Legacy company processing tests removed - see test_company_pipeline.py for granular pipeline tests

@@ -1,5 +1,5 @@
 import type { GenerateDocumentPayload } from './generator.workflow.service'
-import type { PersonalInfo, ContentItem, JobMatch } from '@shared/types'
+import type { PersonalInfo, ContentItem, JobMatchWithListing } from '@shared/types'
 import { PromptsRepository } from '../../prompts/prompts.repository'
 
 const promptsRepo = new PromptsRepository()
@@ -162,7 +162,7 @@ export function buildResumePrompt(
   payload: GenerateDocumentPayload,
   personalInfo: PersonalInfo,
   contentItems: ContentItem[] = [],
-  jobMatch: JobMatch | null = null
+  jobMatch: JobMatchWithListing | null = null
 ): string {
   const prompts = promptsRepo.getPrompts()
   const childrenMap = buildChildrenMap(contentItems)
@@ -208,7 +208,7 @@ export function buildResumePrompt(
     userExperience: workFormatted || 'No experience data available',
     userSkills: skillsFromCategories || allSkills || 'No skills data available',
     additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
-    companyInfo: jobMatch?.companyInfo || '',
+    companyInfo: jobMatch?.company?.about || '',
     matchedSkills: jobMatch?.matchedSkills?.join(', ') || '',
     keyStrengths: jobMatch?.keyStrengths?.join(', ') || '',
     atsKeywords: jobMatch?.resumeIntakeData?.atsKeywords?.join(', ') || ''
@@ -261,7 +261,7 @@ export function buildCoverLetterPrompt(
   payload: GenerateDocumentPayload,
   personalInfo: PersonalInfo,
   contentItems: ContentItem[] = [],
-  jobMatch: JobMatch | null = null
+  jobMatch: JobMatchWithListing | null = null
 ): string {
   const prompts = promptsRepo.getPrompts()
   const childrenMap = buildChildrenMap(contentItems)
@@ -300,7 +300,7 @@ export function buildCoverLetterPrompt(
     userExperience: workSummary || 'No experience data available',
     userSkills: allSkills || 'No skills data available',
     additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
-    companyInfo: jobMatch?.companyInfo || '',
+    companyInfo: jobMatch?.company?.about || '',
     matchedSkills: jobMatch?.matchedSkills?.join(', ') || '',
     keyStrengths: jobMatch?.keyStrengths?.join(', ') || '',
     atsKeywords: jobMatch?.resumeIntakeData?.atsKeywords?.join(', ') || ''

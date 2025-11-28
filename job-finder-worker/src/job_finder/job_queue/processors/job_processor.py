@@ -1,8 +1,13 @@
 """Job queue item processor (state-driven only).
 
 Advances a JOB item based on its pipeline_state:
-- scrape → filter → analyze → save
+- scrape -> filter -> analyze -> save
 Legacy sub_task routing has been removed to keep a single pipeline.
+
+Job Listings Integration:
+- Jobs are stored in job_listings table when they pass pre-filter (in scraper_intake)
+- This processor updates job_listing status as jobs progress through pipeline
+- Job matches reference job_listings via foreign key (job_listing_id)
 """
 
 import logging
@@ -18,10 +23,12 @@ from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrape_runner import ScrapeRunner
 from job_finder.storage.companies_manager import CompaniesManager
+from job_finder.storage.job_listing_storage import JobListingStorage
 from job_finder.storage.job_storage import JobStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name
+from job_finder.utils.url_utils import normalize_url
 from job_finder.job_queue.models import (
     CompanySubTask,
     JobQueueItem,
@@ -42,6 +49,7 @@ class JobProcessor(BaseProcessor):
         queue_manager: QueueManager,
         config_loader: ConfigLoader,
         job_storage: JobStorage,
+        job_listing_storage: JobListingStorage,
         companies_manager: CompaniesManager,
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
@@ -53,7 +61,8 @@ class JobProcessor(BaseProcessor):
         Args:
             queue_manager: Queue manager for updating item status
             config_loader: Configuration loader for stop lists and filters
-            job_storage: Job storage implementation
+            job_storage: Job storage for saving matches (references job_listings)
+            job_listing_storage: Job listing storage for tracking all discovered jobs
             companies_manager: Company data manager
             sources_manager: Job sources manager
             company_info_fetcher: Company info fetcher (for ScrapeRunner)
@@ -62,6 +71,7 @@ class JobProcessor(BaseProcessor):
         super().__init__(queue_manager, config_loader)
 
         self.job_storage = job_storage
+        self.job_listing_storage = job_listing_storage
         self.companies_manager = companies_manager
         self.sources_manager = sources_manager
         self.ai_matcher = ai_matcher
@@ -74,20 +84,84 @@ class JobProcessor(BaseProcessor):
         # Initialize scrape runner with shared filter engine for pre-filtering
         self.scrape_runner = ScrapeRunner(
             queue_manager=queue_manager,
-            job_storage=job_storage,
+            job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             sources_manager=sources_manager,
             company_info_fetcher=company_info_fetcher,
             filter_engine=self.filter_engine,
         )
 
-        # Initialize scraper intake with filter engine for pre-filtering
+        # Initialize scraper intake with job_listing_storage for deduplication
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
-            job_storage=job_storage,
+            job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             filter_engine=self.filter_engine,
         )
+
+    # ============================================================
+    # JOB LISTING HELPERS
+    # ============================================================
+
+    def _get_or_create_job_listing(
+        self, item: JobQueueItem, job_data: Dict[str, Any]
+    ) -> Optional[str]:
+        """
+        Get existing job_listing_id from metadata or create a new listing.
+
+        Returns job_listing_id or None if storage unavailable.
+        """
+        # Check if we already have a listing_id in metadata
+        metadata = item.metadata or {}
+        existing_id = metadata.get("job_listing_id")
+        if existing_id:
+            return existing_id
+
+        # Check pipeline_state for listing_id
+        state = item.pipeline_state or {}
+        existing_id = state.get("job_listing_id")
+        if existing_id:
+            return existing_id
+
+        # Try to get or create listing from URL
+        normalized_url = normalize_url(item.url) if item.url else ""
+        if not normalized_url:
+            return None
+
+        try:
+            listing_id, created = self.job_listing_storage.get_or_create_listing(
+                url=normalized_url,
+                title=job_data.get("title", ""),
+                company_name=job_data.get("company", ""),
+                description=job_data.get("description", ""),
+                source_id=item.source_id,
+                company_id=item.company_id or job_data.get("company_id"),
+                location=job_data.get("location"),
+                salary_range=job_data.get("salary") or job_data.get("salary_range"),
+                posted_date=job_data.get("posted_date"),
+                status="pending",
+            )
+            if created:
+                logger.debug("Created job listing %s for %s", listing_id, item.url)
+            return listing_id
+        except Exception as e:
+            logger.warning("Failed to get/create job listing for %s: %s", item.url, e)
+            return None
+
+    def _update_listing_status(
+        self,
+        listing_id: Optional[str],
+        status: str,
+        filter_result: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Update job listing status if listing_id is available."""
+        if not listing_id:
+            return
+        try:
+            self.job_listing_storage.update_status(listing_id, status, filter_result)
+            logger.debug("Updated job listing %s status to %s", listing_id, status)
+        except Exception as e:
+            logger.warning("Failed to update listing %s status: %s", listing_id, e)
 
     # ============================================================
     # MAIN ROUTING
@@ -98,10 +172,10 @@ class JobProcessor(BaseProcessor):
         Process job item using decision tree routing.
 
         Examines pipeline_state to determine next action:
-        - No job_data → SCRAPE
-        - Has job_data, no filter_result → FILTER
-        - Has filter_result (passed), no match_result → ANALYZE
-        - Has match_result → SAVE
+        - No job_data -> SCRAPE
+        - Has job_data, no filter_result -> FILTER
+        - Has filter_result (passed), no match_result -> ANALYZE
+        - Has match_result -> SAVE
 
         Args:
             item: Job queue item
@@ -133,19 +207,19 @@ class JobProcessor(BaseProcessor):
 
         if not has_job_data:
             # Need to scrape job data
-            logger.info(f"[DECISION TREE] {item.url[:50]} → SCRAPE (no job_data)")
+            logger.info(f"[DECISION TREE] {item.url[:50]} -> SCRAPE (no job_data)")
             self._do_job_scrape(item)
         elif not has_filter_result:
             # Need to filter
-            logger.info(f"[DECISION TREE] {item.url[:50]} → FILTER (has job_data)")
+            logger.info(f"[DECISION TREE] {item.url[:50]} -> FILTER (has job_data)")
             self._do_job_filter(item)
         elif not has_match_result:
             # Need to analyze
-            logger.info(f"[DECISION TREE] {item.url[:50]} → ANALYZE (passed filter)")
+            logger.info(f"[DECISION TREE] {item.url[:50]} -> ANALYZE (passed filter)")
             self._do_job_analyze(item)
         else:
             # Need to save
-            logger.info(f"[DECISION TREE] {item.url[:50]} → SAVE (has match_result)")
+            logger.info(f"[DECISION TREE] {item.url[:50]} -> SAVE (has match_result)")
             self._do_job_save(item)
 
     # ============================================================
@@ -233,6 +307,7 @@ class JobProcessor(BaseProcessor):
         Filter job and update state.
 
         Sets pipeline_stage='filter'. Re-spawns if passed, marks FILTERED if rejected.
+        Also updates job_listing status accordingly.
         """
         if not item.id or not item.pipeline_state:
             logger.error("Cannot process FILTER without ID or pipeline_state")
@@ -250,6 +325,9 @@ class JobProcessor(BaseProcessor):
 
         logger.info(f"JOB_FILTER: Evaluating {job_data.get('title')} at {job_data.get('company')}")
 
+        # Get or create job_listing for this job
+        listing_id = self._get_or_create_job_listing(item, job_data)
+
         try:
             # Run strike-based filter
             filter_result = self.filter_engine.evaluate_job(job_data)
@@ -260,6 +338,9 @@ class JobProcessor(BaseProcessor):
                 rejection_data = filter_result.to_dict()
 
                 logger.info(f"JOB_FILTER: Rejected - {rejection_summary}")
+
+                # Update job_listing status to 'filtered'
+                self._update_listing_status(listing_id, "filtered", rejection_data)
 
                 self.queue_manager.update_status(
                     item.id,
@@ -273,7 +354,11 @@ class JobProcessor(BaseProcessor):
             updated_state = {
                 **item.pipeline_state,
                 "filter_result": filter_result.to_dict(),
+                "job_listing_id": listing_id,
             }
+
+            # Update job_listing status to 'analyzing'
+            self._update_listing_status(listing_id, "analyzing")
 
             # Mark this step complete
             self.queue_manager.update_status(
@@ -313,6 +398,7 @@ class JobProcessor(BaseProcessor):
         Analyze job with AI and update state.
 
         Sets pipeline_stage='analyze'. Re-spawns if matched, marks SKIPPED if low score.
+        Updates job_listing status to 'analyzed' or 'skipped'.
         """
         if not item.id or not item.pipeline_state:
             logger.error("Cannot process ANALYZE without ID or pipeline_state")
@@ -322,6 +408,9 @@ class JobProcessor(BaseProcessor):
         if not job_data:
             logger.error("No job_data in pipeline_state")
             return
+
+        # Get listing_id from pipeline state
+        listing_id = item.pipeline_state.get("job_listing_id")
 
         self.slogger.pipeline_stage(
             item.id,
@@ -347,6 +436,9 @@ class JobProcessor(BaseProcessor):
 
             if not result:
                 # Below match threshold - TERMINAL STATE
+                # Update job_listing status to 'skipped'
+                self._update_listing_status(listing_id, "skipped")
+
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.SKIPPED,
@@ -355,9 +447,13 @@ class JobProcessor(BaseProcessor):
                 return
 
             # Match passed - update state and continue
+            # Update job_listing status to 'analyzed'
+            self._update_listing_status(listing_id, "analyzed")
+
             updated_state = {
                 **item.pipeline_state,
                 "match_result": result.to_dict(),
+                "job_listing_id": listing_id,
             }
 
             # Mark this step complete
@@ -448,6 +544,11 @@ class JobProcessor(BaseProcessor):
 
         company_id = company.get("id")
 
+        # Update job_listing with company_id if we have a listing
+        listing_id = pipeline_state.get("job_listing_id")
+        if listing_id and company_id:
+            self.job_listing_storage.update_company_id(listing_id, company_id)
+
         # Check if company has sufficient data for job analysis
         if self.companies_manager.has_good_company_data(company):
             job_data["company_id"] = company_id
@@ -506,6 +607,7 @@ class JobProcessor(BaseProcessor):
         Save job match to SQLite.
 
         Final step - marks item as SUCCESS, no re-spawning.
+        Uses job_listing_id from pipeline_state to reference the job_listings table.
         """
         if not item.id or not item.pipeline_state:
             logger.error("Cannot process SAVE without ID or pipeline_state")
@@ -513,6 +615,7 @@ class JobProcessor(BaseProcessor):
 
         job_data = item.pipeline_state.get("job_data")
         match_result_dict = item.pipeline_state.get("match_result")
+        listing_id = item.pipeline_state.get("job_listing_id")
 
         if not job_data or not match_result_dict:
             logger.error("Missing job_data or match_result in pipeline_state")
@@ -537,8 +640,13 @@ class JobProcessor(BaseProcessor):
 
             result = JobMatchResult(**match_result_dict)
 
-            # Save to job-matches
-            doc_id = self.job_storage.save_job_match(job_data, result)
+            # Save to job-matches with job_listing_id reference
+            doc_id = self.job_storage.save_job_match(
+                job_listing_id=listing_id,
+                match_result=result,
+                user_id=None,
+                queue_item_id=item.id,
+            )
 
             logger.info(
                 f"Job matched and saved: {job_data.get('title')} at {job_data.get('company')} "

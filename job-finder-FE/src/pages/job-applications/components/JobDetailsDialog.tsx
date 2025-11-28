@@ -11,13 +11,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { ExternalLink, FileText } from "lucide-react"
-import type { JobMatch } from "@shared/types"
+import type { JobMatchWithListing } from "@shared/types"
 
 interface JobDetailsDialogProps {
-  match: JobMatch | null
+  match: JobMatchWithListing | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onGenerateResume?: (match: JobMatch) => void
+  onGenerateResume?: (match: JobMatchWithListing) => void
 }
 
 export function JobDetailsDialog({
@@ -28,15 +28,17 @@ export function JobDetailsDialog({
 }: JobDetailsDialogProps) {
   if (!match) return null
 
+  const companyInfo = match.company?.about || match.company?.culture || match.company?.mission
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle className="text-2xl">{match.jobTitle}</DialogTitle>
+          <DialogTitle className="text-2xl">{match.listing.title}</DialogTitle>
           <DialogDescription className="text-lg">
-            {match.companyName}
-            {match.location && ` • ${match.location}`}
-            {match.salaryRange && ` • ${match.salaryRange}`}
+            {match.listing.companyName}
+            {match.listing.location && ` • ${match.listing.location}`}
+            {match.listing.salaryRange && ` • ${match.listing.salaryRange}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -216,10 +218,10 @@ export function JobDetailsDialog({
           <TabsContent value="description" className="space-y-4">
             <ScrollArea className="h-[400px] pr-4">
               <div className="prose prose-sm dark:prose-invert max-w-none">
-                {match.companyInfo && (
+                {companyInfo && (
                   <div className="mb-4">
-                    <h3 className="font-semibold mb-2">About {match.companyName}</h3>
-                    <p className="text-sm whitespace-pre-wrap">{match.companyInfo}</p>
+                    <h3 className="font-semibold mb-2">About {match.listing.companyName}</h3>
+                    <p className="text-sm whitespace-pre-wrap">{companyInfo}</p>
                   </div>
                 )}
 
@@ -227,7 +229,7 @@ export function JobDetailsDialog({
 
                 <div>
                   <h3 className="font-semibold mb-2">Job Description</h3>
-                  <div className="text-sm whitespace-pre-wrap">{match.jobDescription}</div>
+                  <div className="text-sm whitespace-pre-wrap">{match.listing.description}</div>
                 </div>
               </div>
             </ScrollArea>
@@ -242,7 +244,7 @@ export function JobDetailsDialog({
               Generate Custom Resume
             </Button>
           )}
-          <Button variant="outline" onClick={() => window.open(match.url, "_blank")}>
+          <Button variant="outline" onClick={() => window.open(match.listing.url, "_blank")}>
             <ExternalLink className="mr-2 h-4 w-4" />
             View Job Posting
           </Button>

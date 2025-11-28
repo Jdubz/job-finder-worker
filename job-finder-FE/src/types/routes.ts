@@ -7,6 +7,7 @@ export const ROUTES = {
   SETTINGS: "/settings",
   // Editor-only routes
   JOB_APPLICATIONS: "/job-applications",
+  JOB_LISTINGS: "/job-listings",
   JOB_FINDER: "/job-finder",
   COMPANIES: "/companies",
   SOURCES: "/sources",
@@ -28,6 +29,7 @@ export type RoutePath = (typeof ROUTES)[RouteKey]
 // Editor-only routes that require authentication
 export const EDITOR_ROUTES: RoutePath[] = [
   ROUTES.JOB_APPLICATIONS,
+  ROUTES.JOB_LISTINGS,
   ROUTES.JOB_FINDER,
   ROUTES.COMPANIES,
   ROUTES.SOURCES,

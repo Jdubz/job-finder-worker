@@ -6,7 +6,7 @@
 
 import type {
   QueueItem,
-  JobMatch,
+  JobMatchWithListing,
   QueueSettings,
   AISettings,
 } from "@shared/types"
@@ -50,16 +50,26 @@ export const mockFailedQueueItem: QueueItem = {
 /**
  * Mock Job Matches
  */
-export const mockJobMatch: JobMatch = {
-  id: "match-test-123",
+const mockListing = {
+  id: "listing-test-123",
   url: "https://www.linkedin.com/jobs/view/123456789",
+  title: "Senior Software Engineer",
   companyName: "Test Company Inc",
-  companyId: null,
-  jobTitle: "Senior Software Engineer",
+  description: "We are looking for an experienced software engineer to join our team...",
   location: "San Francisco, CA",
   salaryRange: "$150,000 - $200,000",
-  jobDescription: "We are looking for an experienced software engineer to join our team...",
-  companyInfo: null,
+  sourceId: null,
+  companyId: null,
+  postedDate: null,
+  status: "analyzed" as const,
+  filterResult: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+}
+
+export const mockJobMatch: JobMatchWithListing = {
+  id: "match-test-123",
+  jobListingId: "listing-test-123",
   matchScore: 85,
   matchedSkills: ["React", "TypeScript", "Node.js", "AWS"],
   missingSkills: [],
@@ -73,23 +83,28 @@ export const mockJobMatch: JobMatch = {
   createdAt: new Date(),
   submittedBy: "test-user-123",
   queueItemId: "queue-test-123",
+  listing: mockListing,
 }
 
-export const mockHighScoreJobMatch: JobMatch = {
+export const mockHighScoreJobMatch: JobMatchWithListing = {
   ...mockJobMatch,
   id: "match-test-high-score",
   matchScore: 95,
 }
 
-export const mockLowScoreJobMatch: JobMatch = {
+export const mockLowScoreJobMatch: JobMatchWithListing = {
   ...mockJobMatch,
   id: "match-test-low-score",
   matchScore: 65,
-  jobTitle: "Junior Developer",
-  companyName: "Startup Inc",
+  listing: {
+    ...mockListing,
+    id: "listing-test-low-score",
+    title: "Junior Developer",
+    companyName: "Startup Inc",
+  },
 }
 
-export const mockAppliedJobMatch: JobMatch = {
+export const mockAppliedJobMatch: JobMatchWithListing = {
   ...mockJobMatch,
   id: "match-test-applied",
 }

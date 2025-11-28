@@ -16,7 +16,7 @@ from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue import ConfigLoader, QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, ScrapeConfig
 from job_finder.job_queue.processor import QueueItemProcessor
-from job_finder.storage import JobStorage
+from job_finder.storage import JobStorage, JobListingStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.ai.matcher import JobMatchResult
@@ -81,6 +81,7 @@ def test_queue_scrape_end_to_end(temp_db):
 
     queue_manager = QueueManager(db_path)
     job_storage = JobStorage(db_path)
+    job_listing_storage = JobListingStorage(db_path)
     companies_manager = CompaniesManager(db_path)
     sources_manager = JobSourcesManager(db_path)
     config_loader = ConfigLoader(db_path)
@@ -124,6 +125,7 @@ def test_queue_scrape_end_to_end(temp_db):
         queue_manager=queue_manager,
         config_loader=config_loader,
         job_storage=job_storage,
+        job_listing_storage=job_listing_storage,
         companies_manager=companies_manager,
         sources_manager=sources_manager,
         company_info_fetcher=company_info_fetcher,
@@ -162,14 +164,29 @@ def test_queue_scrape_end_to_end(temp_db):
 
     processed = _process_queue(queue_manager, processor, limit=20)
 
+    # Verify job_listing was created
     with sqlite3.connect(db_path) as conn:
-        job_row = conn.execute("SELECT url, company_name, match_score FROM job_matches").fetchone()
+        conn.row_factory = sqlite3.Row
+        listing = conn.execute(
+            "SELECT id, url, company_name FROM job_listings WHERE url = ?",
+            ("https://e2e.example.com/jobs/pipeline-engineer",),
+        ).fetchone()
+
+    assert listing is not None
+    assert listing["url"] == "https://e2e.example.com/jobs/pipeline-engineer"
+    assert listing["company_name"] == "E2E Co"
+
+    # Verify job_match was created with FK to job_listing
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        match = conn.execute(
+            "SELECT job_listing_id, match_score FROM job_matches WHERE job_listing_id = ?",
+            (listing["id"],),
+        ).fetchone()
 
     stats = queue_manager.get_queue_stats()
 
     assert processed > 0
-    assert job_row is not None
-    assert job_row[0] == "https://e2e.example.com/jobs/pipeline-engineer"
-    assert job_row[1] == "E2E Co"
-    assert job_row[2] == 88
+    assert match is not None
+    assert match["match_score"] == 88
     assert stats["pending"] == 0

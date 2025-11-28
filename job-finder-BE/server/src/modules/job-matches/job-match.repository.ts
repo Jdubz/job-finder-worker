@@ -1,18 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { JobMatch, TimestampLike } from '@shared/types'
+import type { JobMatch, JobMatchWithListing, TimestampLike } from '@shared/types'
 import { getDb } from '../../db/sqlite'
+import { JobListingRepository } from '../job-listings/job-listing.repository'
 
 type JobMatchRow = {
   id: string
-  url: string
-  company_name: string
-  company_id: string | null
-  job_title: string
-  location: string | null
-  salary_range: string | null
-  job_description: string
-  company_info: string | null
+  job_listing_id: string
   match_score: number
   matched_skills: string | null
   missing_skills: string | null
@@ -47,14 +41,7 @@ const parseJsonArray = (value: string | null): string[] => {
 
 const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   id: row.id,
-  url: row.url,
-  companyName: row.company_name,
-  companyId: row.company_id,
-  jobTitle: row.job_title,
-  location: row.location,
-  salaryRange: row.salary_range,
-  jobDescription: row.job_description,
-  companyInfo: row.company_info,
+  jobListingId: row.job_listing_id,
   matchScore: row.match_score,
   matchedSkills: parseJsonArray(row.matched_skills),
   missingSkills: parseJsonArray(row.missing_skills),
@@ -86,17 +73,19 @@ interface JobMatchListOptions {
   offset?: number
   minScore?: number
   maxScore?: number
-  companyName?: string
   priority?: JobMatch['applicationPriority']
-  sortBy?: 'score' | 'date' | 'company'
+  jobListingId?: string
+  sortBy?: 'score' | 'date'
   sortOrder?: 'asc' | 'desc'
 }
 
 export class JobMatchRepository {
   private db: Database.Database
+  private listingRepo: JobListingRepository
 
   constructor() {
     this.db = getDb()
+    this.listingRepo = new JobListingRepository()
   }
 
   list(options: JobMatchListOptions = {}): JobMatch[] {
@@ -105,8 +94,8 @@ export class JobMatchRepository {
       offset = 0,
       minScore,
       maxScore,
-      companyName,
       priority,
+      jobListingId,
       sortBy = 'date',
       sortOrder = 'desc'
     } = options
@@ -124,18 +113,18 @@ export class JobMatchRepository {
       params.push(maxScore)
     }
 
-    if (companyName) {
-      conditions.push('LOWER(company_name) LIKE ?')
-      params.push(`%${companyName.toLowerCase()}%`)
-    }
-
     if (priority) {
       conditions.push('application_priority = ?')
       params.push(priority)
     }
 
+    if (jobListingId) {
+      conditions.push('job_listing_id = ?')
+      params.push(jobListingId)
+    }
+
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-    const orderColumn = sortBy === 'score' ? 'match_score' : sortBy === 'company' ? 'company_name' : 'created_at'
+    const orderColumn = sortBy === 'score' ? 'match_score' : 'created_at'
     const orderDirection = (sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
 
     const rows = this.db
@@ -147,8 +136,43 @@ export class JobMatchRepository {
     return rows.map(buildJobMatch)
   }
 
+  /**
+   * List job matches with their associated listing data.
+   * This is the preferred method for API responses.
+   */
+  listWithListings(options: JobMatchListOptions = {}): JobMatchWithListing[] {
+    const matches = this.list(options)
+    return matches.map((match) => {
+      const listing = this.listingRepo.getById(match.jobListingId)
+      if (!listing) {
+        throw new Error(`Job listing ${match.jobListingId} not found for match ${match.id}`)
+      }
+      return {
+        ...match,
+        listing
+      }
+    })
+  }
+
   getById(id: string): JobMatch | null {
     const row = this.db.prepare('SELECT * FROM job_matches WHERE id = ?').get(id) as JobMatchRow | undefined
+    return row ? buildJobMatch(row) : null
+  }
+
+  getByIdWithListing(id: string): JobMatchWithListing | null {
+    const match = this.getById(id)
+    if (!match) return null
+
+    const listing = this.listingRepo.getById(match.jobListingId)
+    if (!listing) return null
+
+    return { ...match, listing }
+  }
+
+  getByJobListingId(jobListingId: string): JobMatch | null {
+    const row = this.db
+      .prepare('SELECT * FROM job_matches WHERE job_listing_id = ?')
+      .get(jobListingId) as JobMatchRow | undefined
     return row ? buildJobMatch(row) : null
   }
 
@@ -158,21 +182,13 @@ export class JobMatchRepository {
 
     const stmt = this.db.prepare(`
       INSERT INTO job_matches (
-        id, url, company_name, company_id, job_title, location, salary_range,
-        job_description, company_info, match_score, matched_skills, missing_skills,
+        id, job_listing_id, match_score, matched_skills, missing_skills,
         match_reasons, key_strengths, potential_concerns, experience_match,
         application_priority, customization_recommendations, resume_intake_json,
         analyzed_at, submitted_by, queue_item_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
-        url = excluded.url,
-        company_name = excluded.company_name,
-        company_id = excluded.company_id,
-        job_title = excluded.job_title,
-        location = excluded.location,
-        salary_range = excluded.salary_range,
-        job_description = excluded.job_description,
-        company_info = excluded.company_info,
+        job_listing_id = excluded.job_listing_id,
         match_score = excluded.match_score,
         matched_skills = excluded.matched_skills,
         missing_skills = excluded.missing_skills,
@@ -191,14 +207,7 @@ export class JobMatchRepository {
 
     stmt.run(
       id,
-      match.url,
-      match.companyName,
-      match.companyId ?? null,
-      match.jobTitle,
-      match.location ?? null,
-      match.salaryRange ?? null,
-      match.jobDescription,
-      match.companyInfo ?? null,
+      match.jobListingId,
       match.matchScore,
       JSON.stringify(match.matchedSkills ?? []),
       JSON.stringify(match.missingSkills ?? []),

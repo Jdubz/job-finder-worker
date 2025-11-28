@@ -29,8 +29,8 @@ from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
-from job_finder.storage import JobStorage
 from job_finder.storage.companies_manager import CompaniesManager
+from job_finder.storage.job_listing_storage import JobListingStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ class ScrapeRunner:
     def __init__(
         self,
         queue_manager: QueueManager,
-        job_storage: JobStorage,
+        job_listing_storage: JobListingStorage,
         companies_manager: CompaniesManager,
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
@@ -57,7 +57,7 @@ class ScrapeRunner:
         config_loader: Optional[ConfigLoader] = None,
     ):
         self.queue_manager = queue_manager
-        self.job_storage = job_storage
+        self.job_listing_storage = job_listing_storage
         self.companies_manager = companies_manager
         self.sources_manager = sources_manager
         self.company_info_fetcher = company_info_fetcher
@@ -69,9 +69,9 @@ class ScrapeRunner:
         elif config_loader:
             self.filter_engine = self._create_filter_engine(config_loader)
         else:
-            # Try to create config loader from job_storage db_path
+            # Try to create config loader from job_listing_storage db_path
             try:
-                loader = ConfigLoader(job_storage.db_path)
+                loader = ConfigLoader(job_listing_storage.db_path)
                 self.filter_engine = self._create_filter_engine(loader)
             except Exception as e:
                 logger.warning(f"Could not create filter engine: {e}. Pre-filtering disabled.")
@@ -79,7 +79,7 @@ class ScrapeRunner:
 
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
-            job_storage=job_storage,
+            job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             filter_engine=self.filter_engine,
         )

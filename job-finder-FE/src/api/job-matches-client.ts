@@ -2,7 +2,7 @@ import { BaseApiClient } from "./base-client"
 import { API_CONFIG } from "@/config/api"
 import type {
   ApiSuccessResponse,
-  JobMatch,
+  JobMatchWithListing,
   ListJobMatchesResponse,
   GetJobMatchResponse,
 } from "@shared/types"
@@ -10,11 +10,11 @@ import type {
 export interface JobMatchFilters {
   minScore?: number
   maxScore?: number
-  companyName?: string
-  priority?: JobMatch["applicationPriority"]
+  priority?: JobMatchWithListing["applicationPriority"]
+  jobListingId?: string
   limit?: number
   offset?: number
-  sortBy?: "score" | "date" | "company"
+  sortBy?: "score" | "date"
   sortOrder?: "asc" | "desc"
 }
 
@@ -32,7 +32,7 @@ export class JobMatchesClient extends BaseApiClient {
     const params = new URLSearchParams()
     if (filters.minScore !== undefined) params.set("minScore", String(filters.minScore))
     if (filters.maxScore !== undefined) params.set("maxScore", String(filters.maxScore))
-    if (filters.companyName) params.set("companyName", filters.companyName)
+    if (filters.jobListingId) params.set("jobListingId", filters.jobListingId)
     if (filters.priority) params.set("priority", filters.priority)
     if (filters.limit !== undefined) params.set("limit", String(filters.limit))
     if (filters.offset !== undefined) params.set("offset", String(filters.offset))
@@ -41,17 +41,17 @@ export class JobMatchesClient extends BaseApiClient {
     return params.toString()
   }
 
-  private unwrapMatches(response: JobMatchesResponseShape): JobMatch[] {
+  private unwrapMatches(response: JobMatchesResponseShape): JobMatchWithListing[] {
     const payload = "data" in response ? response.data : response
     return payload?.matches ?? []
   }
 
-  private unwrapMatch(response: JobMatchResponseShape): JobMatch | null {
+  private unwrapMatch(response: JobMatchResponseShape): JobMatchWithListing | null {
     const payload = "data" in response ? response.data : response
     return payload?.match ?? null
   }
 
-  async getMatches(filters: JobMatchFilters = {}): Promise<JobMatch[]> {
+  async getMatches(filters: JobMatchFilters = {}): Promise<JobMatchWithListing[]> {
     const query = this.buildQuery(filters)
     const response = await this.get<JobMatchesResponseShape>(
       `/job-matches${query ? `?${query}` : ""}`
@@ -59,7 +59,7 @@ export class JobMatchesClient extends BaseApiClient {
     return this.unwrapMatches(response)
   }
 
-  async getMatch(matchId: string): Promise<JobMatch | null> {
+  async getMatch(matchId: string): Promise<JobMatchWithListing | null> {
     try {
       const response = await this.get<JobMatchResponseShape>(`/job-matches/${matchId}`)
       return this.unwrapMatch(response)
@@ -70,7 +70,7 @@ export class JobMatchesClient extends BaseApiClient {
   }
 
   subscribeToMatches(
-    callback: (matches: JobMatch[]) => void,
+    callback: (matches: JobMatchWithListing[]) => void,
     filters?: JobMatchFilters,
     onError?: (error: Error) => void,
     pollIntervalMs = 10000

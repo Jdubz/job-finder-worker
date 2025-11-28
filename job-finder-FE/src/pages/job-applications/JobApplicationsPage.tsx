@@ -17,18 +17,18 @@ import { AlertCircle, Search, SlidersHorizontal } from "lucide-react"
 import { JobMatchCard } from "./components/JobMatchCard"
 import { JobDetailsDialog } from "./components/JobDetailsDialog"
 import { ROUTES } from "@/types/routes"
-import type { JobMatch } from "@shared/types"
+import type { JobMatchWithListing } from "@shared/types"
 import { logger } from "@/services/logging"
 import { toDate } from "@/utils/dateFormat"
 
 export function JobApplicationsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [matches, setMatches] = useState<JobMatch[]>([])
-  const [filteredMatches, setFilteredMatches] = useState<JobMatch[]>([])
+  const [matches, setMatches] = useState<JobMatchWithListing[]>([])
+  const [filteredMatches, setFilteredMatches] = useState<JobMatchWithListing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedMatch, setSelectedMatch] = useState<JobMatch | null>(null)
+  const [selectedMatch, setSelectedMatch] = useState<JobMatchWithListing | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
 
   // Filter state
@@ -68,8 +68,8 @@ export function JobApplicationsPage() {
           logger.debug("database", "processing", "JobApplicationsPage: First match sample", {
             details: {
               id: updatedMatches[0].id,
-              companyName: updatedMatches[0].companyName,
-              jobTitle: updatedMatches[0].jobTitle,
+              companyName: updatedMatches[0].listing.companyName,
+              jobTitle: updatedMatches[0].listing.title,
               submittedBy: updatedMatches[0].submittedBy,
             },
           })
@@ -107,8 +107,8 @@ export function JobApplicationsPage() {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(
         (match) =>
-          match.companyName.toLowerCase().includes(query) ||
-          match.jobTitle.toLowerCase().includes(query)
+          match.listing.companyName.toLowerCase().includes(query) ||
+          match.listing.title.toLowerCase().includes(query)
       )
     }
 
@@ -125,7 +125,7 @@ export function JobApplicationsPage() {
         case "date":
           return toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime()
         case "company":
-          return a.companyName.localeCompare(b.companyName)
+          return a.listing.companyName.localeCompare(b.listing.companyName)
         default:
           return 0
       }
@@ -134,12 +134,12 @@ export function JobApplicationsPage() {
     setFilteredMatches(filtered)
   }, [matches, searchQuery, priorityFilter, sortBy])
 
-  const handleViewDetails = (match: JobMatch) => {
+  const handleViewDetails = (match: JobMatchWithListing) => {
     setSelectedMatch(match)
     setDialogOpen(true)
   }
 
-  const handleGenerateResume = (match: JobMatch) => {
+  const handleGenerateResume = (match: JobMatchWithListing) => {
     // Navigate to document builder with pre-filled job data
     navigate(ROUTES.DOCUMENT_BUILDER, {
       state: {

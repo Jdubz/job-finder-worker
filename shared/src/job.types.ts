@@ -12,6 +12,11 @@
 import type { TimestampLike } from "./time.types"
 
 /**
+ * Status of a job listing in the pipeline.
+ */
+export type JobListingStatus = "pending" | "filtered" | "analyzing" | "analyzed" | "skipped"
+
+/**
  * Standard job listing structure returned by scrapers.
  *
  * Python equivalent: Standard job dictionary in job_finder.scrapers.base.BaseScraper
@@ -82,6 +87,60 @@ export interface JobListing {
    * Contains all resume tailoring guidance including ATS keywords
    */
   resumeIntakeData?: ResumeIntakeData
+}
+
+/**
+ * Persisted job listing record (job_listings table).
+ *
+ * This is the source of truth for:
+ * - Job deduplication (URL uniqueness)
+ * - Tracking all jobs that pass pre-filter
+ * - Linking jobs to sources and companies
+ *
+ * Unlike JobListing (scraper DTO), this represents a persisted database record.
+ */
+export interface JobListingRecord {
+  /** Database record ID */
+  id: string
+
+  /** Job posting URL (unique identifier) */
+  url: string
+
+  /** Source ID that discovered this job */
+  sourceId?: string | null
+
+  /** Company record ID */
+  companyId?: string | null
+
+  /** Job title/role */
+  title: string
+
+  /** Company name (as scraped) */
+  companyName: string
+
+  /** Job location */
+  location?: string | null
+
+  /** Salary range or compensation info */
+  salaryRange?: string | null
+
+  /** Full job description */
+  description: string
+
+  /** When the job was posted */
+  postedDate?: string | null
+
+  /** Pipeline status */
+  status: JobListingStatus
+
+  /** Filter result details (if status=filtered) */
+  filterResult?: Record<string, unknown> | null
+
+  /** When record was created */
+  createdAt: TimestampLike
+
+  /** When record was last updated */
+  updatedAt: TimestampLike
 }
 
 /**
@@ -191,40 +250,22 @@ export interface ResumeIntakeData {
 }
 
 /**
- * AI job match analysis result (saved to job-matches collection).
+ * AI job match analysis result (saved to job_matches table).
  *
  * Python equivalent: JobMatchResult in job_finder.ai.matcher
  *
  * Written by job-finder during JOB_SAVE pipeline step.
  * Read by portfolio for displaying matched jobs.
+ *
+ * NOTE: Job listing data (url, title, company, etc.) lives in job_listings table.
+ * This table stores only the AI analysis results with a FK to the listing.
  */
 export interface JobMatch {
   /** Database record ID */
   id?: string
 
-  /** Job posting URL (unique identifier) */
-  url: string
-
-  /** Company name */
-  companyName: string
-
-  /** Company record ID */
-  companyId?: string | null
-
-  /** Job title/role */
-  jobTitle: string
-
-  /** Location */
-  location?: string | null
-
-  /** Salary range */
-  salaryRange?: string | null
-
-  /** Full job description */
-  jobDescription: string
-
-  /** Company info (about/culture) */
-  companyInfo?: string | null
+  /** Foreign key to job_listings table */
+  jobListingId: string
 
   /** AI match score (0-100) */
   matchScore: number
@@ -270,6 +311,20 @@ export interface JobMatch {
 
   /** Queue item ID that generated this match */
   queueItemId: string
+}
+
+/**
+ * Job match with full listing data (for API responses).
+ *
+ * This combines the analysis results with the job listing data,
+ * avoiding the need for multiple queries on the frontend.
+ */
+export interface JobMatchWithListing extends JobMatch {
+  /** The job listing this match is for */
+  listing: JobListingRecord
+
+  /** Company record (if available) */
+  company?: Company | null
 }
 
 /**

@@ -36,7 +36,7 @@ from job_finder.job_queue import ConfigLoader, QueueManager
 from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.models import QueueStatus
 from job_finder.job_queue.processor import QueueItemProcessor
-from job_finder.storage import JobStorage
+from job_finder.storage import JobStorage, JobListingStorage
 from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
@@ -211,6 +211,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         slogger.worker_status("sqlite_path_selected", {"path": db_path})
 
     storage = JobStorage(db_path)
+    job_listing_storage = JobListingStorage(db_path)
     companies_manager = CompaniesManager(db_path)
     job_sources_manager = JobSourcesManager(db_path)
 
@@ -294,6 +295,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         queue_manager=queue_manager,
         config_loader=config_loader,
         job_storage=storage,
+        job_listing_storage=job_listing_storage,
         companies_manager=companies_manager,
         sources_manager=job_sources_manager,
         company_info_fetcher=company_info_fetcher,

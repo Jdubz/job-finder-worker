@@ -29,8 +29,8 @@ describeIntegration("Job Matches API Integration", () => {
 
       expect(match.id).toBeDefined()
       expect(match.queueItemId).toMatch(/^queue-/)
-      expect(match.companyName.length).toBeGreaterThan(0)
-      expect(match.jobTitle.length).toBeGreaterThan(0)
+      expect(match.listing.companyName.length).toBeGreaterThan(0)
+      expect(match.listing.title.length).toBeGreaterThan(0)
       expect(typeof match.matchScore).toBe("number")
       expect(typeof match.experienceMatch).toBe("number")
       expect(["High", "Medium", "Low"]).toContain(match.applicationPriority)
@@ -56,7 +56,7 @@ describeIntegration("Job Matches API Integration", () => {
 
     it("keeps low score matches below 70", () => {
       expect(mockLowScoreJobMatch.matchScore).toBeLessThan(70)
-      expect(mockLowScoreJobMatch.companyName.length).toBeGreaterThan(0)
+      expect(mockLowScoreJobMatch.listing.companyName.length).toBeGreaterThan(0)
     })
 
     it("enforces score bounds", () => {
