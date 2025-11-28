@@ -18,6 +18,15 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useQueueItems } from "@/hooks/useQueueItems"
 
+const mockNavigate = vi.fn()
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router-dom")>()
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  }
+})
+
 vi.mock("@/contexts/AuthContext")
 vi.mock("@/hooks/useCompanies")
 vi.mock("@/hooks/useQueueItems")
@@ -389,7 +398,7 @@ describe("CompaniesPage", () => {
       })
     })
 
-    it("should show success message after successful re-analyze submission", async () => {
+    it("should navigate to queue management after successful re-analyze submission", async () => {
       const user = userEvent.setup()
       mockSubmitCompany.mockResolvedValueOnce("queue-item-123")
       render(<CompaniesPage />)
@@ -408,8 +417,14 @@ describe("CompaniesPage", () => {
       const reanalyzeButton = screen.getByRole("button", { name: /re-analyze/i })
       await user.click(reanalyzeButton)
 
+      // After successful submission, the modal should close and navigate to queue management
       await waitFor(() => {
-        expect(screen.getByText(/re-analysis task queued/i)).toBeInTheDocument()
+        expect(mockSubmitCompany).toHaveBeenCalledWith({
+          companyName: "Acme Corporation",
+          websiteUrl: "https://acme.com",
+          companyId: "company-1",
+        })
+        expect(mockNavigate).toHaveBeenCalledWith("/queue-management")
       })
     })
 

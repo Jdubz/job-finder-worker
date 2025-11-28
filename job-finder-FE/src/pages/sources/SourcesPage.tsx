@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobSources } from "@/hooks/useJobSources"
 import { useQueueItems } from "@/hooks/useQueueItems"
@@ -32,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { AlertCircle, CheckCircle2, Loader2, Plus, Rss, ExternalLink, Trash2, Search, Pause, Play } from "lucide-react"
+import { AlertCircle, Loader2, Plus, Rss, ExternalLink, Trash2, Search, Pause, Play } from "lucide-react"
 import type { JobSource, JobSourceStatus } from "@shared/types"
 
 function formatRelativeTime(date: unknown): string {
@@ -97,11 +98,11 @@ const sourceTypeLabels: Record<string, string> = {
 
 export function SourcesPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const { sources, loading, updateSource, deleteSource, refetch, setFilters } = useJobSources({ limit: 100 })
   const { submitSourceDiscovery } = useQueueItems()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [selectedSource, setSelectedSource] = useState<JobSource | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -117,13 +118,11 @@ export function SourcesPage() {
     setSourceUrl("")
     setCompanyName("")
     setError(null)
-    setSuccess(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setSuccess(null)
 
     if (!sourceUrl.trim()) {
       setError("Source URL is required")
@@ -136,13 +135,9 @@ export function SourcesPage() {
         url: sourceUrl.trim(),
         companyName: companyName.trim() || undefined,
       })
-
-      setSuccess("Source discovery task created! The source will appear here once configured.")
-      setTimeout(() => {
-        resetForm()
-        setIsAddModalOpen(false)
-        refetch()
-      }, 2000)
+      resetForm()
+      setIsAddModalOpen(false)
+      navigate("/queue-management")
     } catch (err) {
       console.error("Failed to submit source:", err)
       setError(err instanceof Error ? err.message : "Failed to submit. Please try again.")
@@ -285,13 +280,6 @@ export function SourcesPage() {
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              {success && (
-                <Alert className="border-green-500 bg-green-50 text-green-900">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <AlertDescription>{success}</AlertDescription>
                 </Alert>
               )}
 

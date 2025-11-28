@@ -1,6 +1,8 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobListings } from "@/hooks/useJobListings"
+import { useQueueItems } from "@/hooks/useQueueItems"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -37,6 +39,7 @@ import {
   ExternalLink,
   Trash2,
   Search,
+  Plus,
 } from "lucide-react"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
@@ -80,10 +83,48 @@ function getStatusBadge(status: JobListingStatus) {
 
 export function JobListingsPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const { listings, loading, deleteListing, setFilters } = useJobListings({ limit: 100 })
+  const { submitJob } = useQueueItems()
   const [selectedListing, setSelectedListing] = useState<JobListingRecord | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+
+  // Add job modal state
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [jobUrl, setJobUrl] = useState("")
+  const [companyName, setCompanyName] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  const resetAddForm = () => {
+    setJobUrl("")
+    setCompanyName("")
+    setSubmitError(null)
+  }
+
+  const handleAddJobSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitError(null)
+
+    if (!jobUrl.trim()) {
+      setSubmitError("Job URL is required")
+      return
+    }
+
+    try {
+      setIsSubmitting(true)
+      await submitJob(jobUrl.trim(), companyName.trim() || undefined)
+      resetAddForm()
+      setIsAddModalOpen(false)
+      navigate("/queue-management")
+    } catch (err) {
+      console.error("Failed to submit job:", err)
+      setSubmitError(err instanceof Error ? err.message : "Failed to submit. Please try again.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this job listing?")) return
@@ -147,11 +188,17 @@ export function JobListingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Job Listings</h1>
-        <p className="text-muted-foreground mt-2">
-          All job listings discovered through scraping
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Job Listings</h1>
+          <p className="text-muted-foreground mt-2">
+            All job listings discovered through scraping
+          </p>
+        </div>
+        <Button onClick={() => setIsAddModalOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Job
+        </Button>
       </div>
 
       {/* Stats Overview */}
@@ -413,6 +460,84 @@ export function JobListingsPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Job Modal */}
+      <Dialog
+        open={isAddModalOpen}
+        onOpenChange={(open) => {
+          if (!open) resetAddForm()
+          setIsAddModalOpen(open)
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Add Job for Analysis</DialogTitle>
+            <DialogDescription>
+              Submit a job posting URL to analyze and add to your listings.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddJobSubmit} className="space-y-4">
+            {submitError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{submitError}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="jobUrl">Job URL *</Label>
+              <Input
+                id="jobUrl"
+                type="url"
+                placeholder="https://example.com/careers/job-title"
+                value={jobUrl}
+                onChange={(e) => setJobUrl(e.target.value)}
+                disabled={isSubmitting}
+              />
+              <p className="text-sm text-muted-foreground">
+                Direct link to the job posting page
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="companyName">Company Name (optional)</Label>
+              <Input
+                id="companyName"
+                type="text"
+                placeholder="Acme Inc."
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                disabled={isSubmitting}
+              />
+              <p className="text-sm text-muted-foreground">
+                If known, helps with analysis accuracy
+              </p>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setIsAddModalOpen(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit Job"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
