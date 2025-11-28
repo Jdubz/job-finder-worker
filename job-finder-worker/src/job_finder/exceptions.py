@@ -115,8 +115,6 @@ class DuplicateSourceError(StorageError):
         self.existing_id = existing_id
         super().__init__(message or f"Source '{name}' already exists (id: {existing_id})")
 
-    pass
-
 
 class ProfileError(JobFinderError):
     """Raised when profile operations fail.

@@ -101,17 +101,21 @@ def run_migration(db_path: str, dry_run: bool = False) -> bool:
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python -m job_finder.migrations.add_unique_source_name <db_path> [--dry-run]")
-        sys.exit(1)
+    import argparse
 
-    db_path = sys.argv[1]
-    dry_run = "--dry-run" in sys.argv
+    parser = argparse.ArgumentParser(
+        description="Add unique constraint on job_sources.name."
+    )
+    parser.add_argument("db_path", help="Path to the SQLite database")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="If set, only report what would be done"
+    )
+    args = parser.parse_args()
 
-    if dry_run:
+    if args.dry_run:
         logger.info("Running in DRY RUN mode - no changes will be made")
 
-    success = run_migration(db_path, dry_run=dry_run)
+    success = run_migration(args.db_path, dry_run=args.dry_run)
     sys.exit(0 if success else 1)
 
 
