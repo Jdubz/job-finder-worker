@@ -55,19 +55,21 @@ class JobSourcesManager:
             except json.JSONDecodeError:
                 return default
 
+        config = parse_json(row["config_json"], {})
+
         return {
             "id": row["id"],
             "name": row["name"],
             "sourceType": row["source_type"],
             "status": row["status"],
-            "config": parse_json(row["config_json"], {}),
+            "config": config,
             "tags": parse_json(row.get("tags"), []),
             "companyId": row.get("company_id"),
             "companyName": row.get("company_name"),
             "lastScrapedAt": row.get("last_scraped_at"),
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
-            "disabledNotes": parse_json(row["config_json"], {}).get("disabled_notes"),
+            "disabledNotes": config.get("disabled_notes"),
         }
 
     # ------------------------------------------------------------------ #

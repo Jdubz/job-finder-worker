@@ -376,7 +376,7 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
             data = resp.json()
             jobs = GenericScraper(source_config)._navigate_path(data, source_config.response_path)
             return True, jobs, False
-        except Exception as exc:
+        except (requests.RequestException, json.JSONDecodeError) as exc:
             logger.warning("API probe failed for %s: %s", source_config.url, exc)
             return False, [], False
 
