@@ -354,7 +354,6 @@ export function CompaniesPage() {
         if (!open) {
           setSelectedCompany(null)
           setReanalyzeError(null)
-          setReanalyzeSuccess(null)
         }
       }}>
         <DialogContent className="sm:max-w-[600px]">
