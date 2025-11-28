@@ -554,6 +554,7 @@ class JobProcessor(BaseProcessor):
             job_data["company_id"] = company_id
             job_data["companyId"] = company_id
             job_data["company_info"] = build_company_info_string(company)
+            job_data["company_data"] = company
             return True
 
         # Company data is incomplete - spawn analysis task (fire and forget), then wait

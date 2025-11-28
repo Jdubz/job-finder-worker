@@ -116,6 +116,7 @@ def main():
         user_timezone=job_match.get("userTimezone", -8),
         prefer_large_companies=job_match.get("preferLargeCompanies", True),
         config=job_match,
+        company_weights=job_match.get("companyWeights"),
     )
     company_info_fetcher = CompanyInfoFetcher(provider, worker_ai_config)
 

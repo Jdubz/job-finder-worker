@@ -97,6 +97,29 @@ const mockJobMatch = {
   userTimezone: -8,
   preferLargeCompanies: true,
   generateIntakeData: true,
+  companyWeights: {
+    bonuses: {
+      remoteFirst: 15,
+      aiMlFocus: 10,
+    },
+    sizeAdjustments: {
+      largeCompanyBonus: 10,
+      smallCompanyPenalty: -5,
+      largeCompanyThreshold: 10000,
+      smallCompanyThreshold: 100,
+    },
+    timezoneAdjustments: {
+      sameTimezone: 5,
+      diff1to2hr: -2,
+      diff3to4hr: -5,
+      diff5to8hr: -10,
+      diff9plusHr: -15,
+    },
+    priorityThresholds: {
+      high: 85,
+      medium: 70,
+    },
+  },
 }
 
 const mockQueueSettings = {
@@ -445,8 +468,9 @@ describe("JobFinderConfigPage", () => {
       await user.click(screen.getByRole("tab", { name: "Match" }))
 
       await waitFor(() => {
-        expect(screen.getByLabelText("Minimum Match Score")).toBeInTheDocument()
-        expect(screen.getByDisplayValue("70")).toBeInTheDocument() // minMatchScore
+        const minScoreInput = screen.getByLabelText("Minimum Match Score") as HTMLInputElement
+        expect(minScoreInput).toBeInTheDocument()
+        expect(minScoreInput.value).toBe("70")
       })
     })
 
@@ -471,7 +495,8 @@ describe("JobFinderConfigPage", () => {
       await user.type(scoreInput, "80")
 
       // Save changes
-      await user.click(screen.getByText("Save Changes"))
+      const saveButton = screen.getByText("Save Changes")
+      await user.click(saveButton)
 
       await waitFor(() => {
         expect(configClient.updateJobMatch).toHaveBeenCalled()

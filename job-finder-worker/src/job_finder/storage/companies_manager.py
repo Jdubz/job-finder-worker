@@ -54,6 +54,10 @@ class CompaniesManager:
             "industry": row.get("industry"),
             "headquartersLocation": row.get("headquarters_location"),
             "hasPortlandOffice": bool(row.get("has_portland_office", 0)),
+            "isRemoteFirst": bool(row.get("is_remote_first", 0)),
+            "aiMlFocus": bool(row.get("ai_ml_focus", 0)),
+            "employeeCount": row.get("employee_count"),
+            "timezoneOffset": row.get("timezone_offset"),
             "techStack": tech_stack,
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
@@ -137,6 +141,16 @@ class CompaniesManager:
             "headquarters_location": company_data.get("headquartersLocation")
             or company_data.get("headquarters_location"),
             "has_portland_office": 1 if has_portland_office else 0,
+            "is_remote_first": (
+                1 if company_data.get("isRemoteFirst") or company_data.get("is_remote_first") else 0
+            ),
+            "ai_ml_focus": (
+                1 if company_data.get("aiMlFocus") or company_data.get("ai_ml_focus") else 0
+            ),
+            "employee_count": company_data.get("employeeCount")
+            or company_data.get("employee_count"),
+            "timezone_offset": company_data.get("timezoneOffset")
+            or company_data.get("timezone_offset"),
             "tech_stack": json.dumps(tech_stack),
         }
 
@@ -209,6 +223,10 @@ class CompaniesManager:
             "companySizeCategory": None,
             "headquartersLocation": "",
             "industry": "",
+            "isRemoteFirst": False,
+            "aiMlFocus": False,
+            "employeeCount": None,
+            "timezoneOffset": None,
         }
         company_id = self.save_company(stub_data)
         stub_data["id"] = company_id

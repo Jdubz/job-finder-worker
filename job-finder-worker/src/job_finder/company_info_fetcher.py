@@ -2,7 +2,8 @@
 
 import json
 import logging
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Dict, Optional, cast
 
 import requests
 from bs4 import BeautifulSoup
@@ -55,7 +56,7 @@ class CompanyInfoFetcher:
         _, company_display = format_company_name(company_name)
         logger.info(f"Fetching company info for {company_display}")
 
-        result = {
+        result: Dict[str, Any] = {
             "name": company_name,
             "website": company_website,
             "about": "",
@@ -171,7 +172,7 @@ class CompanyInfoFetcher:
             logger.debug(f"Unexpected error fetching {url} ({type(e).__name__}): {e}")
             return None
 
-    def _extract_company_info(self, content: str, company_name: str) -> Dict[str, str]:
+    def _extract_company_info(self, content: str, company_name: str) -> Dict[str, Any]:
         """
         Extract company information from page content using AI or heuristics.
 
@@ -182,13 +183,17 @@ class CompanyInfoFetcher:
         Returns:
             Dictionary with extracted fields
         """
-        result = {
+        result: Dict[str, Any] = {
             "about": "",
             "culture": "",
             "mission": "",
             "size": "",
             "industry": "",
             "founded": "",
+            "isRemoteFirst": False,
+            "aiMlFocus": False,
+            "employeeCount": None,
+            "timezoneOffset": None,
         }
 
         # Start with heuristics to avoid AI cost; only call AI when info is sparse
@@ -202,7 +207,7 @@ class CompanyInfoFetcher:
 
         return result
 
-    def _extract_with_ai(self, content: str, company_name: str) -> Dict[str, str]:
+    def _extract_with_ai(self, content: str, company_name: str) -> Dict[str, Any]:
         """
         Use AI to extract company information from content.
 
@@ -359,7 +364,7 @@ Respond with JSON only.
         total_len = about_len + culture_len + mission_len
         return about_len < min_about or total_len < min_sparse
 
-    def _extract_with_heuristics(self, content: str) -> Dict[str, str]:
+    def _extract_with_heuristics(self, content: str) -> Dict[str, Any]:
         """
         Extract company info using simple heuristics (fallback).
 
@@ -376,6 +381,10 @@ Respond with JSON only.
             "size": "",
             "industry": "",
             "founded": "",
+            "timezoneOffset": None,
+            "employeeCount": None,
+            "isRemoteFirst": False,
+            "aiMlFocus": False,
         }
 
         # Try to find common patterns
@@ -405,5 +414,38 @@ Respond with JSON only.
         min_sparse_length = text_limits.get("minSparseCompanyInfoLength", 100)
         if not result["about"] and len(content) > min_sparse_length:
             result["about"] = content[:300].strip()
+
+        # Remote-first detection
+        remote_patterns = ["remote-first", "fully remote", "remote company", "distributed team"]
+        result["isRemoteFirst"] = any(pat in content_lower for pat in remote_patterns)
+
+        # AI/ML focus detection
+        ai_patterns = [
+            "ai",
+            "machine learning",
+            "ml",
+            "artificial intelligence",
+            "gen ai",
+            "generative ai",
+        ]
+        result["aiMlFocus"] = any(pat in content_lower for pat in ai_patterns)
+
+        # Employee count detection (simple numeric heuristic)
+        employee_match = re.search(
+            r"(over|more than|approximately|around)?\s*(\d{2,5})\s+employees", content_lower
+        )
+        if employee_match:
+            try:
+                result["employeeCount"] = cast(Any, int(employee_match.group(2)))
+            except ValueError:
+                result["employeeCount"] = None
+
+        # Timezone offset detection (simple UTC±N parsing)
+        tz_match = re.search(r"utc\s*([+-]?\d{1,2})", content_lower)
+        if tz_match:
+            try:
+                result["timezoneOffset"] = cast(Any, int(tz_match.group(1)))
+            except ValueError:
+                result["timezoneOffset"] = None
 
         return result

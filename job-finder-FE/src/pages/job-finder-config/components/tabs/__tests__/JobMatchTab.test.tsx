@@ -52,14 +52,21 @@ describe("JobMatchTab", () => {
       expect(screen.getByLabelText("Portland Office Bonus")).toBeInTheDocument()
       expect(screen.getByLabelText("User Timezone Offset")).toBeInTheDocument()
       expect(screen.getByLabelText("Prefer Large Companies")).toBeInTheDocument()
+      expect(screen.getByLabelText("Remote-first Bonus")).toBeInTheDocument()
+      expect(screen.getByLabelText("AI/ML Focus Bonus")).toBeInTheDocument()
+      expect(screen.getByLabelText("Large Company Bonus")).toBeInTheDocument()
+      expect(screen.getByLabelText("Small Company Penalty")).toBeInTheDocument()
+      expect(screen.getByLabelText("Timezone Bonus (same)")).toBeInTheDocument()
+      expect(screen.getByLabelText("High Priority Threshold")).toBeInTheDocument()
+      expect(screen.getByLabelText("Medium Priority Threshold")).toBeInTheDocument()
     })
 
     it("should display current values", () => {
       render(<JobMatchTab {...defaultProps} />)
 
-      expect(screen.getByDisplayValue("70")).toBeInTheDocument() // minMatchScore
-      expect(screen.getByDisplayValue("15")).toBeInTheDocument() // portlandOfficeBonus
-      expect(screen.getByDisplayValue("-8")).toBeInTheDocument() // userTimezone
+      expect(screen.getByLabelText("Minimum Match Score")).toHaveValue(70)
+      expect(screen.getByLabelText("Portland Office Bonus")).toHaveValue(15)
+      expect(screen.getByLabelText("User Timezone Offset")).toHaveValue(-8)
     })
 
     it("should display help text for each field", () => {
@@ -149,7 +156,8 @@ describe("JobMatchTab", () => {
         />
       )
 
-      await user.click(screen.getByText("Save Changes"))
+      const saveButton = screen.getByText("Save Changes")
+      await user.click(saveButton)
 
       expect(handleSaveJobMatch).toHaveBeenCalled()
     })
@@ -180,7 +188,8 @@ describe("JobMatchTab", () => {
         />
       )
 
-      await user.click(screen.getByText("Reset"))
+      const resetButton = screen.getByText("Reset")
+      await user.click(resetButton)
 
       expect(handleResetJobMatch).toHaveBeenCalled()
     })
@@ -191,9 +200,9 @@ describe("JobMatchTab", () => {
       render(<JobMatchTab {...defaultProps} jobMatch={null} />)
 
       // Should show default values
-      expect(screen.getByDisplayValue("70")).toBeInTheDocument()
-      expect(screen.getByDisplayValue("15")).toBeInTheDocument()
-      expect(screen.getByDisplayValue("-8")).toBeInTheDocument()
+      expect(screen.getByLabelText("Minimum Match Score")).toHaveValue(70)
+      expect(screen.getByLabelText("Portland Office Bonus")).toHaveValue(15)
+      expect(screen.getByLabelText("User Timezone Offset")).toHaveValue(-8)
     })
 
     it("should not crash when setJobMatch is called with null jobMatch", () => {

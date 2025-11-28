@@ -8,8 +8,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { Loader2, Save, RotateCcw } from "lucide-react"
 import { TabCard } from "../shared"
-import type { JobMatchConfig } from "@shared/types"
+import { DEFAULT_JOB_MATCH } from "@shared/types"
+import type { CompanyMatchWeights, JobMatchConfig } from "@shared/types"
 import type { ConfigState } from "../../hooks/useConfigState"
 
 type JobMatchTabProps = Pick<
@@ -30,6 +33,44 @@ export function JobMatchTab({
   handleSaveJobMatch,
   handleResetJobMatch,
 }: JobMatchTabProps) {
+  const updateCompanyWeights = (
+    updater: (weights: CompanyMatchWeights) => CompanyMatchWeights
+  ) => {
+    setJobMatch((prev) => {
+      const base = prev ?? { ...DEFAULT_JOB_MATCH }
+      const weights: CompanyMatchWeights =
+        base.companyWeights ??
+        DEFAULT_JOB_MATCH.companyWeights ?? {
+          bonuses: { remoteFirst: 0, aiMlFocus: 0 },
+          sizeAdjustments: {
+            largeCompanyBonus: 0,
+            smallCompanyPenalty: 0,
+            largeCompanyThreshold: 0,
+            smallCompanyThreshold: 0,
+          },
+          timezoneAdjustments: {
+            sameTimezone: 0,
+            diff1to2hr: 0,
+            diff3to4hr: 0,
+            diff5to8hr: 0,
+            diff9plusHr: 0,
+          },
+          priorityThresholds: { high: 0, medium: 0 },
+        }
+
+      return {
+        ...base,
+        companyWeights: updater({
+          ...weights,
+          bonuses: { ...weights.bonuses },
+          sizeAdjustments: { ...weights.sizeAdjustments },
+          timezoneAdjustments: { ...weights.timezoneAdjustments },
+          priorityThresholds: { ...weights.priorityThresholds },
+        }),
+      }
+    })
+  }
+
   return (
     <TabsContent value="job-match" className="space-y-4 mt-4">
       <TabCard
@@ -39,6 +80,7 @@ export function JobMatchTab({
         isSaving={isSaving}
         onSave={handleSaveJobMatch}
         onReset={handleResetJobMatch}
+        showActions={false}
       >
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-2">
@@ -138,6 +180,276 @@ export function JobMatchTab({
           </div>
         </div>
       </TabCard>
+
+      <TabCard
+        title="Company Influence Weights"
+        description="Adjust how company attributes affect job match scores"
+        hasChanges={hasJobMatchChanges}
+        isSaving={isSaving}
+        onSave={handleSaveJobMatch}
+        onReset={handleResetJobMatch}
+        showActions={false}
+      >
+        <div className="grid grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <Label htmlFor="remoteFirstBonus">Remote-first Bonus</Label>
+            <Input
+              id="remoteFirstBonus"
+              type="number"
+              value={jobMatch?.companyWeights?.bonuses.remoteFirst ?? 0}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  bonuses: {
+                    ...weights.bonuses,
+                    remoteFirst: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="aiMlFocusBonus">AI/ML Focus Bonus</Label>
+            <Input
+              id="aiMlFocusBonus"
+              type="number"
+              value={jobMatch?.companyWeights?.bonuses.aiMlFocus ?? 0}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  bonuses: {
+                    ...weights.bonuses,
+                    aiMlFocus: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="largeBonus">Large Company Bonus</Label>
+            <Input
+              id="largeBonus"
+              type="number"
+              value={jobMatch?.companyWeights?.sizeAdjustments.largeCompanyBonus ?? 0}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  sizeAdjustments: {
+                    ...weights.sizeAdjustments,
+                    largeCompanyBonus: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="smallPenalty">Small Company Penalty</Label>
+            <Input
+              id="smallPenalty"
+              type="number"
+              value={jobMatch?.companyWeights?.sizeAdjustments.smallCompanyPenalty ?? 0}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  sizeAdjustments: {
+                    ...weights.sizeAdjustments,
+                    smallCompanyPenalty: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="largeThreshold">Large Threshold (employees)</Label>
+            <Input
+              id="largeThreshold"
+              type="number"
+              value={jobMatch?.companyWeights?.sizeAdjustments.largeCompanyThreshold ?? 10000}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  sizeAdjustments: {
+                    ...weights.sizeAdjustments,
+                    largeCompanyThreshold: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="smallThreshold">Small Threshold (employees)</Label>
+            <Input
+              id="smallThreshold"
+              type="number"
+              value={jobMatch?.companyWeights?.sizeAdjustments.smallCompanyThreshold ?? 100}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  sizeAdjustments: {
+                    ...weights.sizeAdjustments,
+                    smallCompanyThreshold: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tzSame">Timezone Bonus (same)</Label>
+            <Input
+              id="tzSame"
+              type="number"
+              value={jobMatch?.companyWeights?.timezoneAdjustments.sameTimezone ?? 0}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  timezoneAdjustments: {
+                    ...weights.timezoneAdjustments,
+                    sameTimezone: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tz1to2">Timezone 1-2h</Label>
+            <Input
+              id="tz1to2"
+              type="number"
+              value={jobMatch?.companyWeights?.timezoneAdjustments.diff1to2hr ?? 0}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  timezoneAdjustments: {
+                    ...weights.timezoneAdjustments,
+                    diff1to2hr: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tz3to4">Timezone 3-4h</Label>
+            <Input
+              id="tz3to4"
+              type="number"
+              value={jobMatch?.companyWeights?.timezoneAdjustments.diff3to4hr ?? 0}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  timezoneAdjustments: {
+                    ...weights.timezoneAdjustments,
+                    diff3to4hr: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tz5to8">Timezone 5-8h</Label>
+            <Input
+              id="tz5to8"
+              type="number"
+              value={jobMatch?.companyWeights?.timezoneAdjustments.diff5to8hr ?? 0}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  timezoneAdjustments: {
+                    ...weights.timezoneAdjustments,
+                    diff5to8hr: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tz9plus">Timezone 9h+</Label>
+            <Input
+              id="tz9plus"
+              type="number"
+              value={jobMatch?.companyWeights?.timezoneAdjustments.diff9plusHr ?? 0}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  timezoneAdjustments: {
+                    ...weights.timezoneAdjustments,
+                    diff9plusHr: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="priorityHigh">High Priority Threshold</Label>
+            <Input
+              id="priorityHigh"
+              type="number"
+              value={jobMatch?.companyWeights?.priorityThresholds.high ?? 85}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  priorityThresholds: {
+                    ...weights.priorityThresholds,
+                    high: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="priorityMedium">Medium Priority Threshold</Label>
+            <Input
+              id="priorityMedium"
+              type="number"
+              value={jobMatch?.companyWeights?.priorityThresholds.medium ?? 70}
+              onChange={(e) =>
+                updateCompanyWeights((weights) => ({
+                  ...weights,
+                  priorityThresholds: {
+                    ...weights.priorityThresholds,
+                    medium: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+            />
+          </div>
+        </div>
+      </TabCard>
+
+      <div className="flex justify-end gap-2">
+        <Button
+          variant="outline"
+          onClick={handleResetJobMatch}
+          disabled={!hasJobMatchChanges || isSaving}
+        >
+          <RotateCcw className="h-4 w-4 mr-2" />
+          Reset
+        </Button>
+        <Button onClick={handleSaveJobMatch} disabled={!hasJobMatchChanges || isSaving}>
+          {isSaving ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Save Changes
+            </>
+          )}
+        </Button>
+      </div>
     </TabsContent>
   )
 }
