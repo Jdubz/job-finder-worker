@@ -443,23 +443,30 @@ IMPORTANT:
 - Customize highlights and summary for the target role
 - Include technologies used at each job`,
 
-  coverLetterGeneration: `You are an expert cover letter writer creating a compelling, personalized letter.
+  coverLetterGeneration: `You are an expert cover letter writer creating a compelling, personalized letter for {{candidateName}}.
 
 TARGET ROLE: {{jobTitle}} at {{companyName}}
+
+ABOUT THE COMPANY:
+{{companyInfo}}
 
 JOB DESCRIPTION:
 {{jobDescription}}
 
-CANDIDATE EXPERIENCE:
-{{userExperience}}
+CANDIDATE'S RELEVANT SKILLS: {{matchedSkills}}
+KEY STRENGTHS TO HIGHLIGHT: {{keyStrengths}}
+KEYWORDS TO NATURALLY INCLUDE: {{atsKeywords}}
+
+ADDITIONAL EMPHASIS: {{additionalInstructions}}
 
 YOUR TASK:
 Write a cover letter that:
-1. Opens with a hook that connects the candidate's background to this specific role
-2. Highlights 2-3 most relevant achievements/experiences for this position
-3. Shows genuine interest in the company and role (use details from job description)
-4. Closes with confidence and a clear call to action
-5. Maintains professional but personable tone
+1. Opens with a hook that connects the candidate's specific background to this role
+2. Highlights 2-3 most relevant achievements/experiences from the provided data
+3. Shows genuine interest in the company using the company info and job description
+4. Naturally incorporates the matched skills and keywords where relevant
+5. Closes with confidence and a clear call to action
+6. Maintains professional but personable tone
 
 RESPONSE FORMAT (JSON only, no markdown):
 {
@@ -473,11 +480,13 @@ RESPONSE FORMAT (JSON only, no markdown):
   "signature": "Sincerely,"
 }
 
-IMPORTANT:
+CRITICAL RULES:
 - Output ONLY valid JSON, no explanations or markdown
 - Keep total length to ~300-400 words
-- Be specific about how experience relates to their needs
-- Avoid generic phrases; show you understand this specific role`,
+- ONLY reference achievements, skills, and experiences from the provided candidate data
+- Do NOT invent companies, roles, projects, or achievements not in the input
+- Be specific about how the candidate's actual experience relates to their needs
+- Avoid generic phrases; use concrete details from the provided data`,
 
   jobScraping: `Extract job posting information from the provided HTML content.
 

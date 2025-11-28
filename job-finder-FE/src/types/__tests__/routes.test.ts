@@ -32,10 +32,6 @@ describe("ROUTES configuration", () => {
       expect(ROUTES.JOB_APPLICATIONS).toMatch(/^\//)
     })
 
-    it("should define JOB_FINDER route", () => {
-      expect(ROUTES.JOB_FINDER).toBeDefined()
-      expect(ROUTES.JOB_FINDER).toMatch(/^\//)
-    })
   })
 
   describe("route uniqueness", () => {
@@ -69,7 +65,6 @@ describe("ROUTES configuration", () => {
         "CONTENT_ITEMS",
         "DOCUMENT_BUILDER",
         "JOB_APPLICATIONS",
-        "JOB_FINDER",
       ]
 
       requiredRoutes.forEach((route) => {

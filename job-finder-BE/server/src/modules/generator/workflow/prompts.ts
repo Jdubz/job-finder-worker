@@ -266,29 +266,31 @@ export function buildCoverLetterPrompt(
   const prompts = promptsRepo.getPrompts()
   const childrenMap = buildChildrenMap(contentItems)
 
-  // Get work items with brief summaries
+  // Get work items with full details (like resume does)
   const workItems = contentItems.filter(isWorkItem)
-  const workSummary = workItems
+  const workFormatted = workItems
     .map((work) => {
-      const highlights = (childrenMap.get(work.id) || [])
-        .filter((child) => child.aiContext === 'highlight')
-        .slice(0, 2)
-        .map((h) => h.title)
-        .filter(Boolean)
-        .join(', ')
-
-      const desc = work.description ? work.description.slice(0, 150) : ''
-      return `${work.role} at ${work.title}${desc ? `: ${desc}` : ''}${highlights ? ` (Notable: ${highlights})` : ''}`
+      const highlights = (childrenMap.get(work.id) || []).filter(
+        (child) => child.aiContext === 'highlight'
+      )
+      return formatWorkItem(work, highlights)
     })
-    .join('\n')
+    .join('\n\n')
+
+  // Get education items
+  const educationItems = contentItems.filter(isEducationItem)
+  const educationFormatted = educationItems.map(formatEducationItem).join('\n')
+
+  // Get personal projects
+  const projectItems = contentItems.filter(isProjectItem)
+  const projectsFormatted = projectItems.map(formatProjectItem).join('\n')
 
   // Get narrative for personal touch
   const narrativeItems = contentItems.filter(isNarrativeItem)
   const narrativeText = narrativeItems
     .map((item) => item.description || '')
     .filter(Boolean)
-    .join(' ')
-    .slice(0, 500)
+    .join('\n\n')
 
   const allSkills = [...new Set(contentItems.flatMap((item) => item.skills || []))].join(', ')
 
@@ -297,26 +299,48 @@ export function buildCoverLetterPrompt(
     jobTitle: payload.job.role,
     companyName: payload.job.company,
     jobDescription: payload.job.jobDescriptionText || 'No job description provided',
-    userExperience: workSummary || 'No experience data available',
+    userExperience: workFormatted || 'No experience data available',
     userSkills: allSkills || 'No skills data available',
     additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
     companyInfo: jobMatch?.company?.about || '',
-    matchedSkills: jobMatch?.matchedSkills?.join(', ') || '',
+    matchedSkills: jobMatch?.matchedSkills?.join(', ') || allSkills,
     keyStrengths: jobMatch?.keyStrengths?.join(', ') || '',
     atsKeywords: jobMatch?.resumeIntakeData?.atsKeywords?.join(', ') || ''
   }
 
   const prompt = replaceVariables(prompts.coverLetterGeneration, variables)
 
-  const contextBlock = narrativeText
-    ? `\n\nCandidate Background (use for personal touch):\n${narrativeText}`
-    : ''
+  // Build comprehensive data block like resume has
+  const dataBlock = `
+
+AUTHORITATIVE CANDIDATE DATA (use ONLY this information):
+
+Candidate: ${variables.candidateName}
+Target Role: ${variables.jobTitle}
+Company: ${variables.companyName}
+
+Work Experience:
+${workFormatted || 'None provided'}
+
+Education:
+${educationFormatted || 'None provided'}
+
+Projects:
+${projectsFormatted || 'None provided'}
+
+Skills:
+${allSkills || 'None provided'}
+
+Background/Narrative:
+${narrativeText || 'None provided'}`
 
   return (
     prompt +
-    contextBlock +
+    dataBlock +
     '\n\nIMPORTANT: You MUST respond with ONLY valid JSON. Do NOT ask questions, request clarification, or include any text outside the JSON object.' +
-    '\nUse the experience and skills provided to craft a compelling cover letter.' +
+    '\nUse the experience, education, projects, and skills provided as your ONLY source of truth.' +
+    '\nDo NOT invent new companies, roles, achievements, technologies, or skills; every claim must come from the input data above.' +
+    '\nSelect the most relevant 2-3 experiences/achievements for THIS specific role and company.' +
     '\nReturn ONLY a JSON object with keys: greeting, openingParagraph, bodyParagraphs[], closingParagraph, signature.'
   )
 }

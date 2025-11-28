@@ -7,7 +7,6 @@ export const ROUTES = {
   // Editor-only routes
   JOB_APPLICATIONS: "/job-applications",
   JOB_LISTINGS: "/job-listings",
-  JOB_FINDER: "/job-finder",
   COMPANIES: "/companies",
   SOURCES: "/sources",
   QUEUE_MANAGEMENT: "/queue-management",
@@ -29,7 +28,6 @@ export type RoutePath = (typeof ROUTES)[RouteKey]
 export const EDITOR_ROUTES: RoutePath[] = [
   ROUTES.JOB_APPLICATIONS,
   ROUTES.JOB_LISTINGS,
-  ROUTES.JOB_FINDER,
   ROUTES.COMPANIES,
   ROUTES.SOURCES,
   ROUTES.QUEUE_MANAGEMENT,
