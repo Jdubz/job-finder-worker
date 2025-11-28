@@ -94,6 +94,7 @@ class QueueItemProcessor:
             queue_manager=queue_manager,
             config_loader=config_loader,
             sources_manager=sources_manager,
+            companies_manager=companies_manager,
         )
 
     # ============================================================
