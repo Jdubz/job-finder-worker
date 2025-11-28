@@ -31,7 +31,14 @@ import {
   getTaskTypeLabel,
 } from "./components/queueItemDisplay"
 
-type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered"
+type QueueStatusTone =
+  | "pending"
+  | "processing"
+  | "success"
+  | "failed"
+  | "skipped"
+  | "filtered"
+  | "needs_review"
 type CompletedStatus = "success" | "failed" | "skipped" | "filtered"
 
 const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered"]
@@ -53,7 +60,7 @@ export function QueueManagementPage() {
   const [isProcessingEnabled, setIsProcessingEnabled] = useState<boolean | null>(null)
   const [isTogglingProcessing, setIsTogglingProcessing] = useState(false)
   const [confirmToggleOpen, setConfirmToggleOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
+  const [activeTab, setActiveTab] = useState<"pending" | "needs_review" | "completed">("pending")
   const [completedStatusFilter, setCompletedStatusFilter] = useState<CompletedStatus | "all">("all")
 
   // Fetch full stats from API (not limited to 100 items)
@@ -75,6 +82,7 @@ export function QueueManagementPage() {
           failed: queueItems.filter((i) => i.status === "failed").length,
           skipped: queueItems.filter((i) => i.status === "skipped").length,
           filtered: queueItems.filter((i) => i.status === "filtered").length,
+          needs_review: queueItems.filter((i) => i.status === "needs_review").length,
         }
         setQueueStats(stats)
         setUsingFallbackStats(true)
@@ -153,6 +161,16 @@ export function QueueManagementPage() {
   }, [queueItems])
 
   // Completed items: success, failed, skipped, filtered - sorted by most recently updated first
+  const reviewItems = useMemo(() => {
+    return [...queueItems]
+      .filter((item) => item.id && item.status === "needs_review")
+      .sort((a, b) => {
+        const aDate = normalizeDate(a.updated_at ?? a.completed_at ?? a.created_at)
+        const bDate = normalizeDate(b.updated_at ?? b.completed_at ?? b.created_at)
+        return aDate.getTime() - bDate.getTime()
+      }) as QueueItem[]
+  }, [queueItems])
+
   const completedItems = useMemo(() => {
     return [...queueItems]
       .filter((item) => {
@@ -409,11 +427,14 @@ export function QueueManagementPage() {
           <CardDescription>Latest jobs, companies, sources, and scrape tasks</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "pending" | "completed")}>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "pending" | "needs_review" | "completed")}>
             <div className="flex items-center justify-between mb-4">
               <TabsList>
                 <TabsTrigger value="pending">
                   Pending ({queueStats ? queueStats.pending + queueStats.processing : pendingItems.length})
+                </TabsTrigger>
+                <TabsTrigger value="needs_review">
+                  Needs Review ({queueStats ? queueStats.needs_review : reviewItems.length})
                 </TabsTrigger>
                 <TabsTrigger value="completed">
                   Completed ({queueStats ? queueStats.success + queueStats.failed + queueStats.skipped + queueStats.filtered : completedItems.length})
@@ -456,6 +477,21 @@ export function QueueManagementPage() {
                   onCancel={handleCancelItem}
                   formatRelativeTime={formatRelativeTime}
                 />
+              )}
+            </TabsContent>
+
+            <TabsContent value="needs_review" className="mt-0">
+              {loading ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : reviewItems.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No items awaiting agent review.</p>
+                </div>
+              ) : (
+                <QueueTable items={reviewItems} onSelectItem={setSelectedItem} />
               )}
             </TabsContent>
 

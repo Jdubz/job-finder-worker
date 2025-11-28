@@ -39,12 +39,25 @@ export type {
  * - success: Successfully processed and saved to job-matches
  * - failed: Processing error occurred
  */
-export type QueueStatus = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered"
+export type QueueStatus =
+  | "pending"
+  | "processing"
+  | "success"
+  | "failed"
+  | "skipped"
+  | "filtered"
+  | "needs_review"
 
 /**
  * Queue item types
  */
-export type QueueItemType = "job" | "company" | "scrape" | "source_discovery" | "scrape_source"
+export type QueueItemType =
+  | "job"
+  | "company"
+  | "scrape"
+  | "source_discovery"
+  | "scrape_source"
+  | "agent_review"
 
 /**
  * Source of queue submission
@@ -166,6 +179,7 @@ export interface QueueStats {
   failed: number
   skipped: number
   filtered: number
+  needs_review: number
   total: number
 }
 
