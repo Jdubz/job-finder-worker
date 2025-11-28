@@ -31,6 +31,16 @@ from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
+SOURCE_AGENT_PROMPT = (
+    "You are the primary agent for source discovery/validation."
+    " Probe results are in scraped_data."
+    " Your tasks: (1) research the company/source URL,"
+    " (2) produce/verify a working SourceConfig (correct type, selectors/fields, pagination, date/location/title/company mapping),"
+    " (3) test or reason about the config, noting any blockers (auth/api keys/CORS/JS-only),"
+    " (4) recommend status (active vs disabled with notes),"
+    " (5) capture the canonical careers URL and company metadata if missing."
+)
+
 
 class SourceProcessor(BaseProcessor):
     """Processor for source discovery and scraping queue items."""
@@ -111,11 +121,12 @@ class SourceProcessor(BaseProcessor):
                 source_config, validation_meta = discovery_result, {}
 
             if not source_config:
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.FAILED,
-                    "Discovery failed - could not generate valid config",
-                    error_details=f"URL: {url}",
+                self._handoff_to_agent_review(
+                    item,
+                    SOURCE_AGENT_PROMPT,
+                    reason="Source discovery produced no config",
+                    context={"url": url, "type_hint": config.type_hint},
+                    status_message="Agent review required: discovery produced no config",
                 )
                 return
 
@@ -214,15 +225,28 @@ class SourceProcessor(BaseProcessor):
             # Update queue item with success
             self.queue_manager.update_status(
                 item.id,
-                QueueStatus.SUCCESS,
-                source_id,
+                QueueStatus.NEEDS_REVIEW,
+                "Agent review required: source discovery probe completed",
                 scraped_data={
                     "source_id": source_id,
                     "source_type": source_type,
                     "disabled_notes": disabled_notes or "",
                 },
             )
-            logger.info(f"SOURCE_DISCOVERY complete: Created source {source_id}")
+
+            # Always hand off to agent for validation/verification with probe context
+            self._spawn_agent_review(
+                item,
+                SOURCE_AGENT_PROMPT,
+                reason="Source discovery probe completed",
+                context={
+                    "source_id": source_id,
+                    "source_type": source_type,
+                    "config": source_config,
+                    "validation_meta": validation_meta,
+                    "needs_api_key": needs_api_key,
+                },
+            )
 
         except Exception as e:
             logger.error(f"Error in SOURCE_DISCOVERY: {e}")
@@ -418,9 +442,15 @@ class SourceProcessor(BaseProcessor):
                 )
                 self.queue_manager.update_status(
                     item.id,
-                    QueueStatus.FAILED,
-                    f"Scraping failed: {str(scrape_error)}",
+                    QueueStatus.NEEDS_REVIEW,
+                    f"Agent review required: scraping failed: {str(scrape_error)}",
                     error_details=traceback.format_exc(),
+                )
+                self._spawn_agent_review(
+                    item,
+                    SOURCE_AGENT_PROMPT,
+                    reason="Source scrape failed",
+                    context={"source_id": source.get("id"), "error": str(scrape_error)},
                 )
 
         except Exception as e:

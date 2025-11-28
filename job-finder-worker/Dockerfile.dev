@@ -16,7 +16,7 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies and development tools
+# Install runtime dependencies and development tools (sqlite3 for agent review)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     gcc \

@@ -30,6 +30,17 @@ from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
+COMPANY_AGENT_PROMPT = (
+    "You are the primary agent for company enrichment."
+    " Probe results are attached in scraped_data."
+    " Your tasks: (1) research the company using the URL and context,"
+    " (2) fill all company fields (about, culture, mission, HQ, industry, size, employeeCount,"
+    " founded, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack if evident),"
+    " (3) validate or propose a careers/job-board URL,"
+    " (4) update/confirm company_size_category and headquartersLocation,"
+    " (5) note any missing info and why."
+)
+
 
 class CompanyProcessor(BaseProcessor):
     """Processor for company queue items."""
@@ -84,13 +95,36 @@ class CompanyProcessor(BaseProcessor):
 
             html_content = self._fetch_company_pages(company_name, company_website, item.id)
             if not html_content:
-                return  # status already updated to FAILED inside helper
+                # No content fetched; hand off to agent for research with probe context
+                self._handoff_to_agent_review(
+                    item,
+                    COMPANY_AGENT_PROMPT,
+                    reason="No company pages fetched",
+                    context={
+                        "attempted_urls": self._build_pages_to_try(company_website),
+                        "company_name": company_name,
+                    },
+                    status_message="Agent review required: no company pages fetched",
+                )
+                return
 
             extracted_info = self._extract_company_info(
                 company_name, html_content, item.id, company_website
             )
             if not extracted_info:
-                return  # status already updated
+                # AI extraction failed; hand off to agent with fetched HTML
+                self._handoff_to_agent_review(
+                    item,
+                    COMPANY_AGENT_PROMPT,
+                    reason="Company extraction failed",
+                    context={
+                        "html_samples": {k: v[:5000] for k, v in html_content.items()},
+                        "company_name": company_name,
+                        "company_website": company_website,
+                    },
+                    status_message="Agent review required: company extraction failed",
+                )
+                return
 
             # If AI provider is configured and heuristic extraction left sparse fields, try AI enrichment
             if (
@@ -109,10 +143,15 @@ class CompanyProcessor(BaseProcessor):
 
                 # Check again after AI enrichment - fail if still sparse
                 if self.company_info_fetcher._needs_ai_enrichment(extracted_info):
-                    self.queue_manager.update_status(
-                        item.id,
-                        QueueStatus.FAILED,
-                        "AI enrichment failed to populate required company fields",
+                    self._handoff_to_agent_review(
+                        item,
+                        COMPANY_AGENT_PROMPT,
+                        reason="Company fields still sparse after AI enrichment",
+                        context={
+                            "extracted_info": extracted_info,
+                            "html_samples": {k: v[:5000] for k, v in html_content.items()},
+                        },
+                        status_message="Agent review required: enrichment still sparse",
                     )
                     return
 
@@ -178,20 +217,25 @@ class CompanyProcessor(BaseProcessor):
             if job_board_url:
                 result_parts.append("job_board_spawned" if source_spawned else "job_board_exists")
 
-            self.queue_manager.update_status(item.id, QueueStatus.SUCCESS, "; ".join(result_parts))
+            # Always hand off to agent for validation/enrichment review with probe results
+            self._handoff_to_agent_review(
+                item,
+                COMPANY_AGENT_PROMPT,
+                reason="Company probe completed",
+                context={
+                    "extracted_info": extracted_info,
+                    "tech_stack": tech_stack,
+                    "job_board_url": job_board_url,
+                },
+                status_message="; ".join(result_parts),
+            )
 
     # ============================================================
     # HELPER METHODS
     # ============================================================
 
     def _fetch_company_pages(self, company_name: str, website: str, item_id: str) -> Dict[str, str]:
-        pages_to_try = [
-            f"{website}/about",
-            f"{website}/about-us",
-            f"{website}/company",
-            f"{website}/careers",
-            website,  # Homepage as fallback
-        ]
+        pages_to_try = self._build_pages_to_try(website)
 
         html_content: Dict[str, str] = {}
         text_limits = get_text_limits()
@@ -226,6 +270,15 @@ class CompanyProcessor(BaseProcessor):
                 return {}
 
         return html_content
+
+    def _build_pages_to_try(self, website: str) -> list:
+        return [
+            f"{website}/about",
+            f"{website}/about-us",
+            f"{website}/company",
+            f"{website}/careers",
+            website,
+        ]
 
     def _extract_company_info(
         self, company_name: str, html_content: Dict[str, str], item_id: str, company_website: str
