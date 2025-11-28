@@ -14,9 +14,7 @@ from job_finder.settings import get_text_limits
 from job_finder.utils.company_size_utils import detect_company_size
 from job_finder.utils.date_utils import calculate_freshness_adjustment, parse_job_date
 from job_finder.utils.role_preference_utils import calculate_role_preference_adjustment
-from job_finder.utils.timezone_utils import (
-    detect_timezone_for_job,
-)
+from job_finder.utils.timezone_utils import detect_timezone_for_job
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +54,24 @@ class JobMatchResult(BaseModel):
 class AIJobMatcher:
     """AI-powered job matcher that analyzes jobs and generates resume intake data."""
 
+    DEFAULT_COMPANY_WEIGHTS: Dict[str, Any] = {
+        "bonuses": {"remoteFirst": 15, "aiMlFocus": 10},
+        "sizeAdjustments": {
+            "largeCompanyBonus": 10,
+            "smallCompanyPenalty": -5,
+            "largeCompanyThreshold": 10000,
+            "smallCompanyThreshold": 100,
+        },
+        "timezoneAdjustments": {
+            "sameTimezone": 5,
+            "diff1to2hr": -2,
+            "diff3to4hr": -5,
+            "diff5to8hr": -10,
+            "diff9plusHr": -15,
+        },
+        "priorityThresholds": {"high": 85, "medium": 70},
+    }
+
     def __init__(
         self,
         provider: AIProvider,
@@ -89,23 +105,7 @@ class AIJobMatcher:
         self.user_timezone = user_timezone
         self.prefer_large_companies = prefer_large_companies
         self.config = config or {}
-        self.company_weights = company_weights or {
-            "bonuses": {"remoteFirst": 15, "aiMlFocus": 10},
-            "sizeAdjustments": {
-                "largeCompanyBonus": 10,
-                "smallCompanyPenalty": -5,
-                "largeCompanyThreshold": 10000,
-                "smallCompanyThreshold": 100,
-            },
-            "timezoneAdjustments": {
-                "sameTimezone": 5,
-                "diff1to2hr": -2,
-                "diff3to4hr": -5,
-                "diff5to8hr": -10,
-                "diff9plusHr": -15,
-            },
-            "priorityThresholds": {"high": 85, "medium": 70},
-        }
+        self.company_weights = company_weights or self.DEFAULT_COMPANY_WEIGHTS
         self.prompts = JobMatchPrompts()
 
     def analyze_job(

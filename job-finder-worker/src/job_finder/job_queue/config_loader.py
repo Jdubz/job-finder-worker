@@ -251,7 +251,27 @@ class ConfigLoader:
         }
         try:
             cfg = self._get_config("job-match") or {}
-            weights = {**default_weights, **(cfg.get("companyWeights") or {})}
+            cfg_weights = cfg.get("companyWeights") or {}
+
+            weights = {
+                "bonuses": {
+                    **default_weights["bonuses"],
+                    **(cfg_weights.get("bonuses") or {}),
+                },
+                "sizeAdjustments": {
+                    **default_weights["sizeAdjustments"],
+                    **(cfg_weights.get("sizeAdjustments") or {}),
+                },
+                "timezoneAdjustments": {
+                    **default_weights["timezoneAdjustments"],
+                    **(cfg_weights.get("timezoneAdjustments") or {}),
+                },
+                "priorityThresholds": {
+                    **default_weights["priorityThresholds"],
+                    **(cfg_weights.get("priorityThresholds") or {}),
+                },
+            }
+
             return {**default, **cfg, "companyWeights": weights}
         except InitializationError:
             logger.warning("Job match config missing; seeding defaults")
