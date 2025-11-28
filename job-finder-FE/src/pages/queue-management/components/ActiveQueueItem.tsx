@@ -14,7 +14,7 @@ import {
 } from "./queueItemDisplay"
 
 interface ActiveQueueItemProps {
-  item?: QueueItem
+  item?: QueueItem | null
   loading?: boolean
   onCancel: (id: string) => void
 }
