@@ -18,6 +18,7 @@ from job_finder.settings import get_text_limits
 from job_finder.logging_config import format_company_name
 from job_finder.job_queue.models import (
     JobQueueItem,
+    QueueItemType,
     QueueStatus,
     SourceDiscoveryConfig,
     SourceTypeHint,

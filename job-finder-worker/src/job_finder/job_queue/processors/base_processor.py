@@ -125,7 +125,9 @@ class BaseProcessor:
         review_item = self._create_agent_review_item(item, prompt, reason, context)
         try:
             review_id = self.queue_manager.add_item(review_item)
-            logger.info("Spawned AGENT_REVIEW %s for %s (%s)", review_id, item.url or item.id, reason)
+            logger.info(
+                "Spawned AGENT_REVIEW %s for %s (%s)", review_id, item.url or item.id, reason
+            )
             return review_id
         except DuplicateQueueItemError as exc:
             logger.warning("Agent review already exists for %s: %s", item.url or item.id, exc)

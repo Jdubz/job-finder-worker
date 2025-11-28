@@ -226,13 +226,12 @@ class SourceProcessor(BaseProcessor):
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.NEEDS_REVIEW,
-                source_id,
+                "Agent review required: source discovery probe completed",
                 scraped_data={
                     "source_id": source_id,
                     "source_type": source_type,
                     "disabled_notes": disabled_notes or "",
                 },
-                result_message="Agent review required: source discovery probe completed",
             )
 
             # Always hand off to agent for validation/verification with probe context
