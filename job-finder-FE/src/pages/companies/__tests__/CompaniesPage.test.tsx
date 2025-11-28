@@ -247,7 +247,7 @@ describe("CompaniesPage", () => {
       })
     })
 
-    it("should show 'No tech stack' message when tech stack is empty", async () => {
+    it("should show placeholder when tech stack is empty", async () => {
       const user = userEvent.setup()
       render(<CompaniesPage />)
 
@@ -259,7 +259,10 @@ describe("CompaniesPage", () => {
       await user.click(row!)
 
       await waitFor(() => {
-        expect(screen.getByText(/no tech stack information/i)).toBeInTheDocument()
+        // Tech stack shows "—" when empty
+        const techStackLabel = screen.getByText("Tech Stack")
+        const techStackSection = techStackLabel.closest("div")
+        expect(techStackSection).toHaveTextContent("—")
       })
     })
   })

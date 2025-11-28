@@ -14,6 +14,7 @@ import {
   FolderOpen,
   Building2,
   Rss,
+  List,
 } from "lucide-react"
 import { useState } from "react"
 import { AuthIcon } from "@/components/auth/AuthIcon"
@@ -37,6 +38,7 @@ const publicLinks: NavLink[] = [
 
 const jobFinderLinks: NavLink[] = [
   { to: ROUTES.JOB_FINDER, label: "Job Finder", icon: Briefcase },
+  { to: ROUTES.JOB_LISTINGS, label: "Job Listings", icon: List },
   { to: ROUTES.JOB_APPLICATIONS, label: "Job Applications", icon: FileText },
   { to: ROUTES.COMPANIES, label: "Companies", icon: Building2 },
   { to: ROUTES.SOURCES, label: "Sources", icon: Rss },

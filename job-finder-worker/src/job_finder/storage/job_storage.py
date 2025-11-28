@@ -1,4 +1,9 @@
-"""SQLite-backed storage for job matches."""
+"""SQLite-backed storage for job matches.
+
+Job matches now reference job_listings via foreign key (job_listing_id).
+The job_listings table stores the raw job data (title, company, description, etc.),
+while job_matches stores only the AI analysis results.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +16,6 @@ from uuid import uuid4
 
 from job_finder.exceptions import StorageError
 from job_finder.storage.sqlite_client import sqlite_connection
-from job_finder.utils.url_utils import normalize_url
 
 if TYPE_CHECKING:
     from job_finder.ai.matcher import JobMatchResult
@@ -34,7 +38,12 @@ def _serialize_json(value: Optional[Dict[str, Any]]) -> Optional[str]:
 
 
 class JobStorage:
-    """Persist job matches to SQLite."""
+    """Persist job matches to SQLite.
+
+    Job matches now reference job_listings via foreign key. The job data
+    (URL, title, company, description) is stored in job_listings table,
+    while this class stores only the AI analysis results.
+    """
 
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path
@@ -77,21 +86,17 @@ class JobStorage:
                     return fallback
         return fallback
 
-    def _find_existing_id(
-        self, conn: sqlite3.Connection, url: str, user_id: Optional[str]
+    def _find_existing_by_listing_id(
+        self, conn: sqlite3.Connection, job_listing_id: str
     ) -> Optional[str]:
-        if not url:
+        """Find existing job match by job_listing_id."""
+        if not job_listing_id:
             return None
 
-        if user_id:
-            row = conn.execute(
-                "SELECT id FROM job_matches WHERE url = ? AND (submitted_by = ? OR submitted_by IS NULL) LIMIT 1",
-                (url, user_id),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT id FROM job_matches WHERE url = ? LIMIT 1", (url,)
-            ).fetchone()
+        row = conn.execute(
+            "SELECT id FROM job_matches WHERE job_listing_id = ? LIMIT 1",
+            (job_listing_id,),
+        ).fetchone()
 
         if row:
             return row["id"]
@@ -99,25 +104,39 @@ class JobStorage:
 
     def save_job_match(
         self,
-        job: Dict[str, Any],
+        job_listing_id: Optional[str],
         match_result: "JobMatchResult",
         user_id: Optional[str] = None,
         queue_item_id: Optional[str] = None,
     ) -> str:
         """
-        Save a job match if it does not already exist.
+        Save a job match referencing a job_listing.
 
-        Returns the primary key of the saved (or existing) record.
+        The job_listing_id is a foreign key to the job_listings table,
+        which contains all the job data (title, company, description, etc.).
+
+        Args:
+            job_listing_id: Foreign key to job_listings table (required for new schema)
+            match_result: AI analysis result
+            user_id: Optional user ID who submitted
+            queue_item_id: Optional queue item ID for tracking
+
+        Returns:
+            The primary key of the saved (or existing) record.
+
+        Raises:
+            StorageError: If job_listing_id is missing or save fails
         """
-        normalized_url = normalize_url(job.get("url", "")) if job.get("url") else ""
+        if not job_listing_id:
+            raise StorageError("job_listing_id is required to save job match")
 
         with sqlite_connection(self.db_path) as conn:
-            existing = self._find_existing_id(conn, normalized_url, user_id)
+            # Check for existing match with this listing
+            existing = self._find_existing_by_listing_id(conn, job_listing_id)
             if existing:
                 logger.info(
-                    "[DB:DUPLICATE] Job already exists: %s at %s (ID: %s)",
-                    job.get("title"),
-                    job.get("company"),
+                    "[DB:DUPLICATE] Job match already exists for listing %s (ID: %s)",
+                    job_listing_id,
                     existing,
                 )
                 return existing
@@ -141,24 +160,16 @@ class JobStorage:
                 conn.execute(
                     """
                     INSERT INTO job_matches (
-                        id, url, company_name, company_id, job_title, location,
-                        salary_range, job_description, company_info, match_score,
+                        id, job_listing_id, match_score,
                         matched_skills, missing_skills, match_reasons, key_strengths,
                         potential_concerns, experience_match, application_priority,
                         customization_recommendations, resume_intake_json, analyzed_at,
                         submitted_by, queue_item_id, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         job_id,
-                        normalized_url or job.get("url", ""),
-                        job.get("company", "") or job.get("company_name", ""),
-                        job.get("company_id") or job.get("companyId"),
-                        job.get("title", ""),
-                        job.get("location"),
-                        job.get("salary") or job.get("salary_range"),
-                        job.get("description", ""),
-                        job.get("company_info"),
+                        job_listing_id,
                         match_result.match_score,
                         _serialize_list(match_result.matched_skills),
                         _serialize_list(match_result.missing_skills),
@@ -171,56 +182,47 @@ class JobStorage:
                         _serialize_json(match_result.resume_intake_data),
                         now,
                         user_id,
-                        queue_item_id or job.get("queue_item_id"),
+                        queue_item_id,
                         now,
                         now,
                     ),
                 )
             except sqlite3.IntegrityError as exc:
-                if "job_matches.url" in str(exc) and normalized_url:
-                    existing = self._find_existing_id(conn, normalized_url, user_id)
+                if "job_listing_id" in str(exc) or "FOREIGN KEY" in str(exc):
+                    raise StorageError(
+                        f"Invalid job_listing_id: {job_listing_id} not found in job_listings"
+                    ) from exc
+                if "job_matches.job_listing_id" in str(exc):
+                    existing = self._find_existing_by_listing_id(conn, job_listing_id)
                     if existing:
                         return existing
                 raise StorageError(f"Failed to save job match: {exc}") from exc
 
             logger.info(
-                "Saved job match %s (%s) with score %s",
+                "Saved job match %s (listing: %s) with score %s",
                 job_id,
-                job.get("company"),
+                job_listing_id,
                 match_result.match_score,
             )
             return job_id
 
-    def job_exists(self, job_url: str, user_id: Optional[str] = None) -> bool:
-        """Return True if a normalized URL already exists."""
-        if not job_url:
+    def match_exists_for_listing(self, job_listing_id: str) -> bool:
+        """Return True if a job match already exists for this listing."""
+        if not job_listing_id:
             return False
 
-        normalized = normalize_url(job_url)
         with sqlite_connection(self.db_path) as conn:
-            row = self._find_existing_id(conn, normalized, user_id)
+            row = self._find_existing_by_listing_id(conn, job_listing_id)
             return row is not None
 
-    def batch_check_exists(
-        self, job_urls: List[str], user_id: Optional[str] = None
-    ) -> Dict[str, bool]:
-        """Batch existence check for URLs."""
-        normalized_urls = [normalize_url(url) for url in job_urls if url]
-        if not normalized_urls:
-            return {}
-
-        results = {url: False for url in normalized_urls}
+    def get_match_by_listing_id(self, job_listing_id: str) -> Optional[Dict[str, Any]]:
+        """Get job match by job_listing_id."""
+        if not job_listing_id:
+            return None
 
         with sqlite_connection(self.db_path) as conn:
-            chunk_size = 50
-            for chunk_start in range(0, len(normalized_urls), chunk_size):
-                chunk = normalized_urls[chunk_start : chunk_start + chunk_size]
-                placeholders = ",".join("?" for _ in chunk)
-                query = f"SELECT url, submitted_by FROM job_matches WHERE url IN ({placeholders})"
-                rows = conn.execute(query, tuple(chunk)).fetchall()
-                for row in rows:
-                    if user_id and row["submitted_by"] and row["submitted_by"] != user_id:
-                        continue
-                    results[row["url"]] = True
-
-        return results
+            row = conn.execute(
+                "SELECT * FROM job_matches WHERE job_listing_id = ?",
+                (job_listing_id,),
+            ).fetchone()
+            return dict(row) if row else None

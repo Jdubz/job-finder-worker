@@ -3,6 +3,7 @@ import request from 'supertest'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { buildJobMatchRouter } from '../job-match.routes'
 import { JobMatchRepository } from '../job-match.repository'
+import { JobListingRepository } from '../../job-listings/job-listing.repository'
 import { getDb } from '../../../db/sqlite'
 import { buildJobMatchInput } from './fixtures'
 
@@ -13,6 +14,18 @@ const createApp = () => {
   return app
 }
 
+const createTestListing = (id: string) => {
+  const listingRepo = new JobListingRepository()
+  return listingRepo.create({
+    id,
+    url: `https://example.com/jobs/${id}`,
+    title: `Engineer ${id}`,
+    companyName: `Company ${id}`,
+    description: 'Build great products',
+    status: 'analyzed'
+  })
+}
+
 describe('job match routes', () => {
   const db = getDb()
   const repo = new JobMatchRepository()
@@ -20,47 +33,55 @@ describe('job match routes', () => {
 
   beforeEach(() => {
     db.prepare('DELETE FROM job_matches').run()
+    db.prepare('DELETE FROM job_listings').run()
   })
 
   it('lists matches honoring filters', async () => {
-    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-10', companyName: 'Acme Robotics', matchScore: 95 }))
-    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-11', companyName: 'Beta Labs', matchScore: 70 }))
+    createTestListing('listing-10')
+    createTestListing('listing-11')
+    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-10', jobListingId: 'listing-10', matchScore: 95 }))
+    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-11', jobListingId: 'listing-11', matchScore: 70 }))
 
-    const response = await request(app).get('/job-matches?minScore=90&companyName=acme')
+    const response = await request(app).get('/job-matches?minScore=90')
 
     expect(response.status).toBe(200)
     expect(response.body.success).toBe(true)
     expect(response.body.data.matches).toHaveLength(1)
-    expect(response.body.data.matches[0].companyName).toBe('Acme Robotics')
+    expect(response.body.data.matches[0].matchScore).toBe(95)
+    expect(response.body.data.matches[0].listing.id).toBe('listing-10')
   })
 
   it('returns a single match or 404', async () => {
-    const seeded = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-12' }))
+    createTestListing('listing-12')
+    const seeded = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-12', jobListingId: 'listing-12' }))
 
     const found = await request(app).get(`/job-matches/${seeded.id}`)
     expect(found.status).toBe(200)
     expect(found.body.data.match.id).toBe(seeded.id)
+    expect(found.body.data.match.listing.id).toBe('listing-12')
 
     const missing = await request(app).get('/job-matches/missing-id')
     expect(missing.status).toBe(404)
   })
 
   it('creates matches via POST', async () => {
-    const payload = buildJobMatchInput({ queueItemId: 'queue-13', companyName: 'NewCo' })
+    createTestListing('listing-13')
+    const payload = buildJobMatchInput({ queueItemId: 'queue-13', jobListingId: 'listing-13' })
     const body = { ...payload }
     delete body.id
 
     const res = await request(app).post('/job-matches').send(body)
 
     expect(res.status).toBe(201)
-    expect(res.body.data.match.companyName).toBe('NewCo')
+    expect(res.body.data.match.jobListingId).toBe('listing-13')
 
     const stored = repo.getById(res.body.data.match.id)
-    expect(stored?.url).toBe(payload.url)
+    expect(stored?.jobListingId).toBe('listing-13')
   })
 
   it('deletes matches via DELETE', async () => {
-    const seeded = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-14' }))
+    createTestListing('listing-14')
+    const seeded = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-14', jobListingId: 'listing-14' }))
 
     const res = await request(app).delete(`/job-matches/${seeded.id}`)
     expect(res.status).toBe(200)

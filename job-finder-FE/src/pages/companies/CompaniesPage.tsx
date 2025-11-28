@@ -390,10 +390,16 @@ export function CompaniesPage() {
               </DialogHeader>
 
               <div className="space-y-4">
+                {/* ID */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">ID</Label>
+                  <p className="mt-1 text-sm font-mono text-muted-foreground">{selectedCompany.id || "—"}</p>
+                </div>
+
                 {/* Website */}
-                {selectedCompany.website && (
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Website</Label>
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Website</Label>
+                  {selectedCompany.website ? (
                     <a
                       href={selectedCompany.website}
                       target="_blank"
@@ -403,8 +409,28 @@ export function CompaniesPage() {
                       {selectedCompany.website}
                       <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
                     </a>
-                  </div>
-                )}
+                  ) : (
+                    <p className="mt-1 text-muted-foreground">—</p>
+                  )}
+                </div>
+
+                {/* Industry */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Industry</Label>
+                  <p className="mt-1">{selectedCompany.industry || "—"}</p>
+                </div>
+
+                {/* Headquarters */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Headquarters</Label>
+                  <p className="mt-1">{selectedCompany.headquartersLocation || "—"}</p>
+                </div>
+
+                {/* Company Size */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company Size</Label>
+                  <p className="mt-1 capitalize">{selectedCompany.companySizeCategory || "—"}</p>
+                </div>
 
                 {/* Tech Stack */}
                 <div>
@@ -418,33 +444,27 @@ export function CompaniesPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-1 text-muted-foreground">No tech stack information available</p>
+                    <p className="mt-1 text-muted-foreground">—</p>
                   )}
                 </div>
 
-                {/* About/Mission if available */}
-                {(selectedCompany.about || selectedCompany.mission) && (
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">About</Label>
-                    <p className="mt-1 text-sm">{selectedCompany.about || selectedCompany.mission}</p>
-                  </div>
-                )}
+                {/* About */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">About</Label>
+                  <p className="mt-1 text-sm">{selectedCompany.about || "—"}</p>
+                </div>
 
-                {/* Headquarters/Location if available */}
-                {selectedCompany.headquartersLocation && (
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Headquarters</Label>
-                    <p className="mt-1">{selectedCompany.headquartersLocation}</p>
-                  </div>
-                )}
+                {/* Culture */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Culture</Label>
+                  <p className="mt-1 text-sm">{selectedCompany.culture || "—"}</p>
+                </div>
 
-                {/* Size if available */}
-                {selectedCompany.companySizeCategory && (
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company Size</Label>
-                    <p className="mt-1 capitalize">{selectedCompany.companySizeCategory}</p>
-                  </div>
-                )}
+                {/* Mission */}
+                <div>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Mission</Label>
+                  <p className="mt-1 text-sm">{selectedCompany.mission || "—"}</p>
+                </div>
 
                 {/* Timestamps */}
                 <div className="grid grid-cols-2 gap-4 pt-2 border-t">

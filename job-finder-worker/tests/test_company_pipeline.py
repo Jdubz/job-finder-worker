@@ -22,6 +22,7 @@ class TestCompanyPipeline:
             "queue_manager": Mock(),
             "config_loader": Mock(),
             "job_storage": Mock(),
+            "job_listing_storage": Mock(),
             "companies_manager": Mock(),
             "sources_manager": Mock(),
             "company_info_fetcher": Mock(),

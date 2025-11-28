@@ -7,6 +7,7 @@ import { buildContentItemRouter } from './modules/content-items/content-item.rou
 import { buildJobQueueRouter } from './modules/job-queue/job-queue.routes'
 import { buildWorkerRouter } from './modules/job-queue/worker.routes'
 import { buildJobMatchRouter } from './modules/job-matches/job-match.routes'
+import { buildJobListingRouter } from './modules/job-listings/job-listing.routes'
 import { buildCompanyRouter } from './modules/companies/company.routes'
 import { buildJobSourceRouter } from './modules/job-sources/job-source.routes'
 import { buildConfigRouter } from './modules/config/config.routes'
@@ -110,6 +111,7 @@ export function buildApp() {
   app.use('/api/content-items', buildContentItemRouter())
   app.use('/api/queue', buildJobQueueRouter())
   app.use('/api/job-matches', buildJobMatchRouter())
+  app.use('/api/job-listings', buildJobListingRouter())
   app.use('/api/companies', buildCompanyRouter())
   app.use('/api/job-sources', buildJobSourceRouter())
   app.use('/api/config', requireRole('admin'), buildConfigRouter())

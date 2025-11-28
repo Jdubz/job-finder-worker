@@ -12,7 +12,7 @@ from job_finder.filters.models import FilterResult
 from job_finder.job_queue import ConfigLoader, QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.job_queue.processor import QueueItemProcessor
-from job_finder.storage import JobStorage
+from job_finder.storage import JobStorage, JobListingStorage
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
@@ -49,6 +49,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
     # Real SQLite-backed managers
     queue_manager = QueueManager(str(db_path))
     job_storage = JobStorage(str(db_path))
+    job_listing_storage = JobListingStorage(str(db_path))
     companies_manager = CompaniesManager(str(db_path))
     sources_manager = JobSourcesManager(str(db_path))
     config_loader = ConfigLoader(str(db_path))
@@ -103,6 +104,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
         queue_manager=queue_manager,
         config_loader=config_loader,
         job_storage=job_storage,
+        job_listing_storage=job_listing_storage,
         companies_manager=companies_manager,
         sources_manager=sources_manager,
         company_info_fetcher=company_info_fetcher,
@@ -148,11 +150,23 @@ def test_job_pipeline_full_path(tmp_path: Path):
     assert final_item.pipeline_state
     assert final_item.pipeline_state["match_result"]["match_score"] == 92
 
-    # Verify job saved to job_matches
+    # Verify job_listing was created
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT url, company_name, match_score FROM job_matches").fetchone()
-    assert row is not None
-    assert row["url"] == job_data["url"]
-    assert row["company_name"] == job_data["company"]
-    assert row["match_score"] == 92
+        listing = conn.execute(
+            "SELECT id, url, company_name FROM job_listings WHERE url = ?",
+            (job_data["url"],),
+        ).fetchone()
+    assert listing is not None
+    assert listing["url"] == job_data["url"]
+    assert listing["company_name"] == job_data["company"]
+
+    # Verify job_match was created with FK to job_listing
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        match = conn.execute(
+            "SELECT job_listing_id, match_score FROM job_matches WHERE job_listing_id = ?",
+            (listing["id"],),
+        ).fetchone()
+    assert match is not None
+    assert match["match_score"] == 92

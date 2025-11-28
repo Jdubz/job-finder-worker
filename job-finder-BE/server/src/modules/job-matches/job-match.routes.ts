@@ -48,14 +48,7 @@ const resumeIntakeDataSchema: z.ZodType<ResumeIntakeData> = z.object({
 
 const jobMatchSchema = z.object({
   id: z.string().optional(),
-  url: z.string().url(),
-  companyName: z.string(),
-  companyId: z.string().nullable().optional(),
-  jobTitle: z.string(),
-  location: z.string().nullable().optional(),
-  salaryRange: z.string().nullable().optional(),
-  jobDescription: z.string(),
-  companyInfo: z.string().nullable().optional(),
+  jobListingId: z.string(),
   matchScore: z.number().min(0).max(100),
   matchedSkills: z.array(z.string()).optional(),
   missingSkills: z.array(z.string()).optional(),
@@ -69,7 +62,7 @@ const jobMatchSchema = z.object({
   analyzedAt: z.union([z.string(), z.date()]).optional(),
   createdAt: z.union([z.string(), z.date()]).optional(),
   submittedBy: z.string().nullable().optional(),
-  queueItemId: z.string().optional()
+  queueItemId: z.string()
 })
 
 function toTimestamp(value?: string | Date) {
@@ -85,9 +78,9 @@ const listQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   minScore: z.coerce.number().int().min(0).max(100).optional(),
   maxScore: z.coerce.number().int().min(0).max(100).optional(),
-  companyName: z.string().min(1).optional(),
+  jobListingId: z.string().min(1).optional(),
   priority: z.enum(['High', 'Medium', 'Low']).optional(),
-  sortBy: z.enum(['score', 'date', 'company']).optional(),
+  sortBy: z.enum(['score', 'date']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional()
 })
 
@@ -99,7 +92,7 @@ export function buildJobMatchRouter() {
     '/',
     asyncHandler((req, res) => {
       const filters = listQuerySchema.parse(req.query)
-      const matches = repo.list(filters)
+      const matches = repo.listWithListings(filters)
       const response: ListJobMatchesResponse = { matches, count: matches.length }
       res.json(success(response))
     })
@@ -108,7 +101,7 @@ export function buildJobMatchRouter() {
   router.get(
     '/:id',
     asyncHandler((req, res) => {
-      const match = repo.getById(req.params.id)
+      const match = repo.getByIdWithListing(req.params.id)
       if (!match) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Job match not found'))
         return
@@ -132,8 +125,7 @@ export function buildJobMatchRouter() {
         keyStrengths: payload.keyStrengths ?? [],
         potentialConcerns: payload.potentialConcerns ?? [],
         customizationRecommendations: payload.customizationRecommendations ?? [],
-        submittedBy: payload.submittedBy ?? null,
-        queueItemId: payload.queueItemId ?? payload.id ?? 'manual'
+        submittedBy: payload.submittedBy ?? null
       }
 
       const match = repo.upsert(matchRequest)

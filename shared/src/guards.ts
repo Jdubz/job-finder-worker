@@ -45,6 +45,7 @@ export {
 }
 import type {
   JobListing,
+  JobListingRecord,
   JobMatch,
   Company,
   ResumeIntakeData,
@@ -478,6 +479,31 @@ export function isJobListing(value: unknown): value is JobListing {
 }
 
 /**
+ * Type guard for JobListingRecord
+ */
+export function isJobListingRecord(value: unknown): value is JobListingRecord {
+  if (!isObject(value)) return false
+
+  const listing = value as Partial<JobListingRecord>
+
+  // Check required fields
+  return (
+    typeof listing.id === "string" &&
+    typeof listing.url === "string" &&
+    typeof listing.title === "string" &&
+    typeof listing.companyName === "string" &&
+    typeof listing.description === "string" &&
+    (listing.status === "pending" ||
+      listing.status === "filtered" ||
+      listing.status === "analyzing" ||
+      listing.status === "analyzed" ||
+      listing.status === "skipped") &&
+    isDateLike(listing.createdAt) &&
+    isDateLike(listing.updatedAt)
+  )
+}
+
+/**
  * Type guard for JobMatch
  */
 export function isJobMatch(value: unknown): value is JobMatch {
@@ -487,10 +513,7 @@ export function isJobMatch(value: unknown): value is JobMatch {
 
   // Check required fields
   return (
-    typeof match.url === "string" &&
-    typeof match.companyName === "string" &&
-    typeof match.jobTitle === "string" &&
-    typeof match.jobDescription === "string" &&
+    typeof match.jobListingId === "string" &&
     typeof match.matchScore === "number" &&
     isStringArray(match.matchedSkills) &&
     isStringArray(match.missingSkills) &&

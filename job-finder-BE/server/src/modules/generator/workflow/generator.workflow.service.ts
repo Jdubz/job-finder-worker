@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Logger } from 'pino'
-import type { ResumeContent, CoverLetterContent, PersonalInfo, JobMatch } from '@shared/types'
+import type { ResumeContent, CoverLetterContent, PersonalInfo, JobMatchWithListing } from '@shared/types'
 import { logger } from '../../../logger'
 import { PersonalInfoStore } from '../personal-info.store'
 import { ContentItemRepository } from '../../content-items/content-item.repository'
@@ -321,15 +321,15 @@ export class GeneratorWorkflowService {
     return storageService.createPublicUrl(saved.storagePath)
   }
 
-  private enrichPayloadWithJobMatch(payload: GenerateDocumentPayload): JobMatch | null {
+  private enrichPayloadWithJobMatch(payload: GenerateDocumentPayload): JobMatchWithListing | null {
     if (!payload.jobMatchId) {
       return null
     }
 
-    const jobMatch = this.jobMatchRepo.getById(payload.jobMatchId)
+    const jobMatch = this.jobMatchRepo.getByIdWithListing(payload.jobMatchId)
     if (jobMatch) {
-      // Enrich payload with job match data
-      payload.job.jobDescriptionText = payload.job.jobDescriptionText || jobMatch.jobDescription
+      // Enrich payload with job listing data
+      payload.job.jobDescriptionText = payload.job.jobDescriptionText || jobMatch.listing.description
       // Add additional context from job match
       if (jobMatch.customizationRecommendations?.length) {
         payload.preferences = payload.preferences || {}

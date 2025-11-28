@@ -35,6 +35,9 @@ const JobApplicationsPage = lazyWithRetry(() =>
 const JobFinderPage = lazyWithRetry(() =>
   import("@/pages/job-finder/JobFinderPage").then((m) => ({ default: m.JobFinderPage }))
 )
+const JobListingsPage = lazyWithRetry(() =>
+  import("@/pages/job-listings/JobListingsPage").then((m) => ({ default: m.JobListingsPage }))
+)
 const CompaniesPage = lazyWithRetry(() =>
   import("@/pages/companies/CompaniesPage").then((m) => ({ default: m.CompaniesPage }))
 )
@@ -119,6 +122,14 @@ export const router = createBrowserRouter([
         element: (
           <LazyPage>
             <JobFinderPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.JOB_LISTINGS,
+        element: (
+          <LazyPage>
+            <JobListingsPage />
           </LazyPage>
         ),
       },

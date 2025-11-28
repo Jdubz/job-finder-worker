@@ -1,25 +1,25 @@
-import type { JobMatch } from "../job.types"
+import type { JobMatch, JobMatchWithListing } from "../job.types"
 import type { PaginationParams } from "../api.types"
 
 export interface ListJobMatchesRequest extends PaginationParams {
   minScore?: number
   maxScore?: number
-  companyName?: string
   priority?: JobMatch["applicationPriority"]
-  sortBy?: "score" | "date" | "company"
+  jobListingId?: string
+  sortBy?: "score" | "date"
   sortOrder?: "asc" | "desc"
 }
 
 export interface ListJobMatchesResponse {
-  matches: JobMatch[]
+  matches: JobMatchWithListing[]
   count: number
 }
 
 export interface GetJobMatchResponse {
-  match: JobMatch
+  match: JobMatchWithListing
 }
 
-export type SaveJobMatchRequest = JobMatch
+export type SaveJobMatchRequest = Omit<JobMatch, "id"> & { id?: string }
 
 export interface SaveJobMatchResponse {
   match: JobMatch
