@@ -13,9 +13,7 @@ app.use((req, _res, next) => {
   ;(req as AuthenticatedRequest).user = {
     uid: 'test-user',
     email: 'owner@example.com',
-    emailVerified: true,
     name: 'Test User',
-    picture: undefined,
     roles: ['admin', 'viewer']
   }
   next()
