@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useQueueItems } from "@/hooks/useQueueItems"
@@ -24,7 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AlertCircle, CheckCircle2, Loader2, Plus, Building2, ExternalLink, Trash2, Search, RefreshCw } from "lucide-react"
+import { AlertCircle, Loader2, Plus, Building2, ExternalLink, Trash2, Search, RefreshCw } from "lucide-react"
 import type { Company } from "@shared/types"
 
 function formatDate(date: unknown): string {
@@ -82,14 +83,13 @@ function CompanyStatusBadge({ company }: { company: Company }) {
 
 export function CompaniesPage() {
   const { user } = useAuth()
-  const { companies, loading, deleteCompany, refetch, setFilters } = useCompanies({ limit: 100 })
+  const navigate = useNavigate()
+  const { companies, loading, deleteCompany, setFilters } = useCompanies({ limit: 100 })
   const { submitCompany } = useQueueItems()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isReanalyzing, setIsReanalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
   const [reanalyzeError, setReanalyzeError] = useState<string | null>(null)
-  const [reanalyzeSuccess, setReanalyzeSuccess] = useState<string | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -102,13 +102,11 @@ export function CompaniesPage() {
     setCompanyName("")
     setWebsiteUrl("")
     setError(null)
-    setSuccess(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setSuccess(null)
 
     if (!companyName.trim()) {
       setError("Company name is required")
@@ -125,13 +123,9 @@ export function CompaniesPage() {
         companyName: companyName.trim(),
         websiteUrl: websiteUrl.trim(),
       })
-
-      setSuccess("Company discovery task created! The company will appear here once analyzed.")
-      setTimeout(() => {
-        resetForm()
-        setIsAddModalOpen(false)
-        refetch()
-      }, 2000)
+      resetForm()
+      setIsAddModalOpen(false)
+      navigate("/queue-management")
     } catch (err) {
       console.error("Failed to submit company:", err)
       setError(err instanceof Error ? err.message : "Failed to submit. Please try again.")
@@ -156,7 +150,6 @@ export function CompaniesPage() {
       return
     }
     setReanalyzeError(null)
-    setReanalyzeSuccess(null)
     try {
       setIsReanalyzing(true)
       await submitCompany({
@@ -164,11 +157,8 @@ export function CompaniesPage() {
         websiteUrl: company.website,
         companyId: company.id,
       })
-      setReanalyzeSuccess("Re-analysis task queued! Company data will be updated shortly.")
-      setTimeout(() => {
-        setReanalyzeSuccess(null)
-        setSelectedCompany(null)
-      }, 2000)
+      setSelectedCompany(null)
+      navigate("/queue-management")
     } catch (err) {
       console.error("Failed to submit re-analysis:", err)
       setReanalyzeError(err instanceof Error ? err.message : "Failed to queue re-analysis. Please try again.")
@@ -273,13 +263,6 @@ export function CompaniesPage() {
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              {success && (
-                <Alert className="border-green-500 bg-green-50 text-green-900">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <AlertDescription>{success}</AlertDescription>
                 </Alert>
               )}
 
@@ -482,13 +465,6 @@ export function CompaniesPage() {
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>{reanalyzeError}</AlertDescription>
-                  </Alert>
-                )}
-
-                {reanalyzeSuccess && (
-                  <Alert className="border-green-500 bg-green-50 text-green-900">
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    <AlertDescription>{reanalyzeSuccess}</AlertDescription>
                   </Alert>
                 )}
               </div>
