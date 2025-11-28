@@ -82,8 +82,7 @@ function getStatusBadge(status: JobListingStatus) {
 function extractMatchScore(listing: JobListingRecord): number | null {
   const analysis = listing.analysisResult as Record<string, unknown> | undefined
   if (!analysis) return null
-  const raw = (analysis as { match_score?: unknown; matchScore?: unknown }).match_score ??
-    (analysis as { matchScore?: unknown }).matchScore
+  const raw = analysis["match_score"] ?? analysis["matchScore"]
   if (typeof raw === "number") return raw
   if (typeof raw === "string") {
     const parsed = Number(raw)

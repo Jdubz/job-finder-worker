@@ -446,10 +446,6 @@ class JobProcessor(BaseProcessor):
                 )
                 return
 
-            # Persist analysis breakdown on the listing
-            if listing_id:
-                self.job_listing_storage.update_analysis(listing_id, result.to_dict())
-
             # Check threshold after recording the score
             min_score = getattr(self.ai_matcher, "min_match_score", 0)
             if not isinstance(min_score, (int, float)):

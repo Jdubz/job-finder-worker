@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from typing import Any, Dict, Optional, cast
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -127,10 +128,6 @@ class CompanyInfoFetcher:
             # Merge scraped + searched info, prefer non-empty factual fields, carry sources if present
             merged = self._merge_company_info(scraped_info, search_info)
             result.update(merged)
-
-            # If we started with a job board URL, prefer any primary site the AI surfaced
-            if self._is_job_board_url(result.get("website", "")) and merged.get("website"):
-                result["website"] = merged["website"]
 
             _, company_display = format_company_name(company_name)
             logger.info(
@@ -498,5 +495,8 @@ Return ONLY JSON with keys: website, about, culture, mission, size, industry, fo
         """Check if a URL points to a known job board/careers host."""
         if not url:
             return False
-        url_lower = url.lower()
-        return any(domain in url_lower for domain in self.job_board_domains)
+        try:
+            netloc = urlparse(url.lower()).netloc
+        except Exception:
+            netloc = url.lower()
+        return any(netloc.endswith(domain) for domain in self.job_board_domains)
