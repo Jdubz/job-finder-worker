@@ -387,9 +387,13 @@ class SourceProcessor(BaseProcessor):
             return None
 
         discovery = SourceDiscovery(provider)
-        healed_config = discovery.discover(url)
+        discovery_result = discovery.discover(url)
+        if isinstance(discovery_result, tuple):
+            healed_config, validation_meta = discovery_result
+        else:
+            healed_config, validation_meta = discovery_result, {}
 
-        if healed_config:
+        if healed_config and validation_meta.get("success", True):
             logger.info(
                 "Updated source config via self-heal for %s (id=%s)",
                 company_name or source.get("name", "unknown"),

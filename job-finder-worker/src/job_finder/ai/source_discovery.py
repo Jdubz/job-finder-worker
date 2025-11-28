@@ -381,7 +381,9 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
             return False, [], False
 
 
-def discover_source(url: str, provider: AIProvider) -> Optional[Dict[str, Any]]:
+def discover_source(
+    url: str, provider: AIProvider
+) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
     """
     Convenience function to discover source configuration.
 
@@ -390,7 +392,7 @@ def discover_source(url: str, provider: AIProvider) -> Optional[Dict[str, Any]]:
         provider: AI provider instance to use
 
     Returns:
-        SourceConfig dict or None
+        Tuple of SourceConfig dict (or None) and validation metadata
     """
     discovery = SourceDiscovery(provider)
     return discovery.discover(url)
