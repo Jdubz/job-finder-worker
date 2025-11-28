@@ -1,13 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { PromptsClient } from "../prompts-client"
 import { DEFAULT_PROMPTS } from "@shared/types"
-import { getStoredAuthToken } from "@/lib/auth-storage"
-
-vi.mock("@/lib/auth-storage", () => ({
-  getStoredAuthToken: vi.fn(() => null),
-  storeAuthToken: vi.fn(),
-  clearStoredAuthToken: vi.fn(),
-}))
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch as any
@@ -32,7 +25,7 @@ describe("PromptsClient", () => {
 
     expect(global.fetch).toHaveBeenCalledWith(
       `${baseUrl}/prompts`,
-      expect.objectContaining({ method: "GET" })
+      expect.objectContaining({ method: "GET", credentials: "include" })
     )
     expect(prompts.resumeGeneration).toBe("test")
   })
@@ -54,7 +47,7 @@ describe("PromptsClient", () => {
 
     expect(global.fetch).toHaveBeenCalledWith(
       `${baseUrl}/prompts`,
-      expect.objectContaining({ method: "PUT" })
+      expect.objectContaining({ method: "PUT", credentials: "include" })
     )
   })
 
@@ -69,7 +62,7 @@ describe("PromptsClient", () => {
 
     expect(global.fetch).toHaveBeenCalledWith(
       `${baseUrl}/prompts/reset`,
-      expect.objectContaining({ method: "POST" })
+      expect.objectContaining({ method: "POST", credentials: "include" })
     )
   })
 })

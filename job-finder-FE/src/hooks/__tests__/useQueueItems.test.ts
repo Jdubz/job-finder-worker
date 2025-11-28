@@ -57,12 +57,13 @@ describe("useQueueItems", () => {
 
   it("handles fetch errors", async () => {
     const error = new Error("Failed to load queue")
-    vi.mocked(queueClient.listQueueItems).mockRejectedValueOnce(error)
+    // Mock all calls to reject (the hook retries after SSE failure)
+    vi.mocked(queueClient.listQueueItems).mockRejectedValue(error)
 
     const { result } = renderHook(() => useQueueItems())
 
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.error).toBe(error)
+    expect(result.current.error).toEqual(error)
     expect(result.current.queueItems).toEqual([])
   })
 

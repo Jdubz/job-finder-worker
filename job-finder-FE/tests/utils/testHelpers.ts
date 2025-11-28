@@ -1,14 +1,12 @@
-// @ts-nocheck
 /**
  * Test Helper Utilities
  *
- * Shared utilities for integration and E2E tests that now rely on GIS bypass tokens
- * instead of Firebase-specific SDKs.
+ * Shared utilities for integration and E2E tests.
+ * Authentication is now cookie-based - tests use credentials: include.
  */
 
 import { describe } from "vitest"
-import { DEFAULT_E2E_AUTH_TOKEN, TEST_AUTH_TOKEN_KEY } from "@/config/testing"
-import { storeAuthToken, clearStoredAuthToken } from "@/lib/auth-storage"
+import { DEFAULT_E2E_AUTH_TOKEN } from "@/config/testing"
 
 type TestUser = {
   id: string
@@ -39,44 +37,28 @@ const AUTH_BYPASS_TOKEN =
 
 let currentUser: TestUser | null = null
 
-function setAuthBypassToken(token: string | null) {
-  if (typeof window === "undefined" || !window.localStorage) {
-    if (token) {
-      storeAuthToken(token)
-    } else {
-      clearStoredAuthToken()
-    }
-    return
-  }
-  if (token) {
-    window.localStorage.setItem(TEST_AUTH_TOKEN_KEY, token)
-    storeAuthToken(token)
-  } else {
-    window.localStorage.removeItem(TEST_AUTH_TOKEN_KEY)
-    clearStoredAuthToken()
-  }
-}
-
 export { TEST_USERS }
 
 /**
- * Integration tests now always run because GIS helpers do not depend on emulators.
+ * Integration tests now always run because they use cookie-based auth.
  */
 export function getIntegrationDescribe(): typeof describe {
   return describe
 }
 
 /**
- * Sign in a synthetic test user and record the active session.
+ * Sign in a synthetic test user.
+ * In the new cookie-based auth, this is mostly a no-op for tracking purposes.
+ * Actual auth happens via the session cookie set by the backend.
  */
 export async function signInTestUser(userType: "regular" | "editor" = "regular") {
   currentUser = TEST_USERS[userType]
-  setAuthBypassToken(AUTH_BYPASS_TOKEN)
   return currentUser
 }
 
 /**
- * Resolve the auth token that the backend bypass flow accepts.
+ * Resolve the auth token that can be used for test bypass.
+ * This is used for tests that need to send a Bearer token (e.g., for dev mode).
  */
 export async function getTestAuthToken(
   userType: "regular" | "editor" = "regular"
@@ -92,11 +74,11 @@ export async function getTestAuthToken(
  */
 export async function cleanupTestAuth() {
   currentUser = null
-  setAuthBypassToken(null)
 }
 
 /**
- * Make authenticated API request
+ * Make authenticated API request using credentials: include for cookies.
+ * Falls back to Bearer token for compatibility with dev mode.
  */
 export async function makeAuthenticatedRequest(
   url: string,
@@ -106,8 +88,10 @@ export async function makeAuthenticatedRequest(
 
   return fetch(url, {
     ...options,
+    credentials: "include",
     headers: {
       ...options.headers,
+      // Include Bearer token for dev mode compatibility
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },

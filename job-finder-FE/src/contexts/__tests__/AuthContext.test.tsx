@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import React from "react"
@@ -12,8 +12,26 @@ vi.unmock("@/contexts/AuthContext")
 vi.mock("@/api/auth-client", () => {
   return {
     authClient: {
+      login: vi.fn(() =>
+        Promise.resolve({
+          user: {
+            uid: "user-123",
+            email: "owner@test.dev",
+            name: "Test User",
+            picture: "avatar.png",
+          },
+        })
+      ),
       fetchSession: vi.fn(() => Promise.reject({ statusCode: 401 })),
       logout: vi.fn(() => Promise.resolve({ loggedOut: true })),
+    },
+    AuthError: class AuthError extends Error {
+      statusCode: number
+      constructor(message: string, statusCode: number) {
+        super(message)
+        this.name = "AuthError"
+        this.statusCode = statusCode
+      }
     },
   }
 })
@@ -33,37 +51,12 @@ vi.mock("@react-oauth/google", () => {
   return { GoogleOAuthProvider, GoogleLogin, googleLogout }
 })
 
-vi.mock("@/lib/auth-storage", () => {
-  let token: string | null = null
-  return {
-    storeAuthToken: vi.fn((value: string) => {
-      token = value
-    }),
-    getStoredAuthToken: vi.fn(() => token),
-    clearStoredAuthToken: vi.fn(() => {
-      token = null
-    }),
-  }
-})
-
-vi.mock("@/lib/jwt", () => ({
-  decodeJwt: vi.fn(() => ({
-    email: "owner@test.dev",
-    sub: "user-123",
-    email_verified: true,
-    name: "Test User",
-    picture: "avatar.png",
-  })),
-}))
-
-const { storeAuthToken, clearStoredAuthToken } = await import("@/lib/auth-storage")
-const { decodeJwt } = await import("@/lib/jwt")
 const { googleLogout } = await import("@react-oauth/google")
 const { authClient } = await import("@/api/auth-client")
 const { AuthProvider, useAuth } = await import("../AuthContext")
 
 const TestComponent = () => {
-  const { user, loading, isOwner, signOut, authenticateWithGoogle } = useAuth()
+  const { user, loading, isOwner, signOut, loginWithGoogle } = useAuth()
   if (loading) {
     return <div>Loading...</div>
   }
@@ -71,7 +64,7 @@ const TestComponent = () => {
     <div>
       <div data-testid="user-email">{user?.email ?? "No user"}</div>
       <div data-testid="is-owner">{isOwner ? "Owner" : "Viewer"}</div>
-      <button data-testid="sign-in" onClick={() => authenticateWithGoogle("test-token")}>
+      <button data-testid="sign-in" onClick={() => loginWithGoogle("test-token")}>
         Sign In
       </button>
       <button data-testid="sign-out" onClick={() => signOut()}>
@@ -85,12 +78,10 @@ describe("AuthContext", () => {
   const user = userEvent.setup()
 
   beforeEach(() => {
-    vi.mocked(storeAuthToken).mockClear()
-    vi.mocked(clearStoredAuthToken).mockClear()
-    vi.mocked(decodeJwt).mockClear()
-    vi.mocked(googleLogout).mockClear()
+    vi.mocked(authClient.login).mockClear()
     vi.mocked(authClient.fetchSession).mockClear()
     vi.mocked(authClient.logout).mockClear()
+    vi.mocked(googleLogout).mockClear()
   })
 
   it("shows unauthenticated state by default", async () => {
@@ -106,7 +97,7 @@ describe("AuthContext", () => {
     })
   })
 
-  it("authenticates via GIS credential", async () => {
+  it("authenticates via backend login endpoint", async () => {
     render(
       <AuthProvider>
         <TestComponent />
@@ -117,7 +108,7 @@ describe("AuthContext", () => {
     await user.click(signInButton)
 
     await waitFor(() => {
-      expect(storeAuthToken).toHaveBeenCalledWith("test-token")
+      expect(authClient.login).toHaveBeenCalledWith("test-token")
       expect(screen.getByTestId("user-email")).toHaveTextContent("owner@test.dev")
       expect(screen.getByTestId("is-owner")).toHaveTextContent("Owner")
     })
@@ -138,7 +129,6 @@ describe("AuthContext", () => {
 
     await waitFor(() => {
       expect(authClient.logout).toHaveBeenCalled()
-      expect(clearStoredAuthToken).toHaveBeenCalled()
       expect(googleLogout).toHaveBeenCalled()
       expect(screen.getByTestId("user-email")).toHaveTextContent("No user")
     })

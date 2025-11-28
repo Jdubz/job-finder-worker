@@ -6,16 +6,32 @@ import { useState } from "react"
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { authenticateWithGoogle } = useAuth()
+  const { loginWithGoogle } = useAuth()
   const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleSuccess = (credential?: string | null) => {
+  const handleSuccess = async (credential?: string | null) => {
     if (!credential) {
       setError("Missing credential from Google. Please try again.")
       return
     }
-    authenticateWithGoogle(credential)
-    navigate(ROUTES.HOME)
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      await loginWithGoogle(credential)
+      navigate(ROUTES.HOME)
+    } catch (err: unknown) {
+      console.error("Login error:", err)
+      if (err instanceof Error) {
+        setError(err.message)
+      } else {
+        setError("Failed to sign in. Please try again.")
+      }
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -37,6 +53,12 @@ export function LoginPage() {
             shape="rectangular"
           />
         </div>
+
+        {isLoading && (
+          <div className="text-sm text-muted-foreground text-center">
+            Signing in...
+          </div>
+        )}
 
         {error && (
           <div className="text-sm text-destructive bg-destructive/10 rounded p-3 text-center">
