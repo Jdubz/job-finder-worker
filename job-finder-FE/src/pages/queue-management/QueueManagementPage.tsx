@@ -491,7 +491,12 @@ export function QueueManagementPage() {
                   <p>No items awaiting agent review.</p>
                 </div>
               ) : (
-                <QueueTable items={reviewItems} onSelectItem={setSelectedItem} />
+                <QueueTable
+                  items={reviewItems}
+                  onRowClick={setSelectedItem}
+                  onCancel={() => {}}
+                  formatRelativeTime={formatRelativeTime}
+                />
               )}
             </TabsContent>
 
@@ -658,6 +663,7 @@ function statusTone(status: string): string {
     failed: "bg-red-100 text-red-800",
     skipped: "bg-gray-100 text-gray-800",
     filtered: "bg-orange-100 text-orange-800",
+    needs_review: "bg-amber-100 text-amber-900",
   }
   return tones[status as QueueStatusTone] ?? "bg-muted text-foreground"
 }
