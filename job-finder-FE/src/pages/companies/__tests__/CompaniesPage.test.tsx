@@ -18,6 +18,15 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useQueueItems } from "@/hooks/useQueueItems"
 
+const mockNavigate = vi.fn()
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router-dom")>()
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  }
+})
+
 vi.mock("@/contexts/AuthContext")
 vi.mock("@/hooks/useCompanies")
 vi.mock("@/hooks/useQueueItems")
@@ -415,6 +424,7 @@ describe("CompaniesPage", () => {
           websiteUrl: "https://acme.com",
           companyId: "company-1",
         })
+        expect(mockNavigate).toHaveBeenCalledWith("/queue-management")
       })
     })
 
