@@ -1,20 +1,11 @@
 import { API_CONFIG } from '@/config/api'
+import type { LoginResponseData, SessionResponseData } from '@shared/types'
 
-export interface SessionUser {
-  uid: string
-  email: string
-  name?: string
-  picture?: string
-  roles?: string[]
-}
+// Re-export types for consumers that import from auth-client
+export type { SessionUser, LoginResponseData, SessionResponseData } from '@shared/types'
 
-export interface SessionResponse {
-  user: SessionUser
-}
-
-export interface LoginResponse {
-  user: SessionUser
-}
+export type LoginResponse = LoginResponseData
+export type SessionResponse = SessionResponseData
 
 /**
  * Retry a function with exponential backoff.
@@ -135,7 +126,8 @@ class AuthClient {
       )
     }
 
-    return response.json()
+    const json = await response.json()
+    return json.data // Unwrap from { success: true, data: { loggedOut } }
   }
 }
 
