@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express'
+import { Router, type Request, type RequestHandler, type Response } from 'express'
 import { z } from 'zod'
 import { ApiErrorCode } from '@shared/types'
 import type {
@@ -16,6 +16,8 @@ import type {
 import { ContentItemRepository, ContentItemInvalidParentError, ContentItemNotFoundError } from './content-item.repository'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
+import { ApiHttpError } from '../../middleware/api-error'
+import { type AuthenticatedRequest, type AuthenticatedUser } from '../../middleware/firebase-auth'
 
 const nullableIdSchema = z.string().min(1).or(z.literal(null)).optional()
 const monthSchema = z
@@ -79,9 +81,26 @@ function buildTree(items: ContentItem[]): ContentItemNode[] {
   return roots
 }
 
-export function buildContentItemRouter() {
+interface ContentItemRouterOptions {
+  /**
+   * Middleware applied to mutating routes (POST/PATCH/DELETE/reorder). Use this
+   * to enforce authentication/authorization while keeping GET public.
+   */
+  mutationsMiddleware?: RequestHandler[]
+}
+
+export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
   const router = Router()
   const repo = new ContentItemRepository()
+  const defaultMutationGuard: RequestHandler = (req, _res, next) => {
+    try {
+      getAuthenticatedUser(req)
+      next()
+    } catch (err) {
+      next(err)
+    }
+  }
+  const mutationsMiddleware = options.mutationsMiddleware ?? [defaultMutationGuard]
 
   router.get(
     '/',
@@ -123,9 +142,11 @@ export function buildContentItemRouter() {
 
   router.post(
     '/',
+    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       const payload = createRequestSchema.parse(req.body) as CreateContentItemRequest
-      const item = repo.create({ ...payload.itemData, userEmail: payload.userEmail })
+      const user = getAuthenticatedUser(req)
+      const item = repo.create({ ...payload.itemData, userEmail: user.email })
       const response: CreateContentItemResponse = { item, message: 'Content item created' }
       res.status(201).json(success(response))
     })
@@ -133,10 +154,12 @@ export function buildContentItemRouter() {
 
   router.patch(
     '/:id',
+    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
         const payload = updateRequestSchema.parse(req.body) as UpdateContentItemRequest
-        const item = repo.update(req.params.id, { ...payload.itemData, userEmail: payload.userEmail })
+        const user = getAuthenticatedUser(req)
+        const item = repo.update(req.params.id, { ...payload.itemData, userEmail: user.email })
         const response: UpdateContentItemResponse = { item, message: 'Content item updated' }
         res.json(success(response))
       } catch (err) {
@@ -148,6 +171,7 @@ export function buildContentItemRouter() {
 
   router.delete(
     '/:id',
+    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
         repo.delete(req.params.id)
@@ -166,10 +190,12 @@ export function buildContentItemRouter() {
 
   router.post(
     '/:id/reorder',
+    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
         const payload = reorderRequestSchema.parse(req.body)
-        const item = repo.reorder(req.params.id, payload.parentId ?? null, payload.orderIndex, payload.userEmail)
+        const user = getAuthenticatedUser(req)
+        const item = repo.reorder(req.params.id, payload.parentId ?? null, payload.orderIndex, user.email)
         const response: ReorderContentItemResponse = { item }
         res.json(success(response))
       } catch (err) {
@@ -192,4 +218,12 @@ function handleRepoError(err: unknown, res: Response): boolean {
     return true
   }
   return false
+}
+
+function getAuthenticatedUser(req: Request): AuthenticatedUser & { email: string } {
+  const user = (req as AuthenticatedRequest).user
+  if (!user || !user.email) {
+    throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Missing authenticated user', { status: 401 })
+  }
+  return user as AuthenticatedUser & { email: string }
 }

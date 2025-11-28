@@ -2,10 +2,23 @@ import express from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { buildContentItemRouter } from '../content-item.routes'
+import { type AuthenticatedRequest } from '../../../middleware/firebase-auth'
 import { getDb } from '../../../db/sqlite'
 
 const app = express()
 app.use(express.json())
+
+// Simulate authenticated admin user for mutation routes
+app.use((req, _res, next) => {
+  ;(req as AuthenticatedRequest).user = {
+    uid: 'test-user',
+    email: 'owner@example.com',
+    name: 'Test User',
+    roles: ['admin', 'viewer']
+  }
+  next()
+})
+
 app.use('/content-items', buildContentItemRouter())
 
 const basePayload = {

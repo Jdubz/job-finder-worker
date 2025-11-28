@@ -1,4 +1,4 @@
-import express from 'express'
+import express, { type RequestHandler } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import { httpLogger, logger } from './logger'
@@ -106,9 +106,12 @@ export function buildApp() {
   // Auth/session utilities
   app.use('/api/auth', buildAuthRouter())
 
+  // Content items should be publicly readable. Mutations require admin role.
+  const contentItemMutationGuards: RequestHandler[] = [verifyFirebaseAuth, requireRole('admin')]
+  app.use('/api/content-items', buildContentItemRouter({ mutationsMiddleware: contentItemMutationGuards }))
+
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)
-  app.use('/api/content-items', buildContentItemRouter())
   app.use('/api/queue', buildJobQueueRouter())
   app.use('/api/job-matches', buildJobMatchRouter())
   app.use('/api/job-listings', buildJobListingRouter())
