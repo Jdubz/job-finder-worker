@@ -11,6 +11,7 @@ import { QueueManagementPage } from "../QueueManagementPage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { configClient } from "@/api/config-client"
+import { queueClient } from "@/api/queue-client"
 
 vi.mock("@/contexts/AuthContext")
 vi.mock("@/hooks/useQueueItems")
@@ -18,6 +19,11 @@ vi.mock("@/api/config-client", () => ({
   configClient: {
     getQueueSettings: vi.fn(),
     updateQueueSettings: vi.fn(),
+  },
+}))
+vi.mock("@/api/queue-client", () => ({
+  queueClient: {
+    getStats: vi.fn(),
   },
 }))
 
@@ -105,6 +111,17 @@ describe("QueueManagementPage", () => {
       isProcessingEnabled: true,
     })
     vi.mocked(configClient.updateQueueSettings).mockResolvedValue()
+
+    // Mock queue stats API
+    vi.mocked(queueClient.getStats).mockResolvedValue({
+      total: 4,
+      pending: 1,
+      processing: 1,
+      success: 1,
+      failed: 1,
+      skipped: 0,
+      filtered: 0,
+    })
   })
 
   describe("Initial Rendering", () => {
@@ -116,13 +133,16 @@ describe("QueueManagementPage", () => {
       })
     })
 
-    it("displays queue items in the list", async () => {
+    it("displays pending queue items in the pending tab", async () => {
       render(<QueueManagementPage />)
 
       await waitFor(() => {
+        // Pending tab shows pending and processing items
         expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
         expect(screen.getByTestId("queue-item-queue-2")).toBeInTheDocument()
-        expect(screen.getByTestId("queue-item-queue-3")).toBeInTheDocument()
+        // Success and failed items are in the completed tab, not visible by default
+        expect(screen.queryByTestId("queue-item-queue-3")).not.toBeInTheDocument()
+        expect(screen.queryByTestId("queue-item-queue-4")).not.toBeInTheDocument()
       })
     })
 
@@ -170,11 +190,22 @@ describe("QueueManagementPage", () => {
       })
     })
 
-    it("updates stats when items change", async () => {
+    it("updates stats when API returns new counts", async () => {
       const { rerender } = render(<QueueManagementPage />)
 
       await waitFor(() => {
         expect(screen.getByText("4")).toBeInTheDocument()
+      })
+
+      // Update the stats API mock to return new count
+      vi.mocked(queueClient.getStats).mockResolvedValue({
+        total: 5,
+        pending: 2,
+        processing: 1,
+        success: 1,
+        failed: 1,
+        skipped: 0,
+        filtered: 0,
       })
 
       vi.mocked(useQueueItems).mockReturnValue({
@@ -250,7 +281,8 @@ describe("QueueManagementPage", () => {
 
       render(<QueueManagementPage />)
 
-      expect(screen.getByText(/the queue is empty/i)).toBeInTheDocument()
+      // With tabs, empty pending tab shows "no pending tasks"
+      expect(screen.getByText(/no pending tasks/i)).toBeInTheDocument()
     })
   })
 
