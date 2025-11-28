@@ -17,6 +17,7 @@ export * from "./contact.types"
 
 // API types
 export * from "./api.types"
+export * from "./api/auth.types"
 export * from "./api/generator.types"
 export * from "./api/content.types"
 export * from "./api/queue.types"

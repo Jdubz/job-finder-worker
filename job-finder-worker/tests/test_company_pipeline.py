@@ -137,8 +137,79 @@ class TestCompanyPipeline:
 
         processor.company_processor.process_company(item)
 
+        # Verify AI enrichment was attempted
+        mock_dependencies["company_info_fetcher"]._extract_with_ai.assert_called_once()
         mock_dependencies["queue_manager"].update_status.assert_any_call(
             "c4", QueueStatus.FAILED, "AI enrichment failed to populate required company fields"
+        )
+
+    def test_ai_enrichment_success(self, processor, mock_dependencies):
+        """Test that AI enrichment populates sparse fields and allows success.
+
+        Verifies that:
+        1. AI enrichment is triggered when heuristics produce sparse data
+        2. AI values overwrite sparse heuristic values (not just empty ones)
+        3. The enriched data is saved to the company record
+        """
+        item = JobQueueItem(
+            id="c5",
+            type=QueueItemType.COMPANY,
+            url="https://example.com",
+            company_name="Example",
+            status=QueueStatus.PROCESSING,
+        )
+
+        # Skip network: provide fetched pages directly
+        processor.company_processor._fetch_company_pages = Mock(
+            return_value={"about": "stub content long enough"}
+        )
+
+        # Heuristics produce sparse but non-empty data
+        sparse_heuristic_data = {
+            "about": "short",  # Non-empty but insufficient
+            "culture": "",
+            "mission": "",
+        }
+        mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = (
+            sparse_heuristic_data
+        )
+        mock_dependencies["company_info_fetcher"].ai_provider = object()
+
+        # AI provides comprehensive data that should overwrite sparse heuristic values
+        comprehensive_ai_data = {
+            "about": "A comprehensive company description from AI that is much longer and more detailed",
+            "culture": "Great culture values with collaborative environment",
+            "mission": "To build great things and deliver value",
+            "industry": "Technology",
+        }
+        mock_dependencies["company_info_fetcher"]._extract_with_ai.return_value = (
+            comprehensive_ai_data
+        )
+
+        # First check: needs AI (sparse heuristics). Second check: sufficient (after AI merge)
+        mock_dependencies["company_info_fetcher"]._needs_ai_enrichment.side_effect = [True, False]
+        mock_dependencies["companies_manager"].save_company.return_value = "company-123"
+
+        processor.company_processor.process_company(item)
+
+        # Verify AI enrichment was called
+        mock_dependencies["company_info_fetcher"]._extract_with_ai.assert_called_once()
+
+        # Verify the saved company has AI-enriched values (not the sparse heuristic values)
+        mock_dependencies["companies_manager"].save_company.assert_called_once()
+        saved_company = mock_dependencies["companies_manager"].save_company.call_args[0][0]
+
+        # AI "about" should overwrite sparse heuristic "about" (key behavior being tested)
+        assert (
+            saved_company["about"] == comprehensive_ai_data["about"]
+        ), "AI values should overwrite sparse heuristic values, not just empty ones"
+        assert saved_company["culture"] == comprehensive_ai_data["culture"]
+        assert saved_company["mission"] == comprehensive_ai_data["mission"]
+        assert saved_company["industry"] == comprehensive_ai_data["industry"]
+
+        # Status should be success
+        mock_dependencies["queue_manager"].update_status.assert_called_with(
+            "c5", QueueStatus.SUCCESS, ANY
         )
 
     def test_detect_tech_stack(self, processor):
