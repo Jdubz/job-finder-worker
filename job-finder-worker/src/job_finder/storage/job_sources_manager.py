@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from job_finder.exceptions import InvalidStateTransition, StorageError
+from job_finder.exceptions import DuplicateSourceError, InvalidStateTransition, StorageError
 from job_finder.job_queue.models import SourceStatus
 from job_finder.storage.sqlite_client import sqlite_connection
 
@@ -86,6 +86,28 @@ class JobSourcesManager:
         tags: Optional[List[str]] = None,
         status: SourceStatus = SourceStatus.ACTIVE,
     ) -> str:
+        """Add a new job source.
+
+        Args:
+            name: Unique name for the source
+            source_type: Type of source (api, rss, html)
+            config: Configuration dict for the source
+            company_id: Optional associated company ID
+            company_name: Optional associated company name
+            tags: Optional list of tags
+            status: Initial status (default: ACTIVE)
+
+        Returns:
+            The ID of the newly created source
+
+        Raises:
+            DuplicateSourceError: If a source with this name already exists
+        """
+        # Check for existing source with same name
+        existing = self.get_source_by_name(name)
+        if existing:
+            raise DuplicateSourceError(name=name, existing_id=existing["id"])
+
         source_id = str(uuid4())
         now = _utcnow_iso()
 
@@ -147,6 +169,21 @@ class JobSourcesManager:
     def get_source_by_id(self, source_id: str) -> Optional[Dict[str, Any]]:
         with sqlite_connection(self.db_path) as conn:
             row = conn.execute("SELECT * FROM job_sources WHERE id = ?", (source_id,)).fetchone()
+        return self._row_to_source(dict(row)) if row else None
+
+    def get_source_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """Get a source by its name.
+
+        Args:
+            name: The source name to look up
+
+        Returns:
+            Source dict if found, None otherwise
+        """
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM job_sources WHERE name = ?", (name,)
+            ).fetchone()
         return self._row_to_source(dict(row)) if row else None
 
     def get_source_for_url(self, url: str) -> Optional[Dict[str, Any]]:

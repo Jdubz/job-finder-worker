@@ -99,6 +99,25 @@ class DuplicateQueueItemError(StorageError):
     pass
 
 
+class DuplicateSourceError(StorageError):
+    """Raised when attempting to insert a duplicate job source.
+
+    A source is considered duplicate if another source with the same name
+    already exists in the database.
+
+    Attributes:
+        name: The duplicate source name
+        existing_id: The ID of the existing source with this name
+    """
+
+    def __init__(self, name: str, existing_id: str, message: str = None):
+        self.name = name
+        self.existing_id = existing_id
+        super().__init__(message or f"Source '{name}' already exists (id: {existing_id})")
+
+    pass
+
+
 class ProfileError(JobFinderError):
     """Raised when profile operations fail.
 
