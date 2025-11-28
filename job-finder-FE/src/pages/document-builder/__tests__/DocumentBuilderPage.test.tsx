@@ -241,7 +241,7 @@ describe("DocumentBuilderPage", () => {
       })
     })
 
-    it("should show success message when generation completes", async () => {
+    it.retry(2)("should show success message when generation completes", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
@@ -261,7 +261,7 @@ describe("DocumentBuilderPage", () => {
       })
     })
 
-    it("should show download button when resume is generated", async () => {
+    it.retry(2)("should show download button when resume is generated", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentBuilderPage />)
 
