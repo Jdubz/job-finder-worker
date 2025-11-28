@@ -21,13 +21,13 @@ interface ActiveQueueItemProps {
 
 export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProps) {
   const containerClasses =
-    "min-h-[168px] flex items-stretch border border-emerald-100/80 bg-gradient-to-r from-emerald-50/80 via-teal-50 to-white shadow-md ring-1 ring-emerald-50/80 dark:from-slate-900/70 dark:via-emerald-950/40 dark:to-slate-900 dark:border-emerald-900/60"
+    "min-h-[168px] flex items-stretch border border-emerald-200 bg-emerald-50 shadow-md ring-1 ring-emerald-100 dark:bg-emerald-950/40 dark:border-emerald-900/60 dark:ring-emerald-900/40"
 
   if (loading) {
     return (
       <Card className={containerClasses}>
-        <CardContent className="flex items-center gap-3 p-5 text-sm text-blue-800 dark:text-blue-100">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-100">
+        <CardContent className="flex items-center gap-3 p-5 text-sm text-emerald-800 dark:text-emerald-100">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-100">
             <Activity className="h-4 w-4 animate-pulse" />
           </span>
           Fetching live queue…
@@ -38,8 +38,8 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
 
   if (!item) {
     return (
-      <Card className={`${containerClasses} border-dashed bg-white/70 dark:bg-slate-900/60`}>
-        <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
+      <Card className={`${containerClasses} border-dashed`}>
+        <CardContent className="flex items-center gap-3 p-5 text-sm text-emerald-700 dark:text-emerald-200">
           <Pause className="h-4 w-4" />
           Nothing processing right now. New work will appear here when a worker picks it up.
         </CardContent>
@@ -73,11 +73,11 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
               </div>
 
               <div className="flex flex-wrap items-baseline gap-2">
-                <span className="text-sm font-semibold truncate">
+                <span className="text-sm font-semibold truncate text-emerald-900 dark:text-emerald-50">
                   {title || "Role not yet detected"}
                 </span>
                 {company && (
-                  <span className="text-sm text-muted-foreground flex items-center gap-1">
+                  <span className="text-sm text-emerald-700 dark:text-emerald-200 flex items-center gap-1">
                     <span aria-hidden="true">•</span>
                     <span>{company}</span>
                     <span className="sr-only">{company}</span>
@@ -86,10 +86,10 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
               </div>
 
               {company && (
-                <div className="text-xs text-muted-foreground">Company: {company}</div>
+                <div className="text-xs text-emerald-700 dark:text-emerald-200">Company: {company}</div>
               )}
 
-              <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-2">
+              <div className="grid gap-3 text-xs text-emerald-700 dark:text-emerald-200 sm:grid-cols-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <ExternalLink className="h-3 w-3 flex-shrink-0 text-emerald-600 dark:text-emerald-200" />
                   <a
@@ -109,12 +109,12 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
                 </div>
               </div>
 
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-[11px] text-emerald-600 dark:text-emerald-300">
                 Updated {format((item.updated_at ?? item.created_at) as Date, "MMM d, h:mm a")}
               </div>
 
               {item.result_message && (
-                <div className="flex items-start gap-2 rounded-md border border-emerald-100/70 bg-white/80 px-3 py-2 text-xs text-foreground shadow-sm dark:border-emerald-900/60 dark:bg-slate-900/60">
+                <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-white px-3 py-2 text-xs text-emerald-800 shadow-sm dark:border-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
                   <AlertCircle className="h-3 w-3 text-emerald-600 dark:text-emerald-200" />
                   <span className="truncate leading-relaxed">{item.result_message}</span>
                 </div>
