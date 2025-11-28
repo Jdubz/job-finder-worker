@@ -100,7 +100,11 @@ class SourceProcessor(BaseProcessor):
 
             # Run AI-powered discovery
             discovery = SourceDiscovery(provider)
-            source_config, validation_meta = discovery.discover(url)
+            discovery_result = discovery.discover(url)
+            if isinstance(discovery_result, tuple) and len(discovery_result) == 2:
+                source_config, validation_meta = discovery_result
+            else:
+                source_config, validation_meta = discovery_result, {}
 
             if not source_config:
                 self.queue_manager.update_status(
