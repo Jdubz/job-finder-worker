@@ -2,16 +2,19 @@
 set -euo pipefail
 
 # Clone the production SQLite database (and WAL/SHM files) into the local
-# validation volume so the generator workflow runs against realistic data.
+# dev environment so the generator workflow runs against realistic data.
 #
 # Required env:
 #   PROD_SSH_HOST   - SSH host or alias that has /srv/job-finder/data/jobfinder.db
 # Optional env:
 #   PROD_DB_PATH    - Override remote DB path (default: /srv/job-finder/data/jobfinder.db)
 #   SSH_OPTS        - Extra ssh/scp options (e.g., '-i ~/.ssh/prod-key')
+#
+# NOTE: Prefer using 'make dev-clone-db-scp' from the server directory instead.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEST_DIR="$SCRIPT_DIR/volumes/sqlite"
+SERVER_DIR="$(dirname "$SCRIPT_DIR")"
+DEST_DIR="$SERVER_DIR/.dev/data"
 DEST_DB="$DEST_DIR/jobfinder.db"
 PROD_DB_PATH="${PROD_DB_PATH:-/srv/job-finder/data/jobfinder.db}"
 SSH_HOST="${PROD_SSH_HOST:-}"
@@ -36,4 +39,4 @@ copy_file "$PROD_DB_PATH-wal" "$DEST_DB-wal"
 copy_file "$PROD_DB_PATH-shm" "$DEST_DB-shm"
 
 chmod 600 "$DEST_DB"*
-echo "Local validation DB ready at $DEST_DB"
+echo "Dev database ready at $DEST_DB"

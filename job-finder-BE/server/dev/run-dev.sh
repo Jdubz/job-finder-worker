@@ -1,25 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Development test harness for the generator API
+# Uses the main docker-compose.dev.yml and .dev/ directories
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE="docker compose -f $SCRIPT_DIR/docker-compose.validation.yml"
-ENV_FILE="$SCRIPT_DIR/.env.validation"
-OUTPUT_DIR="$SCRIPT_DIR/output"
+SERVER_DIR="$(dirname "$SCRIPT_DIR")"
+COMPOSE="docker compose -f $SERVER_DIR/docker-compose.dev.yml"
+ENV_FILE="$SERVER_DIR/.env.dev"
+DEV_DIR="$SERVER_DIR/.dev"
+OUTPUT_DIR="$DEV_DIR/output"
 LOG_FILE="$OUTPUT_DIR/container.log"
 RESPONSE_FILE="$OUTPUT_DIR/last-response.json"
 PAYLOAD_FILE="${PAYLOAD_FILE:-$SCRIPT_DIR/sample-request.json}"
 PROFILE="${PROFILE:-prod}"
 SERVICE_NAME="api"
-SERVICE_CONTAINER="generator-validation-api"
+SERVICE_CONTAINER="job-finder-api-dev"
 if [[ "$PROFILE" == "hotreload" ]]; then
-  SERVICE_NAME="api-dev"
-  SERVICE_CONTAINER="generator-validation-api-dev"
+  SERVICE_NAME="api-hotreload"
+  SERVICE_CONTAINER="job-finder-api-dev-hotreload"
 fi
 
-mkdir -p "$SCRIPT_DIR/volumes/sqlite" "$SCRIPT_DIR/volumes/artifacts" "$SCRIPT_DIR/volumes/logs" "$OUTPUT_DIR"
+mkdir -p "$DEV_DIR/data" "$DEV_DIR/artifacts" "$DEV_DIR/logs" "$OUTPUT_DIR"
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "ERROR: $ENV_FILE is missing. Copy .env.validation.example and fill it." >&2
+  echo "ERROR: $ENV_FILE is missing. Copy .env.dev.example and fill it." >&2
+  echo "Run: cd $SERVER_DIR && cp .env.dev.example .env.dev" >&2
   exit 1
 fi
 
@@ -31,36 +37,21 @@ set +a
 API_PORT="${API_PORT:-18080}"
 AUTH_TOKEN="${GENERATOR_BYPASS_TOKEN:-${TEST_AUTH_BYPASS_TOKEN:-}}"
 if [[ -z "$AUTH_TOKEN" ]]; then
-  echo "ERROR: Set GENERATOR_BYPASS_TOKEN or TEST_AUTH_BYPASS_TOKEN in $ENV_FILE" >&2
+  echo "ERROR: Set GENERATOR_BYPASS_TOKEN in $ENV_FILE" >&2
   exit 1
 fi
 
-if [[ -z "${CODEX_DIR:-}" ]]; then
-  echo "ERROR: CODEX_DIR must point to the credential mount you use in production (e.g., ~/.codex)" >&2
-  exit 1
-fi
-if [[ ! -d "$CODEX_DIR" ]]; then
-  echo "WARN: CODEX_DIR does not exist locally: $CODEX_DIR" >&2
+if [[ ! -s "$DEV_DIR/data/jobfinder.db" ]]; then
+  echo "WARN: No DB copy found in $DEV_DIR/data/. Run 'make dev-clone-db' first." >&2
 fi
 
-if [[ ! -s "$SCRIPT_DIR/volumes/sqlite/jobfinder.db" ]]; then
-  echo "WARN: No DB copy found in volumes/sqlite. Run clone-prod-db.sh first." >&2
-fi
-
-echo "Starting validation stack (profile=$PROFILE)..."
+echo "Starting dev stack (profile=$PROFILE)..."
+echo "Codex credentials: ~/.codex -> /home/node/.codex (bind mount)"
 $COMPOSE --profile "$PROFILE" up -d sqlite-migrator
 $COMPOSE --profile "$PROFILE" up -d "$SERVICE_NAME"
 
-# Copy Codex credentials into the running container (tmpfs) just like dev-bots
-echo "Syncing Codex credentials into container..."
-# Use trailing /. to copy CONTENTS of CODEX_DIR into the target directory
-docker exec "$SERVICE_CONTAINER" rm -rf /home/node/.codex/* 2>/dev/null || true
-for f in auth.json config.toml; do
-  if [[ -f "$CODEX_DIR/$f" ]]; then
-    docker cp "$CODEX_DIR/$f" "$SERVICE_CONTAINER":/home/node/.codex/ >/dev/null
-  fi
-done
-docker exec "$SERVICE_CONTAINER" chown -R node:node /home/node/.codex
+# Verify codex credentials are accessible (bind mount, runs as node user uid 1000)
+echo "Verifying Codex credentials in container..."
 docker exec "$SERVICE_CONTAINER" ls -la /home/node/.codex || true
 
 # Health check
@@ -104,7 +95,7 @@ echo "Generator request id: $REQUEST_ID"
 
 # Verify DB state
 if command -v sqlite3 >/dev/null; then
-  DB_PATH="$SCRIPT_DIR/volumes/sqlite/jobfinder.db"
+  DB_PATH="$DEV_DIR/data/jobfinder.db"
   if [[ -f "$DB_PATH" ]]; then
     echo "DB status for $REQUEST_ID:" >> "$OUTPUT_DIR/db-check.txt"
     sqlite3 "$DB_PATH" "SELECT id,status,resume_url,cover_letter_url,created_at FROM generator_requests WHERE id='$REQUEST_ID';" >> "$OUTPUT_DIR/db-check.txt"
@@ -113,7 +104,7 @@ if command -v sqlite3 >/dev/null; then
     echo "WARN: DB file missing at $DB_PATH" >&2
   fi
 else
-  echo "WARN: sqlite3 not installed; skipping DB validation" >&2
+  echo "WARN: sqlite3 not installed; skipping DB check" >&2
 fi
 
 # Verify artifacts landed on disk
@@ -121,7 +112,7 @@ check_artifact() {
   local url="$1"
   [[ -z "$url" ]] && return 0
   local rel="${url#/api/generator/artifacts/}"
-  local abs="$SCRIPT_DIR/volumes/artifacts/$rel"
+  local abs="$DEV_DIR/artifacts/$rel"
   if [[ -f "$abs" ]]; then
     echo "✔ Found artifact: $abs"
   else
@@ -137,13 +128,13 @@ $COMPOSE logs --no-color --tail=100 "$SERVICE_NAME" > "$LOG_FILE" 2>&1 || true
 
 cat <<SUMMARY
 
-Validation run complete.
+Development test complete.
 - Request ID: $REQUEST_ID
 - Resume URL: ${RESUME_URL:-<none>}
 - Cover URL: ${COVER_URL:-<none>}
 - Response:   $RESPONSE_FILE
 - Logs:       $LOG_FILE
-- Artifacts:  $SCRIPT_DIR/volumes/artifacts
+- Artifacts:  $DEV_DIR/artifacts
 
 Open the generated PDFs to judge formatting.
 SUMMARY
