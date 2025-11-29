@@ -145,6 +145,92 @@ class GeminiProvider(AIProvider):
             raise AIProviderError(f"Gemini API error: {str(e)}") from e
 
 
+class GeminiCLIProvider(AIProvider):
+    """
+    Gemini CLI provider: uses the `gemini` CLI with Google account OAuth instead of API keys.
+
+    Requires the `gemini` binary on PATH and that the user is already authenticated
+    (via `gemini auth login`). Credentials are stored in ~/.gemini/oauth_creds.json.
+
+    The CLI is invoked with:
+    - `-o json` for structured JSON output
+    - `--yolo` to auto-approve all actions (no interactive prompts)
+    - Working directory set to /tmp to minimize context token usage
+    """
+
+    def __init__(self, model: Optional[str] = None, timeout: int = 120):
+        """
+        Initialize Gemini CLI provider.
+
+        Args:
+            model: Model identifier (currently ignored - CLI uses its own model selection).
+            timeout: Command timeout in seconds (default 120s for longer responses).
+        """
+        self.model = model  # Reserved for future use when CLI supports model selection
+        self.timeout = timeout
+
+    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+        """
+        Invoke gemini CLI and return the response text.
+
+        The CLI outputs JSON with a `response` field containing the LLM's text.
+        We run from /tmp to avoid scanning the current directory for context,
+        which significantly reduces token usage.
+        """
+        cmd = [
+            "gemini",
+            "-o",
+            "json",
+            "--yolo",
+            prompt,
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                cwd="/tmp",  # Run from /tmp to minimize context tokens
+            )
+
+            # Parse JSON output
+            stdout = result.stdout.strip()
+
+            # Find the JSON object in the output (may have prefix text like "YOLO mode...")
+            json_start = stdout.find("{")
+            if json_start == -1:
+                if result.returncode != 0:
+                    raise AIProviderError(
+                        f"Gemini CLI failed (exit {result.returncode}): "
+                        f"{result.stderr.strip() or stdout}"
+                    )
+                raise AIProviderError("Gemini CLI returned no JSON output")
+
+            json_str = stdout[json_start:]
+            try:
+                output = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                raise AIProviderError(f"Gemini CLI returned invalid JSON: {e}") from e
+
+            # Check for error response
+            if "error" in output:
+                error_info = output["error"]
+                error_msg = error_info.get("message", str(error_info))
+                error_code = error_info.get("code", "unknown")
+                raise AIProviderError(f"Gemini CLI error ({error_code}): {error_msg}")
+
+            # Extract response text
+            response_text = output.get("response")
+            if not response_text:
+                raise AIProviderError("Gemini CLI returned empty response")
+
+            return response_text
+
+        except subprocess.TimeoutExpired as exc:
+            raise AIProviderError(f"Gemini CLI timed out after {self.timeout}s") from exc
+
+
 class CodexCLIProvider(AIProvider):
     """
     Codex CLI provider: uses the `codex` CLI (pro account session) instead of per-request API keys.
@@ -254,26 +340,40 @@ _PROVIDER_MAP: Dict[tuple, type] = {
     ("claude", "api"): ClaudeProvider,
     ("openai", "api"): OpenAIProvider,
     ("gemini", "api"): GeminiProvider,
+    ("gemini", "cli"): GeminiCLIProvider,
 }
 
 
-def create_provider_from_config(ai_settings: Dict[str, Any], section: str = "worker") -> AIProvider:
+def create_provider_from_config(
+    ai_settings: Dict[str, Any],
+    section: str = "worker",
+    task: Optional[str] = None,
+) -> AIProvider:
     """
     Create an AI provider from the ai-settings configuration.
 
     Supports both the new `{selected:{provider,interface,model}}` shape and the
     legacy `{provider, model}` shape that ships in production SQLite. Defaults
     to API interfaces for cloud providers to avoid CLI breakage.
-    """
 
+    Args:
+        ai_settings: The ai-settings configuration dictionary.
+        section: Config section to use ("worker" or "documentGenerator").
+        task: Optional task name for per-task overrides ("jobMatch", "companyDiscovery",
+              "sourceDiscovery"). If specified and a task config exists, it overrides
+              the section default.
+
+    Returns:
+        An initialized AIProvider instance.
+    """
     selected = {}
 
     # Prefer sectioned configuration (worker/documentGenerator)
     section_payload = ai_settings.get(section) if isinstance(ai_settings, dict) else None
     if isinstance(section_payload, dict) and isinstance(section_payload.get("selected"), dict):
-        selected = section_payload.get("selected") or {}
+        selected = dict(section_payload.get("selected") or {})
     else:
-        selected = ai_settings.get("selected") or {}
+        selected = dict(ai_settings.get("selected") or {})
 
     # Legacy support: allow top-level provider/model keys
     if not selected and any(k in ai_settings for k in ("provider", "model", "interface")):
@@ -283,13 +383,38 @@ def create_provider_from_config(ai_settings: Dict[str, Any], section: str = "wor
             "model": ai_settings.get("model", "gpt-5-codex"),
         }
 
+    # Apply per-task overrides if task is specified
+    if task and isinstance(section_payload, dict):
+        tasks_config = section_payload.get("tasks") or {}
+        task_config = tasks_config.get(task)
+        if isinstance(task_config, dict):
+            # Track if provider changed but interface wasn't explicitly set
+            provider_changed = (
+                "provider" in task_config
+                and task_config["provider"] is not None
+                and task_config["provider"] != selected.get("provider")
+            )
+            interface_explicitly_set = (
+                "interface" in task_config and task_config["interface"] is not None
+            )
+
+            # Merge task config into selected (task overrides default)
+            for key in ("provider", "interface", "model"):
+                if key in task_config and task_config[key] is not None:
+                    selected[key] = task_config[key]
+
+            # If provider was changed but interface wasn't explicitly set,
+            # clear interface so it gets re-inferred for the new provider
+            if provider_changed and not interface_explicitly_set:
+                selected.pop("interface", None)
+
     provider_type = selected.get("provider", "codex")
     interface_type = selected.get("interface")
     model = selected.get("model", "gpt-5-codex")
 
-    # Prefer CLI for codex (only supported interface here); otherwise default to API
+    # Infer interface if not set: CLI for codex/gemini, API for others
     if not interface_type:
-        interface_type = "cli" if provider_type == "codex" else "api"
+        interface_type = "cli" if provider_type in ("codex", "gemini") else "api"
 
     # Enforce supported combinations to avoid invalid invocations
     supported_keys = set(_PROVIDER_MAP.keys())

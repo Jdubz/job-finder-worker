@@ -155,10 +155,10 @@ def load_config() -> Dict[str, Any]:
 
 def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
     """Reload dynamic settings from the database into in-memory components."""
-    # Load AI provider settings
+    # Load AI provider settings (must use task="jobMatch" to respect per-task config)
     try:
         ai_settings = config_loader.get_ai_settings()
-        ai_matcher.provider = create_provider_from_config(ai_settings)
+        ai_matcher.provider = create_provider_from_config(ai_settings, task="jobMatch")
     except Exception as exc:  # pragma: no cover - defensive
         slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
 
@@ -253,7 +253,9 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     except Exception as exc:
         slogger.worker_status("ai_settings_init_failed", {"error": str(exc)})
 
-    provider = create_provider_from_config(ai_settings)
+    # Create task-specific providers (falls back to default if no task override)
+    job_match_provider = create_provider_from_config(ai_settings, task="jobMatch")
+    company_discovery_provider = create_provider_from_config(ai_settings, task="companyDiscovery")
 
     # Use the same AI settings section for all downstream AI users (matcher + company fetcher)
     worker_ai_config: Dict[str, Any] = {}
@@ -277,7 +279,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         slogger.worker_status("job_match_init_failed", {"error": str(exc)})
 
     ai_matcher = AIJobMatcher(
-        provider=provider,
+        provider=job_match_provider,
         min_match_score=job_match.get("minMatchScore", 70),
         generate_intake=job_match.get("generateIntakeData", True),
         portland_office_bonus=job_match.get("portlandOfficeBonus", 15),
@@ -289,7 +291,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     )
 
     # Respect AI settings when fetching/extracting company info
-    company_info_fetcher = CompanyInfoFetcher(provider, worker_ai_config)
+    company_info_fetcher = CompanyInfoFetcher(company_discovery_provider, worker_ai_config)
     notifier = QueueEventNotifier()
     queue_manager = QueueManager(db_path, notifier=notifier)
     notifier.on_command = queue_manager.handle_command

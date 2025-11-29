@@ -39,6 +39,28 @@ fi
 echo "=== End Codex Setup ==="
 echo ""
 
+# Gemini CLI auth check
+echo "=== Gemini CLI Setup ==="
+echo "GEMINI_HOME=${GEMINI_HOME:-/home/node/.gemini}"
+if [ -d "/home/node/.gemini" ]; then
+    chown -R node:node /home/node/.gemini
+    echo "Gemini config directory: EXISTS"
+    if [ -f "/home/node/.gemini/oauth_creds.json" ]; then
+        echo "oauth_creds.json: EXISTS"
+        if gosu node gemini auth status 2>/dev/null; then
+            echo "✓ Gemini authenticated"
+        else
+            echo "WARNING: Gemini auth status check failed"
+        fi
+    else
+        echo "WARNING: oauth_creds.json not found"
+    fi
+else
+    echo "WARNING: Gemini directory not mounted"
+fi
+echo "=== End Gemini Setup ==="
+echo ""
+
 # Check database exists
 DB_PATH="${SQLITE_DB_PATH:-/data/sqlite/jobfinder.db}"
 if [ ! -f "$DB_PATH" ]; then

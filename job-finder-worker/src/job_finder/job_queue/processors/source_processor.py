@@ -105,7 +105,7 @@ class SourceProcessor(BaseProcessor):
             # Get AI settings and create provider (tolerate missing/invalid config)
             try:
                 ai_settings = self.config_loader.get_ai_settings()
-                provider = create_provider_from_config(ai_settings)
+                provider = create_provider_from_config(ai_settings, task="sourceDiscovery")
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning(
                     "AI provider unavailable (%s); falling back to heuristic discovery for %s",
@@ -478,7 +478,7 @@ class SourceProcessor(BaseProcessor):
         """
         try:
             ai_settings = self.config_loader.get_ai_settings()
-            provider = create_provider_from_config(ai_settings)
+            provider = create_provider_from_config(ai_settings, task="sourceDiscovery")
         except Exception as exc:  # pragma: no cover - defensive path
             logger.warning("AI provider unavailable for self-heal: %s", exc)
             return None

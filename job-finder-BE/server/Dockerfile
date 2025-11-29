@@ -26,16 +26,17 @@ ENV NODE_ENV=production
 ENV HUSKY=0
 ENV HUSKY_SKIP_INSTALL=1
 
-# Codex config directory (mount from host for auth credentials)
+# AI CLI config directories (mount from host for auth credentials)
 ENV CODEX_HOME=/home/node/.codex
+ENV GEMINI_HOME=/home/node/.gemini
 
-# Install gosu for dropping privileges, ca-certificates for TLS, npm update, and codex CLI
+# Install gosu for dropping privileges, ca-certificates for TLS, npm update, and AI CLIs
 RUN apt-get update && apt-get install -y --no-install-recommends gosu ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g npm@11.6.3 @openai/codex@0.63.0 \
+    && npm install -g npm@11.6.3 @openai/codex@0.63.0 @google/gemini-cli@0.18.4 \
     && npm cache clean --force \
-    && mkdir -p /home/node/.codex /data/artifacts /data/sqlite \
-    && chown -R node:node /home/node/.codex /data
+    && mkdir -p /home/node/.codex /home/node/.gemini /data/artifacts /data/sqlite \
+    && chown -R node:node /home/node/.codex /home/node/.gemini /data
 
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
 RUN sed -i 's#file:../../shared#file:./shared#g; s#"../../shared"#"./shared"#g' package.json package-lock.json
