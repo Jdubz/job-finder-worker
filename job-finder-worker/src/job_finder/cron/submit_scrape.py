@@ -11,12 +11,15 @@ import argparse
 import json
 import sys
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union
 
+load_dotenv: Optional[Callable[..., Any]]
 try:
-    from dotenv import load_dotenv
-except Exception:  # pragma: no cover - optional dependency in prod container
-    load_dotenv = None  # type: ignore[assignment]
+    from dotenv import load_dotenv as _real_load_dotenv
+
+    load_dotenv = _real_load_dotenv
+except ImportError:  # pragma: no cover - optional dependency in prod container
+    load_dotenv = None
 
 from job_finder.logging_config import setup_logging
 from job_finder.job_queue import ConfigLoader, JobQueueItem, QueueItemType, QueueManager
@@ -48,7 +51,7 @@ def _extract_scrape_settings(scheduler_settings: Dict[str, Any]) -> Dict[str, An
     }
 
 
-def _parse_source_ids(raw: Optional[str]):
+def _parse_source_ids(raw: Optional[Union[str, list[str]]]):
     if raw is None:
         return None
     if isinstance(raw, list):

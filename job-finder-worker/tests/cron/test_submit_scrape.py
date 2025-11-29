@@ -31,6 +31,7 @@ CREATE TABLE job_queue (
     tracking_id TEXT,
     result_message TEXT,
     error_details TEXT,
+    review_notes TEXT,
     metadata TEXT
 );
 """
@@ -62,6 +63,19 @@ def _fetch_queue_rows(db_path):
     rows = conn.execute("SELECT * FROM job_queue").fetchall()
     conn.close()
     return rows
+
+
+def _set_scheduler_settings(db_path, settings):
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        INSERT INTO job_finder_config (id, payload_json)
+        VALUES ('scheduler-settings', ?)
+        """,
+        (json.dumps(settings),),
+    )
+    conn.commit()
+    conn.close()
 
 
 def test_submit_scrape_enqueues_item(tmp_path, capsys):
@@ -121,3 +135,28 @@ def test_submit_scrape_seeds_defaults_when_config_missing(tmp_path):
     assert scrape_config["max_sources"] is None
     assert scrape_config["min_match_score"] is None
     assert scrape_config["source_ids"] is None
+
+
+def test_submit_scrape_uses_db_config_as_fallback(tmp_path):
+    db_path = _create_db(tmp_path)
+
+    db_settings = {
+        "scrapeConfig": {
+            "targetMatches": 10,
+            "maxSources": 5,
+            "minMatchScore": 80,
+            "sourceIds": ["db_src_1", "db_src_2"],
+        }
+    }
+    _set_scheduler_settings(db_path, db_settings)
+
+    submit_scrape.main(["--db-path", db_path])
+
+    rows = _fetch_queue_rows(db_path)
+    assert len(rows) == 1
+
+    scrape_config = json.loads(rows[0]["scrape_config"])
+    assert scrape_config["target_matches"] == 10
+    assert scrape_config["max_sources"] == 5
+    assert scrape_config["min_match_score"] == 80
+    assert scrape_config["source_ids"] == ["db_src_1", "db_src_2"]
