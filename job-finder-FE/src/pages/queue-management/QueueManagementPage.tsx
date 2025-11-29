@@ -36,6 +36,7 @@ type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skippe
 type CompletedStatus = "success" | "failed" | "skipped" | "filtered" | "needs_review"
 
 const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered", "needs_review"]
+const STATS_FETCH_DEBOUNCE_MS = 500
 
 export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
@@ -81,7 +82,10 @@ export function QueueManagementPage() {
   }, [activeStatFilter])
 
   // Fetch full stats from API (not limited to 100 items)
+  // Debounced to avoid rapid refetches on every SSE event
   useEffect(() => {
+    if (!user || !isOwner) return
+
     const fetchStats = async () => {
       try {
         setStatsLoading(true)
@@ -108,9 +112,9 @@ export function QueueManagementPage() {
       }
     }
 
-    if (user && isOwner) {
-      fetchStats()
-    }
+    // Debounce stats fetch to avoid rapid API calls from SSE events
+    const timeoutId = setTimeout(fetchStats, STATS_FETCH_DEBOUNCE_MS)
+    return () => clearTimeout(timeoutId)
   }, [user, isOwner, queueItems])
 
   // Clear error alert when items load successfully
