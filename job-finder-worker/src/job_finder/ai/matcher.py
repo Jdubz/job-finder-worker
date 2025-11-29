@@ -320,6 +320,22 @@ class AIJobMatcher:
                 match_score += tz_adj
                 adjustments.append(f"⏰ {desc} {tz_adj:+}")
 
+            # Hard-stop mismatch: user only works 8a-8p PT and will not relocate.
+            location_text = job_location or headquarters_location or company_name
+            india_like = any(k in (location_text or "").lower() for k in ["india", "bangalore", "bengaluru", "ist"])
+            if hour_diff > 8 or india_like:
+                mismatch_penalty = -40
+                match_score += mismatch_penalty
+                adjustments.append(
+                    f"🚫 Timezone/relocation dealbreaker ({desc or 'unknown location'}): {mismatch_penalty}"
+                )
+                concerns = match_analysis.setdefault("potential_concerns", [])
+                concerns.append(
+                    "Timezone mismatch: role appears far outside 8a–8p PT and candidate will not relocate or work IST hours."
+                )
+                # Push priority down so UI flags it as low-fit even if base score was high
+                match_analysis["application_priority"] = "Low"
+
         # Apply company size adjustment using weights
         size_adj = 0
         size_desc = ""
