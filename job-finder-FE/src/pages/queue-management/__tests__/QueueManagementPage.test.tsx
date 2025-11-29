@@ -101,6 +101,7 @@ describe("QueueManagementPage", () => {
       loading: false,
       error: null,
       connectionStatus: "connected",
+      eventLog: [],
       updateQueueItem: mockUpdateQueueItem,
       refetch: vi.fn(),
     } as any)
@@ -153,6 +154,7 @@ describe("QueueManagementPage", () => {
         loading: true,
         error: null,
         connectionStatus: "connecting",
+        eventLog: [],
         updateQueueItem: mockUpdateQueueItem,
         refetch: vi.fn(),
       } as any)
@@ -169,6 +171,7 @@ describe("QueueManagementPage", () => {
         loading: false,
         error: new Error("Failed to load"),
         connectionStatus: "disconnected",
+        eventLog: [],
         updateQueueItem: mockUpdateQueueItem,
         refetch: vi.fn(),
       } as any)
@@ -228,6 +231,7 @@ describe("QueueManagementPage", () => {
         loading: false,
         error: null,
         connectionStatus: "connected",
+        eventLog: [],
         updateQueueItem: mockUpdateQueueItem,
         refetch: vi.fn(),
       } as any)
@@ -277,6 +281,7 @@ describe("QueueManagementPage", () => {
         loading: false,
         error: null,
         connectionStatus: "connected",
+        eventLog: [],
         updateQueueItem: mockUpdateQueueItem,
         refetch: vi.fn(),
       } as any)
