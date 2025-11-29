@@ -1,5 +1,5 @@
 # Job Finder Cron Schedule
-# Run job search every 6 hours at minute 0
+# Run full scrape (job search) every 6 hours at minute 0
 # Uses gosu to run as node user (uid 1000) to match codex credential ownership
 0 */6 * * * root /usr/sbin/gosu node /bin/bash -c 'cd /app && /home/node/.local/bin/python scheduler.py' >> /var/log/cron.log 2>&1
 

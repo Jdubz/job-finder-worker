@@ -25,13 +25,14 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies (cron for scheduling, procps for pgrep, curl for healthcheck, gosu for privilege dropping)
+# Install runtime dependencies (cron for scheduling, procps for pgrep, curl for healthcheck, gosu for privilege dropping, sqlite3 for agent review)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cron \
     procps \
     curl \
     ca-certificates \
     gosu \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user matching API container (node user, uid 1000)

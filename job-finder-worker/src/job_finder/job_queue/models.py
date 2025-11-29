@@ -92,7 +92,7 @@ class QueueStatus(str, Enum):
     SKIPPED = "skipped"
     FAILED = "failed"
     SUCCESS = "success"
-    NEEDS_REVIEW = "needs_review"
+    NEEDS_REVIEW = "needs_review"  # Requires agent intervention
 
 
 # QueueSource type - matches TypeScript literal type

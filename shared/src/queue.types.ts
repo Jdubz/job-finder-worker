@@ -40,12 +40,25 @@ export type {
  * - failed: Processing error occurred (terminal, not recoverable)
  * - needs_review: Requires agent intervention (recoverable failure)
  */
-export type QueueStatus = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered" | "needs_review"
+export type QueueStatus =
+  | "pending"
+  | "processing"
+  | "success"
+  | "failed"
+  | "skipped"
+  | "filtered"
+  | "needs_review"
 
 /**
  * Queue item types
  */
-export type QueueItemType = "job" | "company" | "scrape" | "source_discovery" | "scrape_source" | "agent_review"
+export type QueueItemType =
+  | "job"
+  | "company"
+  | "scrape"
+  | "source_discovery"
+  | "scrape_source"
+  | "agent_review"
 
 /**
  * Source of queue submission

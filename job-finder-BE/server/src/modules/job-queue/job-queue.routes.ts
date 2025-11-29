@@ -24,7 +24,15 @@ import {
   sendCommandToWorker
 } from './queue-events'
 
-const queueStatuses = ['pending', 'processing', 'success', 'failed', 'skipped', 'filtered'] as const
+const queueStatuses = [
+  'pending',
+  'processing',
+  'success',
+  'failed',
+  'skipped',
+  'filtered',
+  'needs_review'
+] as const
 const queueSources = [
   'user_submission',
   'automated_scan',
@@ -34,7 +42,14 @@ const queueSources = [
   'manual_submission',
   'user_request'
 ] as const
-const queueItemTypes = ['job', 'company', 'scrape', 'source_discovery', 'scrape_source'] as const
+const queueItemTypes = [
+  'job',
+  'company',
+  'scrape',
+  'source_discovery',
+  'scrape_source',
+  'agent_review'
+] as const
 
 const submitJobSchema = z.object({
   url: z.string().url(),
