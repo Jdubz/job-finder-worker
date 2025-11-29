@@ -11,6 +11,7 @@ from uuid import uuid4
 from job_finder.exceptions import DuplicateSourceError, InvalidStateTransition, StorageError
 from job_finder.job_queue.models import SourceStatus
 from job_finder.storage.sqlite_client import sqlite_connection
+from job_finder.utils.company_name_utils import normalize_company_name
 
 logger = logging.getLogger(__name__)
 
@@ -330,3 +331,133 @@ class JobSourcesManager:
             )
             if updated.rowcount == 0:
                 raise StorageError(f"Source {source_id} not found")
+
+    # ------------------------------------------------------------------ #
+    # Company Resolution
+    # ------------------------------------------------------------------ #
+
+    def resolve_company_from_source(
+        self,
+        source_id: Optional[str] = None,
+        company_name_raw: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Resolve actual company info from a job source.
+
+        Uses a two-tier resolution strategy:
+        1. Direct source_id lookup (most reliable)
+        2. Fuzzy match company name against source names
+
+        Args:
+            source_id: Direct source ID to look up
+            company_name_raw: Company name to match against source names
+
+        Returns:
+            Dict with resolution info, or None if no matching source:
+            - company_id: Linked company ID (or None if aggregator)
+            - company_name: Actual company name (or None if aggregator)
+            - is_aggregator: True if source has no linked company
+            - source_id: The matched source ID
+            - source_name: The source name
+        """
+        source = None
+
+        # Tier 1: Direct source_id lookup
+        if source_id:
+            source = self.get_source_by_id(source_id)
+
+        # Tier 2: Fuzzy match company name against source names
+        if not source and company_name_raw:
+            source = self._match_source_by_company_name(company_name_raw)
+
+        if not source:
+            return None
+
+        company_id = source.get("companyId")
+        company_name = source.get("companyName")
+
+        return {
+            "company_id": company_id,
+            "company_name": company_name,
+            "is_aggregator": company_id is None,
+            "source_id": source.get("id"),
+            "source_name": source.get("name"),
+        }
+
+    def _match_source_by_company_name(self, company_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Fuzzy match a company name against known source names.
+
+        Matches patterns like:
+        - "Coinbase" matches "Coinbase Jobs"
+        - "Coinbase Careers" matches "Coinbase Jobs"
+        - "Jbicy Remote" matches "Jbicy Remote Jobs"
+
+        Args:
+            company_name: Company name to match
+
+        Returns:
+            Matching source dict, or None if no match
+        """
+        normalized = normalize_company_name(company_name)
+        if not normalized:
+            return None
+
+        with sqlite_connection(self.db_path) as conn:
+            rows = conn.execute("SELECT * FROM job_sources").fetchall()
+
+        best_match = None
+        best_match_score = 0
+
+        for row in rows:
+            source = self._row_to_source(dict(row))
+            if not source:
+                continue
+
+            source_name = source.get("name", "")
+            # Normalize source name for comparison: "Coinbase Jobs" -> "coinbase"
+            source_normalized = normalize_company_name(source_name)
+
+            # Also check the linked company_name
+            linked_company = source.get("companyName", "")
+            linked_normalized = normalize_company_name(linked_company) if linked_company else ""
+
+            # Exact match on source base name or linked company
+            if normalized == source_normalized or normalized == linked_normalized:
+                return source
+
+            # Partial match scoring: prefer longer matches
+            # Require match to be at least 60% of the longer string to avoid false positives
+            # (e.g., "Coin" matching "Coinbase" incorrectly)
+            score = 0
+            if normalized and source_normalized:
+                longer_len = max(len(normalized), len(source_normalized))
+                if normalized in source_normalized:
+                    match_ratio = len(normalized) / longer_len
+                    if match_ratio >= 0.6:
+                        score = len(normalized)
+                elif source_normalized in normalized:
+                    match_ratio = len(source_normalized) / longer_len
+                    if match_ratio >= 0.6:
+                        score = len(source_normalized)
+
+            if linked_normalized:
+                longer_len = max(len(normalized), len(linked_normalized))
+                if normalized in linked_normalized:
+                    match_ratio = len(normalized) / longer_len
+                    if match_ratio >= 0.6:
+                        score = max(score, len(normalized))
+                elif linked_normalized in normalized:
+                    match_ratio = len(linked_normalized) / longer_len
+                    if match_ratio >= 0.6:
+                        score = max(score, len(linked_normalized))
+
+            if score > best_match_score:
+                best_match = source
+                best_match_score = score
+
+        # Only return partial matches if they're significant (at least 4 chars matched)
+        if best_match and best_match_score >= 4:
+            return best_match
+
+        return None

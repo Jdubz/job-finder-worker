@@ -526,8 +526,11 @@ class JobProcessor(BaseProcessor):
         """
         Ensure company data is available before job analysis.
 
-        Checks if the company record has sufficient data (about, culture, etc.) for
-        document generation and job ranking. If not, spawns an analysis task.
+        Uses a multi-tier resolution strategy:
+        1. Try to resolve company via source linkage (source_id or company name match)
+        2. If source is an aggregator (no linked company), skip enrichment
+        3. If source has linked company, use that company
+        4. Otherwise, fall back to direct company lookup/creation
 
         Returns True when company data is ready for analysis.
         """
@@ -536,15 +539,65 @@ class JobProcessor(BaseProcessor):
 
         company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
         company_name_clean = clean_company_name(company_name_base) or company_name_base.strip()
-        job_data["company"] = company_name_clean
 
         if not company_name_clean:
             # No company context; allow analysis to proceed without company info
+            job_data["company"] = ""
             return True
 
         pipeline_state = item.pipeline_state or {}
 
-        # Get or create company record
+        # TIER 1: Try to resolve company via source linkage
+        source_resolution = self.sources_manager.resolve_company_from_source(
+            source_id=item.source_id,
+            company_name_raw=company_name_clean,
+        )
+
+        if source_resolution:
+            if source_resolution["is_aggregator"]:
+                # This is a job aggregator with no linked company - skip enrichment
+                logger.info(
+                    "Skipping company enrichment: '%s' is job aggregator (source: %s)",
+                    company_name_clean,
+                    source_resolution["source_name"],
+                )
+                job_data["company"] = company_name_clean
+                job_data["company_id"] = None
+                job_data["companyId"] = None
+                job_data["company_info"] = ""
+                job_data["company_data"] = {}
+                job_data["is_aggregator_source"] = True
+                return True
+
+            # Source has linked company - use that instead
+            actual_company_id = source_resolution["company_id"]
+            actual_company_name = source_resolution["company_name"]
+
+            if actual_company_name and actual_company_name != company_name_clean:
+                logger.info(
+                    "Resolved company via source: '%s' -> '%s' (source: %s)",
+                    company_name_clean,
+                    actual_company_name,
+                    source_resolution["source_name"],
+                )
+                company_name_clean = actual_company_name
+
+            company = self.companies_manager.get_company_by_id(actual_company_id)
+            if company:
+                job_data["company"] = actual_company_name or company_name_clean
+                return self._finalize_company_dependency(
+                    item, job_data, company, company_website, pipeline_state
+                )
+            else:
+                # Source has stale company_id reference - company was deleted
+                logger.warning(
+                    "Source %s has stale company_id '%s' (not found in DB), falling back to name lookup",
+                    source_resolution["source_id"],
+                    actual_company_id,
+                )
+
+        # TIER 2: Fall back to direct company lookup/creation
+        job_data["company"] = company_name_clean
         company = self.companies_manager.get_company(company_name_clean)
 
         if not company:
@@ -552,17 +605,34 @@ class JobProcessor(BaseProcessor):
             stub = self.companies_manager.create_company_stub(company_name_clean, company_website)
             company = stub
 
+        return self._finalize_company_dependency(
+            item, job_data, company, company_website, pipeline_state
+        )
+
+    def _finalize_company_dependency(
+        self,
+        item: JobQueueItem,
+        job_data: Dict[str, Any],
+        company: Dict[str, Any],
+        company_website: str,
+        pipeline_state: Dict[str, Any],
+    ) -> bool:
+        """
+        Finalize company dependency after resolution.
+
+        Updates job_data with company info and spawns enrichment if needed.
+        """
         company_id = company.get("id")
+        company_name = job_data.get("company", company.get("name", ""))
 
         # Update job_listing with company_id if we have a listing
         listing_id = pipeline_state.get("job_listing_id")
         if listing_id and company_id:
             self.job_listing_storage.update_company_id(listing_id, company_id)
 
-        # Company exists - proceed with job analysis using available data
         # Spawn enrichment task in background if data is sparse (fire and forget)
         if not self.companies_manager.has_good_company_data(company):
-            self._try_spawn_company_task(item, company_id, company_name_clean, company_website)
+            self._try_spawn_company_task(item, company_id, company_name, company_website)
 
         job_data["company_id"] = company_id
         job_data["companyId"] = company_id
@@ -581,10 +651,18 @@ class JobProcessor(BaseProcessor):
         Try to spawn a COMPANY task (fire and forget).
 
         This is best-effort - if spawning fails for any reason (duplicate URL,
-        spawn depth exceeded, etc.), we silently ignore it. The caller will
-        wait for the company to become ACTIVE regardless.
+        spawn depth exceeded, job board URL, etc.), we silently ignore it.
         """
         company_url = company_website or item.url
+
+        # Skip if URL is a job board or aggregator (not a company website)
+        if self._is_job_board_url(company_url):
+            logger.debug(
+                "Skipping company enrichment for %s: URL is a job board (%s)",
+                company_name,
+                company_url,
+            )
+            return
 
         try:
             task_id = self.queue_manager.spawn_item_safely(
@@ -603,6 +681,57 @@ class JobProcessor(BaseProcessor):
             logger.debug("Company task for %s already in queue, skipping spawn", company_name)
         except Exception as e:
             logger.debug("Could not spawn company task for %s: %s", company_name, e)
+
+    def _is_job_board_url(self, url: str) -> bool:
+        """
+        Check if URL is a known job board or aggregator rather than a company website.
+
+        These URLs won't have useful /about or /careers pages for company enrichment.
+        """
+        if not url:
+            return False
+
+        # Known job board and aggregator domains
+        job_board_domains = [
+            # ATS providers
+            "greenhouse.io",
+            "lever.co",
+            "myworkdayjobs.com",
+            "workday.com",
+            "smartrecruiters.com",
+            "ashbyhq.com",
+            "breezy.hr",
+            "applytojob.com",
+            "jobvite.com",
+            "icims.com",
+            "ultipro.com",
+            "taleo.net",
+            # Job aggregators
+            "weworkremotely.com",
+            "remotive.com",
+            "remotive.io",
+            "remote.co",
+            "remoteok.com",
+            "remoteok.io",
+            "jbicy.io",
+            "flexjobs.com",
+            "wellfound.com",
+            "angel.co",
+            "ycombinator.com",
+            "workatastartup.com",
+        ]
+
+        try:
+            from urllib.parse import urlparse
+
+            netloc = urlparse(url.lower()).netloc
+            # Use proper suffix matching to avoid false positives
+            # (e.g., "notgreenhouse.io" should not match "greenhouse.io")
+            return any(
+                netloc == domain or netloc.endswith("." + domain) for domain in job_board_domains
+            )
+        except Exception:
+            return False
 
     def _do_job_save(self, item: JobQueueItem) -> None:
         """

@@ -221,6 +221,8 @@ def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_
     }
     mock_managers["companies_manager"].get_company.return_value = incomplete_company
     mock_managers["companies_manager"].has_good_company_data.return_value = False
+    # No source resolution - fall through to direct company lookup
+    mock_managers["sources_manager"].resolve_company_from_source.return_value = None
 
     sample_job_item.pipeline_state = {
         "job_data": {
