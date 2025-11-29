@@ -11,13 +11,15 @@ from job_finder.job_queue.processor import QueueItemProcessor
 @pytest.fixture
 def mock_managers():
     """Create mock managers for processor."""
+    sources_manager = MagicMock()
+    sources_manager.get_source_by_name.return_value = None
     return {
         "queue_manager": MagicMock(),
         "config_loader": MagicMock(),
         "job_storage": MagicMock(),
         "job_listing_storage": MagicMock(),
         "companies_manager": MagicMock(),
-        "sources_manager": MagicMock(),
+        "sources_manager": sources_manager,
         "company_info_fetcher": MagicMock(),
         "ai_matcher": MagicMock(),
     }
@@ -295,6 +297,61 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
     mock_managers["job_storage"].save_job_match.assert_called_once()
     # Should set SUCCESS with final pipeline state in one call
     mock_managers["queue_manager"].update_status.assert_called()
+
+
+@pytest.mark.parametrize(
+    "source_company_id, should_update_listing",
+    [
+        (None, False),
+        ("comp_remoteok", True),
+    ],
+)
+def test_job_analyze_skips_company_when_source_name(
+    processor, mock_managers, sample_job_item, source_company_id, should_update_listing
+):
+    """If company name matches a known source, skip spawning company tasks."""
+
+    sample_job_item.pipeline_state = {
+        "job_listing_id": "test-listing-123",
+        "job_data": {
+            "title": "Engineer",
+            "company": "RemoteOK API",
+            "company_website": "https://remoteok.com",
+            "description": "A" * 200,
+        },
+        "filter_result": {"passed": True},
+    }
+
+    mock_managers["sources_manager"].get_source_by_name.return_value = {
+        "id": "src_remoteok",
+        "name": "RemoteOK API",
+        "sourceType": "api",
+        "companyId": source_company_id,
+    }
+
+    class DummyResult:
+        match_score = 75
+        application_priority = "Medium"
+
+        def to_dict(self):
+            return {
+                "match_score": self.match_score,
+                "application_priority": self.application_priority,
+            }
+
+    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
+
+    processor.job_processor._do_job_analyze(sample_job_item)
+
+    mock_managers["queue_manager"].spawn_item_safely.assert_not_called()
+    processor.job_processor.ai_matcher.analyze_job.assert_called_once()
+
+    if should_update_listing:
+        mock_managers["job_listing_storage"].update_company_id.assert_called_once_with(
+            "test-listing-123", source_company_id
+        )
+    else:
+        mock_managers["job_listing_storage"].update_company_id.assert_not_called()
 
 
 def test_build_company_info_string(processor):
