@@ -222,43 +222,57 @@ export function JobListingsPage() {
         </Button>
       </div>
 
-      {/* Stats Overview */}
+      {/* Stats Overview - Clickable Pills */}
       {!loading && listings.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-5">
-          <div className="bg-secondary p-4 rounded-lg">
-            <div className="text-2xl font-bold">{listings.length}</div>
-            <div className="text-sm text-muted-foreground">Total</div>
-          </div>
-          <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
-            <div className="text-2xl font-bold">
-              {listings.filter((l) => l.status === "pending").length}
-            </div>
-            <div className="text-sm text-muted-foreground">Pending</div>
-          </div>
-          <div className="bg-blue-100 dark:bg-blue-950 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-blue-600">
-              {listings.filter((l) => l.status === "analyzing").length}
-            </div>
-            <div className="text-sm text-blue-700 dark:text-blue-400">Analyzing</div>
-          </div>
-          <div className="bg-green-100 dark:bg-green-950 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-green-600">
-              {listings.filter((l) => l.status === "analyzed").length}
-            </div>
-            <div className="text-sm text-green-700 dark:text-green-400">Analyzed</div>
-          </div>
-          <div className="bg-emerald-100 dark:bg-emerald-950 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-emerald-700">
-              {listings.filter((l) => l.status === "matched").length}
-            </div>
-            <div className="text-sm text-emerald-700 dark:text-emerald-400">Matched</div>
-          </div>
-          <div className="bg-red-100 dark:bg-red-950 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-red-600">
-              {listings.filter((l) => l.status === "skipped" || l.status === "filtered").length}
-            </div>
-            <div className="text-sm text-red-700 dark:text-red-400">Skipped/Filtered</div>
-          </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <StatPill
+            label="Total"
+            value={listings.length}
+            active={statusFilter === "all"}
+            onClick={() => handleStatusFilterChange("all")}
+          />
+          <StatPill
+            label="Pending"
+            value={listings.filter((l) => l.status === "pending").length}
+            tone="gray"
+            active={statusFilter === "pending"}
+            onClick={() => handleStatusFilterChange("pending")}
+          />
+          <StatPill
+            label="Analyzing"
+            value={listings.filter((l) => l.status === "analyzing").length}
+            tone="blue"
+            active={statusFilter === "analyzing"}
+            onClick={() => handleStatusFilterChange("analyzing")}
+          />
+          <StatPill
+            label="Analyzed"
+            value={listings.filter((l) => l.status === "analyzed").length}
+            tone="green"
+            active={statusFilter === "analyzed"}
+            onClick={() => handleStatusFilterChange("analyzed")}
+          />
+          <StatPill
+            label="Matched"
+            value={listings.filter((l) => l.status === "matched").length}
+            tone="emerald"
+            active={statusFilter === "matched"}
+            onClick={() => handleStatusFilterChange("matched")}
+          />
+          <StatPill
+            label="Filtered"
+            value={listings.filter((l) => l.status === "filtered").length}
+            tone="orange"
+            active={statusFilter === "filtered"}
+            onClick={() => handleStatusFilterChange("filtered")}
+          />
+          <StatPill
+            label="Skipped"
+            value={listings.filter((l) => l.status === "skipped").length}
+            tone="red"
+            active={statusFilter === "skipped"}
+            onClick={() => handleStatusFilterChange("skipped")}
+          />
         </div>
       )}
 
@@ -604,5 +618,40 @@ export function JobListingsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+type StatTone = "default" | "gray" | "blue" | "green" | "emerald" | "red" | "orange"
+
+interface StatPillProps {
+  label: string
+  value: string | number
+  tone?: StatTone
+  active?: boolean
+  onClick?: () => void
+}
+
+function StatPill({ label, value, tone = "default", active = false, onClick }: StatPillProps) {
+  const toneClasses: Record<StatTone, string> = {
+    default: "border-muted-foreground/20 text-muted-foreground hover:bg-muted/50",
+    gray: "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100",
+    blue: "border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100",
+    green: "border-green-200 bg-green-50 text-green-800 hover:bg-green-100",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
+    red: "border-red-200 bg-red-50 text-red-800 hover:bg-red-100",
+    orange: "border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100",
+  }
+
+  const activeClass = active ? "ring-2 ring-offset-1 ring-primary" : ""
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${toneClasses[tone]} ${activeClass}`}
+    >
+      <span className="uppercase tracking-wide text-[11px]">{label}</span>
+      <span className="text-sm font-semibold">{value}</span>
+    </button>
   )
 }
