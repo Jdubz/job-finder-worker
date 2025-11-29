@@ -269,7 +269,9 @@ class AIJobMatcher:
             try:
                 job_timezone = float(timezone_offset)
             except (ValueError, TypeError):
-                logger.warning(f"Invalid timezoneOffset value: {timezone_offset}, falling back to detection")
+                logger.warning(
+                    f"Invalid timezoneOffset value: {timezone_offset}, falling back to detection"
+                )
                 job_timezone = detect_timezone_for_job(
                     job_location=job_location,
                     job_description=job_description,
