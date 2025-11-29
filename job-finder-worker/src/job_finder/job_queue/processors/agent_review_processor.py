@@ -218,7 +218,7 @@ class AgentReviewProcessor(BaseProcessor):
         if context:
             prompt_parts.append("## Context Data")
             # Truncate large context values
-            truncated_context = {}
+            truncated_context: Dict[str, Any] = {}
             for k, v in context.items():
                 if isinstance(v, str) and len(v) > 2000:
                     truncated_context[k] = v[:1980] + "... [truncated]"
