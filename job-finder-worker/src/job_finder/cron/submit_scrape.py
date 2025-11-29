@@ -96,7 +96,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Enqueue a SCRAPE job for the worker queue")
     parser.add_argument("--db-path", help="Optional override for SQLite db path")
     parser.add_argument("--target-matches", type=int, help="Stop after N matches (default: config)")
-    parser.add_argument("--max-sources", type=int, help="Scrape at most N sources (default: config)")
+    parser.add_argument(
+        "--max-sources", type=int, help="Scrape at most N sources (default: config)"
+    )
     parser.add_argument("--min-match-score", type=int, help="Override minimum match score")
     parser.add_argument(
         "--source-ids",
@@ -139,4 +141,3 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover - thin CLI wrapper
     sys.exit(main())
-
