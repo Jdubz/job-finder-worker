@@ -10,10 +10,7 @@ These tests verify that:
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 from job_finder.storage.job_sources_manager import JobSourcesManager
-from job_finder.job_queue.models import SourceStatus
 
 
 def _bootstrap_db(path: Path):
@@ -46,9 +43,23 @@ def _bootstrap_db(path: Path):
             """,
             [
                 # Company-linked source
-                ("src-coinbase", "Coinbase Jobs", "greenhouse", "active", "company-coinbase", "Coinbase"),
+                (
+                    "src-coinbase",
+                    "Coinbase Jobs",
+                    "greenhouse",
+                    "active",
+                    "company-coinbase",
+                    "Coinbase",
+                ),
                 # Company-linked source with different naming
-                ("src-stripe", "Stripe Careers Board", "greenhouse", "active", "company-stripe", "Stripe"),
+                (
+                    "src-stripe",
+                    "Stripe Careers Board",
+                    "greenhouse",
+                    "active",
+                    "company-stripe",
+                    "Stripe",
+                ),
                 # Job aggregator (no linked company)
                 ("src-jbicy", "Jbicy Remote Jobs", "api", "active", None, None),
                 # Job aggregator (no linked company)
@@ -157,8 +168,7 @@ class TestResolveCompanyFromSource:
 
         # Provide valid source_id with mismatched company_name
         result = manager.resolve_company_from_source(
-            source_id="src-coinbase",
-            company_name_raw="Stripe"
+            source_id="src-coinbase", company_name_raw="Stripe"
         )
 
         # Should return Coinbase (from source_id), not Stripe

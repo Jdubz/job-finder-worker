@@ -45,34 +45,36 @@ class JobProcessor(BaseProcessor):
     """Processor for job queue items."""
 
     # Known job board and aggregator domains (for URL detection)
-    _JOB_BOARD_DOMAINS = frozenset([
-        # ATS providers
-        "greenhouse.io",
-        "lever.co",
-        "myworkdayjobs.com",
-        "workday.com",
-        "smartrecruiters.com",
-        "ashbyhq.com",
-        "breezy.hr",
-        "applytojob.com",
-        "jobvite.com",
-        "icims.com",
-        "ultipro.com",
-        "taleo.net",
-        # Job aggregators
-        "weworkremotely.com",
-        "remotive.com",
-        "remotive.io",
-        "remote.co",
-        "remoteok.com",
-        "remoteok.io",
-        "jbicy.io",
-        "flexjobs.com",
-        "wellfound.com",
-        "angel.co",
-        "ycombinator.com",
-        "workatastartup.com",
-    ])
+    _JOB_BOARD_DOMAINS = frozenset(
+        [
+            # ATS providers
+            "greenhouse.io",
+            "lever.co",
+            "myworkdayjobs.com",
+            "workday.com",
+            "smartrecruiters.com",
+            "ashbyhq.com",
+            "breezy.hr",
+            "applytojob.com",
+            "jobvite.com",
+            "icims.com",
+            "ultipro.com",
+            "taleo.net",
+            # Job aggregators
+            "weworkremotely.com",
+            "remotive.com",
+            "remotive.io",
+            "remote.co",
+            "remoteok.com",
+            "remoteok.io",
+            "jbicy.io",
+            "flexjobs.com",
+            "wellfound.com",
+            "angel.co",
+            "ycombinator.com",
+            "workatastartup.com",
+        ]
+    )
 
     def __init__(
         self,
