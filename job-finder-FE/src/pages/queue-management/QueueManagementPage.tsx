@@ -36,6 +36,7 @@ type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skippe
 type CompletedStatus = "success" | "failed" | "skipped" | "filtered" | "needs_review"
 
 const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered", "needs_review"]
+const STATS_FETCH_DEBOUNCE_MS = 500
 
 export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
@@ -112,7 +113,7 @@ export function QueueManagementPage() {
     }
 
     // Debounce stats fetch to avoid rapid API calls from SSE events
-    const timeoutId = setTimeout(fetchStats, 500)
+    const timeoutId = setTimeout(fetchStats, STATS_FETCH_DEBOUNCE_MS)
     return () => clearTimeout(timeoutId)
   }, [user, isOwner, queueItems])
 
