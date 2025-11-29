@@ -11,7 +11,7 @@ interface UseQueueItemsOptions {
 
 interface SubmitCompanyParams {
   companyName: string
-  websiteUrl: string
+  websiteUrl?: string
   companyId?: string | null
 }
 

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { AlertCircle, Activity, Loader2, Plus, Play, Pause, AlertTriangle } from "lucide-react"
+import { StatPill } from "@/components/ui/stat-pill"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
 import { QueueTable } from "./components/QueueTable"
@@ -55,6 +56,29 @@ export function QueueManagementPage() {
   const [confirmToggleOpen, setConfirmToggleOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
   const [completedStatusFilter, setCompletedStatusFilter] = useState<CompletedStatus | "all">("all")
+  const [activeStatFilter, setActiveStatFilter] = useState<string | null>(null)
+
+  // Handle stat pill click to filter the list
+  const handleStatPillClick = useCallback((status: string) => {
+    // Toggle off if already selected
+    if (activeStatFilter === status) {
+      setActiveStatFilter(null)
+      setActiveTab("pending")
+      setCompletedStatusFilter("all")
+      return
+    }
+
+    setActiveStatFilter(status)
+
+    // Route to appropriate tab and filter
+    if (status === "pending" || status === "processing") {
+      setActiveTab("pending")
+      setCompletedStatusFilter("all")
+    } else if (COMPLETED_STATUSES.includes(status as CompletedStatus)) {
+      setActiveTab("completed")
+      setCompletedStatusFilter(status as CompletedStatus)
+    }
+  }, [activeStatFilter])
 
   // Fetch full stats from API (not limited to 100 items)
   useEffect(() => {
@@ -141,7 +165,15 @@ export function QueueManagementPage() {
   // Pending items: pending + processing, sorted chronologically (oldest first = next up)
   const pendingItems = useMemo(() => {
     return [...queueItems]
-      .filter((item) => Boolean(item.id) && (item.status === "pending" || item.status === "processing"))
+      .filter((item) => {
+        if (!item.id) return false
+        const isPendingOrProcessing = item.status === "pending" || item.status === "processing"
+        if (!isPendingOrProcessing) return false
+        // If a specific pending/processing filter is active, apply it
+        if (activeStatFilter === "pending" && item.status !== "pending") return false
+        if (activeStatFilter === "processing" && item.status !== "processing") return false
+        return true
+      })
       .sort((a, b) => {
         // Processing items first, then pending
         if (a.status === "processing" && b.status !== "processing") return -1
@@ -151,7 +183,7 @@ export function QueueManagementPage() {
         const bDate = normalizeDate(b.created_at)
         return aDate.getTime() - bDate.getTime()
       }) as QueueItem[]
-  }, [queueItems])
+  }, [queueItems, activeStatFilter])
 
   // Completed items: success, failed, skipped, filtered - sorted by most recently updated first
   const completedItems = useMemo(() => {
@@ -351,42 +383,6 @@ export function QueueManagementPage() {
         </Alert>
       )}
 
-      {/* Compact stats - showing full counts from API (or fallback to limited local data) */}
-      {statsLoading || loading ? (
-        <div className="flex flex-wrap gap-2">
-          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <Skeleton key={i} className="h-10 w-24 rounded-full" />
-          ))}
-        </div>
-      ) : (
-        queueStats && (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <StatPill label="Total" value={queueStats.total} />
-            <StatPill label="Pending" value={queueStats.pending} tone="amber" />
-            <StatPill label="Processing" value={queueStats.processing} tone="blue" />
-            <StatPill label="Needs Review" value={queueStats.needs_review} tone="purple" />
-            <StatPill label="Failed" value={queueStats.failed} tone="red" />
-            <StatPill label="Skipped" value={queueStats.skipped} tone="gray" />
-            <StatPill label="Filtered" value={queueStats.filtered} tone="orange" />
-            <StatPill label="Success" value={queueStats.success} tone="green" />
-            <StatPill
-              label="Success Rate"
-              value={`${queueStats.total > 0 ? Math.round((queueStats.success / queueStats.total) * 100) : 0}%`}
-              tone="green"
-            />
-            {usingFallbackStats && (
-              <div
-                className="flex items-center gap-1 text-amber-600 cursor-help"
-                title="Stats API unavailable. Showing counts from last 100 items only."
-              >
-                <AlertTriangle className="h-4 w-4" />
-                <span className="text-xs">Partial data</span>
-              </div>
-            )}
-          </div>
-        )
-      )}
-
       {/* Active task banner */}
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -404,6 +400,84 @@ export function QueueManagementPage() {
           onCancel={handleCancelItem}
         />
       </div>
+
+      {/* Compact stats - clickable to filter the list below */}
+      {statsLoading || loading ? (
+        <div className="flex flex-wrap gap-2">
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <Skeleton key={i} className="h-10 w-24 rounded-full" />
+          ))}
+        </div>
+      ) : (
+        queueStats && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <StatPill label="Total" value={queueStats.total} />
+            <StatPill
+              label="Pending"
+              value={queueStats.pending}
+              tone="amber"
+              active={activeStatFilter === "pending"}
+              onClick={() => handleStatPillClick("pending")}
+            />
+            <StatPill
+              label="Processing"
+              value={queueStats.processing}
+              tone="blue"
+              active={activeStatFilter === "processing"}
+              onClick={() => handleStatPillClick("processing")}
+            />
+            <StatPill
+              label="Needs Review"
+              value={queueStats.needs_review}
+              tone="purple"
+              active={activeStatFilter === "needs_review"}
+              onClick={() => handleStatPillClick("needs_review")}
+            />
+            <StatPill
+              label="Failed"
+              value={queueStats.failed}
+              tone="red"
+              active={activeStatFilter === "failed"}
+              onClick={() => handleStatPillClick("failed")}
+            />
+            <StatPill
+              label="Skipped"
+              value={queueStats.skipped}
+              tone="gray"
+              active={activeStatFilter === "skipped"}
+              onClick={() => handleStatPillClick("skipped")}
+            />
+            <StatPill
+              label="Filtered"
+              value={queueStats.filtered}
+              tone="orange"
+              active={activeStatFilter === "filtered"}
+              onClick={() => handleStatPillClick("filtered")}
+            />
+            <StatPill
+              label="Success"
+              value={queueStats.success}
+              tone="green"
+              active={activeStatFilter === "success"}
+              onClick={() => handleStatPillClick("success")}
+            />
+            <StatPill
+              label="Success Rate"
+              value={`${queueStats.total > 0 ? Math.round((queueStats.success / queueStats.total) * 100) : 0}%`}
+              tone="emerald"
+            />
+            {usingFallbackStats && (
+              <div
+                className="flex items-center gap-1 text-amber-600 cursor-help"
+                title="Stats API unavailable. Showing counts from last 100 items only."
+              >
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-xs">Partial data</span>
+              </div>
+            )}
+          </div>
+        )
+      )}
 
       {/* Queue list with tabs */}
       <Card>
@@ -588,34 +662,6 @@ export function QueueManagementPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
-  )
-}
-
-type StatTone = "default" | "amber" | "blue" | "red" | "green" | "gray" | "purple" | "orange"
-
-interface StatPillProps {
-  label: string
-  value: string | number
-  tone?: StatTone
-}
-
-function StatPill({ label, value, tone = "default" }: StatPillProps) {
-  const toneClasses: Record<StatTone, string> = {
-    default: "border-muted-foreground/20 text-muted-foreground",
-    amber: "border-amber-200 bg-amber-50 text-amber-800",
-    blue: "border-blue-200 bg-blue-50 text-blue-800",
-    red: "border-red-200 bg-red-50 text-red-800",
-    green: "border-green-200 bg-green-50 text-green-800",
-    gray: "border-gray-200 bg-gray-50 text-gray-700",
-    purple: "border-purple-200 bg-purple-50 text-purple-800",
-    orange: "border-orange-200 bg-orange-50 text-orange-800",
-  }
-
-  return (
-    <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium ${toneClasses[tone]}`}>
-      <span className="uppercase tracking-wide text-[11px]">{label}</span>
-      <span className="text-sm font-semibold">{value}</span>
     </div>
   )
 }

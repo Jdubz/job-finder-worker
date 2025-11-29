@@ -42,6 +42,18 @@ COMPANY_AGENT_PROMPT = (
     "(5) note any missing info and why."
 )
 
+# Agent prompt when no website URL was provided
+COMPANY_NO_URL_AGENT_PROMPT = (
+    "You are the primary agent for company research. "
+    "No website URL was provided for this company. "
+    "Your tasks: (1) FIRST find the company's official website URL, "
+    "(2) research the company thoroughly, "
+    "(3) fill all company fields (website, about, culture, mission, HQ, industry, size, employeeCount, "
+    "founded, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack if evident), "
+    "(4) find and validate a careers/job-board URL, "
+    "(5) update/confirm company_size_category and headquartersLocation."
+)
+
 
 class CompanyProcessor(BaseProcessor):
     """Processor for company queue items."""
@@ -90,8 +102,18 @@ class CompanyProcessor(BaseProcessor):
 
         with self._handle_company_failure(company_id):
             if not company_website:
-                error_msg = "No company website URL provided"
-                self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
+                # No website URL provided - hand off to agent to research and find it
+                self._handoff_to_agent_review(
+                    item,
+                    COMPANY_NO_URL_AGENT_PROMPT,
+                    reason="No company website URL provided",
+                    context={
+                        "company_name": company_name,
+                        "company_id": company_id,
+                        "instruction": "Find the company's official website URL first, then gather all company information.",
+                    },
+                    status_message="Agent review required: no website URL - needs research",
+                )
                 return
 
             pages_to_try = self._build_pages_to_try(company_website)
