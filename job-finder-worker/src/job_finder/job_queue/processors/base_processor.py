@@ -158,9 +158,7 @@ class BaseProcessor:
             )
             return review_id
         except DuplicateQueueItemError as exc:
-            logger.warning(
-                "Agent review already exists for %s: %s", item.url or item.id, exc
-            )
+            logger.warning("Agent review already exists for %s: %s", item.url or item.id, exc)
         except StorageError as exc:
             logger.error("Failed to store agent review for %s: %s", item.id, exc)
         return None
