@@ -299,10 +299,20 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
     mock_managers["queue_manager"].update_status.assert_called()
 
 
-def test_job_analyze_skips_company_when_source_name(processor, mock_managers, sample_job_item):
+@pytest.mark.parametrize(
+    "source_company_id, should_update_listing",
+    [
+        (None, False),
+        ("comp_remoteok", True),
+    ],
+)
+def test_job_analyze_skips_company_when_source_name(
+    processor, mock_managers, sample_job_item, source_company_id, should_update_listing
+):
     """If company name matches a known source, skip spawning company tasks."""
 
     sample_job_item.pipeline_state = {
+        "job_listing_id": "test-listing-123",
         "job_data": {
             "title": "Engineer",
             "company": "RemoteOK API",
@@ -316,7 +326,7 @@ def test_job_analyze_skips_company_when_source_name(processor, mock_managers, sa
         "id": "src_remoteok",
         "name": "RemoteOK API",
         "sourceType": "api",
-        "companyId": None,
+        "companyId": source_company_id,
     }
 
     class DummyResult:
@@ -335,6 +345,13 @@ def test_job_analyze_skips_company_when_source_name(processor, mock_managers, sa
 
     mock_managers["queue_manager"].spawn_item_safely.assert_not_called()
     processor.job_processor.ai_matcher.analyze_job.assert_called_once()
+
+    if should_update_listing:
+        mock_managers["job_listing_storage"].update_company_id.assert_called_once_with(
+            "test-listing-123", source_company_id
+        )
+    else:
+        mock_managers["job_listing_storage"].update_company_id.assert_not_called()
 
 
 def test_build_company_info_string(processor):
