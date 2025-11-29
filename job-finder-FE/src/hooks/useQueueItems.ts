@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { queueClient } from "@/api"
 import type { QueueItem } from "@shared/types"
 import { API_CONFIG } from "@/config/api"
@@ -46,6 +46,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   const savedQueueItems = useMemo(() => consumeSavedProviderState<QueueItem[]>("queue-items"), [])
   const streamAbortRef = useRef<AbortController | null>(null)
   const initialLoadDoneRef = useRef(false)
+  const [, startTransition] = useTransition()
 
   const normalizeQueueItem = useCallback((item: QueueItem): QueueItem => {
     const normalize = (value: unknown): Date | null => {
@@ -108,13 +109,17 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       }
 
       const upsert = (queueItem: QueueItem) => {
-        setQueueItems((prev) => {
-          const normalized = normalizeQueueItem(queueItem)
-          const existing = prev.find((i) => i.id === normalized.id)
-          if (!existing) {
-            return [normalized, ...prev]
-          }
-          return prev.map((item) => (item.id === normalized.id ? normalized : item))
+        // Use startTransition to make SSE updates non-blocking
+        // This prevents rapid updates from causing UI jank
+        startTransition(() => {
+          setQueueItems((prev) => {
+            const normalized = normalizeQueueItem(queueItem)
+            const existing = prev.find((i) => i.id === normalized.id)
+            if (!existing) {
+              return [normalized, ...prev]
+            }
+            return prev.map((item) => (item.id === normalized.id ? normalized : item))
+          })
         })
       }
 
@@ -123,7 +128,9 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       } else if (eventName === "item.updated" && data?.queueItem) {
         upsert(data.queueItem)
       } else if (eventName === "item.deleted" && data?.queueItemId) {
-        setQueueItems((prev) => prev.filter((i) => i.id !== data.queueItemId))
+        startTransition(() => {
+          setQueueItems((prev) => prev.filter((i) => i.id !== data.queueItemId))
+        })
       }
     }
 

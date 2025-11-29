@@ -81,7 +81,10 @@ export function QueueManagementPage() {
   }, [activeStatFilter])
 
   // Fetch full stats from API (not limited to 100 items)
+  // Debounced to avoid rapid refetches on every SSE event
   useEffect(() => {
+    if (!user || !isOwner) return
+
     const fetchStats = async () => {
       try {
         setStatsLoading(true)
@@ -108,9 +111,9 @@ export function QueueManagementPage() {
       }
     }
 
-    if (user && isOwner) {
-      fetchStats()
-    }
+    // Debounce stats fetch to avoid rapid API calls from SSE events
+    const timeoutId = setTimeout(fetchStats, 500)
+    return () => clearTimeout(timeoutId)
   }, [user, isOwner, queueItems])
 
   // Clear error alert when items load successfully
