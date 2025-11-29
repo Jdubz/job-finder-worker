@@ -193,7 +193,7 @@ class TestTaskSpecificProviderCreation:
                         "provider": "gemini",
                         "interface": "cli",
                     }
-                }
+                },
             }
         }
 
@@ -220,7 +220,7 @@ class TestTaskSpecificProviderCreation:
                         "interface": "cli",
                     }
                     # sourceDiscovery not specified
-                }
+                },
             }
         }
 
@@ -238,9 +238,7 @@ class TestTaskSpecificProviderCreation:
                     "interface": "cli",
                     "model": "gpt-5-codex",
                 },
-                "tasks": {
-                    "sourceDiscovery": None  # Explicitly null
-                }
+                "tasks": {"sourceDiscovery": None},  # Explicitly null
             }
         }
 
@@ -261,7 +259,7 @@ class TestTaskSpecificProviderCreation:
                         "provider": "gemini",
                         # interface and model not specified - should inherit defaults
                     }
-                }
+                },
             }
         }
 
@@ -284,7 +282,7 @@ class TestTaskSpecificProviderCreation:
                         "interface": "cli",
                         "model": None,  # Explicitly null - use provider default
                     }
-                }
+                },
             }
         }
 
@@ -314,8 +312,8 @@ class TestTaskSpecificProviderCreation:
                         "provider": "codex",
                         "interface": "cli",
                         "model": "o4-mini",
-                    }
-                }
+                    },
+                },
             }
         }
 
@@ -337,7 +335,7 @@ class TestTaskSpecificProviderCreation:
                     "interface": "cli",
                     "model": "gpt-5-codex",
                 },
-                "tasks": {}  # Empty tasks section
+                "tasks": {},  # Empty tasks section
             }
         }
 
@@ -374,7 +372,7 @@ class TestTaskSpecificProviderCreation:
                         "provider": "gemini",
                         # interface NOT specified - should be inferred as cli for gemini
                     }
-                }
+                },
             }
         }
 
@@ -398,7 +396,7 @@ class TestTaskSpecificProviderCreation:
                         "provider": "claude",
                         # interface NOT specified - should be inferred as api for claude
                     }
-                }
+                },
             }
         }
 

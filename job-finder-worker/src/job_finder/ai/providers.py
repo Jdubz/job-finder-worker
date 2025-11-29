@@ -179,7 +179,8 @@ class GeminiCLIProvider(AIProvider):
         """
         cmd = [
             "gemini",
-            "-o", "json",
+            "-o",
+            "json",
             "--yolo",
             prompt,
         ]
