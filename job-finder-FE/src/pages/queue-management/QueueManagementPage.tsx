@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { AlertCircle, Activity, Loader2, Plus, Play, Pause, AlertTriangle } from "lucide-react"
+import { StatPill } from "@/components/ui/stat-pill"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
 import { QueueTable } from "./components/QueueTable"
@@ -588,34 +589,6 @@ export function QueueManagementPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
-  )
-}
-
-type StatTone = "default" | "amber" | "blue" | "red" | "green" | "gray" | "purple" | "orange"
-
-interface StatPillProps {
-  label: string
-  value: string | number
-  tone?: StatTone
-}
-
-function StatPill({ label, value, tone = "default" }: StatPillProps) {
-  const toneClasses: Record<StatTone, string> = {
-    default: "border-muted-foreground/20 text-muted-foreground",
-    amber: "border-amber-200 bg-amber-50 text-amber-800",
-    blue: "border-blue-200 bg-blue-50 text-blue-800",
-    red: "border-red-200 bg-red-50 text-red-800",
-    green: "border-green-200 bg-green-50 text-green-800",
-    gray: "border-gray-200 bg-gray-50 text-gray-700",
-    purple: "border-purple-200 bg-purple-50 text-purple-800",
-    orange: "border-orange-200 bg-orange-50 text-orange-800",
-  }
-
-  return (
-    <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium ${toneClasses[tone]}`}>
-      <span className="uppercase tracking-wide text-[11px]">{label}</span>
-      <span className="text-sm font-semibold">{value}</span>
     </div>
   )
 }

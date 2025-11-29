@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobListings } from "@/hooks/useJobListings"
@@ -41,6 +41,7 @@ import {
   Search,
   Plus,
 } from "lucide-react"
+import { StatPill } from "@/components/ui/stat-pill"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
 function formatDate(date: unknown): string {
@@ -113,6 +114,17 @@ export function JobListingsPage() {
   const [companyName, setCompanyName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // Calculate status counts in a single pass for performance
+  const statusCounts = useMemo(() => {
+    return listings.reduce(
+      (acc, listing) => {
+        acc[listing.status] = (acc[listing.status] || 0) + 1
+        return acc
+      },
+      {} as Record<JobListingStatus, number>
+    )
+  }, [listings])
 
   const resetAddForm = () => {
     setJobUrl("")
@@ -233,42 +245,42 @@ export function JobListingsPage() {
           />
           <StatPill
             label="Pending"
-            value={listings.filter((l) => l.status === "pending").length}
+            value={statusCounts.pending ?? 0}
             tone="gray"
             active={statusFilter === "pending"}
             onClick={() => handleStatusFilterChange("pending")}
           />
           <StatPill
             label="Analyzing"
-            value={listings.filter((l) => l.status === "analyzing").length}
+            value={statusCounts.analyzing ?? 0}
             tone="blue"
             active={statusFilter === "analyzing"}
             onClick={() => handleStatusFilterChange("analyzing")}
           />
           <StatPill
             label="Analyzed"
-            value={listings.filter((l) => l.status === "analyzed").length}
+            value={statusCounts.analyzed ?? 0}
             tone="green"
             active={statusFilter === "analyzed"}
             onClick={() => handleStatusFilterChange("analyzed")}
           />
           <StatPill
             label="Matched"
-            value={listings.filter((l) => l.status === "matched").length}
+            value={statusCounts.matched ?? 0}
             tone="emerald"
             active={statusFilter === "matched"}
             onClick={() => handleStatusFilterChange("matched")}
           />
           <StatPill
             label="Filtered"
-            value={listings.filter((l) => l.status === "filtered").length}
+            value={statusCounts.filtered ?? 0}
             tone="orange"
             active={statusFilter === "filtered"}
             onClick={() => handleStatusFilterChange("filtered")}
           />
           <StatPill
             label="Skipped"
-            value={listings.filter((l) => l.status === "skipped").length}
+            value={statusCounts.skipped ?? 0}
             tone="red"
             active={statusFilter === "skipped"}
             onClick={() => handleStatusFilterChange("skipped")}
@@ -618,40 +630,5 @@ export function JobListingsPage() {
         </DialogContent>
       </Dialog>
     </div>
-  )
-}
-
-type StatTone = "default" | "gray" | "blue" | "green" | "emerald" | "red" | "orange"
-
-interface StatPillProps {
-  label: string
-  value: string | number
-  tone?: StatTone
-  active?: boolean
-  onClick?: () => void
-}
-
-function StatPill({ label, value, tone = "default", active = false, onClick }: StatPillProps) {
-  const toneClasses: Record<StatTone, string> = {
-    default: "border-muted-foreground/20 text-muted-foreground hover:bg-muted/50",
-    gray: "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100",
-    blue: "border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100",
-    green: "border-green-200 bg-green-50 text-green-800 hover:bg-green-100",
-    emerald: "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
-    red: "border-red-200 bg-red-50 text-red-800 hover:bg-red-100",
-    orange: "border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100",
-  }
-
-  const activeClass = active ? "ring-2 ring-offset-1 ring-primary" : ""
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${toneClasses[tone]} ${activeClass}`}
-    >
-      <span className="uppercase tracking-wide text-[11px]">{label}</span>
-      <span className="text-sm font-semibold">{value}</span>
-    </button>
   )
 }
