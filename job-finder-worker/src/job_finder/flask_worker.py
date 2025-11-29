@@ -373,6 +373,8 @@ def worker_loop():
                     {"count": len(items), "iteration": worker_state["iteration"]},
                 )
 
+                batch_paused = False
+
                 while items and not worker_state["shutdown_requested"]:
                     pause_requested = False
                     for item in items:
@@ -421,6 +423,7 @@ def worker_loop():
                             worker_state["current_item_id"] = None
 
                     if pause_requested:
+                        batch_paused = True
                         break
 
                     # Fetch the next batch (if any) and continue immediately
@@ -429,8 +432,18 @@ def worker_loop():
                     items = queue_manager.get_pending_items()
 
                 # Queue drained; capture stats once and then sleep until next poll window
-                stats = queue_manager.get_queue_stats()
-                slogger.worker_status("batch_completed", {"queue_stats": str(stats)})
+                if batch_paused:
+                    slogger.worker_status(
+                        "processing_paused",
+                        {
+                            "iteration": worker_state["iteration"],
+                            "reason": "disabled_in_db_mid_batch",
+                        },
+                    )
+                else:
+                    stats = queue_manager.get_queue_stats()
+                    slogger.worker_status("batch_completed", {"queue_stats": str(stats)})
+
                 if worker_state["shutdown_requested"]:
                     break
                 time.sleep(worker_state["poll_interval"])
