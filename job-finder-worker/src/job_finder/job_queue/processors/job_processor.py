@@ -429,8 +429,20 @@ class JobProcessor(BaseProcessor):
 
         try:
             # Ensure company exists (spawn dependency if needed)
-            company_ready = self._ensure_company_dependency(item, job_data)
+            company_ready, dependency_state = self._ensure_company_dependency(item, job_data)
             if not company_ready:
+                updated_state = {**item.pipeline_state, **dependency_state}
+                # Note: requeue_with_state sets status to PENDING; update a friendly message first
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.PENDING,
+                    "Waiting for company enrichment before analysis",
+                )
+                self._respawn_job_with_state(
+                    item,
+                    updated_state,
+                    next_stage="analyze",
+                )
                 return
 
             # Run AI matching (force returning score even if below threshold)
@@ -522,17 +534,20 @@ class JobProcessor(BaseProcessor):
                 f"Post-analysis error: {error_msg}",
             )
 
-    def _ensure_company_dependency(self, item: JobQueueItem, job_data: Dict[str, Any]) -> bool:
+    def _ensure_company_dependency(
+        self, item: JobQueueItem, job_data: Dict[str, Any]
+    ) -> tuple[bool, Dict[str, Any]]:
         """
         Ensure company data is available before job analysis.
 
         Uses a multi-tier resolution strategy:
         1. Try to resolve company via source linkage (source_id or company name match)
-        2. If source is an aggregator (no linked company), skip enrichment
+        2. If source is an aggregator (no linked company), skip enrichment immediately
         3. If source has linked company, use that company
         4. Otherwise, fall back to direct company lookup/creation
 
-        Returns True when company data is ready for analysis.
+        Returns (ready, state_updates). If ready is False, caller should requeue
+        until company data becomes available.
         """
         company_name_raw = job_data.get("company", item.company_name)
         company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
@@ -540,10 +555,12 @@ class JobProcessor(BaseProcessor):
         company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
         company_name_clean = clean_company_name(company_name_base) or company_name_base.strip()
 
+        state_updates: Dict[str, Any] = {}
+
         if not company_name_clean:
             # No company context; allow analysis to proceed without company info
             job_data["company"] = ""
-            return True
+            return True, state_updates
 
         pipeline_state = item.pipeline_state or {}
 
@@ -556,6 +573,7 @@ class JobProcessor(BaseProcessor):
         if source_resolution:
             if source_resolution["is_aggregator"]:
                 # This is a job aggregator with no linked company - skip enrichment
+                # Return True immediately (fire-and-forget) to avoid stuck tasks
                 logger.info(
                     "Skipping company enrichment: '%s' is job aggregator (source: %s)",
                     company_name_clean,
@@ -567,7 +585,8 @@ class JobProcessor(BaseProcessor):
                 job_data["company_info"] = ""
                 job_data["company_data"] = {}
                 job_data["is_aggregator_source"] = True
-                return True
+                state_updates["awaiting_company"] = False
+                return True, state_updates
 
             # Source has linked company - use that instead
             actual_company_id = source_resolution["company_id"]
@@ -586,7 +605,7 @@ class JobProcessor(BaseProcessor):
             if company:
                 job_data["company"] = actual_company_name or company_name_clean
                 return self._finalize_company_dependency(
-                    item, job_data, company, company_website, pipeline_state
+                    item, job_data, company, company_website, pipeline_state, state_updates
                 )
             else:
                 # Source has stale company_id reference - company was deleted
@@ -606,7 +625,7 @@ class JobProcessor(BaseProcessor):
             company = stub
 
         return self._finalize_company_dependency(
-            item, job_data, company, company_website, pipeline_state
+            item, job_data, company, company_website, pipeline_state, state_updates
         )
 
     def _finalize_company_dependency(
@@ -616,11 +635,13 @@ class JobProcessor(BaseProcessor):
         company: Dict[str, Any],
         company_website: str,
         pipeline_state: Dict[str, Any],
-    ) -> bool:
+        state_updates: Dict[str, Any],
+    ) -> tuple[bool, Dict[str, Any]]:
         """
         Finalize company dependency after resolution.
 
         Updates job_data with company info and spawns enrichment if needed.
+        Returns (ready, state_updates) tuple.
         """
         company_id = company.get("id")
         company_name = job_data.get("company", company.get("name", ""))
@@ -630,15 +651,23 @@ class JobProcessor(BaseProcessor):
         if listing_id and company_id:
             self.job_listing_storage.update_company_id(listing_id, company_id)
 
-        # Spawn enrichment task in background if data is sparse (fire and forget)
-        if not self.companies_manager.has_good_company_data(company):
-            self._try_spawn_company_task(item, company_id, company_name, company_website)
+        state_updates.update({"company_id": company_id, "job_listing_id": listing_id})
 
+        # Company exists - proceed with job analysis using available data
+        # Spawn enrichment task and wait if data is sparse
+        if not self.companies_manager.has_good_company_data(company):
+            if not pipeline_state.get("awaiting_company"):
+                self._try_spawn_company_task(item, company_id, company_name, company_website)
+            state_updates["awaiting_company"] = True
+            return False, state_updates
+
+        # Company is ready
         job_data["company_id"] = company_id
         job_data["companyId"] = company_id
         job_data["company_info"] = build_company_info_string(company)
         job_data["company_data"] = company
-        return True
+        state_updates["awaiting_company"] = False
+        return True, state_updates
 
     def _try_spawn_company_task(
         self,
