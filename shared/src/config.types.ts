@@ -79,8 +79,27 @@ export interface AIProviderSelection {
   model: string
 }
 
+/** Task names that can have per-task AI provider overrides */
+export type AITaskName = "jobMatch" | "companyDiscovery" | "sourceDiscovery"
+
+/** Per-task AI provider override (all fields optional - falls back to section default) */
+export interface AITaskConfig {
+  provider?: AIProviderType
+  interface?: AIInterfaceType
+  model?: string | null
+}
+
+/** Per-task AI configuration overrides */
+export interface AITasksConfig {
+  jobMatch?: AITaskConfig | null
+  companyDiscovery?: AITaskConfig | null
+  sourceDiscovery?: AITaskConfig | null
+}
+
 export interface AISettingsSection {
   selected: AIProviderSelection
+  /** Per-task overrides (optional - falls back to selected) */
+  tasks?: AITasksConfig
 }
 
 /** AI Settings with worker and document generator sections */

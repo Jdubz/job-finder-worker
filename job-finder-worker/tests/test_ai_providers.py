@@ -10,6 +10,7 @@ from unittest.mock import patch, MagicMock
 from job_finder.ai.providers import (
     ClaudeProvider,
     CodexCLIProvider,
+    GeminiCLIProvider,
     GeminiProvider,
     OpenAIProvider,
     create_provider_from_config,
@@ -173,6 +174,191 @@ class TestCreateProviderFromConfig:
         # Defaults interface to cli and model to gpt-5-codex
         assert isinstance(provider, CodexCLIProvider)
         assert provider.model == "gpt-5-codex"
+
+
+class TestTaskSpecificProviderCreation:
+    """Test create_provider_from_config with per-task overrides."""
+
+    def test_task_override_uses_different_provider(self):
+        """Should use task-specific provider when task override is specified."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                },
+                "tasks": {
+                    "jobMatch": {
+                        "provider": "gemini",
+                        "interface": "cli",
+                    }
+                }
+            }
+        }
+
+        # Without task parameter - should use default (codex)
+        default_provider = create_provider_from_config(ai_settings)
+        assert isinstance(default_provider, CodexCLIProvider)
+
+        # With task parameter - should use task override (gemini cli)
+        task_provider = create_provider_from_config(ai_settings, task="jobMatch")
+        assert isinstance(task_provider, GeminiCLIProvider)
+
+    def test_task_without_override_uses_default(self):
+        """Should fall back to selected when no task override exists."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                },
+                "tasks": {
+                    "jobMatch": {
+                        "provider": "gemini",
+                        "interface": "cli",
+                    }
+                    # sourceDiscovery not specified
+                }
+            }
+        }
+
+        # sourceDiscovery has no override, should use default
+        provider = create_provider_from_config(ai_settings, task="sourceDiscovery")
+        assert isinstance(provider, CodexCLIProvider)
+        assert provider.model == "gpt-5-codex"
+
+    def test_task_null_override_uses_default(self):
+        """Should fall back to selected when task override is null."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                },
+                "tasks": {
+                    "sourceDiscovery": None  # Explicitly null
+                }
+            }
+        }
+
+        provider = create_provider_from_config(ai_settings, task="sourceDiscovery")
+        assert isinstance(provider, CodexCLIProvider)
+
+    def test_task_partial_override_merges_with_default(self):
+        """Should merge partial task override with default config."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                },
+                "tasks": {
+                    "companyDiscovery": {
+                        "provider": "gemini",
+                        # interface and model not specified - should inherit defaults
+                    }
+                }
+            }
+        }
+
+        provider = create_provider_from_config(ai_settings, task="companyDiscovery")
+        # Should use gemini but with cli interface (inferred for gemini)
+        assert isinstance(provider, GeminiCLIProvider)
+
+    def test_task_override_with_model_null_uses_provider_default(self):
+        """Should allow model=null to use provider's default model."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                },
+                "tasks": {
+                    "jobMatch": {
+                        "provider": "gemini",
+                        "interface": "cli",
+                        "model": None,  # Explicitly null - use provider default
+                    }
+                }
+            }
+        }
+
+        provider = create_provider_from_config(ai_settings, task="jobMatch")
+        assert isinstance(provider, GeminiCLIProvider)
+        # model=None passed to provider, which handles its own default
+
+    def test_all_three_tasks_can_have_different_providers(self):
+        """Should support different providers for each task."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                },
+                "tasks": {
+                    "jobMatch": {
+                        "provider": "gemini",
+                        "interface": "cli",
+                    },
+                    "companyDiscovery": {
+                        "provider": "gemini",
+                        "interface": "cli",
+                    },
+                    "sourceDiscovery": {
+                        "provider": "codex",
+                        "interface": "cli",
+                        "model": "o4-mini",
+                    }
+                }
+            }
+        }
+
+        job_match = create_provider_from_config(ai_settings, task="jobMatch")
+        company = create_provider_from_config(ai_settings, task="companyDiscovery")
+        source = create_provider_from_config(ai_settings, task="sourceDiscovery")
+
+        assert isinstance(job_match, GeminiCLIProvider)
+        assert isinstance(company, GeminiCLIProvider)
+        assert isinstance(source, CodexCLIProvider)
+        assert source.model == "o4-mini"
+
+    def test_empty_tasks_section_uses_default(self):
+        """Should use default when tasks section is empty."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                },
+                "tasks": {}  # Empty tasks section
+            }
+        }
+
+        provider = create_provider_from_config(ai_settings, task="jobMatch")
+        assert isinstance(provider, CodexCLIProvider)
+
+    def test_no_tasks_section_uses_default(self):
+        """Should use default when tasks section is missing entirely."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                }
+                # No tasks section at all
+            }
+        }
+
+        provider = create_provider_from_config(ai_settings, task="jobMatch")
+        assert isinstance(provider, CodexCLIProvider)
 
 
 class TestCodexCLIProvider:

@@ -343,23 +343,36 @@ _PROVIDER_MAP: Dict[tuple, type] = {
 }
 
 
-def create_provider_from_config(ai_settings: Dict[str, Any], section: str = "worker") -> AIProvider:
+def create_provider_from_config(
+    ai_settings: Dict[str, Any],
+    section: str = "worker",
+    task: Optional[str] = None,
+) -> AIProvider:
     """
     Create an AI provider from the ai-settings configuration.
 
     Supports both the new `{selected:{provider,interface,model}}` shape and the
     legacy `{provider, model}` shape that ships in production SQLite. Defaults
     to API interfaces for cloud providers to avoid CLI breakage.
-    """
 
+    Args:
+        ai_settings: The ai-settings configuration dictionary.
+        section: Config section to use ("worker" or "documentGenerator").
+        task: Optional task name for per-task overrides ("jobMatch", "companyDiscovery",
+              "sourceDiscovery"). If specified and a task config exists, it overrides
+              the section default.
+
+    Returns:
+        An initialized AIProvider instance.
+    """
     selected = {}
 
     # Prefer sectioned configuration (worker/documentGenerator)
     section_payload = ai_settings.get(section) if isinstance(ai_settings, dict) else None
     if isinstance(section_payload, dict) and isinstance(section_payload.get("selected"), dict):
-        selected = section_payload.get("selected") or {}
+        selected = dict(section_payload.get("selected") or {})
     else:
-        selected = ai_settings.get("selected") or {}
+        selected = dict(ai_settings.get("selected") or {})
 
     # Legacy support: allow top-level provider/model keys
     if not selected and any(k in ai_settings for k in ("provider", "model", "interface")):
@@ -368,6 +381,16 @@ def create_provider_from_config(ai_settings: Dict[str, Any], section: str = "wor
             "interface": ai_settings.get("interface"),
             "model": ai_settings.get("model", "gpt-5-codex"),
         }
+
+    # Apply per-task overrides if task is specified
+    if task and isinstance(section_payload, dict):
+        tasks_config = section_payload.get("tasks") or {}
+        task_config = tasks_config.get(task)
+        if isinstance(task_config, dict):
+            # Merge task config into selected (task overrides default)
+            for key in ("provider", "interface", "model"):
+                if key in task_config and task_config[key] is not None:
+                    selected[key] = task_config[key]
 
     provider_type = selected.get("provider", "codex")
     interface_type = selected.get("interface")
