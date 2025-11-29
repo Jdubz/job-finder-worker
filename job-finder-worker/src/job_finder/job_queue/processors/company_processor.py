@@ -95,7 +95,7 @@ class CompanyProcessor(BaseProcessor):
                 return
 
             pages_to_try = self._build_pages_to_try(company_website)
-            html_content = self._fetch_company_pages(company_name, company_website)
+            html_content = self._fetch_company_pages(company_name, pages_to_try)
             if not html_content:
                 # Recoverable: agent can try different approaches to fetch company info
                 self._handoff_to_agent_review(
@@ -234,15 +234,18 @@ class CompanyProcessor(BaseProcessor):
             website,  # Homepage as fallback
         ]
 
-    def _fetch_company_pages(self, company_name: str, website: str) -> Dict[str, str]:
+    def _fetch_company_pages(self, company_name: str, pages_to_try: list) -> Dict[str, str]:
         """
         Fetch content from company pages.
 
-        Returns empty dict if no content could be fetched. Caller is responsible
-        for handling the failure (e.g., handing off to agent review).
-        """
-        pages_to_try = self._build_pages_to_try(website)
+        Args:
+            company_name: Company name for logging
+            pages_to_try: List of URLs to attempt fetching
 
+        Returns:
+            Dict mapping page type to HTML content. Empty dict if no content fetched.
+            Caller is responsible for handling failures (e.g., handing off to agent review).
+        """
         html_content: Dict[str, str] = {}
         text_limits = get_text_limits()
         min_page_length = text_limits.get("minCompanyPageLength", 200)
