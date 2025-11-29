@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional
 try:
     from dotenv import load_dotenv
 except Exception:  # pragma: no cover - optional dependency in prod container
-    load_dotenv = None
+    load_dotenv = None  # type: ignore[assignment]
 
 from job_finder.logging_config import setup_logging
 from job_finder.job_queue import ConfigLoader, JobQueueItem, QueueItemType, QueueManager
@@ -108,7 +108,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     # Load .env if available for local runs; cron will rely on entrypoint exporting env
-    if load_dotenv:
+    if load_dotenv is not None:
         load_dotenv()
 
     setup_logging()
