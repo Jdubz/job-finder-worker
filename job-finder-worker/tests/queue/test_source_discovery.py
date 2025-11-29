@@ -275,13 +275,15 @@ class TestSourceDiscoveryFailure:
         item = make_discovery_item(url="https://example.com/invalid")
         source_processor.process_source_discovery(item)
 
-        # Should mark as failed
+        # Should mark as needs_review (recoverable failure requiring agent intervention)
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
-        assert status_call[0][1] == QueueStatus.FAILED
-        assert "could not generate valid config" in status_call[0][2]
+        assert status_call[0][1] == QueueStatus.NEEDS_REVIEW
 
-        # Should not spawn SCRAPE_SOURCE
-        mock_dependencies["queue_manager"].add_item.assert_not_called()
+        # Should spawn AGENT_REVIEW item, not SCRAPE_SOURCE
+        add_calls = mock_dependencies["queue_manager"].add_item.call_args_list
+        if add_calls:
+            added_item = add_calls[-1][0][0]
+            assert added_item.type == QueueItemType.AGENT_REVIEW
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")

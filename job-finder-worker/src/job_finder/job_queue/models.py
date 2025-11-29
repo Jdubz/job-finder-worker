@@ -275,6 +275,12 @@ class JobQueueItem(BaseModel):
 
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional metadata blob")
 
+    # Agent review notes - analysis of what went wrong and recovery attempts
+    review_notes: Optional[str] = Field(
+        default=None,
+        description="Agent reviewer's analysis: what went wrong, why task failed, recovery attempts",
+    )
+
     # Loop prevention - tracking_id links related items
     tracking_id: str = Field(
         default_factory=lambda: str(__import__("uuid").uuid4()),
@@ -330,6 +336,7 @@ class JobQueueItem(BaseModel):
             "result_message": self.result_message,
             "error_details": self.error_details,
             "metadata": serialize(self.metadata),
+            "review_notes": self.review_notes,
         }
 
     @classmethod
@@ -373,4 +380,5 @@ class JobQueueItem(BaseModel):
             result_message=record.get("result_message"),
             error_details=record.get("error_details"),
             metadata=parse_json(record.get("metadata")),
+            review_notes=record.get("review_notes"),
         )
