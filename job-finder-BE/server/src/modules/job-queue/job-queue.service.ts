@@ -76,7 +76,7 @@ export class JobQueueService {
     const item: NewQueueItem = {
       type: 'company',
       status: 'pending',
-      url: input.websiteUrl,
+      url: input.websiteUrl ?? '',
       company_name: input.companyName,
       company_id: input.companyId ?? null,
       source: input.source ?? 'manual_submission',
