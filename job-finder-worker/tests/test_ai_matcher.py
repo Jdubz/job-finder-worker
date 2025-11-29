@@ -537,7 +537,7 @@ class TestAnalyzeJob:
         assert result.resume_intake_data is None
 
     def test_analyze_job_handles_analysis_failure(self, mock_provider, mock_profile, sample_job):
-        """Test handling of analysis failure."""
+        """Test handling of analysis failure returns None."""
         mock_provider.generate.return_value = "Invalid JSON"
 
         matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)

@@ -16,16 +16,16 @@ const limitSchema = z.coerce.number().int().min(1).max(200).default(50)
 const listQuerySchema = z.object({
   limit: limitSchema,
   offset: z.coerce.number().int().min(0).default(0),
-  status: z.enum(['pending', 'filtered', 'analyzing', 'analyzed', 'skipped']).optional(),
+  status: z.enum(['pending', 'filtered', 'analyzing', 'analyzed', 'skipped', 'matched']).optional(),
   sourceId: z.string().min(1).optional(),
   companyId: z.string().min(1).optional(),
   search: z.string().min(1).optional(),
-  sortBy: z.enum(['date', 'title', 'company', 'status']).optional(),
+  sortBy: z.enum(['date', 'title', 'company', 'status', 'updated']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional()
 })
 
 const updateSchema = z.object({
-  status: z.enum(['pending', 'filtered', 'analyzing', 'analyzed', 'skipped']).optional(),
+  status: z.enum(['pending', 'filtered', 'analyzing', 'analyzed', 'skipped', 'matched']).optional(),
   filterResult: z.record(z.unknown()).nullable().optional(),
   companyId: z.string().nullable().optional()
 })

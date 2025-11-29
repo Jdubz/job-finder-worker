@@ -14,7 +14,7 @@ export interface JobListingFilters {
   sourceId?: string
   companyId?: string
   search?: string
-  sortBy?: "date" | "title" | "company" | "status"
+  sortBy?: "date" | "title" | "company" | "status" | "updated"
   sortOrder?: "asc" | "desc"
   limit?: number
   offset?: number

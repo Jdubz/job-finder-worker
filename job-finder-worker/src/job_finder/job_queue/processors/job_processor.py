@@ -437,15 +437,26 @@ class JobProcessor(BaseProcessor):
             result = self.ai_matcher.analyze_job(job_data, return_below_threshold=True)
 
             if not result:
-                # Treat as failure (often tooling/auth like 403) so we can retry and inspect
+                # AI returned None without exception (e.g., empty response from provider)
                 self._update_listing_status(listing_id, "skipped")
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.FAILED,
-                    "AI analysis failed (tooling/auth)",
+                    "AI analysis returned no result",
                 )
                 return
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"AI analysis failed for {job_data.get('title')}: {error_msg}")
+            self._update_listing_status(listing_id, "skipped")
+            self.queue_manager.update_status(
+                item.id,
+                QueueStatus.FAILED,
+                f"AI analysis failed: {error_msg}",
+            )
+            return
 
+        try:
             # Check threshold after recording the score
             min_score = getattr(self.ai_matcher, "min_match_score", 0)
             if not isinstance(min_score, (int, float)):
@@ -501,20 +512,15 @@ class JobProcessor(BaseProcessor):
                     "duration_ms": round((time.monotonic() - start) * 1000),
                 },
             )
-
         except Exception as e:
-            logger.error(f"Error in JOB_ANALYZE: {e}")
-            self.slogger.pipeline_stage(
+            error_msg = str(e)
+            logger.error(f"Error after AI analysis for {job_data.get('title')}: {error_msg}")
+            self._update_listing_status(listing_id, "skipped")
+            self.queue_manager.update_status(
                 item.id,
-                "analyze",
-                "failed",
-                {
-                    "job_title": job_data.get("title"),
-                    "company": job_data.get("company"),
-                    "error": str(e),
-                },
+                QueueStatus.FAILED,
+                f"Post-analysis error: {error_msg}",
             )
-            raise
 
     def _ensure_company_dependency(self, item: JobQueueItem, job_data: Dict[str, Any]) -> bool:
         """
