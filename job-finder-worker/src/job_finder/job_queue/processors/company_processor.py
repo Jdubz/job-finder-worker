@@ -30,15 +30,16 @@ from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
+# Agent prompt for company enrichment recovery tasks
 COMPANY_AGENT_PROMPT = (
-    "You are the primary agent for company enrichment."
-    " Probe results are attached in scraped_data."
-    " Your tasks: (1) research the company using the URL and context,"
-    " (2) fill all company fields (about, culture, mission, HQ, industry, size, employeeCount,"
-    " founded, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack if evident),"
-    " (3) validate or propose a careers/job-board URL,"
-    " (4) update/confirm company_size_category and headquartersLocation,"
-    " (5) note any missing info and why."
+    "You are the primary agent for company enrichment recovery. "
+    "The automated pipeline failed to extract company information. "
+    "Your tasks: (1) research the company using the URL and context, "
+    "(2) fill all company fields (about, culture, mission, HQ, industry, size, employeeCount, "
+    "founded, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack if evident), "
+    "(3) validate or propose a careers/job-board URL, "
+    "(4) update/confirm company_size_category and headquartersLocation, "
+    "(5) note any missing info and why."
 )
 
 
@@ -93,26 +94,26 @@ class CompanyProcessor(BaseProcessor):
                 self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
                 return
 
-            html_content = self._fetch_company_pages(company_name, company_website, item.id)
+            pages_to_try = self._build_pages_to_try(company_website)
+            html_content = self._fetch_company_pages(company_name, pages_to_try)
             if not html_content:
-                # No content fetched; hand off to agent for research with probe context
+                # Recoverable: agent can try different approaches to fetch company info
                 self._handoff_to_agent_review(
                     item,
                     COMPANY_AGENT_PROMPT,
                     reason="No company pages fetched",
                     context={
-                        "attempted_urls": self._build_pages_to_try(company_website),
+                        "attempted_urls": pages_to_try,
                         "company_name": company_name,
+                        "company_website": company_website,
                     },
-                    status_message="Agent review required: no company pages fetched",
+                    status_message="Agent review required: could not fetch company pages",
                 )
                 return
 
-            extracted_info = self._extract_company_info(
-                company_name, html_content, item.id, company_website
-            )
+            extracted_info = self._extract_company_info(company_name, html_content, company_website)
             if not extracted_info:
-                # AI extraction failed; hand off to agent with fetched HTML
+                # Recoverable: agent can manually extract info from HTML
                 self._handoff_to_agent_review(
                     item,
                     COMPANY_AGENT_PROMPT,
@@ -122,7 +123,7 @@ class CompanyProcessor(BaseProcessor):
                         "company_name": company_name,
                         "company_website": company_website,
                     },
-                    status_message="Agent review required: company extraction failed",
+                    status_message="Agent review required: extraction failed",
                 )
                 return
 
@@ -141,7 +142,7 @@ class CompanyProcessor(BaseProcessor):
                     if value:
                         extracted_info[key] = value
 
-                # Check again after AI enrichment - fail if still sparse
+                # Check again after AI enrichment - recoverable if still sparse
                 if self.company_info_fetcher._needs_ai_enrichment(extracted_info):
                     self._handoff_to_agent_review(
                         item,
@@ -217,26 +218,34 @@ class CompanyProcessor(BaseProcessor):
             if job_board_url:
                 result_parts.append("job_board_spawned" if source_spawned else "job_board_exists")
 
-            # Always hand off to agent for validation/enrichment review with probe results
-            self._handoff_to_agent_review(
-                item,
-                COMPANY_AGENT_PROMPT,
-                reason="Company probe completed",
-                context={
-                    "extracted_info": extracted_info,
-                    "tech_stack": tech_stack,
-                    "job_board_url": job_board_url,
-                },
-                status_message="; ".join(result_parts),
-            )
+            self.queue_manager.update_status(item.id, QueueStatus.SUCCESS, "; ".join(result_parts))
 
     # ============================================================
     # HELPER METHODS
     # ============================================================
 
-    def _fetch_company_pages(self, company_name: str, website: str, item_id: str) -> Dict[str, str]:
-        pages_to_try = self._build_pages_to_try(website)
+    def _build_pages_to_try(self, website: str) -> list:
+        """Build list of company pages to try fetching."""
+        return [
+            f"{website}/about",
+            f"{website}/about-us",
+            f"{website}/company",
+            f"{website}/careers",
+            website,  # Homepage as fallback
+        ]
 
+    def _fetch_company_pages(self, company_name: str, pages_to_try: list) -> Dict[str, str]:
+        """
+        Fetch content from company pages.
+
+        Args:
+            company_name: Company name for logging
+            pages_to_try: List of URLs to attempt fetching
+
+        Returns:
+            Dict mapping page type to HTML content. Empty dict if no content fetched.
+            Caller is responsible for handling failures (e.g., handing off to agent review).
+        """
         html_content: Dict[str, str] = {}
         text_limits = get_text_limits()
         min_page_length = text_limits.get("minCompanyPageLength", 200)
@@ -258,31 +267,18 @@ class CompanyProcessor(BaseProcessor):
                 logger.warning(
                     "Using stub company content for %s (ALLOW_COMPANY_FETCH_STUB=1)", company_name
                 )
-            else:
-                error_msg = "Could not fetch any content from company website"
-                error_details = f"Tried pages: {', '.join(pages_to_try)}"
-                self.queue_manager.update_status(
-                    item_id,
-                    QueueStatus.FAILED,
-                    error_msg,
-                    error_details=error_details,
-                )
-                return {}
 
         return html_content
 
-    def _build_pages_to_try(self, website: str) -> list:
-        return [
-            f"{website}/about",
-            f"{website}/about-us",
-            f"{website}/company",
-            f"{website}/careers",
-            website,
-        ]
-
     def _extract_company_info(
-        self, company_name: str, html_content: Dict[str, str], item_id: str, company_website: str
+        self, company_name: str, html_content: Dict[str, str], company_website: str
     ) -> Dict[str, Any]:
+        """
+        Extract company info from HTML content.
+
+        Returns empty dict if extraction failed. Caller is responsible
+        for handling the failure (e.g., handing off to agent review).
+        """
         combined_content = " ".join(html_content.values())
         extracted_info = self.company_info_fetcher._extract_company_info(
             combined_content, company_name, company_website
@@ -298,12 +294,8 @@ class CompanyProcessor(BaseProcessor):
                 logger.warning(
                     "Using stub extracted info for %s (ALLOW_COMPANY_FETCH_STUB=1)", company_name
                 )
-            else:
-                error_msg = "AI extraction failed to produce company information"
-                self.queue_manager.update_status(item_id, QueueStatus.FAILED, error_msg)
-                return {}
 
-        return extracted_info
+        return extracted_info or {}
 
     @contextmanager
     def _handle_company_failure(self, company_id: Optional[str]):
