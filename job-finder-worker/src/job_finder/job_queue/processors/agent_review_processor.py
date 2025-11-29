@@ -12,6 +12,7 @@ import traceback
 from typing import Any, Dict, Optional
 
 from job_finder.ai.providers import AIProvider, create_provider_from_config
+from job_finder.exceptions import AIProviderError, InitializationError
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueStatus
@@ -30,6 +31,17 @@ Your job is to:
 4. RECOVER: If possible, provide the correct data/output that was expected.
 
 Be concise but thorough. Focus on actionable insights."""
+
+# Keywords that suggest the AI analysis found a recoverable issue
+_RECOVERY_INDICATORS = [
+    "can be fixed",
+    "should retry",
+    "correct data",
+    "recovery data",
+    "here is the",
+    "the correct",
+    "extracted information",
+]
 
 
 class AgentReviewProcessor(BaseProcessor):
@@ -56,7 +68,7 @@ class AgentReviewProcessor(BaseProcessor):
             try:
                 ai_settings = self.config_loader.get_ai_settings()
                 self._ai_provider = create_provider_from_config(ai_settings)
-            except Exception as exc:
+            except (AIProviderError, InitializationError) as exc:
                 logger.warning("AI provider unavailable for agent review: %s", exc)
                 self._ai_provider = None
         return self._ai_provider
@@ -209,9 +221,14 @@ class AgentReviewProcessor(BaseProcessor):
             truncated_context = {}
             for k, v in context.items():
                 if isinstance(v, str) and len(v) > 2000:
-                    truncated_context[k] = v[:2000] + "... [truncated]"
-                elif isinstance(v, dict):
-                    truncated_context[k] = json.dumps(v)[:2000]
+                    truncated_context[k] = v[:1980] + "... [truncated]"
+                elif isinstance(v, (dict, list)):
+                    # Convert to string for length check to avoid truncating valid JSON
+                    str_v = str(v)
+                    if len(str_v) > 2000:
+                        truncated_context[k] = str_v[:1980] + "... [truncated]"
+                    else:
+                        truncated_context[k] = v
                 else:
                     truncated_context[k] = v
             prompt_parts.append(json.dumps(truncated_context, indent=2, default=str))
@@ -231,18 +248,8 @@ class AgentReviewProcessor(BaseProcessor):
 
     def _check_if_recoverable(self, analysis: str) -> bool:
         """Check if the AI analysis suggests the issue is recoverable."""
-        # Simple heuristic - look for recovery-related keywords
-        recovery_indicators = [
-            "can be fixed",
-            "should retry",
-            "correct data",
-            "recovery data",
-            "here is the",
-            "the correct",
-            "extracted information",
-        ]
         analysis_lower = analysis.lower()
-        return any(indicator in analysis_lower for indicator in recovery_indicators)
+        return any(indicator in analysis_lower for indicator in _RECOVERY_INDICATORS)
 
     def _attempt_recovery(
         self,
