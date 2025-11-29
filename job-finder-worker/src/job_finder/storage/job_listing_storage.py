@@ -219,12 +219,15 @@ class JobListingStorage:
         Update job listing status.
 
         Valid statuses: pending, filtered, analyzing, analyzed, skipped, matched
+
+        When analysis_result is provided, also extracts and saves match_score
+        directly for efficient querying/sorting.
         """
         now = _utcnow()
 
         with sqlite_connection(self.db_path) as conn:
             sets = ["status = ?", "updated_at = ?"]
-            params = [status, now]
+            params: list[Any] = [status, now]
 
             if filter_result is not None:
                 sets.insert(1, "filter_result = ?")
@@ -233,6 +236,12 @@ class JobListingStorage:
             if analysis_result is not None:
                 sets.insert(1, "analysis_result = ?")
                 params.insert(1, _serialize_json(analysis_result))
+
+                # Extract match_score for direct column storage
+                match_score = analysis_result.get("match_score")
+                if match_score is not None:
+                    sets.insert(1, "match_score = ?")
+                    params.insert(1, float(match_score))
 
             set_clause = ", ".join(sets)
             conn.execute(

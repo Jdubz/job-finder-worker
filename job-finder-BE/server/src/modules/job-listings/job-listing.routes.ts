@@ -20,7 +20,7 @@ const listQuerySchema = z.object({
   sourceId: z.string().min(1).optional(),
   companyId: z.string().min(1).optional(),
   search: z.string().min(1).optional(),
-  sortBy: z.enum(['date', 'title', 'company', 'status', 'updated']).optional(),
+  sortBy: z.enum(['date', 'title', 'company', 'status', 'updated', 'score']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional()
 })
 
