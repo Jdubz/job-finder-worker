@@ -155,10 +155,10 @@ def load_config() -> Dict[str, Any]:
 
 def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
     """Reload dynamic settings from the database into in-memory components."""
-    # Load AI provider settings
+    # Load AI provider settings (must use task="jobMatch" to respect per-task config)
     try:
         ai_settings = config_loader.get_ai_settings()
-        ai_matcher.provider = create_provider_from_config(ai_settings)
+        ai_matcher.provider = create_provider_from_config(ai_settings, task="jobMatch")
     except Exception as exc:  # pragma: no cover - defensive
         slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
 

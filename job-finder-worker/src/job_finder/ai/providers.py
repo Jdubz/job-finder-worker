@@ -387,18 +387,33 @@ def create_provider_from_config(
         tasks_config = section_payload.get("tasks") or {}
         task_config = tasks_config.get(task)
         if isinstance(task_config, dict):
+            # Track if provider changed but interface wasn't explicitly set
+            provider_changed = (
+                "provider" in task_config
+                and task_config["provider"] is not None
+                and task_config["provider"] != selected.get("provider")
+            )
+            interface_explicitly_set = (
+                "interface" in task_config and task_config["interface"] is not None
+            )
+
             # Merge task config into selected (task overrides default)
             for key in ("provider", "interface", "model"):
                 if key in task_config and task_config[key] is not None:
                     selected[key] = task_config[key]
 
+            # If provider was changed but interface wasn't explicitly set,
+            # clear interface so it gets re-inferred for the new provider
+            if provider_changed and not interface_explicitly_set:
+                selected.pop("interface", None)
+
     provider_type = selected.get("provider", "codex")
     interface_type = selected.get("interface")
     model = selected.get("model", "gpt-5-codex")
 
-    # Prefer CLI for codex (only supported interface here); otherwise default to API
+    # Infer interface if not set: CLI for codex/gemini, API for others
     if not interface_type:
-        interface_type = "cli" if provider_type == "codex" else "api"
+        interface_type = "cli" if provider_type in ("codex", "gemini") else "api"
 
     # Enforce supported combinations to avoid invalid invocations
     supported_keys = set(_PROVIDER_MAP.keys())

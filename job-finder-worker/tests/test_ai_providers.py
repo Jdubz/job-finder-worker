@@ -360,6 +360,52 @@ class TestTaskSpecificProviderCreation:
         provider = create_provider_from_config(ai_settings, task="jobMatch")
         assert isinstance(provider, CodexCLIProvider)
 
+    def test_task_override_provider_only_infers_correct_interface(self):
+        """Should infer correct interface when task overrides provider but not interface."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                },
+                "tasks": {
+                    "jobMatch": {
+                        "provider": "gemini",
+                        # interface NOT specified - should be inferred as cli for gemini
+                    }
+                }
+            }
+        }
+
+        # Should successfully create GeminiCLIProvider (not fail with codex/cli mismatch)
+        provider = create_provider_from_config(ai_settings, task="jobMatch")
+        assert isinstance(provider, GeminiCLIProvider)
+
+    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"})
+    @patch("job_finder.ai.providers.Anthropic")
+    def test_task_override_to_api_provider_infers_api_interface(self, mock_anthropic):
+        """Should infer API interface when task overrides to API-only provider."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                },
+                "tasks": {
+                    "jobMatch": {
+                        "provider": "claude",
+                        # interface NOT specified - should be inferred as api for claude
+                    }
+                }
+            }
+        }
+
+        # Should successfully create ClaudeProvider (infers api interface)
+        provider = create_provider_from_config(ai_settings, task="jobMatch")
+        assert isinstance(provider, ClaudeProvider)
+
 
 class TestCodexCLIProvider:
     """Test CodexCLIProvider behavior."""
