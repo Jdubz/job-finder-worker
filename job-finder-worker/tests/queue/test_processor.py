@@ -246,14 +246,12 @@ def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_
 
     processor.job_processor._do_job_analyze(sample_job_item)
 
-    # Should spawn company task in background but proceed with job analysis
+    # Should spawn company task in background and wait for enrichment
     assert mock_managers["queue_manager"].spawn_item_safely.called
-    # Should proceed with analysis - no waiting_for_company_id in final state
-    processor.job_processor.ai_matcher.analyze_job.assert_called()
-    # Should proceed to 'save' stage, so requeue is expected
+    processor.job_processor.ai_matcher.analyze_job.assert_not_called()
     mock_managers["queue_manager"].requeue_with_state.assert_called_once()
     _, updated_state = mock_managers["queue_manager"].requeue_with_state.call_args[0]
-    assert "waiting_for_company_id" not in updated_state
+    assert updated_state.get("awaiting_company") is True
 
 
 def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sample_job_item):
@@ -294,7 +292,8 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
     processor.job_processor._do_job_analyze(sample_job_item)
 
     processor.job_processor.ai_matcher.analyze_job.assert_called_once()
-    mock_managers["queue_manager"].requeue_with_state.assert_called()  # save stage handoff
+    mock_managers["job_storage"].save_job_match.assert_called_once()
+    mock_managers["queue_manager"].update_status.assert_called()
 
 
 def test_build_company_info_string(processor):

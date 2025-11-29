@@ -205,8 +205,6 @@ class JobProcessor(BaseProcessor):
         # Decision tree: determine what action to take based on state
         has_job_data = "job_data" in state
         has_filter_result = "filter_result" in state
-        has_match_result = "match_result" in state
-
         if not has_job_data:
             # Need to scrape job data
             logger.info(f"[DECISION TREE] {item.url[:50]} -> SCRAPE (no job_data)")
@@ -215,14 +213,10 @@ class JobProcessor(BaseProcessor):
             # Need to filter
             logger.info(f"[DECISION TREE] {item.url[:50]} -> FILTER (has job_data)")
             self._do_job_filter(item)
-        elif not has_match_result:
-            # Need to analyze
+        else:
+            # Analyze + save
             logger.info(f"[DECISION TREE] {item.url[:50]} -> ANALYZE (passed filter)")
             self._do_job_analyze(item)
-        else:
-            # Need to save
-            logger.info(f"[DECISION TREE] {item.url[:50]} -> SAVE (has match_result)")
-            self._do_job_save(item)
 
     # ============================================================
     # DECISION TREE ACTION METHODS
@@ -429,8 +423,20 @@ class JobProcessor(BaseProcessor):
 
         try:
             # Ensure company exists (spawn dependency if needed)
-            company_ready = self._ensure_company_dependency(item, job_data)
+            company_ready, dependency_state = self._ensure_company_dependency(item, job_data)
             if not company_ready:
+                updated_state = {**item.pipeline_state, **dependency_state}
+                # Note: requeue_with_state sets status to PENDING; update a friendly message first
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.PENDING,
+                    "Waiting for company enrichment before analysis",
+                )
+                self._respawn_job_with_state(
+                    item,
+                    updated_state,
+                    next_stage="analyze_wait_company",
+                )
                 return
 
             # Run AI matching (force returning score even if below threshold)
@@ -464,9 +470,15 @@ class JobProcessor(BaseProcessor):
                 )
                 return
 
-            # Match passed - update state and continue
-            # Update job_listing status to 'analyzed'
-            self._update_listing_status(listing_id, "analyzed", analysis_result=result.to_dict())
+            # Match passed - save immediately
+            self._update_listing_status(listing_id, "matched", analysis_result=result.to_dict())
+
+            doc_id = self.job_storage.save_job_match(
+                job_listing_id=listing_id,
+                match_result=result,
+                user_id=None,
+                queue_item_id=item.id,
+            )
 
             updated_state = {
                 **item.pipeline_state,
@@ -474,19 +486,18 @@ class JobProcessor(BaseProcessor):
                 "job_listing_id": listing_id,
             }
 
-            # Mark this step complete
+            logger.info(
+                f"JOB_ANALYZE complete: Score {result.match_score}, "
+                f"Priority {result.application_priority}, Saved ID: {doc_id}"
+            )
+
+            # Persist final pipeline_state for observability (keeps SUCCESS after update)
+            self.queue_manager.requeue_with_state(item.id, updated_state)
+
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.SUCCESS,
-                f"AI analysis complete (score: {result.match_score})",
-            )
-
-            # Re-spawn same URL with match result
-            self._respawn_job_with_state(item, updated_state, next_stage="save")
-
-            logger.info(
-                f"JOB_ANALYZE complete: Score {result.match_score}, "
-                f"Priority {result.application_priority}"
+                f"Job saved successfully (ID: {doc_id}, Score: {result.match_score})",
             )
 
             self.slogger.pipeline_stage(
@@ -516,14 +527,14 @@ class JobProcessor(BaseProcessor):
             )
             raise
 
-    def _ensure_company_dependency(self, item: JobQueueItem, job_data: Dict[str, Any]) -> bool:
+    def _ensure_company_dependency(
+        self, item: JobQueueItem, job_data: Dict[str, Any]
+    ) -> tuple[bool, Dict[str, Any]]:
         """
         Ensure company data is available before job analysis.
 
-        Checks if the company record has sufficient data (about, culture, etc.) for
-        document generation and job ranking. If not, spawns an analysis task.
-
-        Returns True when company data is ready for analysis.
+        Returns (ready, state_updates). If ready is False, caller should requeue
+        until company data becomes available.
         """
         company_name_raw = job_data.get("company", item.company_name)
         company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
@@ -532,9 +543,11 @@ class JobProcessor(BaseProcessor):
         company_name_clean = clean_company_name(company_name_base) or company_name_base.strip()
         job_data["company"] = company_name_clean
 
+        state_updates: Dict[str, Any] = {}
+
         if not company_name_clean:
             # No company context; allow analysis to proceed without company info
-            return True
+            return True, state_updates
 
         pipeline_state = item.pipeline_state or {}
 
@@ -553,16 +566,23 @@ class JobProcessor(BaseProcessor):
         if listing_id and company_id:
             self.job_listing_storage.update_company_id(listing_id, company_id)
 
-        # Company exists - proceed with job analysis using available data
-        # Spawn enrichment task in background if data is sparse (fire and forget)
-        if not self.companies_manager.has_good_company_data(company):
-            self._try_spawn_company_task(item, company_id, company_name_clean, company_website)
+        state_updates.update({"company_id": company_id, "job_listing_id": listing_id})
 
+        # Company exists - proceed with job analysis using available data
+        # Spawn enrichment task and wait if data is sparse
+        if not self.companies_manager.has_good_company_data(company):
+            if not pipeline_state.get("awaiting_company"):
+                self._try_spawn_company_task(item, company_id, company_name_clean, company_website)
+            state_updates["awaiting_company"] = True
+            return False, state_updates
+
+        # Company is ready
         job_data["company_id"] = company_id
         job_data["companyId"] = company_id
         job_data["company_info"] = build_company_info_string(company)
         job_data["company_data"] = company
-        return True
+        state_updates["awaiting_company"] = False
+        return True, state_updates
 
     def _try_spawn_company_task(
         self,
@@ -597,92 +617,6 @@ class JobProcessor(BaseProcessor):
             logger.debug("Company task for %s already in queue, skipping spawn", company_name)
         except Exception as e:
             logger.debug("Could not spawn company task for %s: %s", company_name, e)
-
-    def _do_job_save(self, item: JobQueueItem) -> None:
-        """
-        Save job match to SQLite.
-
-        Final step - marks item as SUCCESS, no re-spawning.
-        Uses job_listing_id from pipeline_state to reference the job_listings table.
-        """
-        if not item.id or not item.pipeline_state:
-            logger.error("Cannot process SAVE without ID or pipeline_state")
-            return
-
-        job_data = item.pipeline_state.get("job_data")
-        match_result_dict = item.pipeline_state.get("match_result")
-        listing_id = item.pipeline_state.get("job_listing_id")
-
-        if not job_data or not match_result_dict:
-            logger.error("Missing job_data or match_result in pipeline_state")
-            return
-
-        self.slogger.pipeline_stage(
-            item.id,
-            "save",
-            "started",
-            {
-                "job_title": job_data.get("title"),
-                "company": job_data.get("company"),
-            },
-        )
-        start = time.monotonic()
-
-        logger.info(f"JOB_SAVE: Saving {job_data.get('title')} at {job_data.get('company')}")
-
-        try:
-            # Reconstruct JobMatchResult from dict
-            from job_finder.ai.matcher import JobMatchResult
-
-            result = JobMatchResult(**match_result_dict)
-
-            # Save to job-matches with job_listing_id reference
-            doc_id = self.job_storage.save_job_match(
-                job_listing_id=listing_id,
-                match_result=result,
-                user_id=None,
-                queue_item_id=item.id,
-            )
-
-            # Mark listing as matched for clearer lifecycle tracking
-            self._update_listing_status(listing_id, "matched", analysis_result=result.to_dict())
-
-            logger.info(
-                f"Job matched and saved: {job_data.get('title')} at {job_data.get('company')} "
-                f"(Score: {result.match_score}, ID: {doc_id})"
-            )
-
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.SUCCESS,
-                f"Job saved successfully (ID: {doc_id}, Score: {result.match_score})",
-            )
-
-            self.slogger.pipeline_stage(
-                item.id,
-                "save",
-                "completed",
-                {
-                    "job_title": job_data.get("title"),
-                    "company": job_data.get("company"),
-                    "doc_id": doc_id,
-                    "duration_ms": round((time.monotonic() - start) * 1000),
-                },
-            )
-
-        except Exception as e:
-            logger.error(f"Error in JOB_SAVE: {e}")
-            self.slogger.pipeline_stage(
-                item.id,
-                "save",
-                "failed",
-                {
-                    "job_title": job_data.get("title"),
-                    "company": job_data.get("company"),
-                    "error": str(e),
-                },
-            )
-            raise
 
     def _respawn_job_with_state(
         self,
