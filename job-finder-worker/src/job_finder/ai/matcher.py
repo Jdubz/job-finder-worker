@@ -25,7 +25,9 @@ class ScoreBreakdown(BaseModel):
 
     base_score: int = Field(..., description="Initial score from AI analysis")
     final_score: int = Field(..., description="Final score after adjustments")
-    adjustments: List[str] = Field(default_factory=list, description="List of score adjustments applied")
+    adjustments: List[str] = Field(
+        default_factory=list, description="List of score adjustments applied"
+    )
 
 
 class JobMatchResult(BaseModel):
