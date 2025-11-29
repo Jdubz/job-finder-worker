@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { AlertCircle, Activity, Loader2, Plus, Play, Pause, AlertTriangle } from "lucide-react"
+import { AlertCircle, Activity, Loader2, Plus, Play, Pause, AlertTriangle, Bug } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
@@ -41,7 +41,7 @@ const STATS_FETCH_DEBOUNCE_MS = 500
 export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
 
-  const { queueItems, loading, error, connectionStatus, updateQueueItem, refetch } = useQueueItems({ limit: 100 })
+  const { queueItems, loading, error, connectionStatus, eventLog, updateQueueItem, refetch } = useQueueItems({ limit: 100 })
 
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
@@ -58,6 +58,7 @@ export function QueueManagementPage() {
   const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
   const [completedStatusFilter, setCompletedStatusFilter] = useState<CompletedStatus | "all">("all")
   const [activeStatFilter, setActiveStatFilter] = useState<string | null>(null)
+  const [showEventLog, setShowEventLog] = useState(false)
 
   // Handle stat pill click to filter the list
   const handleStatPillClick = useCallback((status: string) => {
@@ -288,6 +289,8 @@ export function QueueManagementPage() {
     return parsed ? parsed.toLocaleString() : "—"
   }
 
+  const formatTime = (ts: number) => new Date(ts).toLocaleTimeString()
+
   if (!user) {
     return (
       <div className="space-y-6">
@@ -355,6 +358,15 @@ export function QueueManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowEventLog((v) => !v)}
+            className="border border-dashed border-slate-200 hover:border-slate-300"
+          >
+            <Bug className="h-4 w-4 mr-2" />
+            {showEventLog ? "Hide" : "Show"} SSE Log
+          </Button>
           {isProcessingEnabled !== null && (
             <Button
               size="sm"
@@ -563,6 +575,47 @@ export function QueueManagementPage() {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* SSE Event log drawer */}
+      <div
+        className={`fixed left-0 top-24 bottom-4 w-96 bg-slate-900 text-slate-50 shadow-2xl border-r border-slate-800 transition-transform duration-300 ease-in-out transform ${
+          showEventLog ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/60 backdrop-blur">
+          <div className="flex items-center gap-2">
+            <Bug className="h-4 w-4" />
+            <div>
+              <div className="text-sm font-semibold">Incoming SSE Events</div>
+              <div className="text-xs text-slate-400">Most recent first • capped at 200</div>
+            </div>
+          </div>
+          <button
+            className="text-slate-400 hover:text-white text-sm"
+            onClick={() => setShowEventLog(false)}
+            aria-label="Close SSE log"
+          >
+            Close
+          </button>
+        </div>
+        <div className="h-full overflow-y-auto px-4 py-3 space-y-2 text-xs font-mono leading-relaxed">
+          {eventLog.length === 0 ? (
+            <div className="text-slate-500">No events yet</div>
+          ) : (
+            eventLog.map((entry) => (
+              <div key={entry.id} className="bg-slate-800/70 border border-slate-700 rounded p-2">
+                <div className="flex items-center justify-between text-[11px] text-slate-300">
+                  <span className="uppercase tracking-wide">{entry.event}</span>
+                  <span className="text-slate-500">{formatTime(entry.timestamp)}</span>
+                </div>
+                <pre className="mt-1 whitespace-pre-wrap break-words text-slate-100">
+                  {JSON.stringify(entry.payload, null, 2)}
+                </pre>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <ScrapeJobDialog open={createOpen} onOpenChange={setCreateOpen} onSubmitted={refetch} />

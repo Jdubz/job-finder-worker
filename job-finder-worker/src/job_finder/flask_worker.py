@@ -373,10 +373,26 @@ def worker_loop():
                     {"count": len(items), "iteration": worker_state["iteration"]},
                 )
 
+                batch_paused = False
+
                 while items and not worker_state["shutdown_requested"]:
+                    pause_requested = False
                     for item in items:
                         if worker_state["shutdown_requested"]:
                             slogger.worker_status("shutdown_in_progress")
+                            break
+
+                        # Re-read processing toggle before each item so a stop request
+                        # takes effect even mid-batch.
+                        if not config_loader.is_processing_enabled():
+                            pause_requested = True
+                            slogger.worker_status(
+                                "processing_paused",
+                                {
+                                    "iteration": worker_state["iteration"],
+                                    "reason": "disabled_in_db_mid_batch",
+                                },
+                            )
                             break
 
                         worker_state["current_item_id"] = item.id
@@ -406,14 +422,28 @@ def worker_loop():
                         finally:
                             worker_state["current_item_id"] = None
 
+                    if pause_requested:
+                        batch_paused = True
+                        break
+
                     # Fetch the next batch (if any) and continue immediately
                     if worker_state["shutdown_requested"]:
                         break
                     items = queue_manager.get_pending_items()
 
                 # Queue drained; capture stats once and then sleep until next poll window
-                stats = queue_manager.get_queue_stats()
-                slogger.worker_status("batch_completed", {"queue_stats": str(stats)})
+                if batch_paused:
+                    slogger.worker_status(
+                        "processing_paused",
+                        {
+                            "iteration": worker_state["iteration"],
+                            "reason": "disabled_in_db_mid_batch",
+                        },
+                    )
+                else:
+                    stats = queue_manager.get_queue_stats()
+                    slogger.worker_status("batch_completed", {"queue_stats": str(stats)})
+
                 if worker_state["shutdown_requested"]:
                     break
                 time.sleep(worker_state["poll_interval"])

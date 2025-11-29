@@ -23,11 +23,19 @@ interface SubmitSourceDiscoveryParams {
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected"
 
+export interface QueueEventLogEntry {
+  id: string
+  timestamp: number
+  event: string
+  payload: unknown
+}
+
 interface UseQueueItemsResult {
   queueItems: QueueItem[]
   loading: boolean
   error: Error | null
   connectionStatus: ConnectionStatus
+  eventLog: QueueEventLogEntry[]
   submitJob: (url: string, companyName?: string, generationId?: string) => Promise<string>
   submitCompany: (params: SubmitCompanyParams) => Promise<string>
   submitSourceDiscovery: (params: SubmitSourceDiscoveryParams) => Promise<string>
@@ -43,10 +51,27 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<Error | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting")
+  const [eventLog, setEventLog] = useState<QueueEventLogEntry[]>([])
   const savedQueueItems = useMemo(() => consumeSavedProviderState<QueueItem[]>("queue-items"), [])
   const streamAbortRef = useRef<AbortController | null>(null)
   const initialLoadDoneRef = useRef(false)
   const [, startTransition] = useTransition()
+  const logCounterRef = useRef(0)
+
+  const appendEventLog = useCallback((event: string, payload: unknown) => {
+    logCounterRef.current += 1
+    const entry: QueueEventLogEntry = {
+      id: `${Date.now()}-${logCounterRef.current}`,
+      timestamp: Date.now(),
+      event,
+      payload,
+    }
+    setEventLog((prev) => {
+      const next = [entry, ...prev]
+      // Keep last 200 entries to avoid unbounded growth
+      return next.slice(0, 200)
+    })
+  }, [])
 
   const normalizeQueueItem = useCallback((item: QueueItem): QueueItem => {
     const normalize = (value: unknown): Date | null => {
@@ -101,6 +126,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
 
     const handleEvent = (eventName: string, data?: QueueEventData) => {
       if (cancelled) return
+      appendEventLog(eventName, data ?? null)
       if (eventName === "snapshot" && data?.items) {
         const items = data.items ?? []
         setQueueItems(items.map(normalizeQueueItem))
@@ -151,11 +177,13 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
 
         if (!res.ok || !res.body) {
           setConnectionStatus("disconnected")
+          appendEventLog("connection.error", { status: res.status })
           await fetchQueueItems()
           return
         }
 
         setConnectionStatus("connected")
+        appendEventLog("connection.open", { status: res.status })
         const reader = res.body.getReader()
         const decoder = new TextDecoder("utf-8")
         let buffer = ""
@@ -199,6 +227,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         if (!cancelled) {
           setConnectionStatus("connecting")
           console.log("Queue event stream ended gracefully; reconnecting...")
+          appendEventLog("connection.end", { reason: "graceful" })
           fetchQueueItems({ silent: true })
           setTimeout(() => {
             if (!cancelled) void startStream()
@@ -209,12 +238,14 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         // Skip reconnects if intentionally aborted during unmount
         if (error instanceof DOMException && error.name === "AbortError") {
           setConnectionStatus("disconnected")
+          appendEventLog("connection.aborted", null)
           return
         }
 
         if (!cancelled) {
           setConnectionStatus("connecting")
           console.error("Queue event stream disconnected; retrying shortly", error)
+          appendEventLog("connection.error", { message: String(error) })
           fetchQueueItems({ silent: true })
           // Attempt to reconnect after backoff
           setTimeout(() => {
@@ -230,7 +261,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       cancelled = true
       streamAbortRef.current?.abort()
     }
-  }, [fetchQueueItems, normalizeQueueItem])
+  }, [appendEventLog, fetchQueueItems, normalizeQueueItem])
 
   const submitJob = useCallback(
     async (url: string, companyName?: string, generationId?: string): Promise<string> => {
@@ -337,6 +368,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     loading,
     error,
     connectionStatus,
+    eventLog,
     submitJob,
     submitCompany,
     submitSourceDiscovery,
