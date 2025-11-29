@@ -13,6 +13,7 @@ Job Listings Integration:
 import logging
 import time
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from job_finder.ai.matcher import AIJobMatcher
 from job_finder.company_info_fetcher import CompanyInfoFetcher
@@ -42,6 +43,36 @@ logger = logging.getLogger(__name__)
 
 class JobProcessor(BaseProcessor):
     """Processor for job queue items."""
+
+    # Known job board and aggregator domains (for URL detection)
+    _JOB_BOARD_DOMAINS = frozenset([
+        # ATS providers
+        "greenhouse.io",
+        "lever.co",
+        "myworkdayjobs.com",
+        "workday.com",
+        "smartrecruiters.com",
+        "ashbyhq.com",
+        "breezy.hr",
+        "applytojob.com",
+        "jobvite.com",
+        "icims.com",
+        "ultipro.com",
+        "taleo.net",
+        # Job aggregators
+        "weworkremotely.com",
+        "remotive.com",
+        "remotive.io",
+        "remote.co",
+        "remoteok.com",
+        "remoteok.io",
+        "jbicy.io",
+        "flexjobs.com",
+        "wellfound.com",
+        "angel.co",
+        "ycombinator.com",
+        "workatastartup.com",
+    ])
 
     def __init__(
         self,
@@ -644,7 +675,7 @@ class JobProcessor(BaseProcessor):
         Returns (ready, state_updates) tuple.
         """
         company_id = company.get("id")
-        company_name = job_data.get("company", company.get("name", ""))
+        company_name = job_data["company"]  # Guaranteed set by _ensure_company_dependency
 
         # Update job_listing with company_id if we have a listing
         listing_id = pipeline_state.get("job_listing_id")
@@ -711,7 +742,8 @@ class JobProcessor(BaseProcessor):
         except Exception as e:
             logger.debug("Could not spawn company task for %s: %s", company_name, e)
 
-    def _is_job_board_url(self, url: str) -> bool:
+    @staticmethod
+    def _is_job_board_url(url: str) -> bool:
         """
         Check if URL is a known job board or aggregator rather than a company website.
 
@@ -720,46 +752,16 @@ class JobProcessor(BaseProcessor):
         if not url:
             return False
 
-        # Known job board and aggregator domains
-        job_board_domains = [
-            # ATS providers
-            "greenhouse.io",
-            "lever.co",
-            "myworkdayjobs.com",
-            "workday.com",
-            "smartrecruiters.com",
-            "ashbyhq.com",
-            "breezy.hr",
-            "applytojob.com",
-            "jobvite.com",
-            "icims.com",
-            "ultipro.com",
-            "taleo.net",
-            # Job aggregators
-            "weworkremotely.com",
-            "remotive.com",
-            "remotive.io",
-            "remote.co",
-            "remoteok.com",
-            "remoteok.io",
-            "jbicy.io",
-            "flexjobs.com",
-            "wellfound.com",
-            "angel.co",
-            "ycombinator.com",
-            "workatastartup.com",
-        ]
-
         try:
-            from urllib.parse import urlparse
-
             netloc = urlparse(url.lower()).netloc
             # Use proper suffix matching to avoid false positives
             # (e.g., "notgreenhouse.io" should not match "greenhouse.io")
             return any(
-                netloc == domain or netloc.endswith("." + domain) for domain in job_board_domains
+                netloc == domain or netloc.endswith("." + domain)
+                for domain in JobProcessor._JOB_BOARD_DOMAINS
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("URL parsing failed in _is_job_board_url for '%s': %s", url, e)
             return False
 
     def _do_job_save(self, item: JobQueueItem) -> None:

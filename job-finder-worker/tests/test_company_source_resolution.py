@@ -182,20 +182,15 @@ class TestMatchSourceByCompanyName:
         assert source["companyName"] == "Stripe"
 
     def test_partial_match_with_minimum_length(self, tmp_path):
-        """Partial matches require minimum 4 character overlap."""
+        """Partial matches require 60% overlap ratio to avoid false positives."""
         db = tmp_path / "sources.db"
         _bootstrap_db(db)
         manager = JobSourcesManager(str(db))
 
-        # "coin" is only 4 chars but should match "coinbase"
+        # "coin" should NOT match "coinbase" because:
+        # - "coin" (4 chars) vs "coinbase" (8 chars) = 50% ratio, below 60% threshold
         source = manager._match_source_by_company_name("coin")
-
-        # Should not match because "coin" doesn't fully match any normalized name
-        # and partial matching requires the input to be IN the source name
-        # Let's check what happens
-        if source:
-            # If it matches, it should be Coinbase
-            assert "coinbase" in source["name"].lower() or source.get("companyName", "").lower() == "coinbase"
+        assert source is None  # Below 60% threshold, no match
 
     def test_empty_name_returns_none(self, tmp_path):
         """Empty company name returns None."""
@@ -209,42 +204,35 @@ class TestMatchSourceByCompanyName:
 
 
 class TestIsJobBoardUrl:
-    """Test _is_job_board_url method in JobProcessor.
-
-    Note: This requires importing JobProcessor which has many dependencies,
-    so we test the URL detection logic directly.
-    """
+    """Test _is_job_board_url static method in JobProcessor."""
 
     def test_job_board_urls(self):
-        """Test common job board URL detection."""
-        from urllib.parse import urlparse
+        """Test common job board URL detection using actual production code."""
+        from job_finder.job_queue.processors.job_processor import JobProcessor
 
-        job_board_domains = [
-            "greenhouse.io", "lever.co", "myworkdayjobs.com", "workday.com",
-            "smartrecruiters.com", "ashbyhq.com", "breezy.hr", "jobvite.com",
-            "weworkremotely.com", "remotive.com", "remoteok.com", "jbicy.io",
-        ]
+        # Job board URLs (ATS providers)
+        assert JobProcessor._is_job_board_url("https://boards.greenhouse.io/coinbase/jobs/123")
+        assert JobProcessor._is_job_board_url("https://jobs.lever.co/stripe/123")
+        assert JobProcessor._is_job_board_url("https://jbicy.io/jobs/123")
 
-        def is_job_board_url(url: str) -> bool:
-            if not url:
-                return False
-            try:
-                netloc = urlparse(url.lower()).netloc
-                return any(domain in netloc for domain in job_board_domains)
-            except Exception:
-                return False
-
-        # Job board URLs
-        assert is_job_board_url("https://boards.greenhouse.io/coinbase/jobs/123")
-        assert is_job_board_url("https://jobs.lever.co/stripe/123")
-        assert is_job_board_url("https://weworkremotely.com/remote-jobs/123")
-        assert is_job_board_url("https://jbicy.io/jobs/123")
+        # Job aggregators
+        assert JobProcessor._is_job_board_url("https://weworkremotely.com/remote-jobs/123")
+        assert JobProcessor._is_job_board_url("https://remotive.com/jobs/123")
 
         # Non-job board URLs (company websites)
-        assert not is_job_board_url("https://coinbase.com/careers")
-        assert not is_job_board_url("https://stripe.com/jobs")
-        assert not is_job_board_url("https://google.com/about")
+        assert not JobProcessor._is_job_board_url("https://coinbase.com/careers")
+        assert not JobProcessor._is_job_board_url("https://stripe.com/jobs")
+        assert not JobProcessor._is_job_board_url("https://google.com/about")
 
         # Edge cases
-        assert not is_job_board_url("")
-        assert not is_job_board_url(None)
+        assert not JobProcessor._is_job_board_url("")
+        assert not JobProcessor._is_job_board_url(None)
+
+    def test_no_false_positives_on_similar_domains(self):
+        """Ensure suffix matching prevents false positives like 'notgreenhouse.io'."""
+        from job_finder.job_queue.processors.job_processor import JobProcessor
+
+        # Should NOT match - similar but not actual job board domains
+        assert not JobProcessor._is_job_board_url("https://notgreenhouse.io/jobs")
+        assert not JobProcessor._is_job_board_url("https://mylever.co/jobs")
+        assert not JobProcessor._is_job_board_url("https://fakejbicy.io/jobs")

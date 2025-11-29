@@ -384,6 +384,35 @@ class JobSourcesManager:
             "source_name": source.get("name"),
         }
 
+    @staticmethod
+    def _compute_partial_match_score(query: str, target: str) -> int:
+        """
+        Compute partial match score between two normalized strings.
+
+        Requires at least 60% overlap ratio to avoid false positives
+        (e.g., "Coin" should not match "Coinbase").
+
+        Args:
+            query: The normalized query string
+            target: The normalized target string to match against
+
+        Returns:
+            Match score (length of matched portion), or 0 if below threshold
+        """
+        if not query or not target:
+            return 0
+
+        longer_len = max(len(query), len(target))
+        if query in target:
+            match_ratio = len(query) / longer_len
+            if match_ratio >= 0.6:
+                return len(query)
+        elif target in query:
+            match_ratio = len(target) / longer_len
+            if match_ratio >= 0.6:
+                return len(target)
+        return 0
+
     def _match_source_by_company_name(self, company_name: str) -> Optional[Dict[str, Any]]:
         """
         Fuzzy match a company name against known source names.
@@ -427,30 +456,9 @@ class JobSourcesManager:
                 return source
 
             # Partial match scoring: prefer longer matches
-            # Require match to be at least 60% of the longer string to avoid false positives
-            # (e.g., "Coin" matching "Coinbase" incorrectly)
-            score = 0
-            if normalized and source_normalized:
-                longer_len = max(len(normalized), len(source_normalized))
-                if normalized in source_normalized:
-                    match_ratio = len(normalized) / longer_len
-                    if match_ratio >= 0.6:
-                        score = len(normalized)
-                elif source_normalized in normalized:
-                    match_ratio = len(source_normalized) / longer_len
-                    if match_ratio >= 0.6:
-                        score = len(source_normalized)
-
+            score = self._compute_partial_match_score(normalized, source_normalized)
             if linked_normalized:
-                longer_len = max(len(normalized), len(linked_normalized))
-                if normalized in linked_normalized:
-                    match_ratio = len(normalized) / longer_len
-                    if match_ratio >= 0.6:
-                        score = max(score, len(normalized))
-                elif linked_normalized in normalized:
-                    match_ratio = len(linked_normalized) / longer_len
-                    if match_ratio >= 0.6:
-                        score = max(score, len(linked_normalized))
+                score = max(score, self._compute_partial_match_score(normalized, linked_normalized))
 
             if score > best_match_score:
                 best_match = source
