@@ -48,15 +48,14 @@ ENV GEMINI_HOME=/home/node/.gemini
 COPY --from=builder /root/.local /home/node/.local
 
 # Copy Codex CLI + minimal node runtime (no npm in final image)
-# Must recreate symlink as COPY dereferences it
 COPY --from=cli-builder /usr/local/bin/node /usr/local/bin/node
 COPY --from=cli-builder /usr/local/lib/node_modules/@openai/codex /usr/local/lib/node_modules/@openai/codex
 COPY --from=cli-builder /usr/local/lib/node_modules/@openai/codex/vendor /usr/local/vendor
-RUN ln -sf /usr/local/lib/node_modules/@openai/codex/bin/codex.js /usr/local/bin/codex
+RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@openai/codex/bin/codex.js "$@"\n' > /usr/local/bin/codex && chmod +x /usr/local/bin/codex
 
-# Copy Gemini CLI (must recreate symlink as COPY breaks it)
+# Copy Gemini CLI
 COPY --from=cli-builder /usr/local/lib/node_modules/@google/gemini-cli /usr/local/lib/node_modules/@google/gemini-cli
-RUN ln -sf /usr/local/lib/node_modules/@google/gemini-cli/dist/index.js /usr/local/bin/gemini
+RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@google/gemini-cli/dist/index.js "$@"\n' > /usr/local/bin/gemini && chmod +x /usr/local/bin/gemini
 
 # Create directories for AI CLIs and data with proper ownership
 RUN mkdir -p /home/node/.codex /home/node/.gemini /data/sqlite \
