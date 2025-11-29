@@ -48,10 +48,11 @@ ENV GEMINI_HOME=/home/node/.gemini
 COPY --from=builder /root/.local /home/node/.local
 
 # Copy Codex CLI + minimal node runtime (no npm in final image)
+# Must recreate symlink as COPY dereferences it
 COPY --from=cli-builder /usr/local/bin/node /usr/local/bin/node
-COPY --from=cli-builder /usr/local/bin/codex /usr/local/bin/codex
 COPY --from=cli-builder /usr/local/lib/node_modules/@openai/codex /usr/local/lib/node_modules/@openai/codex
 COPY --from=cli-builder /usr/local/lib/node_modules/@openai/codex/vendor /usr/local/vendor
+RUN ln -sf /usr/local/lib/node_modules/@openai/codex/bin/codex.js /usr/local/bin/codex
 
 # Copy Gemini CLI (must recreate symlink as COPY breaks it)
 COPY --from=cli-builder /usr/local/lib/node_modules/@google/gemini-cli /usr/local/lib/node_modules/@google/gemini-cli
