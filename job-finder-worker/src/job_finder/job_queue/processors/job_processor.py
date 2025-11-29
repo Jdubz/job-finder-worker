@@ -13,6 +13,7 @@ Job Listings Integration:
 import logging
 import time
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from job_finder.ai.matcher import AIJobMatcher
 from job_finder.company_info_fetcher import CompanyInfoFetcher
@@ -42,6 +43,38 @@ logger = logging.getLogger(__name__)
 
 class JobProcessor(BaseProcessor):
     """Processor for job queue items."""
+
+    # Known job board and aggregator domains (for URL detection)
+    _JOB_BOARD_DOMAINS = frozenset(
+        [
+            # ATS providers
+            "greenhouse.io",
+            "lever.co",
+            "myworkdayjobs.com",
+            "workday.com",
+            "smartrecruiters.com",
+            "ashbyhq.com",
+            "breezy.hr",
+            "applytojob.com",
+            "jobvite.com",
+            "icims.com",
+            "ultipro.com",
+            "taleo.net",
+            # Job aggregators
+            "weworkremotely.com",
+            "remotive.com",
+            "remotive.io",
+            "remote.co",
+            "remoteok.com",
+            "remoteok.io",
+            "jbicy.io",
+            "flexjobs.com",
+            "wellfound.com",
+            "angel.co",
+            "ycombinator.com",
+            "workatastartup.com",
+        ]
+    )
 
     def __init__(
         self,
@@ -205,6 +238,8 @@ class JobProcessor(BaseProcessor):
         # Decision tree: determine what action to take based on state
         has_job_data = "job_data" in state
         has_filter_result = "filter_result" in state
+        has_match_result = "match_result" in state
+
         if not has_job_data:
             # Need to scrape job data
             logger.info(f"[DECISION TREE] {item.url[:50]} -> SCRAPE (no job_data)")
@@ -213,10 +248,14 @@ class JobProcessor(BaseProcessor):
             # Need to filter
             logger.info(f"[DECISION TREE] {item.url[:50]} -> FILTER (has job_data)")
             self._do_job_filter(item)
-        else:
-            # Analyze + save
+        elif not has_match_result:
+            # Need to analyze
             logger.info(f"[DECISION TREE] {item.url[:50]} -> ANALYZE (passed filter)")
             self._do_job_analyze(item)
+        else:
+            # Need to save
+            logger.info(f"[DECISION TREE] {item.url[:50]} -> SAVE (has match_result)")
+            self._do_job_save(item)
 
     # ============================================================
     # DECISION TREE ACTION METHODS
@@ -435,7 +474,7 @@ class JobProcessor(BaseProcessor):
                 self._respawn_job_with_state(
                     item,
                     updated_state,
-                    next_stage="analyze_wait_company",
+                    next_stage="analyze",
                 )
                 return
 
@@ -481,15 +520,9 @@ class JobProcessor(BaseProcessor):
                 )
                 return
 
-            # Match passed - save immediately
-            self._update_listing_status(listing_id, "matched", analysis_result=result.to_dict())
-
-            doc_id = self.job_storage.save_job_match(
-                job_listing_id=listing_id,
-                match_result=result,
-                user_id=None,
-                queue_item_id=item.id,
-            )
+            # Match passed - update state and continue
+            # Update job_listing status to 'analyzed'
+            self._update_listing_status(listing_id, "analyzed", analysis_result=result.to_dict())
 
             updated_state = {
                 **item.pipeline_state,
@@ -497,17 +530,19 @@ class JobProcessor(BaseProcessor):
                 "job_listing_id": listing_id,
             }
 
-            logger.info(
-                f"JOB_ANALYZE complete: Score {result.match_score}, "
-                f"Priority {result.application_priority}, Saved ID: {doc_id}"
-            )
-
-            # Persist final state and set terminal success in one call
+            # Mark this step complete
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.SUCCESS,
-                f"Job saved successfully (ID: {doc_id}, Score: {result.match_score})",
-                pipeline_state=updated_state,
+                f"AI analysis complete (score: {result.match_score})",
+            )
+
+            # Re-spawn same URL with match result
+            self._respawn_job_with_state(item, updated_state, next_stage="save")
+
+            logger.info(
+                f"JOB_ANALYZE complete: Score {result.match_score}, "
+                f"Priority {result.application_priority}"
             )
 
             self.slogger.pipeline_stage(
@@ -538,6 +573,12 @@ class JobProcessor(BaseProcessor):
         """
         Ensure company data is available before job analysis.
 
+        Uses a multi-tier resolution strategy:
+        1. Try to resolve company via source linkage (source_id or company name match)
+        2. If source is an aggregator (no linked company), skip enrichment immediately
+        3. If source has linked company, use that company
+        4. Otherwise, fall back to direct company lookup/creation
+
         Returns (ready, state_updates). If ready is False, caller should requeue
         until company data becomes available.
         """
@@ -546,30 +587,69 @@ class JobProcessor(BaseProcessor):
 
         company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
         company_name_clean = clean_company_name(company_name_base) or company_name_base.strip()
-        job_data["company"] = company_name_clean
 
         state_updates: Dict[str, Any] = {}
 
         if not company_name_clean:
             # No company context; allow analysis to proceed without company info
-            return True, state_updates
-
-        # If the "company" is actually a known job source/board, skip enrichment entirely
-        source_as_company = self.sources_manager.get_source_by_name(company_name_clean)
-        if source_as_company:
-            state_updates["awaiting_company"] = False
-            company_id = source_as_company.get("companyId")
-            if company_id:
-                job_data["company_id"] = company_id
-                job_data["companyId"] = company_id
-                listing_id = (item.pipeline_state or {}).get("job_listing_id")
-                if listing_id:
-                    self.job_listing_storage.update_company_id(listing_id, company_id)
+            job_data["company"] = ""
             return True, state_updates
 
         pipeline_state = item.pipeline_state or {}
 
-        # Get or create company record
+        # TIER 1: Try to resolve company via source linkage
+        source_resolution = self.sources_manager.resolve_company_from_source(
+            source_id=item.source_id,
+            company_name_raw=company_name_clean,
+        )
+
+        if source_resolution:
+            if source_resolution["is_aggregator"]:
+                # This is a job aggregator with no linked company - skip enrichment
+                # Return True immediately (fire-and-forget) to avoid stuck tasks
+                logger.info(
+                    "Skipping company enrichment: '%s' is job aggregator (source: %s)",
+                    company_name_clean,
+                    source_resolution["source_name"],
+                )
+                job_data["company"] = company_name_clean
+                job_data["company_id"] = None
+                job_data["companyId"] = None
+                job_data["company_info"] = ""
+                job_data["company_data"] = {}
+                job_data["is_aggregator_source"] = True
+                state_updates["awaiting_company"] = False
+                return True, state_updates
+
+            # Source has linked company - use that instead
+            actual_company_id = source_resolution["company_id"]
+            actual_company_name = source_resolution["company_name"]
+
+            if actual_company_name and actual_company_name != company_name_clean:
+                logger.info(
+                    "Resolved company via source: '%s' -> '%s' (source: %s)",
+                    company_name_clean,
+                    actual_company_name,
+                    source_resolution["source_name"],
+                )
+                company_name_clean = actual_company_name
+
+            company = self.companies_manager.get_company_by_id(actual_company_id)
+            if company:
+                job_data["company"] = actual_company_name or company_name_clean
+                return self._finalize_company_dependency(
+                    item, job_data, company, company_website, pipeline_state, state_updates
+                )
+            else:
+                # Source has stale company_id reference - company was deleted
+                logger.warning(
+                    "Source %s has stale company_id '%s' (not found in DB), falling back to name lookup",
+                    source_resolution["source_id"],
+                    actual_company_id,
+                )
+
+        # TIER 2: Fall back to direct company lookup/creation
+        job_data["company"] = company_name_clean
         company = self.companies_manager.get_company(company_name_clean)
 
         if not company:
@@ -577,7 +657,27 @@ class JobProcessor(BaseProcessor):
             stub = self.companies_manager.create_company_stub(company_name_clean, company_website)
             company = stub
 
+        return self._finalize_company_dependency(
+            item, job_data, company, company_website, pipeline_state, state_updates
+        )
+
+    def _finalize_company_dependency(
+        self,
+        item: JobQueueItem,
+        job_data: Dict[str, Any],
+        company: Dict[str, Any],
+        company_website: str,
+        pipeline_state: Dict[str, Any],
+        state_updates: Dict[str, Any],
+    ) -> tuple[bool, Dict[str, Any]]:
+        """
+        Finalize company dependency after resolution.
+
+        Updates job_data with company info and spawns enrichment if needed.
+        Returns (ready, state_updates) tuple.
+        """
         company_id = company.get("id")
+        company_name = job_data["company"]  # Guaranteed set by _ensure_company_dependency
 
         # Update job_listing with company_id if we have a listing
         listing_id = pipeline_state.get("job_listing_id")
@@ -590,7 +690,7 @@ class JobProcessor(BaseProcessor):
         # Spawn enrichment task and wait if data is sparse
         if not self.companies_manager.has_good_company_data(company):
             if not pipeline_state.get("awaiting_company"):
-                self._try_spawn_company_task(item, company_id, company_name_clean, company_website)
+                self._try_spawn_company_task(item, company_id, company_name, company_website)
             state_updates["awaiting_company"] = True
             return False, state_updates
 
@@ -613,10 +713,18 @@ class JobProcessor(BaseProcessor):
         Try to spawn a COMPANY task (fire and forget).
 
         This is best-effort - if spawning fails for any reason (duplicate URL,
-        spawn depth exceeded, etc.), we silently ignore it. The caller will
-        wait for the company to become ACTIVE regardless.
+        spawn depth exceeded, job board URL, etc.), we silently ignore it.
         """
         company_url = company_website or item.url
+
+        # Skip if URL is a job board or aggregator (not a company website)
+        if self._is_job_board_url(company_url):
+            logger.debug(
+                "Skipping company enrichment for %s: URL is a job board (%s)",
+                company_name,
+                company_url,
+            )
+            return
 
         try:
             task_id = self.queue_manager.spawn_item_safely(
@@ -635,6 +743,114 @@ class JobProcessor(BaseProcessor):
             logger.debug("Company task for %s already in queue, skipping spawn", company_name)
         except Exception as e:
             logger.debug("Could not spawn company task for %s: %s", company_name, e)
+
+    @staticmethod
+    def _is_job_board_url(url: str) -> bool:
+        """
+        Check if URL is a known job board or aggregator rather than a company website.
+
+        These URLs won't have useful /about or /careers pages for company enrichment.
+        """
+        if not url:
+            return False
+
+        try:
+            netloc = urlparse(url.lower()).netloc
+            # Use proper suffix matching to avoid false positives
+            # (e.g., "notgreenhouse.io" should not match "greenhouse.io")
+            return any(
+                netloc == domain or netloc.endswith("." + domain)
+                for domain in JobProcessor._JOB_BOARD_DOMAINS
+            )
+        except Exception as e:
+            logger.warning("URL parsing failed in _is_job_board_url for '%s': %s", url, e)
+            return False
+
+    def _do_job_save(self, item: JobQueueItem) -> None:
+        """
+        Save job match to SQLite.
+
+        Final step - marks item as SUCCESS, no re-spawning.
+        Uses job_listing_id from pipeline_state to reference the job_listings table.
+        """
+        if not item.id or not item.pipeline_state:
+            logger.error("Cannot process SAVE without ID or pipeline_state")
+            return
+
+        job_data = item.pipeline_state.get("job_data")
+        match_result_dict = item.pipeline_state.get("match_result")
+        listing_id = item.pipeline_state.get("job_listing_id")
+
+        if not job_data or not match_result_dict:
+            logger.error("Missing job_data or match_result in pipeline_state")
+            return
+
+        self.slogger.pipeline_stage(
+            item.id,
+            "save",
+            "started",
+            {
+                "job_title": job_data.get("title"),
+                "company": job_data.get("company"),
+            },
+        )
+        start = time.monotonic()
+
+        logger.info(f"JOB_SAVE: Saving {job_data.get('title')} at {job_data.get('company')}")
+
+        try:
+            # Reconstruct JobMatchResult from dict
+            from job_finder.ai.matcher import JobMatchResult
+
+            result = JobMatchResult(**match_result_dict)
+
+            # Save to job-matches with job_listing_id reference
+            doc_id = self.job_storage.save_job_match(
+                job_listing_id=listing_id,
+                match_result=result,
+                user_id=None,
+                queue_item_id=item.id,
+            )
+
+            # Mark listing as matched for clearer lifecycle tracking
+            self._update_listing_status(listing_id, "matched", analysis_result=result.to_dict())
+
+            logger.info(
+                f"Job matched and saved: {job_data.get('title')} at {job_data.get('company')} "
+                f"(Score: {result.match_score}, ID: {doc_id})"
+            )
+
+            self.queue_manager.update_status(
+                item.id,
+                QueueStatus.SUCCESS,
+                f"Job saved successfully (ID: {doc_id}, Score: {result.match_score})",
+            )
+
+            self.slogger.pipeline_stage(
+                item.id,
+                "save",
+                "completed",
+                {
+                    "job_title": job_data.get("title"),
+                    "company": job_data.get("company"),
+                    "doc_id": doc_id,
+                    "duration_ms": round((time.monotonic() - start) * 1000),
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Error in JOB_SAVE: {e}")
+            self.slogger.pipeline_stage(
+                item.id,
+                "save",
+                "failed",
+                {
+                    "job_title": job_data.get("title"),
+                    "company": job_data.get("company"),
+                    "error": str(e),
+                },
+            )
+            raise
 
     def _respawn_job_with_state(
         self,
