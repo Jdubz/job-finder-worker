@@ -184,6 +184,12 @@ class AgentReviewProcessor(BaseProcessor):
             prompt_parts.append(agent_prompt)
             prompt_parts.append("")
 
+        # Add review request reason (why this review was spawned)
+        if review_item.result_message:
+            prompt_parts.append("## Review Reason")
+            prompt_parts.append(review_item.result_message)
+            prompt_parts.append("")
+
         # Add parent item details
         if parent_item:
             prompt_parts.append("## Failed Task Details")
