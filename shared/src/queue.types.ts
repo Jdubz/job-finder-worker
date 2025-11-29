@@ -158,6 +158,9 @@ export interface QueueItem {
   // Additional metadata (for pre-generated documents or other contextual data)
   metadata?: Record<string, any> | null
 
+  // Agent review notes - analysis of what went wrong and recovery attempts
+  review_notes?: string | null
+
   // Loop-prevention - tracking_id links related items
   tracking_id?: string // UUID that tracks entire job lineage. Generated at root, inherited by all spawned children.
 }

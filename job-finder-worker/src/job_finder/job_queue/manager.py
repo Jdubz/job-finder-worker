@@ -97,6 +97,7 @@ class QueueManager:
         result_message: Optional[str] = None,
         scraped_data: Optional[dict] = None,
         error_details: Optional[str] = None,
+        review_notes: Optional[str] = None,
     ) -> None:
         now = _iso(_utcnow())
         update_data: Dict[str, Any] = {
@@ -110,6 +111,8 @@ class QueueManager:
             update_data["scraped_data"] = json.dumps(scraped_data)
         if error_details is not None:
             update_data["error_details"] = error_details
+        if review_notes is not None:
+            update_data["review_notes"] = review_notes
 
         if status == QueueStatus.PROCESSING:
             update_data["processed_at"] = now
