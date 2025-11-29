@@ -183,7 +183,7 @@ class AIJobMatcher:
 
         except Exception as e:
             logger.error(f"Error analyzing job {job.get('title', 'unknown')}: {str(e)}")
-            return None
+            raise
 
     def _calculate_adjusted_score(
         self, match_analysis: Dict[str, Any], has_portland_office: bool, job: Dict[str, Any]
@@ -265,7 +265,19 @@ class AIJobMatcher:
                 company_info=company_info,
             )
         else:
-            job_timezone = timezone_offset
+            # Ensure timezone_offset is numeric (may be stored as string in DB)
+            try:
+                job_timezone = float(timezone_offset)
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid timezoneOffset value: {timezone_offset}, falling back to detection")
+                job_timezone = detect_timezone_for_job(
+                    job_location=job_location,
+                    job_description=job_description,
+                    company_size=company_size,
+                    headquarters_location=headquarters_location,
+                    company_name=company_name,
+                    company_info=company_info,
+                )
 
         if job_timezone is not None:
             hour_diff = abs(job_timezone - self.user_timezone)
