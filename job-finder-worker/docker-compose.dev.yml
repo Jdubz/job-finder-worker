@@ -42,12 +42,13 @@ services:
       POLL_INTERVAL: "10"  # Faster polling for dev
       LOG_LEVEL: DEBUG
       CODEX_HOME: /home/node/.codex
+      GEMINI_HOME: /home/node/.gemini
       PYTHONUNBUFFERED: "1"
       # Optional: set to lower thresholds for testing
       # MIN_MATCH_SCORE: "50"
     ports:
       - "5555:5555"
-    entrypoint: ["sh", "-c", "if [ ! -f /home/node/.codex/auth.json ]; then mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/; fi; exec /app/entrypoint.dev.sh"]
+    entrypoint: ["sh", "-c", "if [ ! -f /home/node/.codex/auth.json ]; then mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/; fi; if [ ! -f /home/node/.gemini/oauth_creds.json ]; then mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/; fi; exec /app/entrypoint.dev.sh"]
     volumes:
       # Source code - mounted for hot reload
       - type: bind
@@ -87,6 +88,12 @@ services:
         target: /codex-seed
         read_only: true
       - codex-home-dev:/home/node/.codex
+      # Gemini seed (read-only) and writable volume (no host writes)
+      - type: bind
+        source: ./.dev/gemini-seed/.gemini
+        target: /gemini-seed
+        read_only: true
+      - gemini-home-dev:/home/node/.gemini
       # Share migrations from monorepo infra so tests can apply schema without duplication
       - type: bind
         source: ../infra/sqlite
@@ -106,3 +113,4 @@ networks:
 
 volumes:
   codex-home-dev:
+  gemini-home-dev:

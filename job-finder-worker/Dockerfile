@@ -1,8 +1,8 @@
 # Multi-stage build for Job Finder (production)
 
-# Stage 0: build Codex CLI without leaving npm/node in final image
-FROM node:20-slim AS codex-builder
-RUN npm install -g @openai/codex@0.58.0
+# Stage 0: build Codex CLI and Gemini CLI without leaving npm in final image
+FROM node:20-slim AS cli-builder
+RUN npm install -g @openai/codex@0.58.0 @google/gemini-cli@0.18.4
 
 # Stage 1: build Python deps
 FROM python:3.12-slim as builder
@@ -40,21 +40,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd --gid 1000 node \
     && useradd --uid 1000 --gid node --shell /bin/bash --create-home node
 
-# Codex config directory (mount from host for auth credentials)
+# AI CLI config directories (mount from host for auth credentials)
 ENV CODEX_HOME=/home/node/.codex
+ENV GEMINI_HOME=/home/node/.gemini
 
 # Copy Python packages from builder to node user's home
 COPY --from=builder /root/.local /home/node/.local
 
-# Copy codex CLI + minimal node runtime (no npm in final image)
-COPY --from=codex-builder /usr/local/bin/node /usr/local/bin/node
-COPY --from=codex-builder /usr/local/bin/codex /usr/local/bin/codex
-COPY --from=codex-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=codex-builder /usr/local/lib/node_modules/@openai/codex/vendor /usr/local/vendor
+# Copy Codex CLI + minimal node runtime (no npm in final image)
+COPY --from=cli-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=cli-builder /usr/local/bin/codex /usr/local/bin/codex
+COPY --from=cli-builder /usr/local/lib/node_modules/@openai/codex /usr/local/lib/node_modules/@openai/codex
+COPY --from=cli-builder /usr/local/lib/node_modules/@openai/codex/vendor /usr/local/vendor
 
-# Create directories for codex and data with proper ownership
-RUN mkdir -p /home/node/.codex /data/sqlite \
-    && chown -R node:node /home/node/.codex /home/node/.local /data
+# Copy Gemini CLI (must recreate symlink as COPY breaks it)
+COPY --from=cli-builder /usr/local/lib/node_modules/@google/gemini-cli /usr/local/lib/node_modules/@google/gemini-cli
+RUN ln -sf /usr/local/lib/node_modules/@google/gemini-cli/dist/index.js /usr/local/bin/gemini
+
+# Create directories for AI CLIs and data with proper ownership
+RUN mkdir -p /home/node/.codex /home/node/.gemini /data/sqlite \
+    && chown -R node:node /home/node/.codex /home/node/.gemini /home/node/.local /data
 
 # Copy application code
 COPY src/ ./src/

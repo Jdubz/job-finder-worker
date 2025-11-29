@@ -70,6 +70,11 @@ services:
       - type: bind
         source: ${HOME}/.codex
         target: /home/node/.codex
+      # Gemini CLI auth (Google account OAuth tokens)
+      # Mount to /home/node/.gemini - same uid 1000 pattern
+      - type: bind
+        source: ${HOME}/.gemini
+        target: /home/node/.gemini
     extra_hosts:
       # Force IPv4 for ChatGPT endpoints (IPv6 sometimes blocked in local Docker)
       - "chatgpt.com:104.18.32.47"
@@ -123,6 +128,11 @@ services:
       - type: bind
         source: ${HOME}/.codex
         target: /home/node/.codex
+      # Gemini CLI auth (Google account OAuth tokens)
+      # Mount to /home/node/.gemini - same uid 1000 pattern
+      - type: bind
+        source: ${HOME}/.gemini
+        target: /home/node/.gemini
     extra_hosts:
       - "chatgpt.com:104.18.32.47"
       - "www.chatgpt.com:104.18.32.47"
