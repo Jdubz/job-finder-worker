@@ -122,10 +122,11 @@ class QueueItemProcessor:
             # Update status to processing
             self.queue_manager.update_status(item.id, QueueStatus.PROCESSING)
 
-            # Check stop list (skip for SCRAPE requests)
-            if item.type != QueueItemType.SCRAPE and self.job_processor._should_skip_by_stop_list(
-                item
-            ):
+            # Check stop list (skip for SCRAPE and AGENT_REVIEW requests)
+            if item.type not in (
+                QueueItemType.SCRAPE,
+                QueueItemType.AGENT_REVIEW,
+            ) and self.job_processor._should_skip_by_stop_list(item):
                 self.queue_manager.update_status(
                     item.id, QueueStatus.SKIPPED, "Excluded by stop list"
                 )
@@ -146,7 +147,8 @@ class QueueItemProcessor:
             elif item.type == QueueItemType.SCRAPE_SOURCE:
                 self.source_processor.process_scrape_source(item)
             elif item.type == QueueItemType.AGENT_REVIEW:
-                # Agent-only tasks are left for humans; keep them visible but stop processing loop churn.
+                # Agent-only tasks are left for humans/agents to handle.
+                # Mark as needs_review and stop processing to prevent loop churn.
                 self.queue_manager.update_status(
                     item.id, QueueStatus.NEEDS_REVIEW, "Agent review queued"
                 )

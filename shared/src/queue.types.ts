@@ -30,14 +30,15 @@ export type {
 
 /**
  * Queue item status lifecycle:
- * pending → processing → success/failed/skipped/filtered
+ * pending → processing → success/failed/skipped/filtered/needs_review
  *
  * - pending: In queue, waiting to be processed
  * - processing: Currently being processed
  * - filtered: Rejected by filter engine (did not pass intake filters)
  * - skipped: Skipped (duplicate or stop list blocked)
  * - success: Successfully processed and saved to job-matches
- * - failed: Processing error occurred
+ * - failed: Processing error occurred (terminal, not recoverable)
+ * - needs_review: Requires agent intervention (recoverable failure)
  */
 export type QueueStatus =
   | "pending"
@@ -268,11 +269,11 @@ export interface SubmitSourceDiscoveryResponse {
 
 // Type guard helpers
 export function isQueueStatus(status: string): status is QueueStatus {
-  return ["pending", "processing", "success", "failed", "skipped", "filtered"].includes(status)
+  return ["pending", "processing", "success", "failed", "skipped", "filtered", "needs_review"].includes(status)
 }
 
 export function isQueueItemType(type: string): type is QueueItemType {
-  return ["job", "company", "scrape", "source_discovery", "scrape_source"].includes(type)
+  return ["job", "company", "scrape", "source_discovery", "scrape_source", "agent_review"].includes(type)
 }
 
 export function isSourceTypeHint(hint: string): hint is SourceTypeHint {

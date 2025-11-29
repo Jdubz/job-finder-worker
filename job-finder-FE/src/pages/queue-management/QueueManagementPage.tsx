@@ -31,17 +31,10 @@ import {
   getTaskTypeLabel,
 } from "./components/queueItemDisplay"
 
-type QueueStatusTone =
-  | "pending"
-  | "processing"
-  | "success"
-  | "failed"
-  | "skipped"
-  | "filtered"
-  | "needs_review"
-type CompletedStatus = "success" | "failed" | "skipped" | "filtered"
+type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered" | "needs_review"
+type CompletedStatus = "success" | "failed" | "skipped" | "filtered" | "needs_review"
 
-const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered"]
+const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered", "needs_review"]
 
 export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
@@ -60,7 +53,7 @@ export function QueueManagementPage() {
   const [isProcessingEnabled, setIsProcessingEnabled] = useState<boolean | null>(null)
   const [isTogglingProcessing, setIsTogglingProcessing] = useState(false)
   const [confirmToggleOpen, setConfirmToggleOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<"pending" | "needs_review" | "completed">("pending")
+  const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
   const [completedStatusFilter, setCompletedStatusFilter] = useState<CompletedStatus | "all">("all")
 
   // Fetch full stats from API (not limited to 100 items)
@@ -161,16 +154,6 @@ export function QueueManagementPage() {
   }, [queueItems])
 
   // Completed items: success, failed, skipped, filtered - sorted by most recently updated first
-  const reviewItems = useMemo(() => {
-    return [...queueItems]
-      .filter((item) => item.id && item.status === "needs_review")
-      .sort((a, b) => {
-        const aDate = normalizeDate(a.updated_at ?? a.completed_at ?? a.created_at)
-        const bDate = normalizeDate(b.updated_at ?? b.completed_at ?? b.created_at)
-        return aDate.getTime() - bDate.getTime()
-      }) as QueueItem[]
-  }, [queueItems])
-
   const completedItems = useMemo(() => {
     return [...queueItems]
       .filter((item) => {
@@ -381,6 +364,7 @@ export function QueueManagementPage() {
             <StatPill label="Total" value={queueStats.total} />
             <StatPill label="Pending" value={queueStats.pending} tone="amber" />
             <StatPill label="Processing" value={queueStats.processing} tone="blue" />
+            <StatPill label="Needs Review" value={queueStats.needs_review} tone="purple" />
             <StatPill label="Failed" value={queueStats.failed} tone="red" />
             <StatPill label="Skipped" value={queueStats.skipped} tone="gray" />
             <StatPill label="Success" value={queueStats.success} tone="green" />
@@ -427,14 +411,11 @@ export function QueueManagementPage() {
           <CardDescription>Latest jobs, companies, sources, and scrape tasks</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "pending" | "needs_review" | "completed")}>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "pending" | "completed")}>
             <div className="flex items-center justify-between mb-4">
               <TabsList>
                 <TabsTrigger value="pending">
                   Pending ({queueStats ? queueStats.pending + queueStats.processing : pendingItems.length})
-                </TabsTrigger>
-                <TabsTrigger value="needs_review">
-                  Needs Review ({queueStats ? queueStats.needs_review : reviewItems.length})
                 </TabsTrigger>
                 <TabsTrigger value="completed">
                   Completed ({queueStats ? queueStats.success + queueStats.failed + queueStats.skipped + queueStats.filtered : completedItems.length})
@@ -455,6 +436,7 @@ export function QueueManagementPage() {
                     <SelectItem value="failed">Failed</SelectItem>
                     <SelectItem value="skipped">Skipped</SelectItem>
                     <SelectItem value="filtered">Filtered</SelectItem>
+                    <SelectItem value="needs_review">Needs Review</SelectItem>
                   </SelectContent>
                 </Select>
               )}
@@ -475,26 +457,6 @@ export function QueueManagementPage() {
                   items={pendingItems}
                   onRowClick={setSelectedItem}
                   onCancel={handleCancelItem}
-                  formatRelativeTime={formatRelativeTime}
-                />
-              )}
-            </TabsContent>
-
-            <TabsContent value="needs_review" className="mt-0">
-              {loading ? (
-                <div className="flex items-center justify-center py-10">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : reviewItems.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No items awaiting agent review.</p>
-                </div>
-              ) : (
-                <QueueTable
-                  items={reviewItems}
-                  onRowClick={setSelectedItem}
-                  onCancel={() => {}}
                   formatRelativeTime={formatRelativeTime}
                 />
               )}
@@ -629,7 +591,7 @@ export function QueueManagementPage() {
   )
 }
 
-type StatTone = "default" | "amber" | "blue" | "red" | "green" | "gray"
+type StatTone = "default" | "amber" | "blue" | "red" | "green" | "gray" | "purple"
 
 interface StatPillProps {
   label: string
@@ -645,6 +607,7 @@ function StatPill({ label, value, tone = "default" }: StatPillProps) {
     red: "border-red-200 bg-red-50 text-red-800",
     green: "border-green-200 bg-green-50 text-green-800",
     gray: "border-gray-200 bg-gray-50 text-gray-700",
+    purple: "border-purple-200 bg-purple-50 text-purple-800",
   }
 
   return (
@@ -663,7 +626,7 @@ function statusTone(status: string): string {
     failed: "bg-red-100 text-red-800",
     skipped: "bg-gray-100 text-gray-800",
     filtered: "bg-orange-100 text-orange-800",
-    needs_review: "bg-amber-100 text-amber-900",
+    needs_review: "bg-purple-100 text-purple-800",
   }
   return tones[status as QueueStatusTone] ?? "bg-muted text-foreground"
 }
