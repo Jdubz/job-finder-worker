@@ -61,7 +61,7 @@ export interface JobListingListOptions {
   sourceId?: string
   companyId?: string
   search?: string
-  sortBy?: 'date' | 'title' | 'company' | 'status'
+  sortBy?: 'date' | 'title' | 'company' | 'status' | 'updated'
   sortOrder?: 'asc' | 'desc'
 }
 
@@ -115,7 +115,8 @@ export class JobListingRepository {
       date: 'created_at',
       title: 'title',
       company: 'company_name',
-      status: 'status'
+      status: 'status',
+      updated: 'updated_at'
     }
     const orderColumn = sortColumnMap[sortBy] ?? 'created_at'
     const orderDirection = (sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC'

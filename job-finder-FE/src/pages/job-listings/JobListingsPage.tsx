@@ -97,7 +97,11 @@ function extractMatchScore(listing: JobListingRecord): number | null {
 export function JobListingsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { listings, loading, deleteListing, setFilters } = useJobListings({ limit: 100 })
+  const { listings, loading, deleteListing, setFilters } = useJobListings({
+    limit: 100,
+    sortBy: "updated",
+    sortOrder: "desc",
+  })
   const { submitJob } = useQueueItems()
   const [selectedListing, setSelectedListing] = useState<JobListingRecord | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -154,6 +158,8 @@ export function JobListingsPage() {
       search: searchTerm || undefined,
       status: statusFilter !== "all" ? (statusFilter as JobListingStatus) : undefined,
       limit: 100,
+      sortBy: "updated",
+      sortOrder: "desc",
     })
   }
 
@@ -163,6 +169,8 @@ export function JobListingsPage() {
       search: searchTerm || undefined,
       status: value !== "all" ? (value as JobListingStatus) : undefined,
       limit: 100,
+      sortBy: "updated",
+      sortOrder: "desc",
     })
   }
 
@@ -310,6 +318,7 @@ export function JobListingsPage() {
                   <TableHead className="hidden lg:table-cell">Location</TableHead>
                   <TableHead className="hidden sm:table-cell">Score</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Updated</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -335,6 +344,9 @@ export function JobListingsPage() {
                       })()}
                     </TableCell>
                     <TableCell>{getStatusBadge(listing.status)}</TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
+                      {formatDate(listing.updatedAt)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
