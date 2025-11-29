@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobListings } from "@/hooks/useJobListings"
@@ -41,6 +41,7 @@ import {
   Search,
   Plus,
 } from "lucide-react"
+import { StatPill } from "@/components/ui/stat-pill"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
 function formatDate(date: unknown): string {
@@ -97,7 +98,11 @@ function extractMatchScore(listing: JobListingRecord): number | null {
 export function JobListingsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { listings, loading, deleteListing, setFilters } = useJobListings({ limit: 100 })
+  const { listings, loading, deleteListing, setFilters } = useJobListings({
+    limit: 100,
+    sortBy: "updated",
+    sortOrder: "desc",
+  })
   const { submitJob } = useQueueItems()
   const [selectedListing, setSelectedListing] = useState<JobListingRecord | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -109,6 +114,17 @@ export function JobListingsPage() {
   const [companyName, setCompanyName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // Calculate status counts in a single pass for performance
+  const statusCounts = useMemo(() => {
+    return listings.reduce(
+      (acc, listing) => {
+        acc[listing.status] = (acc[listing.status] || 0) + 1
+        return acc
+      },
+      {} as Record<JobListingStatus, number>
+    )
+  }, [listings])
 
   const resetAddForm = () => {
     setJobUrl("")
@@ -154,6 +170,8 @@ export function JobListingsPage() {
       search: searchTerm || undefined,
       status: statusFilter !== "all" ? (statusFilter as JobListingStatus) : undefined,
       limit: 100,
+      sortBy: "updated",
+      sortOrder: "desc",
     })
   }
 
@@ -163,6 +181,8 @@ export function JobListingsPage() {
       search: searchTerm || undefined,
       status: value !== "all" ? (value as JobListingStatus) : undefined,
       limit: 100,
+      sortBy: "updated",
+      sortOrder: "desc",
     })
   }
 
@@ -214,43 +234,57 @@ export function JobListingsPage() {
         </Button>
       </div>
 
-      {/* Stats Overview */}
+      {/* Stats Overview - Clickable Pills */}
       {!loading && listings.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-5">
-          <div className="bg-secondary p-4 rounded-lg">
-            <div className="text-2xl font-bold">{listings.length}</div>
-            <div className="text-sm text-muted-foreground">Total</div>
-          </div>
-          <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
-            <div className="text-2xl font-bold">
-              {listings.filter((l) => l.status === "pending").length}
-            </div>
-            <div className="text-sm text-muted-foreground">Pending</div>
-          </div>
-          <div className="bg-blue-100 dark:bg-blue-950 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-blue-600">
-              {listings.filter((l) => l.status === "analyzing").length}
-            </div>
-            <div className="text-sm text-blue-700 dark:text-blue-400">Analyzing</div>
-          </div>
-          <div className="bg-green-100 dark:bg-green-950 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-green-600">
-              {listings.filter((l) => l.status === "analyzed").length}
-            </div>
-            <div className="text-sm text-green-700 dark:text-green-400">Analyzed</div>
-          </div>
-          <div className="bg-emerald-100 dark:bg-emerald-950 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-emerald-700">
-              {listings.filter((l) => l.status === "matched").length}
-            </div>
-            <div className="text-sm text-emerald-700 dark:text-emerald-400">Matched</div>
-          </div>
-          <div className="bg-red-100 dark:bg-red-950 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-red-600">
-              {listings.filter((l) => l.status === "skipped" || l.status === "filtered").length}
-            </div>
-            <div className="text-sm text-red-700 dark:text-red-400">Skipped/Filtered</div>
-          </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <StatPill
+            label="Total"
+            value={listings.length}
+            active={statusFilter === "all"}
+            onClick={() => handleStatusFilterChange("all")}
+          />
+          <StatPill
+            label="Pending"
+            value={statusCounts.pending ?? 0}
+            tone="gray"
+            active={statusFilter === "pending"}
+            onClick={() => handleStatusFilterChange("pending")}
+          />
+          <StatPill
+            label="Analyzing"
+            value={statusCounts.analyzing ?? 0}
+            tone="blue"
+            active={statusFilter === "analyzing"}
+            onClick={() => handleStatusFilterChange("analyzing")}
+          />
+          <StatPill
+            label="Analyzed"
+            value={statusCounts.analyzed ?? 0}
+            tone="green"
+            active={statusFilter === "analyzed"}
+            onClick={() => handleStatusFilterChange("analyzed")}
+          />
+          <StatPill
+            label="Matched"
+            value={statusCounts.matched ?? 0}
+            tone="emerald"
+            active={statusFilter === "matched"}
+            onClick={() => handleStatusFilterChange("matched")}
+          />
+          <StatPill
+            label="Filtered"
+            value={statusCounts.filtered ?? 0}
+            tone="orange"
+            active={statusFilter === "filtered"}
+            onClick={() => handleStatusFilterChange("filtered")}
+          />
+          <StatPill
+            label="Skipped"
+            value={statusCounts.skipped ?? 0}
+            tone="red"
+            active={statusFilter === "skipped"}
+            onClick={() => handleStatusFilterChange("skipped")}
+          />
         </div>
       )}
 
@@ -310,6 +344,7 @@ export function JobListingsPage() {
                   <TableHead className="hidden lg:table-cell">Location</TableHead>
                   <TableHead className="hidden sm:table-cell">Score</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Updated</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -335,6 +370,9 @@ export function JobListingsPage() {
                       })()}
                     </TableCell>
                     <TableCell>{getStatusBadge(listing.status)}</TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
+                      {formatDate(listing.updatedAt)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

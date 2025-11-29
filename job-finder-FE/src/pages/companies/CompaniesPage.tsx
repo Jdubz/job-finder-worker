@@ -145,8 +145,8 @@ export function CompaniesPage() {
   }
 
   const handleReanalyze = async (company: Company) => {
-    if (!company.id || !company.website) {
-      setReanalyzeError("Cannot re-analyze company without website URL")
+    if (!company.id) {
+      setReanalyzeError("Cannot re-analyze company without ID")
       return
     }
     setReanalyzeError(null)
@@ -154,7 +154,7 @@ export function CompaniesPage() {
       setIsReanalyzing(true)
       await submitCompany({
         companyName: company.name,
-        websiteUrl: company.website,
+        websiteUrl: company.website || undefined,
         companyId: company.id,
       })
       setSelectedCompany(null)
@@ -480,7 +480,7 @@ export function CompaniesPage() {
                   <Button
                     variant="outline"
                     onClick={() => handleReanalyze(selectedCompany)}
-                    disabled={isReanalyzing || !selectedCompany.website}
+                    disabled={isReanalyzing}
                   >
                     {isReanalyzing ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

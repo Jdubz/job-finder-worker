@@ -452,7 +452,7 @@ describe("CompaniesPage", () => {
       })
     })
 
-    it("should disable Re-analyze button for company without website", async () => {
+    it("should enable Re-analyze button for company without website (agent will research)", async () => {
       const companyWithoutWebsite = {
         id: "company-no-website",
         name: "No Website Corp",
@@ -488,7 +488,7 @@ describe("CompaniesPage", () => {
 
       await waitFor(() => {
         const reanalyzeButton = screen.getByRole("button", { name: /re-analyze/i })
-        expect(reanalyzeButton).toBeDisabled()
+        expect(reanalyzeButton).not.toBeDisabled()
       })
     })
   })

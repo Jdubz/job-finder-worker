@@ -20,6 +20,16 @@ from job_finder.utils.timezone_utils import detect_timezone_for_job
 logger = logging.getLogger(__name__)
 
 
+class ScoreBreakdown(BaseModel):
+    """Breakdown of how the match score was calculated."""
+
+    base_score: int = Field(..., description="Initial score from AI analysis")
+    final_score: int = Field(..., description="Final score after adjustments")
+    adjustments: List[str] = Field(
+        default_factory=list, description="List of score adjustments applied"
+    )
+
+
 class JobMatchResult(BaseModel):
     """Result of AI job matching analysis."""
 
@@ -40,6 +50,9 @@ class JobMatchResult(BaseModel):
     match_reasons: List[str] = Field(default_factory=list)
     potential_concerns: List[str] = Field(default_factory=list)
     application_priority: str = "Medium"  # High/Medium/Low
+
+    # Score breakdown showing the math behind the final score
+    score_breakdown: Optional[ScoreBreakdown] = None
 
     # Customization Guidance
     customization_recommendations: Dict[str, Any] = Field(default_factory=dict)
@@ -152,7 +165,9 @@ class AIJobMatcher:
                 return None
 
             # Step 2: Apply score adjustments (Portland office bonus, freshness multiplier, etc.)
-            match_score = self._calculate_adjusted_score(match_analysis, has_portland_office, job)
+            match_score, score_breakdown = self._calculate_adjusted_score(
+                match_analysis, has_portland_office, job
+            )
 
             # Step 3: Check if adjusted score meets minimum threshold
             below_threshold = match_score < self.min_match_score
@@ -169,7 +184,9 @@ class AIJobMatcher:
                 intake_data = self._generate_intake_data(job, match_analysis)
 
             # Step 5: Build and return result
-            result = self._build_match_result(job, match_analysis, match_score, intake_data)
+            result = self._build_match_result(
+                job, match_analysis, match_score, intake_data, score_breakdown
+            )
 
             # If below threshold but caller wants data, downgrade priority to Low
             if below_threshold:
@@ -183,11 +200,11 @@ class AIJobMatcher:
 
         except Exception as e:
             logger.error(f"Error analyzing job {job.get('title', 'unknown')}: {str(e)}")
-            return None
+            raise
 
     def _calculate_adjusted_score(
         self, match_analysis: Dict[str, Any], has_portland_office: bool, job: Dict[str, Any]
-    ) -> int:
+    ) -> tuple[int, ScoreBreakdown]:
         """
         Calculate adjusted match score with bonuses and adjustments applied.
 
@@ -197,7 +214,7 @@ class AIJobMatcher:
             job: Job dictionary with posted_date and other fields
 
         Returns:
-            Adjusted match score (clamped to 0-100)
+            Tuple of (adjusted_score, ScoreBreakdown)
         """
         base_score = match_analysis.get("match_score", 0)
         match_score = base_score
@@ -265,7 +282,21 @@ class AIJobMatcher:
                 company_info=company_info,
             )
         else:
-            job_timezone = timezone_offset
+            # Ensure timezone_offset is numeric (may be stored as string in DB)
+            try:
+                job_timezone = float(timezone_offset)
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"Invalid timezoneOffset value: {timezone_offset}, falling back to detection"
+                )
+                job_timezone = detect_timezone_for_job(
+                    job_location=job_location,
+                    job_description=job_description,
+                    company_size=company_size,
+                    headquarters_location=headquarters_location,
+                    company_name=company_name,
+                    company_info=company_info,
+                )
 
         if job_timezone is not None:
             hour_diff = abs(job_timezone - self.user_timezone)
@@ -353,7 +384,13 @@ class AIJobMatcher:
         if base_score != match_score:
             match_analysis["application_priority"] = priority
 
-        return match_score
+        breakdown = ScoreBreakdown(
+            base_score=base_score,
+            final_score=match_score,
+            adjustments=adjustments,
+        )
+
+        return match_score, breakdown
 
     def _build_match_result(
         self,
@@ -361,6 +398,7 @@ class AIJobMatcher:
         match_analysis: Dict[str, Any],
         match_score: int,
         intake_data: Optional[Dict[str, Any]],
+        score_breakdown: Optional[ScoreBreakdown] = None,
     ) -> JobMatchResult:
         """
         Build JobMatchResult from job data and analysis.
@@ -370,6 +408,7 @@ class AIJobMatcher:
             match_analysis: Match analysis from AI
             match_score: Adjusted match score
             intake_data: Resume intake data (optional)
+            score_breakdown: Breakdown of score calculation (optional)
 
         Returns:
             JobMatchResult object
@@ -389,6 +428,7 @@ class AIJobMatcher:
             match_reasons=match_analysis.get("match_reasons", []),
             potential_concerns=match_analysis.get("potential_concerns", []),
             application_priority=match_analysis.get("application_priority", "Medium"),
+            score_breakdown=score_breakdown,
             customization_recommendations=match_analysis.get("customization_recommendations", {}),
             resume_intake_data=intake_data,
         )
