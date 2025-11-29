@@ -374,9 +374,23 @@ def worker_loop():
                 )
 
                 while items and not worker_state["shutdown_requested"]:
+                    pause_requested = False
                     for item in items:
                         if worker_state["shutdown_requested"]:
                             slogger.worker_status("shutdown_in_progress")
+                            break
+
+                        # Re-read processing toggle before each item so a stop request
+                        # takes effect even mid-batch.
+                        if not config_loader.is_processing_enabled():
+                            pause_requested = True
+                            slogger.worker_status(
+                                "processing_paused",
+                                {
+                                    "iteration": worker_state["iteration"],
+                                    "reason": "disabled_in_db_mid_batch",
+                                },
+                            )
                             break
 
                         worker_state["current_item_id"] = item.id
@@ -405,6 +419,9 @@ def worker_loop():
                             worker_state["last_error"] = str(e)
                         finally:
                             worker_state["current_item_id"] = None
+
+                    if pause_requested:
+                        break
 
                     # Fetch the next batch (if any) and continue immediately
                     if worker_state["shutdown_requested"]:
