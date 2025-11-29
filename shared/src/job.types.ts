@@ -12,6 +12,81 @@
 import type { TimestampLike } from "./time.types"
 
 /**
+ * Breakdown of how the match score was calculated.
+ *
+ * This provides transparency into the scoring algorithm, showing:
+ * - The base score from AI analysis
+ * - All adjustments applied (timezone, company size, freshness, etc.)
+ * - The final score after adjustments
+ */
+export interface ScoreBreakdown {
+  /** Initial score from AI analysis (0-100) */
+  baseScore: number
+
+  /** Final score after all adjustments (0-100) */
+  finalScore: number
+
+  /** List of adjustments applied, e.g. "🏢 Large company +10", "⏰ 3h timezone difference -5" */
+  adjustments: string[]
+}
+
+/**
+ * Full analysis result from AI job matching.
+ *
+ * This is stored in job_listings.analysis_result as JSON and contains
+ * all the details about why a job did or didn't match.
+ */
+export interface JobAnalysisResult {
+  /** Job title being analyzed */
+  jobTitle: string
+
+  /** Company name */
+  jobCompany: string
+
+  /** Job URL */
+  jobUrl: string
+
+  /** Job location */
+  location?: string | null
+
+  /** Salary range if available */
+  salaryRange?: string | null
+
+  /** Overall match score (0-100) */
+  matchScore: number
+
+  /** Skills that matched job requirements */
+  matchedSkills: string[]
+
+  /** Skills/requirements missing from profile */
+  missingSkills: string[]
+
+  /** How well experience level matches */
+  experienceMatch: string
+
+  /** Key strengths for this application */
+  keyStrengths: string[]
+
+  /** Why this role fits well */
+  matchReasons: string[]
+
+  /** Potential concerns or gaps */
+  potentialConcerns: string[]
+
+  /** Application priority level */
+  applicationPriority: "High" | "Medium" | "Low"
+
+  /** Breakdown of score calculation showing the math */
+  scoreBreakdown?: ScoreBreakdown | null
+
+  /** Specific recommendations for customizing application */
+  customizationRecommendations?: Record<string, unknown>
+
+  /** Resume customization data */
+  resumeIntakeData?: ResumeIntakeData | null
+}
+
+/**
  * Status of a job listing in the pipeline.
  */
 export type JobListingStatus =
@@ -142,8 +217,8 @@ export interface JobListingRecord {
   /** Filter result details (if status=filtered) */
   filterResult?: Record<string, unknown> | null
 
-  /** Full analysis result JSON (match scores, reasons, etc.) */
-  analysisResult?: Record<string, unknown> | null
+  /** Full analysis result with score breakdown, matched/missing skills, and reasons */
+  analysisResult?: JobAnalysisResult | null
 
   /** AI match score (0-100), extracted from analysisResult for quick filtering */
   matchScore?: number | null
