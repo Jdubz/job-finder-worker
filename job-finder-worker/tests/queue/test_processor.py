@@ -11,13 +11,15 @@ from job_finder.job_queue.processor import QueueItemProcessor
 @pytest.fixture
 def mock_managers():
     """Create mock managers for processor."""
+    sources_manager = MagicMock()
+    sources_manager.get_source_by_name.return_value = None
     return {
         "queue_manager": MagicMock(),
         "config_loader": MagicMock(),
         "job_storage": MagicMock(),
         "job_listing_storage": MagicMock(),
         "companies_manager": MagicMock(),
-        "sources_manager": MagicMock(),
+        "sources_manager": sources_manager,
         "company_info_fetcher": MagicMock(),
         "ai_matcher": MagicMock(),
     }
