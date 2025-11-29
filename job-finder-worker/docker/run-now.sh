@@ -8,9 +8,9 @@ echo "========================================"
 echo "Started at: $(date)"
 echo ""
 
-# Run the scheduler
+# Run the scheduler (same entrypoint cron uses)
 cd /app
-/usr/local/bin/python scheduler.py
+/usr/sbin/gosu node /home/node/.local/bin/python -m job_finder.cron.submit_scrape
 
 echo ""
 echo "========================================"
