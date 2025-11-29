@@ -297,6 +297,44 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
     mock_managers["queue_manager"].update_status.assert_called()
 
 
+def test_job_analyze_skips_company_when_source_name(processor, mock_managers, sample_job_item):
+    """If company name matches a known source, skip spawning company tasks."""
+
+    sample_job_item.pipeline_state = {
+        "job_data": {
+            "title": "Engineer",
+            "company": "RemoteOK API",
+            "company_website": "https://remoteok.com",
+            "description": "A" * 200,
+        },
+        "filter_result": {"passed": True},
+    }
+
+    mock_managers["sources_manager"].get_source_by_name.return_value = {
+        "id": "src_remoteok",
+        "name": "RemoteOK API",
+        "sourceType": "api",
+        "companyId": None,
+    }
+
+    class DummyResult:
+        match_score = 75
+        application_priority = "Medium"
+
+        def to_dict(self):
+            return {
+                "match_score": self.match_score,
+                "application_priority": self.application_priority,
+            }
+
+    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
+
+    processor.job_processor._do_job_analyze(sample_job_item)
+
+    mock_managers["queue_manager"].spawn_item_safely.assert_not_called()
+    processor.job_processor.ai_matcher.analyze_job.assert_called_once()
+
+
 def test_build_company_info_string(processor):
     """Test company info string builder."""
     company_info = {

@@ -548,6 +548,15 @@ class JobProcessor(BaseProcessor):
             # No company context; allow analysis to proceed without company info
             return True, state_updates
 
+        # If the "company" is actually a known job source/board, skip enrichment entirely
+        source_as_company = self.sources_manager.get_source_by_name(company_name_clean)
+        if source_as_company:
+            state_updates["awaiting_company"] = False
+            if source_as_company.get("companyId"):
+                job_data["company_id"] = source_as_company["companyId"]
+                job_data["companyId"] = source_as_company["companyId"]
+            return True, state_updates
+
         pipeline_state = item.pipeline_state or {}
 
         # Get or create company record
