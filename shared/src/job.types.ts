@@ -145,6 +145,9 @@ export interface JobListingRecord {
   /** Full analysis result JSON (match scores, reasons, etc.) */
   analysisResult?: Record<string, unknown> | null
 
+  /** AI match score (0-100), extracted from analysisResult for quick filtering */
+  matchScore?: number | null
+
   /** When record was created */
   createdAt: TimestampLike
 

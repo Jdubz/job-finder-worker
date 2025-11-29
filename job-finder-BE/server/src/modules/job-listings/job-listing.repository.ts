@@ -16,6 +16,8 @@ type JobListingRow = {
   posted_date: string | null
   status: string
   filter_result: string | null
+  analysis_result: string | null
+  match_score: number | null
   created_at: string
   updated_at: string
 }
@@ -47,6 +49,8 @@ const buildJobListing = (row: JobListingRow): JobListingRecord => ({
   postedDate: row.posted_date,
   status: row.status as JobListingStatus,
   filterResult: parseJson(row.filter_result),
+  analysisResult: parseJson(row.analysis_result),
+  matchScore: row.match_score,
   createdAt: parseTimestamp(row.created_at),
   updatedAt: parseTimestamp(row.updated_at)
 })
@@ -61,7 +65,7 @@ export interface JobListingListOptions {
   sourceId?: string
   companyId?: string
   search?: string
-  sortBy?: 'date' | 'title' | 'company' | 'status' | 'updated'
+  sortBy?: 'date' | 'title' | 'company' | 'status' | 'updated' | 'score'
   sortOrder?: 'asc' | 'desc'
 }
 
@@ -116,7 +120,8 @@ export class JobListingRepository {
       title: 'title',
       company: 'company_name',
       status: 'status',
-      updated: 'updated_at'
+      updated: 'updated_at',
+      score: 'match_score'
     }
     const orderColumn = sortColumnMap[sortBy] ?? 'created_at'
     const orderDirection = (sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
