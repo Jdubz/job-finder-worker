@@ -456,61 +456,71 @@ class JobProcessor(BaseProcessor):
             )
             return
 
-        # Check threshold after recording the score
-        min_score = getattr(self.ai_matcher, "min_match_score", 0)
-        if not isinstance(min_score, (int, float)):
-            try:
-                min_score = int(min_score)
-            except Exception:
-                min_score = 0
+        try:
+            # Check threshold after recording the score
+            min_score = getattr(self.ai_matcher, "min_match_score", 0)
+            if not isinstance(min_score, (int, float)):
+                try:
+                    min_score = int(min_score)
+                except Exception:
+                    min_score = 0
 
-        if result.match_score < min_score:
-            self._update_listing_status(listing_id, "skipped", analysis_result=result.to_dict())
+            if result.match_score < min_score:
+                self._update_listing_status(listing_id, "skipped", analysis_result=result.to_dict())
 
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.SKIPPED,
+                    f"Job score {result.match_score} below threshold {min_score}",
+                )
+                return
+
+            # Match passed - update state and continue
+            # Update job_listing status to 'analyzed'
+            self._update_listing_status(listing_id, "analyzed", analysis_result=result.to_dict())
+
+            updated_state = {
+                **item.pipeline_state,
+                "match_result": result.to_dict(),
+                "job_listing_id": listing_id,
+            }
+
+            # Mark this step complete
             self.queue_manager.update_status(
                 item.id,
-                QueueStatus.SKIPPED,
-                f"Job score {result.match_score} below threshold {min_score}",
+                QueueStatus.SUCCESS,
+                f"AI analysis complete (score: {result.match_score})",
             )
-            return
 
-        # Match passed - update state and continue
-        # Update job_listing status to 'analyzed'
-        self._update_listing_status(listing_id, "analyzed", analysis_result=result.to_dict())
+            # Re-spawn same URL with match result
+            self._respawn_job_with_state(item, updated_state, next_stage="save")
 
-        updated_state = {
-            **item.pipeline_state,
-            "match_result": result.to_dict(),
-            "job_listing_id": listing_id,
-        }
+            logger.info(
+                f"JOB_ANALYZE complete: Score {result.match_score}, "
+                f"Priority {result.application_priority}"
+            )
 
-        # Mark this step complete
-        self.queue_manager.update_status(
-            item.id,
-            QueueStatus.SUCCESS,
-            f"AI analysis complete (score: {result.match_score})",
-        )
-
-        # Re-spawn same URL with match result
-        self._respawn_job_with_state(item, updated_state, next_stage="save")
-
-        logger.info(
-            f"JOB_ANALYZE complete: Score {result.match_score}, "
-            f"Priority {result.application_priority}"
-        )
-
-        self.slogger.pipeline_stage(
-            item.id,
-            "analyze",
-            "completed",
-            {
-                "job_title": job_data.get("title"),
-                "company": job_data.get("company"),
-                "match_score": result.match_score,
-                "priority": result.application_priority,
-                "duration_ms": round((time.monotonic() - start) * 1000),
-            },
-        )
+            self.slogger.pipeline_stage(
+                item.id,
+                "analyze",
+                "completed",
+                {
+                    "job_title": job_data.get("title"),
+                    "company": job_data.get("company"),
+                    "match_score": result.match_score,
+                    "priority": result.application_priority,
+                    "duration_ms": round((time.monotonic() - start) * 1000),
+                },
+            )
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error after AI analysis for {job_data.get('title')}: {error_msg}")
+            self._update_listing_status(listing_id, "skipped")
+            self.queue_manager.update_status(
+                item.id,
+                QueueStatus.FAILED,
+                f"Post-analysis error: {error_msg}",
+            )
 
     def _ensure_company_dependency(self, item: JobQueueItem, job_data: Dict[str, Any]) -> bool:
         """
