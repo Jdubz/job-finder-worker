@@ -491,13 +491,12 @@ class JobProcessor(BaseProcessor):
                 f"Priority {result.application_priority}, Saved ID: {doc_id}"
             )
 
-            # Persist final pipeline_state for observability (keeps SUCCESS after update)
-            self.queue_manager.requeue_with_state(item.id, updated_state)
-
+            # Persist final state and set terminal success in one call
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.SUCCESS,
                 f"Job saved successfully (ID: {doc_id}, Score: {result.match_score})",
+                pipeline_state=updated_state,
             )
 
             self.slogger.pipeline_stage(

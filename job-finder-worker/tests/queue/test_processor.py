@@ -293,6 +293,7 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
 
     processor.job_processor.ai_matcher.analyze_job.assert_called_once()
     mock_managers["job_storage"].save_job_match.assert_called_once()
+    # Should set SUCCESS with final pipeline state in one call
     mock_managers["queue_manager"].update_status.assert_called()
 
 
