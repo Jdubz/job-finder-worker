@@ -145,6 +145,91 @@ class GeminiProvider(AIProvider):
             raise AIProviderError(f"Gemini API error: {str(e)}") from e
 
 
+class GeminiCLIProvider(AIProvider):
+    """
+    Gemini CLI provider: uses the `gemini` CLI with Google account OAuth instead of API keys.
+
+    Requires the `gemini` binary on PATH and that the user is already authenticated
+    (via `gemini auth login`). Credentials are stored in ~/.gemini/oauth_creds.json.
+
+    The CLI is invoked with:
+    - `-o json` for structured JSON output
+    - `--yolo` to auto-approve all actions (no interactive prompts)
+    - Working directory set to /tmp to minimize context token usage
+    """
+
+    def __init__(self, model: Optional[str] = None, timeout: int = 120):
+        """
+        Initialize Gemini CLI provider.
+
+        Args:
+            model: Model identifier (currently ignored - CLI uses its own model selection).
+            timeout: Command timeout in seconds (default 120s for longer responses).
+        """
+        self.model = model  # Reserved for future use when CLI supports model selection
+        self.timeout = timeout
+
+    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+        """
+        Invoke gemini CLI and return the response text.
+
+        The CLI outputs JSON with a `response` field containing the LLM's text.
+        We run from /tmp to avoid scanning the current directory for context,
+        which significantly reduces token usage.
+        """
+        cmd = [
+            "gemini",
+            "-o", "json",
+            "--yolo",
+            prompt,
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                cwd="/tmp",  # Run from /tmp to minimize context tokens
+            )
+
+            # Parse JSON output
+            stdout = result.stdout.strip()
+
+            # Find the JSON object in the output (may have prefix text like "YOLO mode...")
+            json_start = stdout.find("{")
+            if json_start == -1:
+                if result.returncode != 0:
+                    raise AIProviderError(
+                        f"Gemini CLI failed (exit {result.returncode}): "
+                        f"{result.stderr.strip() or stdout}"
+                    )
+                raise AIProviderError("Gemini CLI returned no JSON output")
+
+            json_str = stdout[json_start:]
+            try:
+                output = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                raise AIProviderError(f"Gemini CLI returned invalid JSON: {e}") from e
+
+            # Check for error response
+            if "error" in output:
+                error_info = output["error"]
+                error_msg = error_info.get("message", str(error_info))
+                error_code = error_info.get("code", "unknown")
+                raise AIProviderError(f"Gemini CLI error ({error_code}): {error_msg}")
+
+            # Extract response text
+            response_text = output.get("response")
+            if not response_text:
+                raise AIProviderError("Gemini CLI returned empty response")
+
+            return response_text
+
+        except subprocess.TimeoutExpired as exc:
+            raise AIProviderError(f"Gemini CLI timed out after {self.timeout}s") from exc
+
+
 class CodexCLIProvider(AIProvider):
     """
     Codex CLI provider: uses the `codex` CLI (pro account session) instead of per-request API keys.
@@ -254,6 +339,7 @@ _PROVIDER_MAP: Dict[tuple, type] = {
     ("claude", "api"): ClaudeProvider,
     ("openai", "api"): OpenAIProvider,
     ("gemini", "api"): GeminiProvider,
+    ("gemini", "cli"): GeminiCLIProvider,
 }
 
 
