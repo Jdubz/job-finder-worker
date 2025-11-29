@@ -31,10 +31,10 @@ import {
   getTaskTypeLabel,
 } from "./components/queueItemDisplay"
 
-type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered"
-type CompletedStatus = "success" | "failed" | "skipped" | "filtered"
+type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered" | "needs_review"
+type CompletedStatus = "success" | "failed" | "skipped" | "filtered" | "needs_review"
 
-const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered"]
+const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered", "needs_review"]
 
 export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
@@ -75,6 +75,7 @@ export function QueueManagementPage() {
           failed: queueItems.filter((i) => i.status === "failed").length,
           skipped: queueItems.filter((i) => i.status === "skipped").length,
           filtered: queueItems.filter((i) => i.status === "filtered").length,
+          needs_review: queueItems.filter((i) => i.status === "needs_review").length,
         }
         setQueueStats(stats)
         setUsingFallbackStats(true)
@@ -363,6 +364,7 @@ export function QueueManagementPage() {
             <StatPill label="Total" value={queueStats.total} />
             <StatPill label="Pending" value={queueStats.pending} tone="amber" />
             <StatPill label="Processing" value={queueStats.processing} tone="blue" />
+            <StatPill label="Needs Review" value={queueStats.needs_review} tone="purple" />
             <StatPill label="Failed" value={queueStats.failed} tone="red" />
             <StatPill label="Skipped" value={queueStats.skipped} tone="gray" />
             <StatPill label="Success" value={queueStats.success} tone="green" />
@@ -434,6 +436,7 @@ export function QueueManagementPage() {
                     <SelectItem value="failed">Failed</SelectItem>
                     <SelectItem value="skipped">Skipped</SelectItem>
                     <SelectItem value="filtered">Filtered</SelectItem>
+                    <SelectItem value="needs_review">Needs Review</SelectItem>
                   </SelectContent>
                 </Select>
               )}
@@ -588,7 +591,7 @@ export function QueueManagementPage() {
   )
 }
 
-type StatTone = "default" | "amber" | "blue" | "red" | "green" | "gray"
+type StatTone = "default" | "amber" | "blue" | "red" | "green" | "gray" | "purple"
 
 interface StatPillProps {
   label: string
@@ -604,6 +607,7 @@ function StatPill({ label, value, tone = "default" }: StatPillProps) {
     red: "border-red-200 bg-red-50 text-red-800",
     green: "border-green-200 bg-green-50 text-green-800",
     gray: "border-gray-200 bg-gray-50 text-gray-700",
+    purple: "border-purple-200 bg-purple-50 text-purple-800",
   }
 
   return (
@@ -622,6 +626,7 @@ function statusTone(status: string): string {
     failed: "bg-red-100 text-red-800",
     skipped: "bg-gray-100 text-gray-800",
     filtered: "bg-orange-100 text-orange-800",
+    needs_review: "bg-purple-100 text-purple-800",
   }
   return tones[status as QueueStatusTone] ?? "bg-muted text-foreground"
 }

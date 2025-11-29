@@ -18,14 +18,15 @@ class QueueItemType(str, Enum):
     Type of queue item.
 
     TypeScript equivalent: QueueItemType in queue.types.ts
-    Values must match exactly: "job" | "company" | "scrape" | "source_discovery" | "scrape_source"
+    Values must match exactly: "job" | "company" | "scrape" | "source_discovery" | "scrape_source" | "agent_review"
     """
 
     JOB = "job"
     COMPANY = "company"
     SCRAPE = "scrape"
     SOURCE_DISCOVERY = "source_discovery"
-    SCRAPE_SOURCE = "scrape_source"  # NEW: For automated source scraping
+    SCRAPE_SOURCE = "scrape_source"  # For automated source scraping
+    AGENT_REVIEW = "agent_review"  # Agent-only review/recovery task
 
 
 class SourceStatus(str, Enum):
@@ -74,14 +75,15 @@ class QueueStatus(str, Enum):
     Status of queue item processing.
 
     TypeScript equivalent: QueueStatus in queue.types.ts
-    Lifecycle: pending → processing → success/failed/skipped/filtered
+    Lifecycle: pending → processing → success/failed/skipped/filtered/needs_review
 
     - PENDING: In queue, waiting to be processed
     - PROCESSING: Currently being processed
     - FILTERED: Rejected by filter engine (did not pass intake filters)
     - SKIPPED: Skipped (duplicate or stop list blocked)
     - SUCCESS: Successfully processed and saved to job-matches
-    - FAILED: Processing error occurred
+    - FAILED: Processing error occurred (terminal, not recoverable)
+    - NEEDS_REVIEW: Requires agent intervention (recoverable failure)
     """
 
     PENDING = "pending"
@@ -90,6 +92,7 @@ class QueueStatus(str, Enum):
     SKIPPED = "skipped"
     FAILED = "failed"
     SUCCESS = "success"
+    NEEDS_REVIEW = "needs_review"
 
 
 # QueueSource type - matches TypeScript literal type

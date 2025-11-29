@@ -31,6 +31,18 @@ from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
+# Agent prompt for source discovery/scraping recovery tasks
+SOURCE_AGENT_PROMPT = (
+    "You are the primary agent for job source configuration recovery. "
+    "The automated pipeline failed to discover or scrape this source. "
+    "Your tasks: (1) analyze the source URL and determine the correct type "
+    "(greenhouse, ashby, workday, lever, rss, api, or html), "
+    "(2) generate a valid SourceConfig with correct selectors/endpoints, "
+    "(3) test scrape to verify the config works, "
+    "(4) if scraping failed, identify why and fix the config, "
+    "(5) create or update the job-sources record with a working configuration."
+)
+
 
 class SourceProcessor(BaseProcessor):
     """Processor for source discovery and scraping queue items."""
@@ -111,11 +123,17 @@ class SourceProcessor(BaseProcessor):
                 source_config, validation_meta = discovery_result, {}
 
             if not source_config:
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.FAILED,
-                    "Discovery failed - could not generate valid config",
-                    error_details=f"URL: {url}",
+                # Recoverable: agent can manually configure the source
+                self._handoff_to_agent_review(
+                    item,
+                    SOURCE_AGENT_PROMPT,
+                    reason="Source discovery produced no config",
+                    context={
+                        "url": url,
+                        "type_hint": config.type_hint,
+                        "company_name": config.company_name,
+                    },
+                    status_message="Agent review required: discovery produced no config",
                 )
                 return
 
@@ -399,28 +417,40 @@ class SourceProcessor(BaseProcessor):
                         },
                     )
                 else:
+                    # Recoverable: agent can review and fix the source config
                     logger.info(f"Scrape yielded no usable jobs for {source_name}")
-                    self.queue_manager.update_status(
-                        item.id,
-                        QueueStatus.FAILED,
-                        "Scrape produced no usable jobs; consider reviewing source config",
-                        scraped_data={
-                            "jobs_found": len(jobs) if jobs else 0,
+                    self._handoff_to_agent_review(
+                        item,
+                        SOURCE_AGENT_PROMPT,
+                        reason="Scrape produced no usable jobs",
+                        context={
+                            "source_id": source.get("id"),
                             "source_name": source_name,
+                            "source_type": source_type,
+                            "config": config,
+                            "jobs_found": len(jobs) if jobs else 0,
                         },
+                        status_message="Agent review required: scrape produced no usable jobs",
                     )
 
             except Exception as scrape_error:
+                # Recoverable: agent can investigate and fix the issue
                 logger.error(f"Error scraping source {source_name}: {scrape_error}")
                 self.sources_manager.record_scraping_failure(
                     source_id=source.get("id"),
                     error_message=str(scrape_error),
                 )
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.FAILED,
-                    f"Scraping failed: {str(scrape_error)}",
-                    error_details=traceback.format_exc(),
+                self._handoff_to_agent_review(
+                    item,
+                    SOURCE_AGENT_PROMPT,
+                    reason="Source scrape failed",
+                    context={
+                        "source_id": source.get("id"),
+                        "source_name": source_name,
+                        "error": str(scrape_error),
+                        "traceback": traceback.format_exc(),
+                    },
+                    status_message=f"Agent review required: scraping failed: {str(scrape_error)}",
                 )
 
         except Exception as e:

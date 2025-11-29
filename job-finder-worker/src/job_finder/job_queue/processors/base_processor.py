@@ -12,11 +12,12 @@ are initialized only by processors that need them (JobProcessor).
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+from job_finder.exceptions import DuplicateQueueItemError, StorageError
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
-from job_finder.job_queue.models import JobQueueItem, QueueStatus
+from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.utils.company_info import should_skip_by_stop_list
 from job_finder.logging_config import get_structured_logger
 
@@ -87,3 +88,109 @@ class BaseProcessor:
             Pipeline state dictionary (empty dict if not present)
         """
         return item.pipeline_state or {}
+
+    # ============================================================
+    # AGENT REVIEW HANDOFF HELPERS
+    # ============================================================
+
+    def _create_agent_review_item(
+        self,
+        item: JobQueueItem,
+        prompt: str,
+        reason: str,
+        context: Dict[str, Any],
+    ) -> JobQueueItem:
+        """
+        Build a standardized AGENT_REVIEW queue item with shared metadata.
+
+        Agent review items are created when a task fails in a recoverable way
+        that requires agent intervention to resolve.
+
+        Args:
+            item: Parent queue item that needs review
+            prompt: Instructions for the agent on what to do
+            reason: Brief explanation of why review is needed
+            context: Additional context data for the agent
+
+        Returns:
+            New JobQueueItem of type AGENT_REVIEW
+        """
+        return JobQueueItem(
+            type=QueueItemType.AGENT_REVIEW,
+            url=item.url,
+            company_name=item.company_name,
+            company_id=item.company_id,
+            source=item.source,
+            status=QueueStatus.PENDING,
+            result_message=reason,
+            scraped_data={**context, "agent_prompt": prompt},
+            parent_item_id=item.id,
+            tracking_id=item.tracking_id,
+        )
+
+    def _spawn_agent_review(
+        self,
+        item: JobQueueItem,
+        prompt: str,
+        reason: str,
+        context: Dict[str, Any],
+    ) -> Optional[str]:
+        """
+        Insert an AGENT_REVIEW item and log the result.
+
+        Args:
+            item: Parent queue item that needs review
+            prompt: Instructions for the agent
+            reason: Brief explanation of why review is needed
+            context: Additional context data for the agent
+
+        Returns:
+            ID of the created agent review item, or None if creation failed
+        """
+        review_item = self._create_agent_review_item(item, prompt, reason, context)
+        try:
+            review_id = self.queue_manager.add_item(review_item)
+            logger.info(
+                "Spawned AGENT_REVIEW %s for %s (%s)",
+                review_id,
+                item.url or item.id,
+                reason,
+            )
+            return review_id
+        except DuplicateQueueItemError as exc:
+            logger.warning(
+                "Agent review already exists for %s: %s", item.url or item.id, exc
+            )
+        except StorageError as exc:
+            logger.error("Failed to store agent review for %s: %s", item.id, exc)
+        return None
+
+    def _handoff_to_agent_review(
+        self,
+        item: JobQueueItem,
+        prompt: str,
+        reason: str,
+        context: Dict[str, Any],
+        status_message: str,
+    ) -> Optional[str]:
+        """
+        Spawn an agent review and mark the parent as NEEDS_REVIEW in one step.
+
+        This is the primary method for handling recoverable failures that need
+        agent intervention. It:
+        1. Creates an AGENT_REVIEW queue item with instructions
+        2. Marks the parent item as NEEDS_REVIEW
+
+        Args:
+            item: Parent queue item that failed and needs review
+            prompt: Instructions for the agent on what to do
+            reason: Brief explanation of why review is needed
+            context: Additional context data for the agent
+            status_message: Message to set on the parent item
+
+        Returns:
+            ID of the created agent review item, or None if creation failed
+        """
+        review_id = self._spawn_agent_review(item, prompt, reason, context)
+        self._update_item_status(item.id, QueueStatus.NEEDS_REVIEW, status_message)
+        return review_id
