@@ -14,7 +14,7 @@ export type SubmitJobInput = {
 
 export type SubmitCompanyInput = {
   companyName: string
-  websiteUrl: string
+  websiteUrl?: string
   companyId?: string | null
   source?: QueueSource
 }
