@@ -33,7 +33,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { AlertCircle, Loader2, Plus, Rss, ExternalLink, Trash2, Search, Pause, Play } from "lucide-react"
+import { AlertCircle, Loader2, Plus, Rss, ExternalLink, Trash2, Search, Pause, Play, Building2 } from "lucide-react"
+import { CompanyDetailsModal } from "@/components/company"
 import type { JobSource, JobSourceStatus } from "@shared/types"
 
 function formatRelativeTime(date: unknown): string {
@@ -109,6 +110,9 @@ export function SourcesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false)
   const [scrapePrefillSourceId, setScrapePrefillSourceId] = useState<string | null>(null)
+
+  // Company details modal state
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
 
   // Form state
   const [sourceUrl, setSourceUrl] = useState("")
@@ -371,7 +375,19 @@ export function SourcesPage() {
                       <div className="font-medium">{source.name}</div>
                       {/* Show company info on mobile as secondary text */}
                       <div className="md:hidden text-xs text-muted-foreground mt-0.5">
-                        {source.aggregatorDomain || (source.companyId ? "Company source" : "")}
+                        {source.aggregatorDomain || (source.companyId ? (
+                          <button
+                            type="button"
+                            className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedCompanyId(source.companyId!)
+                            }}
+                          >
+                            <Building2 className="h-3 w-3" />
+                            Company
+                          </button>
+                        ) : "")}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -384,8 +400,24 @@ export function SourcesPage() {
                         {source.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {source.aggregatorDomain || (source.companyId ? "Company source" : "—")}
+                    <TableCell className="hidden md:table-cell">
+                      {source.aggregatorDomain ? (
+                        <span className="text-muted-foreground">{source.aggregatorDomain}</span>
+                      ) : source.companyId ? (
+                        <button
+                          type="button"
+                          className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedCompanyId(source.companyId!)
+                          }}
+                        >
+                          <Building2 className="h-3 w-3" />
+                          View Company
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -592,6 +624,13 @@ export function SourcesPage() {
         prefillSourceId={scrapePrefillSourceId}
         onSubmitted={refetch}
         sources={sources}
+      />
+
+      {/* Company Details Modal */}
+      <CompanyDetailsModal
+        companyId={selectedCompanyId}
+        open={!!selectedCompanyId}
+        onOpenChange={(open) => !open && setSelectedCompanyId(null)}
       />
     </div>
   )

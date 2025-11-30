@@ -24,6 +24,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Loader2, Search, Briefcase } from "lucide-react"
 import { JobDetailsDialog } from "./components/JobDetailsDialog"
+import { CompanyDetailsModal } from "@/components/company"
 import { ROUTES } from "@/types/routes"
 import type { JobMatchWithListing } from "@shared/types"
 import { logger } from "@/services/logging"
@@ -62,6 +63,9 @@ export function JobApplicationsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [priorityFilter, setPriorityFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState<string>("score")
+
+  // Company details modal state
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
 
   // Subscribe to real-time job matches
   useEffect(() => {
@@ -315,7 +319,20 @@ export function JobApplicationsPage() {
                       <div className="font-medium truncate">{match.listing.title}</div>
                     </TableCell>
                     <TableCell>
-                      <div className="text-muted-foreground">{match.listing.companyName}</div>
+                      {match.listing.companyId ? (
+                        <button
+                          type="button"
+                          className="text-blue-600 hover:underline text-left"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedCompanyId(match.listing.companyId!)
+                          }}
+                        >
+                          {match.listing.companyName}
+                        </button>
+                      ) : (
+                        <div className="text-muted-foreground">{match.listing.companyName}</div>
+                      )}
                       {/* Show location on mobile as secondary text */}
                       <div className="md:hidden text-xs text-muted-foreground mt-0.5">
                         {match.listing.location || ""}
@@ -342,6 +359,13 @@ export function JobApplicationsPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onGenerateResume={handleGenerateResume}
+      />
+
+      {/* Company Details Modal */}
+      <CompanyDetailsModal
+        companyId={selectedCompanyId}
+        open={!!selectedCompanyId}
+        onOpenChange={(open) => !open && setSelectedCompanyId(null)}
       />
     </div>
   )

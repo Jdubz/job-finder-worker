@@ -42,6 +42,7 @@ import {
   Plus,
 } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
+import { CompanyDetailsModal } from "@/components/company"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
 function formatDate(date: unknown): string {
@@ -114,6 +115,9 @@ export function JobListingsPage() {
   const [companyName, setCompanyName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // Company details modal state
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
 
   // Calculate status counts in a single pass for performance
   const statusCounts = useMemo(() => {
@@ -360,12 +364,38 @@ export function JobListingsPage() {
                       <div className="font-medium truncate">{listing.title}</div>
                       {/* Show company and location on mobile as secondary text */}
                       <div className="md:hidden text-xs text-muted-foreground mt-0.5 truncate">
-                        {listing.companyName}
+                        {listing.companyId ? (
+                          <button
+                            type="button"
+                            className="text-blue-600 hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedCompanyId(listing.companyId!)
+                            }}
+                          >
+                            {listing.companyName}
+                          </button>
+                        ) : (
+                          listing.companyName
+                        )}
                         {listing.location && ` • ${listing.location}`}
                       </div>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {listing.companyName}
+                    <TableCell className="hidden md:table-cell">
+                      {listing.companyId ? (
+                        <button
+                          type="button"
+                          className="text-blue-600 hover:underline text-left"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedCompanyId(listing.companyId!)
+                          }}
+                        >
+                          {listing.companyName}
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground">{listing.companyName}</span>
+                      )}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-muted-foreground">
                       {listing.location || "—"}
@@ -636,6 +666,13 @@ export function JobListingsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Company Details Modal */}
+      <CompanyDetailsModal
+        companyId={selectedCompanyId}
+        open={!!selectedCompanyId}
+        onOpenChange={(open) => !open && setSelectedCompanyId(null)}
+      />
     </div>
   )
 }
