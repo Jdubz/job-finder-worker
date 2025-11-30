@@ -2,25 +2,24 @@ import { TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { TabCard } from "../shared"
-import type { ConfigState } from "../../hooks/useConfigState"
+import type { SchedulerSettings } from "@shared/types"
 
-type SchedulerTabProps = Pick<
-  ConfigState,
-  | "isSaving"
-  | "currentScheduler"
-  | "hasSchedulerChanges"
-  | "updateSchedulerState"
-  | "handleSaveScheduler"
-  | "handleResetSchedulerSettings"
->
+type SchedulerTabProps = {
+  isSaving: boolean
+  schedulerSettings: SchedulerSettings
+  hasSchedulerChanges: boolean
+  updateSchedulerState: (updates: Partial<SchedulerSettings>) => void
+  handleSaveScheduler: () => Promise<void> | void
+  resetScheduler: () => void
+}
 
 export function SchedulerTab({
   isSaving,
-  currentScheduler,
+  schedulerSettings,
   hasSchedulerChanges,
   updateSchedulerState,
   handleSaveScheduler,
-  handleResetSchedulerSettings,
+  resetScheduler,
 }: SchedulerTabProps) {
   return (
     <TabsContent value="scheduler" className="space-y-4 mt-4">
@@ -30,7 +29,7 @@ export function SchedulerTab({
         hasChanges={hasSchedulerChanges}
         isSaving={isSaving}
         onSave={handleSaveScheduler}
-        onReset={handleResetSchedulerSettings}
+        onReset={resetScheduler}
       >
         <div className="space-y-3">
           <Label htmlFor="poll-interval">Poll Interval (seconds)</Label>
@@ -38,7 +37,7 @@ export function SchedulerTab({
             id="poll-interval"
             type="number"
             min="5"
-            value={currentScheduler.pollIntervalSeconds}
+            value={schedulerSettings.pollIntervalSeconds}
             onChange={(e) =>
               updateSchedulerState({
                 pollIntervalSeconds: Math.max(5, parseInt(e.target.value) || 0),

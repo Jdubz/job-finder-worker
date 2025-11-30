@@ -86,9 +86,8 @@ class ScrapeRunner:
 
     def _create_filter_engine(self, config_loader: ConfigLoader) -> StrikeFilterEngine:
         """Create StrikeFilterEngine for pre-filtering scraped jobs."""
-        job_filters = config_loader.get_job_filters()
-        tech_ranks = config_loader.get_technology_ranks()
-        return StrikeFilterEngine(job_filters, tech_ranks)
+        prefilter_policy = config_loader.get_prefilter_policy()
+        return StrikeFilterEngine(prefilter_policy)
 
     def run_scrape(
         self,

@@ -109,9 +109,8 @@ class JobProcessor(BaseProcessor):
         self.ai_matcher = ai_matcher
 
         # Initialize strike-based filter engine
-        filter_config = config_loader.get_job_filters()
-        tech_ranks = config_loader.get_technology_ranks()
-        self.filter_engine = StrikeFilterEngine(filter_config, tech_ranks)
+        prefilter_policy = config_loader.get_prefilter_policy()
+        self.filter_engine = StrikeFilterEngine(prefilter_policy)
 
         # Initialize scrape runner with shared filter engine for pre-filtering
         self.scrape_runner = ScrapeRunner(

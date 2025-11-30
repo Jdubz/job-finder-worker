@@ -1,8 +1,4 @@
-export { StopListTab } from "./StopListTab"
 export { QueueSettingsTab } from "./QueueSettingsTab"
 export { AISettingsTab } from "./AISettingsTab"
-export { JobMatchTab } from "./JobMatchTab"
-export { JobFiltersTab } from "./JobFiltersTab"
-export { TechnologyRanksTab } from "./TechnologyRanksTab"
 export { SchedulerTab } from "./SchedulerTab"
 export { PersonalInfoTab } from "./PersonalInfoTab"

@@ -23,12 +23,15 @@ import type {
 } from "./queue.types"
 import type {
   JobFiltersConfig,
+  PrefilterPolicy,
+  MatchPolicy,
   TechnologyRanksConfig,
   SchedulerSettings,
   JobMatchConfig,
   AIProviderType,
   AIInterfaceType,
   WorkerSettings,
+  CompanyMatchWeights,
 } from "./config.types"
 import type { PersonalInfo } from "./generator.types"
 // Import and re-export type guards from queue.types for convenience
@@ -320,6 +323,27 @@ export function isTechnologyRanksConfig(value: unknown): value is TechnologyRank
       (v.strikes.perBadTech === undefined || typeof v.strikes.perBadTech === "number"))
 
   return technologiesValid && strikesValid
+}
+
+export function isPrefilterPolicy(value: unknown): value is PrefilterPolicy {
+  const v = value as Partial<PrefilterPolicy>
+  return !!v && isStopList(v.stopList) && isJobFiltersConfig(v.strikeEngine) && isTechnologyRanksConfig(v.technologyRanks)
+}
+
+export function isMatchPolicy(value: unknown): value is MatchPolicy {
+  const v = value as Partial<MatchPolicy>
+  const companyWeightsOk = isObject(v.companyWeights)
+  const db = (v.dealbreakers || {}) as Record<string, unknown>
+  return (
+    !!v &&
+    isJobMatchConfig(v.jobMatch) &&
+    companyWeightsOk &&
+    !!db &&
+    typeof db.maxTimezoneDiffHours === "number" &&
+    Array.isArray(db.blockedLocations) &&
+    typeof db.requireRemote === "boolean" &&
+    typeof db.allowHybridInTimezone === "boolean"
+  )
 }
 
 export function isSchedulerSettings(value: unknown): value is SchedulerSettings {

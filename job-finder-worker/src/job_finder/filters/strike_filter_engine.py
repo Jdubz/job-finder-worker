@@ -25,16 +25,37 @@ class StrikeFilterEngine:
     Tier 2: Strike accumulation (fail if >= threshold)
     """
 
-    def __init__(self, config: dict, tech_ranks: dict):
-        """
-        Initialize strike-based filter engine.
+    def __init__(self, policy: dict, legacy_tech_ranks: dict | None = None):
+        """Initialize strike-based filter engine.
 
-        Args:
-            config: Main filter configuration (job-finder-config/job-filters)
-            tech_ranks: Technology ranking config (job-finder-config/technology-ranks)
+        Supports both the new consolidated prefilter policy shape and the legacy
+        (filters, tech_ranks) arguments used in older tests. If legacy_tech_ranks is
+        provided and the policy does not already contain strikeEngine/stopList keys,
+        we wrap it into the new structure.
         """
-        self.config = config
-        self.tech_ranks = tech_ranks
+
+        if (
+            legacy_tech_ranks is not None
+            and "strikeEngine" not in policy
+            and "stopList" not in policy
+        ):
+            policy = {
+                "stopList": {
+                    "excludedCompanies": [],
+                    "excludedKeywords": [],
+                    "excludedDomains": [],
+                },
+                "strikeEngine": policy,
+                "technologyRanks": legacy_tech_ranks or {},
+            }
+
+        self.policy = policy
+        self.stop_list = policy.get("stopList", {})
+        self.stop_companies = [c.lower() for c in self.stop_list.get("excludedCompanies", [])]
+        self.stop_keywords = [k.lower() for k in self.stop_list.get("excludedKeywords", [])]
+        self.stop_domains = [d.lower() for d in self.stop_list.get("excludedDomains", [])]
+        config = policy.get("strikeEngine", {})
+        self.tech_ranks = policy.get("technologyRanks", {})
         self.enabled = config.get("enabled", True)
         self.strike_threshold = config.get("strikeThreshold", 5)
 
@@ -87,8 +108,8 @@ class StrikeFilterEngine:
         self.age_strike_points = age_strike.get("points", 1)
 
         # Technology ranks
-        self.technologies = tech_ranks.get("technologies", {})
-        self.missing_required_tech_points = tech_ranks.get("strikes", {}).get(
+        self.technologies = self.tech_ranks.get("technologies", {})
+        self.missing_required_tech_points = self.tech_ranks.get("strikes", {}).get(
             "missingAllRequired", 1
         )
 
@@ -321,7 +342,9 @@ class StrikeFilterEngine:
         """Check if company is in exclusion list."""
         company_lower = company.lower()
 
-        for excluded in self.excluded_companies:
+        combined_companies = self.excluded_companies + self.stop_companies
+
+        for excluded in combined_companies:
             if excluded in company_lower:
                 result.add_rejection(
                     filter_category="hard_reject",
@@ -338,7 +361,9 @@ class StrikeFilterEngine:
         """Check for deal-breaker keywords."""
         description_lower = description.lower()
 
-        for keyword in self.excluded_keywords:
+        combined_keywords = self.excluded_keywords + self.stop_keywords
+
+        for keyword in combined_keywords:
             # For multi-word phrases, use phrase matching
             # For single words, use word boundary matching
             if " " in keyword:
@@ -459,6 +484,11 @@ class StrikeFilterEngine:
         is_onsite = any(
             ind in combined for ind in ["on-site", "onsite", "in-office", "office-based"]
         )
+
+        # If a concrete location is provided but no remote/hybrid/onsite keywords were detected,
+        # treat it as onsite (e.g., "Berlin" or "Bangalore"), so the remote policy applies.
+        if not is_remote and not is_hybrid and not is_onsite and location_lower.strip():
+            is_onsite = True
 
         # If we can't detect work arrangement, pass it through (don't reject on missing data)
         if not is_remote and not is_hybrid and not is_onsite:

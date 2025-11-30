@@ -5,24 +5,20 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { useConfigState } from "./hooks/useConfigState"
 import {
-  StopListTab,
   QueueSettingsTab,
   AISettingsTab,
-  JobMatchTab,
-  JobFiltersTab,
-  TechnologyRanksTab,
   SchedulerTab,
   PersonalInfoTab,
 } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 
 type TabType =
-  | "stop-list"
+  | "prefilter"
+  | "match"
   | "queue"
   | "ai"
-  | "job-match"
-  | "filters"
-  | "tech"
   | "scheduler"
   | "personal"
 
@@ -30,7 +26,7 @@ export function JobFinderConfigPage() {
   const { user, isOwner } = useAuth()
   const configState = useConfigState()
   const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = (searchParams.get("tab") as TabType | null) ?? "stop-list"
+  const initialTab = (searchParams.get("tab") as TabType | null) ?? "prefilter"
   const [activeTab, setActiveTab] = useState<TabType>(initialTab)
 
   useEffect(() => {
@@ -41,7 +37,7 @@ export function JobFinderConfigPage() {
   }, [searchParams, activeTab])
 
   const handleTabChange = (value: string) => {
-    const tabValue = (value as TabType) ?? "stop-list"
+    const tabValue = (value as TabType) ?? "prefilter"
     setActiveTab(tabValue)
     const params = new URLSearchParams(searchParams)
     params.set("tab", tabValue)
@@ -101,107 +97,120 @@ export function JobFinderConfigPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-8">
-          <TabsTrigger value="stop-list">Stop List</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="prefilter">Prefilter Policy</TabsTrigger>
+          <TabsTrigger value="match">Match Policy</TabsTrigger>
           <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
-          <TabsTrigger value="job-match">Match</TabsTrigger>
-          <TabsTrigger value="filters">Filters</TabsTrigger>
-          <TabsTrigger value="tech">Tech</TabsTrigger>
           <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
           <TabsTrigger value="personal">Personal</TabsTrigger>
         </TabsList>
 
-        <StopListTab
-          isSaving={configState.isSaving}
-          stopList={configState.stopList}
-          newCompany={configState.newCompany}
-          setNewCompany={configState.setNewCompany}
-          newKeyword={configState.newKeyword}
-          setNewKeyword={configState.setNewKeyword}
-          newDomain={configState.newDomain}
-          setNewDomain={configState.setNewDomain}
-          hasStopListChanges={configState.hasStopListChanges}
-          handleAddCompany={configState.handleAddCompany}
-          handleRemoveCompany={configState.handleRemoveCompany}
-          handleAddKeyword={configState.handleAddKeyword}
-          handleRemoveKeyword={configState.handleRemoveKeyword}
-          handleAddDomain={configState.handleAddDomain}
-          handleRemoveDomain={configState.handleRemoveDomain}
-          handleSaveStopList={configState.handleSaveStopList}
-          handleResetStopList={configState.handleResetStopList}
-        />
+        <div className="space-y-4 py-4">
+          {activeTab === "prefilter" && (
+            <PolicyEditor
+              title="Prefilter Policy"
+              description="Stop list + strike filters + technology ranks. This is the only source of truth for pre-filtering."
+              jsonText={configState.prefilterText}
+              setJsonText={configState.setPrefilterText}
+              onSave={configState.handleSavePrefilter}
+              onReset={configState.resetPrefilter}
+              isSaving={configState.isSaving}
+            />
+          )}
 
-        <QueueSettingsTab
-          isSaving={configState.isSaving}
-          queueSettings={configState.queueSettings}
-          setQueueSettings={configState.setQueueSettings}
-          hasQueueChanges={configState.hasQueueChanges}
-          handleSaveQueueSettings={configState.handleSaveQueueSettings}
-          handleResetQueueSettings={configState.handleResetQueueSettings}
-        />
+          {activeTab === "match" && (
+            <PolicyEditor
+              title="Match Policy"
+              description="Match scoring, weights, and dealbreakers. No hardcoded filters exist outside this policy."
+              jsonText={configState.matchText}
+              setJsonText={configState.setMatchText}
+              onSave={configState.handleSaveMatch}
+              onReset={configState.resetMatch}
+              isSaving={configState.isSaving}
+            />
+          )}
 
-        <AISettingsTab
-          isSaving={configState.isSaving}
-          aiSettings={configState.aiSettings}
-          setAISettings={configState.setAISettings}
-          hasAIChanges={configState.hasAIChanges}
-          handleSaveAISettings={configState.handleSaveAISettings}
-          handleResetAISettings={configState.handleResetAISettings}
-        />
+          {activeTab === "queue" && (
+            <QueueSettingsTab
+              isSaving={configState.isSaving}
+              queueSettings={configState.queueSettings}
+              setQueueSettings={configState.setQueueSettings}
+              hasQueueChanges={configState.hasQueueChanges}
+              handleSaveQueueSettings={configState.handleSaveQueueSettings}
+              resetQueue={configState.resetQueue}
+            />
+          )}
 
-        <JobMatchTab
-          isSaving={configState.isSaving}
-          jobMatch={configState.jobMatch}
-          setJobMatch={configState.setJobMatch}
-          hasJobMatchChanges={configState.hasJobMatchChanges}
-          handleSaveJobMatch={configState.handleSaveJobMatch}
-          handleResetJobMatch={configState.handleResetJobMatch}
-        />
+          {activeTab === "ai" && (
+            <AISettingsTab
+              isSaving={configState.isSaving}
+              aiSettings={configState.aiSettings}
+              setAISettings={configState.setAISettings}
+              hasAIChanges={configState.hasAIChanges}
+              handleSaveAISettings={configState.handleSaveAISettings}
+              resetAI={configState.resetAI}
+            />
+          )}
 
-        <JobFiltersTab
-          isSaving={configState.isSaving}
-          currentJobFilters={configState.currentJobFilters}
-          hasJobFilterChanges={configState.hasJobFilterChanges}
-          updateJobFiltersState={configState.updateJobFiltersState}
-          handleSaveJobFilters={configState.handleSaveJobFilters}
-          handleResetJobFilters={configState.handleResetJobFilters}
-        />
+          {activeTab === "scheduler" && (
+            <SchedulerTab
+              isSaving={configState.isSaving}
+              schedulerSettings={configState.schedulerSettings}
+              hasSchedulerChanges={configState.hasSchedulerChanges}
+              updateSchedulerState={configState.updateSchedulerState}
+              handleSaveScheduler={configState.handleSaveScheduler}
+              resetScheduler={configState.resetScheduler}
+            />
+          )}
 
-        <TechnologyRanksTab
-          isSaving={configState.isSaving}
-          currentTechRanks={configState.currentTechRanks}
-          newTechName={configState.newTechName}
-          setNewTechName={configState.setNewTechName}
-          newTechRank={configState.newTechRank}
-          setNewTechRank={configState.setNewTechRank}
-          newTechPoints={configState.newTechPoints}
-          setNewTechPoints={configState.setNewTechPoints}
-          hasTechRankChanges={configState.hasTechRankChanges}
-          updateTechRanksState={configState.updateTechRanksState}
-          handleAddTechnology={configState.handleAddTechnology}
-          handleSaveTechRanks={configState.handleSaveTechRanks}
-          handleResetTechRanks={configState.handleResetTechRanks}
-        />
-
-        <SchedulerTab
-          isSaving={configState.isSaving}
-          currentScheduler={configState.currentScheduler}
-          hasSchedulerChanges={configState.hasSchedulerChanges}
-          updateSchedulerState={configState.updateSchedulerState}
-          handleSaveScheduler={configState.handleSaveScheduler}
-          handleResetSchedulerSettings={configState.handleResetSchedulerSettings}
-        />
-
-        <PersonalInfoTab
-          isSaving={configState.isSaving}
-          currentPersonalInfo={configState.currentPersonalInfo}
-          hasPersonalInfoChanges={configState.hasPersonalInfoChanges}
-          updatePersonalInfoState={configState.updatePersonalInfoState}
-          handleSavePersonalInfo={configState.handleSavePersonalInfo}
-          handleResetPersonalInfo={configState.handleResetPersonalInfo}
-        />
+          {activeTab === "personal" && (
+            <PersonalInfoTab
+              isSaving={configState.isSaving}
+              currentPersonalInfo={configState.personalInfo}
+              hasPersonalInfoChanges={configState.hasPersonalInfoChanges}
+              updatePersonalInfoState={configState.updatePersonalInfoState}
+              handleSavePersonalInfo={configState.handleSavePersonalInfo}
+              handleResetPersonalInfo={configState.resetPersonal}
+            />
+          )}
+        </div>
       </Tabs>
+    </div>
+  )
+}
+
+type PolicyEditorProps = {
+  title: string
+  description: string
+  jsonText: string
+  setJsonText: (val: string) => void
+  onSave: () => Promise<void>
+  onReset: () => void
+  isSaving: boolean
+}
+
+function PolicyEditor({ title, description, jsonText, setJsonText, onSave, onReset, isSaving }: PolicyEditorProps) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      <Textarea
+        value={jsonText}
+        onChange={(e) => setJsonText(e.target.value)}
+        className="font-mono text-xs min-h-[320px]"
+      />
+      <div className="flex gap-2">
+        <Button size="sm" onClick={onSave} disabled={isSaving}>
+          {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+          Save Policy
+        </Button>
+        <Button size="sm" variant="outline" onClick={onReset} disabled={isSaving}>
+          Reset to Loaded
+        </Button>
+      </div>
     </div>
   )
 }

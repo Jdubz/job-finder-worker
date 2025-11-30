@@ -10,7 +10,7 @@ import {
 } from "@/api/generator-client"
 import { getAbsoluteArtifactUrl } from "@/config/api"
 import type { JobMatch } from "@shared/types"
-import { AuthModal } from "@/components/auth/AuthModal"
+import { AuthModal } from "../../components/auth/AuthModal"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"

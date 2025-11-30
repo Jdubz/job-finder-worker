@@ -1,19 +1,17 @@
 import { BaseApiClient } from "./base-client"
 import { API_CONFIG } from "@/config/api"
 import type {
-  StopList,
   QueueSettings,
   AISettings,
-  JobMatchConfig,
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
   UpsertConfigEntryResponse,
   ApiSuccessResponse,
   PersonalInfo,
-  JobFiltersConfig,
-  TechnologyRanksConfig,
   SchedulerSettings,
   WorkerSettings,
+  PrefilterPolicy,
+  MatchPolicy,
 } from "@shared/types"
 import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO } from "@shared/types"
 
@@ -39,22 +37,6 @@ export class ConfigClient extends BaseApiClient {
       payload,
     })
     return response.data.config
-  }
-
-  async getStopList(): Promise<StopList | null> {
-    return this.getConfigEntry<StopList>("stop-list")
-  }
-
-  async updateStopList(stopList: Partial<StopList>): Promise<void> {
-    const existing = (await this.getStopList()) ?? {
-      excludedCompanies: [],
-      excludedDomains: [],
-      excludedKeywords: [],
-    }
-    await this.updateConfigEntry("stop-list", {
-      ...existing,
-      ...stopList,
-    })
   }
 
   async getQueueSettings(): Promise<QueueSettings | null> {
@@ -96,38 +78,20 @@ export class ConfigClient extends BaseApiClient {
     })
   }
 
-  async getJobMatch(): Promise<JobMatchConfig | null> {
-    return this.getConfigEntry<JobMatchConfig>("job-match")
+  async getPrefilterPolicy(): Promise<PrefilterPolicy | null> {
+    return this.getConfigEntry<PrefilterPolicy>("prefilter-policy")
   }
 
-  async updateJobMatch(settings: Partial<JobMatchConfig>): Promise<void> {
-    const existing = (await this.getJobMatch()) ?? {
-      minMatchScore: 70,
-      portlandOfficeBonus: 15,
-      userTimezone: -8,
-      preferLargeCompanies: true,
-      generateIntakeData: true,
-    }
-    await this.updateConfigEntry("job-match", {
-      ...existing,
-      ...settings,
-    })
+  async updatePrefilterPolicy(policy: PrefilterPolicy): Promise<void> {
+    await this.updateConfigEntry("prefilter-policy", policy)
   }
 
-  async getJobFilters(): Promise<JobFiltersConfig | null> {
-    return this.getConfigEntry<JobFiltersConfig>("job-filters")
+  async getMatchPolicy(): Promise<MatchPolicy | null> {
+    return this.getConfigEntry<MatchPolicy>("match-policy")
   }
 
-  async updateJobFilters(filters: JobFiltersConfig): Promise<void> {
-    await this.updateConfigEntry("job-filters", filters)
-  }
-
-  async getTechnologyRanks(): Promise<TechnologyRanksConfig | null> {
-    return this.getConfigEntry<TechnologyRanksConfig>("technology-ranks")
-  }
-
-  async updateTechnologyRanks(ranks: TechnologyRanksConfig): Promise<void> {
-    await this.updateConfigEntry("technology-ranks", ranks)
+  async updateMatchPolicy(policy: MatchPolicy): Promise<void> {
+    await this.updateConfigEntry("match-policy", policy)
   }
 
   async getSchedulerSettings(): Promise<SchedulerSettings | null> {

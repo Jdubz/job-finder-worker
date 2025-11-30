@@ -162,9 +162,11 @@ def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
     except Exception as exc:  # pragma: no cover - defensive
         slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
 
-    # Load job match settings (scoring preferences)
+    # Load match policy (scoring preferences + dealbreakers)
     try:
-        job_match = config_loader.get_job_match()
+        match_policy = config_loader.get_match_policy()
+        job_match = match_policy.get("jobMatch", {})
+        company_weights = match_policy.get("companyWeights", {})
         ai_matcher.min_match_score = job_match.get("minMatchScore", ai_matcher.min_match_score)
         ai_matcher.generate_intake = job_match.get("generateIntakeData", ai_matcher.generate_intake)
         ai_matcher.portland_office_bonus = job_match.get(
@@ -174,9 +176,10 @@ def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
         ai_matcher.prefer_large_companies = job_match.get(
             "preferLargeCompanies", ai_matcher.prefer_large_companies
         )
-        ai_matcher.company_weights = job_match.get("companyWeights", ai_matcher.company_weights)
+        ai_matcher.company_weights = company_weights or ai_matcher.company_weights
+        ai_matcher.dealbreakers = match_policy.get("dealbreakers", ai_matcher.dealbreakers)
     except Exception as exc:  # pragma: no cover - defensive
-        slogger.worker_status("job_match_settings_load_failed", {"error": str(exc)})
+        slogger.worker_status("match_policy_load_failed", {"error": str(exc)})
 
 
 def get_processing_timeout(config_loader: ConfigLoader) -> int:
@@ -264,30 +267,36 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         if isinstance(candidate, dict):
             worker_ai_config = candidate
 
-    # Get job match settings (defaults)
-    job_match = {
-        "minMatchScore": 70,
-        "portlandOfficeBonus": 15,
-        "userTimezone": -8,
-        "preferLargeCompanies": True,
-        # Intake guidance is part of every high-confidence match; doc generation stays FE-triggered
-        "generateIntakeData": True,
+    # Get match policy (scoring + weights + dealbreakers)
+    match_policy = {
+        "jobMatch": {
+            "minMatchScore": 70,
+            "portlandOfficeBonus": 15,
+            "userTimezone": -8,
+            "preferLargeCompanies": True,
+            "generateIntakeData": True,
+        },
+        "companyWeights": {},
+        "dealbreakers": {},
     }
     try:
-        job_match = config_loader.get_job_match()
+        match_policy = config_loader.get_match_policy()
     except Exception as exc:
-        slogger.worker_status("job_match_init_failed", {"error": str(exc)})
+        slogger.worker_status("match_policy_init_failed", {"error": str(exc)})
+
+    job_match_cfg = match_policy.get("jobMatch", {})
 
     ai_matcher = AIJobMatcher(
         provider=job_match_provider,
-        min_match_score=job_match.get("minMatchScore", 70),
-        generate_intake=job_match.get("generateIntakeData", True),
-        portland_office_bonus=job_match.get("portlandOfficeBonus", 15),
+        min_match_score=job_match_cfg.get("minMatchScore", 70),
+        generate_intake=job_match_cfg.get("generateIntakeData", True),
+        portland_office_bonus=job_match_cfg.get("portlandOfficeBonus", 15),
         profile=profile,
-        user_timezone=job_match.get("userTimezone", -8),
-        prefer_large_companies=job_match.get("preferLargeCompanies", True),
-        config=job_match,
-        company_weights=job_match.get("companyWeights"),
+        user_timezone=job_match_cfg.get("userTimezone", -8),
+        prefer_large_companies=job_match_cfg.get("preferLargeCompanies", True),
+        config=job_match_cfg,
+        company_weights=match_policy.get("companyWeights"),
+        dealbreakers=match_policy.get("dealbreakers"),
     )
 
     # Respect AI settings when fetching/extracting company info
