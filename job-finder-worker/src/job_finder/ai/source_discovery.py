@@ -8,8 +8,12 @@ import feedparser
 import requests
 
 from job_finder.ai.providers import AIProvider
-from job_finder.scrapers.config_expander import parse_workday_url
 from job_finder.scrapers.generic_scraper import GenericScraper
+from job_finder.scrapers.platform_patterns import (
+    PlatformPattern,
+    build_config_from_pattern,
+    match_platform,
+)
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.settings import get_scraping_settings
 
@@ -24,6 +28,9 @@ class SourceDiscovery:
     1. Detect source type (api, rss, html)
     2. Generate field mappings
     3. Validate configuration by test scraping
+
+    Uses a data-driven pattern registry for known platforms,
+    falling back to AI analysis for unknown sources.
     """
 
     def __init__(self, provider: Optional[AIProvider]):
@@ -32,7 +39,7 @@ class SourceDiscovery:
 
         Args:
             provider: AI provider instance to use for analysis (optional when
-                heuristic discovery is sufficient).
+                pattern-based discovery is sufficient).
         """
         self.provider = provider
 
@@ -47,15 +54,14 @@ class SourceDiscovery:
             Tuple of (SourceConfig dict or None, metadata dict)
         """
         try:
-            # Step 0: Try URL-based heuristics FIRST (before fetch)
-            # Some platforms (Workday, Ashby HTML pages) can be detected by URL pattern
-            # even when the page itself is JS-rendered or returns errors
-            heuristic_config = self._try_url_based_heuristics(url)
-            if heuristic_config:
-                validation = self._validate_config(heuristic_config)
+            # Step 0: Try pattern-based detection FIRST (no fetch required)
+            # This handles JS-rendered pages where fetch returns unusable HTML
+            pattern_config = self._try_pattern_detection(url)
+            if pattern_config:
+                validation = self._validate_config(pattern_config)
                 if validation.get("success"):
-                    logger.info(f"URL-based heuristic succeeded for {url}")
-                    return heuristic_config, validation
+                    logger.info(f"Pattern-based detection succeeded for {url}")
+                    return pattern_config, validation
                 # If validation failed, continue to try fetching
 
             # Step 1: Detect source type and fetch sample
@@ -63,19 +69,21 @@ class SourceDiscovery:
 
             if not sample:
                 logger.warning(f"Could not fetch content from {url}")
-                # Even if fetch failed, heuristic config might still be usable
-                # (e.g., Workday POST API might work even if GET fails)
-                if heuristic_config:
-                    return heuristic_config, {"success": False, "error": "fetch_failed_but_heuristic_available"}
+                # Even if fetch failed, pattern config might still be usable
+                if pattern_config:
+                    return pattern_config, {
+                        "success": False,
+                        "error": "fetch_failed_but_pattern_available",
+                    }
                 return None, {}
 
             logger.info(f"Detected source type '{source_type}' for {url}")
 
-            # Step 2: Generate config using heuristics or AI
+            # Step 2: Generate config using patterns or AI
             config = self._generate_config(url, source_type, sample)
 
             if not config:
-                logger.warning(f"AI could not generate config for {url}")
+                logger.warning(f"Could not generate config for {url}")
                 return None, {}
 
             # Step 3: Validate config
@@ -90,6 +98,79 @@ class SourceDiscovery:
         except Exception as e:
             logger.error(f"Error discovering source {url}: {e}")
             return None, {}
+
+    def _try_pattern_detection(self, url: str) -> Optional[Dict[str, Any]]:
+        """
+        Try to detect platform from URL patterns (data-driven).
+
+        This handles platforms where:
+        - The page is JS-rendered (so fetch returns unusable HTML)
+        - The page returns errors (500, etc.)
+        - But we can derive the API endpoint from the URL pattern
+
+        Args:
+            url: Source URL to analyze
+
+        Returns:
+            Config dictionary or None
+        """
+        result = match_platform(url)
+        if not result:
+            return None
+
+        pattern, groups = result
+        config = build_config_from_pattern(pattern, groups)
+
+        # Validate by making a test request to the API
+        if not self._validate_api_endpoint(config, pattern):
+            return None
+
+        return config
+
+    def _validate_api_endpoint(self, config: Dict[str, Any], pattern: PlatformPattern) -> bool:
+        """
+        Validate that an API endpoint works by making a test request.
+
+        Args:
+            config: Config dictionary with API details
+            pattern: Platform pattern for validation hints
+
+        Returns:
+            True if API returns expected data structure
+        """
+        try:
+            url = config["url"]
+            method = config.get("method", "GET")
+            headers = config.get("headers", {})
+            headers.setdefault("Accept", "application/json")
+
+            if method == "POST":
+                response = requests.post(
+                    url,
+                    headers=headers,
+                    json=config.get("post_body", {}),
+                    timeout=10,
+                )
+            else:
+                response = requests.get(url, headers=headers, timeout=10)
+
+            response.raise_for_status()
+            data = response.json()
+
+            # Check for expected key in response
+            if pattern.validation_key:
+                if pattern.validation_key not in data:
+                    return False
+            else:
+                # For array responses (like Lever), check it's a list
+                if not isinstance(data, list):
+                    return False
+
+            return True
+
+        except (requests.RequestException, json.JSONDecodeError) as e:
+            logger.debug(f"API validation failed for {config['url']}: {e}")
+            return False
 
     def _detect_and_fetch(self, url: str) -> Tuple[str, Optional[str]]:
         """
@@ -141,7 +222,7 @@ class SourceDiscovery:
 
     def _generate_config(self, url: str, source_type: str, sample: str) -> Optional[Dict[str, Any]]:
         """
-        Generate source config using heuristics first, then AI if available.
+        Generate source config using pattern matching first, then AI if available.
 
         Args:
             url: Source URL
@@ -151,25 +232,12 @@ class SourceDiscovery:
         Returns:
             Config dictionary or None
         """
+        # Try pattern-based detection with the fetched sample
+        pattern_config = self._try_pattern_with_sample(url, source_type, sample)
+        if pattern_config:
+            return pattern_config
 
-        # Heuristic: Greenhouse API responses follow a consistent schema that we
-        # can map without AI. This avoids failed AI calls when credentials are
-        # missing or CLI arguments change.
-        heuristic_config = self._try_greenhouse_config(url, sample)
-        if heuristic_config:
-            return heuristic_config
-
-        # Heuristic: Ashby API responses follow a consistent schema
-        heuristic_config = self._try_ashby_config(url, sample)
-        if heuristic_config:
-            return heuristic_config
-
-        # Heuristic: Workday URLs follow a consistent pattern and have a POST API
-        heuristic_config = self._try_workday_config(url)
-        if heuristic_config:
-            return heuristic_config
-
-        # Heuristic: Standard RSS feeds can be mapped directly.
+        # Standard RSS feeds can be mapped directly
         if source_type == "rss":
             return {
                 "type": "rss",
@@ -182,6 +250,7 @@ class SourceDiscovery:
                 },
             }
 
+        # Fall back to AI for unknown sources
         if not self.provider:
             logger.warning("AI provider unavailable; cannot generate config for %s", url)
             return None
@@ -195,196 +264,43 @@ class SourceDiscovery:
             logger.error(f"Error generating config: {e}")
             return None
 
-    def _try_greenhouse_config(self, url: str, sample: str) -> Optional[Dict[str, Any]]:
-        """Return a deterministic config for Greenhouse API responses."""
-        if "boards-api.greenhouse.io" not in url:
-            return None
-
-        try:
-            data = json.loads(sample)
-        except json.JSONDecodeError:
-            return None
-
-        jobs = data.get("jobs") if isinstance(data, dict) else None
-        # An empty jobs list is valid (no openings); only bail when the key is absent/null
-        if jobs is None:
-            return None
-
-        return {
-            "type": "api",
-            "url": url,
-            "response_path": "jobs",
-            "fields": {
-                "title": "title",
-                "location": "location.name",
-                "description": "content",
-                "url": "absolute_url",
-                "posted_date": "updated_at",
-            },
-        }
-
-    def _try_ashby_config(self, url: str, sample: str) -> Optional[Dict[str, Any]]:
-        """Return a deterministic config for Ashby API responses."""
-        if "api.ashbyhq.com/posting-api/job-board" not in url:
-            return None
-
-        try:
-            data = json.loads(sample)
-        except json.JSONDecodeError:
-            return None
-
-        jobs = data.get("jobs") if isinstance(data, dict) else None
-        # An empty jobs list is valid (no openings); only bail when the key is absent/null
-        if jobs is None:
-            return None
-
-        return {
-            "type": "api",
-            "url": url,
-            "response_path": "jobs",
-            "fields": {
-                "title": "title",
-                "location": "location",
-                "description": "descriptionHtml",
-                "url": "jobUrl",
-                "posted_date": "publishedAt",
-            },
-        }
-
-    def _try_workday_config(self, url: str) -> Optional[Dict[str, Any]]:
+    def _try_pattern_with_sample(
+        self, url: str, source_type: str, sample: str
+    ) -> Optional[Dict[str, Any]]:
         """
-        Return a deterministic config for Workday careers pages.
+        Try pattern-based detection when we have fetched sample data.
 
-        Workday pages are JavaScript-rendered, but we can detect them by URL pattern
-        and derive the API endpoint from the careers page URL.
-
-        URL Pattern: https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}
-        API Pattern: POST https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs
-        """
-        # Check if URL matches Workday pattern
-        parsed = parse_workday_url(url)
-        if not parsed:
-            return None
-
-        tenant, wd_instance, site_id = parsed
-
-        # Construct the API URL
-        api_url = (
-            f"https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs"
-        )
-        base_url = f"https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}"
-
-        # Validate by making a test POST request
-        try:
-            response = requests.post(
-                api_url,
-                headers={"Content-Type": "application/json"},
-                json={"limit": 1, "offset": 0},
-                timeout=10,
-            )
-            response.raise_for_status()
-            data = response.json()
-            if "jobPostings" not in data:
-                return None
-        except (requests.RequestException, json.JSONDecodeError):
-            return None
-
-        return {
-            "type": "api",
-            "url": api_url,
-            "method": "POST",
-            "post_body": {"limit": 20, "offset": 0},
-            "response_path": "jobPostings",
-            "base_url": base_url,
-            "fields": {
-                "title": "title",
-                "location": "locationsText",
-                "url": "externalPath",
-                "posted_date": "postedOn",
-            },
-        }
-
-    def _try_url_based_heuristics(self, url: str) -> Optional[Dict[str, Any]]:
-        """
-        Try URL-based heuristics that don't require fetching the page.
-
-        This handles platforms where:
-        - The page is JS-rendered (so fetch returns unusable HTML)
-        - The page returns errors (500, etc.)
-        - But we can derive the API endpoint from the URL pattern
+        For API sources, we can validate the response structure matches
+        the expected pattern even if the URL didn't match exactly.
 
         Args:
-            url: Source URL to analyze
+            url: Source URL
+            source_type: Detected source type
+            sample: Fetched sample content
 
         Returns:
             Config dictionary or None
         """
-        # Try Workday first - their pages often return 500 but API works
-        config = self._try_workday_config(url)
-        if config:
-            return config
+        if source_type != "api":
+            return None
 
-        # Try Ashby HTML URL -> API URL conversion
-        config = self._try_ashby_html_to_api(url)
-        if config:
-            return config
+        try:
+            data = json.loads(sample)
+        except json.JSONDecodeError:
+            return None
+
+        # Check if URL matches any known pattern
+        result = match_platform(url)
+        if result:
+            pattern, groups = result
+            config = build_config_from_pattern(pattern, groups)
+            # Already validated during URL match, but verify response has expected key
+            if pattern.validation_key and pattern.validation_key in data:
+                return config
+            if not pattern.validation_key and isinstance(data, list):
+                return config
 
         return None
-
-    def _try_ashby_html_to_api(self, url: str) -> Optional[Dict[str, Any]]:
-        """
-        Convert Ashby HTML job board URL to API URL.
-
-        jobs.ashbyhq.com/{board_name} -> api.ashbyhq.com/posting-api/job-board/{board_name}
-
-        The HTML pages are JS-rendered and return unusable content,
-        but the API endpoint is predictable and returns JSON.
-        """
-        import re
-        from urllib.parse import urlparse
-
-        parsed = urlparse(url)
-
-        # Check if it's an Ashby HTML page
-        if "jobs.ashbyhq.com" not in parsed.netloc:
-            return None
-
-        # Extract board name from path (e.g., /supabase or /The%20Browser%20Company)
-        path_parts = parsed.path.strip("/").split("/")
-        if not path_parts or not path_parts[0]:
-            return None
-
-        board_name = path_parts[0]
-
-        # Construct API URL
-        api_url = f"https://api.ashbyhq.com/posting-api/job-board/{board_name}?includeCompensation=true"
-
-        # Validate by fetching API
-        try:
-            response = requests.get(
-                api_url,
-                headers={"Accept": "application/json"},
-                timeout=10,
-            )
-            response.raise_for_status()
-            data = response.json()
-            if "jobs" not in data:
-                return None
-        except (requests.RequestException, json.JSONDecodeError):
-            return None
-
-        return {
-            "type": "api",
-            "url": api_url,
-            "response_path": "jobs",
-            "fields": {
-                "title": "title",
-                "location": "location",
-                "description": "descriptionHtml",
-                "url": "jobUrl",
-                "posted_date": "publishedAt",
-            },
-        }
 
     def _build_prompt(self, url: str, source_type: str, sample: str) -> str:
         """Build AI prompt for config generation."""
@@ -402,70 +318,10 @@ Sample Content:
 {truncated_sample}
 ```
 
-=== KNOWN ATS PLATFORMS (use these exact configurations) ===
+=== CONFIGURATION RULES ===
 
 IMPORTANT: Many job boards use JavaScript rendering for their HTML pages, but provide
 JSON APIs that return structured data. ALWAYS prefer using the API over HTML scraping.
-
-1. GREENHOUSE (boards-api.greenhouse.io)
-   - API URL pattern: https://boards-api.greenhouse.io/v1/boards/{{board_token}}/jobs?content=true
-   - The board_token is from the careers page URL (e.g., anthropic from jobs.greenhouse.io/anthropic)
-   {{
-     "type": "api",
-     "url": "https://boards-api.greenhouse.io/v1/boards/BOARD_TOKEN/jobs?content=true",
-     "response_path": "jobs",
-     "fields": {{
-       "title": "title",
-       "location": "location.name",
-       "description": "content",
-       "url": "absolute_url",
-       "posted_date": "updated_at"
-     }}
-   }}
-
-2. ASHBY (api.ashbyhq.com)
-   - API URL pattern: https://api.ashbyhq.com/posting-api/job-board/{{board_name}}?includeCompensation=true
-   - The board_name is CASE-SENSITIVE and matches jobs.ashbyhq.com/{{board_name}}
-   - HTML pages at jobs.ashbyhq.com require JavaScript - ALWAYS use the API instead
-   {{
-     "type": "api",
-     "url": "https://api.ashbyhq.com/posting-api/job-board/BOARD_NAME?includeCompensation=true",
-     "response_path": "jobs",
-     "fields": {{
-       "title": "title",
-       "location": "location",
-       "description": "descriptionHtml",
-       "url": "jobUrl",
-       "posted_date": "publishedAt"
-     }}
-   }}
-
-3. LEVER (jobs.lever.co)
-   - NOTE: Lever's public API (api.lever.co) is unreliable/deprecated for most companies
-   - Many companies have migrated away from Lever or disabled the API
-   - If API returns "Document not found", the source may be unavailable
-
-4. WORKDAY ({{tenant}}.{{wd_instance}}.myworkdayjobs.com)
-   - URL pattern: https://{{tenant}}.{{wd_instance}}.myworkdayjobs.com/{{site_id}}
-   - API pattern: POST https://{{tenant}}.{{wd_instance}}.myworkdayjobs.com/wday/cxs/{{tenant}}/{{site_id}}/jobs
-   - HTML pages require JavaScript - ALWAYS use the POST API instead
-   - Job URLs are relative paths that need the base URL prepended
-   {{
-     "type": "api",
-     "url": "https://TENANT.WD_INSTANCE.myworkdayjobs.com/wday/cxs/TENANT/SITE_ID/jobs",
-     "method": "POST",
-     "post_body": {{"limit": 20, "offset": 0}},
-     "response_path": "jobPostings",
-     "base_url": "https://TENANT.WD_INSTANCE.myworkdayjobs.com/SITE_ID",
-     "fields": {{
-       "title": "title",
-       "location": "locationsText",
-       "url": "externalPath",
-       "posted_date": "postedOn"
-     }}
-   }}
-
-=== GENERAL CONFIGURATION RULES ===
 
 For API sources:
 - type: "api"
@@ -474,6 +330,9 @@ For API sources:
 - fields: Object mapping standard field names to source field paths using dot notation
   - Required: "title", "url"
   - Optional: "company", "location", "description", "posted_date", "salary"
+- method: "GET" or "POST" (default: "GET")
+- post_body: Request body for POST APIs
+- base_url: Base URL for constructing full URLs from relative paths
 
 For RSS sources:
 - type: "rss"
@@ -495,6 +354,7 @@ Additional optional fields:
 - company_name: Static company name if not in data
 - salary_min_field: Path to min salary (for APIs with separate min/max)
 - salary_max_field: Path to max salary
+- headers: Custom HTTP headers
 
 Return ONLY valid JSON with no explanation. Ensure all required fields are present."""
 
@@ -608,7 +468,16 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
                 url = f"{url}{sep}{source_config.auth_param}={source_config.api_key}"
 
         try:
-            resp = requests.get(url, headers=headers, timeout=30)
+            if source_config.method == "POST":
+                resp = requests.post(
+                    url,
+                    headers=headers,
+                    json=source_config.post_body,
+                    timeout=30,
+                )
+            else:
+                resp = requests.get(url, headers=headers, timeout=30)
+
             if resp.status_code in (401, 403):
                 return False, [], True
             resp.raise_for_status()

@@ -4,56 +4,72 @@ Config expander for job sources.
 Converts simple source configs into full scraper configs based on source_type.
 This allows storing minimal config in the database while supporting full scraping.
 
+NEW SOURCES should store FULL configs directly (url, fields, response_path, etc.)
+This module provides backwards compatibility for legacy minimal configs.
+
 The source_type column indicates the SCRAPING METHOD, not the vendor:
 - api: JSON API (includes Greenhouse, Ashby, Workday, and generic APIs)
 - rss: RSS/Atom feeds
 - html: HTML page scraping with CSS selectors
 
 For API sources, the vendor is auto-detected from config contents:
-- {"board_token": "xxx"} → Greenhouse API
-- {"board_name": "xxx"} → Ashby API
-- {"careers_url": "https://company.wd5.myworkdayjobs.com/..."} → Workday API
-- {"url": "...", "fields": {...}} → Generic API
-
-The config_json should NOT contain a "type" field - that's redundant with source_type.
+- {"board_token": "xxx"} → Greenhouse API (legacy)
+- {"board_name": "xxx"} → Ashby API (legacy)
+- {"careers_url": "https://company.wd5.myworkdayjobs.com/..."} → Workday API (legacy)
+- {"url": "...", "fields": {...}} → Full config (preferred)
 """
 
 import re
 from typing import Any, Dict, Optional, Tuple
 
-# Standard Greenhouse API field mappings
-GREENHOUSE_FIELDS = {
-    "title": "title",
-    "location": "location.name",
-    "description": "content",
-    "url": "absolute_url",
-    "posted_date": "updated_at",
-}
+from job_finder.scrapers.platform_patterns import PLATFORM_PATTERNS
 
-# Standard RSS field mappings
+# Build field mappings from platform_patterns (single source of truth)
+_GREENHOUSE_PATTERN = next((p for p in PLATFORM_PATTERNS if p.name == "greenhouse_api"), None)
+_ASHBY_PATTERN = next((p for p in PLATFORM_PATTERNS if p.name == "ashby_api"), None)
+_WORKDAY_PATTERN = next((p for p in PLATFORM_PATTERNS if p.name == "workday"), None)
+
+GREENHOUSE_FIELDS = (
+    _GREENHOUSE_PATTERN.fields
+    if _GREENHOUSE_PATTERN
+    else {
+        "title": "title",
+        "location": "location.name",
+        "description": "content",
+        "url": "absolute_url",
+        "posted_date": "updated_at",
+    }
+)
+
+ASHBY_FIELDS = (
+    _ASHBY_PATTERN.fields
+    if _ASHBY_PATTERN
+    else {
+        "title": "title",
+        "location": "location",
+        "description": "descriptionHtml",
+        "url": "jobUrl",
+        "posted_date": "publishedAt",
+    }
+)
+
+WORKDAY_FIELDS = (
+    _WORKDAY_PATTERN.fields
+    if _WORKDAY_PATTERN
+    else {
+        "title": "title",
+        "location": "locationsText",
+        "url": "externalPath",
+        "posted_date": "postedOn",
+    }
+)
+
+# Standard RSS field mappings (not in platform_patterns since RSS is format-based, not platform-based)
 RSS_FIELDS = {
     "title": "title",
     "description": "summary",
     "url": "link",
     "posted_date": "published",
-}
-
-# Standard Ashby API field mappings
-ASHBY_FIELDS = {
-    "title": "title",
-    "location": "location",
-    "description": "descriptionHtml",
-    "url": "jobUrl",
-    "posted_date": "publishedAt",
-}
-
-# Standard Workday API field mappings
-# Note: "url" field contains relative path, needs base_url to construct full URL
-WORKDAY_FIELDS = {
-    "title": "title",
-    "location": "locationsText",
-    "url": "externalPath",
-    "posted_date": "postedOn",
 }
 
 # Regex to parse Workday careers URL
@@ -81,6 +97,9 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Expand a minimal config into a full scraper config.
 
+    For new sources, configs should already be complete (url, fields, etc.).
+    This function provides backwards compatibility for legacy minimal configs.
+
     Args:
         source_type: The scraping method (api, rss, html)
         config: The config_json from the database
@@ -88,6 +107,13 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Full config ready for GenericScraper with 'type' derived from source_type
     """
+    # If config already has url and fields, it's a full config - just ensure type is set
+    if "url" in config and "fields" in config:
+        expanded = {**config}
+        if "type" not in expanded:
+            expanded["type"] = _normalize_source_type(source_type)
+        return expanded
+
     # Normalize source_type to scraping method
     source_type = source_type.lower()
 
@@ -104,12 +130,21 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
         return _expand_api(config)
 
 
+def _normalize_source_type(source_type: str) -> str:
+    """Normalize legacy source types to standard types."""
+    source_type = source_type.lower()
+    if source_type in ("greenhouse", "ashby", "workday"):
+        return "api"
+    if source_type == "company-page":
+        return "html"
+    return source_type
+
+
 def _expand_greenhouse(config: Dict[str, Any]) -> Dict[str, Any]:
     """Expand greenhouse config from board_token to full API config."""
     # If already has full config (type, url, fields), return as-is
     if "url" in config and "fields" in config:
         expanded = {**config}
-        # Ensure type is set for GenericScraper
         expanded["type"] = "api"
         return expanded
 
@@ -131,7 +166,6 @@ def _expand_ashby(config: Dict[str, Any]) -> Dict[str, Any]:
     # If already has full config (type, url, fields), return as-is
     if "url" in config and "fields" in config:
         expanded = {**config}
-        # Ensure type is set for GenericScraper
         expanded["type"] = "api"
         return expanded
 
@@ -191,7 +225,7 @@ def _expand_workday(config: Dict[str, Any]) -> Dict[str, Any]:
         "post_body": {"limit": 20, "offset": 0},
         "response_path": "jobPostings",
         "fields": WORKDAY_FIELDS.copy(),
-        "base_url": base_url,  # Used to construct full job URLs from relative paths
+        "base_url": base_url,
     }
 
 
@@ -227,7 +261,7 @@ def _expand_api(config: Dict[str, Any]) -> Dict[str, Any]:
     1. board_token → Greenhouse
     2. board_name → Ashby
     3. careers_url matching Workday pattern → Workday
-    4. url + fields → Generic API
+    4. url + fields → Generic API (full config)
     """
     # Auto-detect vendor from config contents
 
