@@ -25,29 +25,8 @@ class StrikeFilterEngine:
     Tier 2: Strike accumulation (fail if >= threshold)
     """
 
-    def __init__(self, policy: dict, legacy_tech_ranks: dict | None = None):
-        """Initialize strike-based filter engine.
-
-        Supports both the new consolidated prefilter policy shape and the legacy
-        (filters, tech_ranks) arguments used in older tests. If legacy_tech_ranks is
-        provided and the policy does not already contain strikeEngine/stopList keys,
-        we wrap it into the new structure.
-        """
-
-        if (
-            legacy_tech_ranks is not None
-            and "strikeEngine" not in policy
-            and "stopList" not in policy
-        ):
-            policy = {
-                "stopList": {
-                    "excludedCompanies": [],
-                    "excludedKeywords": [],
-                    "excludedDomains": [],
-                },
-                "strikeEngine": policy,
-                "technologyRanks": legacy_tech_ranks or {},
-            }
+    def __init__(self, policy: dict):
+        """Initialize strike-based filter engine (new config shape only)."""
 
         self.policy = policy
         self.stop_list = policy.get("stopList", {})
@@ -74,9 +53,14 @@ class StrikeFilterEngine:
         # Remote Policy
         remote = config.get("remotePolicy", {})
         self.allow_remote = remote.get("allowRemote", True)
-        self.allow_hybrid_portland = remote.get("allowHybridPortland", True)
-        # Default to allowing onsite roles unless explicitly disabled
-        self.allow_onsite = remote.get("allowOnsite", True)
+        # Explicit allow for onsite/hybrid paired with location allowlists
+        self.allow_location_based_roles = remote.get("allowOnsite", True)
+        self.allowed_onsite_locations = [
+            loc.lower() for loc in remote.get("allowedOnsiteLocations", [])
+        ]
+        self.allowed_hybrid_locations = [
+            loc.lower() for loc in remote.get("allowedHybridLocations", [])
+        ]
 
         # Strike: Salary
         salary_strike = config.get("salaryStrike", {})
@@ -89,6 +73,12 @@ class StrikeFilterEngine:
         self.experience_strike_enabled = exp_strike.get("enabled", True)
         self.min_experience_preferred = exp_strike.get("minPreferred", 6)
         self.experience_strike_points = exp_strike.get("points", 1)
+
+        # Strike: Job type (soft gate instead of hard reject)
+        job_type_strike = config.get("jobTypeStrike", {})
+        self.job_type_strike_enabled = job_type_strike.get("enabled", True)
+        self.job_type_strike_points = job_type_strike.get("points", 2)
+        self.job_type_strike_keywords = [k.lower() for k in job_type_strike.get("keywords", [])]
 
         # Strike: Seniority
         self.seniority_strikes = config.get("seniorityStrikes", {})
@@ -141,9 +131,7 @@ class StrikeFilterEngine:
         # Check required title keywords (now contributes strikes instead of hard reject)
         self._missing_required_title_keyword(title, result)
 
-        # Check job type
-        if self._is_excluded_job_type(title, description, result):
-            return result
+        # NOTE: Removed hard-reject job type check; job-type signals now handled as strikes
 
         # Check seniority
         if self._is_excluded_seniority(title, result):
@@ -178,6 +166,9 @@ class StrikeFilterEngine:
         # Salary strike (< $150k)
         if self.salary_strike_enabled:
             self._check_salary_strike(salary, result)
+
+        # Job type strike (soft signals like marketing/support, no hard reject)
+        self._check_job_type_strike(title, description, result)
 
         # Experience strike (< 6 years preferred)
         if self.experience_strike_enabled:
@@ -251,73 +242,36 @@ class StrikeFilterEngine:
             points=0,
         )
 
-    def _is_excluded_job_type(self, title: str, description: str, result: FilterResult) -> bool:
-        """Check if job is excluded type (sales, HR, etc.)."""
+    def _check_job_type_strike(self, title: str, description: str, result: FilterResult) -> None:
+        """Soft gate for potentially off-target job types.
+
+        Adds strikes (never hard-rejects) when job-type keywords appear in title
+        or description. This prevents false negatives for engineering roles that
+        collaborate with other teams (marketing/support/etc.).
+        """
+        if not self.job_type_strike_enabled or not self.job_type_strike_keywords:
+            return
+
         title_lower = title.lower()
         description_lower = description.lower()
 
-        for job_type in self.excluded_job_types:
-            # Use word boundary regex to match whole words only
+        for job_type in self.job_type_strike_keywords:
             pattern = r"\b" + re.escape(job_type) + r"\b"
 
-            # Check title first (strong signal of job type)
-            if re.search(pattern, title_lower):
-                result.add_rejection(
-                    filter_category="hard_reject",
-                    filter_name="excluded_job_type",
-                    reason=f"Excluded job type: {job_type}",
-                    detail=f"Title contains '{job_type}'",
-                    severity="hard_reject",
-                    points=0,
+            in_title = bool(re.search(pattern, title_lower))
+            in_desc = bool(re.search(pattern, description_lower))
+
+            if in_title or in_desc:
+                field = "title" if in_title else "description"
+                result.add_strike(
+                    filter_category="job_type",
+                    filter_name="job_type_signal",
+                    reason=f"Job-type signal: {job_type}",
+                    detail=f"Matched '{job_type}' in {field}",
+                    points=self.job_type_strike_points,
                 )
-                return True
-
-            # For very short job types (2-3 chars), ONLY match in title to avoid false positives
-            # Examples: "hr" matches in "hr@company.com" or "finance, hr, legal" lists
-            if len(job_type) <= 3:
-                continue  # Skip description check for short keywords
-
-            # For longer job types, use stricter context matching to avoid false positives
-            # Look for job type near role-indicating keywords
-            role_indicators = [
-                r"(^|\s)(looking for|seeking|hiring|role|position|job)",  # Job context
-                r"(responsibilities|duties|will be|you will)",  # Responsibilities
-                r"(team|department|division)",  # Organizational
-            ]
-
-            # Check if job_type appears near role indicators (within ~50 chars)
-            for indicator_pattern in role_indicators:
-                # Build combined pattern: indicator followed by job_type within 50 chars
-                combined_pattern = (
-                    indicator_pattern + r".{0,50}?" + r"\b" + re.escape(job_type) + r"\b"
-                )
-                if re.search(combined_pattern, description_lower, re.IGNORECASE):
-                    result.add_rejection(
-                        filter_category="hard_reject",
-                        filter_name="excluded_job_type",
-                        reason=f"Excluded job type: {job_type}",
-                        detail=f"Job appears to be a {job_type} role based on description context",
-                        severity="hard_reject",
-                        points=0,
-                    )
-                    return True
-
-                # Also check reverse: job_type followed by indicator
-                reverse_pattern = (
-                    r"\b" + re.escape(job_type) + r"\b" + r".{0,50}?" + indicator_pattern
-                )
-                if re.search(reverse_pattern, description_lower, re.IGNORECASE):
-                    result.add_rejection(
-                        filter_category="hard_reject",
-                        filter_name="excluded_job_type",
-                        reason=f"Excluded job type: {job_type}",
-                        detail=f"Job appears to be a {job_type} role based on description context",
-                        severity="hard_reject",
-                        points=0,
-                    )
-                    return True
-
-        return False
+                # Only one strike per job to avoid stacking similar signals
+                return
 
     def _is_excluded_seniority(self, title: str, result: FilterResult) -> bool:
         """Check if seniority is too junior."""
@@ -442,7 +396,7 @@ class StrikeFilterEngine:
     def _violates_remote_policy(
         self, description: str, location: str, result: FilterResult
     ) -> bool:
-        """Check if job violates remote work policy."""
+        """Check if job violates remote/hybrid/onsite policy with location allowlists."""
         description_lower = description.lower()
         location_lower = location.lower()
         combined = f"{description_lower} {location_lower}"
@@ -479,8 +433,6 @@ class StrikeFilterEngine:
 
         is_hybrid = any(ind in combined for ind in ["hybrid", "days in office", "days remote"])
 
-        is_portland = "portland" in combined and ("or" in combined or "oregon" in combined)
-
         is_onsite = any(
             ind in combined for ind in ["on-site", "onsite", "in-office", "office-based"]
         )
@@ -495,30 +447,34 @@ class StrikeFilterEngine:
             return False  # Unclear = allow (let AI analysis handle it)
 
         # Apply policy to detected arrangements
+        def _matches_allowlist(location_val: str, allowlist: list[str]) -> bool:
+            loc = location_val.lower()
+            return bool(allowlist) and any(allowed in loc for allowed in allowlist)
+
         if is_remote and self.allow_remote:
-            return False  # Remote OK
+            return False  # Remote OK, no location requirement
 
-        if is_hybrid and is_portland and self.allow_hybrid_portland:
-            return False  # Hybrid Portland OK
+        if is_hybrid and self.allow_location_based_roles:
+            if _matches_allowlist(location_lower, self.allowed_hybrid_locations):
+                return False  # Hybrid allowed in configured locations
 
-        if is_onsite and self.allow_onsite:
-            return False  # Onsite OK (if allowed)
+        if is_onsite and self.allow_location_based_roles:
+            if _matches_allowlist(location_lower, self.allowed_onsite_locations):
+                return False  # Onsite allowed only in configured locations
 
         # Only reject if we detected an arrangement that violates policy
         if is_remote:
             policy_reason = "Remote jobs not allowed"
-        elif is_hybrid and is_portland:
-            policy_reason = "Hybrid Portland jobs not allowed"
         elif is_hybrid:
-            policy_reason = "Hybrid jobs outside Portland not allowed"
+            policy_reason = "Hybrid location not allowed"
         else:  # is_onsite
-            policy_reason = "On-site jobs not allowed"
+            policy_reason = "On-site location not allowed"
 
         result.add_rejection(
             filter_category="hard_reject",
             filter_name="remote_policy",
             reason=policy_reason,
-            detail=f"Remote: {is_remote}, Hybrid: {is_hybrid}, Portland: {is_portland}, Onsite: {is_onsite}",
+            detail=f"Remote: {is_remote}, Hybrid: {is_hybrid}, Onsite: {is_onsite}",
             severity="hard_reject",
             points=0,
         )

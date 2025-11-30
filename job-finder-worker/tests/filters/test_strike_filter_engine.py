@@ -33,8 +33,9 @@ def base_config():
         },
         "remotePolicy": {
             "allowRemote": True,
-            "allowHybridPortland": True,
             "allowOnsite": False,
+            "allowedOnsiteLocations": ["portland, or"],
+            "allowedHybridLocations": ["portland, or"],
         },
         "salaryStrike": {
             "enabled": True,
@@ -45,6 +46,11 @@ def base_config():
             "enabled": True,
             "minPreferred": 6,
             "points": 1,
+        },
+        "jobTypeStrike": {
+            "enabled": True,
+            "points": 2,
+            "keywords": ["sales", "recruiter", "marketing", "support"],
         },
         "seniorityStrikes": {
             "mid-level": 1,
@@ -82,6 +88,20 @@ def base_tech_ranks():
 
 
 @pytest.fixture
+def prefilter_policy(base_config, base_tech_ranks):
+    """Prefilter policy in the modern schema."""
+    return {
+        "stopList": {
+            "excludedCompanies": [],
+            "excludedKeywords": [],
+            "excludedDomains": [],
+        },
+        "strikeEngine": dict(base_config),
+        "technologyRanks": dict(base_tech_ranks),
+    }
+
+
+@pytest.fixture
 def valid_job():
     """Valid job that should pass all filters."""
     return {
@@ -98,26 +118,26 @@ def valid_job():
 class TestStrikeFilterEngineInit:
     """Test engine initialization and configuration parsing."""
 
-    def test_init_stores_config(self, base_config, base_tech_ranks):
+    def test_init_stores_config(self, prefilter_policy):
         """Test engine stores configuration."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
 
         assert engine.enabled is True
         assert engine.strike_threshold == 3
         assert "sales" in engine.excluded_job_types
         assert engine.min_salary_floor == 100000
 
-    def test_init_disabled_engine(self, base_config, base_tech_ranks):
+    def test_init_disabled_engine(self, prefilter_policy):
         """Test disabled engine initialization."""
-        base_config["enabled"] = False
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        prefilter_policy["strikeEngine"]["enabled"] = False
+        engine = StrikeFilterEngine(prefilter_policy)
 
         assert engine.enabled is False
 
-    def test_init_with_missing_fields(self, base_tech_ranks):
+    def test_init_with_missing_fields(self):
         """Test engine handles missing configuration fields."""
-        minimal_config = {"enabled": True}
-        engine = StrikeFilterEngine(minimal_config, base_tech_ranks)
+        minimal_config = {}
+        engine = StrikeFilterEngine(minimal_config)
 
         assert engine.strike_threshold == 5  # Default from constants
         assert engine.excluded_job_types == []
@@ -127,32 +147,31 @@ class TestStrikeFilterEngineInit:
 class TestHardRejections:
     """Test hard rejection rules (immediate fail)."""
 
-    def test_rejects_sales_job_in_title(self, base_config, base_tech_ranks, valid_job):
-        """Test rejects job with 'sales' in title."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+    def test_rejects_sales_job_in_title(self, prefilter_policy, valid_job):
+        """Job-type signals become strikes, not hard rejects."""
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["title"] = "Sales Engineer"
 
         result = engine.evaluate_job(valid_job)
 
-        assert result.passed is False
-        assert any("sales" in r.reason.lower() for r in result.rejections)
-        assert any(r.severity == "hard_reject" for r in result.rejections)
+        assert result.passed is True
+        assert result.total_strikes >= prefilter_policy["strikeEngine"]["jobTypeStrike"]["points"]
 
-    def test_rejects_recruiter_job_in_description(self, base_config, base_tech_ranks, valid_job):
-        """Test rejects job with 'recruiter' in description (long enough to check)."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+    def test_rejects_recruiter_job_in_description(self, prefilter_policy, valid_job):
+        """Job-type signals in description add strikes, not hard rejects."""
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = (
-            "We are looking for a recruiter to join our team. Great opportunity!"
-        )
+            "We are looking for a recruiter to join our team using python. " * 10
+        )  # Long enough to avoid quality strike
 
         result = engine.evaluate_job(valid_job)
 
-        # recruiter is long enough and appears near role indicators
-        assert result.passed is False
+        assert result.passed is True
+        assert result.total_strikes >= prefilter_policy["strikeEngine"]["jobTypeStrike"]["points"]
 
-    def test_rejects_junior_seniority(self, base_config, base_tech_ranks, valid_job):
+    def test_rejects_junior_seniority(self, prefilter_policy, valid_job):
         """Test rejects junior-level jobs."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["title"] = "Junior Software Engineer"
 
         result = engine.evaluate_job(valid_job)
@@ -163,9 +182,9 @@ class TestHardRejections:
             for r in result.rejections
         )
 
-    def test_rejects_excluded_company(self, base_config, base_tech_ranks, valid_job):
+    def test_rejects_excluded_company(self, prefilter_policy, valid_job):
         """Test rejects jobs from excluded companies."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["company"] = "bad-company-inc"  # Use exact name from config
 
         result = engine.evaluate_job(valid_job)
@@ -173,9 +192,9 @@ class TestHardRejections:
         assert result.passed is False
         assert any("company" in r.reason.lower() for r in result.rejections)
 
-    def test_rejects_excluded_keyword(self, base_config, base_tech_ranks, valid_job):
+    def test_rejects_excluded_keyword(self, prefilter_policy, valid_job):
         """Test rejects jobs with excluded keywords."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = "Great opportunity! Clearance required for this role."
 
         result = engine.evaluate_job(valid_job)
@@ -186,9 +205,9 @@ class TestHardRejections:
             for r in result.rejections
         )
 
-    def test_rejects_below_salary_floor(self, base_config, base_tech_ranks, valid_job):
+    def test_rejects_below_salary_floor(self, prefilter_policy, valid_job):
         """Test rejects jobs below minimum salary."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["salary"] = "$80,000 - $95,000"
 
         result = engine.evaluate_job(valid_job)
@@ -196,18 +215,18 @@ class TestHardRejections:
         assert result.passed is False
         assert any("salary" in r.reason.lower() for r in result.rejections)
 
-    def test_rejects_commission_only(self, base_config, base_tech_ranks, valid_job):
+    def test_rejects_commission_only(self, prefilter_policy, valid_job):
         """Test rejects commission-only positions."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = "Commission only - unlimited earning potential!"
 
         result = engine.evaluate_job(valid_job)
 
         assert result.passed is False
 
-    def test_rejects_onsite_when_not_allowed(self, base_config, base_tech_ranks, valid_job):
+    def test_rejects_onsite_when_not_allowed(self, prefilter_policy, valid_job):
         """Test rejects on-site jobs when not allowed."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["location"] = "On-site - San Francisco, CA"
         valid_job["description"] = "This is an on-site role in our San Francisco office. " * 5
 
@@ -217,9 +236,9 @@ class TestHardRejections:
         hard_rejects = [r for r in result.rejections if r.severity == "hard_reject"]
         assert len(hard_rejects) > 0
 
-    def test_allows_remote_jobs(self, base_config, base_tech_ranks, valid_job):
+    def test_allows_remote_jobs(self, prefilter_policy, valid_job):
         """Test allows remote jobs when configured."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["location"] = "Remote - Worldwide"
 
         result = engine.evaluate_job(valid_job)
@@ -228,9 +247,9 @@ class TestHardRejections:
             result.passed is True or result.total_strikes < 3
         )  # May get strikes for other reasons
 
-    def test_rejects_job_too_old(self, base_config, base_tech_ranks, valid_job):
+    def test_rejects_job_too_old(self, prefilter_policy, valid_job):
         """Test rejects jobs older than rejection threshold."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         old_date = datetime.now(timezone.utc) - timedelta(days=10)
         valid_job["posted_date"] = old_date.isoformat()
 
@@ -245,9 +264,9 @@ class TestHardRejections:
 class TestStrikeAccumulation:
     """Test strike accumulation system."""
 
-    def test_salary_strike_below_threshold(self, base_config, base_tech_ranks, valid_job):
+    def test_salary_strike_below_threshold(self, prefilter_policy, valid_job):
         """Test adds strike for salary below threshold."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["salary"] = "$140,000 - $145,000"  # Below 150k threshold
 
         result = engine.evaluate_job(valid_job)
@@ -256,9 +275,9 @@ class TestStrikeAccumulation:
         strikes = [r for r in result.rejections if r.severity == "strike"]
         assert any("salary" in s.reason.lower() for s in strikes)
 
-    def test_experience_strike_insufficient(self, base_config, base_tech_ranks, valid_job):
+    def test_experience_strike_insufficient(self, prefilter_policy, valid_job):
         """Test adds strike for insufficient experience mentioned in description."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         # Make description long enough and make sure it triggers experience strike
         valid_job["description"] = "Looking for 4+ years of experience in Python. " * 10
 
@@ -268,9 +287,9 @@ class TestStrikeAccumulation:
         # At minimum should not crash
         assert isinstance(result, FilterResult)
 
-    def test_seniority_strike_mid_level(self, base_config, base_tech_ranks, valid_job):
+    def test_seniority_strike_mid_level(self, prefilter_policy, valid_job):
         """Test adds strike for mid-level seniority."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["title"] = "Mid-Level Software Engineer"
 
         result = engine.evaluate_job(valid_job)
@@ -279,9 +298,9 @@ class TestStrikeAccumulation:
         strikes = [r for r in result.rejections if r.severity == "strike"]
         assert any("seniority" in s.reason.lower() or "mid" in s.reason.lower() for s in strikes)
 
-    def test_quality_strike_short_description(self, base_config, base_tech_ranks, valid_job):
+    def test_quality_strike_short_description(self, prefilter_policy, valid_job):
         """Test adds strike for short job description."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = "Great job opportunity!"  # Too short
 
         result = engine.evaluate_job(valid_job)
@@ -292,9 +311,9 @@ class TestStrikeAccumulation:
             "description" in s.reason.lower() or "quality" in s.reason.lower() for s in strikes
         )
 
-    def test_quality_strike_buzzwords(self, base_config, base_tech_ranks, valid_job):
+    def test_quality_strike_buzzwords(self, prefilter_policy, valid_job):
         """Test adds strike for buzzwords in description."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = (
             "Looking for a rockstar ninja developer who is a coding guru!" * 5
         )
@@ -305,9 +324,9 @@ class TestStrikeAccumulation:
         strikes = [r for r in result.rejections if r.severity == "strike"]
         assert any("buzzword" in s.reason.lower() for s in strikes)
 
-    def test_age_strike_old_posting(self, base_config, base_tech_ranks, valid_job):
+    def test_age_strike_old_posting(self, prefilter_policy, valid_job):
         """Test adds strike for older job posting."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         old_date = datetime.now(timezone.utc) - timedelta(days=3)
         valid_job["posted_date"] = old_date.isoformat()
 
@@ -317,9 +336,9 @@ class TestStrikeAccumulation:
         strikes = [r for r in result.rejections if r.severity == "strike"]
         assert any("age" in s.reason.lower() or "old" in s.reason.lower() for s in strikes)
 
-    def test_multiple_strikes_accumulate(self, base_config, base_tech_ranks, valid_job):
+    def test_multiple_strikes_accumulate(self, prefilter_policy, valid_job):
         """Test multiple strikes accumulate correctly."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
 
         # Add multiple strike-worthy issues
         valid_job["salary"] = "$140,000"  # 2 strikes
@@ -336,9 +355,9 @@ class TestStrikeAccumulation:
 class TestStrikeThreshold:
     """Test strike threshold enforcement."""
 
-    def test_passes_below_threshold(self, base_config, base_tech_ranks, valid_job):
+    def test_passes_below_threshold(self, prefilter_policy, valid_job):
         """Test job passes with strikes below threshold."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = "Short."  # 1 strike for short description
 
         result = engine.evaluate_job(valid_job)
@@ -346,9 +365,9 @@ class TestStrikeThreshold:
         assert result.total_strikes < 3
         assert result.passed is True
 
-    def test_fails_at_threshold(self, base_config, base_tech_ranks, valid_job):
+    def test_fails_at_threshold(self, prefilter_policy, valid_job):
         """Test job fails when strikes reach threshold."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
 
         # Accumulate exactly 3 strikes
         valid_job["description"] = "Short description"  # 1 strike
@@ -359,10 +378,10 @@ class TestStrikeThreshold:
         assert result.total_strikes >= 3
         assert result.passed is False
 
-    def test_custom_threshold(self, base_config, base_tech_ranks, valid_job):
+    def test_custom_threshold(self, prefilter_policy, valid_job):
         """Test custom strike threshold."""
-        base_config["strikeThreshold"] = 5  # Higher threshold
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        prefilter_policy["strikeEngine"]["strikeThreshold"] = 5  # Higher threshold
+        engine = StrikeFilterEngine(prefilter_policy)
 
         valid_job["description"] = "Short."  # 1 strike
         valid_job["salary"] = "$140,000"  # 2 strikes
@@ -376,9 +395,9 @@ class TestStrikeThreshold:
 class TestEdgeCases:
     """Test edge cases and error handling."""
 
-    def test_handles_missing_title(self, base_config, base_tech_ranks, valid_job):
+    def test_handles_missing_title(self, prefilter_policy, valid_job):
         """Test handles missing job title."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         del valid_job["title"]
 
         result = engine.evaluate_job(valid_job)
@@ -386,9 +405,9 @@ class TestEdgeCases:
         assert isinstance(result, FilterResult)
         # Should not crash, may or may not pass depending on other fields
 
-    def test_handles_missing_description(self, base_config, base_tech_ranks, valid_job):
+    def test_handles_missing_description(self, prefilter_policy, valid_job):
         """Test handles missing description."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         del valid_job["description"]
 
         result = engine.evaluate_job(valid_job)
@@ -396,18 +415,18 @@ class TestEdgeCases:
         assert isinstance(result, FilterResult)
         # Likely gets strike for missing/short description
 
-    def test_handles_empty_salary(self, base_config, base_tech_ranks, valid_job):
+    def test_handles_empty_salary(self, prefilter_policy, valid_job):
         """Test handles empty salary field."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["salary"] = ""
 
         result = engine.evaluate_job(valid_job)
 
         assert isinstance(result, FilterResult)
 
-    def test_handles_malformed_date(self, base_config, base_tech_ranks, valid_job):
+    def test_handles_malformed_date(self, prefilter_policy, valid_job):
         """Test handles malformed posted date."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["posted_date"] = "invalid-date"
 
         result = engine.evaluate_job(valid_job)
@@ -415,9 +434,9 @@ class TestEdgeCases:
         assert isinstance(result, FilterResult)
         # Should not crash
 
-    def test_handles_none_values(self, base_config, base_tech_ranks):
+    def test_handles_none_values(self, prefilter_policy):
         """Test handles None values in job data gracefully."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         job = {
             "title": "Software Engineer",  # Provide valid string
             "company": "Test Company",  # Provide valid string
@@ -432,10 +451,10 @@ class TestEdgeCases:
         # Should not crash
         assert isinstance(result, FilterResult)
 
-    def test_disabled_engine_passes_all(self, base_config, base_tech_ranks, valid_job):
+    def test_disabled_engine_passes_all(self, prefilter_policy, valid_job):
         """Test disabled engine passes all jobs."""
-        base_config["enabled"] = False
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        prefilter_policy["strikeEngine"]["enabled"] = False
+        engine = StrikeFilterEngine(prefilter_policy)
 
         # Make job objectively bad
         valid_job["title"] = "Sales Recruiter"
@@ -451,9 +470,9 @@ class TestEdgeCases:
 class TestTechnologyStrikes:
     """Test technology-based strike system."""
 
-    def test_strike_for_missing_required_tech(self, base_config, base_tech_ranks, valid_job):
+    def test_strike_for_missing_required_tech(self, prefilter_policy, valid_job):
         """Test adds strike when all required technologies are missing."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = (
             "Looking for Java and C++ experience."  # Missing Python (required)
         )
@@ -463,9 +482,9 @@ class TestTechnologyStrikes:
         # Should get strike for missing required tech
         assert result.total_strikes >= 1
 
-    def test_no_strike_with_required_tech(self, base_config, base_tech_ranks, valid_job):
+    def test_no_strike_with_required_tech(self, prefilter_policy, valid_job):
         """Test no strike when required tech is present."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = "Looking for Python and React experience. " * 10
 
         result = engine.evaluate_job(valid_job)
@@ -477,9 +496,9 @@ class TestTechnologyStrikes:
 class TestFilterResult:
     """Test FilterResult output structure."""
 
-    def test_result_contains_all_fields(self, base_config, base_tech_ranks, valid_job):
+    def test_result_contains_all_fields(self, prefilter_policy, valid_job):
         """Test result contains all expected fields."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         result = engine.evaluate_job(valid_job)
 
         assert hasattr(result, "passed")
@@ -487,9 +506,9 @@ class TestFilterResult:
         assert hasattr(result, "strike_threshold")
         assert hasattr(result, "rejections")
 
-    def test_result_strike_details(self, base_config, base_tech_ranks, valid_job):
+    def test_result_strike_details(self, prefilter_policy, valid_job):
         """Test result includes detailed strike information."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = "Short."  # Will get strike
 
         result = engine.evaluate_job(valid_job)
@@ -501,9 +520,9 @@ class TestFilterResult:
             assert hasattr(first_strike, "reason")
             assert hasattr(first_strike, "points")
 
-    def test_result_rejection_details(self, base_config, base_tech_ranks, valid_job):
+    def test_result_rejection_details(self, prefilter_policy, valid_job):
         """Test result includes detailed rejection information."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["title"] = "Sales Engineer"  # Will be rejected
 
         result = engine.evaluate_job(valid_job)
@@ -512,33 +531,38 @@ class TestFilterResult:
         first_rejection = result.rejections[0]
         assert hasattr(first_rejection, "reason")
         assert hasattr(first_rejection, "severity")
-        assert first_rejection.severity == "hard_reject"
+        assert first_rejection.severity == "strike"
 
 
 class TestComplexScenarios:
     """Test complex real-world scenarios."""
 
-    def test_hybrid_portland_allowed(self, base_config, base_tech_ranks, valid_job):
-        """Test hybrid Portland jobs are allowed when configured."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+    def test_hybrid_portland_allowed(self, prefilter_policy, valid_job):
+        """Hybrid Portland jobs allowed when location lists permit."""
+        prefilter_policy["strikeEngine"]["remotePolicy"]["allowOnsite"] = True
+        prefilter_policy["strikeEngine"]["remotePolicy"]["allowedHybridLocations"] = [
+            "portland, or"
+        ]
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["location"] = "Hybrid - Portland, OR"
 
         result = engine.evaluate_job(valid_job)
 
-        assert not any("remote" in r.reason.lower() for r in result.rejections)
+        assert not any(r.filter_name == "remote_policy" for r in result.rejections)
 
-    def test_case_insensitive_matching(self, base_config, base_tech_ranks, valid_job):
+    def test_case_insensitive_matching(self, prefilter_policy, valid_job):
         """Test matching is case-insensitive."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["title"] = "SALES ENGINEER"  # Uppercase
 
         result = engine.evaluate_job(valid_job)
 
-        assert result.passed is False  # Should still match 'sales'
+        assert result.passed is True
+        assert result.total_strikes >= prefilter_policy["strikeEngine"]["jobTypeStrike"]["points"]
 
-    def test_word_boundary_matching(self, base_config, base_tech_ranks, valid_job):
+    def test_word_boundary_matching(self, prefilter_policy, valid_job):
         """Test uses word boundaries to avoid partial matches."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         # "sales" should match, but "salesforce" should not trigger the sales filter
         valid_job["title"] = "Salesforce Developer"
 
@@ -548,9 +572,9 @@ class TestComplexScenarios:
         # (implementation detail - may need word boundary in actual code)
         assert isinstance(result, FilterResult)
 
-    def test_salary_range_parsing(self, base_config, base_tech_ranks, valid_job):
+    def test_salary_range_parsing(self, prefilter_policy, valid_job):
         """Test salary range parsing handles various formats."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
 
         # Test various salary formats
         salary_formats = [
@@ -566,9 +590,9 @@ class TestComplexScenarios:
             # All should be parsed and evaluated
             assert isinstance(result, FilterResult)
 
-    def test_performance_with_long_description(self, base_config, base_tech_ranks, valid_job):
+    def test_performance_with_long_description(self, prefilter_policy, valid_job):
         """Test engine handles very long job descriptions efficiently."""
-        engine = StrikeFilterEngine(base_config, base_tech_ranks)
+        engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = "Great opportunity! " * 10000  # Very long
 
         result = engine.evaluate_job(valid_job)
