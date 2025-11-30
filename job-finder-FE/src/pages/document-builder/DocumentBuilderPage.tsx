@@ -61,14 +61,74 @@ function normalizeJobMatch(match: Record<string, unknown>): {
   matchScore: number
   analyzedAt: Date | string
 } {
+  const asObj = (value: unknown) => (typeof value === "object" && value !== null ? value : {})
+  const listing = asObj(match.listing)
+  const company = asObj(match.company)
+
+  const getString = (obj: Record<string, unknown>, keys: string[], fallback?: string): string => {
+    for (const key of keys) {
+      const value = obj[key]
+      if (typeof value === "string" && value.trim().length > 0) return value
+    }
+    return fallback ?? ""
+  }
+
+  const getNumber = (obj: Record<string, unknown>, keys: string[], fallback = 0): number => {
+    for (const key of keys) {
+      const value = obj[key]
+      if (typeof value === "number") return value
+    }
+    return fallback
+  }
+
+  const getDate = (obj: Record<string, unknown>, keys: string[]): Date | undefined => {
+    for (const key of keys) {
+      const value = obj[key]
+      if (value instanceof Date) return value
+      if (typeof value === "string" || typeof value === "number") {
+        const d = new Date(value)
+        if (!isNaN(d.getTime())) return d
+      }
+    }
+    return undefined
+  }
+
+  const jobTitle =
+    getString(match, ["jobTitle", "job_title", "title"]) ||
+    getString(listing, ["title"], "Unknown Title")
+
+  const companyName =
+    getString(match, ["companyName", "company_name"]) ||
+    getString(listing, ["companyName"]) ||
+    getString(company, ["name"], "Unknown Company")
+
+  const location = getString(match, ["location"]) || getString(listing, ["location"], "Remote")
+
+  const jobDescription =
+    getString(match, ["jobDescription", "job_description", "description"]) ||
+    getString(listing, ["description"], "")
+
+  const matchScore = getNumber(match, ["matchScore", "match_score"]) ||
+    getNumber(listing, ["matchScore"], 0)
+
+  const analyzedAt =
+    getDate(match, ["analyzedAt", "analyzed_at"]) ??
+    getDate(listing, ["analyzedAt"]) ??
+    new Date()
+
+  const idValue =
+    (match.id as string | number | undefined) ??
+    (listing.id as string | number | undefined) ??
+    ""
+
   return {
-    id: match.id || "",
-    jobTitle: match.jobTitle || match.job_title || match.title || "Unknown Title",
-    companyName: match.companyName || match.company_name || match.company || "Unknown Company",
-    location: match.location || "Remote",
-    jobDescription: match.jobDescription || match.job_description || match.description || "",
-    matchScore: match.matchScore || match.match_score || 0,
-    analyzedAt: match.analyzedAt || match.analyzed_at || new Date(),
+    id: typeof idValue === "string" ? idValue : String(idValue),
+    jobTitle,
+    companyName,
+    location,
+    jobDescription,
+    matchScore,
+    analyzedAt,
   }
 }
 
