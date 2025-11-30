@@ -23,12 +23,14 @@ def resolve_db_path(db_path: Optional[str] = None) -> Path:
         1. Explicit db_path argument
         2. JOB_FINDER_SQLITE_PATH env var
         3. JF_SQLITE_DB_PATH env var (shared with backend)
-        4. infra/sqlite/jobfinder.db inside the monorepo
+        4. SQLITE_DB_PATH env var (docker-compose template & dev entrypoint)
+        5. infra/sqlite/jobfinder.db inside the monorepo
     """
     path = (
         db_path
         or os.getenv("JOB_FINDER_SQLITE_PATH")
         or os.getenv("JF_SQLITE_DB_PATH")
+        or os.getenv("SQLITE_DB_PATH")
         or str(DEFAULT_DB_PATH)
     )
 
