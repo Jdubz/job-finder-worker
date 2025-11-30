@@ -311,8 +311,11 @@ Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
             text = soup.get_text(separator=" ", strip=True)
             return " ".join(text.split())
 
-        except Exception as e:
-            logger.debug(f"Failed to fetch {url}: {e}")
+        except requests.RequestException as e:
+            logger.debug(f"Request failed for {url}: {e}")
+            return None
+        except (AttributeError, TypeError, UnicodeDecodeError) as e:
+            logger.debug(f"Error parsing content from {url}: {e}")
             return None
 
     # ============================================================
@@ -422,7 +425,8 @@ Be factual. Return ONLY valid JSON."""
 
         try:
             netloc = urlparse(url.lower()).netloc
-        except Exception:
+        except ValueError as e:
+            logger.debug("Could not parse URL '%s': %s", url, e)
             netloc = url.lower()
 
         # Check against known ATS domains
@@ -451,7 +455,8 @@ Be factual. Return ONLY valid JSON."""
                     "SELECT DISTINCT aggregator_domain FROM job_sources WHERE aggregator_domain IS NOT NULL"
                 ).fetchall()
             self._aggregator_domains_cache = [row[0] for row in rows if row[0]]
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to load aggregator domains from DB: %s", e)
             self._aggregator_domains_cache = []
 
         return self._aggregator_domains_cache
