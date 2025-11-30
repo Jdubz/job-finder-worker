@@ -43,9 +43,23 @@ export async function loginWithDevToken(
     throw new Error("Session cookie was not set in context after login.")
   }
 
-  // The login response sets the session cookie on the API origin.
-  // Playwright's browser context automatically stores this cookie and sends it
-  // on subsequent requests to the API origin, so no manual cookie handling is needed here.
+  // The server sets the cookie with sameSite: 'lax' for development, but cross-origin
+  // fetch() requests from the frontend (port 5173) to the API (port 5080) won't include
+  // lax cookies. We need to re-add the cookie with sameSite: 'none' so it's sent.
+  // Note: In Playwright's context, we can set sameSite: 'None' without Secure since
+  // we're in a test environment.
+  await context.addCookies([
+    {
+      name: sessionCookie.name,
+      value: sessionCookie.value,
+      domain: sessionCookie.domain || "127.0.0.1",
+      path: sessionCookie.path || "/",
+      expires: sessionCookie.expires,
+      httpOnly: sessionCookie.httpOnly,
+      secure: false,
+      sameSite: "None",
+    },
+  ])
 }
 
 export async function applyAuthState(page: Page, state?: AuthBypassState) {
