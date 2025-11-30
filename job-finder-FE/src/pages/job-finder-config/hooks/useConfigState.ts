@@ -29,11 +29,9 @@ export function useConfigState() {
 
   const [prefilterPolicy, setPrefilterPolicy] = useState<PrefilterPolicy>(DEFAULT_PREFILTER_POLICY)
   const [originalPrefilter, setOriginalPrefilter] = useState<PrefilterPolicy>(DEFAULT_PREFILTER_POLICY)
-  const [prefilterText, setPrefilterText] = useState(JSON.stringify(DEFAULT_PREFILTER_POLICY, null, 2))
 
   const [matchPolicy, setMatchPolicy] = useState<MatchPolicy>(DEFAULT_MATCH_POLICY)
   const [originalMatch, setOriginalMatch] = useState<MatchPolicy>(DEFAULT_MATCH_POLICY)
-  const [matchText, setMatchText] = useState(JSON.stringify(DEFAULT_MATCH_POLICY, null, 2))
 
   const [queueSettings, setQueueSettingsState] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
   const [originalQueue, setOriginalQueue] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
@@ -66,12 +64,10 @@ export function useConfigState() {
       const prefilter = deepClone((map["prefilter-policy"] as PrefilterPolicy) ?? DEFAULT_PREFILTER_POLICY)
       setPrefilterPolicy(prefilter)
       setOriginalPrefilter(deepClone(prefilter))
-      setPrefilterText(JSON.stringify(prefilter, null, 2))
 
       const match = deepClone((map["match-policy"] as MatchPolicy) ?? DEFAULT_MATCH_POLICY)
       setMatchPolicy(match)
       setOriginalMatch(deepClone(match))
-      setMatchText(JSON.stringify(match, null, 2))
 
       const queue = deepClone((map["queue-settings"] as QueueSettings) ?? DEFAULT_QUEUE_SETTINGS)
       setQueueSettingsState(queue)
@@ -101,27 +97,14 @@ export function useConfigState() {
     loadAll()
   }, [loadAll])
 
-  const parseJson = <T,>(text: string): { ok: boolean; value?: T; error?: string } => {
-    try {
-      return { ok: true, value: JSON.parse(text) as T }
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Invalid JSON" }
-    }
-  }
-
-  const handleSavePrefilter = async () => {
+  const handleSavePrefilter = async (policyOverride?: PrefilterPolicy) => {
     setIsSaving(true)
     setError(null)
-    const parsed = parseJson<PrefilterPolicy>(prefilterText)
-    if (!parsed.ok || !parsed.value) {
-      setError(`Prefilter policy JSON error: ${parsed.error}`)
-      setIsSaving(false)
-      return
-    }
+    const payload = deepClone(policyOverride ?? prefilterPolicy)
     try {
-      await configClient.updatePrefilterPolicy(parsed.value)
-      setPrefilterPolicy(parsed.value)
-      setOriginalPrefilter(deepClone(parsed.value))
+      await configClient.updatePrefilterPolicy(payload)
+      setPrefilterPolicy(payload)
+      setOriginalPrefilter(deepClone(payload))
       setSuccess("Prefilter policy saved")
     } catch (_err) {
       setError("Failed to save prefilter policy")
@@ -130,19 +113,14 @@ export function useConfigState() {
     }
   }
 
-  const handleSaveMatch = async () => {
+  const handleSaveMatch = async (policyOverride?: MatchPolicy) => {
     setIsSaving(true)
     setError(null)
-    const parsed = parseJson<MatchPolicy>(matchText)
-    if (!parsed.ok || !parsed.value) {
-      setError(`Match policy JSON error: ${parsed.error}`)
-      setIsSaving(false)
-      return
-    }
+    const payload = deepClone(policyOverride ?? matchPolicy)
     try {
-      await configClient.updateMatchPolicy(parsed.value)
-      setMatchPolicy(parsed.value)
-      setOriginalMatch(deepClone(parsed.value))
+      await configClient.updateMatchPolicy(payload)
+      setMatchPolicy(payload)
+      setOriginalMatch(deepClone(payload))
       setSuccess("Match policy saved")
     } catch (_err) {
       setError("Failed to save match policy")
@@ -227,15 +205,17 @@ export function useConfigState() {
   }
 
   const resetPrefilter = () => {
-    setPrefilterPolicy(deepClone(originalPrefilter))
-    setPrefilterText(JSON.stringify(originalPrefilter, null, 2))
+    const resetValue = deepClone(originalPrefilter)
+    setPrefilterPolicy(resetValue)
     setSuccess(null)
+    return resetValue
   }
 
   const resetMatch = () => {
-    setMatchPolicy(deepClone(originalMatch))
-    setMatchText(JSON.stringify(originalMatch, null, 2))
+    const resetValue = deepClone(originalMatch)
+    setMatchPolicy(resetValue)
     setSuccess(null)
+    return resetValue
   }
 
   const resetQueue = () => {
@@ -264,17 +244,13 @@ export function useConfigState() {
     isSaving,
     error,
     success,
-
-    prefilterText,
-    setPrefilterText,
     prefilterPolicy,
+    setPrefilterPolicy,
     hasPrefilterChanges: stableStringify(prefilterPolicy) !== stableStringify(originalPrefilter),
     handleSavePrefilter,
     resetPrefilter,
-
-    matchText,
-    setMatchText,
     matchPolicy,
+    setMatchPolicy,
     hasMatchChanges: stableStringify(matchPolicy) !== stableStringify(originalMatch),
     handleSaveMatch,
     resetMatch,
