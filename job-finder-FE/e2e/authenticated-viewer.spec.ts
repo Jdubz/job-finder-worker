@@ -1,28 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
 import { getAuthIcon, openAuthModal, openNavigationDrawer } from './utils/ui'
-
-const TEST_AUTH_STATE_KEY = '__JF_E2E_AUTH_STATE__'
-const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
+import { loginWithDevToken } from './fixtures/auth'
 
 test.describe('Authenticated Viewer Access (Non-Admin)', () => {
-  test.beforeEach(async ({ page }) => {
-    // Set up viewer authentication (non-admin user)
-    await page.context().clearCookies()
-    await page.addInitScript(({ stateKey, tokenKey }) => {
-      // Set up a viewer user (not in admin config)
-      const viewerAuthState = {
-        uid: 'viewer-test-user',
-        email: 'viewer@example.com',
-        displayName: 'Test Viewer',
-        isOwner: false,
-        emailVerified: true,
-        token: 'mock-viewer-token'
-      }
-
-      window.localStorage.setItem(stateKey, JSON.stringify(viewerAuthState))
-      window.localStorage.setItem(tokenKey, 'mock-viewer-token')
-    }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
+  test.beforeEach(async ({ context }) => {
+    // Authenticate with backend using viewer token (non-admin)
+    await context.clearCookies()
+    await loginWithDevToken(context, 'dev-viewer-token')
   })
 
   test('can access all public pages', async ({ page }) => {
@@ -30,7 +15,7 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
       ROUTES.CONTENT_ITEMS,
       ROUTES.DOCUMENT_BUILDER,
       ROUTES.JOB_APPLICATIONS,
-      ROUTES.JOB_FINDER
+      ROUTES.HOME
     ]
 
     for (const route of publicRoutes) {
@@ -39,12 +24,12 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
     }
   })
 
-  test('cannot access AI Prompts page (admin only)', async ({ page }) => {
+  test('can view AI Prompts page (public for viewing)', async ({ page }) => {
     await page.goto(ROUTES.AI_PROMPTS)
 
-    // Should be redirected to unauthorized page
-    await expect(page).toHaveURL(ROUTES.UNAUTHORIZED)
-    await expect(page.getByText(/unauthorized|access denied|admin only/i)).toBeVisible()
+    // AI Prompts is now public for viewing (editing is admin-only)
+    await expect(page).toHaveURL(ROUTES.AI_PROMPTS)
+    await expect(page.getByRole('heading', { name: /ai prompts|prompts/i })).toBeVisible()
   })
 
   test('cannot access Queue Management page (admin only)', async ({ page }) => {
@@ -63,19 +48,14 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
     await expect(page.getByText(/unauthorized|access denied|admin only/i)).toBeVisible()
   })
 
-  test('cannot access Settings page (admin only)', async ({ page }) => {
-    await page.goto(ROUTES.SETTINGS)
-
-    // Should be redirected to unauthorized page
-    await expect(page).toHaveURL(ROUTES.UNAUTHORIZED)
-    await expect(page.getByText(/unauthorized|access denied|admin only/i)).toBeVisible()
-  })
+  // Settings route does not exist in this app - removed test
 
   test('shows viewer role in user profile', async ({ page }) => {
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
     const authDialog = await openAuthModal(page, 'viewer')
 
-    await expect(authDialog.getByText(/viewer@example.com/i)).toBeVisible({ timeout: 15000 })
+    // dev-viewer-token uses dev-viewer@jobfinder.dev
+    await expect(authDialog.getByText(/dev-viewer@jobfinder\.dev/i)).toBeVisible({ timeout: 15000 })
     await expect(authDialog.getByText(/role:\s*viewer/i)).toBeVisible({ timeout: 15000 })
 
     await page.keyboard.press('Escape')
@@ -134,11 +114,7 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
     await expect(signOutButton).toBeVisible({ timeout: 10000 })
     await signOutButton.click()
 
-    const authCleared = await page.evaluate(
-      ({ stateKey, tokenKey }) => !localStorage.getItem(stateKey) && !localStorage.getItem(tokenKey),
-      { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY }
-    )
-    expect(authCleared).toBe(true)
+    // After sign out, should show anonymous auth state
     await expect(getAuthIcon(page, 'anonymous')).toBeVisible({ timeout: 10000 })
   })
 

@@ -1,9 +1,10 @@
 import { test, expect } from "@playwright/test"
-import { applyAuthState, ownerAuthState } from "./fixtures/auth"
+import { loginWithDevToken } from "./fixtures/auth"
 
 test.describe("Owner configuration and prompts", () => {
-  test.beforeEach(async ({ page }) => {
-    await applyAuthState(page, ownerAuthState())
+  test.beforeEach(async ({ context }) => {
+    // Authenticate using dev token for admin access
+    await loginWithDevToken(context, 'dev-admin-token')
   })
 
   test("verifies config sections and updates prompts", async ({ page }) => {

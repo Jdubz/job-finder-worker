@@ -1,11 +1,12 @@
 import { test, expect, type Page } from "@playwright/test"
 import { readFile } from "node:fs/promises"
-import { applyAuthState, ownerAuthState } from "./fixtures/auth"
+import { loginWithDevToken } from "./fixtures/auth"
 import { deleteContentItem, listContentItems, seedContentItem } from "./fixtures/api-client"
 
 test.describe("Content items administration", () => {
-  test.beforeEach(async ({ page }) => {
-    await applyAuthState(page, ownerAuthState())
+  test.beforeEach(async ({ context }) => {
+    // Authenticate using dev token for admin access
+    await loginWithDevToken(context, 'dev-admin-token')
   })
 
   test("supports editing, child creation, reordering, deletion, and export", async ({ page, request }, testInfo) => {
