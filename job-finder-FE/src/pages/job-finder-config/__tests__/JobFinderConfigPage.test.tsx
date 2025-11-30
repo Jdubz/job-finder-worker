@@ -75,8 +75,9 @@ describe("JobFinderConfigPage", () => {
 
   it("shows prefilter JSON with stopList", async () => {
     renderWithRouter(<JobFinderConfigPage />)
-    const editor = await screen.findByRole("textbox")
-    expect(editor).toHaveValue(expect.stringContaining("stopList"))
+    const editors = await screen.findAllByRole("textbox")
+    const hasStopList = editors.some((el) => (el as HTMLTextAreaElement).value.includes("stopList"))
+    expect(hasStopList).toBe(true)
   })
 
   it("saves prefilter policy", async () => {
