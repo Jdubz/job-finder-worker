@@ -13,7 +13,7 @@ This folder contains everything related to the monorepo’s SQLite deployment:
 npm run migrate --workspace job-finder-BE/server
 
 # Override paths if needed
-JF_SQLITE_DB_PATH=/path/to/db \
+SQLITE_DB_PATH=/path/to/db \
 JF_SQLITE_MIGRATIONS_DIR=/path/to/migrations \
 npm run migrate --workspace job-finder-BE/server
 ```

@@ -51,7 +51,7 @@ DEFAULT_WORKER_SETTINGS: Dict[str, Any] = {
 
 def _get_db_path() -> Optional[str]:
     """Get database path from environment."""
-    return os.environ.get("JF_SQLITE_DB_PATH")
+    return os.environ.get("SQLITE_DB_PATH")
 
 
 @lru_cache(maxsize=1)

@@ -22,7 +22,7 @@ This doc summarizes how the Python worker is wired, how to run it safely against
    - Load into the environment of the worker host (systemd unit or shell). Do *not* commit secrets.
 
 2) **Database**
-   - Set `JF_SQLITE_DB_PATH=/srv/job-finder/jobfinder.db` (already defaulted in `run_prod.sh`). Ensure the file is present and writable by the worker user.
+   - Set `SQLITE_DB_PATH=/srv/job-finder/jobfinder.db` (already defaulted in `run_prod.sh`). Ensure the file is present and writable by the worker user.
    - Optional: work from a copy for dry-runs (`cp /srv/job-finder/jobfinder.db /srv/job-finder/jobfinder-canary.db` and point the env var to it).
 
 3) **Start the worker (manual mode)**
@@ -44,7 +44,7 @@ This doc summarizes how the Python worker is wired, how to run it safely against
 
 5) **Observe & verify**
    - Tail `logs/worker.log`.
-   - Inspect queue counts: `sqlite3 $JF_SQLITE_DB_PATH 'select status, count(*) from job_queue group by 1;'`.
+   - Inspect queue counts: `sqlite3 $SQLITE_DB_PATH 'select status, count(*) from job_queue group by 1;'`.
    - Spot-check `job_matches` for duplicates and match scores.
 
 ## Secrets Handling (1Password -> host env)
@@ -90,7 +90,7 @@ This doc summarizes how the Python worker is wired, how to run it safely against
 These fields are backward-compatible (unknown keys are ignored by current scrapers). Agents should populate at least `entry.type`, `entry.url`, and any selectors/pagination required.
 
 ## Safety Guardrails
-- `run_prod.sh` now hard-requires `JF_SQLITE_DB_PATH` to exist and an AI key to be present before starting.
+- `run_prod.sh` now hard-requires `SQLITE_DB_PATH` to exist and an AI key to be present before starting.
 - Avoid multiple worker processes on the same SQLite file to prevent lock contention.
 - No automatic scrape scheduling is enabled; only enqueue SCRAPE/SCRAPE_SOURCE manually during testing.
 

@@ -19,7 +19,7 @@ export async function setupTestServer(): Promise<TestServerContext> {
   process.env.NODE_ENV = "test"
   process.env.PORT = "0"
   process.env.DATABASE_PATH = dbPath
-  process.env.JF_SQLITE_DB_PATH = dbPath
+  process.env.SQLITE_DB_PATH = dbPath
   // Point migrations at the repo-level SQL files
   process.env.JF_SQLITE_MIGRATIONS_DIR = path.resolve("infra/sqlite/migrations")
   process.env.TEST_AUTH_BYPASS_TOKEN = TEST_AUTH_TOKEN

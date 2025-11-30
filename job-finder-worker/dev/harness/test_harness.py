@@ -56,7 +56,7 @@ class Colors:
 def get_db_path() -> str:
     """Get database path from environment or default."""
     return os.environ.get(
-        "JF_SQLITE_DB_PATH",
+        "SQLITE_DB_PATH",
         os.environ.get(
             "SQLITE_DB_PATH", str(Path(__file__).parent.parent.parent / ".dev/data/jobfinder.db")
         ),

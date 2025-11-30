@@ -204,12 +204,7 @@ def get_processing_timeout(config_loader: ConfigLoader) -> int:
 
 def initialize_components(config: Dict[str, Any]) -> tuple:
     """Initialize all worker components."""
-    db_path = (
-        os.getenv("JF_SQLITE_DB_PATH")
-        or os.getenv("JOB_FINDER_SQLITE_PATH")
-        or os.getenv("SQLITE_DB_PATH")
-        or os.getenv("DATABASE_PATH")
-    )
+    db_path = os.getenv("SQLITE_DB_PATH") or os.getenv("DATABASE_PATH")
 
     if db_path:
         slogger.worker_status("sqlite_path_selected", {"path": db_path})

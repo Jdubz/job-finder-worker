@@ -4,7 +4,7 @@ import sqlite3 from 'better-sqlite3'
 type TechRankValue = number | { rank?: string; points?: number; mentions?: number }
 
 const DB_PATH =
-  process.env.JF_SQLITE_DB_PATH ??
+  process.env.SQLITE_DB_PATH ??
   process.env.DATABASE_PATH ??
   path.resolve(process.cwd(), '../../infra/sqlite/jobfinder.db')
 
