@@ -82,4 +82,20 @@ describe("JobFinderConfigPage", () => {
     const payload = vi.mocked(configClient.updatePrefilterPolicy).mock.calls[0]?.[0]
     expect(payload?.strikeEngine?.strikeThreshold).toBe(9)
   })
+
+  it("saves match policy with validated fields", async () => {
+    const user = userEvent.setup()
+    renderWithRouter(<JobFinderConfigPage />)
+
+    await screen.findByText(/Job Finder Configuration/)
+
+    await user.click(screen.getByRole("tab", { name: /match policy/i }))
+    const minMatchScore = await screen.findByLabelText(/minimum match score/i)
+    fireEvent.change(minMatchScore, { target: { value: "82" } })
+    await user.click(screen.getByRole("button", { name: /save changes/i }))
+
+    await waitFor(() => expect(configClient.updateMatchPolicy).toHaveBeenCalled())
+    const payload = vi.mocked(configClient.updateMatchPolicy).mock.calls[0]?.[0]
+    expect(payload?.jobMatch?.minMatchScore).toBe(82)
+  })
 })
