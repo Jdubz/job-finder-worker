@@ -10,6 +10,7 @@ import signal
 
 from job_finder.flask_worker import initialize_components, load_config
 from job_finder.job_queue.config_loader import ConfigLoader
+from job_finder.exceptions import InitializationError, ConfigurationError
 
 
 logger = logging.getLogger("queue_worker")
@@ -69,8 +70,17 @@ def main() -> None:
                 "Invalid taskDelaySeconds=%s (not a number), using default of 1s", task_delay_raw
             )
             task_delay = 1
-    except Exception as e:
-        logger.warning("Could not load queue settings: %s, using default task delay of 1s", e)
+    except (InitializationError, ConfigurationError) as e:
+        # Expected errors: database not initialized, config missing, etc.
+        logger.warning(
+            "Could not load queue settings (%s: %s), using default task delay of 1s",
+            type(e).__name__,
+            e,
+        )
+        task_delay = 1
+    except Exception:
+        # Unexpected errors - log full traceback for debugging
+        logger.exception("Unexpected error loading queue settings, using default task delay of 1s")
         task_delay = 1
 
     logger.info(
