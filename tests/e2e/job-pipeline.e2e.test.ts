@@ -296,17 +296,34 @@ describe("Content items", () => {
 })
 
 describe("Configuration flows", () => {
-  it("updates stop list, queue settings, AI settings, and personal info", async () => {
+  it("updates prefilter policy (stop list), queue settings, AI settings, and personal info", async () => {
     const { configClient } = await initFrontendClients()
     const userEmail = "ops@jobfinder.dev"
 
-    await configClient.updateStopList({
-      excludedCompanies: ["Bad Corp"],
-      excludedDomains: ["spam.example.com"],
+    // Stop list is now part of prefilter-policy
+    const existingPolicy = await configClient.getPrefilterPolicy()
+    await configClient.updatePrefilterPolicy({
+      ...existingPolicy,
+      stopList: {
+        excludedCompanies: ["Bad Corp"],
+        excludedKeywords: existingPolicy?.stopList?.excludedKeywords ?? [],
+        excludedDomains: ["spam.example.com"],
+      },
+      strikeEngine: existingPolicy?.strikeEngine ?? {
+        enabled: false,
+        strikeThreshold: 5,
+        hardRejections: {},
+        remotePolicy: {},
+        salaryStrike: {},
+        experienceStrike: {},
+        qualityStrikes: {},
+        ageStrike: {},
+      },
+      technologyRanks: existingPolicy?.technologyRanks ?? { technologies: {} },
     })
-    const stopList = await configClient.getStopList()
-    expect(stopList?.excludedCompanies).toContain("Bad Corp")
-    expect(stopList?.excludedDomains).toContain("spam.example.com")
+    const prefilterPolicy = await configClient.getPrefilterPolicy()
+    expect(prefilterPolicy?.stopList?.excludedCompanies).toContain("Bad Corp")
+    expect(prefilterPolicy?.stopList?.excludedDomains).toContain("spam.example.com")
 
     await configClient.updateQueueSettings({ processingTimeoutSeconds: 1200 })
     const queueSettings = await configClient.getQueueSettings()
