@@ -463,6 +463,11 @@ class StrikeFilterEngine:
             ind in combined for ind in ["on-site", "onsite", "in-office", "office-based"]
         )
 
+        # If a concrete location is provided but no remote/hybrid/onsite keywords were detected,
+        # treat it as onsite (e.g., "Berlin" or "Bangalore"), so the remote policy applies.
+        if not is_remote and not is_hybrid and not is_onsite and location_lower.strip():
+            is_onsite = True
+
         # If we can't detect work arrangement, pass it through (don't reject on missing data)
         if not is_remote and not is_hybrid and not is_onsite:
             return False  # Unclear = allow (let AI analysis handle it)
