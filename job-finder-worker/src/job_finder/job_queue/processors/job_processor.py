@@ -28,7 +28,7 @@ from job_finder.storage.job_listing_storage import JobListingStorage
 from job_finder.storage.job_storage import JobStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.utils.company_info import build_company_info_string
-from job_finder.utils.company_name_utils import clean_company_name
+from job_finder.utils.company_name_utils import clean_company_name, is_source_name
 from job_finder.utils.url_utils import normalize_url
 from job_finder.job_queue.models import (
     JobQueueItem,
@@ -612,6 +612,21 @@ class JobProcessor(BaseProcessor):
             job_data["company"] = ""
             return True, state_updates
 
+        # Edge case: Check if company name is actually a source name (scraper bug)
+        if is_source_name(company_name_clean):
+            logger.warning(
+                "Company name '%s' detected as source name (scraper bug) - skipping company enrichment",
+                company_name_clean
+            )
+            job_data["company"] = company_name_clean
+            job_data["company_id"] = None
+            job_data["companyId"] = None
+            job_data["company_info"] = ""
+            job_data["company_data"] = {}
+            job_data["is_source_name_bug"] = True
+            state_updates["awaiting_company"] = False
+            return True, state_updates
+
         pipeline_state = item.pipeline_state or {}
 
         # TIER 1: Try to resolve company via source linkage
@@ -707,7 +722,22 @@ class JobProcessor(BaseProcessor):
         # Spawn enrichment task and wait if data is sparse
         if not self.companies_manager.has_good_company_data(company):
             if not pipeline_state.get("awaiting_company"):
-                self._try_spawn_company_task(item, company_id, company_name, company_website)
+                task_spawned = self._try_spawn_company_task(item, company_id, company_name, company_website)
+                if not task_spawned:
+                    # Company enrichment task could not be spawned - proceed with sparse data
+                    # This prevents infinite waiting when enrichment is impossible
+                    logger.info(
+                        "Proceeding with sparse company data for %s (enrichment task spawn failed)",
+                        company_name
+                    )
+                    job_data["company_id"] = company_id
+                    job_data["companyId"] = company_id
+                    job_data["company_info"] = build_company_info_string(company)
+                    job_data["company_data"] = company
+                    state_updates["awaiting_company"] = False
+                    return True, state_updates
+
+            # Task was spawned (or already exists), wait for enrichment
             state_updates["awaiting_company"] = True
             return False, state_updates
 
@@ -725,23 +755,20 @@ class JobProcessor(BaseProcessor):
         company_id: str,
         company_name: str,
         company_website: str,
-    ) -> None:
+    ) -> bool:
         """
-        Try to spawn a COMPANY task (fire and forget).
+        Try to spawn a COMPANY task for enrichment.
 
-        This is best-effort - if spawning fails for any reason (duplicate URL,
-        spawn depth exceeded, job board URL, etc.), we silently ignore it.
+        Company enrichment uses AI-powered search (Tavily/Brave) to find company
+        information, so it doesn't require a valid website URL. The URL is used
+        as a hint but the search API can discover the real company website.
+
+        Returns:
+            True if task was spawned or already exists, False if spawning failed
         """
-        company_url = company_website or item.url
-
-        # Skip if URL is a job board or aggregator (not a company website)
-        if self._is_job_board_url(company_url):
-            logger.debug(
-                "Skipping company enrichment for %s: URL is a job board (%s)",
-                company_name,
-                company_url,
-            )
-            return
+        # Use provided website or use a placeholder - company enrichment will
+        # use search API to find the real website based on company name
+        company_url = company_website or f"https://www.google.com/search?q={company_name.replace(' ', '+')}"
 
         try:
             task_id = self.queue_manager.spawn_item_safely(
@@ -755,11 +782,17 @@ class JobProcessor(BaseProcessor):
                 },
             )
             if task_id:
-                logger.debug("Spawned company task %s for %s", task_id, company_name)
+                logger.info("Spawned company enrichment task %s for %s", task_id, company_name)
+                return True
+            else:
+                logger.warning("Failed to spawn company task for %s: spawn_item_safely returned None", company_name)
+                return False
         except DuplicateQueueItemError:
             logger.debug("Company task for %s already in queue, skipping spawn", company_name)
+            return True  # Task exists, which is fine
         except Exception as e:
-            logger.debug("Could not spawn company task for %s: %s", company_name, e)
+            logger.error("Could not spawn company task for %s: %s", company_name, e)
+            return False
 
     @staticmethod
     def _is_job_board_url(url: str) -> bool:

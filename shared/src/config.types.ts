@@ -27,6 +27,7 @@ export interface StopList {
 export interface QueueSettings {
   processingTimeoutSeconds: number
   isProcessingEnabled?: boolean // Controls whether the worker processes queue items (defaults to true)
+  taskDelaySeconds?: number // Delay between processing queue items (defaults to 0)
 }
 
 // -----------------------------------------------------------
@@ -317,6 +318,7 @@ export const DEFAULT_STOP_LIST: StopList = {
 export const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
   processingTimeoutSeconds: 1800,
   isProcessingEnabled: true,
+  taskDelaySeconds: 1, // 1 second delay between tasks to avoid rate limits
 }
 
 /** Canonical provider options built from AI_PROVIDER_MODELS */

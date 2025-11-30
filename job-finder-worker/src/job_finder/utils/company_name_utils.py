@@ -62,6 +62,49 @@ def clean_company_name(name: str) -> str:
     return cleaned.strip()
 
 
+def is_source_name(name: str) -> bool:
+    """
+    Check if a company name is actually a job source/aggregator name.
+
+    This is a scraper bug where source names leak into company fields.
+    Returns True if the name matches known source patterns.
+
+    Examples:
+        >>> is_source_name("RemoteOK API")
+        True
+        >>> is_source_name("We Work Remotely - DevOps")
+        True
+        >>> is_source_name("Google")
+        False
+    """
+    if not name:
+        return False
+
+    name_lower = name.lower().strip()
+
+    # Known source name patterns (scrapers, aggregators, job boards)
+    source_patterns = [
+        r"^remoteok\s+(api)?",  # RemoteOK API, RemoteOK
+        r"^remote\s*ok",  # Remote OK
+        r"^we\s+work\s+remotely",  # We Work Remotely
+        r"^himalayas\s+remote",  # Himalayas Remote
+        r"^jobicy\s+remote",  # Jobicy Remote
+        r"^remotive",  # Remotive - Software Development, etc.
+        r"^github\s+jobs",  # GitHub Jobs
+        r"^stack\s+overflow\s+jobs",  # Stack Overflow Jobs
+        r"^indeed",  # Indeed
+        r"^linkedin",  # LinkedIn
+        r"^glassdoor",  # Glassdoor
+        r"^dice",  # Dice
+        r"^monster",  # Monster
+        r"^ziprecruiter",  # ZipRecruiter
+        r"^careerbuilder",  # CareerBuilder
+        r"\s+-\s+(remote|software|devops|engineering|backend|frontend|fullstack)$",  # "Source - Category" pattern
+    ]
+
+    return any(re.search(pattern, name_lower) for pattern in source_patterns)
+
+
 def normalize_company_name(name: str) -> str:
     """
     Normalize company name for deduplication.
