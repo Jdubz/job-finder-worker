@@ -16,6 +16,8 @@ import { remark } from "remark"
 import remarkLint from "remark-lint"
 import remarkPresetLintRecommended from "remark-preset-lint-recommended"
 
+const markdownProcessor = remark().use(remarkLint).use(remarkPresetLintRecommended)
+
 interface ContentItemFormProps {
   initialValues?: ContentItemFormValues
   onSubmit: (values: ContentItemFormValues) => Promise<void>
@@ -97,10 +99,7 @@ export function ContentItemForm({
 
     const timer = setTimeout(async () => {
       try {
-        const file = await remark()
-          .use(remarkLint)
-          .use(remarkPresetLintRecommended)
-          .process(text)
+        const file = await markdownProcessor.process(text)
         if (cancelled) return
         const messages = file.messages.map((message) => {
           const location = message.line ? ` (line ${message.line})` : ""
@@ -110,6 +109,7 @@ export function ContentItemForm({
       } catch (_err) {
         if (!cancelled) {
           setLintMessages(["Markdown linting failed."])
+          console.error("Markdown linting error:", _err)
         }
       }
     }, 250)

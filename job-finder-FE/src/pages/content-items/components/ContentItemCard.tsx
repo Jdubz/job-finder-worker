@@ -9,6 +9,7 @@ import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Trash2 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeSanitize from "rehype-sanitize"
+import { cn } from "@/lib/utils"
 
 interface ContentItemCardProps {
   item: ContentItemNode
@@ -217,7 +218,17 @@ function Markdown({ text }: { text: string }) {
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[rehypeSanitize]}
-      className="space-y-2 text-sm leading-relaxed text-muted-foreground [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_strong]:text-foreground [&_p]:my-0 [&_ul]:my-0 [&_ol]:my-0 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_h1]:mt-2 [&_h2]:mt-2 [&_h3]:mt-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5"
+      className={cn(
+        "space-y-2 text-sm leading-relaxed text-muted-foreground",
+        "[&_a]:text-primary [&_a]:underline",
+        "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5",
+        "[&_strong]:text-foreground",
+        "[&_p]:my-0 [&_ul]:my-0 [&_ol]:my-0",
+        "[&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base",
+        "[&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold",
+        "[&_h1]:mt-2 [&_h2]:mt-2 [&_h3]:mt-2",
+        "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5"
+      )}
       components={{
         a: ({ ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
         code: ({ inline, className, children, ...props }) =>
