@@ -45,7 +45,7 @@ class SearchClient(ABC):
             List of SearchResult objects
 
         Raises:
-            Exception: If the search API request fails
+            requests.exceptions.RequestException: If the search API request fails
         """
         pass
 
@@ -184,16 +184,10 @@ def get_search_client() -> Optional[SearchClient]:
         SearchClient instance or None if no API keys configured
     """
     if os.getenv("TAVILY_API_KEY"):
-        try:
-            return TavilySearchClient()
-        except ValueError:
-            pass
+        return TavilySearchClient()
 
     if os.getenv("BRAVE_API_KEY"):
-        try:
-            return BraveSearchClient()
-        except ValueError:
-            pass
+        return BraveSearchClient()
 
     logger.warning("No search API keys configured (TAVILY_API_KEY or BRAVE_API_KEY)")
     return None

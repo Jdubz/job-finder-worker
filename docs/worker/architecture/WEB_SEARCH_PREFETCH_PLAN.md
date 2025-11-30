@@ -46,3 +46,14 @@ No feature flag - always on when API key is set.
 - No one-call-per-company guards
 
 Just fetch search results and give them to the AI.
+
+## Monitoring and Future Safeguards
+**Important**: This MVP implementation defers several operational safeguards to keep things simple:
+
+- **Cost Risk**: Without quota management, a large influx of companies could exhaust free tier quotas (Tavily: 1k/month, Brave: 2k/month) and incur unexpected costs. Monitor usage closely.
+- **Redundancy Risk**: Without one-call-per-company guards, repeated processing attempts may waste API calls on the same company.
+
+**Action Items**:
+- Monitor search API usage in logs and dashboard
+- Consider implementing quota tracking and one-call-per-company guards if usage is higher than expected
+- Set up alerts for approaching quota limits

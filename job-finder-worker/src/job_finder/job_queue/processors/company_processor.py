@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
+import requests
+
 from job_finder.ai.search_client import get_search_client
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue.config_loader import ConfigLoader
@@ -106,17 +108,12 @@ class CompanyProcessor(BaseProcessor):
         with self._handle_company_failure(company_id):
             if not company_website:
                 # No website URL provided - fetch search results to assist agent research
-                search_results = self._get_search_results(company_name)
                 context_data: Dict[str, Any] = {
                     "company_name": company_name,
                     "company_id": company_id,
                     "instruction": "Find the company's official website URL first, then gather all company information.",
                 }
-                if search_results:
-                    context_data["search_results"] = search_results
-                    logger.info(
-                        f"Including {len(search_results)} search results for agent review of {company_name}"
-                    )
+                self._add_search_results_to_context(company_name, context_data)
 
                 self._handoff_to_agent_review(
                     item,
@@ -131,17 +128,12 @@ class CompanyProcessor(BaseProcessor):
             html_content = self._fetch_company_pages(company_name, pages_to_try)
             if not html_content:
                 # Recoverable: agent can use search results when pages can't be fetched
-                search_results = self._get_search_results(company_name)
                 context_data2: Dict[str, Any] = {
                     "attempted_urls": pages_to_try,
                     "company_name": company_name,
                     "company_website": company_website,
                 }
-                if search_results:
-                    context_data2["search_results"] = search_results
-                    logger.info(
-                        f"Including {len(search_results)} search results for agent review of {company_name}"
-                    )
+                self._add_search_results_to_context(company_name, context_data2)
 
                 self._handoff_to_agent_review(
                     item,
@@ -155,17 +147,12 @@ class CompanyProcessor(BaseProcessor):
             extracted_info = self._extract_company_info(company_name, html_content, company_website)
             if not extracted_info:
                 # Recoverable: agent can use search results + HTML to extract info
-                search_results = self._get_search_results(company_name)
                 context_data3: Dict[str, Any] = {
                     "html_samples": {k: v[:5000] for k, v in html_content.items()},
                     "company_name": company_name,
                     "company_website": company_website,
                 }
-                if search_results:
-                    context_data3["search_results"] = search_results
-                    logger.info(
-                        f"Including {len(search_results)} search results for agent review of {company_name}"
-                    )
+                self._add_search_results_to_context(company_name, context_data3)
 
                 self._handoff_to_agent_review(
                     item,
@@ -194,16 +181,11 @@ class CompanyProcessor(BaseProcessor):
                 # Check again after AI enrichment - recoverable if still sparse
                 if self.company_info_fetcher._needs_ai_enrichment(extracted_info):
                     # Provide search results to help agent fill gaps
-                    search_results = self._get_search_results(company_name)
                     context_data4: Dict[str, Any] = {
                         "extracted_info": extracted_info,
                         "html_samples": {k: v[:5000] for k, v in html_content.items()},
                     }
-                    if search_results:
-                        context_data4["search_results"] = search_results
-                        logger.info(
-                            f"Including {len(search_results)} search results for agent review of {company_name}"
-                        )
+                    self._add_search_results_to_context(company_name, context_data4)
 
                     self._handoff_to_agent_review(
                         item,
@@ -301,9 +283,24 @@ class CompanyProcessor(BaseProcessor):
             query = f"{company_name} official website"
             results = search_client.search(query, max_results=5)
             return [r.to_dict() for r in results]
-        except Exception as e:
+        except (requests.exceptions.RequestException, ValueError) as e:
             logger.warning(f"Search API failed for '{company_name}': {e}")
             return None
+
+    def _add_search_results_to_context(self, company_name: str, context: Dict[str, Any]) -> None:
+        """
+        Fetch search results and add them to the context dictionary in-place.
+
+        Args:
+            company_name: Company name to search for
+            context: Context dictionary to update with search results
+        """
+        search_results = self._get_search_results(company_name)
+        if search_results:
+            context["search_results"] = search_results
+            logger.info(
+                f"Including {len(search_results)} search results for agent review of {company_name}"
+            )
 
     def _build_pages_to_try(self, website: str) -> list:
         """Build list of company pages to try fetching."""
