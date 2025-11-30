@@ -76,6 +76,10 @@ def is_source_name(name: str) -> bool:
         True
         >>> is_source_name("Google")
         False
+        >>> is_source_name("Indeed")
+        False
+        >>> is_source_name("LinkedIn")
+        False
     """
     if not name:
         return False
@@ -83,23 +87,30 @@ def is_source_name(name: str) -> bool:
     name_lower = name.lower().strip()
 
     # Known source name patterns (scrapers, aggregators, job boards)
+    # These patterns are specific to scraper output, not the companies themselves
     source_patterns = [
-        r"^remoteok\s+(api)?",  # RemoteOK API, RemoteOK
-        r"^remote\s*ok",  # Remote OK
-        r"^we\s+work\s+remotely",  # We Work Remotely
-        r"^himalayas\s+remote",  # Himalayas Remote
-        r"^jobicy\s+remote",  # Jobicy Remote
-        r"^remotive",  # Remotive - Software Development, etc.
-        r"^github\s+jobs",  # GitHub Jobs
-        r"^stack\s+overflow\s+jobs",  # Stack Overflow Jobs
-        r"^indeed",  # Indeed
-        r"^linkedin",  # LinkedIn
-        r"^glassdoor",  # Glassdoor
-        r"^dice",  # Dice
-        r"^monster",  # Monster
-        r"^ziprecruiter",  # ZipRecruiter
-        r"^careerbuilder",  # CareerBuilder
-        r"\s+-\s+(remote|software|devops|engineering|backend|frontend|fullstack)$",  # "Source - Category" pattern
+        # Specific aggregator/scraper names with identifying suffixes
+        r"^remoteok\s+(api|remote)?\s*$",  # RemoteOK API, RemoteOK (exact)
+        r"^remote\s*ok\s+(api)?\s*$",  # Remote OK, Remote OK API (exact)
+        r"^we\s+work\s+remotely\b",  # We Work Remotely (with anything after)
+        r"^himalayas\s+remote\b",  # Himalayas Remote
+        r"^jobicy\s+remote\b",  # Jobicy Remote
+        r"^remotive\b",  # Remotive (board name, not company)
+
+        # Job board names WITH job-related suffixes (not the companies themselves)
+        r"^indeed\s+(jobs?|api|prime)\b",  # Indeed Jobs, Indeed API (NOT just "Indeed")
+        r"^linkedin\s+(jobs?|api)\b",  # LinkedIn Jobs, LinkedIn API (NOT just "LinkedIn")
+        r"^glassdoor\s+(jobs?|api)\b",  # Glassdoor Jobs (NOT just "Glassdoor")
+
+        # Other job boards
+        r"^github\s+jobs\b",  # GitHub Jobs
+        r"^stack\s+overflow\s+jobs\b",  # Stack Overflow Jobs
+        r"^ziprecruiter\b",  # ZipRecruiter
+        r"^careerbuilder\b",  # CareerBuilder
+
+        # Scraper patterns: "SourceName - Category" (very specific)
+        # Only match if it looks like a scraper categorization, not a division name
+        r"^(remoteok|remote ok|we work remotely|himalayas|jobicy|remotive)\s+-\s+",
     ]
 
     return any(re.search(pattern, name_lower) for pattern in source_patterns)

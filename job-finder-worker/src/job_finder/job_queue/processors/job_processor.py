@@ -13,7 +13,7 @@ Job Listings Integration:
 import logging
 import time
 from typing import Any, Dict, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote_plus
 
 from job_finder.ai.matcher import AIJobMatcher
 from job_finder.company_info_fetcher import CompanyInfoFetcher
@@ -612,24 +612,12 @@ class JobProcessor(BaseProcessor):
             job_data["company"] = ""
             return True, state_updates
 
-        # Edge case: Check if company name is actually a source name (scraper bug)
-        if is_source_name(company_name_clean):
-            logger.warning(
-                "Company name '%s' detected as source name (scraper bug) - skipping company enrichment",
-                company_name_clean
-            )
-            job_data["company"] = company_name_clean
-            job_data["company_id"] = None
-            job_data["companyId"] = None
-            job_data["company_info"] = ""
-            job_data["company_data"] = {}
-            job_data["is_source_name_bug"] = True
-            state_updates["awaiting_company"] = False
-            return True, state_updates
-
         pipeline_state = item.pipeline_state or {}
 
         # TIER 1: Try to resolve company via source linkage
+        # Check source resolution FIRST before checking is_source_name()
+        # This allows jobs AT job boards (e.g., Indeed posting a job for themselves)
+        # to be processed correctly when the source has proper company mapping
         source_resolution = self.sources_manager.resolve_company_from_source(
             source_id=item.source_id,
             company_name_raw=company_name_clean,
@@ -680,7 +668,24 @@ class JobProcessor(BaseProcessor):
                     actual_company_id,
                 )
 
-        # TIER 2: Fall back to direct company lookup/creation
+        # TIER 2: Check if company name is actually a source name (scraper bug)
+        # This check happens AFTER source resolution to allow jobs AT job boards to work
+        # when the source has proper company mapping
+        if is_source_name(company_name_clean):
+            logger.warning(
+                "Company name '%s' detected as source name (scraper bug) - skipping company enrichment",
+                company_name_clean
+            )
+            job_data["company"] = company_name_clean
+            job_data["company_id"] = None
+            job_data["companyId"] = None
+            job_data["company_info"] = ""
+            job_data["company_data"] = {}
+            job_data["is_source_name_bug"] = True
+            state_updates["awaiting_company"] = False
+            return True, state_updates
+
+        # TIER 3: Fall back to direct company lookup/creation
         job_data["company"] = company_name_clean
         company = self.companies_manager.get_company(company_name_clean)
 
@@ -766,9 +771,17 @@ class JobProcessor(BaseProcessor):
         Returns:
             True if task was spawned or already exists, False if spawning failed
         """
-        # Use provided website or use a placeholder - company enrichment will
-        # use search API to find the real website based on company name
-        company_url = company_website or f"https://www.google.com/search?q={company_name.replace(' ', '+')}"
+        # Use provided website or construct a search URL placeholder
+        # Properly encode company name to avoid malformed URLs
+        if company_website:
+            company_url = company_website
+        elif company_name:
+            # Use quote_plus for proper URL encoding (handles &, /, #, etc.)
+            company_url = f"https://www.google.com/search?q={quote_plus(company_name)}"
+        else:
+            # Fallback if company name is somehow empty/None
+            logger.warning("Cannot spawn company task: both company_name and company_website are empty")
+            return False
 
         try:
             task_id = self.queue_manager.spawn_item_safely(

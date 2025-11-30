@@ -36,15 +36,41 @@ def main() -> None:
     signal.signal(signal.SIGINT, handle_signal)
 
     # Load queue settings for task delay
-    db_path = os.getenv("JF_SQLITE_DB_PATH") or os.getenv("SQLITE_DB_PATH")
+    # Use same ENV variable precedence as initialize_components()
+    db_path = (
+        os.getenv("JF_SQLITE_DB_PATH")
+        or os.getenv("JOB_FINDER_SQLITE_PATH")
+        or os.getenv("SQLITE_DB_PATH")
+        or os.getenv("DATABASE_PATH")
+    )
     config_loader = ConfigLoader(db_path)
 
-    # Get task delay from settings (default to 1 second)
+    # Get task delay from settings (default to 1 second) with validation
     try:
         queue_settings = config_loader.get_queue_settings()
-        task_delay = queue_settings.get("taskDelaySeconds", 1)
-    except Exception:
-        logger.warning("Could not load queue settings, using default task delay of 1s")
+        task_delay_raw = queue_settings.get("taskDelaySeconds", 1)
+
+        # Validate taskDelaySeconds is a valid number
+        try:
+            task_delay = float(task_delay_raw)
+            # Ensure it's within reasonable bounds (0 to 60 seconds)
+            if task_delay < 0:
+                logger.warning(
+                    "Invalid taskDelaySeconds=%s (negative), using default of 1s", task_delay_raw
+                )
+                task_delay = 1
+            elif task_delay > 60:
+                logger.warning(
+                    "taskDelaySeconds=%s exceeds maximum of 60s, capping at 60s", task_delay_raw
+                )
+                task_delay = 60
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid taskDelaySeconds=%s (not a number), using default of 1s", task_delay_raw
+            )
+            task_delay = 1
+    except Exception as e:
+        logger.warning("Could not load queue settings: %s, using default task delay of 1s", e)
         task_delay = 1
 
     logger.info(
