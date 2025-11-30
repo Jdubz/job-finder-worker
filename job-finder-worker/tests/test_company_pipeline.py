@@ -1,7 +1,7 @@
 """Tests for single-pass company processing pipeline."""
 
 import pytest
-from unittest.mock import ANY, Mock
+from unittest.mock import Mock
 
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.job_queue.processor import QueueItemProcessor
@@ -253,7 +253,9 @@ class TestCompanyPipeline:
         }
         mock_dependencies["company_info_fetcher"]._is_job_board_url.return_value = True
         # Source already exists
-        mock_dependencies["sources_manager"].get_source_for_url.return_value = {"id": "source-existing"}
+        mock_dependencies["sources_manager"].get_source_for_url.return_value = {
+            "id": "source-existing"
+        }
         mock_dependencies["companies_manager"].save_company.return_value = "company-123"
 
         processor.company_processor.process_company(item)
