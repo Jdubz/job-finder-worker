@@ -275,6 +275,12 @@ class JobProcessor(BaseProcessor):
 
         logger.info(f"JOB_SCRAPE: Extracting job data from {item.url[:50]}...")
 
+        # Update status to processing and set pipeline_stage for UI
+        updated_state = {**(item.pipeline_state or {}), "pipeline_stage": "scrape"}
+        self.queue_manager.update_status(
+            item.id, QueueStatus.PROCESSING, "Scraping job data", pipeline_state=updated_state
+        )
+
         try:
             # Get source configuration for this URL
             source = self.sources_manager.get_source_for_url(item.url)
@@ -358,6 +364,12 @@ class JobProcessor(BaseProcessor):
         start = time.monotonic()
 
         logger.info(f"JOB_FILTER: Evaluating {job_data.get('title')} at {job_data.get('company')}")
+
+        # Update status to processing and set pipeline_stage for UI
+        updated_state = {**item.pipeline_state, "pipeline_stage": "filter"}
+        self.queue_manager.update_status(
+            item.id, QueueStatus.PROCESSING, "Filtering job", pipeline_state=updated_state
+        )
 
         # Get or create job_listing for this job
         listing_id = self._get_or_create_job_listing(item, job_data)
@@ -476,6 +488,12 @@ class JobProcessor(BaseProcessor):
                     next_stage="analyze",
                 )
                 return
+
+            # Update status to processing and set pipeline_stage for UI (dependencies are ready)
+            updated_state = {**item.pipeline_state, "pipeline_stage": "analyze"}
+            self.queue_manager.update_status(
+                item.id, QueueStatus.PROCESSING, "Analyzing job match", pipeline_state=updated_state
+            )
 
             # Run AI matching (force returning score even if below threshold)
             result = self.ai_matcher.analyze_job(job_data, return_below_threshold=True)
@@ -797,6 +815,12 @@ class JobProcessor(BaseProcessor):
 
         logger.info(f"JOB_SAVE: Saving {job_data.get('title')} at {job_data.get('company')}")
 
+        # Update status to processing and set pipeline_stage for UI
+        updated_state = {**item.pipeline_state, "pipeline_stage": "save"}
+        self.queue_manager.update_status(
+            item.id, QueueStatus.PROCESSING, "Saving job match", pipeline_state=updated_state
+        )
+
         try:
             # Reconstruct JobMatchResult from dict
             from job_finder.ai.matcher import JobMatchResult
@@ -867,15 +891,18 @@ class JobProcessor(BaseProcessor):
         Args:
             current_item: Current queue item
             updated_state: Updated pipeline state
-            next_stage: Next pipeline stage name (for logging)
+            next_stage: Next pipeline stage name (for logging and UI display)
         """
         if not current_item.id:
             logger.error("Cannot requeue item without ID")
             return
 
+        # Add pipeline_stage to state for UI display
+        updated_state_with_stage = {**updated_state, "pipeline_stage": next_stage}
+
         # Update the same item with new state and mark as pending for re-processing
         try:
-            self.queue_manager.requeue_with_state(current_item.id, updated_state)
+            self.queue_manager.requeue_with_state(current_item.id, updated_state_with_stage)
             logger.info(
                 f"Requeued item {current_item.id} for {next_stage}: {current_item.url[:50]}"
             )
