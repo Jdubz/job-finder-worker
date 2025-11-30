@@ -281,7 +281,7 @@ class ConfigLoader:
                 "strikeThreshold": 5,
                 "hardRejections": {
                     "excludedJobTypes": [],
-                    "excludedSeniority": [],
+                    "excludedSeniority": ["intern", "entry", "entry-level", "entry level"],
                     "excludedCompanies": [],
                     "excludedKeywords": [],
                     "requiredTitleKeywords": [
@@ -289,8 +289,14 @@ class ConfigLoader:
                         "developer",
                         "engineer",
                         "frontend",
+                        "front end",
+                        "front-end",
                         "full stack",
                         "fullstack",
+                        "full-stack",
+                        "backend",
+                        "back end",
+                        "back-end",
                     ],
                     "minSalaryFloor": 100000,
                     "rejectCommissionOnly": True,
@@ -302,22 +308,8 @@ class ConfigLoader:
                     "allowedHybridLocations": ["portland, or"],
                 },
                 "salaryStrike": {"enabled": True, "threshold": 150000, "points": 2},
-                "experienceStrike": {"enabled": True, "minPreferred": 6, "points": 1},
-                "jobTypeStrike": {
-                    "enabled": True,
-                    "points": 2,
-                    "keywords": [
-                        # Soft signals only; AI will make final determination
-                        "marketing",
-                        "customer support",
-                        "support",
-                        "customer success",
-                        "qa",
-                        "analyst",
-                        "product",
-                        "content",
-                    ],
-                },
+                # NOTE: experienceStrike REMOVED - seniority filtering handles this
+                # NOTE: jobTypeStrike REMOVED - AI analysis handles job fit determination
                 "seniorityStrikes": {},
                 "qualityStrikes": {
                     "minDescriptionLength": 200,
@@ -329,7 +321,8 @@ class ConfigLoader:
             },
             "technologyRanks": {
                 "technologies": {},
-                "strikes": {"missingAllRequired": 1, "perBadTech": 2},
+                # NOTE: Only perBadTech is used - we don't penalize for vague tech requirements
+                "strikes": {"perBadTech": 2},
             },
         }
         try:

@@ -24,10 +24,17 @@ def base_config():
         "enabled": True,
         "strikeThreshold": 3,
         "hardRejections": {
-            "excludedJobTypes": ["sales", "hr", "recruiter"],
-            "excludedSeniority": ["junior", "entry"],
+            "excludedJobTypes": [],
+            "excludedSeniority": ["junior", "entry", "intern"],
             "excludedCompanies": ["bad-company-inc"],
             "excludedKeywords": ["clearance required", "on-call"],
+            "requiredTitleKeywords": [
+                "software",
+                "developer",
+                "engineer",
+                "frontend",
+                "front end",
+            ],
             "minSalaryFloor": 100000,
             "rejectCommissionOnly": True,
         },
@@ -42,16 +49,8 @@ def base_config():
             "threshold": 150000,
             "points": 2,
         },
-        "experienceStrike": {
-            "enabled": True,
-            "minPreferred": 6,
-            "points": 1,
-        },
-        "jobTypeStrike": {
-            "enabled": True,
-            "points": 2,
-            "keywords": ["sales", "recruiter", "marketing", "support"],
-        },
+        # NOTE: experienceStrike REMOVED - seniority filtering handles this
+        # NOTE: jobTypeStrike REMOVED - AI analysis handles job fit determination
         "seniorityStrikes": {
             "mid-level": 1,
             "principal": 1,
@@ -74,15 +73,22 @@ def base_config():
 
 @pytest.fixture
 def base_tech_ranks():
-    """Base technology ranks configuration."""
+    """Base technology ranks configuration.
+
+    NOTE: Only "strike" and "fail" ranks cause penalties.
+    - "strike" tech adds strike points (tech user doesn't have)
+    - "fail" tech causes hard rejection
+    - "required"/"preferred" are positive signals but don't penalize if missing
+    """
     return {
         "technologies": {
             "python": {"rank": "required", "weight": 1.0},
             "react": {"rank": "preferred", "weight": 0.8},
             "aws": {"rank": "nice-to-have", "weight": 0.5},
+            "cobol": {"rank": "strike", "points": 2},  # Tech user doesn't have
         },
         "strikes": {
-            "missingAllRequired": 1,
+            "perBadTech": 2,
         },
     }
 
@@ -124,8 +130,8 @@ class TestStrikeFilterEngineInit:
 
         assert engine.enabled is True
         assert engine.strike_threshold == 3
-        assert "sales" in engine.excluded_job_types
         assert engine.min_salary_floor == 100000
+        assert "junior" in engine.excluded_seniority
 
     def test_init_disabled_engine(self, prefilter_policy):
         """Test disabled engine initialization."""
@@ -139,7 +145,7 @@ class TestStrikeFilterEngineInit:
         minimal_config = {}
         engine = StrikeFilterEngine(minimal_config)
 
-        assert engine.strike_threshold == 5  # Default from constants
+        assert engine.strike_threshold == 5  # Default
         assert engine.excluded_job_types == []
         assert engine.excluded_seniority == []
 
@@ -147,27 +153,23 @@ class TestStrikeFilterEngineInit:
 class TestHardRejections:
     """Test hard rejection rules (immediate fail)."""
 
-    def test_rejects_sales_job_in_title(self, prefilter_policy, valid_job):
-        """Job-type signals become strikes, not hard rejects."""
+    def test_sales_engineer_passes_filter(self, prefilter_policy, valid_job):
+        """Sales Engineer at a tech company should pass pre-filter.
+
+        Job-type filtering was removed from pre-filter stage. A software
+        engineer at a sales-focused company is still a good match - AI
+        analysis will determine job fit.
+        """
         engine = StrikeFilterEngine(prefilter_policy)
-        valid_job["title"] = "Sales Engineer"
-
-        result = engine.evaluate_job(valid_job)
-
-        assert result.passed is True
-        assert result.total_strikes >= prefilter_policy["strikeEngine"]["jobTypeStrike"]["points"]
-
-    def test_rejects_recruiter_job_in_description(self, prefilter_policy, valid_job):
-        """Job-type signals in description add strikes, not hard rejects."""
-        engine = StrikeFilterEngine(prefilter_policy)
+        valid_job["title"] = "Software Engineer"
         valid_job["description"] = (
-            "We are looking for a recruiter to join our team using python. " * 10
-        )  # Long enough to avoid quality strike
+            "Join our sales engineering team to build tools for sales reps. " * 10
+        )
 
         result = engine.evaluate_job(valid_job)
 
+        # Should pass - "sales" in description doesn't trigger strikes anymore
         assert result.passed is True
-        assert result.total_strikes >= prefilter_policy["strikeEngine"]["jobTypeStrike"]["points"]
 
     def test_rejects_junior_seniority(self, prefilter_policy, valid_job):
         """Test rejects junior-level jobs."""
@@ -275,17 +277,24 @@ class TestStrikeAccumulation:
         strikes = [r for r in result.rejections if r.severity == "strike"]
         assert any("salary" in s.reason.lower() for s in strikes)
 
-    def test_experience_strike_insufficient(self, prefilter_policy, valid_job):
-        """Test adds strike for insufficient experience mentioned in description."""
+    def test_experience_requirements_do_not_cause_strikes(self, prefilter_policy, valid_job):
+        """Experience requirements in job description should NOT cause strikes.
+
+        Experience filtering was removed from pre-filter stage. Seniority
+        filtering (intern, entry-level, etc.) handles this instead. 5+ years
+        is standard for senior roles.
+        """
         engine = StrikeFilterEngine(prefilter_policy)
-        # Make description long enough and make sure it triggers experience strike
-        valid_job["description"] = "Looking for 4+ years of experience in Python. " * 10
+        valid_job["description"] = "Looking for 3+ years of experience in Python. " * 10
 
         result = engine.evaluate_job(valid_job)
 
-        # May or may not get experience strike depending on implementation
-        # At minimum should not crash
-        assert isinstance(result, FilterResult)
+        # Should not have experience-related strikes
+        experience_strikes = [
+            r for r in result.rejections
+            if r.filter_name == "low_experience" or "experience" in r.reason.lower()
+        ]
+        assert len(experience_strikes) == 0
 
     def test_seniority_strike_mid_level(self, prefilter_policy, valid_job):
         """Test adds strike for mid-level seniority."""
@@ -468,29 +477,64 @@ class TestEdgeCases:
 
 
 class TestTechnologyStrikes:
-    """Test technology-based strike system."""
+    """Test technology-based strike system.
 
-    def test_strike_for_missing_required_tech(self, prefilter_policy, valid_job):
-        """Test adds strike when all required technologies are missing."""
+    The tech filter only penalizes jobs that require technologies the user
+    DOESN'T have experience with ("strike" rank). Vague or unclear tech
+    requirements are OK - we don't penalize for missing tech info.
+    """
+
+    def test_strike_for_undesired_tech(self, prefilter_policy, valid_job):
+        """Test adds strike when job requires tech user doesn't have."""
         engine = StrikeFilterEngine(prefilter_policy)
-        valid_job["description"] = (
-            "Looking for Java and C++ experience."  # Missing Python (required)
-        )
+        # COBOL is marked as "strike" in base_tech_ranks
+        valid_job["description"] = "Looking for COBOL and mainframe experience. " * 10
 
         result = engine.evaluate_job(valid_job)
 
-        # Should get strike for missing required tech
-        assert result.total_strikes >= 1
+        # Should get strike for undesired tech
+        tech_strikes = [
+            r for r in result.rejections
+            if r.filter_name == "undesired_tech"
+        ]
+        assert len(tech_strikes) >= 1
+        assert any("cobol" in s.reason.lower() for s in tech_strikes)
 
-    def test_no_strike_with_required_tech(self, prefilter_policy, valid_job):
-        """Test no strike when required tech is present."""
+    def test_no_strike_with_good_tech(self, prefilter_policy, valid_job):
+        """Test no tech strike when job uses tech user has experience with."""
         engine = StrikeFilterEngine(prefilter_policy)
         valid_job["description"] = "Looking for Python and React experience. " * 10
 
         result = engine.evaluate_job(valid_job)
 
-        # Should have few or no strikes (may get one for other reasons)
-        assert result.total_strikes <= 1
+        # Should not have undesired tech strikes
+        tech_strikes = [
+            r for r in result.rejections
+            if r.filter_name == "undesired_tech"
+        ]
+        assert len(tech_strikes) == 0
+
+    def test_no_strike_for_vague_tech_requirements(self, prefilter_policy, valid_job):
+        """Test no strike when job is vague about tech requirements.
+
+        If a job doesn't explicitly mention any technologies we track, that's
+        fine - we only penalize for explicitly bad tech matches.
+        """
+        engine = StrikeFilterEngine(prefilter_policy)
+        valid_job["description"] = (
+            "Looking for a great engineer to join our team! " * 10
+        )
+
+        result = engine.evaluate_job(valid_job)
+
+        # Should NOT have any tech-related strikes
+        tech_strikes = [
+            r for r in result.rejections
+            if "tech" in r.filter_category.lower()
+        ]
+        assert len(tech_strikes) == 0, (
+            "Should not penalize for vague/unclear tech requirements"
+        )
 
 
 class TestFilterResult:
@@ -523,7 +567,8 @@ class TestFilterResult:
     def test_result_rejection_details(self, prefilter_policy, valid_job):
         """Test result includes detailed rejection information."""
         engine = StrikeFilterEngine(prefilter_policy)
-        valid_job["title"] = "Sales Engineer"  # Will be rejected
+        # Trigger a tech strike by requiring COBOL (marked as "strike" in config)
+        valid_job["description"] = "Looking for COBOL and mainframe experience. " * 10
 
         result = engine.evaluate_job(valid_job)
 
@@ -550,27 +595,27 @@ class TestComplexScenarios:
 
         assert not any(r.filter_name == "remote_policy" for r in result.rejections)
 
-    def test_case_insensitive_matching(self, prefilter_policy, valid_job):
-        """Test matching is case-insensitive."""
+    def test_case_insensitive_seniority_matching(self, prefilter_policy, valid_job):
+        """Test seniority matching is case-insensitive."""
         engine = StrikeFilterEngine(prefilter_policy)
-        valid_job["title"] = "SALES ENGINEER"  # Uppercase
+        valid_job["title"] = "JUNIOR Software Developer"  # Uppercase
 
         result = engine.evaluate_job(valid_job)
 
-        assert result.passed is True
-        assert result.total_strikes >= prefilter_policy["strikeEngine"]["jobTypeStrike"]["points"]
+        # Should be rejected for junior seniority
+        assert result.passed is False
+        assert any("junior" in r.reason.lower() for r in result.rejections)
 
     def test_word_boundary_matching(self, prefilter_policy, valid_job):
         """Test uses word boundaries to avoid partial matches."""
         engine = StrikeFilterEngine(prefilter_policy)
-        # "sales" should match, but "salesforce" should not trigger the sales filter
-        valid_job["title"] = "Salesforce Developer"
+        # "entry" should match for seniority, but "sentry" should not
+        valid_job["title"] = "Sentry Software Engineer"
 
         result = engine.evaluate_job(valid_job)
 
-        # Should NOT be rejected for having "sales" in "salesforce"
-        # (implementation detail - may need word boundary in actual code)
-        assert isinstance(result, FilterResult)
+        # Should NOT be rejected for having "entry" in "sentry"
+        assert result.passed is True
 
     def test_salary_range_parsing(self, prefilter_policy, valid_job):
         """Test salary range parsing handles various formats."""
