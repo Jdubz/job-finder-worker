@@ -235,25 +235,26 @@ class JobProcessor(BaseProcessor):
         )
 
         # Decision tree: determine what action to take based on state
+        url_preview = (item.url or "")[:50]
         has_job_data = "job_data" in state
         has_filter_result = "filter_result" in state
         has_match_result = "match_result" in state
 
         if not has_job_data:
             # Need to scrape job data
-            logger.info(f"[DECISION TREE] {item.url[:50]} -> SCRAPE (no job_data)")
+            logger.info(f"[DECISION TREE] {url_preview} -> SCRAPE (no job_data)")
             self._do_job_scrape(item)
         elif not has_filter_result:
             # Need to filter
-            logger.info(f"[DECISION TREE] {item.url[:50]} -> FILTER (has job_data)")
+            logger.info(f"[DECISION TREE] {url_preview} -> FILTER (has job_data)")
             self._do_job_filter(item)
         elif not has_match_result:
             # Need to analyze
-            logger.info(f"[DECISION TREE] {item.url[:50]} -> ANALYZE (passed filter)")
+            logger.info(f"[DECISION TREE] {url_preview} -> ANALYZE (passed filter)")
             self._do_job_analyze(item)
         else:
             # Need to save
-            logger.info(f"[DECISION TREE] {item.url[:50]} -> SAVE (has match_result)")
+            logger.info(f"[DECISION TREE] {url_preview} -> SAVE (has match_result)")
             self._do_job_save(item)
 
     # ============================================================
@@ -273,7 +274,7 @@ class JobProcessor(BaseProcessor):
         self.slogger.pipeline_stage(item.id, "scrape", "started", {"url": item.url})
         start = time.monotonic()
 
-        logger.info(f"JOB_SCRAPE: Extracting job data from {item.url[:50]}...")
+        logger.info(f"JOB_SCRAPE: Extracting job data from {(item.url or '')[:50]}...")
 
         # Update status to processing and set pipeline_stage for UI
         updated_state = {**(item.pipeline_state or {}), "pipeline_stage": "scrape"}
@@ -957,7 +958,7 @@ class JobProcessor(BaseProcessor):
         try:
             self.queue_manager.requeue_with_state(current_item.id, updated_state_with_stage)
             logger.info(
-                f"Requeued item {current_item.id} for {next_stage}: {current_item.url[:50]}"
+                f"Requeued item {current_item.id} for {next_stage}: {(current_item.url or '')[:50]}"
             )
             self.slogger.queue_item_processing(
                 current_item.id,
