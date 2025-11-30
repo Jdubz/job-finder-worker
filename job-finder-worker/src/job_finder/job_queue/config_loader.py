@@ -299,9 +299,26 @@ class ConfigLoader:
                     "allowRemote": True,
                     "allowHybridPortland": True,
                     "allowOnsite": False,
+                    "allowedOnsiteLocations": ["portland, or"],
+                    "allowedHybridLocations": ["portland, or"],
                 },
                 "salaryStrike": {"enabled": True, "threshold": 150000, "points": 2},
                 "experienceStrike": {"enabled": True, "minPreferred": 6, "points": 1},
+                "jobTypeStrike": {
+                    "enabled": True,
+                    "points": 2,
+                    "keywords": [
+                        # Soft signals only; AI will make final determination
+                        "marketing",
+                        "customer support",
+                        "support",
+                        "customer success",
+                        "qa",
+                        "analyst",
+                        "product",
+                        "content",
+                    ],
+                },
                 "seniorityStrikes": {},
                 "qualityStrikes": {
                     "minDescriptionLength": 200,
