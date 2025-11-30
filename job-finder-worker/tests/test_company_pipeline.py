@@ -12,17 +12,58 @@ class TestCompanyPipeline:
 
     @pytest.fixture
     def mock_dependencies(self):
+        config_loader = Mock()
+        config_loader.get_job_filters.return_value = {
+            "enabled": False,
+            "hardRejections": {
+                "excludedJobTypes": [],
+                "excludedSeniority": [],
+                "excludedCompanies": [],
+                "excludedKeywords": [],
+            },
+            "remotePolicy": {},
+            "salaryStrike": {},
+            "experienceStrike": {},
+            "seniorityStrikes": {},
+            "qualityStrikes": {},
+            "ageStrike": {},
+        }
+        config_loader.get_technology_ranks.return_value = {"technologies": {}, "strikes": {}}
+        config_loader.get_stop_list.return_value = {
+            "excludedCompanies": [],
+            "excludedDomains": [],
+            "excludedKeywords": [],
+        }
+        config_loader.get_prefilter_policy.return_value = {
+            "enabled": False,
+            "stop_list": {"excludedCompanies": [], "excludedDomains": [], "excludedKeywords": []},
+            "hardRejections": {
+                "excludedJobTypes": [],
+                "excludedSeniority": [],
+                "excludedCompanies": [],
+                "excludedKeywords": [],
+            },
+            "qualityStrikes": {},
+            "seniorityStrikes": {},
+            "salaryStrike": {},
+            "experienceStrike": {},
+            "ageStrike": {},
+            "remotePolicy": {},
+            "technologyPenalties": {"technologies": {}, "strikes": {}},
+            "priorityThresholds": {"high": 85, "medium": 70},
+        }
+
+        company_info_fetcher = Mock()
+        company_info_fetcher._is_job_board_url.return_value = False
+
         return {
             "queue_manager": Mock(),
-            "config_loader": Mock(
-                get_job_filters=Mock(return_value={}),
-                get_technology_ranks=Mock(return_value={"python": 30, "react": 25, "docker": 20}),
-            ),
+            "config_loader": config_loader,
             "job_storage": Mock(),
             "job_listing_storage": Mock(),
             "companies_manager": Mock(),
             "sources_manager": Mock(),
-            "company_info_fetcher": Mock(),
+            "company_info_fetcher": company_info_fetcher,
             "ai_matcher": Mock(),
         }
 
@@ -30,67 +71,71 @@ class TestCompanyPipeline:
     def processor(self, mock_dependencies):
         return QueueItemProcessor(**mock_dependencies)
 
-    def test_single_pass_success_with_source_discovery(self, processor, mock_dependencies):
+    def test_single_pass_success_with_job_board_url(self, processor, mock_dependencies):
+        """Test that company processing works and spawns source discovery for job board URLs."""
         item = JobQueueItem(
             id="c1",
             type=QueueItemType.COMPANY,
-            url="https://example.com",
+            url="https://boards.greenhouse.io/example",  # Job board URL
             company_name="Example",
             status=QueueStatus.PROCESSING,
         )
 
-        mock_dependencies["company_info_fetcher"]._fetch_page_content.return_value = (
-            "Example builds with Python and React. Careers at https://boards.greenhouse.io/example"
-            * 5
-        )
-        mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = {
-            "about": "We build things",
-            "culture": "Collaborative",
+        # Configure fetcher to return company info
+        mock_dependencies["company_info_fetcher"].fetch_company_info.return_value = {
+            "name": "Example",
+            "website": "https://example.com",
+            "about": "We build great products with modern tech stacks and distributed teams",
+            "culture": "Remote-first with collaborative environment",
             "mission": "Ship value",
         }
+        # URL is a job board
+        mock_dependencies["company_info_fetcher"]._is_job_board_url.return_value = True
         mock_dependencies["sources_manager"].get_source_for_url.return_value = None
         mock_dependencies["companies_manager"].save_company.return_value = "company-123"
 
-        # AI deemed sufficient
-        mock_dependencies["company_info_fetcher"]._needs_ai_enrichment.return_value = False
-
         processor.company_processor.process_company(item)
 
-        # company saved
+        # Company saved
         mock_dependencies["companies_manager"].save_company.assert_called_once()
-        # source discovery enqueued
+        # Source discovery enqueued (since URL is a job board)
         mock_dependencies["queue_manager"].add_item.assert_called_once()
         source_item = mock_dependencies["queue_manager"].add_item.call_args[0][0]
         assert source_item.type == QueueItemType.SOURCE_DISCOVERY
-        # status set to success
-        mock_dependencies["queue_manager"].update_status.assert_called_with(
-            "c1", QueueStatus.SUCCESS, ANY
-        )
+        # Status set to success
+        mock_dependencies["queue_manager"].update_status.assert_called()
+        final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        assert final_call[0][0] == "c1"
+        assert final_call[0][1] == QueueStatus.SUCCESS
 
     def test_single_pass_no_job_board(self, processor, mock_dependencies):
+        """Test that no source discovery is spawned when URL is not a job board."""
         item = JobQueueItem(
             id="c2",
             type=QueueItemType.COMPANY,
-            url="https://example.com",
+            url="https://example.com",  # Regular company website
             company_name="Example",
             status=QueueStatus.PROCESSING,
         )
 
-        mock_dependencies["company_info_fetcher"]._fetch_page_content.return_value = (
-            "Example builds with Python and React." * 5
-        )
-        mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = {
-            "about": "We build things",
+        mock_dependencies["company_info_fetcher"].fetch_company_info.return_value = {
+            "name": "Example",
+            "website": "https://example.com",
+            "about": "We build great products",
             "culture": "Collaborative",
-            "mission": "Ship value",
         }
+        mock_dependencies["company_info_fetcher"]._is_job_board_url.return_value = False
+        mock_dependencies["companies_manager"].save_company.return_value = "company-123"
 
         processor.company_processor.process_company(item)
 
+        # No source discovery spawned
         assert not mock_dependencies["queue_manager"].add_item.called
+        # Status set to success
         mock_dependencies["queue_manager"].update_status.assert_called()
 
-    def test_fetch_failure_marks_failed(self, processor, mock_dependencies):
+    def test_company_saved_with_minimal_data(self, processor, mock_dependencies):
+        """Test that company is saved even with minimal data (only name required)."""
         item = JobQueueItem(
             id="c3",
             type=QueueItemType.COMPANY,
@@ -99,18 +144,26 @@ class TestCompanyPipeline:
             status=QueueStatus.PROCESSING,
         )
 
-        mock_dependencies["company_info_fetcher"]._fetch_page_content.return_value = ""
+        # Fetcher returns minimal data
+        mock_dependencies["company_info_fetcher"].fetch_company_info.return_value = {
+            "name": "Example",
+            "website": "",
+            "about": "",
+            "culture": "",
+        }
+        mock_dependencies["companies_manager"].save_company.return_value = "company-123"
 
         processor.company_processor.process_company(item)
 
-        mock_dependencies["queue_manager"].update_status.assert_any_call(
-            "c3",
-            QueueStatus.FAILED,
-            "Could not fetch any content from company website",
-            error_details=ANY,
-        )
+        # Company saved even with minimal data
+        mock_dependencies["companies_manager"].save_company.assert_called_once()
+        # Status should still be success (data quality tracked separately)
+        mock_dependencies["queue_manager"].update_status.assert_called()
+        final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        assert final_call[0][1] == QueueStatus.SUCCESS
 
-    def test_ai_missing_fields_marks_failed(self, processor, mock_dependencies):
+    def test_complete_data_quality_indicator(self, processor, mock_dependencies):
+        """Test that complete data results in 'complete' quality indicator."""
         item = JobQueueItem(
             id="c4",
             type=QueueItemType.COMPANY,
@@ -119,38 +172,23 @@ class TestCompanyPipeline:
             status=QueueStatus.PROCESSING,
         )
 
-        # Heuristics produce data but AI enrichment still required
-        # Skip network: provide fetched pages directly
-        processor.company_processor._fetch_company_pages = Mock(
-            return_value={"about": "stub content long enough"}
-        )
-        mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = {
-            "about": "short",
-            "culture": "",
-            "mission": "",
+        # Fetcher returns complete data (about >= 100 chars, culture >= 50 chars)
+        mock_dependencies["company_info_fetcher"].fetch_company_info.return_value = {
+            "name": "Example",
+            "about": "A" * 150,  # >= 100 chars
+            "culture": "B" * 60,  # >= 50 chars
         }
-        mock_dependencies["company_info_fetcher"].ai_provider = object()
-        # Heuristic pass says needs AI; after AI still sparse
-        mock_dependencies["company_info_fetcher"]._needs_ai_enrichment.side_effect = [True, True]
-        # Simulate AI call returning empty dict (did not populate)
-        mock_dependencies["company_info_fetcher"]._extract_with_ai.return_value = {}
+        mock_dependencies["companies_manager"].save_company.return_value = "company-123"
 
         processor.company_processor.process_company(item)
 
-        # Verify AI enrichment was attempted
-        mock_dependencies["company_info_fetcher"]._extract_with_ai.assert_called_once()
-        mock_dependencies["queue_manager"].update_status.assert_any_call(
-            "c4", QueueStatus.FAILED, "AI enrichment failed to populate required company fields"
-        )
+        # Check result message contains 'complete'
+        final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        result_message = final_call[0][2]
+        assert "complete" in result_message
 
-    def test_ai_enrichment_success(self, processor, mock_dependencies):
-        """Test that AI enrichment populates sparse fields and allows success.
-
-        Verifies that:
-        1. AI enrichment is triggered when heuristics produce sparse data
-        2. AI values overwrite sparse heuristic values (not just empty ones)
-        3. The enriched data is saved to the company record
-        """
+    def test_partial_data_quality_indicator(self, processor, mock_dependencies):
+        """Test that partial data results in 'partial' quality indicator."""
         item = JobQueueItem(
             id="c5",
             type=QueueItemType.COMPANY,
@@ -159,85 +197,70 @@ class TestCompanyPipeline:
             status=QueueStatus.PROCESSING,
         )
 
-        # Skip network: provide fetched pages directly
-        processor.company_processor._fetch_company_pages = Mock(
-            return_value={"about": "stub content long enough"}
-        )
-
-        # Heuristics produce sparse but non-empty data
-        sparse_heuristic_data = {
-            "about": "short",  # Non-empty but insufficient
-            "culture": "",
-            "mission": "",
+        # Fetcher returns partial data (about >= 50 chars but < 100, culture < 50)
+        mock_dependencies["company_info_fetcher"].fetch_company_info.return_value = {
+            "name": "Example",
+            "about": "A" * 60,  # >= 50 but < 100
+            "culture": "B" * 20,  # < 50
         }
-        mock_dependencies["company_info_fetcher"]._extract_company_info.return_value = (
-            sparse_heuristic_data
-        )
-        mock_dependencies["company_info_fetcher"].ai_provider = object()
-
-        # AI provides comprehensive data that should overwrite sparse heuristic values
-        comprehensive_ai_data = {
-            "about": "A comprehensive company description from AI that is much longer and more detailed",
-            "culture": "Great culture values with collaborative environment",
-            "mission": "To build great things and deliver value",
-            "industry": "Technology",
-        }
-        mock_dependencies["company_info_fetcher"]._extract_with_ai.return_value = (
-            comprehensive_ai_data
-        )
-
-        # First check: needs AI (sparse heuristics). Second check: sufficient (after AI merge)
-        mock_dependencies["company_info_fetcher"]._needs_ai_enrichment.side_effect = [True, False]
         mock_dependencies["companies_manager"].save_company.return_value = "company-123"
 
         processor.company_processor.process_company(item)
 
-        # Verify AI enrichment was called
-        mock_dependencies["company_info_fetcher"]._extract_with_ai.assert_called_once()
+        # Check result message contains 'partial'
+        final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        result_message = final_call[0][2]
+        assert "partial" in result_message
 
-        # Verify the saved company has AI-enriched values (not the sparse heuristic values)
-        mock_dependencies["companies_manager"].save_company.assert_called_once()
-        saved_company = mock_dependencies["companies_manager"].save_company.call_args[0][0]
-
-        # AI "about" should overwrite sparse heuristic "about" (key behavior being tested)
-        assert (
-            saved_company["about"] == comprehensive_ai_data["about"]
-        ), "AI values should overwrite sparse heuristic values, not just empty ones"
-        assert saved_company["culture"] == comprehensive_ai_data["culture"]
-        assert saved_company["mission"] == comprehensive_ai_data["mission"]
-        assert saved_company["industry"] == comprehensive_ai_data["industry"]
-
-        # Status should be success
-        mock_dependencies["queue_manager"].update_status.assert_called_with(
-            "c5", QueueStatus.SUCCESS, ANY
+    def test_minimal_data_quality_indicator(self, processor, mock_dependencies):
+        """Test that minimal data results in 'minimal' quality indicator."""
+        item = JobQueueItem(
+            id="c6",
+            type=QueueItemType.COMPANY,
+            url="https://example.com",
+            company_name="Example",
+            status=QueueStatus.PROCESSING,
         )
 
-    def test_detect_tech_stack(self, processor):
-        """Test tech stack detection from company info."""
-        extracted_info = {
-            "about": "We use Python, React, and Docker",
-            "culture": "Modern tech stack with Kubernetes",
+        # Fetcher returns minimal data
+        mock_dependencies["company_info_fetcher"].fetch_company_info.return_value = {
+            "name": "Example",
+            "about": "short",  # < 50 chars
+            "culture": "",
         }
-        html_content = {
-            "careers": "Looking for Go developers",
-        }
+        mock_dependencies["companies_manager"].save_company.return_value = "company-123"
 
-        tech_stack = processor.company_processor._detect_tech_stack(extracted_info, html_content)
+        processor.company_processor.process_company(item)
 
-        assert "python" in tech_stack
-        assert "react" in tech_stack
-        assert "docker" in tech_stack
-        assert "kubernetes" in tech_stack
-        assert "go" in tech_stack
+        # Check result message contains 'minimal'
+        final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        result_message = final_call[0][2]
+        assert "minimal" in result_message
 
-    def test_detect_job_board_greenhouse(self, processor):
-        """Test Greenhouse job board detection."""
-        html_content = {
-            "careers": "Apply at https://boards.greenhouse.io/examplecorp/jobs/123456",
-        }
-
-        job_board_url = processor.company_processor._detect_job_board(
-            "https://example.com", html_content
+    def test_existing_source_not_spawned(self, processor, mock_dependencies):
+        """Test that source discovery is not spawned if source already exists."""
+        item = JobQueueItem(
+            id="c7",
+            type=QueueItemType.COMPANY,
+            url="https://boards.greenhouse.io/example",
+            company_name="Example",
+            status=QueueStatus.PROCESSING,
         )
 
-        assert job_board_url == "https://boards.greenhouse.io/examplecorp"
+        mock_dependencies["company_info_fetcher"].fetch_company_info.return_value = {
+            "name": "Example",
+            "about": "Great company",
+        }
+        mock_dependencies["company_info_fetcher"]._is_job_board_url.return_value = True
+        # Source already exists
+        mock_dependencies["sources_manager"].get_source_for_url.return_value = {"id": "source-existing"}
+        mock_dependencies["companies_manager"].save_company.return_value = "company-123"
+
+        processor.company_processor.process_company(item)
+
+        # Source discovery NOT spawned
+        assert not mock_dependencies["queue_manager"].add_item.called
+        # Result message should indicate source exists
+        final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        result_message = final_call[0][2]
+        assert "job_board_exists" in result_message

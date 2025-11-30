@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
+from job_finder.ai.matcher import AIJobMatcher, JobMatchResult, ScoreBreakdown
 
 
 @pytest.fixture
@@ -107,12 +107,14 @@ class TestCalculateAdjustedScore:
                 "priorityThresholds": {"high": 85, "medium": 70},
             },
         )
-        adjusted_score = matcher._calculate_adjusted_score(
+        adjusted_score, breakdown = matcher._calculate_adjusted_score(
             match_analysis, has_portland_office=True, job=sample_job
         )
 
         # Should add Portland bonus
         assert adjusted_score == 85  # 70 + 15
+        assert breakdown.base_score == 70
+        assert breakdown.final_score == 85
 
     @patch("job_finder.ai.matcher.parse_job_date")
     @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
@@ -161,12 +163,13 @@ class TestCalculateAdjustedScore:
                 "priorityThresholds": {"high": 85, "medium": 70},
             },
         )
-        adjusted_score = matcher._calculate_adjusted_score(
+        adjusted_score, breakdown = matcher._calculate_adjusted_score(
             match_analysis, has_portland_office=True, job=sample_job
         )
 
         # Should clamp to 100 (not 140)
         assert adjusted_score == 100
+        assert breakdown.final_score == 100
 
     @patch("job_finder.ai.matcher.parse_job_date")
     @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
@@ -216,12 +219,13 @@ class TestCalculateAdjustedScore:
                 "priorityThresholds": {"high": 75, "medium": 50},
             },
         )
-        adjusted_score = matcher._calculate_adjusted_score(
+        adjusted_score, breakdown = matcher._calculate_adjusted_score(
             match_analysis, has_portland_office=True, job=sample_job
         )
 
         # Score should be 80 (55 + 25), priority should update to High
         assert adjusted_score == 80
+        assert breakdown.final_score == 80
         assert match_analysis["application_priority"] == "High"
 
 
@@ -510,7 +514,8 @@ class TestAnalyzeJob:
 
         matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile, min_match_score=80)
 
-        with patch.object(matcher, "_calculate_adjusted_score", return_value=50):
+        mock_breakdown = ScoreBreakdown(base_score=50, final_score=50, adjustments=[])
+        with patch.object(matcher, "_calculate_adjusted_score", return_value=(50, mock_breakdown)):
             result = matcher.analyze_job(sample_job)
 
         assert result is None
@@ -530,7 +535,8 @@ class TestAnalyzeJob:
             provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=False
         )
 
-        with patch.object(matcher, "_calculate_adjusted_score", return_value=85):
+        mock_breakdown = ScoreBreakdown(base_score=85, final_score=85, adjustments=[])
+        with patch.object(matcher, "_calculate_adjusted_score", return_value=(85, mock_breakdown)):
             result = matcher.analyze_job(sample_job)
 
         assert result is not None

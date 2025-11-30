@@ -1,14 +1,19 @@
-"""Company information fetcher using AI and web scraping."""
+"""Company information fetcher using search APIs and AI extraction.
+
+Philosophy: Search by company name first, then AI extracts structured data.
+Scraping is supplementary, not primary. URL is a hint, not a requirement.
+"""
 
 import json
 import logging
 import re
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
+from job_finder.ai.search_client import get_search_client, SearchResult
 from job_finder.logging_config import format_company_name
 from job_finder.settings import get_text_limits
 
@@ -16,65 +21,72 @@ logger = logging.getLogger(__name__)
 
 
 class CompanyInfoFetcher:
-    """Fetches and extracts company information from websites."""
+    """Fetches and extracts company information using search + AI."""
 
-    def __init__(self, ai_provider=None, ai_config=None):
+    def __init__(self, ai_provider=None, ai_config=None, db_path: Optional[str] = None):
         """
         Initialize company info fetcher.
 
         Args:
-            ai_provider: Optional AI provider for content extraction
-            ai_config: Optional AI configuration dictionary
+            ai_provider: AI provider for content extraction
+            ai_config: AI configuration dictionary
+            db_path: Database path for aggregator domain lookup
         """
         self.ai_provider = ai_provider
         self.ai_config = ai_config or {}
+        self.db_path = db_path
         self.session = requests.Session()
         self.session.headers.update(
             {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         )
+        self.search_client = get_search_client()
 
-        # Known job-board domains; used to detect when we need to look up the true company site
-        self.job_board_domains = [
+        # Cache for aggregator domains (loaded once per instance)
+        self._aggregator_domains_cache: Optional[List[str]] = None
+
+        # Static list of known ATS platforms (not aggregators, but job board hosts)
+        # These can host company-specific boards but shouldn't be used for company info
+        self._ats_domains = [
             "greenhouse.io",
-            "boards.greenhouse.io",
             "lever.co",
-            "workday",
+            "ashbyhq.com",
+            "workday.com",
             "myworkdayjobs.com",
             "smartrecruiters.com",
-            "ashbyhq.com",
-            "jobs.ashbyhq.com",
+            "jobvite.com",
+            "icims.com",
+            "taleo.net",
             "breezy.hr",
             "applytojob.com",
-            "jobvite.com",
+            "ultipro.com",
         ]
 
-    def fetch_company_info(self, company_name: str, company_website: str) -> Dict[str, Any]:
+    # ============================================================
+    # MAIN ENTRY POINT
+    # ============================================================
+
+    def fetch_company_info(self, company_name: str, url_hint: Optional[str] = None) -> Dict[str, Any]:
         """
         Fetch comprehensive company information.
 
+        Strategy (search-first):
+        1. Search for company by name (primary data source)
+        2. AI extracts structured data from search results
+        3. Optionally scrape website for additional detail (if valid URL found)
+
         Args:
-            company_name: Name of the company
-            company_website: Company website URL
+            company_name: Name of the company (required)
+            url_hint: Optional URL hint (may be ignored if it's a job board)
 
         Returns:
-            Dictionary with company information:
-            {
-                'name': str,
-                'website': str,
-                'about': str,
-                'culture': str,
-                'mission': str,
-                'size': str (optional),
-                'industry': str (optional),
-                'founded': str (optional)
-            }
+            Dictionary with company information
         """
         _, company_display = format_company_name(company_name)
         logger.info(f"Fetching company info for {company_display}")
 
         result: Dict[str, Any] = {
             "name": company_name,
-            "website": company_website,
+            "website": "",
             "about": "",
             "culture": "",
             "mission": "",
@@ -88,314 +100,256 @@ class CompanyInfoFetcher:
             "aiMlFocus": False,
             "timezoneOffset": None,
             "products": [],
+            "techStack": [],
         }
 
         try:
-            scraped_info: Dict[str, Any] = {}
-            search_info: Dict[str, Any] = {}
+            # STEP 1: Search for company info (primary method)
+            search_info = self._search_and_extract(company_name)
+            if search_info:
+                result = self._merge_company_info(result, search_info)
+                logger.info(
+                    "Search extraction for %s: about=%d chars",
+                    company_display,
+                    len(result.get("about", "")),
+                )
 
-            # Always attempt site scrape when a URL is provided
-            content = None
-            if company_website:
-                pages_to_try = [
-                    f"{company_website}/about",
-                    f"{company_website}/about-us",
-                    f"{company_website}/company",
-                    f"{company_website}/careers",
-                    company_website,  # Homepage as fallback
-                ]
+            # STEP 2: Determine best website URL
+            # Priority: extracted website > url_hint (if not job board)
+            website = result.get("website") or ""
+            if not website and url_hint and not self._is_job_board_url(url_hint):
+                website = url_hint
+                result["website"] = website
 
-                for page_url in pages_to_try:
-                    try:
-                        content = self._fetch_page_content(page_url)
-                        text_limits = get_text_limits()
-                        min_page_length = text_limits.get("minCompanyPageLength", 200)
-                        if content and len(content) > min_page_length:  # Got meaningful content
-                            logger.info(f"Successfully fetched content from {page_url}")
-                            break
-                    except (requests.RequestException, ValueError, AttributeError) as e:
-                        logger.debug(f"Failed to fetch {page_url}: {e}")
-                        continue
+            # STEP 3: Optional scrape for additional detail
+            if website and self._needs_enrichment(result):
+                scraped_info = self._scrape_website(website, company_name)
+                if scraped_info:
+                    result = self._merge_company_info(result, scraped_info)
+                    logger.info("Supplemented with scrape data for %s", company_display)
 
-            if content:
-                scraped_info = self._extract_company_info(content, company_name, company_website)
-
-            # Always run AI web search (when available) to widen coverage beyond the career site
-            if self.ai_provider:
-                logger.info("Running AI web search for %s to enrich company data", company_display)
-                search_info = self._search_company_web(company_name, company_website) or {}
-
-            # Merge scraped + searched info, prefer non-empty factual fields, carry sources if present
-            merged = self._merge_company_info(scraped_info, search_info)
-            result.update(merged)
-
-            _, company_display = format_company_name(company_name)
             logger.info(
-                "Compiled company info for %s: about=%d chars, culture=%d chars",
+                "Final company info for %s: about=%d chars, culture=%d chars",
                 company_display,
                 len(result.get("about", "")),
                 len(result.get("culture", "")),
             )
 
-        except (requests.RequestException, ValueError, AttributeError) as e:
-            _, company_display = format_company_name(company_name)
-            logger.error(f"Error fetching company info for {company_display}: {e}")
         except Exception as e:
             logger.error(
-                f"Unexpected error fetching company info for {company_name} ({type(e).__name__}): {e}",
+                f"Error fetching company info for {company_display} ({type(e).__name__}): {e}",
                 exc_info=True,
             )
 
         return result
 
-    def _fetch_page_content(self, url: str, timeout: int = 10) -> Optional[str]:
+    # ============================================================
+    # SEARCH + AI EXTRACTION (Primary Method)
+    # ============================================================
+
+    def _search_and_extract(self, company_name: str) -> Optional[Dict[str, Any]]:
         """
-        Fetch and clean page content.
+        Search for company and extract structured info from results.
 
         Args:
-            url: URL to fetch
-            timeout: Request timeout in seconds
+            company_name: Company name to search for
 
         Returns:
-            Cleaned text content or None
+            Extracted company info dict, or None if search/extraction failed
         """
+        if not self.search_client:
+            logger.debug("No search client configured, skipping search")
+            return self._fallback_ai_search(company_name)
+
         try:
-            # Normalize URL
+            # Search for company info
+            query = f"{company_name} company about headquarters employees"
+            results = self.search_client.search(query, max_results=8)
+
+            if not results:
+                logger.warning("No search results for %s", company_name)
+                return self._fallback_ai_search(company_name)
+
+            # Format results for AI extraction
+            search_context = self._format_search_results(results)
+
+            # AI extracts structured data from search results
+            if self.ai_provider:
+                return self._extract_from_search_results(company_name, search_context)
+
+            # No AI - use heuristics on search snippets
+            return self._extract_with_heuristics(search_context)
+
+        except Exception as e:
+            logger.warning("Search failed for %s: %s", company_name, e)
+            return self._fallback_ai_search(company_name)
+
+    def _format_search_results(self, results: List[SearchResult]) -> str:
+        """Format search results into context string for AI."""
+        parts = []
+        for r in results:
+            parts.append(f"Source: {r.url}\nTitle: {r.title}\n{r.snippet}\n")
+        return "\n---\n".join(parts)
+
+    def _extract_from_search_results(
+        self, company_name: str, search_context: str
+    ) -> Optional[Dict[str, Any]]:
+        """Use AI to extract structured company data from search results."""
+        if not self.ai_provider:
+            return None
+
+        try:
+            prompt = f"""Extract company information for "{company_name}" from these search results.
+
+SEARCH RESULTS:
+{search_context[:6000]}
+
+Return JSON with these fields (use empty string/null/false if truly unknown):
+- website: official company website (NOT a job board like greenhouse.io, lever.co)
+- about: 2-3 sentence company description
+- culture: 1-2 sentences on company culture/values
+- mission: mission statement if found
+- industry: primary business sector
+- founded: year founded
+- headquarters: city, state/country
+- employeeCount: number if stated (integer or null)
+- companySizeCategory: "small" (<100), "medium" (100-999), "large" (1000+), or ""
+- isRemoteFirst: true only if explicitly remote-first
+- aiMlFocus: true if AI/ML is core to their products
+- timezoneOffset: UTC offset of HQ (e.g., -8 for Pacific), or null
+- products: list of main products/services (max 3)
+- techStack: list of known technologies they use (max 5)
+
+Be factual. Only include information present in the search results.
+Return ONLY valid JSON, no other text."""
+
+            model_name = self.ai_config.get("model", "")
+            models_config = self.ai_config.get("models", {})
+            model_settings = models_config.get(model_name, {})
+            max_tokens = min(model_settings.get("max_tokens", 1000), 1000)
+
+            response = self.ai_provider.generate(
+                prompt, max_tokens=max_tokens, temperature=0.1
+            )
+
+            return self._parse_json_response(response)
+
+        except Exception as e:
+            logger.warning("AI extraction failed: %s", e)
+            return None
+
+    def _fallback_ai_search(self, company_name: str) -> Optional[Dict[str, Any]]:
+        """Fallback: Ask AI directly (relies on AI's web search capability if available)."""
+        if not self.ai_provider:
+            return None
+
+        try:
+            prompt = f"""Search the web for factual information about "{company_name}" company.
+
+Return JSON with: website, about, culture, mission, industry, founded, headquarters,
+employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack.
+
+Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
+
+            response = self.ai_provider.generate(prompt, max_tokens=800, temperature=0.1)
+            return self._parse_json_response(response)
+
+        except Exception as e:
+            logger.warning("Fallback AI search failed: %s", e)
+            return None
+
+    # ============================================================
+    # WEBSITE SCRAPING (Supplementary)
+    # ============================================================
+
+    def _scrape_website(self, website: str, company_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Scrape company website for additional info.
+
+        This is supplementary to search - only used to fill gaps.
+        """
+        pages_to_try = [
+            f"{website}/about",
+            f"{website}/about-us",
+            f"{website}/company",
+            website,
+        ]
+
+        content = None
+        for page_url in pages_to_try:
+            try:
+                content = self._fetch_page_content(page_url)
+                if content and len(content) > 200:
+                    logger.debug("Scraped %d chars from %s", len(content), page_url)
+                    break
+            except Exception as e:
+                logger.debug("Failed to scrape %s: %s", page_url, e)
+                continue
+
+        if not content:
+            return None
+
+        # Extract info from scraped content
+        if self.ai_provider:
+            return self._extract_with_ai(content, company_name)
+
+        return self._extract_with_heuristics(content)
+
+    def _fetch_page_content(self, url: str, timeout: int = 10) -> Optional[str]:
+        """Fetch and clean page content."""
+        try:
             if not url.startswith("http"):
                 url = f"https://{url}"
 
             response = self.session.get(url, timeout=timeout, allow_redirects=True)
             response.raise_for_status()
 
-            # Parse HTML
             soup = BeautifulSoup(response.content, "html.parser")
-
-            # Remove script, style, and other non-content tags
             for element in soup(["script", "style", "nav", "footer", "header"]):
                 element.decompose()
 
-            # Get text content
             text = soup.get_text(separator=" ", strip=True)
+            return " ".join(text.split())
 
-            # Clean up whitespace
-            text = " ".join(text.split())
-
-            return text
-
-        except requests.RequestException as e:
-            # HTTP errors (connection, timeout, HTTP status codes)
-            logger.debug(f"Request failed for {url}: {e}")
-            return None
-        except (AttributeError, UnicodeDecodeError, ValueError) as e:
-            # HTML parsing errors or encoding issues
-            logger.debug(f"Error parsing {url}: {e}")
-            return None
         except Exception as e:
-            # Unexpected errors - log with more detail
-            logger.debug(f"Unexpected error fetching {url} ({type(e).__name__}): {e}")
+            logger.debug(f"Failed to fetch {url}: {e}")
             return None
 
-    def _extract_company_info(
-        self, content: str, company_name: str, company_website: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Extract company info using heuristics → AI → web-search (gap fill)."""
-
-        # If the starting URL is a job board, force enrichment so we can hunt for the real site
-        force_enrichment = self._is_job_board_url(company_website)
-        result: Dict[str, Any] = self._extract_with_heuristics(content)
-
-        if self.ai_provider and (self._needs_ai_enrichment(result) or force_enrichment):
-            ai_result = self._extract_with_ai(content, company_name)
-            if ai_result:
-                result = self._merge_company_info(result, ai_result)
-
-        if self.ai_provider and (self._needs_ai_enrichment(result) or force_enrichment):
-            search_result = self._search_company_web(company_name, company_website)
-            if search_result:
-                result = self._merge_company_info(result, search_result)
-
-        return result
+    # ============================================================
+    # AI EXTRACTION FROM CONTENT
+    # ============================================================
 
     def _extract_with_ai(self, content: str, company_name: str) -> Dict[str, Any]:
-        """Use AI to extract enriched company fields from on-site content."""
+        """Use AI to extract company fields from page content."""
         try:
-            max_chars = 5000
-            truncated_content = content[:max_chars]
+            prompt = f"""Extract company information from this text about {company_name}.
 
-            prompt = f"""Extract company information from the following text about {company_name}. Respond with JSON only.
+TEXT:
+{content[:5000]}
 
-Company Website Content:
-{truncated_content}
+Return JSON with: website, about, culture, mission, industry, founded, headquarters,
+employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack.
 
-Return JSON with these keys (fill every field you can; leave empty string/null/false only when truly unknown):
-- about: 2-3 sentence summary
-- culture: 1-2 sentences on culture/values
-- mission: mission statement if present, else ""
-- size: size or range string (e.g., "500-1000 employees" or funding + size)
-- industry: primary sector
-- founded: year founded if present
-- headquarters: city/state/country HQ string
-- employeeCount: integer if stated, else null
-- companySizeCategory: one of ["small","medium","large"] if derivable, else ""
-- isRemoteFirst: boolean if explicitly remote/remote-first
-- aiMlFocus: boolean if core products use AI/ML
-- timezoneOffset: numeric UTC offset if stated (e.g., -8)
-- products: list (<=3) of flagship products/services
-- jobBoardUrl: careers/board URL if clearly present
-- sources: array (may be empty)
- - website: the primary company homepage (NOT a job board/careers host); omit tracking params
-
-If a field is unknown, use empty string, null, or false as appropriate.
-"""
+Be factual. Return ONLY valid JSON."""
 
             model_name = self.ai_config.get("model", "")
             models_config = self.ai_config.get("models", {})
             model_settings = models_config.get(model_name, {})
             max_tokens = min(model_settings.get("max_tokens", 1000), 1000)
-            temperature = 0.2
 
             response = self.ai_provider.generate(
-                prompt, max_tokens=max_tokens, temperature=temperature
+                prompt, max_tokens=max_tokens, temperature=0.2
             )
 
-            response_clean = response.strip()
-            if response_clean.startswith("```"):
-                start = response_clean.find("{")
-                end = response_clean.rfind("}") + 1
-                response_clean = response_clean[start:end]
-
-            extracted = json.loads(response_clean)
-            return extracted
+            return self._parse_json_response(response) or {}
 
         except Exception as e:
-            logger.warning(
-                "AI extraction error (%s), falling back to heuristics",
-                type(e).__name__,
-                exc_info=True,
-            )
+            logger.warning("AI extraction error: %s", e)
             return self._extract_with_heuristics(content)
 
-    def _search_company_web(
-        self, company_name: str, company_website: Optional[str] = None
-    ) -> Optional[Dict[str, str]]:
-        """Use AI + web search to fill missing company fields (including real homepage)."""
-        try:
-            prompt = f"""
-Use web search to gather concise, factual info about {company_name}.
-Goal: find the company's primary homepage (not a job board) and all profile fields. If starting URL is a job board ({company_website}), override it with the real website.
-DO NOT GUESS. If unknown, use "" or null.
-Return ONLY JSON with keys: website, about, culture, mission, size, industry, founded, headquarters, employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, products, sources, jobBoardUrl.
-"""
-            response = self.ai_provider.generate(prompt, max_tokens=800, temperature=0.2)
-
-            response_clean = response.strip()
-            if response_clean.startswith("```"):
-                start = response_clean.find("{")
-                end = response_clean.rfind("}") + 1
-                response_clean = response_clean[start:end]
-
-            data = cast(Dict[str, Any], json.loads(response_clean))
-            for key in [
-                "website",
-                "about",
-                "culture",
-                "mission",
-                "size",
-                "industry",
-                "founded",
-                "headquarters",
-                "employeeCount",
-                "companySizeCategory",
-                "isRemoteFirst",
-                "aiMlFocus",
-                "timezoneOffset",
-                "products",
-                "jobBoardUrl",
-            ]:
-                default: Any
-                if key in ["employeeCount", "timezoneOffset"]:
-                    default = None
-                elif key == "products":
-                    default = []
-                elif key == "website":
-                    default = ""
-                else:
-                    default = ""
-                data.setdefault(key, default)
-            data.setdefault("sources", [])
-            return data
-        except Exception as exc:
-            logger.warning("AI web search for %s failed: %s", company_name, exc)
-            return None
-
-    def _merge_company_info(
-        self, primary: Dict[str, Any], secondary: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Combine two info dicts, preferring existing/non-empty values in primary."""
-        merged = dict(primary)
-        for key, val in secondary.items():
-            if key == "website":
-                # Replace job-board URLs with the primary website when available
-                if val and (
-                    not merged.get("website") or self._is_job_board_url(merged.get("website", ""))
-                ):
-                    merged["website"] = val
-                continue
-            if key == "sources":
-                merged["sources"] = val or merged.get("sources") or []
-                continue
-            if merged.get(key) in (None, "", []):
-                merged[key] = val
-        return merged
-
-    def _needs_ai_enrichment(self, info: Dict[str, Any]) -> bool:
-        required_text = [
-            "about",
-            "culture",
-            "mission",
-            "industry",
-            "size",
-            "founded",
-            "headquarters",
-        ]
-        numeric_fields = ["employeeCount", "timezoneOffset"]
-        bool_fields = ["isRemoteFirst", "aiMlFocus"]
-
-        text_limits = get_text_limits()
-        min_about = text_limits.get("minCompanyPageLength", 200)
-        min_sparse = text_limits.get("minSparseCompanyInfoLength", 100)
-
-        about_len = len(info.get("about", "") or "")
-        total_len = (
-            about_len + len(info.get("culture", "") or "") + len(info.get("mission", "") or "")
-        )
-
-        if about_len < min_about or total_len < min_sparse:
-            return True
-
-        for key in required_text:
-            if not info.get(key):
-                return True
-        for key in numeric_fields:
-            if info.get(key) in (None, ""):
-                return True
-        for key in bool_fields:
-            if info.get(key) is None:
-                return True
-
-        return False
-
     def _extract_with_heuristics(self, content: str) -> Dict[str, Any]:
-        """
-        Extract company info using simple heuristics (fallback).
-
-        Args:
-            content: Page text content
-
-        Returns:
-            Dictionary with extracted fields
-        """
-        result = {
+        """Extract company info using simple heuristics (fallback)."""
+        result: Dict[str, Any] = {
             "about": "",
             "culture": "",
             "mission": "",
@@ -409,94 +363,154 @@ Return ONLY JSON with keys: website, about, culture, mission, size, industry, fo
             "aiMlFocus": False,
             "companySizeCategory": "",
             "products": [],
+            "techStack": [],
         }
 
-        # Try to find common patterns
         content_lower = content.lower()
 
-        # Look for mission/about sections
+        # Look for common patterns
         keywords = {
             "mission": ["our mission", "mission statement", "our purpose"],
-            "culture": ["our culture", "our values", "work environment", "company culture"],
+            "culture": ["our culture", "our values", "work environment"],
             "about": ["about us", "who we are", "what we do"],
         }
 
         for field, patterns in keywords.items():
             for pattern in patterns:
                 if pattern in content_lower:
-                    # Find the section and extract a snippet
                     start_idx = content_lower.find(pattern)
                     snippet = content[start_idx : start_idx + 500]
-
-                    # Clean and truncate
-                    snippet = " ".join(snippet.split())[:300]
-                    result[field] = snippet
+                    result[field] = " ".join(snippet.split())[:300]
                     break
 
-        # If we found nothing, use first 300 chars as about
-        text_limits = get_text_limits()
-        min_sparse_length = text_limits.get("minSparseCompanyInfoLength", 100)
-        if not result["about"] and len(content) > min_sparse_length:
+        # Use first 300 chars as about if nothing found
+        if not result["about"] and len(content) > 100:
             result["about"] = content[:300].strip()
 
-        # Remote-first detection
-        remote_patterns = ["remote-first", "fully remote", "remote company", "distributed team"]
-        result["isRemoteFirst"] = any(pat in content_lower for pat in remote_patterns)
-
-        # AI/ML focus detection
-        ai_patterns = [
-            "ai",
-            "machine learning",
-            "ml",
-            "artificial intelligence",
-            "gen ai",
-            "generative ai",
-        ]
-        result["aiMlFocus"] = any(pat in content_lower for pat in ai_patterns)
-
-        # Employee count detection (simple numeric heuristic)
-        employee_match = re.search(
-            r"(over|more than|approximately|around)?\s*(\d{2,5})\s+employees", content_lower
+        # Boolean detections
+        result["isRemoteFirst"] = any(
+            p in content_lower for p in ["remote-first", "fully remote", "distributed team"]
         )
-        if employee_match:
-            try:
-                result["employeeCount"] = cast(Any, int(employee_match.group(2)))
-            except ValueError:
-                result["employeeCount"] = None
-
-        # Company size category from employee count if available
-        count = result.get("employeeCount")
-        if isinstance(count, int):
-            if count < 100:
-                result["companySizeCategory"] = "small"
-            elif count < 1000:
-                result["companySizeCategory"] = "medium"
-            else:
-                result["companySizeCategory"] = "large"
-
-        # Headquarters detection (simple pattern)
-        hq_match = re.search(
-            r"headquarters(?:\s*[:\-]?\s*|\s+in\s+)([A-Za-z ,]+)", content, re.IGNORECASE
+        result["aiMlFocus"] = any(
+            p in content_lower for p in ["machine learning", "artificial intelligence", "ai-powered"]
         )
-        if hq_match:
-            result["headquarters"] = hq_match.group(1).strip()[:120]
 
-        # Timezone offset detection (simple UTC±N parsing)
-        tz_match = re.search(r"utc\s*([+-]?\d{1,2})", content_lower)
-        if tz_match:
+        # Employee count
+        match = re.search(r"(\d{2,5})\s+employees", content_lower)
+        if match:
             try:
-                result["timezoneOffset"] = cast(Any, int(tz_match.group(1)))
+                count = int(match.group(1))
+                result["employeeCount"] = count
+                if count < 100:
+                    result["companySizeCategory"] = "small"
+                elif count < 1000:
+                    result["companySizeCategory"] = "medium"
+                else:
+                    result["companySizeCategory"] = "large"
             except ValueError:
-                result["timezoneOffset"] = None
+                pass
 
         return result
 
+    # ============================================================
+    # HELPERS
+    # ============================================================
+
     def _is_job_board_url(self, url: Optional[str]) -> bool:
-        """Check if a URL points to a known job board/careers host."""
+        """Check if URL is a job board/ATS (not suitable for company info)."""
         if not url:
             return False
+
         try:
             netloc = urlparse(url.lower()).netloc
         except Exception:
             netloc = url.lower()
-        return any(netloc.endswith(domain) for domain in self.job_board_domains)
+
+        # Check against known ATS domains
+        for domain in self._ats_domains:
+            if domain in netloc:
+                return True
+
+        # Check aggregator domains from database
+        aggregator_domains = self._get_aggregator_domains_from_db()
+        for domain in aggregator_domains:
+            if domain in netloc:
+                return True
+
+        return False
+
+    def _get_aggregator_domains_from_db(self) -> List[str]:
+        """Get aggregator domains from job_sources table (cached per instance)."""
+        if self._aggregator_domains_cache is not None:
+            return self._aggregator_domains_cache
+
+        try:
+            from job_finder.storage.sqlite_client import sqlite_connection
+
+            with sqlite_connection(self.db_path) as conn:
+                rows = conn.execute(
+                    "SELECT DISTINCT aggregator_domain FROM job_sources WHERE aggregator_domain IS NOT NULL"
+                ).fetchall()
+            self._aggregator_domains_cache = [row[0] for row in rows if row[0]]
+        except Exception:
+            self._aggregator_domains_cache = []
+
+        return self._aggregator_domains_cache
+
+    def _needs_enrichment(self, info: Dict[str, Any]) -> bool:
+        """Check if company info needs additional enrichment."""
+        text_limits = get_text_limits()
+        min_about = text_limits.get("minCompanyPageLength", 200)
+
+        about_len = len(info.get("about", "") or "")
+        return about_len < min_about
+
+    def _needs_ai_enrichment(self, info: Dict[str, Any]) -> bool:
+        """Check if info is sparse enough to warrant AI enrichment."""
+        return self._needs_enrichment(info)
+
+    def _merge_company_info(
+        self, primary: Dict[str, Any], secondary: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Merge two info dicts, preferring non-empty values."""
+        merged = dict(primary)
+        for key, val in secondary.items():
+            if key == "website":
+                # Replace with better website if current is empty or a job board
+                if val and (not merged.get("website") or self._is_job_board_url(merged.get("website"))):
+                    merged["website"] = val
+            elif key == "sources":
+                merged["sources"] = val or merged.get("sources") or []
+            elif merged.get(key) in (None, "", [], False, 0):
+                if val not in (None, "", [], False):
+                    merged[key] = val
+        return merged
+
+    def _parse_json_response(self, response: str) -> Optional[Dict[str, Any]]:
+        """Parse JSON from AI response, handling markdown code blocks."""
+        if not response:
+            return None
+
+        response_clean = response.strip()
+        if response_clean.startswith("```"):
+            start = response_clean.find("{")
+            end = response_clean.rfind("}") + 1
+            if start >= 0 and end > start:
+                response_clean = response_clean[start:end]
+
+        try:
+            data = json.loads(response_clean)
+            # Ensure expected keys have defaults
+            for key in ["website", "about", "culture", "mission", "industry", "founded", "headquarters"]:
+                data.setdefault(key, "")
+            for key in ["employeeCount", "timezoneOffset"]:
+                data.setdefault(key, None)
+            for key in ["isRemoteFirst", "aiMlFocus"]:
+                data.setdefault(key, False)
+            data.setdefault("products", [])
+            data.setdefault("techStack", [])
+            data.setdefault("companySizeCategory", "")
+            return data
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse JSON response")
+            return None
