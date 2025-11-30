@@ -1,10 +1,11 @@
 import { test, expect } from "@playwright/test"
-import { applyAuthState, ownerAuthState } from "./fixtures/auth"
+import { loginWithDevToken } from "./fixtures/auth"
 import { seedContentItem, seedQueueJob } from "./fixtures/api-client"
 
 test.describe("Content and queue management", () => {
-  test.beforeEach(async ({ page }) => {
-    await applyAuthState(page, ownerAuthState())
+  test.beforeEach(async ({ context }) => {
+    // Authenticate using dev token for admin access
+    await loginWithDevToken(context, 'dev-admin-token')
   })
 
   test("renders content editing flow and queue management UI", async ({ page, request }) => {

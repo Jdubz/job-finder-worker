@@ -3,8 +3,9 @@ import { defineConfig, devices } from "@playwright/test"
 const apiPort = process.env.JF_E2E_API_PORT || "5080"
 const apiOrigin = `http://127.0.0.1:${apiPort}`
 const apiBaseUrl = `${apiOrigin}/api`
-const authToken = process.env.JF_E2E_AUTH_TOKEN || "e2e-test-token"
-const ownerEmail = process.env.JF_E2E_OWNER_EMAIL || "owner@jobfinder.dev"
+// Use dev-admin-token which is recognized by the backend in test mode
+const authToken = process.env.JF_E2E_AUTH_TOKEN || "dev-admin-token"
+const ownerEmail = process.env.JF_E2E_OWNER_EMAIL || "dev-admin@jobfinder.dev"
 const frontendBaseUrl = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:5173"
 
 process.env.JF_E2E_API_BASE = process.env.JF_E2E_API_BASE || apiBaseUrl
@@ -28,8 +29,8 @@ export default defineConfig({
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
 
-  /* Use more workers for faster execution */
-  workers: process.env.CI ? 2 : 4,
+  /* Use fewer workers for stability with SQLite backend */
+  workers: process.env.CI ? 2 : 2,
 
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: process.env.CI
@@ -94,6 +95,7 @@ export default defineConfig({
         "cd ..",
         [
           `VITE_AUTH_BYPASS=true`,
+          `VITE_ENVIRONMENT=development`,
           `VITE_E2E_AUTH_TOKEN=${authToken}`,
           `VITE_OWNER_EMAIL=${ownerEmail}`,
           `VITE_API_BASE_URL=${apiOrigin}`,

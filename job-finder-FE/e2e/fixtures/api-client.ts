@@ -1,7 +1,8 @@
 import type { APIRequestContext } from "@playwright/test"
 
 const API_BASE = process.env.JF_E2E_API_BASE || "http://127.0.0.1:5080/api"
-const AUTH_TOKEN = process.env.JF_E2E_AUTH_TOKEN || "e2e-test-token"
+// Use dev-admin-token which is recognized by the backend in test mode
+const AUTH_TOKEN = process.env.JF_E2E_AUTH_TOKEN || "dev-admin-token"
 
 interface ApiSuccess<T> {
   success: true

@@ -11,7 +11,7 @@ import { logger } from '../logger'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError } from '../middleware/api-error'
 
-const IS_DEVELOPMENT = env.NODE_ENV === 'development'
+const IS_DEVELOPMENT = env.NODE_ENV === 'development' || env.NODE_ENV === 'test'
 const SESSION_TTL_DAYS = env.SESSION_TTL_DAYS
 export const SESSION_COOKIE = 'jf_session'
 

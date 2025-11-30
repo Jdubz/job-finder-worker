@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test"
-import { applyAuthState, ownerAuthState } from "./fixtures/auth"
+import { loginWithDevToken } from "./fixtures/auth"
 import { seedJobMatch, seedQueueJob } from "./fixtures/api-client"
 
-test("document builder surfaces job matches and hydrates the form", async ({ page, request }) => {
+test("document builder surfaces job matches and hydrates the form", async ({ page, request, context }) => {
   const queueId = await seedQueueJob(request, {
     companyName: "Doc Builder Co",
     metadata: {
@@ -19,7 +19,8 @@ test("document builder surfaces job matches and hydrates the form", async ({ pag
     matchScore: 95,
   })
 
-  await applyAuthState(page, ownerAuthState())
+  // Authenticate using dev token for admin access
+  await loginWithDevToken(context, 'dev-admin-token')
   await page.goto("/document-builder")
   await expect(page.getByRole("heading", { name: "Document Builder" })).toBeVisible()
 

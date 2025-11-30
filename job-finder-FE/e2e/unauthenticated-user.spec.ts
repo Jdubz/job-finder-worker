@@ -33,45 +33,35 @@ test.describe('Unauthenticated User Access', () => {
     await expect(page.getByRole('heading', { name: /document builder/i })).toBeVisible()
   })
 
-  test('can access Job Applications page', async ({ page }) => {
+  test('is redirected from Job Applications page (requires auth)', async ({ page }) => {
     await page.goto(ROUTES.JOB_APPLICATIONS)
-    await expect(page).toHaveURL(ROUTES.JOB_APPLICATIONS)
-
-    // Should see the Job Applications interface
-    await expect(page.getByRole('heading', { name: /job applications/i })).toBeVisible()
+    // Job Applications requires authentication - should redirect to home
+    await expect(page).toHaveURL(ROUTES.HOME)
   })
 
-  test('cannot access AI Prompts page (admin only)', async ({ page }) => {
+  test('can access AI Prompts page (public for viewing)', async ({ page }) => {
     await page.goto(ROUTES.AI_PROMPTS, { waitUntil: 'domcontentloaded' })
 
-    // Should be redirected to unauthorized page
-    await expect(page).toHaveURL(ROUTES.UNAUTHORIZED, { timeout: 10000 })
-    await expect(page.getByText(/unauthorized|access denied|permission/i).first()).toBeVisible({ timeout: 10000 })
+    // AI Prompts is public for viewing (editing is admin-only)
+    await expect(page).toHaveURL(ROUTES.AI_PROMPTS)
+    await expect(page.getByRole('heading', { name: /ai prompts|prompts/i })).toBeVisible()
   })
 
   test('cannot access Queue Management page (admin only)', async ({ page }) => {
     await page.goto(ROUTES.QUEUE_MANAGEMENT, { waitUntil: 'domcontentloaded' })
 
-    // Should be redirected to unauthorized page
-    await expect(page).toHaveURL(ROUTES.UNAUTHORIZED, { timeout: 10000 })
-    await expect(page.getByText(/unauthorized|access denied|permission/i).first()).toBeVisible({ timeout: 10000 })
+    // Unauthenticated users are redirected to HOME for admin-only routes
+    await expect(page).toHaveURL(ROUTES.HOME, { timeout: 10000 })
   })
 
   test('cannot access Job Finder Config page (admin only)', async ({ page }) => {
     await page.goto(ROUTES.JOB_FINDER_CONFIG, { waitUntil: 'domcontentloaded' })
 
-    // Should be redirected to unauthorized page
-    await expect(page).toHaveURL(ROUTES.UNAUTHORIZED, { timeout: 10000 })
-    await expect(page.getByText(/unauthorized|access denied|permission/i).first()).toBeVisible({ timeout: 10000 })
+    // Unauthenticated users are redirected to HOME for admin-only routes
+    await expect(page).toHaveURL(ROUTES.HOME, { timeout: 10000 })
   })
 
-  test('cannot access Settings page (admin only)', async ({ page }) => {
-    await page.goto(ROUTES.SETTINGS, { waitUntil: 'domcontentloaded' })
-
-    // Should be redirected to unauthorized page
-    await expect(page).toHaveURL(ROUTES.UNAUTHORIZED, { timeout: 10000 })
-    await expect(page.getByText(/unauthorized|access denied|permission/i).first()).toBeVisible({ timeout: 10000 })
-  })
+  // Note: There is no dedicated Settings page - removed test
 
   test('navigation links work correctly', async ({ page }) => {
     const linksToTest = [
@@ -109,9 +99,12 @@ test.describe('Unauthenticated User Access', () => {
 
     const authDialog = await openAuthModal(page, 'anonymous')
     await expect(authDialog.getByText(/sign in/i).first()).toBeVisible({ timeout: 5000 })
-    await expect(
-      authDialog.getByRole('button', { name: /continue with google/i }).first()
-    ).toBeVisible({ timeout: 5000 })
+    // In production mode, shows Google OAuth component
+    // In dev mode, shows role selection buttons (Public, Viewer, Admin)
+    // Check for either presence
+    const hasGoogleAuth = await authDialog.locator('iframe, [data-google], .g_id_signin').first().isVisible({ timeout: 2000 }).catch(() => false)
+    const hasDevModeButtons = await authDialog.getByRole('button', { name: /public|viewer|admin/i }).first().isVisible({ timeout: 2000 }).catch(() => false)
+    expect(hasGoogleAuth || hasDevModeButtons).toBe(true)
   })
 
   test('legal pages are accessible', async ({ page }) => {

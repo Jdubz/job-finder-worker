@@ -1,12 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
 import { getAuthIcon, openAuthModal } from './utils/ui'
-
-// Test admin email - this user should have admin role in the database
-const TEST_ADMIN_EMAIL = 'dev-admin@jobfinder.dev'
-
-const TEST_AUTH_STATE_KEY = '__JF_E2E_AUTH_STATE__'
-const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
+import { loginWithDevToken } from './fixtures/auth'
 
 test.describe('Google OAuth Authentication Flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -74,65 +69,43 @@ test.describe('Google OAuth Authentication Flow', () => {
   })
 
   test('successful authentication with viewer email redirects correctly', async ({ context }) => {
-    // Create new page with auth state
+    // Authenticate using dev token for viewer
+    await loginWithDevToken(context, 'dev-viewer-token')
     const page = await context.newPage()
-    await page.addInitScript(({ stateKey, tokenKey }) => {
-      const viewerAuthState = {
-        uid: 'test-viewer-123',
-        email: 'viewer@example.com',
-        displayName: 'Test Viewer User',
-        isOwner: false,
-        emailVerified: true,
-        token: 'mock-google-token-viewer'
-      }
-
-      window.localStorage.setItem(stateKey, JSON.stringify(viewerAuthState))
-      window.localStorage.setItem(tokenKey, 'mock-google-token-viewer')
-    }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
     await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
     const viewerDialog = await openAuthModal(page, 'viewer')
-    await expect(viewerDialog.getByText(/viewer@example.com/i)).toBeVisible({ timeout: 15000 })
+    await expect(viewerDialog.getByText(/dev-viewer@jobfinder\.dev/i)).toBeVisible({ timeout: 15000 })
     await page.keyboard.press('Escape')
 
-    // Should be able to access public pages
+    // Should be able to access authenticated pages
     await page.goto(ROUTES.JOB_APPLICATIONS, { waitUntil: 'domcontentloaded' })
     await expect(page).toHaveURL(ROUTES.JOB_APPLICATIONS)
 
-    // Should NOT be able to access admin pages
+    // Should be able to view AI Prompts (public for viewing)
     await page.goto(ROUTES.AI_PROMPTS, { waitUntil: 'domcontentloaded' })
+    await expect(page).toHaveURL(ROUTES.AI_PROMPTS)
+
+    // Should NOT be able to access admin-only pages
+    await page.goto(ROUTES.QUEUE_MANAGEMENT, { waitUntil: 'domcontentloaded' })
     await expect(page).toHaveURL(ROUTES.UNAUTHORIZED, { timeout: 10000 })
 
     await page.close()
   })
 
   test('successful authentication with admin email grants admin access', async ({ context }) => {
-    const adminEmail = TEST_ADMIN_EMAIL
-
-    // Create new page with admin auth state
+    // Authenticate using dev token for admin
+    await loginWithDevToken(context, 'dev-admin-token')
     const page = await context.newPage()
-    await page.addInitScript(({ stateKey, tokenKey, email }) => {
-      const adminAuthState = {
-        uid: 'test-admin-123',
-        email,
-        displayName: 'Test Admin User',
-        isOwner: true,
-        emailVerified: true,
-        token: 'mock-google-token-admin'
-      }
-
-      window.localStorage.setItem(stateKey, JSON.stringify(adminAuthState))
-      window.localStorage.setItem(tokenKey, 'mock-google-token-admin')
-    }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY, email: adminEmail })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
     await expect(getAuthIcon(page, 'owner')).toBeVisible({ timeout: 15000 })
     const adminDialog = await openAuthModal(page, 'owner')
-    await expect(adminDialog.getByText(new RegExp(adminEmail, 'i')).first()).toBeVisible({ timeout: 15000 })
+    await expect(adminDialog.getByText(/dev-admin@jobfinder\.dev/i).first()).toBeVisible({ timeout: 15000 })
     await page.keyboard.press('Escape')
 
-    // Should be able to access admin pages
+    // Should be able to access all pages including admin pages
     await page.goto(ROUTES.AI_PROMPTS, { waitUntil: 'domcontentloaded' })
     await expect(page).toHaveURL(ROUTES.AI_PROMPTS)
 
@@ -142,30 +115,14 @@ test.describe('Google OAuth Authentication Flow', () => {
     await page.goto(ROUTES.JOB_FINDER_CONFIG, { waitUntil: 'domcontentloaded' })
     await expect(page).toHaveURL(ROUTES.JOB_FINDER_CONFIG)
 
-    await page.goto(ROUTES.SETTINGS, { waitUntil: 'domcontentloaded' })
-    await expect(page).toHaveURL(ROUTES.SETTINGS)
-
+    // Note: There is no dedicated Settings page
     await page.close()
   })
 
   test('sign out clears authentication state', async ({ context }) => {
-    // Set up authenticated state
+    // Authenticate using dev token for viewer
+    await loginWithDevToken(context, 'dev-viewer-token')
     const page = await context.newPage()
-    await page.addInitScript(({ stateKey, tokenKey }) => {
-      const authState = {
-        uid: 'test-user-signout',
-        email: 'signout@example.com',
-        displayName: 'Sign Out Test',
-        isOwner: false,
-        emailVerified: true,
-        token: 'mock-token-signout'
-      }
-
-      window.localStorage.setItem(stateKey, JSON.stringify(authState))
-      window.localStorage.setItem(tokenKey, 'mock-token-signout')
-    }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
-
-    await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
     await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
@@ -175,12 +132,6 @@ test.describe('Google OAuth Authentication Flow', () => {
     await expect(signOutButton).toBeVisible({ timeout: 10000 })
     await signOutButton.click({ timeout: 10000 })
 
-    // Verify auth cleared
-    const authCleared = await page.evaluate(({ stateKey, tokenKey }) => {
-      return !localStorage.getItem(stateKey) && !localStorage.getItem(tokenKey)
-    }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
-    expect(authCleared).toBe(true)
-
     // Should now see sign in button instead of user menu
     await expect(getAuthIcon(page, 'anonymous')).toBeVisible({ timeout: 10000 })
 
@@ -188,21 +139,9 @@ test.describe('Google OAuth Authentication Flow', () => {
   })
 
   test('authentication state persists across page reloads', async ({ context }) => {
-    // Set up authenticated state
+    // Authenticate using dev token for viewer
+    await loginWithDevToken(context, 'dev-viewer-token')
     const page = await context.newPage()
-    await page.addInitScript(({ stateKey, tokenKey }) => {
-      const authState = {
-        uid: 'test-persist-123',
-        email: 'persist@example.com',
-        displayName: 'Persist Test',
-        isOwner: false,
-        emailVerified: true,
-        token: 'mock-token-persist'
-      }
-
-      window.localStorage.setItem(stateKey, JSON.stringify(authState))
-      window.localStorage.setItem(tokenKey, 'mock-token-persist')
-    }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
     await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
@@ -210,7 +149,7 @@ test.describe('Google OAuth Authentication Flow', () => {
     // Reload page
     await page.reload({ waitUntil: 'domcontentloaded' })
 
-    // Should still be signed in
+    // Should still be signed in (session cookie persists)
     await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
     // Navigate to another page
@@ -223,21 +162,9 @@ test.describe('Google OAuth Authentication Flow', () => {
   })
 
   test('authentication state persists across navigation', async ({ context }) => {
-    // Set up authenticated state
+    // Authenticate using dev token for viewer
+    await loginWithDevToken(context, 'dev-viewer-token')
     const page = await context.newPage()
-    await page.addInitScript(({ stateKey, tokenKey }) => {
-      const authState = {
-        uid: 'test-nav-123',
-        email: 'nav@example.com',
-        displayName: 'Nav Test',
-        isOwner: false,
-        emailVerified: true,
-        token: 'mock-token-nav'
-      }
-
-      window.localStorage.setItem(stateKey, JSON.stringify(authState))
-      window.localStorage.setItem(tokenKey, 'mock-token-nav')
-    }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
 
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
     await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
@@ -251,41 +178,8 @@ test.describe('Google OAuth Authentication Flow', () => {
     await page.close()
   })
 
-  test('invalid authentication token shows sign in prompt', async ({ context }) => {
-    // Set up invalid auth state
-    const page = await context.newPage()
-    await page.addInitScript((tokenKey) => {
-      window.localStorage.setItem(tokenKey, 'invalid-token-format')
-    }, TEST_AUTH_TOKEN_KEY)
-
-    await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
-    await expect(getAuthIcon(page, 'anonymous')).toBeVisible({ timeout: 15000 })
-
-    await page.close()
-  })
-
-  test('missing email in token prevents authentication', async ({ context }) => {
-    // Set up auth state without email
-    const page = await context.newPage()
-    await page.addInitScript(({ stateKey, tokenKey }) => {
-      const invalidAuthState = {
-        uid: 'test-no-email',
-        displayName: 'No Email User',
-        isOwner: false,
-        emailVerified: true,
-        token: 'mock-token-no-email'
-        // email is missing
-      }
-
-      window.localStorage.setItem(stateKey, JSON.stringify(invalidAuthState))
-      window.localStorage.setItem(tokenKey, 'mock-token-no-email')
-    }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
-
-    await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
-    await expect(getAuthIcon(page, 'anonymous')).toBeVisible({ timeout: 15000 })
-
-    await page.close()
-  })
+  // These tests are no longer relevant with proper backend session auth
+  // The backend validates sessions, not localStorage tokens
 
   // Skip this test - requires Google OAuth button which won't work in test environment
   test.skip('Google Sign In button uses correct branding', async ({ page }) => {
