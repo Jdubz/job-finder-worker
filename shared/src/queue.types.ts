@@ -142,6 +142,24 @@ export interface QueueItem {
   updated_at: TimestampLike
   processed_at?: TimestampLike | null
   completed_at?: TimestampLike | null
+
+  /**
+   * Deprecated convenience fields retained for backward compatibility with UI/API callers.
+   * These are expected to be populated from `input`/`output` when present on the server/worker.
+   */
+  company_name?: string | null
+  company_id?: string | null
+  source?: QueueSource
+  submitted_by?: string | null
+  scrape_config?: ScrapeConfig | null
+  scraped_data?: Record<string, any> | null
+  source_discovery_config?: SourceDiscoveryConfig | null
+  source_id?: string | null
+  source_type?: string | null
+  source_config?: Record<string, unknown> | null
+  source_tier?: SourceTier | null
+  pipeline_state?: Record<string, any> | null
+  metadata?: Record<string, any> | null
 }
 
 /**

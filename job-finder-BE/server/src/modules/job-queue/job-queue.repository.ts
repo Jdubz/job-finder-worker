@@ -59,6 +59,9 @@ const serializeJson = (value: unknown): string | null => {
 }
 
 const buildQueueItem = (row: QueueItemRow): QueueItem => {
+  const input = parseJson<Record<string, unknown>>(row.input) ?? {}
+  const output = parseJson<Record<string, unknown>>(row.output) ?? {}
+
   return {
     id: row.id,
     type: row.type,
@@ -66,8 +69,22 @@ const buildQueueItem = (row: QueueItemRow): QueueItem => {
     url: row.url ?? undefined,
     tracking_id: row.tracking_id && row.tracking_id.length > 0 ? row.tracking_id : undefined,
     parent_item_id: row.parent_item_id ?? undefined,
-    input: parseJson(row.input) ?? undefined,
-    output: parseJson(row.output) ?? undefined,
+    input,
+    output,
+    // Derived convenience fields for compatibility with existing UI/API consumers
+    company_name: (input.company_name as string | undefined) ?? undefined,
+    company_id: (input.company_id as string | undefined) ?? undefined,
+    source: (input.source as any) ?? undefined,
+    submitted_by: (input.submitted_by as string | undefined) ?? undefined,
+    scrape_config: (input.scrape_config as any) ?? undefined,
+    scraped_data: (output.scraped_data as any) ?? undefined,
+    source_discovery_config: (input.source_discovery_config as any) ?? undefined,
+    source_id: (input.source_id as string | undefined) ?? undefined,
+    source_type: (input.source_type as string | undefined) ?? undefined,
+    source_config: (input.source_config as any) ?? undefined,
+    source_tier: (input.source_tier as any) ?? undefined,
+    pipeline_state: (output.pipeline_state as any) ?? undefined,
+    metadata: (input.metadata as any) ?? undefined,
     result_message: row.result_message ?? undefined,
     error_details: row.error_details ?? undefined,
     created_at: parseTimestamp(row.created_at) ?? new Date(),
