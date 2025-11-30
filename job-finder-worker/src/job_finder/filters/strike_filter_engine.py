@@ -25,8 +25,22 @@ class StrikeFilterEngine:
     Tier 2: Strike accumulation (fail if >= threshold)
     """
 
-    def __init__(self, policy: dict):
-        """Initialize strike-based filter engine from consolidated prefilter policy."""
+    def __init__(self, policy: dict, legacy_tech_ranks: dict | None = None):
+        """Initialize strike-based filter engine.
+
+        Supports both the new consolidated prefilter policy shape and the legacy
+        (filters, tech_ranks) arguments used in older tests. If legacy_tech_ranks is
+        provided and the policy does not already contain strikeEngine/stopList keys,
+        we wrap it into the new structure.
+        """
+
+        if legacy_tech_ranks is not None and "strikeEngine" not in policy and "stopList" not in policy:
+            policy = {
+                "stopList": {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []},
+                "strikeEngine": policy,
+                "technologyRanks": legacy_tech_ranks or {},
+            }
+
         self.policy = policy
         self.stop_list = policy.get("stopList", {})
         self.stop_companies = [c.lower() for c in self.stop_list.get("excludedCompanies", [])]
@@ -86,8 +100,8 @@ class StrikeFilterEngine:
         self.age_strike_points = age_strike.get("points", 1)
 
         # Technology ranks
-        self.technologies = tech_ranks.get("technologies", {})
-        self.missing_required_tech_points = tech_ranks.get("strikes", {}).get(
+        self.technologies = self.tech_ranks.get("technologies", {})
+        self.missing_required_tech_points = self.tech_ranks.get("strikes", {}).get(
             "missingAllRequired", 1
         )
 
