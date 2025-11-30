@@ -58,7 +58,7 @@ export function QueueTable({ items, onRowClick, onCancel, formatRelativeTime }: 
         {items.map((item) => {
           if (!item.id) return null
           const title =
-            getJobTitle(item) || getScrapeTitle(item) || getDomain(item.url) || "Untitled task"
+            getJobTitle(item) || getScrapeTitle(item) || getDomain(item.url || "") || "Untitled task"
           const company = getCompanyName(item)
           const source = getSourceLabel(item)
           const typeLabel = getTaskTypeLabel(item)
@@ -76,7 +76,7 @@ export function QueueTable({ items, onRowClick, onCancel, formatRelativeTime }: 
                 <div className="flex flex-col gap-1">
                   <span className="truncate">{title}</span>
                   <span className="text-xs text-muted-foreground truncate">
-                    {company || source || getDomain(item.url) || "No details yet"}
+                    {company || source || getDomain(item.url || "") || "No details yet"}
                   </span>
                 </div>
               </TableCell>
