@@ -41,7 +41,7 @@ describe("AISettingsTab", () => {
     setAISettings: vi.fn(),
     hasAIChanges: false,
     handleSaveAISettings: vi.fn(),
-    handleResetAISettings: vi.fn(),
+    resetAI: vi.fn(),
   }
 
   beforeEach(() => {
@@ -59,13 +59,13 @@ describe("AISettingsTab", () => {
   it("calls save and reset handlers", async () => {
     const user = userEvent.setup()
     const handleSaveAISettings = vi.fn()
-    const handleResetAISettings = vi.fn()
+    const resetAI = vi.fn()
 
     render(
       <AISettingsTab
         {...defaultProps}
         handleSaveAISettings={handleSaveAISettings}
-        handleResetAISettings={handleResetAISettings}
+        resetAI={resetAI}
         hasAIChanges={true}
       />
     )
@@ -74,6 +74,6 @@ describe("AISettingsTab", () => {
     await user.click(screen.getByText("Reset"))
 
     expect(handleSaveAISettings).toHaveBeenCalled()
-    expect(handleResetAISettings).toHaveBeenCalled()
+    expect(resetAI).toHaveBeenCalled()
   })
 })

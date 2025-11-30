@@ -341,9 +341,7 @@ class AIJobMatcher:
             if blocked_hit or tz_beyond:
                 mismatch_penalty = -40
                 match_score += mismatch_penalty
-                adjustments.append(
-                    f"🚫 Dealbreaker: timezone/location ({desc}) {mismatch_penalty}"
-                )
+                adjustments.append(f"🚫 Dealbreaker: timezone/location ({desc}) {mismatch_penalty}")
                 concerns = match_analysis.setdefault("potential_concerns", [])
                 concerns.append(
                     "Timezone/location mismatch: outside preferred window; candidate will not relocate or work incompatible hours."
@@ -362,7 +360,10 @@ class AIJobMatcher:
 
             # Hard-stop mismatch: user only works 8a-8p PT and will not relocate.
             location_text = job_location or headquarters_location or company_name
-            india_like = any(k in (location_text or "").lower() for k in ["india", "bangalore", "bengaluru", "ist"])
+            india_like = any(
+                k in (location_text or "").lower()
+                for k in ["india", "bangalore", "bengaluru", "ist"]
+            )
             if hour_diff > 8 or india_like:
                 mismatch_penalty = -40
                 match_score += mismatch_penalty

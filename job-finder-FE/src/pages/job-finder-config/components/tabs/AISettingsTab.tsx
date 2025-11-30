@@ -16,17 +16,14 @@ import type {
   AIInterfaceOption,
 } from "@shared/types"
 import { DEFAULT_AI_SETTINGS } from "@shared/types"
-import type { ConfigState } from "../../hooks/useConfigState"
-
-type AISettingsTabProps = Pick<
-  ConfigState,
-  | "isSaving"
-  | "aiSettings"
-  | "setAISettings"
-  | "hasAIChanges"
-  | "handleSaveAISettings"
-  | "handleResetAISettings"
->
+type AISettingsTabProps = {
+  isSaving: boolean
+  aiSettings: AISettings
+  setAISettings: (updater: (prev: AISettings) => AISettings) => void
+  hasAIChanges: boolean
+  handleSaveAISettings: () => Promise<void> | void
+  resetAI: () => void
+}
 
 const PROVIDER_LABELS: Record<AIProviderType, string> = {
   codex: "Codex CLI (OpenAI Pro)",
@@ -46,7 +43,7 @@ export function AISettingsTab({
   setAISettings,
   hasAIChanges,
   handleSaveAISettings,
-  handleResetAISettings,
+  resetAI,
 }: AISettingsTabProps) {
   const options: AIProviderOption[] = aiSettings?.options ?? DEFAULT_AI_SETTINGS.options ?? []
   const defaultSelection: AISettings["worker"]["selected"] =
@@ -230,7 +227,7 @@ export function AISettingsTab({
         hasChanges={hasAIChanges}
         isSaving={isSaving}
         onSave={handleSaveAISettings}
-        onReset={handleResetAISettings}
+        onReset={resetAI}
       >
         <div className="space-y-8">
           {renderSelector(

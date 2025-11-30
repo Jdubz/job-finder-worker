@@ -35,7 +35,7 @@ export function useConfigState() {
   const [originalMatch, setOriginalMatch] = useState<MatchPolicy>(DEFAULT_MATCH_POLICY)
   const [matchText, setMatchText] = useState(JSON.stringify(DEFAULT_MATCH_POLICY, null, 2))
 
-  const [queueSettings, setQueueSettings] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
+  const [queueSettings, setQueueSettingsState] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
   const [originalQueue, setOriginalQueue] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
 
   const [aiSettings, setAISettings] = useState<AISettings>(DEFAULT_AI_SETTINGS)
@@ -74,7 +74,7 @@ export function useConfigState() {
       setMatchText(JSON.stringify(match, null, 2))
 
       const queue = deepClone((map["queue-settings"] as QueueSettings) ?? DEFAULT_QUEUE_SETTINGS)
-      setQueueSettings(queue)
+      setQueueSettingsState(queue)
       setOriginalQueue(deepClone(queue))
 
       const ai = deepClone((map["ai-settings"] as AISettings) ?? DEFAULT_AI_SETTINGS)
@@ -149,6 +149,10 @@ export function useConfigState() {
     } finally {
       setIsSaving(false)
     }
+  }
+
+  const setQueueSettings = (updates: Partial<QueueSettings>) => {
+    setQueueSettingsState((prev) => ({ ...prev, ...updates }))
   }
 
   const handleSaveQueueSettings = async () => {
@@ -235,7 +239,7 @@ export function useConfigState() {
   }
 
   const resetQueue = () => {
-    setQueueSettings(deepClone(originalQueue))
+    setQueueSettingsState(deepClone(originalQueue))
     setSuccess(null)
   }
 

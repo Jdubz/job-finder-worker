@@ -51,12 +51,8 @@ class ConfigLoader:
         return value
 
     def get_stop_list(self) -> Dict[str, Any]:
-        default = {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []}
-        try:
-            return self._get_config("stop-list")
-        except InitializationError:
-            logger.warning("Stop list missing; seeding defaults")
-            return self._seed_config("stop-list", default)
+        policy = self.get_prefilter_policy()
+        return policy.get("stopList", {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []})
 
     def get_queue_settings(self) -> Dict[str, Any]:
         default = {"processingTimeoutSeconds": 1800, "isProcessingEnabled": True}
@@ -266,11 +262,6 @@ class ConfigLoader:
         except InitializationError:
             logger.warning("Match policy missing; seeding defaults")
             return self._seed_config("match-policy", default)
-
-    # Compatibility helpers for shared components
-    def get_stop_list(self) -> Dict[str, Any]:
-        policy = self.get_prefilter_policy()
-        return policy.get("stopList", {})
 
     def get_job_filters(self) -> Dict[str, Any]:
         policy = self.get_prefilter_policy()

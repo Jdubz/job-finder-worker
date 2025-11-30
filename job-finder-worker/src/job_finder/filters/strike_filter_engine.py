@@ -34,9 +34,17 @@ class StrikeFilterEngine:
         we wrap it into the new structure.
         """
 
-        if legacy_tech_ranks is not None and "strikeEngine" not in policy and "stopList" not in policy:
+        if (
+            legacy_tech_ranks is not None
+            and "strikeEngine" not in policy
+            and "stopList" not in policy
+        ):
             policy = {
-                "stopList": {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []},
+                "stopList": {
+                    "excludedCompanies": [],
+                    "excludedKeywords": [],
+                    "excludedDomains": [],
+                },
                 "strikeEngine": policy,
                 "technologyRanks": legacy_tech_ranks or {},
             }

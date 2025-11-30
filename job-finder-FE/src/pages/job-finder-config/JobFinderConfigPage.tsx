@@ -138,7 +138,7 @@ export function JobFinderConfigPage() {
               setQueueSettings={configState.setQueueSettings}
               hasQueueChanges={configState.hasQueueChanges}
               handleSaveQueueSettings={configState.handleSaveQueueSettings}
-              handleResetQueueSettings={configState.resetQueue}
+              resetQueue={configState.resetQueue}
             />
           )}
 
@@ -149,18 +149,18 @@ export function JobFinderConfigPage() {
               setAISettings={configState.setAISettings}
               hasAIChanges={configState.hasAIChanges}
               handleSaveAISettings={configState.handleSaveAISettings}
-              handleResetAISettings={configState.resetAI}
+              resetAI={configState.resetAI}
             />
           )}
 
           {activeTab === "scheduler" && (
             <SchedulerTab
               isSaving={configState.isSaving}
-              currentScheduler={configState.schedulerSettings}
+              schedulerSettings={configState.schedulerSettings}
               hasSchedulerChanges={configState.hasSchedulerChanges}
               updateSchedulerState={configState.updateSchedulerState}
               handleSaveScheduler={configState.handleSaveScheduler}
-              handleResetSchedulerSettings={configState.resetScheduler}
+              resetScheduler={configState.resetScheduler}
             />
           )}
 

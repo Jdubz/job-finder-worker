@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { BrowserRouter } from "react-router-dom"
 import { JobFinderConfigPage } from "../JobFinderConfigPage"
 import { configClient } from "@/api/config-client"
+import { DEFAULT_MATCH_POLICY, DEFAULT_PREFILTER_POLICY } from "@shared/types"
 
 vi.mock("@/api/config-client", () => ({
   configClient: {
@@ -33,17 +34,8 @@ vi.mock("@/contexts/AuthContext", () => ({
 const renderWithRouter = (ui: React.ReactElement) =>
   render(<BrowserRouter>{ui}</BrowserRouter>)
 
-const basePrefilter = {
-  stopList: { excludedCompanies: ["BadCo"], excludedKeywords: ["clearance"], excludedDomains: [] },
-  strikeEngine: { enabled: true, strikeThreshold: 5, hardRejections: {}, remotePolicy: {}, salaryStrike: {}, experienceStrike: {}, seniorityStrikes: {}, qualityStrikes: {}, ageStrike: {} },
-  technologyRanks: { technologies: {}, strikes: {} },
-}
-
-const baseMatch = {
-  jobMatch: { minMatchScore: 70, portlandOfficeBonus: 15, userTimezone: -8, preferLargeCompanies: true, generateIntakeData: true },
-  companyWeights: {},
-  dealbreakers: { maxTimezoneDiffHours: 8, blockedLocations: [], requireRemote: false, allowHybridInTimezone: true },
-}
+const basePrefilter = DEFAULT_PREFILTER_POLICY
+const baseMatch = DEFAULT_MATCH_POLICY
 
 beforeEach(() => {
   vi.clearAllMocks()
