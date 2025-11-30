@@ -74,17 +74,18 @@ if [[ ! -f "$PAYLOAD_FILE" ]]; then
   exit 1
 fi
 
-curl -sS -X POST "http://localhost:${API_PORT}/api/generator/generate" \
+START_RESPONSE=$(curl -sS -X POST "http://localhost:${API_PORT}/api/generator/start" \
   -H "Authorization: Bearer $AUTH_TOKEN" \
   -H "Content-Type: application/json" \
-  --data "@${PAYLOAD_FILE}" \
-  -o "$RESPONSE_FILE"
+  --data "@${PAYLOAD_FILE}")
 
-echo "Response saved to $RESPONSE_FILE"
+echo "$START_RESPONSE" > "$RESPONSE_FILE"
 
-REQUEST_ID=$(jq -r '.data.generationId // .data.requestId // empty' "$RESPONSE_FILE" || true)
-RESUME_URL=$(jq -r '.data.resumeUrl // empty' "$RESPONSE_FILE" || true)
-COVER_URL=$(jq -r '.data.coverLetterUrl // empty' "$RESPONSE_FILE" || true)
+mapfile -t start_vals < <(echo "$START_RESPONSE" | jq -r '.data | (.requestId // ""), (.nextStep // ""), (.resumeUrl // ""), (.coverLetterUrl // "")')
+REQUEST_ID="${start_vals[0]}"
+NEXT_STEP="${start_vals[1]}"
+RESUME_URL="${start_vals[2]}"
+COVER_URL="${start_vals[3]}"
 
 if [[ -z "$REQUEST_ID" ]]; then
   echo "ERROR: No requestId in response. See $RESPONSE_FILE" >&2
@@ -92,6 +93,26 @@ if [[ -z "$REQUEST_ID" ]]; then
 fi
 
 echo "Generator request id: $REQUEST_ID"
+
+# Execute remaining steps
+while [[ -n "$NEXT_STEP" ]]; do
+  STEP_RESPONSE=$(curl -sS -X POST "http://localhost:${API_PORT}/api/generator/step/${REQUEST_ID}" \
+    -H "Authorization: Bearer $AUTH_TOKEN" \
+    -H "Content-Type: application/json")
+  echo "$STEP_RESPONSE" > "$RESPONSE_FILE"
+  mapfile -t step_vals < <(echo "$STEP_RESPONSE" | jq -r '.data | (.status // ""), (.nextStep // ""), (.resumeUrl // ""), (.coverLetterUrl // "")')
+  STATUS="${step_vals[0]}"
+  NEXT_STEP="${step_vals[1]}"
+  RESUME_URL="${step_vals[2]}"
+  COVER_URL="${step_vals[3]}"
+  if [[ "$STATUS" == "failed" ]]; then
+    echo "ERROR: Generation failed. See $RESPONSE_FILE" >&2
+    exit 1
+  fi
+done
+
+# Final response saved
+echo "Response saved to $RESPONSE_FILE"
 
 # Verify DB state
 if command -v sqlite3 >/dev/null; then

@@ -23,7 +23,5 @@ export type { PromptConfig } from "@shared/types"
 export { DEFAULT_PROMPTS } from "@shared/types"
 export type {
   GenerateDocumentRequest,
-  GenerateDocumentResponse,
   DocumentHistoryItem,
-  UserDefaults,
 } from "./generator-client"

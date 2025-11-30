@@ -6,7 +6,7 @@ import { ApiErrorCode } from '@shared/types'
 import { GeneratorWorkflowService } from './workflow/generator.workflow.service'
 import { GeneratorWorkflowRepository, type GeneratorRequestRecord } from './generator.workflow.repository'
 
-// Shared schema for both /generate and /start endpoints
+// Shared schema for generator endpoints
 const generatorRequestSchema = z.object({
   generateType: z.enum(['resume', 'coverLetter', 'both']),
   job: z.object({
@@ -39,28 +39,6 @@ export function buildGeneratorWorkflowRouter() {
   const router = Router()
   const service = getService()
   const repo = new GeneratorWorkflowRepository()
-
-  router.post(
-    '/generate',
-    asyncHandler(async (req, res) => {
-      const payload = generatorRequestSchema.parse(req.body ?? {})
-      const result = await service.generate(payload)
-      if (!result.success) {
-        res.status(500).json(failure(ApiErrorCode.INTERNAL_ERROR, result.message ?? 'Generation failed'))
-        return
-      }
-
-      res.json(
-        success({
-          success: true,
-          documentUrl: result.resumeUrl ?? result.coverLetterUrl,
-          resumeUrl: result.resumeUrl,
-          coverLetterUrl: result.coverLetterUrl,
-          generationId: result.requestId
-        })
-      )
-    })
-  )
 
   router.get(
     '/requests',

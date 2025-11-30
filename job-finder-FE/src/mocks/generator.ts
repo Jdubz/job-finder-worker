@@ -3,11 +3,7 @@
  * Used in unit tests and development
  */
 
-import type {
-  GenerateDocumentRequest,
-  GenerateDocumentResponse,
-  DocumentHistoryItem,
-} from "@/api/generator-client"
+import type { GenerateDocumentRequest, DocumentHistoryItem } from "@/api/generator-client"
 
 export const mockCoverLetterRequest: GenerateDocumentRequest = {
   generateType: "coverLetter",
@@ -29,21 +25,6 @@ export const mockResumeRequest: GenerateDocumentRequest = {
     company: "Tech Startup Inc",
     jobDescriptionText: "Looking for a full stack developer proficient in React, Node.js, and AWS.",
   },
-}
-
-export const mockSuccessResponse: GenerateDocumentResponse = {
-  success: true,
-  message: "Cover letter generated successfully",
-  documentUrl: "https://storage.googleapis.com/job-finder-dev/documents/cover-letter-123.pdf",
-  documentId: "doc_abc123xyz",
-  generationId: "gen_789xyz456",
-}
-
-export const mockErrorResponse: GenerateDocumentResponse = {
-  success: false,
-  message: "Generation failed",
-  error:
-    "Failed to generate cover letter: API rate limit exceeded. Please try again in a few minutes.",
 }
 
 export const mockDocumentHistory: DocumentHistoryItem[] = [
@@ -80,22 +61,6 @@ export const mockDocumentHistory: DocumentHistoryItem[] = [
  * Can be used in setupTests.ts or individual test files
  */
 export const generatorMockHandlers = {
-  /**
-   * Successful document generation
-   */
-  generateSuccess: {
-    request: mockCoverLetterRequest,
-    response: mockSuccessResponse,
-  },
-
-  /**
-   * Failed document generation
-   */
-  generateError: {
-    request: mockCoverLetterRequest,
-    response: mockErrorResponse,
-  },
-
   /**
    * Document history
    */

@@ -48,15 +48,6 @@ export interface GenerateDocumentRequest {
   jobMatchId?: string // Reference to job-match document ID
 }
 
-export interface GenerateDocumentResponse {
-  success: boolean
-  message: string
-  documentUrl?: string
-  documentId?: string
-  generationId?: string
-  error?: string
-}
-
 export interface DocumentHistoryItem {
   id: string
   type: "resume" | "cover_letter"
@@ -65,20 +56,6 @@ export interface DocumentHistoryItem {
   documentUrl: string
   createdAt: Date
   jobMatchId?: string
-}
-
-export interface UserDefaults {
-  name: string
-  email: string
-  phone?: string
-  location?: string
-  linkedin?: string
-  github?: string
-  website?: string
-  summary?: string
-  accentColor?: string
-  avatar?: string
-  logo?: string
 }
 
 export interface GenerationStep {
@@ -137,13 +114,6 @@ export class GeneratorClient extends BaseApiClient {
   }
 
   /**
-   * Generate a resume or cover letter
-   */
-  async generateDocument(request: GenerateDocumentRequest): Promise<GenerateDocumentResponse> {
-    return this.post<GenerateDocumentResponse>("/generate", request)
-  }
-
-  /**
    * Get document generation history
    */
   async getHistory(): Promise<DocumentHistoryItem[]> {
@@ -151,21 +121,6 @@ export class GeneratorClient extends BaseApiClient {
     const response = await this.get<HistoryResponse | ApiEnvelope<HistoryResponse>>(`/requests`)
     const data = unwrapResponse(response)
     return data.requests ?? []
-  }
-
-  /**
-   * Get user's default settings
-   */
-  async getUserDefaults(): Promise<UserDefaults> {
-    const response = await this.get<UserDefaults | ApiEnvelope<UserDefaults>>("/defaults")
-    return unwrapResponse(response)
-  }
-
-  /**
-   * Update user's default settings
-   */
-  async updateUserDefaults(defaults: Partial<UserDefaults>): Promise<{ success: boolean }> {
-    return this.put<{ success: boolean }>("/defaults", defaults)
   }
 
   async uploadAsset(params: { type: "avatar" | "logo"; dataUrl: string }): Promise<{ path: string; publicUrl: string }> {

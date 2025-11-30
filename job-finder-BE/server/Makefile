@@ -156,11 +156,23 @@ dev-validate: ## Run generator test
 		exit 1; \
 	fi
 	@AUTH_TOKEN=$$(grep GENERATOR_BYPASS_TOKEN .env.dev | cut -d= -f2); \
-	curl -sS -X POST "http://localhost:$(API_PORT)/api/generator/generate" \
+	START_RESP=$$(curl -sS -X POST "http://localhost:$(API_PORT)/api/generator/start" \
 		-H "Authorization: Bearer $$AUTH_TOKEN" \
 		-H "Content-Type: application/json" \
-		--data @dev/sample-request.json \
-		-o .dev/output/last-response.json
+		--data @dev/sample-request.json); \
+	echo "$$START_RESP" > .dev/output/last-response.json; \
+	REQUEST_ID=$$(echo "$$START_RESP" | jq -r '.data.requestId // empty'); \
+	NEXT_STEP=$$(echo "$$START_RESP" | jq -r '.data.nextStep // empty'); \
+	if [ -z "$$REQUEST_ID" ]; then echo "$(RED)Request failed$(RESET)"; exit 1; fi; \
+	while [ -n "$$NEXT_STEP" ]; do \
+		STEP_RESP=$$(curl -sS -X POST "http://localhost:$(API_PORT)/api/generator/step/$$REQUEST_ID" \
+			-H "Authorization: Bearer $$AUTH_TOKEN" \
+			-H "Content-Type: application/json"); \
+		echo "$$STEP_RESP" > .dev/output/last-response.json; \
+		STATUS=$$(echo "$$STEP_RESP" | jq -r '.data.status // empty'); \
+		if [ "$$STATUS" = "failed" ]; then echo "$(RED)Step failed$(RESET)"; exit 1; fi; \
+		NEXT_STEP=$$(echo "$$STEP_RESP" | jq -r '.data.nextStep // empty'); \
+	done
 	@echo "$(GREEN)✓ Response saved to .dev/output/last-response.json$(RESET)"
 	@jq . .dev/output/last-response.json
 

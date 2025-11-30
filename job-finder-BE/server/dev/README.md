@@ -15,7 +15,7 @@ make dev-validate
 ## What this does
 - Clones the prod SQLite DB into `.dev/data/` (gitignored).
 - Starts the production API container with Codex credentials bind-mounted at `/home/node/.codex`.
-- Runs real `/api/generator/generate` requests against the container.
+- Runs real `/api/generator/start` + `/api/generator/step/:id` requests against the container.
 - Verifies artifacts land on disk and captures container logs.
 - Optional hot-reload profile mounts local source for rapid iteration.
 
