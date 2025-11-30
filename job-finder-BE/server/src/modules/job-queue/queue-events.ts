@@ -7,6 +7,7 @@ import type {
   QueueEventDataMap,
   CancelCommand,
 } from '@shared/types'
+import { logger } from '../../logger'
 import type { WebSocket } from 'ws'
 import { HEARTBEAT_INTERVAL_MS, initSseStream, type SseClient } from '../shared/sse'
 
@@ -21,6 +22,7 @@ const DROP_KEY_SET = new Set([
   'raw_listing',
   'full_text',
   'html',
+  'description',
 ])
 
 const toEventString = <E extends QueueSseEventName>(payload: QueueSsePayload<E>) =>
@@ -31,6 +33,7 @@ const toEventString = <E extends QueueSseEventName>(payload: QueueSsePayload<E>)
 // ---------------------------------------------------------------------------
 
 function sanitizeQueueItem(item: QueueItem): QueueItem {
+  const beforeSize = byteLengthSafe(item)
   const clone: QueueItem = { ...item }
 
   const sanitizeUnknown = (value: unknown): unknown => {
@@ -76,6 +79,18 @@ function sanitizeQueueItem(item: QueueItem): QueueItem {
   if ((clone as any).input) (clone as any).input = sanitizeUnknown((clone as any).input) as any
   if (clone.metadata) clone.metadata = sanitizeUnknown(clone.metadata) as any
 
+  const afterSize = byteLengthSafe(clone)
+  if (afterSize < beforeSize) {
+    logger.debug(
+      {
+        itemId: item.id,
+        sizeBefore: beforeSize,
+        sizeAfter: afterSize,
+      },
+      'Sanitized queue item payload for SSE'
+    )
+  }
+
   return clone
 }
 
@@ -98,6 +113,14 @@ function sanitizeEventData<E extends QueueSseEventName>(
   }
 
   return data
+}
+
+function byteLengthSafe(value: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), 'utf8')
+  } catch {
+    return 0
+  }
 }
 
 export function broadcastQueueEvent<E extends QueueSseEventName>(

@@ -72,12 +72,11 @@ class QueueManager:
                 job_data.pop("raw_html", None)
                 pipeline_state["job_data"] = job_data
             data["pipeline_state"] = self._sanitize_payload(pipeline_state)
+        else:
+            data.pop("pipeline_state", None)
 
-        scraped_data = data.get("scraped_data")
-        if isinstance(scraped_data, dict):
-            scraped_data = dict(scraped_data)
-            scraped_data.pop("description", None)
-            data["scraped_data"] = self._sanitize_payload(scraped_data)
+        # Drop scraped_data entirely to keep events lean
+        data.pop("scraped_data", None)
 
         for key in ("metadata", "input", "output"):
             if key in data:
@@ -87,7 +86,16 @@ class QueueManager:
             if isinstance(val, str) and len(val) > self._max_string_length:
                 data[key] = val[: self._max_string_length] + "…"
 
+        after = self._byte_length_safe(data)
+
         return data
+
+    @staticmethod
+    def _byte_length_safe(value: Any) -> int:
+        try:
+            return len(json.dumps(value).encode("utf-8"))
+        except Exception:
+            return 0
 
     # --------------------------------------------------------------------- #
     # CRUD HELPERS
