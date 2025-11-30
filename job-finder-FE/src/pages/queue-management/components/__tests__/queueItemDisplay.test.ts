@@ -15,7 +15,7 @@ describe("queueItemDisplay#getStageLabel", () => {
   it("handles pipeline_state as JSON string without throwing", () => {
     const item: QueueItem = {
       ...baseItem,
-      pipeline_state: JSON.stringify({ match_result: { score: 0.9 } }),
+      pipeline_state: JSON.stringify({ match_result: { score: 0.9 } }) as unknown as Record<string, any>,
     }
 
     expect(getStageLabel(item)).toBe("Save")
@@ -24,7 +24,7 @@ describe("queueItemDisplay#getStageLabel", () => {
   it("falls back safely when pipeline_state is malformed JSON", () => {
     const item: QueueItem = {
       ...baseItem,
-      pipeline_state: "not-json-:-)",
+      pipeline_state: "not-json-:-)" as unknown as Record<string, any>,
     }
 
     expect(getStageLabel(item)).toBe("Scrape")

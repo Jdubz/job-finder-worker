@@ -44,7 +44,9 @@ class QueueManager:
             return obj
 
         if isinstance(obj, str):
-            return obj[: self._max_string_length] + "…" if len(obj) > self._max_string_length else obj
+            return (
+                obj[: self._max_string_length] + "…" if len(obj) > self._max_string_length else obj
+            )
 
         if isinstance(obj, list):
             return [self._sanitize_payload(v) for v in obj]
@@ -78,16 +80,7 @@ class QueueManager:
             if isinstance(val, str) and len(val) > self._max_string_length:
                 data[key] = val[: self._max_string_length] + "…"
 
-        after = self._byte_length_safe(data)
-
         return data
-
-    @staticmethod
-    def _byte_length_safe(value: Any) -> int:
-        try:
-            return len(json.dumps(value).encode("utf-8"))
-        except Exception:
-            return 0
 
     # --------------------------------------------------------------------- #
     # CRUD HELPERS
