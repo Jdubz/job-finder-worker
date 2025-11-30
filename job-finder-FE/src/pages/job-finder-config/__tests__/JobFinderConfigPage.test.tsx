@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { BrowserRouter } from "react-router-dom"
 import { JobFinderConfigPage } from "../JobFinderConfigPage"
@@ -65,19 +65,21 @@ describe("JobFinderConfigPage", () => {
     expect(screen.getByRole("tab", { name: "Match Policy" })).toBeInTheDocument()
   })
 
-  it("shows prefilter JSON with stopList", async () => {
+  it("renders managed prefilter fields", async () => {
     renderWithRouter(<JobFinderConfigPage />)
-    const editors = await screen.findAllByRole("textbox")
-    const hasStopList = editors.some((el) => (el as HTMLTextAreaElement).value.includes("stopList"))
-    expect(hasStopList).toBe(true)
+    expect(await screen.findByLabelText(/^strike threshold$/i)).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /stop list/i })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /technology ranks/i })).toBeInTheDocument()
   })
 
-  it("saves prefilter policy", async () => {
+  it("saves prefilter policy with validated fields", async () => {
     const user = userEvent.setup()
     renderWithRouter(<JobFinderConfigPage />)
-    const editor = await screen.findByRole("textbox")
-    await user.type(editor, " ")
-    await user.click(screen.getByRole("button", { name: /save policy/i }))
+    const strikeThreshold = await screen.findByLabelText(/^strike threshold$/i)
+    fireEvent.change(strikeThreshold, { target: { value: "9" } })
+    await user.click(screen.getByRole("button", { name: /save changes/i }))
     await waitFor(() => expect(configClient.updatePrefilterPolicy).toHaveBeenCalled())
+    const payload = vi.mocked(configClient.updatePrefilterPolicy).mock.calls[0]?.[0]
+    expect(payload?.strikeEngine?.strikeThreshold).toBe(9)
   })
 })

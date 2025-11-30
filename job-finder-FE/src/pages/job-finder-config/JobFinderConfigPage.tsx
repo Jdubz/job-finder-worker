@@ -9,10 +9,10 @@ import {
   AISettingsTab,
   SchedulerTab,
   PersonalInfoTab,
+  PrefilterPolicyTab,
+  MatchPolicyTab,
 } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 
 type TabType =
   | "prefilter"
@@ -108,26 +108,20 @@ export function JobFinderConfigPage() {
 
         <div className="space-y-4 py-4">
           {activeTab === "prefilter" && (
-            <PolicyEditor
-              title="Prefilter Policy"
-              description="Stop list + strike filters + technology ranks. This is the only source of truth for pre-filtering."
-              jsonText={configState.prefilterText}
-              setJsonText={configState.setPrefilterText}
+            <PrefilterPolicyTab
+              isSaving={configState.isSaving}
+              policy={configState.prefilterPolicy}
               onSave={configState.handleSavePrefilter}
               onReset={configState.resetPrefilter}
-              isSaving={configState.isSaving}
             />
           )}
 
           {activeTab === "match" && (
-            <PolicyEditor
-              title="Match Policy"
-              description="Match scoring, weights, and dealbreakers. No hardcoded filters exist outside this policy."
-              jsonText={configState.matchText}
-              setJsonText={configState.setMatchText}
+            <MatchPolicyTab
+              isSaving={configState.isSaving}
+              policy={configState.matchPolicy}
               onSave={configState.handleSaveMatch}
               onReset={configState.resetMatch}
-              isSaving={configState.isSaving}
             />
           )}
 
@@ -176,41 +170,6 @@ export function JobFinderConfigPage() {
           )}
         </div>
       </Tabs>
-    </div>
-  )
-}
-
-type PolicyEditorProps = {
-  title: string
-  description: string
-  jsonText: string
-  setJsonText: (val: string) => void
-  onSave: () => Promise<void>
-  onReset: () => void
-  isSaving: boolean
-}
-
-function PolicyEditor({ title, description, jsonText, setJsonText, onSave, onReset, isSaving }: PolicyEditorProps) {
-  return (
-    <div className="space-y-3">
-      <div>
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-      <Textarea
-        value={jsonText}
-        onChange={(e) => setJsonText(e.target.value)}
-        className="font-mono text-xs min-h-[320px]"
-      />
-      <div className="flex gap-2">
-        <Button size="sm" onClick={onSave} disabled={isSaving}>
-          {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-          Save Policy
-        </Button>
-        <Button size="sm" variant="outline" onClick={onReset} disabled={isSaving}>
-          Reset to Loaded
-        </Button>
-      </div>
     </div>
   )
 }
