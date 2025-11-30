@@ -1,21 +1,18 @@
 import { useEffect } from "react"
-import { useForm, useFieldArray, Controller, type Control, type FieldPath } from "react-hook-form"
+import { useForm, useFieldArray, Controller } from "react-hook-form"
 import { TabsContent } from "@/components/ui/tabs"
 import {
   Form,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormDescription,
-  FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { TabCard } from "../shared"
-import { StringListField } from "../shared/StringListField"
+import {
+  CheckboxRow,
+  NumericField,
+  StringListField,
+  TextInputField,
+} from "../shared/form-fields"
 import type { MatchPolicy, JobMatchConfig, CompanyMatchWeights, MatchDealbreakers } from "@shared/types"
 import { DEFAULT_MATCH_POLICY } from "@shared/types"
 import { Plus, Trash2 } from "lucide-react"
@@ -360,23 +357,17 @@ export function MatchPolicyTab({ isSaving, policy, onSave, onReset }: MatchPolic
               <div className="space-y-2">
                 {techPreferencesArray.fields.map((field, index) => (
                   <div key={field.id} className="grid gap-2 md:grid-cols-[2fr,1fr,auto] items-center">
-                    <Input
-                      placeholder="TypeScript"
-                      value={form.watch(`techPreferences.${index}.name`) ?? ""}
-                      onChange={(e) => form.setValue(`techPreferences.${index}.name`, e.target.value, { shouldDirty: true })}
-                    />
-                    <Input
-                      type="number"
-                      placeholder="Weight"
-                      value={form.watch(`techPreferences.${index}.weight`) ?? ""}
-                      onChange={(e) =>
-                        form.setValue(
-                          `techPreferences.${index}.weight`,
-                          e.target.value === "" ? null : Number(e.target.value),
-                          { shouldDirty: true }
-                        )
-                      }
-                    />
+                  <Input
+                    placeholder="TypeScript"
+                    {...form.register(`techPreferences.${index}.name` as const)}
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Weight"
+                    {...form.register(`techPreferences.${index}.weight` as const, {
+                      setValueAs: (v) => (v === "" ? null : Number(v)),
+                    })}
+                  />
                     <Button
                       type="button"
                       variant="ghost"
@@ -407,75 +398,4 @@ export function MatchPolicyTab({ isSaving, policy, onSave, onReset }: MatchPolic
   )
 }
 
-type CheckboxRowProps = {
-  label: string
-  description?: string
-  field: { value?: boolean; onChange: (val: boolean) => void }
-}
-
-function CheckboxRow({ label, description, field }: CheckboxRowProps) {
-  return (
-    <div className="flex items-center space-x-3">
-      <Checkbox checked={Boolean(field.value)} onCheckedChange={(val) => field.onChange(Boolean(val))} />
-      <div>
-        <Label>{label}</Label>
-        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
-      </div>
-    </div>
-  )
-}
-
-type NumericFieldProps = {
-  control: Control<MatchFormValues>
-  name: FieldPath<MatchFormValues>
-  label: string
-  description?: string
-}
-
-function NumericField({ control, name, label, description }: NumericFieldProps) {
-  return (
-    <FormField
-      control={control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <FormControl>
-            <Input
-              type="number"
-              value={typeof field.value === "number" || typeof field.value === "string" ? field.value : ""}
-              onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-            />
-          </FormControl>
-          {description ? <FormDescription>{description}</FormDescription> : null}
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-  )
-}
-
-type TextInputFieldProps = {
-  control: Control<MatchFormValues>
-  name: FieldPath<MatchFormValues>
-  label: string
-  description?: string
-}
-
-function TextInputField({ control, name, label, description }: TextInputFieldProps) {
-  return (
-    <FormField
-      control={control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <FormControl>
-            <Input {...field} value={(field.value as string | undefined) ?? ""} />
-          </FormControl>
-          {description ? <FormDescription>{description}</FormDescription> : null}
-        </FormItem>
-      )}
-    />
-  )
-}
+// helper components moved to shared/form-fields.tsx

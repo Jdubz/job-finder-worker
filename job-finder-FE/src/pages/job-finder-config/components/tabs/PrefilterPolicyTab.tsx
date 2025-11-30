@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { useForm, useFieldArray, Controller, type Control, type FieldPath } from "react-hook-form"
+import { useForm, useFieldArray, Controller } from "react-hook-form"
 import { TabsContent } from "@/components/ui/tabs"
 import {
   Form,
@@ -16,7 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { TabCard } from "../shared"
-import { StringListField } from "../shared/StringListField"
+import {
+  CheckboxRow,
+  NumericField,
+  StringListField,
+  TextInputField,
+} from "../shared/form-fields"
 import type {
   PrefilterPolicy,
   StopList,
@@ -273,13 +278,13 @@ export function PrefilterPolicyTab({ isSaving, policy, onSave, onReset }: Prefil
 
             <section className="space-y-4">
               <h3 className="text-lg font-semibold">Stop List</h3>
-              <StringListField
-                control={form.control}
-                name="stopList.excludedCompanies"
-                label="Excluded Companies"
-                placeholder="Acme Corp"
-                description="Companies that should never reach the match stage."
-              />
+                <StringListField
+                  control={form.control}
+                  name="stopList.excludedCompanies"
+                  label="Excluded Companies"
+                  placeholder="Acme Corp"
+                  description="Companies that should never reach the match stage."
+                />
               <StringListField
                 control={form.control}
                 name="stopList.excludedKeywords"
@@ -481,22 +486,16 @@ export function PrefilterPolicyTab({ isSaving, policy, onSave, onReset }: Prefil
                 <div className="space-y-2">
                   {seniorityArray.fields.map((field, index) => (
                     <div key={field.id} className="grid gap-2 md:grid-cols-[2fr,1fr,auto] items-center">
-                      <Input
-                        placeholder="mid-level"
-                        value={form.watch(`strikeEngine.seniorityStrikesList.${index}.level`) ?? ""}
-                        onChange={(e) => form.setValue(`strikeEngine.seniorityStrikesList.${index}.level`, e.target.value, { shouldDirty: true })}
-                      />
-                      <Input
-                        type="number"
-                        value={form.watch(`strikeEngine.seniorityStrikesList.${index}.points`) ?? ""}
-                        onChange={(e) =>
-                          form.setValue(
-                            `strikeEngine.seniorityStrikesList.${index}.points`,
-                            e.target.value === "" ? null : Number(e.target.value),
-                            { shouldDirty: true }
-                          )
-                        }
-                      />
+                  <Input
+                    placeholder="mid-level"
+                    {...form.register(`strikeEngine.seniorityStrikesList.${index}.level` as const)}
+                  />
+                  <Input
+                    type="number"
+                    {...form.register(`strikeEngine.seniorityStrikesList.${index}.points` as const, {
+                      setValueAs: (v) => (v === "" ? null : Number(v)),
+                    })}
+                  />
                       <Button
                         type="button"
                         variant="ghost"
@@ -593,10 +592,7 @@ export function PrefilterPolicyTab({ isSaving, policy, onSave, onReset }: Prefil
                   <div key={field.id} className="grid gap-3 lg:grid-cols-[2fr,1fr,1fr,1fr,auto] items-center">
                     <Input
                       placeholder="TypeScript"
-                      value={form.watch(`technologyRanks.technologies.${index}.name`) ?? ""}
-                      onChange={(e) =>
-                        form.setValue(`technologyRanks.technologies.${index}.name`, e.target.value, { shouldDirty: true })
-                      }
+                      {...form.register(`technologyRanks.technologies.${index}.name` as const)}
                     />
                     <FormField
                       control={form.control}
@@ -625,26 +621,16 @@ export function PrefilterPolicyTab({ isSaving, policy, onSave, onReset }: Prefil
                     <Input
                       type="number"
                       placeholder="Points"
-                      value={form.watch(`technologyRanks.technologies.${index}.points`) ?? ""}
-                      onChange={(e) =>
-                        form.setValue(
-                          `technologyRanks.technologies.${index}.points`,
-                          e.target.value === "" ? null : Number(e.target.value),
-                          { shouldDirty: true }
-                        )
-                      }
+                      {...form.register(`technologyRanks.technologies.${index}.points` as const, {
+                        setValueAs: (v) => (v === "" ? null : Number(v)),
+                      })}
                     />
                     <Input
                       type="number"
                       placeholder="Min mentions"
-                      value={form.watch(`technologyRanks.technologies.${index}.mentions`) ?? ""}
-                      onChange={(e) =>
-                        form.setValue(
-                          `technologyRanks.technologies.${index}.mentions`,
-                          e.target.value === "" ? null : Number(e.target.value),
-                          { shouldDirty: true }
-                        )
-                      }
+                      {...form.register(`technologyRanks.technologies.${index}.mentions` as const, {
+                        setValueAs: (v) => (v === "" ? null : Number(v)),
+                      })}
                     />
                     <Button
                       type="button"
@@ -697,75 +683,4 @@ export function PrefilterPolicyTab({ isSaving, policy, onSave, onReset }: Prefil
   )
 }
 
-type CheckboxRowProps = {
-  label: string
-  description?: string
-  field: { value?: boolean; onChange: (val: boolean) => void }
-}
-
-function CheckboxRow({ label, description, field }: CheckboxRowProps) {
-  return (
-    <div className="flex items-center space-x-3">
-      <Checkbox checked={Boolean(field.value)} onCheckedChange={(val) => field.onChange(Boolean(val))} />
-      <div>
-        <Label>{label}</Label>
-        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
-      </div>
-    </div>
-  )
-}
-
-type NumericFieldProps = {
-  control: Control<PrefilterFormValues>
-  name: FieldPath<PrefilterFormValues>
-  label: string
-  description?: string
-}
-
-function NumericField({ control, name, label, description }: NumericFieldProps) {
-  return (
-    <FormField
-      control={control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <FormControl>
-            <Input
-              type="number"
-              value={typeof field.value === "number" || typeof field.value === "string" ? field.value : ""}
-              onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-            />
-          </FormControl>
-          {description ? <FormDescription>{description}</FormDescription> : null}
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-  )
-}
-
-type TextInputFieldProps = {
-  control: Control<PrefilterFormValues>
-  name: FieldPath<PrefilterFormValues>
-  label: string
-  description?: string
-}
-
-function TextInputField({ control, name, label, description }: TextInputFieldProps) {
-  return (
-    <FormField
-      control={control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <FormControl>
-            <Input {...field} value={(field.value as string | undefined) ?? ""} />
-          </FormControl>
-          {description ? <FormDescription>{description}</FormDescription> : null}
-        </FormItem>
-      )}
-    />
-  )
-}
+// helper components moved to shared/form-fields.tsx
