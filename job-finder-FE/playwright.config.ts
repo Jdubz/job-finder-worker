@@ -29,8 +29,10 @@ export default defineConfig({
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
 
-  /* Use fewer workers for stability with SQLite backend */
-  workers: process.env.CI ? 2 : 2,
+  /* Use single worker to avoid session conflicts with SQLite backend.
+   * The backend stores one session per user - parallel logins invalidate each other.
+   * TODO: Fix backend to support multiple concurrent sessions per user. */
+  workers: 1,
 
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: process.env.CI
@@ -41,7 +43,7 @@ export default defineConfig({
         ["junit", { outputFile: "playwright-report/junit.xml" }],
       ]
     : [
-        ["html"],
+        ["html", { open: "never" }],
         ["list"],
         ["json", { outputFile: "playwright-report/results.json" }],
       ],

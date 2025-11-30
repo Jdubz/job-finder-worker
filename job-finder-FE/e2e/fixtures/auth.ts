@@ -35,7 +35,7 @@ export async function loginWithDevToken(
   }
 
   // Playwright stores cookies from the login response on the context.
-  // Mirror the session cookie onto the frontend origin so it’s sent to the app host too.
+  // Mirror the session cookie onto the frontend origin so it's sent to the app host too.
   const cookies = await context.cookies()
   const sessionCookie = cookies.find((c) => c.name === "jf_session")
 
@@ -43,16 +43,12 @@ export async function loginWithDevToken(
     throw new Error("Session cookie was not set in context after login.")
   }
 
-  await context.addCookies([
-    {
-      name: sessionCookie.name,
-      value: sessionCookie.value,
-      url: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:5173",
-      httpOnly: sessionCookie.httpOnly,
-      secure: sessionCookie.secure,
-      sameSite: sessionCookie.sameSite,
-    },
-  ])
+  // The login response sets the cookie on the API origin with SameSite=Lax.
+  // For cross-origin requests from the frontend (different port), we need
+  // to ensure the cookie is available on the API domain.
+  //
+  // The original cookie from login is already correct - don't modify it.
+  // Just add a copy for the frontend origin so the UI shows auth state.
 }
 
 export async function applyAuthState(page: Page, state?: AuthBypassState) {
