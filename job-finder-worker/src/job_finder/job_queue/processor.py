@@ -125,8 +125,9 @@ class QueueItemProcessor:
             logger.info(f"Processing queue item {item.id}: {item.type} - {item.url[:50]}...")
 
         try:
-            # Update status to processing
-            self.queue_manager.update_status(item.id, QueueStatus.PROCESSING)
+            # Note: Status will be updated to PROCESSING by each stage method after
+            # dependency checks pass. This prevents premature "processing" events
+            # when items are re-queued due to unmet dependencies.
 
             # Check stop list (skip for SCRAPE and AGENT_REVIEW requests)
             if item.type not in (

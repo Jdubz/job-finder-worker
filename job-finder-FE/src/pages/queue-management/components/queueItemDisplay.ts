@@ -15,7 +15,14 @@ export function getTaskTypeLabel(item: QueueItem): string {
 export function getStageLabel(item: QueueItem): string | null {
   const { pipeline_state, type } = item
 
-  // Derive stage from pipeline_state keys
+  // Use explicit pipeline_stage if available (set by worker)
+  if (pipeline_state?.pipeline_stage) {
+    const stage = pipeline_state.pipeline_stage
+    // Capitalize first letter
+    return stage.charAt(0).toUpperCase() + stage.slice(1)
+  }
+
+  // Fall back to deriving stage from pipeline_state keys (legacy)
   if (pipeline_state) {
     if ("match_result" in pipeline_state) return "Save"
     if ("filter_result" in pipeline_state) return "Analyze"
