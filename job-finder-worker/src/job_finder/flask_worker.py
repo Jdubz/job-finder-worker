@@ -295,7 +295,11 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     )
 
     # Respect AI settings when fetching/extracting company info
-    company_info_fetcher = CompanyInfoFetcher(company_discovery_provider, worker_ai_config)
+    company_info_fetcher = CompanyInfoFetcher(
+        ai_provider=company_discovery_provider,
+        ai_config=worker_ai_config,
+        db_path=db_path,
+    )
     notifier = QueueEventNotifier()
     queue_manager = QueueManager(db_path, notifier=notifier)
     notifier.on_command = queue_manager.handle_command
