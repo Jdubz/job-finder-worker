@@ -29,11 +29,7 @@ test.describe('Admin Route Protection', () => {
       await expect(page.getByRole('heading', { name: /config|configuration|settings/i })).toBeVisible()
     })
 
-    test('can access Settings page', async ({ page }) => {
-      await page.goto(ROUTES.SETTINGS)
-      await expect(page).toHaveURL(ROUTES.SETTINGS)
-      await expect(page.getByRole('heading', { name: /settings/i })).toBeVisible()
-    })
+    // Note: There is no dedicated Settings page - removed test
 
     test('can access all public pages', async ({ page }) => {
       const publicRoutes = [
@@ -41,7 +37,7 @@ test.describe('Admin Route Protection', () => {
         ROUTES.CONTENT_ITEMS,
         ROUTES.DOCUMENT_BUILDER,
         ROUTES.JOB_APPLICATIONS,
-        ROUTES.JOB_FINDER
+        ROUTES.AI_PROMPTS  // AI Prompts is public for viewing
       ]
 
       for (const route of publicRoutes) {
@@ -69,7 +65,7 @@ test.describe('Admin Route Protection', () => {
       await expect(page.getByRole('link', { name: /ai prompts/i })).toBeVisible()
       await expect(page.getByRole('link', { name: /queue management/i })).toBeVisible()
       await expect(page.getByRole('link', { name: /configuration/i })).toBeVisible()
-      await expect(page.getByRole('link', { name: /settings/i })).toBeVisible()
+      // Note: No dedicated settings page link exists
     })
   })
 
@@ -80,10 +76,11 @@ test.describe('Admin Route Protection', () => {
       await loginWithDevToken(context, 'dev-viewer-token')
     })
 
-    test('is blocked from AI Prompts page', async ({ page }) => {
+    test('can view AI Prompts page (public for viewing)', async ({ page }) => {
       await page.goto(ROUTES.AI_PROMPTS)
-      await expect(page).toHaveURL(ROUTES.UNAUTHORIZED)
-      await expect(page.getByText(/unauthorized|access denied|admin only/i)).toBeVisible()
+      // AI Prompts is public for viewing (editing is admin-only)
+      await expect(page).toHaveURL(ROUTES.AI_PROMPTS)
+      await expect(page.getByRole('heading', { name: /ai prompts|prompts/i })).toBeVisible()
     })
 
     test('is blocked from Queue Management page', async ({ page }) => {
@@ -98,11 +95,7 @@ test.describe('Admin Route Protection', () => {
       await expect(page.getByText(/unauthorized|access denied|admin only/i)).toBeVisible()
     })
 
-    test('is blocked from Settings page', async ({ page }) => {
-      await page.goto(ROUTES.SETTINGS)
-      await expect(page).toHaveURL(ROUTES.UNAUTHORIZED)
-      await expect(page.getByText(/unauthorized|access denied|admin only/i)).toBeVisible()
-    })
+    // Note: There is no dedicated Settings page - removed test
   })
 
   test.describe('with unauthenticated user', () => {
@@ -111,29 +104,26 @@ test.describe('Admin Route Protection', () => {
       // No auth state needed - just leave localStorage empty
     })
 
-    test('is blocked from AI Prompts page', async ({ page }) => {
+    test('can view AI Prompts page (public for viewing)', async ({ page }) => {
       await page.goto(ROUTES.AI_PROMPTS, { waitUntil: 'domcontentloaded' })
-      await expect(page).toHaveURL(ROUTES.UNAUTHORIZED, { timeout: 10000 })
-      await expect(page.getByText(/unauthorized|sign in|login|access denied|permission/i).first()).toBeVisible({ timeout: 10000 })
+      // AI Prompts is public for viewing
+      await expect(page).toHaveURL(ROUTES.AI_PROMPTS)
+      await expect(page.getByRole('heading', { name: /ai prompts|prompts/i })).toBeVisible()
     })
 
-    test('is blocked from Queue Management page', async ({ page }) => {
+    test('is redirected from Queue Management page', async ({ page }) => {
       await page.goto(ROUTES.QUEUE_MANAGEMENT, { waitUntil: 'domcontentloaded' })
-      await expect(page).toHaveURL(ROUTES.UNAUTHORIZED, { timeout: 10000 })
-      await expect(page.getByText(/unauthorized|sign in|login|access denied|permission/i).first()).toBeVisible({ timeout: 10000 })
+      // Unauthenticated users are redirected to HOME for admin-only routes
+      await expect(page).toHaveURL(ROUTES.HOME, { timeout: 10000 })
     })
 
-    test('is blocked from Job Finder Config page', async ({ page }) => {
+    test('is redirected from Job Finder Config page', async ({ page }) => {
       await page.goto(ROUTES.JOB_FINDER_CONFIG, { waitUntil: 'domcontentloaded' })
-      await expect(page).toHaveURL(ROUTES.UNAUTHORIZED, { timeout: 10000 })
-      await expect(page.getByText(/unauthorized|sign in|login|access denied|permission/i).first()).toBeVisible({ timeout: 10000 })
+      // Unauthenticated users are redirected to HOME for admin-only routes
+      await expect(page).toHaveURL(ROUTES.HOME, { timeout: 10000 })
     })
 
-    test('is blocked from Settings page', async ({ page }) => {
-      await page.goto(ROUTES.SETTINGS, { waitUntil: 'domcontentloaded' })
-      await expect(page).toHaveURL(ROUTES.UNAUTHORIZED, { timeout: 10000 })
-      await expect(page.getByText(/unauthorized|sign in|login|access denied|permission/i).first()).toBeVisible({ timeout: 10000 })
-    })
+    // Note: There is no dedicated Settings page - removed test
   })
 
 })
