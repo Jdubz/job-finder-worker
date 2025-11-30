@@ -81,10 +81,11 @@ START_RESPONSE=$(curl -sS -X POST "http://localhost:${API_PORT}/api/generator/st
 
 echo "$START_RESPONSE" > "$RESPONSE_FILE"
 
-REQUEST_ID=$(echo "$START_RESPONSE" | jq -r '.data.requestId // empty')
-NEXT_STEP=$(echo "$START_RESPONSE" | jq -r '.data.nextStep // empty')
-RESUME_URL=$(echo "$START_RESPONSE" | jq -r '.data.resumeUrl // empty')
-COVER_URL=$(echo "$START_RESPONSE" | jq -r '.data.coverLetterUrl // empty')
+mapfile -t start_vals < <(echo "$START_RESPONSE" | jq -r '.data | (.requestId // ""), (.nextStep // ""), (.resumeUrl // ""), (.coverLetterUrl // "")')
+REQUEST_ID="${start_vals[0]}"
+NEXT_STEP="${start_vals[1]}"
+RESUME_URL="${start_vals[2]}"
+COVER_URL="${start_vals[3]}"
 
 if [[ -z "$REQUEST_ID" ]]; then
   echo "ERROR: No requestId in response. See $RESPONSE_FILE" >&2
@@ -99,14 +100,15 @@ while [[ -n "$NEXT_STEP" ]]; do
     -H "Authorization: Bearer $AUTH_TOKEN" \
     -H "Content-Type: application/json")
   echo "$STEP_RESPONSE" > "$RESPONSE_FILE"
-  STATUS=$(echo "$STEP_RESPONSE" | jq -r '.data.status // empty')
-  RESUME_URL=$(echo "$STEP_RESPONSE" | jq -r '.data.resumeUrl // empty')
-  COVER_URL=$(echo "$STEP_RESPONSE" | jq -r '.data.coverLetterUrl // empty')
+  mapfile -t step_vals < <(echo "$STEP_RESPONSE" | jq -r '.data | (.status // ""), (.nextStep // ""), (.resumeUrl // ""), (.coverLetterUrl // "")')
+  STATUS="${step_vals[0]}"
+  NEXT_STEP="${step_vals[1]}"
+  RESUME_URL="${step_vals[2]}"
+  COVER_URL="${step_vals[3]}"
   if [[ "$STATUS" == "failed" ]]; then
     echo "ERROR: Generation failed. See $RESPONSE_FILE" >&2
     exit 1
   fi
-  NEXT_STEP=$(echo "$STEP_RESPONSE" | jq -r '.data.nextStep // empty')
 done
 
 # Final response saved
