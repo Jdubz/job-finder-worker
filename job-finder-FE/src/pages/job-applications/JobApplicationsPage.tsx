@@ -24,6 +24,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Loader2, Search, Briefcase } from "lucide-react"
 import { JobDetailsDialog } from "./components/JobDetailsDialog"
+import { CompanyDetailsModal } from "@/components/company"
 import { ROUTES } from "@/types/routes"
 import type { JobMatchWithListing } from "@shared/types"
 import { logger } from "@/services/logging"
@@ -62,6 +63,9 @@ export function JobApplicationsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [priorityFilter, setPriorityFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState<string>("score")
+
+  // Company details modal state
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
 
   // Subscribe to real-time job matches
   useEffect(() => {
@@ -186,7 +190,7 @@ export function JobApplicationsPage() {
 
       {/* Stats Overview */}
       {!loading && matches.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <div className="bg-secondary p-4 rounded-lg">
             <div className="text-2xl font-bold">{matches.length}</div>
             <div className="text-sm text-muted-foreground">Total Matches</div>
@@ -308,12 +312,31 @@ export function JobApplicationsPage() {
                 {filteredMatches.map((match) => (
                   <TableRow
                     key={match.id}
-                    className="cursor-pointer hover:bg-muted/50"
+                    className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
                     onClick={() => handleRowClick(match)}
                   >
-                    <TableCell className="font-medium">{match.listing.title}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {match.listing.companyName}
+                    <TableCell className="max-w-[150px] sm:max-w-[200px]">
+                      <div className="font-medium truncate">{match.listing.title}</div>
+                    </TableCell>
+                    <TableCell>
+                      {match.listing.companyId ? (
+                        <button
+                          type="button"
+                          className="text-blue-600 hover:underline text-left"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedCompanyId(match.listing.companyId!)
+                          }}
+                        >
+                          {match.listing.companyName}
+                        </button>
+                      ) : (
+                        <div className="text-muted-foreground">{match.listing.companyName}</div>
+                      )}
+                      {/* Show location on mobile as secondary text */}
+                      <div className="md:hidden text-xs text-muted-foreground mt-0.5">
+                        {match.listing.location || ""}
+                      </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
                       {match.listing.location || "—"}
@@ -336,6 +359,13 @@ export function JobApplicationsPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onGenerateResume={handleGenerateResume}
+      />
+
+      {/* Company Details Modal */}
+      <CompanyDetailsModal
+        companyId={selectedCompanyId}
+        open={!!selectedCompanyId}
+        onOpenChange={(open) => !open && setSelectedCompanyId(null)}
       />
     </div>
   )

@@ -5,38 +5,32 @@ import type {
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
   UpsertConfigEntryResponse,
-  StopList,
   QueueSettings,
   AISettings,
-  JobFiltersConfig,
-  JobMatchConfig,
-  TechnologyRanksConfig,
   SchedulerSettings,
   JobFinderConfigId,
   PromptConfig,
   WorkerSettings,
+  PrefilterPolicy,
+  MatchPolicy,
 } from '@shared/types'
 import {
   ApiErrorCode,
-  DEFAULT_STOP_LIST,
   DEFAULT_QUEUE_SETTINGS,
   DEFAULT_AI_SETTINGS,
-  DEFAULT_JOB_FILTERS,
-  DEFAULT_JOB_MATCH,
-  DEFAULT_TECH_RANKS,
   DEFAULT_SCHEDULER_SETTINGS,
   DEFAULT_PROMPTS,
   AI_PROVIDER_OPTIONS,
   DEFAULT_WORKER_SETTINGS,
-  isStopList,
   isQueueSettings,
   isAISettings,
-  isJobFiltersConfig,
-  isJobMatchConfig,
-  isTechnologyRanksConfig,
   isSchedulerSettings,
   isPersonalInfo,
   isWorkerSettings,
+  DEFAULT_PREFILTER_POLICY,
+  DEFAULT_MATCH_POLICY,
+  isPrefilterPolicy,
+  isMatchPolicy,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -49,12 +43,10 @@ const updateSchema = z.object({
 })
 
 type KnownPayload =
-  | StopList
   | QueueSettings
   | AISettings
-  | JobFiltersConfig
-  | JobMatchConfig
-  | TechnologyRanksConfig
+  | PrefilterPolicy
+  | MatchPolicy
   | SchedulerSettings
   | PromptConfig
   | WorkerSettings
@@ -116,12 +108,10 @@ function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>):
 
 function seedDefaults(repo: ConfigRepository) {
   const seeds: Array<[JobFinderConfigId, KnownPayload]> = [
-    ['stop-list', DEFAULT_STOP_LIST],
     ['queue-settings', DEFAULT_QUEUE_SETTINGS],
     ['ai-settings', DEFAULT_AI_SETTINGS],
-    ['job-filters', DEFAULT_JOB_FILTERS],
-    ['job-match', DEFAULT_JOB_MATCH],
-    ['technology-ranks', DEFAULT_TECH_RANKS],
+    ['prefilter-policy', DEFAULT_PREFILTER_POLICY],
+    ['match-policy', DEFAULT_MATCH_POLICY],
     ['scheduler-settings', DEFAULT_SCHEDULER_SETTINGS],
     ['ai-prompts', DEFAULT_PROMPTS],
     // We deliberately do not seed worker-settings; prod DB already holds them.
@@ -136,8 +126,6 @@ function seedDefaults(repo: ConfigRepository) {
 
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
   switch (id) {
-    case 'stop-list':
-      return { ...DEFAULT_STOP_LIST, ...normalizeKeys<StopList>(payload) }
     case 'queue-settings': {
       const normalized = normalizeKeys<QueueSettings>(payload)
       return {
@@ -162,44 +150,18 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
         options: AI_PROVIDER_OPTIONS,
       }
     }
-    case 'job-match': {
-      const normalized = normalizeKeys<JobMatchConfig>(payload)
+    case 'prefilter-policy': {
+      const normalized = normalizeKeys<PrefilterPolicy>(payload)
       return {
-        ...DEFAULT_JOB_MATCH,
+        ...DEFAULT_PREFILTER_POLICY,
         ...normalized,
       }
     }
-    case 'job-filters': {
-      const normalized = normalizeKeys<JobFiltersConfig>(payload)
+    case 'match-policy': {
+      const normalized = normalizeKeys<MatchPolicy>(payload)
       return {
-        ...DEFAULT_JOB_FILTERS,
+        ...DEFAULT_MATCH_POLICY,
         ...normalized,
-        hardRejections: {
-          ...DEFAULT_JOB_FILTERS.hardRejections,
-          ...(normalized.hardRejections ?? {}),
-        },
-        remotePolicy: { ...DEFAULT_JOB_FILTERS.remotePolicy, ...(normalized.remotePolicy ?? {}) },
-        salaryStrike: { ...DEFAULT_JOB_FILTERS.salaryStrike, ...(normalized.salaryStrike ?? {}) },
-        experienceStrike: {
-          ...DEFAULT_JOB_FILTERS.experienceStrike,
-          ...(normalized.experienceStrike ?? {}),
-        },
-        qualityStrikes: {
-          ...DEFAULT_JOB_FILTERS.qualityStrikes,
-          ...(normalized.qualityStrikes ?? {}),
-        },
-        ageStrike: { ...DEFAULT_JOB_FILTERS.ageStrike, ...(normalized.ageStrike ?? {}) },
-      }
-    }
-    case 'technology-ranks': {
-      const normalized = normalizeKeys<TechnologyRanksConfig>(payload)
-      return {
-        ...DEFAULT_TECH_RANKS,
-        ...normalized,
-        strikes: {
-          ...DEFAULT_TECH_RANKS.strikes,
-          ...(normalized.strikes ?? {}),
-        },
       }
     }
     case 'scheduler-settings': {
@@ -220,18 +182,14 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
 
 function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean {
   switch (id) {
-    case 'stop-list':
-      return isStopList(payload)
     case 'queue-settings':
       return isQueueSettings(payload)
     case 'ai-settings':
       return isAISettings(payload)
-    case 'job-filters':
-      return isJobFiltersConfig(payload)
-    case 'job-match':
-      return isJobMatchConfig(payload)
-    case 'technology-ranks':
-      return isTechnologyRanksConfig(payload)
+    case 'prefilter-policy':
+      return isPrefilterPolicy(payload)
+    case 'match-policy':
+      return isMatchPolicy(payload)
     case 'scheduler-settings':
       return isSchedulerSettings(payload)
     case 'ai-prompts':

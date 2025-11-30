@@ -144,7 +144,7 @@ export function ScrapeJobDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="w-[95vw] sm:max-w-[500px] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Schedule a scrape</DialogTitle>
           <DialogDescription>
@@ -159,7 +159,7 @@ export function ScrapeJobDialog({
           </Alert>
         )}
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto flex-1">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="targetMatches">Target matches</Label>
@@ -199,8 +199,8 @@ export function ScrapeJobDialog({
                 onChange={(e) => setSourceSearch(e.target.value)}
               />
               <div className="border rounded-md">
-                <ScrollArea className="h-52">
-                  <div className="p-2 space-y-2">
+                <ScrollArea className="h-40 sm:h-48 md:h-52">
+                  <div className="p-2 space-y-1">
                     {loadingSources ? (
                       <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading sources...
@@ -212,8 +212,11 @@ export function ScrapeJobDialog({
                         if (!source.id) return null
                         const selected = form.selectedSourceIds.includes(source.id)
                         return (
-                          <label key={source.id} className="flex items-start gap-2 cursor-pointer">
-                            <Checkbox checked={selected} onCheckedChange={() => toggleSource(source.id)} />
+                          <label
+                            key={source.id}
+                            className="flex items-start gap-2 cursor-pointer p-2 rounded hover:bg-muted active:bg-muted/80 transition-colors"
+                          >
+                            <Checkbox checked={selected} onCheckedChange={() => toggleSource(source.id)} className="mt-0.5" />
                             <div className="flex flex-col">
                               <span className="text-sm font-medium leading-tight">{source.name}</span>
                               <span className="text-xs text-muted-foreground">{source.sourceType}</span>
@@ -228,18 +231,18 @@ export function ScrapeJobDialog({
             </div>
 
             {selectedBadges.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 max-h-[80px] overflow-y-auto">
                 {selectedBadges.map((source) => (
-                  <Badge key={source.id} variant="secondary" className="flex items-center gap-1">
-                    {source.name}
+                  <Badge key={source.id} variant="secondary" className="flex items-center gap-1 pr-1">
+                    <span className="truncate max-w-[120px]">{source.name}</span>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-4 w-4 p-0"
+                      className="h-5 w-5 p-0 rounded-full hover:bg-destructive/20 hover:text-destructive transition-colors"
                       onClick={() => toggleSource(source.id)}
                       aria-label={`Remove ${source.name}`}
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-3.5 w-3.5" />
                     </Button>
                   </Badge>
                 ))}
@@ -250,12 +253,19 @@ export function ScrapeJobDialog({
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
+        <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end pt-4 border-t flex-shrink-0 mt-4">
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting} className="w-full sm:w-auto">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? "Creating..." : "Create scrape"}
+          <Button onClick={handleSubmit} disabled={submitting} className="w-full sm:w-auto">
+            {submitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              "Create scrape"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

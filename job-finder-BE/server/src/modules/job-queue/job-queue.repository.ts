@@ -243,7 +243,6 @@ export class JobQueueRepository {
       failed: 0,
       skipped: 0,
       filtered: 0,
-      needs_review: 0,
       total: 0
     }
 
@@ -266,9 +265,6 @@ export class JobQueueRepository {
           break
         case 'filtered':
           stats.filtered = row.count
-          break
-        case 'needs_review':
-          stats.needs_review = row.count
           break
         default:
           break

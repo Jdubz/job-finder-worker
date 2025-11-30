@@ -75,3 +75,6 @@ infra/sqlite/seeders/output/**/*.json
 *.pem
 *.p12
 *.pfx
+
+.gemini/
+gha-creds-*.json

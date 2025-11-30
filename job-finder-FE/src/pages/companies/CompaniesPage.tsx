@@ -298,22 +298,22 @@ export function CompaniesPage() {
       {/* Companies List */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>Tracked Companies</CardTitle>
               <CardDescription>
                 Click on a company to view details
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <Input
                 placeholder="Search companies..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="w-[200px]"
+                className="w-full sm:w-[200px]"
               />
-              <Button variant="outline" size="icon" onClick={handleSearch}>
+              <Button variant="outline" size="icon" onClick={handleSearch} className="flex-shrink-0">
                 <Search className="h-4 w-4" />
               </Button>
             </div>
@@ -343,10 +343,16 @@ export function CompaniesPage() {
                 {filteredCompanies.map((company: Company) => (
                   <TableRow
                     key={company.id}
-                    className="cursor-pointer hover:bg-muted/50"
+                    className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
                     onClick={() => setSelectedCompany(company)}
                   >
-                    <TableCell className="font-medium">{safeText(company.name)}</TableCell>
+                    <TableCell>
+                      <div className="font-medium">{safeText(company.name)}</div>
+                      {/* Show industry on mobile as secondary text */}
+                      <div className="md:hidden text-xs text-muted-foreground mt-0.5">
+                        {safeText(company.industry, "")}
+                      </div>
+                    </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
                       {safeText(company.industry)}
                     </TableCell>
@@ -368,7 +374,7 @@ export function CompaniesPage() {
           setReanalyzeError(null)
         }
       }}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="w-[95vw] sm:max-w-[600px] max-h-[90vh] overflow-hidden flex flex-col">
           {selectedCompany && (
             <>
               <DialogHeader>
@@ -383,11 +389,11 @@ export function CompaniesPage() {
                 </div>
               </DialogHeader>
 
-              <div className="space-y-4">
+              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
                 {/* ID */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">ID</Label>
-                  <p className="mt-1 text-sm font-mono text-muted-foreground">{safeText(selectedCompany.id)}</p>
+                  <p className="mt-1 text-sm font-mono text-muted-foreground break-all">{safeText(selectedCompany.id)}</p>
                 </div>
 
                 {/* Website */}
@@ -398,10 +404,10 @@ export function CompaniesPage() {
                       href={selectedCompany.website}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center text-blue-600 hover:underline mt-1"
+                      className="flex items-start text-blue-600 hover:underline mt-1 break-all text-sm"
                     >
-                      {safeText(selectedCompany.website)}
-                      <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
+                      <span className="flex-1">{safeText(selectedCompany.website)}</span>
+                      <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0 mt-1" />
                     </a>
                   ) : (
                     <p className="mt-1 text-muted-foreground">—</p>
@@ -430,7 +436,7 @@ export function CompaniesPage() {
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Tech Stack</Label>
                   {selectedCompany.techStack && selectedCompany.techStack.length > 0 ? (
-                    <div className="flex flex-wrap gap-1 mt-1">
+                    <div className="flex flex-wrap gap-1 mt-1 max-h-[100px] overflow-y-auto">
                       {selectedCompany.techStack.map((tech, index) => (
                         <Badge key={index} variant="outline" className="text-xs">
                           {safeText(tech)}
@@ -445,19 +451,37 @@ export function CompaniesPage() {
                 {/* About */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">About</Label>
-                  <p className="mt-1 text-sm">{safeText(selectedCompany.about)}</p>
+                  {selectedCompany.about ? (
+                    <div className="mt-1 text-sm bg-muted p-2 rounded max-h-[100px] overflow-y-auto">
+                      {safeText(selectedCompany.about)}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground">—</p>
+                  )}
                 </div>
 
                 {/* Culture */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Culture</Label>
-                  <p className="mt-1 text-sm">{safeText(selectedCompany.culture)}</p>
+                  {selectedCompany.culture ? (
+                    <div className="mt-1 text-sm bg-muted p-2 rounded max-h-[100px] overflow-y-auto">
+                      {safeText(selectedCompany.culture)}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground">—</p>
+                  )}
                 </div>
 
                 {/* Mission */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Mission</Label>
-                  <p className="mt-1 text-sm">{safeText(selectedCompany.mission)}</p>
+                  {selectedCompany.mission ? (
+                    <div className="mt-1 text-sm bg-muted p-2 rounded max-h-[100px] overflow-y-auto">
+                      {safeText(selectedCompany.mission)}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground">—</p>
+                  )}
                 </div>
 
                 {/* Timestamps */}
@@ -480,19 +504,21 @@ export function CompaniesPage() {
                 )}
               </div>
 
-              <DialogFooter className="flex justify-between sm:justify-between">
+              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between pt-4 border-t flex-shrink-0 mt-4">
                 <Button
                   variant="destructive"
                   onClick={() => selectedCompany.id && handleDelete(selectedCompany.id)}
+                  className="w-full sm:w-auto"
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
                 </Button>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   <Button
                     variant="outline"
                     onClick={() => handleReanalyze(selectedCompany)}
                     disabled={isReanalyzing}
+                    className="w-full sm:w-auto"
                   >
                     {isReanalyzing ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -501,7 +527,7 @@ export function CompaniesPage() {
                     )}
                     Re-analyze
                   </Button>
-                  <Button variant="ghost" onClick={() => setSelectedCompany(null)}>
+                  <Button variant="ghost" onClick={() => setSelectedCompany(null)} className="w-full sm:w-auto">
                     Close
                   </Button>
                 </div>

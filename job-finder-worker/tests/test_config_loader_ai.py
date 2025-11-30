@@ -137,18 +137,23 @@ class TestConfigLoaderJobMatch:
         return str(db_file)
 
     def test_get_job_match_returns_stored_config(self, db_path):
-        """Should return stored job match config from database."""
+        """Should return stored job match config from match-policy.jobMatch."""
         conn = sqlite3.connect(db_path)
+        # match-policy contains jobMatch as a nested key
         payload = {
-            "minMatchScore": 80,
-            "portlandOfficeBonus": 20,
-            "userTimezone": -7,
-            "preferLargeCompanies": False,
-            "generateIntakeData": False,
+            "jobMatch": {
+                "minMatchScore": 80,
+                "portlandOfficeBonus": 20,
+                "userTimezone": -7,
+                "preferLargeCompanies": False,
+                "generateIntakeData": False,
+            },
+            "companyWeights": {},
+            "dealbreakers": {},
         }
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            ("job-match", json.dumps(payload), "2024-01-01", "2024-01-01"),
+            ("match-policy", json.dumps(payload), "2024-01-01", "2024-01-01"),
         )
         conn.commit()
         conn.close()
@@ -175,16 +180,21 @@ class TestConfigLoaderJobMatch:
         assert job_match["generateIntakeData"] is True
 
     def test_get_job_match_returns_partial_config(self, db_path):
-        """Should return partial config as stored (no merging with defaults)."""
+        """Should merge partial jobMatch with defaults."""
         conn = sqlite3.connect(db_path)
-        # Only store some fields
+        # Only store some jobMatch fields
         payload = {
-            "minMatchScore": 85,
-            "generateIntakeData": False,
+            "jobMatch": {
+                "minMatchScore": 85,
+                "generateIntakeData": False,
+            },
+            "companyWeights": {
+                "priorityThresholds": {"high": 85, "medium": 70},
+            },
         }
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            ("job-match", json.dumps(payload), "2024-01-01", "2024-01-01"),
+            ("match-policy", json.dumps(payload), "2024-01-01", "2024-01-01"),
         )
         conn.commit()
         conn.close()
@@ -204,7 +214,7 @@ class TestConfigLoaderJobMatch:
         conn = sqlite3.connect(db_path)
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            ("job-match", "invalid json", "2024-01-01", "2024-01-01"),
+            ("match-policy", "invalid json", "2024-01-01", "2024-01-01"),
         )
         conn.commit()
         conn.close()
@@ -219,11 +229,11 @@ class TestConfigLoaderJobMatch:
         """Should accept various valid match scores."""
         for score in [0, 50, 70, 100]:
             conn = sqlite3.connect(db_path)
-            conn.execute("DELETE FROM job_finder_config WHERE id = 'job-match'")
-            payload = {"minMatchScore": score}
+            conn.execute("DELETE FROM job_finder_config WHERE id = 'match-policy'")
+            payload = {"jobMatch": {"minMatchScore": score}}
             conn.execute(
                 "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                ("job-match", json.dumps(payload), "2024-01-01", "2024-01-01"),
+                ("match-policy", json.dumps(payload), "2024-01-01", "2024-01-01"),
             )
             conn.commit()
             conn.close()
@@ -236,11 +246,11 @@ class TestConfigLoaderJobMatch:
         """Should accept various timezone offsets."""
         for tz in [-12, -8, 0, 5.5, 12]:
             conn = sqlite3.connect(db_path)
-            conn.execute("DELETE FROM job_finder_config WHERE id = 'job-match'")
-            payload = {"userTimezone": tz}
+            conn.execute("DELETE FROM job_finder_config WHERE id = 'match-policy'")
+            payload = {"jobMatch": {"userTimezone": tz}}
             conn.execute(
                 "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                ("job-match", json.dumps(payload), "2024-01-01", "2024-01-01"),
+                ("match-policy", json.dumps(payload), "2024-01-01", "2024-01-01"),
             )
             conn.commit()
             conn.close()
@@ -251,7 +261,7 @@ class TestConfigLoaderJobMatch:
 
 
 class TestConfigLoaderIntegration:
-    """Integration tests for ConfigLoader AI/job-match methods."""
+    """Integration tests for ConfigLoader AI/match-policy methods."""
 
     @pytest.fixture
     def db_path(self, tmp_path):
@@ -273,8 +283,8 @@ class TestConfigLoaderIntegration:
         conn.close()
         return str(db_file)
 
-    def test_ai_settings_and_job_match_are_separate(self, db_path):
-        """Should store and retrieve AI settings and job match independently."""
+    def test_ai_settings_and_match_policy_are_separate(self, db_path):
+        """Should store and retrieve AI settings and match-policy independently."""
         conn = sqlite3.connect(db_path)
 
         # Insert both configs
@@ -282,9 +292,13 @@ class TestConfigLoaderIntegration:
             "selected": {"provider": "claude", "interface": "api", "model": "claude-sonnet"},
             "providers": [],
         }
-        job_match_payload = {
-            "minMatchScore": 90,
-            "portlandOfficeBonus": 25,
+        match_policy_payload = {
+            "jobMatch": {
+                "minMatchScore": 90,
+                "portlandOfficeBonus": 25,
+            },
+            "companyWeights": {},
+            "dealbreakers": {},
         }
 
         conn.execute(
@@ -293,7 +307,7 @@ class TestConfigLoaderIntegration:
         )
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            ("job-match", json.dumps(job_match_payload), "2024-01-01", "2024-01-01"),
+            ("match-policy", json.dumps(match_policy_payload), "2024-01-01", "2024-01-01"),
         )
         conn.commit()
         conn.close()
@@ -316,12 +330,14 @@ class TestConfigLoaderIntegration:
         """Should return consistent results across multiple calls."""
         conn = sqlite3.connect(db_path)
         payload = {
-            "minMatchScore": 75,
-            "portlandOfficeBonus": 15,
+            "jobMatch": {
+                "minMatchScore": 75,
+                "portlandOfficeBonus": 15,
+            },
         }
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            ("job-match", json.dumps(payload), "2024-01-01", "2024-01-01"),
+            ("match-policy", json.dumps(payload), "2024-01-01", "2024-01-01"),
         )
         conn.commit()
         conn.close()
