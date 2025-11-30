@@ -284,14 +284,6 @@ class ConfigLoader:
         job_match["companyWeights"] = policy.get("companyWeights", {})
         return job_match
 
-    def get_job_filters(self) -> Dict[str, Any]:
-        policy = self.get_prefilter_policy()
-        return policy.get("strikeEngine", {})
-
-    def get_technology_ranks(self) -> Dict[str, Any]:
-        policy = self.get_prefilter_policy()
-        return policy.get("technologyRanks", {})
-
     def get_prefilter_policy(self) -> Dict[str, Any]:
         default = {
             "stopList": {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []},

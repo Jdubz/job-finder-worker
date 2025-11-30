@@ -13,44 +13,28 @@ class TestCompanyPipeline:
     @pytest.fixture
     def mock_dependencies(self):
         config_loader = Mock()
-        config_loader.get_job_filters.return_value = {
-            "enabled": False,
-            "hardRejections": {
-                "excludedJobTypes": [],
-                "excludedSeniority": [],
-                "excludedCompanies": [],
-                "excludedKeywords": [],
-            },
-            "remotePolicy": {},
-            "salaryStrike": {},
-            "experienceStrike": {},
-            "seniorityStrikes": {},
-            "qualityStrikes": {},
-            "ageStrike": {},
-        }
-        config_loader.get_technology_ranks.return_value = {"technologies": {}, "strikes": {}}
         config_loader.get_stop_list.return_value = {
             "excludedCompanies": [],
             "excludedDomains": [],
             "excludedKeywords": [],
         }
         config_loader.get_prefilter_policy.return_value = {
-            "enabled": False,
-            "stop_list": {"excludedCompanies": [], "excludedDomains": [], "excludedKeywords": []},
-            "hardRejections": {
-                "excludedJobTypes": [],
-                "excludedSeniority": [],
-                "excludedCompanies": [],
-                "excludedKeywords": [],
+            "stopList": {"excludedCompanies": [], "excludedDomains": [], "excludedKeywords": []},
+            "strikeEngine": {
+                "enabled": False,
+                "hardRejections": {
+                    "excludedJobTypes": [],
+                    "excludedSeniority": [],
+                    "excludedCompanies": [],
+                    "excludedKeywords": [],
+                },
+                "remotePolicy": {},
+                "salaryStrike": {},
+                "seniorityStrikes": {},
+                "qualityStrikes": {},
+                "ageStrike": {},
             },
-            "qualityStrikes": {},
-            "seniorityStrikes": {},
-            "salaryStrike": {},
-            "experienceStrike": {},
-            "ageStrike": {},
-            "remotePolicy": {},
-            "technologyPenalties": {"technologies": {}, "strikes": {}},
-            "priorityThresholds": {"high": 85, "medium": 70},
+            "technologyRanks": {"technologies": {}},
         }
 
         company_info_fetcher = Mock()
