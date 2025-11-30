@@ -9,6 +9,8 @@ Event flow:
 3. BE receives via WebSocket or HTTP and broadcasts to FE via SSE
 """
 
+import json
+
 import sqlite3
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone

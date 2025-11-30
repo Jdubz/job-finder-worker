@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 from datetime import datetime, timezone
@@ -146,7 +145,6 @@ class QueueManager:
             return
 
         now_dt = _utcnow()
-        now_iso = _iso(now_dt)
         item.status = status
         item.updated_at = now_dt
 
