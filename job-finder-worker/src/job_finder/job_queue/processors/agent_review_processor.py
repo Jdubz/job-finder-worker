@@ -160,13 +160,9 @@ class AgentReviewProcessor(BaseProcessor):
 
             # Also update the parent item's review_notes if available
             if parent_item and parent_item.id:
-                # Convert status to QueueStatus enum if it's a string
-                parent_status = parent_item.status
-                if isinstance(parent_status, str):
-                    parent_status = QueueStatus(parent_status)
                 self.queue_manager.update_status(
                     parent_item.id,
-                    parent_status,  # Keep existing status
+                    QueueStatus(parent_item.status),  # Keep existing status
                     parent_item.result_message,
                     review_notes=review_notes,
                 )
