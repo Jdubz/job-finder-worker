@@ -13,7 +13,7 @@ import {
   StringListField,
   TextInputField,
 } from "../shared/form-fields"
-import type { MatchPolicy, JobMatchConfig, CompanyMatchWeights, MatchDealbreakers } from "@shared/types"
+import type { MatchPolicy, CompanyMatchWeights, MatchDealbreakers } from "@shared/types"
 import { DEFAULT_MATCH_POLICY } from "@shared/types"
 import { Plus, Trash2 } from "lucide-react"
 
@@ -22,7 +22,7 @@ type TechPreferenceFormValue = { name: string; weight: number | null }
 type MatchFormValues = {
   version?: string | null
   updatedBy?: string | null
-  jobMatch: JobMatchConfig
+  jobMatch: MatchPolicy["jobMatch"]
   companyWeights: CompanyMatchWeights
   dealbreakers: MatchDealbreakers
   techPreferences: TechPreferenceFormValue[]

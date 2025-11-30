@@ -265,6 +265,25 @@ class ConfigLoader:
             logger.warning("Match policy missing; seeding defaults")
             return self._seed_config("match-policy", default)
 
+    def get_job_match(self) -> Dict[str, Any]:
+        """Get job matching settings from match-policy.jobMatch."""
+        policy = self.get_match_policy()
+        default = {
+            "minMatchScore": 70,
+            "portlandOfficeBonus": 15,
+            "userTimezone": -8,
+            "preferLargeCompanies": True,
+            "generateIntakeData": True,
+        }
+        job_match = policy.get("jobMatch", default)
+        # Merge with defaults for any missing keys
+        for key, value in default.items():
+            if key not in job_match:
+                job_match[key] = value
+        # Also include companyWeights for callers that need priority thresholds
+        job_match["companyWeights"] = policy.get("companyWeights", {})
+        return job_match
+
     def get_job_filters(self) -> Dict[str, Any]:
         policy = self.get_prefilter_policy()
         return policy.get("strikeEngine", {})

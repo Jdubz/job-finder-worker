@@ -288,7 +288,8 @@ class TestStrikeAccumulation:
 
         # Should not have experience-related strikes
         experience_strikes = [
-            r for r in result.rejections
+            r
+            for r in result.rejections
             if r.filter_name == "low_experience" or "experience" in r.reason.lower()
         ]
         assert len(experience_strikes) == 0
@@ -490,10 +491,7 @@ class TestTechnologyStrikes:
         result = engine.evaluate_job(valid_job)
 
         # Should get strike for undesired tech
-        tech_strikes = [
-            r for r in result.rejections
-            if r.filter_name == "undesired_tech"
-        ]
+        tech_strikes = [r for r in result.rejections if r.filter_name == "undesired_tech"]
         assert len(tech_strikes) >= 1
         assert any("cobol" in s.reason.lower() for s in tech_strikes)
 
@@ -505,10 +503,7 @@ class TestTechnologyStrikes:
         result = engine.evaluate_job(valid_job)
 
         # Should not have undesired tech strikes
-        tech_strikes = [
-            r for r in result.rejections
-            if r.filter_name == "undesired_tech"
-        ]
+        tech_strikes = [r for r in result.rejections if r.filter_name == "undesired_tech"]
         assert len(tech_strikes) == 0
 
     def test_no_strike_for_vague_tech_requirements(self, prefilter_policy, valid_job):
@@ -518,20 +513,13 @@ class TestTechnologyStrikes:
         fine - we only penalize for explicitly bad tech matches.
         """
         engine = StrikeFilterEngine(prefilter_policy)
-        valid_job["description"] = (
-            "Looking for a great engineer to join our team! " * 10
-        )
+        valid_job["description"] = "Looking for a great engineer to join our team! " * 10
 
         result = engine.evaluate_job(valid_job)
 
         # Should NOT have any tech-related strikes
-        tech_strikes = [
-            r for r in result.rejections
-            if "tech" in r.filter_category.lower()
-        ]
-        assert len(tech_strikes) == 0, (
-            "Should not penalize for vague/unclear tech requirements"
-        )
+        tech_strikes = [r for r in result.rejections if "tech" in r.filter_category.lower()]
+        assert len(tech_strikes) == 0, "Should not penalize for vague/unclear tech requirements"
 
 
 class TestFilterResult:
