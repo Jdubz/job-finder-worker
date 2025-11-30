@@ -321,8 +321,6 @@ class ConfigLoader:
             },
             "technologyRanks": {
                 "technologies": {},
-                # NOTE: Only perBadTech is used - we don't penalize for vague tech requirements
-                "strikes": {"perBadTech": 2},
             },
         }
         try:

@@ -87,9 +87,6 @@ def base_tech_ranks():
             "aws": {"rank": "nice-to-have", "weight": 0.5},
             "cobol": {"rank": "strike", "points": 2},  # Tech user doesn't have
         },
-        "strikes": {
-            "perBadTech": 2,
-        },
     }
 
 
