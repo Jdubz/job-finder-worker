@@ -83,13 +83,15 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
 
     const normalizeObject = (value: unknown): Record<string, unknown> | null => {
       if (!value) return null
-      if (typeof value === "object") return value as Record<string, unknown>
+      if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>
       if (typeof value === "string") {
         try {
           const parsed = JSON.parse(value)
-          return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null
+          if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+            return parsed as Record<string, unknown>
+          }
         } catch {
-          return null
+          /* ignore invalid JSON */
         }
       }
       return null
