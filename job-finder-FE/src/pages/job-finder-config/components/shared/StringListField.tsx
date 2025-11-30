@@ -2,12 +2,19 @@ import { Button } from "@/components/ui/button"
 import { FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useFormContext, useFieldArray, type Control, type FieldPath, type FieldValues } from "react-hook-form"
+import {
+  useFormContext,
+  useFieldArray,
+  type Control,
+  type FieldValues,
+  type ArrayPath,
+  type FieldPath,
+} from "react-hook-form"
 import { Plus, Trash2 } from "lucide-react"
 
 type StringListFieldProps<TFieldValues extends FieldValues> = {
   control: Control<TFieldValues>
-  name: FieldPath<TFieldValues>
+  name: ArrayPath<TFieldValues> | FieldPath<TFieldValues>
   label: string
   description?: string
   placeholder?: string
@@ -17,13 +24,18 @@ type StringListFieldProps<TFieldValues extends FieldValues> = {
 export function StringListField<TFieldValues extends FieldValues>(props: StringListFieldProps<TFieldValues>) {
   const { control, name, label, description, placeholder, helperError } = props
   const { register } = useFormContext<TFieldValues>()
-  const { fields, append, remove } = useFieldArray({ control, name })
+  const { fields, append, remove } = useFieldArray({ control, name: name as ArrayPath<TFieldValues> })
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label>{label}</Label>
-        <Button type="button" variant="outline" size="sm" onClick={() => append("")}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => append("" as any)}
+        >
           <Plus className="h-4 w-4 mr-1" /> Add
         </Button>
       </div>
@@ -47,7 +59,12 @@ export function StringListField<TFieldValues extends FieldValues>(props: StringL
           </div>
         ))}
         {fields.length === 0 && (
-          <Button type="button" variant="ghost" size="sm" onClick={() => append("")}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => append("" as any)}
+          >
             Add first value
           </Button>
         )}

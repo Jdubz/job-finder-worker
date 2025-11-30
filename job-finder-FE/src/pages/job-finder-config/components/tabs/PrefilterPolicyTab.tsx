@@ -700,7 +700,7 @@ export function PrefilterPolicyTab({ isSaving, policy, onSave, onReset }: Prefil
 type CheckboxRowProps = {
   label: string
   description?: string
-  field: { value: boolean; onChange: (val: boolean) => void }
+  field: { value?: boolean; onChange: (val: boolean) => void }
 }
 
 function CheckboxRow({ label, description, field }: CheckboxRowProps) {
@@ -733,7 +733,7 @@ function NumericField({ control, name, label, description }: NumericFieldProps) 
           <FormControl>
             <Input
               type="number"
-              value={field.value ?? ""}
+              value={typeof field.value === "number" || typeof field.value === "string" ? field.value : ""}
               onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
             />
           </FormControl>
@@ -761,7 +761,7 @@ function TextInputField({ control, name, label, description }: TextInputFieldPro
         <FormItem>
           <FormLabel>{label}</FormLabel>
           <FormControl>
-            <Input {...field} />
+            <Input {...field} value={(field.value as string | undefined) ?? ""} />
           </FormControl>
           {description ? <FormDescription>{description}</FormDescription> : null}
         </FormItem>
