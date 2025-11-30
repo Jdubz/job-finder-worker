@@ -61,14 +61,63 @@ function normalizeJobMatch(match: Record<string, unknown>): {
   matchScore: number
   analyzedAt: Date | string
 } {
+  const asObj = (value: unknown) => (typeof value === "object" && value !== null ? value : {})
+  const listing = asObj(match.listing)
+  const company = asObj(match.company)
+
+  const getString = (obj: Record<string, unknown>, keys: string[], fallback?: string): string => {
+    for (const key of keys) {
+      const value = obj[key]
+      if (typeof value === "string" && value.trim().length > 0) return value
+    }
+    return fallback ?? ""
+  }
+
+  const getNumber = (obj: Record<string, unknown>, keys: string[], fallback = 0): number => {
+    for (const key of keys) {
+      const value = obj[key]
+      if (typeof value === "number") return value
+    }
+    return fallback
+  }
+
+  const jobTitle =
+    getString(match, ["jobTitle", "job_title", "title"]) ||
+    getString(listing, ["title"], "Unknown Title") ||
+    "Unknown Title"
+
+  const rawCompanyName =
+    getString(match, ["companyName", "company_name"]) ||
+    getString(listing, ["companyName"]) ||
+    getString(company, ["name"], "Unknown Company")
+
+  const companyName = rawCompanyName || "Unknown Company"
+
+  const location = getString(match, ["location"]) || getString(listing, ["location"], "Remote")
+
+  const jobDescription =
+    getString(match, ["jobDescription", "job_description", "description"]) ||
+    getString(listing, ["description"], "")
+
+  const matchScore = getNumber(match, ["matchScore", "match_score"]) ||
+    getNumber(listing, ["matchScore"], 0)
+
+  const analyzedAt =
+    (match.analyzedAt as Date | string | undefined) ||
+    (match.analyzed_at as Date | string | undefined) ||
+    (listing.analyzedAt as Date | string | undefined) ||
+    new Date()
+
+  const idValue = (match.id as string | number | undefined) || (listing.id as string | number | undefined) || ""
+
   return {
-    id: match.id || "",
-    jobTitle: match.jobTitle || match.job_title || match.title || "Unknown Title",
-    companyName: match.companyName || match.company_name || match.company || "Unknown Company",
-    location: match.location || "Remote",
-    jobDescription: match.jobDescription || match.job_description || match.description || "",
-    matchScore: match.matchScore || match.match_score || 0,
-    analyzedAt: match.analyzedAt || match.analyzed_at || new Date(),
+    id: typeof idValue === "string" ? idValue : String(idValue),
+    jobTitle,
+    companyName,
+    location,
+    jobDescription,
+    matchScore,
+    analyzedAt,
   }
 }
 
