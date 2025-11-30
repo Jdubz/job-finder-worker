@@ -24,7 +24,7 @@
     "build:frontend": "npm run build:shared && npm run build:frontend:raw",
     "build:frontend:raw": "npm run build --workspace job-finder-FE",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
-    "test:e2e:all": "npm run test:e2e && npm run test:e2e --workspace job-finder-FE",
+    "test:e2e:all": "npm run test:e2e:vitest & npm run test:e2e:playwright & wait",
     "test:e2e:playwright": "npm run test:e2e --workspace job-finder-FE",
     "test:e2e:vitest": "vitest run --config vitest.config.e2e.ts",
     "test:e2e:critical": "npm run test:e2e:critical --workspace job-finder-FE",

@@ -158,11 +158,11 @@ playwright-e2e:
         name: playwright-report
         path: job-finder-FE/playwright-report/
         retention-days: 30
-    - name: Upload videos
+    - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: playwright-videos
+        name: playwright-results
         path: job-finder-FE/test-results/
         retention-days: 7
 ```
@@ -198,11 +198,15 @@ Add to root `package.json`:
 ```json
 {
   "scripts": {
-    "test:e2e:all": "npm run test:e2e && npm run test:e2e --workspace job-finder-FE",
+    "test:e2e:all": "npm run test:e2e:vitest & npm run test:e2e:playwright & wait",
+    "test:e2e:playwright": "npm run test:e2e --workspace job-finder-FE",
+    "test:e2e:vitest": "vitest run --config vitest.config.e2e.ts",
     "test:e2e:critical": "npm run test:e2e:critical --workspace job-finder-FE"
   }
 }
 ```
+
+**Note**: The `test:e2e:all` script runs both test suites in parallel using shell background jobs (`&`) and waits for both to complete. This ensures all test results are visible even if one suite fails.
 
 ### Step 4: Add Test Tags
 

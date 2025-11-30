@@ -16,8 +16,11 @@ This project uses two complementary E2E testing approaches:
 ### Run All E2E Tests
 
 ```bash
-# From project root
+# From project root (runs both test suites in parallel)
 npm run test:e2e:all
+
+# Note: Output may be interleaved. For cleaner output, run sequentially:
+npm run test:e2e:vitest && npm run test:e2e:playwright
 ```
 
 ### Run Playwright Tests Only
