@@ -6,6 +6,14 @@ import type { ContentItemFormValues } from "@/types/content-items"
 import { AI_CONTEXT_OPTIONS } from "@/types/content-items"
 import { ContentItemForm } from "./ContentItemForm"
 import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Trash2 } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import rehypeSanitize from "rehype-sanitize"
+import { cn } from "@/lib/utils"
+
+type MarkdownCodeProps = React.ComponentPropsWithoutRef<"code"> & {
+  inline?: boolean
+}
 
 interface ContentItemCardProps {
   item: ContentItemNode
@@ -210,53 +218,41 @@ export function ContentItemCard({
 }
 
 function Markdown({ text }: { text: string }) {
-  const blocks = text.split(/\n{2,}/)
   return (
-    <div className="space-y-2 text-sm text-muted-foreground">
-      {blocks.map((block, index) => {
-        const trimmed = block.trim()
-        if (!trimmed) return null
-        if (/^-\s/.test(trimmed)) {
-          const items = trimmed
-            .split(/\n/)
-            .filter((line) => /^\s*-\s/.test(line))
-            .map((line) => line.replace(/^\s*-+\s*/, "").trim())
-            .filter(Boolean)
-          if (items.length === 0) return null
-          return (
-            <ul key={`${index}-list`} className="list-disc pl-4">
-              {items.map((item, i) => (
-                <li key={i} dangerouslySetInnerHTML={{ __html: formatInline(item) }} />
-              ))}
-            </ul>
-          )
-        }
-        return (
-          <p
-            key={`${index}-paragraph`}
-            className="leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: formatInline(trimmed) }}
-          />
-        )
-      })}
+    <div
+      className={cn(
+        "space-y-2 text-sm leading-relaxed text-muted-foreground",
+        "[&_a]:text-primary [&_a]:underline",
+        "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5",
+        "[&_strong]:text-foreground",
+        "[&_p]:my-0 [&_ul]:my-0 [&_ol]:my-0",
+        "[&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base",
+        "[&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold",
+        "[&_h1]:mt-2 [&_h2]:mt-2 [&_h3]:mt-2",
+        "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5"
+      )}
+    >
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeSanitize]}
+        components={{
+          a: ({ ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
+          code: ({ inline, className, children, ...props }: MarkdownCodeProps) =>
+            inline ? (
+              <code className={className} {...props}>
+                {children}
+              </code>
+            ) : (
+              <pre className="overflow-x-auto rounded bg-muted p-3 text-xs">
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              </pre>
+            )
+        }}
+      >
+        {text}
+      </ReactMarkdown>
     </div>
   )
-}
-
-function formatInline(value: string): string {
-  const escaped = escapeHtml(value)
-  return escaped
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, "<code>$1</code>")
-    .replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
 }
