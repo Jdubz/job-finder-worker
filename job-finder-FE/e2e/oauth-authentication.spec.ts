@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
-import adminConfig from '../src/config/admins.json' with { type: 'json' }
 import { getAuthIcon, openAuthModal } from './utils/ui'
+
+// Test admin email - this user should have admin role in the database
+const TEST_ADMIN_EMAIL = 'dev-admin@jobfinder.dev'
 
 const TEST_AUTH_STATE_KEY = '__JF_E2E_AUTH_STATE__'
 const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
@@ -106,7 +108,7 @@ test.describe('Google OAuth Authentication Flow', () => {
   })
 
   test('successful authentication with admin email grants admin access', async ({ context }) => {
-    const adminEmail = adminConfig.adminEmails[0] ?? 'contact@joshwentworth.com'
+    const adminEmail = TEST_ADMIN_EMAIL
 
     // Create new page with admin auth state
     const page = await context.newPage()

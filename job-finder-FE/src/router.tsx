@@ -107,44 +107,51 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: ROUTES.JOB_APPLICATIONS,
-        element: (
-          <LazyPage>
-            <JobApplicationsPage />
-          </LazyPage>
-        ),
-      },
-      {
-        path: ROUTES.JOB_LISTINGS,
-        element: (
-          <LazyPage>
-            <JobListingsPage />
-          </LazyPage>
-        ),
-      },
-      {
-        path: ROUTES.COMPANIES,
-        element: (
-          <LazyPage>
-            <CompaniesPage />
-          </LazyPage>
-        ),
-      },
-      {
-        path: ROUTES.SOURCES,
-        element: (
-          <LazyPage>
-            <SourcesPage />
-          </LazyPage>
-        ),
-      },
-      {
         path: ROUTES.UNAUTHORIZED,
         element: (
           <LazyPage>
             <UnauthorizedPage />
           </LazyPage>
         ),
+      },
+
+      // Authenticated routes (require login but not admin)
+      {
+        element: <ProtectedRoute unauthRedirectTo={ROUTES.HOME} />,
+        children: [
+          {
+            path: ROUTES.JOB_APPLICATIONS,
+            element: (
+              <LazyPage>
+                <JobApplicationsPage />
+              </LazyPage>
+            ),
+          },
+          {
+            path: ROUTES.JOB_LISTINGS,
+            element: (
+              <LazyPage>
+                <JobListingsPage />
+              </LazyPage>
+            ),
+          },
+          {
+            path: ROUTES.COMPANIES,
+            element: (
+              <LazyPage>
+                <CompaniesPage />
+              </LazyPage>
+            ),
+          },
+          {
+            path: ROUTES.SOURCES,
+            element: (
+              <LazyPage>
+                <SourcesPage />
+              </LazyPage>
+            ),
+          },
+        ],
       },
       {
         path: ROUTES.TERMS_OF_USE,

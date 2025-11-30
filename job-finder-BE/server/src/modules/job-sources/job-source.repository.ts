@@ -11,7 +11,7 @@ type JobSourceRow = {
   config_json: string
   tags: string | null
   company_id: string | null
-  company_name: string | null
+  aggregator_domain: string | null
   last_scraped_at: string | null
   created_at: string
   updated_at: string
@@ -49,7 +49,7 @@ const buildJobSource = (row: JobSourceRow): JobSource => ({
   configJson: parseJsonObject<Record<string, unknown>>(row.config_json) ?? {},
   tags: parseJsonArray(row.tags),
   companyId: row.company_id,
-  companyName: row.company_name,
+  aggregatorDomain: row.aggregator_domain,
   lastScrapedAt: parseTimestamp(row.last_scraped_at),
   createdAt: parseTimestamp(row.created_at) ?? new Date(),
   updatedAt: parseTimestamp(row.updated_at) ?? new Date()
@@ -115,9 +115,9 @@ export class JobSourceRepository {
     }
 
     if (search) {
-      conditions.push('(LOWER(name) LIKE ? OR LOWER(company_name) LIKE ?)')
+      conditions.push('LOWER(name) LIKE ?')
       const searchTerm = `%${search.toLowerCase()}%`
-      params.push(searchTerm, searchTerm)
+      params.push(searchTerm)
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -164,7 +164,7 @@ export class JobSourceRepository {
 
     const stmt = this.db.prepare(`
       INSERT INTO job_sources (
-        id, name, source_type, status, config_json, tags, company_id, company_name,
+        id, name, source_type, status, config_json, tags, company_id, aggregator_domain,
         last_scraped_at, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
@@ -177,7 +177,7 @@ export class JobSourceRepository {
       JSON.stringify(input.configJson),
       input.tags ? JSON.stringify(input.tags) : null,
       input.companyId ?? null,
-      input.companyName ?? null,
+      input.aggregatorDomain ?? null,
       toIsoString(input.lastScrapedAt),
       now,
       now
@@ -224,9 +224,9 @@ export class JobSourceRepository {
       params.push(updates.companyId)
     }
 
-    if (updates.companyName !== undefined) {
-      setClauses.push('company_name = ?')
-      params.push(updates.companyName)
+    if (updates.aggregatorDomain !== undefined) {
+      setClauses.push('aggregator_domain = ?')
+      params.push(updates.aggregatorDomain)
     }
 
     if (updates.lastScrapedAt !== undefined) {

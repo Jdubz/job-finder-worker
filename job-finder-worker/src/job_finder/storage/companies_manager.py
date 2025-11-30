@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from job_finder.exceptions import StorageError
@@ -65,6 +66,50 @@ class CompaniesManager:
 
     def _normalize_name(self, name: str) -> str:
         return normalize_company_name(name)
+
+    def _get_aggregator_domains(self) -> List[str]:
+        """Get all aggregator domains from job_sources table.
+
+        Used to validate that company websites are not job board URLs.
+        """
+        with sqlite_connection(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT aggregator_domain FROM job_sources WHERE aggregator_domain IS NOT NULL"
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def _validate_website(self, website: Optional[str]) -> Optional[str]:
+        """Validate and clean website URL, rejecting aggregator domains.
+
+        Args:
+            website: The website URL to validate
+
+        Returns:
+            The validated website URL, or None if it's an aggregator domain
+        """
+        if not website:
+            return None
+
+        try:
+            parsed = urlparse(website)
+            domain = parsed.netloc.lower()
+
+            # Get aggregator domains dynamically from job_sources
+            aggregator_domains = self._get_aggregator_domains()
+
+            for agg_domain in aggregator_domains:
+                if agg_domain in domain:
+                    logger.warning(
+                        "Rejecting aggregator URL as company website: %s (matches %s)",
+                        website,
+                        agg_domain,
+                    )
+                    return None
+
+            return website
+        except Exception as e:
+            logger.warning("Failed to validate website URL %s: %s", website, e)
+            return website
 
     # ------------------------------------------------------------------ #
     # Queries
@@ -128,10 +173,13 @@ class CompaniesManager:
         if isinstance(tech_stack, str):
             tech_stack = [tech_stack]
 
+        # Validate website - reject aggregator domains
+        website = self._validate_website(company_data.get("website"))
+
         fields = {
             "name": cleaned_name,
             "name_lower": normalized,
-            "website": company_data.get("website"),
+            "website": website,
             "about": company_data.get("about"),
             "culture": company_data.get("culture"),
             "mission": company_data.get("mission"),

@@ -26,7 +26,7 @@ def _bootstrap_db(path: Path):
               config_json TEXT NOT NULL,
               tags TEXT,
               company_id TEXT,
-              company_name TEXT,
+              aggregator_domain TEXT,
               last_scraped_at TEXT,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
@@ -37,33 +37,33 @@ def _bootstrap_db(path: Path):
         conn.executemany(
             """
             INSERT INTO job_sources (
-              id, name, source_type, status, config_json, company_id, company_name,
+              id, name, source_type, status, config_json, company_id, aggregator_domain,
               created_at, updated_at
             ) VALUES (?, ?, ?, ?, '{}', ?, ?, datetime('now'), datetime('now'))
             """,
             [
-                # Company-linked source
+                # Company-linked source (no aggregator_domain)
                 (
                     "src-coinbase",
                     "Coinbase Jobs",
                     "greenhouse",
                     "active",
                     "company-coinbase",
-                    "Coinbase",
+                    None,
                 ),
                 # Company-linked source with different naming
                 (
                     "src-stripe",
-                    "Stripe Careers Board",
+                    "Stripe Jobs",
                     "greenhouse",
                     "active",
                     "company-stripe",
-                    "Stripe",
+                    None,
                 ),
-                # Job aggregator (no linked company)
-                ("src-jbicy", "Jbicy Remote Jobs", "api", "active", None, None),
-                # Job aggregator (no linked company)
-                ("src-remotive", "Remotive", "rss", "active", None, None),
+                # Job aggregator (has aggregator_domain, no company_id)
+                ("src-jbicy", "Jbicy Remote Jobs", "api", "active", None, "jbicy.io"),
+                # Job aggregator (has aggregator_domain, no company_id)
+                ("src-remotive", "Remotive", "rss", "active", None, "remotive.com"),
             ],
         )
 
@@ -81,13 +81,13 @@ class TestResolveCompanyFromSource:
 
         assert result is not None
         assert result["company_id"] == "company-coinbase"
-        assert result["company_name"] == "Coinbase"
         assert result["is_aggregator"] is False
+        assert result["aggregator_domain"] is None
         assert result["source_id"] == "src-coinbase"
         assert result["source_name"] == "Coinbase Jobs"
 
     def test_resolve_by_source_id_aggregator(self, tmp_path):
-        """Aggregator source (no linked company) returns is_aggregator=True."""
+        """Aggregator source (has aggregator_domain) returns is_aggregator=True."""
         db = tmp_path / "sources.db"
         _bootstrap_db(db)
         manager = JobSourcesManager(str(db))
@@ -96,22 +96,21 @@ class TestResolveCompanyFromSource:
 
         assert result is not None
         assert result["company_id"] is None
-        assert result["company_name"] is None
         assert result["is_aggregator"] is True
+        assert result["aggregator_domain"] == "jbicy.io"
         assert result["source_name"] == "Jbicy Remote Jobs"
 
     def test_resolve_by_company_name_exact_match(self, tmp_path):
-        """Company name matching source's linked company resolves correctly."""
+        """Company name matching source name resolves correctly."""
         db = tmp_path / "sources.db"
         _bootstrap_db(db)
         manager = JobSourcesManager(str(db))
 
-        # "Coinbase" matches source with company_name="Coinbase"
+        # "Coinbase" matches source named "Coinbase Jobs"
         result = manager.resolve_company_from_source(company_name_raw="Coinbase")
 
         assert result is not None
         assert result["company_id"] == "company-coinbase"
-        assert result["company_name"] == "Coinbase"
         assert result["is_aggregator"] is False
 
     def test_resolve_by_company_name_with_suffix(self, tmp_path):
@@ -120,11 +119,11 @@ class TestResolveCompanyFromSource:
         _bootstrap_db(db)
         manager = JobSourcesManager(str(db))
 
-        # "Coinbase Careers" should normalize to "coinbase" and match
+        # "Coinbase Careers" should normalize to "coinbase" and match "Coinbase Jobs"
         result = manager.resolve_company_from_source(company_name_raw="Coinbase Careers")
 
         assert result is not None
-        assert result["company_name"] == "Coinbase"
+        assert result["company_id"] == "company-coinbase"
         assert result["is_aggregator"] is False
 
     def test_resolve_by_company_name_partial_match_aggregator(self, tmp_path):
@@ -171,9 +170,10 @@ class TestResolveCompanyFromSource:
             source_id="src-coinbase", company_name_raw="Stripe"
         )
 
-        # Should return Coinbase (from source_id), not Stripe
+        # Should return Coinbase source (from source_id), not Stripe
         assert result is not None
-        assert result["company_name"] == "Coinbase"
+        assert result["source_name"] == "Coinbase Jobs"
+        assert result["company_id"] == "company-coinbase"
 
 
 class TestMatchSourceByCompanyName:
@@ -185,11 +185,12 @@ class TestMatchSourceByCompanyName:
         _bootstrap_db(db)
         manager = JobSourcesManager(str(db))
 
-        # "stripe" matches source with company_name="Stripe"
+        # "stripe" matches source named "Stripe Jobs"
         source = manager._match_source_by_company_name("stripe")
 
         assert source is not None
-        assert source["companyName"] == "Stripe"
+        assert source["name"] == "Stripe Jobs"
+        assert source["companyId"] == "company-stripe"
 
     def test_partial_match_with_minimum_length(self, tmp_path):
         """Partial matches require 60% overlap ratio to avoid false positives."""
