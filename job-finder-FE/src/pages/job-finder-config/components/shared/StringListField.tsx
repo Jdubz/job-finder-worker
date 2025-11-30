@@ -9,6 +9,7 @@ import {
   type FieldValues,
   type ArrayPath,
   type FieldPath,
+  type FieldArray,
 } from "react-hook-form"
 import { Plus, Trash2 } from "lucide-react"
 
@@ -26,6 +27,8 @@ export function StringListField<TFieldValues extends FieldValues>(props: StringL
   const { register } = useFormContext<TFieldValues>()
   const { fields, append, remove } = useFieldArray({ control, name: name as ArrayPath<TFieldValues> })
 
+  const emptyValue = "" as unknown as FieldArray<TFieldValues, ArrayPath<TFieldValues>>
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -34,7 +37,7 @@ export function StringListField<TFieldValues extends FieldValues>(props: StringL
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => append("" as any)}
+          onClick={() => append(emptyValue)}
         >
           <Plus className="h-4 w-4 mr-1" /> Add
         </Button>
@@ -63,7 +66,7 @@ export function StringListField<TFieldValues extends FieldValues>(props: StringL
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => append("" as any)}
+            onClick={() => append(emptyValue)}
           >
             Add first value
           </Button>
