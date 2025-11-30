@@ -87,6 +87,12 @@ class ScraperIntake:
         except Exception:
             return False
 
+    def _is_likely_board_path(self, url: str) -> bool:
+        # Lightweight path heuristic to catch board/collection pages
+        lower = url.lower()
+        board_tokens = ["/careers", "/jobs", "/job-board", "boards.greenhouse.io", "ashbyhq.com", "workdayjobs"]
+        return any(token in lower for token in board_tokens)
+
     def _check_job_exists(self, normalized_url: str) -> bool:
         """Check if job URL already exists in job_listings (or legacy job_matches)."""
         if self.job_listing_storage:
@@ -211,16 +217,33 @@ class ScraperIntake:
                 # Normalize URL for consistent comparison
                 normalized_url = normalize_url(url)
 
-                # Check if URL already in queue
-                if self.queue_manager.url_exists_in_queue(normalized_url):
+                # If URL appears to be a board/aggregator, keep it in input but require a detail URL
+                is_aggregator = self._is_aggregator_domain(normalized_url)
+                is_board_path = self._is_likely_board_path(normalized_url)
+                canonical_url = normalized_url
+
+                detail_url = job.get("detail_url") or job.get("job_url")
+                if (is_aggregator or is_board_path) and detail_url:
+                    canonical_url = normalize_url(detail_url)
+                elif is_aggregator or is_board_path:
+                    # No per-job URL; reroute as scrape_source task instead of enqueueing a JOB
                     skipped_count += 1
-                    logger.debug(f"Job already in queue: {normalized_url}")
+                    logger.info(
+                        "Board URL without detail; skipping job and deferring to source scrape: %s",
+                        normalized_url,
+                    )
+                    continue
+
+                # Check if URL already in queue
+                if self.queue_manager.url_exists_in_queue(canonical_url):
+                    skipped_count += 1
+                    logger.debug(f"Job already in queue: {canonical_url}")
                     continue
 
                 # Check if job already exists in job_listings (or legacy job_matches)
-                if self._check_job_exists(normalized_url):
+                if self._check_job_exists(canonical_url):
                     skipped_count += 1
-                    logger.debug(f"Job already exists in job_listings: {normalized_url}")
+                    logger.debug(f"Job already exists in job_listings: {canonical_url}")
                     continue
 
                 # Clean company label scraped from the listing (avoid storing "Acme Careers")
@@ -271,7 +294,7 @@ class ScraperIntake:
                 # If scraped_data provided, it will skip scraping and go to filtering
                 queue_item = JobQueueItem(
                     type=QueueItemType.JOB,
-                    url=normalized_url,
+                    url=canonical_url,
                     company_name=company_name,
                     company_id=company_id,
                     source=source,
@@ -291,6 +314,9 @@ class ScraperIntake:
                         if source_label or listing_id
                         else ({"job_listing_id": listing_id} if listing_id else None)
                     ),
+                    input={
+                        "source_url": normalized_url if (is_aggregator or is_board_path) else None,
+                    },
                 )
 
                 # Add to queue
