@@ -657,7 +657,7 @@ export function QueueManagementPage() {
       </Dialog>
 
       <Dialog open={Boolean(selectedItem)} onOpenChange={(open) => !open && setSelectedItem(null)}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-[520px]" data-testid="queue-item-dialog">
           {selectedItem && (
             <>
               <DialogHeader>
@@ -675,7 +675,7 @@ export function QueueManagementPage() {
                   {getSourceLabel(selectedItem) && <Badge variant="outline">{getSourceLabel(selectedItem)}</Badge>}
                 </div>
 
-                <div className="rounded-md border p-3 space-y-1 bg-muted/60">
+                <div className="rounded-md border p-3 space-y-1 bg-muted/60" data-testid="queue-item-url">
                   <p className="text-xs text-muted-foreground">URL</p>
                   <a
                     className="text-primary underline break-all"
@@ -695,7 +695,7 @@ export function QueueManagementPage() {
                 </div>
 
                 {selectedItem.result_message && (
-                  <div className="rounded-md border p-3 bg-muted/60">
+                  <div className="rounded-md border p-3 bg-muted/60" data-testid="queue-item-result">
                     <p className="text-xs text-muted-foreground mb-1">Result</p>
                     <p className="text-sm text-foreground">{selectedItem.result_message}</p>
                   </div>

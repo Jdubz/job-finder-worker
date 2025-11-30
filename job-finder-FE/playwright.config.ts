@@ -19,6 +19,7 @@ process.env.JF_E2E_OWNER_EMAIL = ownerEmail
  */
 export default defineConfig({
   testDir: "./e2e",
+  globalSetup: "./e2e/global-setup.ts",
 
   /* Run tests in files in parallel */
   fullyParallel: true,
@@ -51,6 +52,8 @@ export default defineConfig({
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: frontendBaseUrl,
     headless: true,
+    /* Reuse admin auth state to avoid relogin in every test; individual specs can clear/override. */
+    storageState: "e2e/.auth/admin.json",
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
@@ -74,6 +77,15 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "chromium-smoke",
+      testMatch: [
+        "e2e/smoke-navigation.spec.ts",
+        "e2e/owner-content-and-queue.spec.ts",
+        "e2e/queue-events.spec.ts",
+      ],
+      use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/admin.json" },
     },
   ],
 
