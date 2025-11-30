@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,9 @@ import {
 } from "@/components/ui/select"
 import type { ContentItemFormValues, ContentItemAIContext } from "@/types/content-items"
 import { AI_CONTEXT_OPTIONS } from "@/types/content-items"
+import { remark } from "remark"
+import remarkLint from "remark-lint"
+import remarkPresetLintRecommended from "remark-preset-lint-recommended"
 
 interface ContentItemFormProps {
   initialValues?: ContentItemFormValues
@@ -46,6 +49,7 @@ export function ContentItemForm({
     initialValues?.skills?.length ? initialValues.skills.join(", ") : ""
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [lintMessages, setLintMessages] = useState<string[]>([])
 
   const handleChange =
     (field: keyof ContentItemFormValues) =>
@@ -82,6 +86,39 @@ export function ContentItemForm({
       setIsSubmitting(false)
     }
   }
+
+  useEffect(() => {
+    let cancelled = false
+    const text = formValues.description ?? ""
+    if (!text.trim()) {
+      setLintMessages([])
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const file = await remark()
+          .use(remarkLint)
+          .use(remarkPresetLintRecommended)
+          .process(text)
+        if (cancelled) return
+        const messages = file.messages.map((message) => {
+          const location = message.line ? ` (line ${message.line})` : ""
+          return `${message.message}${location}`
+        })
+        setLintMessages(messages)
+      } catch (_err) {
+        if (!cancelled) {
+          setLintMessages(["Markdown linting failed."])
+        }
+      }
+    }, 250)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [formValues.description])
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
@@ -157,6 +194,20 @@ export function ContentItemForm({
           onChange={handleChange("description")}
           placeholder="Describe the impact, responsibilities, and outcomes."
         />
+        {lintMessages.length > 0 ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <div className="font-semibold">Markdown lint</div>
+            <ul className="mt-1 list-disc pl-4">
+              {lintMessages.map((msg, idx) => (
+                <li key={idx}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Tip: use # headings, lists, and backticks; live lint will flag common formatting issues.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
