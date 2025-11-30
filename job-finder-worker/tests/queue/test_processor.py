@@ -338,8 +338,8 @@ def test_job_analyze_skips_company_when_source_name(
     # Mock resolve_company_from_source (used by _ensure_company_dependency)
     mock_managers["sources_manager"].resolve_company_from_source.return_value = {
         "company_id": source_company_id,
-        "company_name": "RemoteOK Inc" if source_company_id else None,
         "is_aggregator": source_company_id is None,
+        "aggregator_domain": "remoteok.com" if source_company_id is None else None,
         "source_id": "src_remoteok",
         "source_name": "RemoteOK API",
     }

@@ -31,6 +31,24 @@ from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
+# Known aggregator domains - these host jobs for multiple companies
+# Maps domain pattern to the aggregator_domain value to store
+AGGREGATOR_DOMAINS = {
+    "remotive.com": "remotive.com",
+    "remotive.io": "remotive.com",
+    "weworkremotely.com": "weworkremotely.com",
+    "indeed.com": "indeed.com",
+    "linkedin.com": "linkedin.com",
+    "glassdoor.com": "glassdoor.com",
+    "angel.co": "angel.co",
+    "wellfound.com": "wellfound.com",
+    "builtin.com": "builtin.com",
+    "himalayas.app": "himalayas.app",
+    "jobicy.com": "jobicy.com",
+    "remoteok.com": "remoteok.com",
+    "remoteok.io": "remoteok.com",
+}
+
 # Agent prompt for source discovery/scraping recovery tasks
 SOURCE_AGENT_PROMPT = (
     "You are the primary agent for job source configuration recovery. "
@@ -137,38 +155,44 @@ class SourceProcessor(BaseProcessor):
                 )
                 return
 
-            # Extract company name
-            company_name = config.company_name or source_config.get("company_name", "")
-            if not company_name:
-                company_name = self._extract_company_from_url(url)
+            # Detect if this is an aggregator based on URL
+            aggregator_domain = self._detect_aggregator_domain(url)
 
-            # Resolve company_id: look up existing company or create stub
+            # Extract company info (only if not an aggregator)
+            company_name = None
             company_id = config.company_id
             company_created = False
-            if not company_id and company_name:
-                # Try to find or create company record
-                company_website = self._extract_base_url(url)
-                company_record = self.companies_manager.get_or_create_company(
-                    company_name=company_name,
-                    company_website=company_website,
-                )
-                company_id = company_record.get("id")
-                # Check if this is a newly created stub (minimal data)
-                company_created = not company_record.get("about")
-                logger.info(
-                    "Resolved company for source: %s -> %s (created=%s)",
-                    company_name,
-                    company_id,
-                    company_created,
-                )
+
+            if not aggregator_domain:
+                # This is a company-specific source, resolve company
+                company_name = config.company_name or source_config.get("company_name", "")
+                if not company_name:
+                    company_name = self._extract_company_from_url(url)
+
+                if not company_id and company_name:
+                    # Find or create company record (without setting website from source URL)
+                    company_record = self.companies_manager.get_or_create_company(
+                        company_name=company_name,
+                        company_website=None,  # Let company enrichment find the real website
+                    )
+                    company_id = company_record.get("id")
+                    company_created = not company_record.get("about")
+                    logger.info(
+                        "Resolved company for source: %s -> %s (created=%s)",
+                        company_name,
+                        company_id,
+                        company_created,
+                    )
 
             source_type = source_config.get("type", "unknown")
 
-            # Determine confidence based on source type
-            confidence = "high" if source_type in ("api", "rss") else "medium"
-
-            # Create source
-            source_name = f"{company_name} Jobs" if company_name else f"Source ({source_type})"
+            # Create source name
+            if company_name:
+                source_name = f"{company_name} Jobs"
+            elif aggregator_domain:
+                source_name = f"{aggregator_domain.split('.')[0].title()} Jobs"
+            else:
+                source_name = f"Source ({source_type})"
 
             needs_api_key = bool(validation_meta.get("needs_api_key"))
             disabled_notes = (
@@ -182,12 +206,8 @@ class SourceProcessor(BaseProcessor):
                 name=source_name,
                 source_type=source_type,
                 config=source_config,
-                discovered_via=item.source or "user_submission",
-                discovered_by=item.submitted_by,
-                discovery_confidence=confidence,
-                discovery_queue_item_id=item.id,
                 company_id=company_id,
-                company_name=company_name,
+                aggregator_domain=aggregator_domain,
                 status=initial_status,
             )
 
@@ -269,29 +289,27 @@ class SourceProcessor(BaseProcessor):
         except Exception:
             return ""
 
-    def _extract_base_url(self, url: str) -> str:
-        """Extract base URL (scheme + netloc) from a full URL."""
+    def _detect_aggregator_domain(self, url: str) -> Optional[str]:
+        """Detect if URL belongs to a known job aggregator.
+
+        Args:
+            url: The source URL to check
+
+        Returns:
+            The aggregator domain if detected, None if company-specific
+        """
         try:
             parsed = urlparse(url)
-            # For job board URLs like boards.greenhouse.io/company, try to get company website
-            # For most cases, just return scheme + netloc
-            if "greenhouse.io" in parsed.netloc or "lever.co" in parsed.netloc:
-                # These are job board URLs, not company websites
-                # Try to construct a likely company website
-                path_parts = parsed.path.strip("/").split("/")
-                if path_parts and path_parts[0]:
-                    return f"https://{path_parts[0]}.com"
-            if "ashbyhq.com" in parsed.netloc:
-                path_parts = parsed.path.strip("/").split("/")
-                if len(path_parts) >= 2:
-                    return f"https://{path_parts[1]}.com"
-            if "myworkdayjobs.com" in parsed.netloc:
-                # Workday URLs are like company.wd5.myworkdayjobs.com
-                tenant = parsed.netloc.split(".")[0]
-                return f"https://{tenant}.com"
-            return f"{parsed.scheme}://{parsed.netloc}"
+            domain = parsed.netloc.lower()
+
+            # Check against known aggregator domains
+            for pattern, aggregator_domain in AGGREGATOR_DOMAINS.items():
+                if pattern in domain:
+                    return aggregator_domain
+
+            return None
         except Exception:
-            return url
+            return None
 
     # ============================================================
     # SOURCE SCRAPING
@@ -347,11 +365,18 @@ class SourceProcessor(BaseProcessor):
 
             # Scrape using GenericScraper
             try:
-                # Get company name for override
-                company_id = source.get("companyId") or source.get("company_id")
-                company_name = (
-                    source.get("companyName") or source.get("company_name") or source_name
+                # Determine if this is an aggregator or company-specific source
+                is_aggregator = bool(
+                    source.get("aggregator_domain") or source.get("aggregatorDomain")
                 )
+                company_id = source.get("companyId") or source.get("company_id")
+
+                # Get company name ONLY from linked company - never fall back to source name
+                company_name = None
+                if not is_aggregator and company_id:
+                    company_record = self.companies_manager.get_company_by_id(company_id)
+                    if company_record:
+                        company_name = company_record.get("name")
 
                 # Expand config based on source_type (converts simple configs to full scraper configs)
                 try:

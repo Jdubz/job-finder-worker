@@ -643,19 +643,19 @@ class JobProcessor(BaseProcessor):
 
             # Source has linked company - use that instead
             actual_company_id = source_resolution["company_id"]
-            actual_company_name = source_resolution["company_name"]
-
-            if actual_company_name and actual_company_name != company_name_clean:
-                logger.info(
-                    "Resolved company via source: '%s' -> '%s' (source: %s)",
-                    company_name_clean,
-                    actual_company_name,
-                    source_resolution["source_name"],
-                )
-                company_name_clean = actual_company_name
 
             company = self.companies_manager.get_company_by_id(actual_company_id)
             if company:
+                actual_company_name = company.get("name")
+                if actual_company_name and actual_company_name != company_name_clean:
+                    logger.info(
+                        "Resolved company via source: '%s' -> '%s' (source: %s)",
+                        company_name_clean,
+                        actual_company_name,
+                        source_resolution["source_name"],
+                    )
+                    company_name_clean = actual_company_name
+
                 job_data["company"] = actual_company_name or company_name_clean
                 return self._finalize_company_dependency(
                     item, job_data, company, company_website, pipeline_state, state_updates

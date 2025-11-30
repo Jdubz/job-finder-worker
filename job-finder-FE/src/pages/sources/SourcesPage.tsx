@@ -180,7 +180,7 @@ export function SourcesPage() {
   // Filter sources locally for search (in addition to server-side filtering)
   const filteredSources = sources.filter((source) => {
     if (searchTerm && !source.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        !source.companyName?.toLowerCase().includes(searchTerm.toLowerCase())) {
+        !source.aggregatorDomain?.toLowerCase().includes(searchTerm.toLowerCase())) {
       return false
     }
     if (statusFilter !== "all" && source.status !== statusFilter) {
@@ -377,7 +377,11 @@ export function SourcesPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {source.companyName || "—"}
+                      {source.aggregatorDomain
+                        ? `Aggregator: ${source.aggregatorDomain}`
+                        : source.companyId
+                          ? "Company-specific"
+                          : "—"}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -413,7 +417,11 @@ export function SourcesPage() {
                   <div>
                     <DialogTitle className="text-xl">{selectedSource.name}</DialogTitle>
                     <DialogDescription className="mt-1">
-                      {selectedSource.companyName || "No company associated"}
+                      {selectedSource.aggregatorDomain
+                        ? `Aggregator: ${selectedSource.aggregatorDomain}`
+                        : selectedSource.companyId
+                          ? "Company-specific source"
+                          : "No company associated"}
                     </DialogDescription>
                   </div>
                   <Badge className={statusColors[selectedSource.status]}>
@@ -473,10 +481,10 @@ export function SourcesPage() {
                   <p className="mt-1 text-sm font-mono text-muted-foreground">{selectedSource.companyId || "—"}</p>
                 </div>
 
-                {/* Company Name */}
+                {/* Aggregator Domain */}
                 <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company Name</Label>
-                  <p className="mt-1">{selectedSource.companyName || "—"}</p>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Aggregator Domain</Label>
+                  <p className="mt-1">{selectedSource.aggregatorDomain || "—"}</p>
                 </div>
 
                 {/* Tags */}
