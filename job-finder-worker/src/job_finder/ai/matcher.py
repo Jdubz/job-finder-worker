@@ -97,6 +97,7 @@ class AIJobMatcher:
         prefer_large_companies: bool = True,
         config: Optional[Dict[str, Any]] = None,
         company_weights: Optional[Dict[str, Any]] = None,
+        dealbreakers: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize AI job matcher.
@@ -120,6 +121,12 @@ class AIJobMatcher:
         self.prefer_large_companies = prefer_large_companies
         self.config = config or {}
         self.company_weights = company_weights or self.DEFAULT_COMPANY_WEIGHTS
+        self.dealbreakers = dealbreakers or {
+            "maxTimezoneDiffHours": 8,
+            "blockedLocations": [],
+            "requireRemote": False,
+            "allowHybridInTimezone": True,
+        }
         self.prompts = JobMatchPrompts()
 
     def analyze_job(
@@ -319,6 +326,39 @@ class AIJobMatcher:
             if tz_adj != 0:
                 match_score += tz_adj
                 adjustments.append(f"⏰ {desc} {tz_adj:+}")
+
+            # Config-driven dealbreakers
+            db = self.dealbreakers or {}
+            max_diff = db.get("maxTimezoneDiffHours", 8)
+            blocked_locations = [str(x).lower() for x in db.get("blockedLocations", [])]
+            require_remote = bool(db.get("requireRemote", False))
+            allow_hybrid = bool(db.get("allowHybridInTimezone", True))
+
+            location_text = (job_location or headquarters_location or company_name or "").lower()
+            blocked_hit = any(token in location_text for token in blocked_locations)
+            tz_beyond = hour_diff > max_diff if max_diff is not None else False
+
+            if blocked_hit or tz_beyond:
+                mismatch_penalty = -40
+                match_score += mismatch_penalty
+                adjustments.append(
+                    f"🚫 Dealbreaker: timezone/location ({desc}) {mismatch_penalty}"
+                )
+                concerns = match_analysis.setdefault("potential_concerns", [])
+                concerns.append(
+                    "Timezone/location mismatch: outside preferred window; candidate will not relocate or work incompatible hours."
+                )
+                match_analysis["application_priority"] = "Low"
+
+            if require_remote:
+                location_lower = (job_location or "").lower()
+                if "onsite" in location_lower or ("hybrid" in location_lower and not allow_hybrid):
+                    mismatch_penalty = -25
+                    match_score += mismatch_penalty
+                    adjustments.append("🚫 Dealbreaker: onsite requirement")
+                    concerns = match_analysis.setdefault("potential_concerns", [])
+                    concerns.append("Role requires onsite/hybrid but policy requires remote-only.")
+                    match_analysis["application_priority"] = "Low"
 
             # Hard-stop mismatch: user only works 8a-8p PT and will not relocate.
             location_text = job_location or headquarters_location or company_name

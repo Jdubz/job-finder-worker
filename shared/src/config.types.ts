@@ -196,6 +196,30 @@ export interface JobFiltersConfig {
   }
 }
 
+export interface PrefilterPolicy {
+  stopList: StopList
+  strikeEngine: JobFiltersConfig
+  technologyRanks: TechnologyRanksConfig
+  version?: string
+  updatedBy?: string
+}
+
+export interface MatchDealbreakers {
+  maxTimezoneDiffHours: number
+  blockedLocations: string[]
+  requireRemote: boolean
+  allowHybridInTimezone: boolean
+}
+
+export interface MatchPolicy {
+  jobMatch: JobMatchConfig
+  companyWeights: CompanyMatchWeights
+  dealbreakers: MatchDealbreakers
+  techPreferences?: Record<string, number>
+  version?: string
+  updatedBy?: string
+}
+
 export type TechnologyRank = {
   rank: "required" | "ok" | "strike" | "fail"
   points?: number
@@ -360,6 +384,8 @@ export const DEFAULT_JOB_MATCH: JobMatchConfig = {
   },
 }
 
+export const DEFAULT_COMPANY_WEIGHTS = DEFAULT_JOB_MATCH.companyWeights
+
 export const DEFAULT_JOB_FILTERS: JobFiltersConfig = {
   enabled: true,
   strikeThreshold: 5,
@@ -405,6 +431,23 @@ export const DEFAULT_JOB_FILTERS: JobFiltersConfig = {
 export const DEFAULT_TECH_RANKS: TechnologyRanksConfig = {
   technologies: {},
   strikes: { missingAllRequired: 1, perBadTech: 2 },
+}
+
+export const DEFAULT_PREFILTER_POLICY: PrefilterPolicy = {
+  stopList: DEFAULT_STOP_LIST,
+  strikeEngine: DEFAULT_JOB_FILTERS,
+  technologyRanks: DEFAULT_TECH_RANKS,
+}
+
+export const DEFAULT_MATCH_POLICY: MatchPolicy = {
+  jobMatch: DEFAULT_JOB_MATCH,
+  companyWeights: DEFAULT_COMPANY_WEIGHTS!,
+  dealbreakers: {
+    maxTimezoneDiffHours: 8,
+    blockedLocations: ["india", "bangalore", "bengaluru", "ist"],
+    requireRemote: false,
+    allowHybridInTimezone: true,
+  },
 }
 
 export const DEFAULT_SCHEDULER_SETTINGS: SchedulerSettings = {

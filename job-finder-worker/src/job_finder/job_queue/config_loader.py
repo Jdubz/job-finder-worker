@@ -222,120 +222,99 @@ class ConfigLoader:
             "options": options,
         }
 
-    def get_job_match(self) -> Dict[str, Any]:
-        """Get job matching preferences (scoring, bonuses, thresholds)."""
-        default_weights = {
-            "bonuses": {
-                "remoteFirst": 15,
-                "aiMlFocus": 10,
-            },
-            "sizeAdjustments": {
-                "largeCompanyBonus": 10,
-                "smallCompanyPenalty": -5,
-                "largeCompanyThreshold": 10000,
-                "smallCompanyThreshold": 100,
-            },
-            "timezoneAdjustments": {
-                "sameTimezone": 5,
-                "diff1to2hr": -2,
-                "diff3to4hr": -5,
-                "diff5to8hr": -10,
-                "diff9plusHr": -15,
-            },
-            "priorityThresholds": {
-                "high": 85,
-                "medium": 70,
-            },
-        }
-
+    def get_match_policy(self) -> Dict[str, Any]:
         default = {
-            "minMatchScore": 70,
-            "portlandOfficeBonus": 15,
-            "userTimezone": -8,
-            "preferLargeCompanies": True,
-            "generateIntakeData": True,
-            "companyWeights": default_weights,
-        }
-        try:
-            cfg = self._get_config("job-match") or {}
-            cfg_weights = cfg.get("companyWeights") or {}
-
-            weights = {
+            "jobMatch": {
+                "minMatchScore": 70,
+                "portlandOfficeBonus": 15,
+                "userTimezone": -8,
+                "preferLargeCompanies": True,
+                "generateIntakeData": True,
+            },
+            "companyWeights": {
                 "bonuses": {
-                    **default_weights["bonuses"],
-                    **(cfg_weights.get("bonuses") or {}),
+                    "remoteFirst": 15,
+                    "aiMlFocus": 10,
                 },
                 "sizeAdjustments": {
-                    **default_weights["sizeAdjustments"],
-                    **(cfg_weights.get("sizeAdjustments") or {}),
+                    "largeCompanyBonus": 10,
+                    "smallCompanyPenalty": -5,
+                    "largeCompanyThreshold": 10000,
+                    "smallCompanyThreshold": 100,
                 },
                 "timezoneAdjustments": {
-                    **default_weights["timezoneAdjustments"],
-                    **(cfg_weights.get("timezoneAdjustments") or {}),
+                    "sameTimezone": 5,
+                    "diff1to2hr": -2,
+                    "diff3to4hr": -5,
+                    "diff5to8hr": -10,
+                    "diff9plusHr": -15,
                 },
                 "priorityThresholds": {
-                    **default_weights["priorityThresholds"],
-                    **(cfg_weights.get("priorityThresholds") or {}),
+                    "high": 85,
+                    "medium": 70,
                 },
-            }
-
-            return {**default, **cfg, "companyWeights": weights}
-        except InitializationError:
-            logger.warning("Job match config missing; seeding defaults")
-            return self._seed_config("job-match", default)
-
-    def get_job_filters(self) -> Dict[str, Any]:
-        default = {
-            "enabled": True,
-            "strikeThreshold": 5,
-            "hardRejections": {
-                "excludedJobTypes": [],
-                "excludedSeniority": [],
-                "excludedCompanies": [],
-                "excludedKeywords": [],
-                "requiredTitleKeywords": [
-                    "software",
-                    "developer",
-                    "engineer",
-                    "frontend",
-                    "full stack",
-                    "fullstack",
-                ],
-                "minSalaryFloor": 100000,
-                "rejectCommissionOnly": True,
             },
-            "remotePolicy": {
-                "allowRemote": True,
-                "allowHybridPortland": True,
-                "allowOnsite": False,
+            "dealbreakers": {
+                "maxTimezoneDiffHours": 8,
+                "blockedLocations": ["india", "bangalore", "bengaluru", "ist"],
+                "requireRemote": False,
+                "allowHybridInTimezone": True,
             },
-            "salaryStrike": {"enabled": True, "threshold": 150000, "points": 2},
-            "experienceStrike": {"enabled": True, "minPreferred": 6, "points": 1},
-            "seniorityStrikes": {},
-            "qualityStrikes": {
-                "minDescriptionLength": 200,
-                "shortDescriptionPoints": 1,
-                "buzzwords": [],
-                "buzzwordPoints": 1,
-            },
-            "ageStrike": {"enabled": True, "strikeDays": 1, "rejectDays": 7, "points": 1},
         }
         try:
-            return self._get_config("job-filters")
+            return self._get_config("match-policy") or default
         except InitializationError:
-            logger.warning("Job filters missing; seeding defaults")
-            return self._seed_config("job-filters", default)
+            logger.warning("Match policy missing; seeding defaults")
+            return self._seed_config("match-policy", default)
 
-    def get_technology_ranks(self) -> Dict[str, Any]:
+    def get_prefilter_policy(self) -> Dict[str, Any]:
         default = {
-            "technologies": {},
-            "strikes": {"missingAllRequired": 1, "perBadTech": 2},
+            "stopList": {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []},
+            "strikeEngine": {
+                "enabled": True,
+                "strikeThreshold": 5,
+                "hardRejections": {
+                    "excludedJobTypes": [],
+                    "excludedSeniority": [],
+                    "excludedCompanies": [],
+                    "excludedKeywords": [],
+                    "requiredTitleKeywords": [
+                        "software",
+                        "developer",
+                        "engineer",
+                        "frontend",
+                        "full stack",
+                        "fullstack",
+                    ],
+                    "minSalaryFloor": 100000,
+                    "rejectCommissionOnly": True,
+                },
+                "remotePolicy": {
+                    "allowRemote": True,
+                    "allowHybridPortland": True,
+                    "allowOnsite": False,
+                },
+                "salaryStrike": {"enabled": True, "threshold": 150000, "points": 2},
+                "experienceStrike": {"enabled": True, "minPreferred": 6, "points": 1},
+                "seniorityStrikes": {},
+                "qualityStrikes": {
+                    "minDescriptionLength": 200,
+                    "shortDescriptionPoints": 1,
+                    "buzzwords": [],
+                    "buzzwordPoints": 1,
+                },
+                "ageStrike": {"enabled": True, "strikeDays": 1, "rejectDays": 7, "points": 1},
+            },
+            "technologyRanks": {
+                "technologies": {},
+                "strikes": {"missingAllRequired": 1, "perBadTech": 2},
+            },
         }
         try:
-            return self._get_config("technology-ranks")
+            return self._get_config("prefilter-policy") or default
         except InitializationError:
-            logger.warning("Technology ranks missing; seeding defaults")
-            return self._seed_config("technology-ranks", default)
+            logger.warning("Prefilter policy missing; seeding defaults")
+            return self._seed_config("prefilter-policy", default)
 
     def get_scheduler_settings(self) -> Dict[str, Any]:
         default = {"pollIntervalSeconds": 60}

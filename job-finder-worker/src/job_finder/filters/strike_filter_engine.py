@@ -25,16 +25,15 @@ class StrikeFilterEngine:
     Tier 2: Strike accumulation (fail if >= threshold)
     """
 
-    def __init__(self, config: dict, tech_ranks: dict):
-        """
-        Initialize strike-based filter engine.
-
-        Args:
-            config: Main filter configuration (job-finder-config/job-filters)
-            tech_ranks: Technology ranking config (job-finder-config/technology-ranks)
-        """
-        self.config = config
-        self.tech_ranks = tech_ranks
+    def __init__(self, policy: dict):
+        """Initialize strike-based filter engine from consolidated prefilter policy."""
+        self.policy = policy
+        self.stop_list = policy.get("stopList", {})
+        self.stop_companies = [c.lower() for c in self.stop_list.get("excludedCompanies", [])]
+        self.stop_keywords = [k.lower() for k in self.stop_list.get("excludedKeywords", [])]
+        self.stop_domains = [d.lower() for d in self.stop_list.get("excludedDomains", [])]
+        config = policy.get("strikeEngine", {})
+        self.tech_ranks = policy.get("technologyRanks", {})
         self.enabled = config.get("enabled", True)
         self.strike_threshold = config.get("strikeThreshold", 5)
 
@@ -321,7 +320,9 @@ class StrikeFilterEngine:
         """Check if company is in exclusion list."""
         company_lower = company.lower()
 
-        for excluded in self.excluded_companies:
+        combined_companies = self.excluded_companies + self.stop_companies
+
+        for excluded in combined_companies:
             if excluded in company_lower:
                 result.add_rejection(
                     filter_category="hard_reject",
@@ -338,7 +339,9 @@ class StrikeFilterEngine:
         """Check for deal-breaker keywords."""
         description_lower = description.lower()
 
-        for keyword in self.excluded_keywords:
+        combined_keywords = self.excluded_keywords + self.stop_keywords
+
+        for keyword in combined_keywords:
             # For multi-word phrases, use phrase matching
             # For single words, use word boundary matching
             if " " in keyword:
