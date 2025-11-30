@@ -32,7 +32,7 @@ describeIntegration("Job Queue API Integration", () => {
       expect(item.type).toBe("job")
       expect(item.status).toBe("pending")
       expect(item.url).toContain("https://")
-      expect(item.company_name.length).toBeGreaterThan(0)
+      expect((item.company_name ?? "").length).toBeGreaterThan(0)
       expect(item.source).toBe("user_submission")
     })
 

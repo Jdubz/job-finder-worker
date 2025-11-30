@@ -80,14 +80,9 @@ def main():
     target_matches = args.max_jobs or 10
 
     # Resolve DB path
-    db_path = (
-        os.getenv("JF_SQLITE_DB_PATH")
-        or os.getenv("JOB_FINDER_SQLITE_PATH")
-        or os.getenv("SQLITE_DB_PATH")
-        or os.getenv("DATABASE_PATH")
-    )
+    db_path = os.getenv("SQLITE_DB_PATH") or os.getenv("DATABASE_PATH")
     if not db_path:
-        print("❌ JF_SQLITE_DB_PATH not set")
+        print("❌ SQLITE_DB_PATH not set")
         sys.exit(1)
 
     # Build core components

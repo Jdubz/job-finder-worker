@@ -7,8 +7,8 @@ export type TabCardProps = {
   description: string
   hasChanges: boolean
   isSaving: boolean
-  onSave: () => void
-  onReset: () => void
+  onSave: () => void | Promise<void>
+  onReset: () => void | unknown
   children: React.ReactNode
   showActions?: boolean
 }

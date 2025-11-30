@@ -26,9 +26,9 @@ export QUEUE_WORKER_LOG_FILE=${QUEUE_WORKER_LOG_FILE:-logs/worker.log}
 export PYTHONPATH="${PWD}/src:${PYTHONPATH}"
 
 # Force the worker to use the production SQLite db unless explicitly overridden
-export JF_SQLITE_DB_PATH=${JF_SQLITE_DB_PATH:-/srv/job-finder/jobfinder.db}
-if [ ! -f "$JF_SQLITE_DB_PATH" ]; then
-  echo "❌ JF_SQLITE_DB_PATH ($JF_SQLITE_DB_PATH) not found. Point to the prod db before starting." >&2
+export SQLITE_DB_PATH=${SQLITE_DB_PATH:-/srv/job-finder/jobfinder.db}
+if [ ! -f "$SQLITE_DB_PATH" ]; then
+  echo "❌ SQLITE_DB_PATH ($SQLITE_DB_PATH) not found. Point to the prod db before starting." >&2
   exit 1
 fi
 

@@ -9,30 +9,17 @@ CREATE TABLE job_queue (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     status TEXT NOT NULL,
-    url TEXT NOT NULL DEFAULT '',
-    company_name TEXT NOT NULL DEFAULT '',
-    company_id TEXT,
-    source TEXT,
-    submitted_by TEXT,
+    url TEXT,
+    tracking_id TEXT,
+    parent_item_id TEXT,
+    input TEXT,
+    output TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     processed_at TEXT,
     completed_at TEXT,
-    scraped_data TEXT,
-    scrape_config TEXT,
-    source_discovery_config TEXT,
-    source_id TEXT,
-    source_type TEXT,
-    source_config TEXT,
-    source_tier TEXT,
-    pipeline_state TEXT,
-    parent_item_id TEXT,
-    company_sub_task TEXT,
-    tracking_id TEXT,
     result_message TEXT,
-    error_details TEXT,
-    review_notes TEXT,
-    metadata TEXT
+    error_details TEXT
 );
 """
 
@@ -104,9 +91,11 @@ def test_submit_scrape_enqueues_item(tmp_path, capsys):
     row = rows[0]
     assert row["type"] == "scrape"
     assert row["status"] == "pending"
-    assert row["source"] == "automated_scan"
 
-    scrape_config = json.loads(row["scrape_config"])
+    input_payload = json.loads(row["input"])
+    assert input_payload["source"] == "automated_scan"
+
+    scrape_config = input_payload["scrape_config"]
     assert scrape_config["target_matches"] == 5
     assert scrape_config["max_sources"] == 3
     assert scrape_config["min_match_score"] == 70
@@ -129,7 +118,8 @@ def test_submit_scrape_seeds_defaults_when_config_missing(tmp_path):
     rows = _fetch_queue_rows(db_path)
     assert len(rows) == 1
 
-    scrape_config = json.loads(rows[0]["scrape_config"])
+    input_payload = json.loads(rows[0]["input"])
+    scrape_config = input_payload["scrape_config"]
     # Defaults are all None when not set
     assert scrape_config["target_matches"] is None
     assert scrape_config["max_sources"] is None
@@ -155,7 +145,8 @@ def test_submit_scrape_uses_db_config_as_fallback(tmp_path):
     rows = _fetch_queue_rows(db_path)
     assert len(rows) == 1
 
-    scrape_config = json.loads(rows[0]["scrape_config"])
+    input_payload = json.loads(rows[0]["input"])
+    scrape_config = input_payload["scrape_config"]
     assert scrape_config["target_matches"] == 10
     assert scrape_config["max_sources"] == 5
     assert scrape_config["min_match_score"] == 80

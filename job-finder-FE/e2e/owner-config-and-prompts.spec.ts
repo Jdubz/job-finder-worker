@@ -12,19 +12,26 @@ test.describe("Owner configuration and prompts", () => {
     await expect(page.getByRole("heading", { name: "Job Finder Configuration" })).toBeVisible()
     const getActiveTab = () => page.locator('[role="tabpanel"][data-state="active"]').first()
 
-    // Stop list tab
-    await expect(page.getByText(/No excluded companies/i)).toBeVisible()
+    // Prefilter tab (default)
+    await expect(getActiveTab().getByLabel("Strike Threshold")).toBeVisible()
+    await getActiveTab().getByLabel("Strike Threshold").fill("7")
+    await page.getByRole("button", { name: /save changes/i }).click()
+    await expect(page.getByText(/Prefilter policy saved/i)).toBeVisible()
+
+    // Match policy tab
+    await page.getByRole("tab", { name: "Match Policy" }).click()
+    await expect(getActiveTab().getByLabel(/Minimum Match Score/i)).toBeVisible()
+    await getActiveTab().getByLabel(/Minimum Match Score/i).fill("85")
+    await page.getByRole("button", { name: /save changes/i }).click()
+    await expect(page.getByText(/Match policy saved/i)).toBeVisible()
 
     // Queue settings tab
-    await page.getByRole("tab", { name: "Queue Settings" }).click()
-    await expect(getActiveTab().getByLabel("Max Retries")).toBeVisible()
-    await expect(getActiveTab().getByLabel("Retry Delay (seconds)")).toBeVisible()
+    await page.getByRole("tab", { name: "Queue" }).click()
+    await expect(getActiveTab().getByLabel(/Processing Timeout/)).toBeVisible()
 
     // AI settings tab
-    await page.getByRole("tab", { name: "AI Settings" }).click()
-    await expect(getActiveTab().getByRole("combobox", { name: "AI Provider" })).toBeVisible()
-    await expect(getActiveTab().getByRole("combobox", { name: "AI Provider" })).toBeVisible()
-    await expect(getActiveTab().getByLabel("Model")).toBeVisible()
+    await page.getByRole("tab", { name: "AI" }).click()
+    await expect(getActiveTab().getByRole("combobox", { name: /Provider/i })).toBeVisible()
 
     // AI prompts page
     await page.goto("/ai-prompts")

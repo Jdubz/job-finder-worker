@@ -50,7 +50,7 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
   const title = getJobTitle(item)
   const company = getCompanyName(item)
   const stage = getStageLabel(item)
-  const domain = getDomain(item.url)
+  const domain = getDomain(item.url || "")
   const source = getSourceLabel(item)
   const taskType = getTaskTypeLabel(item)
 
@@ -93,7 +93,7 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
                 <div className="flex items-center gap-2 min-w-0">
                   <ExternalLink className="h-3 w-3 flex-shrink-0 text-emerald-600 dark:text-emerald-200" />
                   <a
-                    href={item.url}
+                    href={item.url || undefined}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="truncate text-emerald-700 font-medium hover:underline dark:text-emerald-100"

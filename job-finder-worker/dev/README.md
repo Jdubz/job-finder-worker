@@ -57,7 +57,7 @@ python dev/bin/run_search.py --max-jobs 10 --mode full
 ```
 
 **Environment Variables:**
-- `JF_SQLITE_DB_PATH` - Path to SQLite database (required)
+- `SQLITE_DB_PATH` - Path to SQLite database (required)
 - `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` - AI provider credentials
 
 ---
@@ -217,6 +217,6 @@ python dev/testing/safe_test_runner.py
 
 ```bash
 # Set environment and run search
-export JF_SQLITE_DB_PATH=.dev/data/jobfinder.db
+export SQLITE_DB_PATH=.dev/data/jobfinder.db
 python dev/bin/run_search.py --max-jobs 5 --mode quick
 ```

@@ -15,9 +15,16 @@ def mock_queue_manager():
 
 
 @pytest.fixture
-def scraper_intake(mock_queue_manager):
+def mock_sources_manager():
+    mgr = MagicMock()
+    mgr.get_aggregator_domains.return_value = ["greenhouse.io", "ashbyhq.com"]
+    return mgr
+
+
+@pytest.fixture
+def scraper_intake(mock_queue_manager, mock_sources_manager):
     """Create scraper intake with mock manager."""
-    return ScraperIntake(queue_manager=mock_queue_manager)
+    return ScraperIntake(queue_manager=mock_queue_manager, sources_manager=mock_sources_manager)
 
 
 def test_submit_jobs_success(scraper_intake, mock_queue_manager):
@@ -129,6 +136,23 @@ def test_submit_company_success(scraper_intake, mock_queue_manager):
     assert call_args.type == "company"
     assert call_args.company_name == "Test Corp"
     assert call_args.url == "https://testcorp.com"
+
+
+def test_submit_company_aggregator_url_moves_to_input(scraper_intake, mock_queue_manager):
+    mock_queue_manager.url_exists_in_queue.return_value = False
+    mock_queue_manager.add_item.return_value = "doc-id-456"
+
+    result = scraper_intake.submit_company(
+        company_name="Aggregated Inc",
+        company_website="https://boards.greenhouse.io/acme",
+        source="scraper",
+    )
+
+    assert result == "doc-id-456"
+    call_args = mock_queue_manager.add_item.call_args[0][0]
+    assert call_args.url is None  # board URL not used for canonical queue URL
+    assert call_args.input.get("board_url") == "https://boards.greenhouse.io/acme"
+    assert call_args.input.get("company_website") == "https://boards.greenhouse.io/acme"
 
 
 def test_submit_company_duplicate(scraper_intake, mock_queue_manager):

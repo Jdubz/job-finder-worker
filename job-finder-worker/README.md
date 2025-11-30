@@ -19,14 +19,14 @@ make test
 python run_job_search_unified.py --max-jobs 20
 ```
 
-The worker now expects `JF_SQLITE_DB_PATH` (or `infra/sqlite/jobfinder.db` inside the repo) and reuses the shared queue schema/types that ship from the root `shared/` workspace. Use the root Husky hooks + CI workflows for lint/test enforcement.
+The worker now expects `SQLITE_DB_PATH` (or `infra/sqlite/jobfinder.db` inside the repo) and reuses the shared queue schema/types that ship from the root `shared/` workspace. Use the root Husky hooks + CI workflows for lint/test enforcement.
 
 ## Queue live updates (Node API bridge)
 
 To stream queue status to the Node backend and receive cancel commands in real time:
 
 ```bash
-export JF_SQLITE_DB_PATH=./infra/sqlite/jobfinder.db
+export SQLITE_DB_PATH=./infra/sqlite/jobfinder.db
 export JF_NODE_API_BASE=http://localhost:8080/api
 export JF_WORKER_WS_TOKEN=local-worker-secret   # must match server WORKER_WS_TOKEN
 export JF_NODE_API_TOKEN=local-worker-secret     # used for HTTP fallback and WS auth header
