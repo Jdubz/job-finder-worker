@@ -38,12 +38,7 @@ def main() -> None:
 
     # Load queue settings for task delay
     # Use same ENV variable precedence as initialize_components()
-    db_path = (
-        os.getenv("JF_SQLITE_DB_PATH")
-        or os.getenv("JOB_FINDER_SQLITE_PATH")
-        or os.getenv("SQLITE_DB_PATH")
-        or os.getenv("DATABASE_PATH")
-    )
+    db_path = os.getenv("SQLITE_DB_PATH") or os.getenv("DATABASE_PATH")
     config_loader = ConfigLoader(db_path)
 
     # Get task delay from settings (default to 1 second) with validation

@@ -116,7 +116,9 @@ class QueueItemProcessor:
         if item.type == QueueItemType.SCRAPE:
             logger.info(f"Processing queue item {item.id}: SCRAPE request")
         else:
-            logger.info(f"Processing queue item {item.id}: {item.type} - {item.url[:50]}...")
+            logger.info(
+                f"Processing queue item {item.id}: {item.type} - {(item.url or '')[:50]}..."
+            )
 
         try:
             # Note: Status will be updated to PROCESSING by each stage method after

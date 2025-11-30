@@ -36,7 +36,7 @@ services:
       ENABLE_CRON: "false"  # Disable cron for dev - use manual submissions
       ENABLE_FLASK_WORKER: "true"
       ENABLE_HOT_RELOAD: "true"
-      JF_SQLITE_DB_PATH: /data/sqlite/jobfinder.db
+      SQLITE_DB_PATH: /data/sqlite/jobfinder.db
       WORKER_PORT: "5555"
       WORKER_HOST: "0.0.0.0"
       POLL_INTERVAL: "10"  # Faster polling for dev

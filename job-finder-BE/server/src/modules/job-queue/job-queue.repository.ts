@@ -1,12 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type {
-  QueueItem,
-  QueueStats,
-  QueueStatus,
-  QueueSource,
-  SourceTier
-} from '@shared/types'
+import type { QueueItem, QueueStats, QueueStatus } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
 type TimestampInput = QueueItem['created_at'] | string | null | undefined
@@ -15,22 +9,11 @@ type QueueItemRow = {
   id: string
   type: QueueItem['type']
   status: QueueStatus
-  url: string
-  company_name: string
-  source: QueueSource
-  submitted_by: string | null
-  company_id: string | null
-  metadata: string | null
-  scrape_config: string | null
-  scraped_data: string | null
-  source_discovery_config: string | null
-  pipeline_state: string | null
-  parent_item_id: string | null
-  source_id: string | null
-  source_type: string | null
-  source_config: string | null
-  source_tier: SourceTier | null
+  url: string | null
   tracking_id: string | null
+  parent_item_id: string | null
+  input: string | null
+  output: string | null
   created_at: string
   updated_at: string
   processed_at: string | null
@@ -76,35 +59,39 @@ const serializeJson = (value: unknown): string | null => {
 }
 
 const buildQueueItem = (row: QueueItemRow): QueueItem => {
-  const item: QueueItem = {
+  const input = parseJson<Record<string, unknown>>(row.input) ?? {}
+  const output = parseJson<Record<string, unknown>>(row.output) ?? {}
+
+  return {
     id: row.id,
     type: row.type,
     status: row.status,
-    url: row.url,
-    company_name: row.company_name,
-    company_id: row.company_id,
-    source: row.source,
-    submitted_by: row.submitted_by,
+    url: row.url ?? undefined,
+    tracking_id: row.tracking_id && row.tracking_id.length > 0 ? row.tracking_id : undefined,
+    parent_item_id: row.parent_item_id ?? undefined,
+    input,
+    output,
+    // Derived convenience fields for compatibility with existing UI/API consumers
+    company_name: (input.company_name as string | undefined) ?? undefined,
+    company_id: (input.company_id as string | undefined) ?? undefined,
+    source: (input.source as any) ?? undefined,
+    submitted_by: (input.submitted_by as string | undefined) ?? undefined,
+    scrape_config: (input.scrape_config as any) ?? undefined,
+    scraped_data: (output.scraped_data as any) ?? undefined,
+    source_discovery_config: (input.source_discovery_config as any) ?? undefined,
+    source_id: (input.source_id as string | undefined) ?? undefined,
+    source_type: (input.source_type as string | undefined) ?? undefined,
+    source_config: (input.source_config as any) ?? undefined,
+    source_tier: (input.source_tier as any) ?? undefined,
+    pipeline_state: (output.pipeline_state as any) ?? undefined,
+    metadata: (input.metadata as any) ?? undefined,
     result_message: row.result_message ?? undefined,
     error_details: row.error_details ?? undefined,
     created_at: parseTimestamp(row.created_at) ?? new Date(),
     updated_at: parseTimestamp(row.updated_at) ?? new Date(),
     processed_at: parseTimestamp(row.processed_at) ?? undefined,
-    completed_at: parseTimestamp(row.completed_at) ?? undefined,
-    metadata: parseJson(row.metadata) ?? undefined,
-    scrape_config: parseJson(row.scrape_config) ?? undefined,
-    scraped_data: parseJson(row.scraped_data) ?? undefined,
-    source_discovery_config: parseJson(row.source_discovery_config) ?? undefined,
-    pipeline_state: parseJson(row.pipeline_state) ?? undefined,
-    parent_item_id: row.parent_item_id ?? undefined,
-    source_id: row.source_id ?? undefined,
-    source_type: row.source_type ?? undefined,
-    source_config: parseJson(row.source_config) ?? undefined,
-    source_tier: row.source_tier ?? undefined,
-    tracking_id: row.tracking_id && row.tracking_id.length > 0 ? row.tracking_id : undefined
+    completed_at: parseTimestamp(row.completed_at) ?? undefined
   }
-
-  return item
 }
 
 export class JobQueueRepository {
@@ -126,48 +113,27 @@ export class JobQueueRepository {
 
     const stmt = this.db.prepare(`
       INSERT INTO job_queue (
-        id, type, status, url, company_name, source,
-        submitted_by, company_id, metadata, scrape_config, scraped_data,
-        source_discovery_config, pipeline_state, parent_item_id,
-        source_id, source_type, source_config, source_tier,
-        tracking_id, created_at, updated_at, processed_at, completed_at,
-        result_message, error_details
-      ) VALUES (
-        ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?
-      )
+        id, type, status, url, tracking_id, parent_item_id,
+        input, output, result_message, error_details,
+        created_at, updated_at, processed_at, completed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
       id,
       data.type,
       data.status,
-      data.url,
-      data.company_name,
-      data.source,
-      data.submitted_by ?? null,
-      data.company_id ?? null,
-      serializeJson(data.metadata),
-      serializeJson(data.scrape_config),
-      serializeJson(data.scraped_data),
-      serializeJson(data.source_discovery_config),
-      serializeJson(data.pipeline_state),
-      data.parent_item_id ?? null,
-      data.source_id ?? null,
-      data.source_type ?? null,
-      serializeJson(data.source_config),
-      data.source_tier ?? null,
+      data.url ?? null,
       trackingId,
+      data.parent_item_id ?? null,
+      serializeJson(data.input),
+      serializeJson(data.output),
+      data.result_message ?? null,
+      data.error_details ?? null,
       createdAt,
       updatedAt,
       processedAt,
-      completedAt,
-      data.result_message ?? null,
-      data.error_details ?? null
+      completedAt
     )
 
     return this.getById(id) as QueueItem
@@ -188,7 +154,6 @@ export class JobQueueRepository {
   list(options: {
     status?: QueueStatus | QueueStatus[]
     type?: QueueItem['type']
-    source?: QueueSource
     limit?: number
     offset?: number
   } = {}): QueueItem[] {
@@ -205,11 +170,6 @@ export class JobQueueRepository {
     if (options.type) {
       sql += ' AND type = ?'
       params.push(options.type)
-    }
-
-    if (options.source) {
-      sql += ' AND source = ?'
-      params.push(options.source)
     }
 
     sql += ' ORDER BY datetime(created_at) DESC'
@@ -236,38 +196,32 @@ export class JobQueueRepository {
 
     const nextUpdatedAt = toISOString(updates.updated_at) ?? new Date().toISOString()
 
-    const fields: string[] = []
-    const values: Array<string | number | null> = []
+    const nextInput = updates.input ?? existing.input ?? null
+    const nextOutput = updates.output ?? existing.output ?? null
 
-    const assign = (column: string, value: unknown) => {
-      fields.push(`${column} = ?`)
-      values.push(value as string | number | null)
-    }
-
-    if (updates.status) assign('status', updates.status)
-    if (updates.result_message !== undefined) assign('result_message', updates.result_message ?? null)
-    if (updates.error_details !== undefined) assign('error_details', updates.error_details ?? null)
-    if (updates.processed_at !== undefined) assign('processed_at', toISOString(updates.processed_at) ?? null)
-    if (updates.completed_at !== undefined) assign('completed_at', toISOString(updates.completed_at) ?? null)
-    if (updates.metadata !== undefined) assign('metadata', serializeJson(updates.metadata))
-    if (updates.scrape_config !== undefined) assign('scrape_config', serializeJson(updates.scrape_config))
-    if (updates.scraped_data !== undefined) assign('scraped_data', serializeJson(updates.scraped_data))
-    if (updates.source_discovery_config !== undefined)
-      assign('source_discovery_config', serializeJson(updates.source_discovery_config))
-    if (updates.pipeline_state !== undefined) assign('pipeline_state', serializeJson(updates.pipeline_state))
-    if (updates.parent_item_id !== undefined) assign('parent_item_id', updates.parent_item_id ?? null)
-    if (updates.company_id !== undefined) assign('company_id', updates.company_id ?? null)
-    if (updates.submitted_by !== undefined) assign('submitted_by', updates.submitted_by ?? null)
-    if (updates.source_id !== undefined) assign('source_id', updates.source_id ?? null)
-    if (updates.source_type !== undefined) assign('source_type', updates.source_type ?? null)
-    if (updates.source_config !== undefined) assign('source_config', serializeJson(updates.source_config))
-    if (updates.source_tier !== undefined) assign('source_tier', updates.source_tier ?? null)
-    if (updates.tracking_id !== undefined) assign('tracking_id', updates.tracking_id ?? null)
-
-    assign('updated_at', nextUpdatedAt)
-
-    const sql = `UPDATE job_queue SET ${fields.join(', ')} WHERE id = ?`
-    this.db.prepare(sql).run(...values, id)
+    this.db
+      .prepare(
+        `UPDATE job_queue
+         SET type = ?, status = ?, url = ?, tracking_id = ?, parent_item_id = ?,
+             input = ?, output = ?, result_message = ?, error_details = ?,
+             updated_at = ?, processed_at = ?, completed_at = ?
+         WHERE id = ?`
+      )
+      .run(
+        updates.type ?? existing.type,
+        updates.status ?? existing.status,
+        updates.url ?? existing.url ?? null,
+        updates.tracking_id ?? existing.tracking_id ?? null,
+        updates.parent_item_id ?? existing.parent_item_id ?? null,
+        serializeJson(nextInput),
+        serializeJson(nextOutput),
+        updates.result_message ?? existing.result_message ?? null,
+        updates.error_details ?? existing.error_details ?? null,
+        nextUpdatedAt,
+        toISOString(updates.processed_at) ?? toISOString(existing.processed_at) ?? null,
+        toISOString(updates.completed_at) ?? toISOString(existing.completed_at) ?? null,
+        id
+      )
 
     return this.getById(id) as QueueItem
   }

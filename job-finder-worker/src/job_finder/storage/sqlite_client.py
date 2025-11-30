@@ -17,27 +17,20 @@ DEFAULT_DB_PATH = PROJECT_ROOT.parent / "infra" / "sqlite" / "jobfinder.db"
 
 def resolve_db_path(db_path: Optional[str] = None) -> Path:
     """
-    Resolve the SQLite database path using env vars with sane defaults.
+    Resolve the SQLite database path using a single canonical env var.
 
     Order of precedence:
         1. Explicit db_path argument
-        2. JOB_FINDER_SQLITE_PATH env var
-        3. JF_SQLITE_DB_PATH env var (shared with backend)
-        4. infra/sqlite/jobfinder.db inside the monorepo
+        2. SQLITE_DB_PATH env var
+        3. infra/sqlite/jobfinder.db inside the monorepo
     """
-    path = (
-        db_path
-        or os.getenv("JOB_FINDER_SQLITE_PATH")
-        or os.getenv("JF_SQLITE_DB_PATH")
-        or str(DEFAULT_DB_PATH)
-    )
+    path = db_path or os.getenv("SQLITE_DB_PATH") or str(DEFAULT_DB_PATH)
 
     resolved = Path(path).expanduser().resolve()
 
     if not resolved.exists():
         raise ConfigurationError(
-            f"SQLite database not found at {resolved}. "
-            "Set JF_SQLITE_DB_PATH or run the migrations to create it."
+            f"SQLite database not found at {resolved}. Set SQLITE_DB_PATH or run migrations."
         )
 
     return resolved

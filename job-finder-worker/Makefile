@@ -136,7 +136,7 @@ shell: ## Start Python shell with app context
 
 check-env: ## Check environment variables
 	@echo "$(CYAN)Checking environment...$(RESET)"
-	@echo "JF_SQLITE_DB_PATH: $$JF_SQLITE_DB_PATH"
+	@echo "SQLITE_DB_PATH: $$SQLITE_DB_PATH"
 	@echo "ANTHROPIC_API_KEY: $$([ -n "$$ANTHROPIC_API_KEY" ] && echo 'Set' || echo 'Not set')"
 	@echo "OPENAI_API_KEY: $$([ -n "$$OPENAI_API_KEY" ] && echo 'Set' || echo 'Not set')"
 

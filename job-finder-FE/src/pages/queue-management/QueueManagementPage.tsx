@@ -663,7 +663,7 @@ export function QueueManagementPage() {
               <DialogHeader>
                 <DialogTitle>{getJobTitle(selectedItem) || "Queue Item Details"}</DialogTitle>
                 <DialogDescription>
-                  {getCompanyName(selectedItem) || getDomain(selectedItem.url) || "Pending metadata"}
+                  {getCompanyName(selectedItem) || getDomain(selectedItem.url || "") || "Pending metadata"}
                 </DialogDescription>
               </DialogHeader>
 
@@ -679,7 +679,7 @@ export function QueueManagementPage() {
                   <p className="text-xs text-muted-foreground">URL</p>
                   <a
                     className="text-primary underline break-all"
-                    href={selectedItem.url}
+                    href={selectedItem.url || undefined}
                     target="_blank"
                     rel="noreferrer"
                   >

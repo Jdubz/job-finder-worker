@@ -51,7 +51,7 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
   const title = getJobTitle(item)
   const company = getCompanyName(item)
   const stageLabel = getStageLabel(item)
-  const domain = getDomain(item.url)
+  const domain = getDomain(item.url || "")
   const sourceLabel = getSourceLabel(item)
   const taskType = getTaskTypeLabel(item)
 
@@ -104,7 +104,7 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
               <div className="flex items-center gap-2 min-w-0">
                 <ExternalLink className="h-3 w-3 flex-shrink-0" />
                 <a
-                  href={item.url}
+                  href={item.url || undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="truncate text-primary hover:underline"
