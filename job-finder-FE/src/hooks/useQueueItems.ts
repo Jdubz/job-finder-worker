@@ -74,19 +74,37 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   }, [])
 
   const normalizeQueueItem = useCallback((item: QueueItem): QueueItem => {
-    const normalize = (value: unknown): Date | null => {
+    const normalizeDate = (value: unknown): Date | null => {
       if (!value) return null
       if (value instanceof Date) return value
       if (typeof value === "string" || typeof value === "number") return new Date(value)
       return null
     }
 
+    const normalizeObject = (value: unknown): Record<string, unknown> | null => {
+      if (!value) return null
+      if (typeof value === "object") return value as Record<string, unknown>
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value)
+          return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null
+        } catch {
+          return null
+        }
+      }
+      return null
+    }
+
     return {
       ...item,
-      created_at: normalize(item.created_at) ?? new Date(),
-      updated_at: normalize(item.updated_at) ?? new Date(),
-      processed_at: normalize(item.processed_at ?? null) ?? undefined,
-      completed_at: normalize(item.completed_at ?? null) ?? undefined,
+      created_at: normalizeDate(item.created_at) ?? new Date(),
+      updated_at: normalizeDate(item.updated_at) ?? new Date(),
+      processed_at: normalizeDate(item.processed_at ?? null) ?? undefined,
+      completed_at: normalizeDate(item.completed_at ?? null) ?? undefined,
+      // Some backends still serialize these as JSON strings; coerce to objects to keep UI stable.
+      pipeline_state: normalizeObject(item.pipeline_state),
+      metadata: normalizeObject(item.metadata),
+      scraped_data: normalizeObject(item.scraped_data),
     } as QueueItem
   }, [])
 
