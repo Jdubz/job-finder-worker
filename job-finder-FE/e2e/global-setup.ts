@@ -4,7 +4,7 @@ import { request, type FullConfig } from "@playwright/test"
  * Create a reusable authenticated storage state for the default admin/dev token.
  * Viewer/unauth tests clear or override cookies as needed in their own hooks.
  */
-export default async function globalSetup(config: FullConfig) {
+export default async function globalSetup(_config: FullConfig) {
   const apiBase = process.env.JF_E2E_API_BASE || "http://127.0.0.1:5080/api"
   const authToken = process.env.JF_E2E_AUTH_TOKEN || "dev-admin-token"
   const storagePath = "e2e/.auth/admin.json"
