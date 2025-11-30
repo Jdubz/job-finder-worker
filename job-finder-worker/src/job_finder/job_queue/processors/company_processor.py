@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
+from job_finder.ai.search_client import get_search_client
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
@@ -34,7 +35,8 @@ logger = logging.getLogger(__name__)
 COMPANY_AGENT_PROMPT = (
     "You are the primary agent for company enrichment recovery. "
     "The automated pipeline failed to extract company information. "
-    "Your tasks: (1) research the company using the URL and context, "
+    "Check the context for web search results that may contain company information. "
+    "Your tasks: (1) research the company using the URL, search results, and context, "
     "(2) fill all company fields (about, culture, mission, HQ, industry, size, employeeCount, "
     "founded, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack if evident), "
     "(3) validate or propose a careers/job-board URL, "
@@ -46,8 +48,9 @@ COMPANY_AGENT_PROMPT = (
 COMPANY_NO_URL_AGENT_PROMPT = (
     "You are the primary agent for company research. "
     "No website URL was provided for this company. "
-    "Your tasks: (1) FIRST find the company's official website URL, "
-    "(2) research the company thoroughly, "
+    "Web search results have been provided in the context to assist you. "
+    "Your tasks: (1) FIRST find the company's official website URL using the search results, "
+    "(2) research the company thoroughly using the search results and any additional sources, "
     "(3) fill all company fields (website, about, culture, mission, HQ, industry, size, employeeCount, "
     "founded, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack if evident), "
     "(4) find and validate a careers/job-board URL, "
@@ -102,16 +105,22 @@ class CompanyProcessor(BaseProcessor):
 
         with self._handle_company_failure(company_id):
             if not company_website:
-                # No website URL provided - hand off to agent to research and find it
+                # No website URL provided - fetch search results to assist agent research
+                search_results = self._get_search_results(company_name)
+                context = {
+                    "company_name": company_name,
+                    "company_id": company_id,
+                    "instruction": "Find the company's official website URL first, then gather all company information.",
+                }
+                if search_results:
+                    context["search_results"] = search_results
+                    logger.info(f"Including {len(search_results)} search results for agent review of {company_name}")
+
                 self._handoff_to_agent_review(
                     item,
                     COMPANY_NO_URL_AGENT_PROMPT,
                     reason="No company website URL provided",
-                    context={
-                        "company_name": company_name,
-                        "company_id": company_id,
-                        "instruction": "Find the company's official website URL first, then gather all company information.",
-                    },
+                    context=context,
                     status_message="Agent review required: no website URL - needs research",
                 )
                 return
@@ -119,32 +128,44 @@ class CompanyProcessor(BaseProcessor):
             pages_to_try = self._build_pages_to_try(company_website)
             html_content = self._fetch_company_pages(company_name, pages_to_try)
             if not html_content:
-                # Recoverable: agent can try different approaches to fetch company info
+                # Recoverable: agent can use search results when pages can't be fetched
+                search_results = self._get_search_results(company_name)
+                context = {
+                    "attempted_urls": pages_to_try,
+                    "company_name": company_name,
+                    "company_website": company_website,
+                }
+                if search_results:
+                    context["search_results"] = search_results
+                    logger.info(f"Including {len(search_results)} search results for agent review of {company_name}")
+
                 self._handoff_to_agent_review(
                     item,
                     COMPANY_AGENT_PROMPT,
                     reason="No company pages fetched",
-                    context={
-                        "attempted_urls": pages_to_try,
-                        "company_name": company_name,
-                        "company_website": company_website,
-                    },
+                    context=context,
                     status_message="Agent review required: could not fetch company pages",
                 )
                 return
 
             extracted_info = self._extract_company_info(company_name, html_content, company_website)
             if not extracted_info:
-                # Recoverable: agent can manually extract info from HTML
+                # Recoverable: agent can use search results + HTML to extract info
+                search_results = self._get_search_results(company_name)
+                context = {
+                    "html_samples": {k: v[:5000] for k, v in html_content.items()},
+                    "company_name": company_name,
+                    "company_website": company_website,
+                }
+                if search_results:
+                    context["search_results"] = search_results
+                    logger.info(f"Including {len(search_results)} search results for agent review of {company_name}")
+
                 self._handoff_to_agent_review(
                     item,
                     COMPANY_AGENT_PROMPT,
                     reason="Company extraction failed",
-                    context={
-                        "html_samples": {k: v[:5000] for k, v in html_content.items()},
-                        "company_name": company_name,
-                        "company_website": company_website,
-                    },
+                    context=context,
                     status_message="Agent review required: extraction failed",
                 )
                 return
@@ -166,14 +187,21 @@ class CompanyProcessor(BaseProcessor):
 
                 # Check again after AI enrichment - recoverable if still sparse
                 if self.company_info_fetcher._needs_ai_enrichment(extracted_info):
+                    # Provide search results to help agent fill gaps
+                    search_results = self._get_search_results(company_name)
+                    context = {
+                        "extracted_info": extracted_info,
+                        "html_samples": {k: v[:5000] for k, v in html_content.items()},
+                    }
+                    if search_results:
+                        context["search_results"] = search_results
+                        logger.info(f"Including {len(search_results)} search results for agent review of {company_name}")
+
                     self._handoff_to_agent_review(
                         item,
                         COMPANY_AGENT_PROMPT,
                         reason="Company fields still sparse after AI enrichment",
-                        context={
-                            "extracted_info": extracted_info,
-                            "html_samples": {k: v[:5000] for k, v in html_content.items()},
-                        },
+                        context=context,
                         status_message="Agent review required: enrichment still sparse",
                     )
                     return
@@ -245,6 +273,29 @@ class CompanyProcessor(BaseProcessor):
     # ============================================================
     # HELPER METHODS
     # ============================================================
+
+    def _get_search_results(self, company_name: str) -> Optional[list]:
+        """
+        Fetch web search results for a company to assist AI enrichment.
+
+        Args:
+            company_name: Company name to search for
+
+        Returns:
+            List of dicts with search results (title, url, snippet), or None if search unavailable
+        """
+        search_client = get_search_client()
+        if not search_client:
+            logger.debug("No search API configured, skipping search for %s", company_name)
+            return None
+
+        try:
+            query = f"{company_name} official website"
+            results = search_client.search(query, max_results=5)
+            return [r.to_dict() for r in results]
+        except Exception as e:
+            logger.warning(f"Search API failed for '{company_name}': {e}")
+            return None
 
     def _build_pages_to_try(self, website: str) -> list:
         """Build list of company pages to try fetching."""
