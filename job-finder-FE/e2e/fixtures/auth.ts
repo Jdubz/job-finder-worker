@@ -21,59 +21,38 @@ export interface AuthBypassState {
  * This sets the actual session cookie needed for protected routes.
  * Uses dev tokens that the backend accepts in development mode.
  */
-export async function loginWithDevToken(context: BrowserContext, devToken: 'dev-admin-token' | 'dev-viewer-token' = 'dev-admin-token') {
-  // Make the login request using Playwright's context-level request
+export async function loginWithDevToken(
+  context: BrowserContext,
+  devToken: "dev-admin-token" | "dev-viewer-token" = "dev-admin-token"
+) {
   const response = await context.request.post(`${API_BASE}/auth/login`, {
     data: { credential: devToken },
-    headers: { 'Content-Type': 'application/json' }
+    headers: { "Content-Type": "application/json" },
   })
 
   if (!response.ok()) {
-    const text = await response.text()
-    throw new Error(`Login failed: ${response.status()} ${text}`)
+    throw new Error(`Login failed: ${response.status()} ${await response.text()}`)
   }
 
-  // The context.request.post should automatically handle cookies from Set-Cookie headers
-  // But we also need to get the cookies and add them for all origins
+  // Playwright stores cookies from the login response on the context.
+  // Mirror the session cookie onto the frontend origin so it’s sent to the app host too.
   const cookies = await context.cookies()
+  const sessionCookie = cookies.find((c) => c.name === "jf_session")
 
-  // If no cookies were set, try to extract from the response headers
-  const setCookieHeader = response.headers()['set-cookie']
-  if (setCookieHeader && cookies.length === 0) {
-    // Parse the cookie and add it to the context
-    const cookieParts = setCookieHeader.split(';')[0].split('=')
-    const cookieName = cookieParts[0].trim()
-    const cookieValue = cookieParts.slice(1).join('=').trim()
-
-    await context.addCookies([
-      {
-        name: cookieName,
-        value: cookieValue,
-        domain: '127.0.0.1',
-        path: '/',
-        httpOnly: true,
-        secure: false,
-        sameSite: 'Lax'
-      }
-    ])
+  if (!sessionCookie) {
+    throw new Error("Session cookie was not set in context after login.")
   }
 
-  // Also ensure cookies are set for the frontend URL
-  const existingCookies = await context.cookies()
-  const sessionCookie = existingCookies.find(c => c.name === 'jf_session')
-  if (sessionCookie) {
-    // Re-add the cookie with the frontend URL to ensure it's sent
-    await context.addCookies([
-      {
-        name: sessionCookie.name,
-        value: sessionCookie.value,
-        url: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173',
-        httpOnly: true,
-        secure: false,
-        sameSite: 'Lax'
-      }
-    ])
-  }
+  await context.addCookies([
+    {
+      name: sessionCookie.name,
+      value: sessionCookie.value,
+      url: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:5173",
+      httpOnly: sessionCookie.httpOnly,
+      secure: sessionCookie.secure,
+      sameSite: sessionCookie.sameSite,
+    },
+  ])
 }
 
 export async function applyAuthState(page: Page, state?: AuthBypassState) {
