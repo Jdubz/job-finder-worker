@@ -162,7 +162,7 @@ class AgentReviewProcessor(BaseProcessor):
             if parent_item and parent_item.id:
                 self.queue_manager.update_status(
                     parent_item.id,
-                    parent_item.status,  # Keep existing status
+                    QueueStatus(parent_item.status),  # Keep existing status
                     parent_item.result_message,
                     review_notes=review_notes,
                 )
