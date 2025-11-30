@@ -52,7 +52,9 @@ class ConfigLoader:
 
     def get_stop_list(self) -> Dict[str, Any]:
         policy = self.get_prefilter_policy()
-        return policy.get("stopList", {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []})
+        return policy.get(
+            "stopList", {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []}
+        )
 
     def get_queue_settings(self) -> Dict[str, Any]:
         default = {"processingTimeoutSeconds": 1800, "isProcessingEnabled": True}
