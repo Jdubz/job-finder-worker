@@ -11,6 +11,10 @@ import remarkGfm from "remark-gfm"
 import rehypeSanitize from "rehype-sanitize"
 import { cn } from "@/lib/utils"
 
+type MarkdownCodeProps = React.ComponentPropsWithoutRef<"code"> & {
+  inline?: boolean
+}
+
 interface ContentItemCardProps {
   item: ContentItemNode
   siblings: ContentItemNode[]
@@ -215,9 +219,7 @@ export function ContentItemCard({
 
 function Markdown({ text }: { text: string }) {
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeSanitize]}
+    <div
       className={cn(
         "space-y-2 text-sm leading-relaxed text-muted-foreground",
         "[&_a]:text-primary [&_a]:underline",
@@ -229,23 +231,28 @@ function Markdown({ text }: { text: string }) {
         "[&_h1]:mt-2 [&_h2]:mt-2 [&_h3]:mt-2",
         "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5"
       )}
-      components={{
-        a: ({ ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
-        code: ({ inline, className, children, ...props }) =>
-          inline ? (
-            <code className={className} {...props}>
-              {children}
-            </code>
-          ) : (
-            <pre className="overflow-x-auto rounded bg-muted p-3 text-xs">
+    >
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeSanitize]}
+        components={{
+          a: ({ ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
+          code: ({ inline, className, children, ...props }: MarkdownCodeProps) =>
+            inline ? (
               <code className={className} {...props}>
                 {children}
               </code>
-            </pre>
-        )
-      }}
-    >
-      {text}
-    </ReactMarkdown>
+            ) : (
+              <pre className="overflow-x-auto rounded bg-muted p-3 text-xs">
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              </pre>
+            )
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
   )
 }
