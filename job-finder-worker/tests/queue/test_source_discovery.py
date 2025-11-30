@@ -30,23 +30,25 @@ def mock_dependencies() -> Dict[str, Any]:
     queue_manager.add_item = MagicMock(return_value="scrape-001")
 
     config_loader = MagicMock()
-    config_loader.get_job_filters.return_value = {
-        "enabled": False,
-        "hardRejections": {
-            "excludedJobTypes": [],
-            "excludedSeniority": [],
-            "excludedCompanies": [],
-            "excludedKeywords": [],
-        },
-        "remotePolicy": {},
-        "salaryStrike": {},
-        "experienceStrike": {},
-        "seniorityStrikes": {},
-        "qualityStrikes": {},
-        "ageStrike": {},
-    }
-    config_loader.get_technology_ranks.return_value = {"technologies": {}, "strikes": {}}
     config_loader.get_stop_list.return_value = _default_stop_list()
+    config_loader.get_prefilter_policy.return_value = {
+        "stopList": _default_stop_list(),
+        "strikeEngine": {
+            "enabled": False,
+            "hardRejections": {
+                "excludedJobTypes": [],
+                "excludedSeniority": [],
+                "excludedCompanies": [],
+                "excludedKeywords": [],
+            },
+            "remotePolicy": {},
+            "salaryStrike": {},
+            "seniorityStrikes": {},
+            "qualityStrikes": {},
+            "ageStrike": {},
+        },
+        "technologyRanks": {"technologies": {}},
+    }
     config_loader.get_ai_settings.return_value = {
         "worker": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
         "documentGenerator": {

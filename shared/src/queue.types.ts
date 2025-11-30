@@ -10,35 +10,30 @@
 
 import type { TimestampLike } from "./time.types"
 import type {
-  StopList,
   QueueSettings,
   AISettings,
   AIProviderType,
   AIInterfaceType,
   AIProviderSelection,
-  JobMatchConfig,
 } from "./config.types"
 export type {
-  StopList,
   QueueSettings,
   AISettings,
   AIProviderType,
   AIInterfaceType,
   AIProviderSelection,
-  JobMatchConfig,
 } from "./config.types"
 
 /**
  * Queue item status lifecycle:
- * pending → processing → success/failed/skipped/filtered/needs_review
+ * pending → processing → success/failed/skipped/filtered
  *
  * - pending: In queue, waiting to be processed
  * - processing: Currently being processed
  * - filtered: Rejected by filter engine (did not pass intake filters)
  * - skipped: Skipped (duplicate or stop list blocked)
  * - success: Successfully processed and saved to job-matches
- * - failed: Processing error occurred (terminal, not recoverable)
- * - needs_review: Requires agent intervention (recoverable failure)
+ * - failed: Processing error occurred (terminal)
  */
 export type QueueStatus =
   | "pending"
@@ -47,7 +42,6 @@ export type QueueStatus =
   | "failed"
   | "skipped"
   | "filtered"
-  | "needs_review"
 
 /**
  * Queue item types
@@ -58,7 +52,6 @@ export type QueueItemType =
   | "scrape"
   | "source_discovery"
   | "scrape_source"
-  | "agent_review"
 
 /**
  * Source of queue submission
@@ -180,7 +173,6 @@ export interface QueueStats {
   failed: number
   skipped: number
   filtered: number
-  needs_review: number
   total: number
 }
 
@@ -269,11 +261,11 @@ export interface SubmitSourceDiscoveryResponse {
 
 // Type guard helpers
 export function isQueueStatus(status: string): status is QueueStatus {
-  return ["pending", "processing", "success", "failed", "skipped", "filtered", "needs_review"].includes(status)
+  return ["pending", "processing", "success", "failed", "skipped", "filtered"].includes(status)
 }
 
 export function isQueueItemType(type: string): type is QueueItemType {
-  return ["job", "company", "scrape", "source_discovery", "scrape_source", "agent_review"].includes(type)
+  return ["job", "company", "scrape", "source_discovery", "scrape_source"].includes(type)
 }
 
 export function isSourceTypeHint(hint: string): hint is SourceTypeHint {

@@ -32,10 +32,10 @@ import {
   getTaskTypeLabel,
 } from "./components/queueItemDisplay"
 
-type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered" | "needs_review"
-type CompletedStatus = "success" | "failed" | "skipped" | "filtered" | "needs_review"
+type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered"
+type CompletedStatus = "success" | "failed" | "skipped" | "filtered"
 
-const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered", "needs_review"]
+const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered"]
 const STATS_FETCH_DEBOUNCE_MS = 500
 
 export function QueueManagementPage() {
@@ -104,7 +104,6 @@ export function QueueManagementPage() {
           failed: queueItems.filter((i) => i.status === "failed").length,
           skipped: queueItems.filter((i) => i.status === "skipped").length,
           filtered: queueItems.filter((i) => i.status === "filtered").length,
-          needs_review: queueItems.filter((i) => i.status === "needs_review").length,
         }
         setQueueStats(stats)
         setUsingFallbackStats(true)
@@ -443,13 +442,6 @@ export function QueueManagementPage() {
               onClick={() => handleStatPillClick("processing")}
             />
             <StatPill
-              label="Needs Review"
-              value={queueStats.needs_review}
-              tone="purple"
-              active={activeStatFilter === "needs_review"}
-              onClick={() => handleStatPillClick("needs_review")}
-            />
-            <StatPill
               label="Failed"
               value={queueStats.failed}
               tone="red"
@@ -527,7 +519,6 @@ export function QueueManagementPage() {
                     <SelectItem value="failed">Failed</SelectItem>
                     <SelectItem value="skipped">Skipped</SelectItem>
                     <SelectItem value="filtered">Filtered</SelectItem>
-                    <SelectItem value="needs_review">Needs Review</SelectItem>
                   </SelectContent>
                 </Select>
               )}
@@ -731,7 +722,6 @@ function statusTone(status: string): string {
     failed: "bg-red-100 text-red-800",
     skipped: "bg-gray-100 text-gray-800",
     filtered: "bg-orange-100 text-orange-800",
-    needs_review: "bg-purple-100 text-purple-800",
   }
   return tones[status as QueueStatusTone] ?? "bg-muted text-foreground"
 }

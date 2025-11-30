@@ -30,8 +30,7 @@ const queueStatuses = [
   'success',
   'failed',
   'skipped',
-  'filtered',
-  'needs_review'
+  'filtered'
 ] as const
 const queueSources = [
   'user_submission',
@@ -47,8 +46,7 @@ const queueItemTypes = [
   'company',
   'scrape',
   'source_discovery',
-  'scrape_source',
-  'agent_review'
+  'scrape_source'
 ] as const
 
 const submitJobSchema = z.object({

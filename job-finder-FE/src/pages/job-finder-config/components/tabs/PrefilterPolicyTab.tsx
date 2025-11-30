@@ -24,10 +24,7 @@ import {
 } from "../shared/form-fields"
 import type {
   PrefilterPolicy,
-  StopList,
-  JobFiltersConfig,
   TechnologyRank,
-  TechnologyRanksConfig,
 } from "@shared/types"
 import { DEFAULT_PREFILTER_POLICY } from "@shared/types"
 import { Plus, Trash2 } from "lucide-react"
@@ -44,18 +41,18 @@ type SeniorityStrikeFormValue = {
   points: number | null
 }
 
-type StrikeEngineForm = Omit<JobFiltersConfig, "seniorityStrikes"> & {
+type StrikeEngineForm = Omit<PrefilterPolicy['strikeEngine'], "seniorityStrikes"> & {
   seniorityStrikesList: SeniorityStrikeFormValue[]
 }
 
-type TechnologyRanksForm = Omit<TechnologyRanksConfig, "technologies"> & {
+type TechnologyRanksForm = Omit<PrefilterPolicy['technologyRanks'], "technologies"> & {
   technologies: TechnologyRankFormValue[]
 }
 
 type PrefilterFormValues = {
   version?: string | null
   updatedBy?: string | null
-  stopList: StopList
+  stopList: PrefilterPolicy['stopList']
   strikeEngine: StrikeEngineForm
   technologyRanks: TechnologyRanksForm
 }

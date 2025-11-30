@@ -12,9 +12,8 @@ import type {
   WorkerSettings,
   PrefilterPolicy,
   MatchPolicy,
-  StopList,
 } from "@shared/types"
-import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO, DEFAULT_STOP_LIST } from "@shared/types"
+import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO } from "@shared/types"
 
 export class ConfigClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
@@ -38,18 +37,6 @@ export class ConfigClient extends BaseApiClient {
       payload,
     })
     return response.data.config
-  }
-
-  async getStopList(): Promise<StopList | null> {
-    return this.getConfigEntry<StopList>("stop-list")
-  }
-
-  async updateStopList(stopList: Partial<StopList>): Promise<void> {
-    const existing = (await this.getStopList()) ?? DEFAULT_STOP_LIST
-    await this.updateConfigEntry("stop-list", {
-      ...existing,
-      ...stopList,
-    })
   }
 
   async getQueueSettings(): Promise<QueueSettings | null> {

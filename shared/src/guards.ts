@@ -17,21 +17,16 @@
 import type {
   QueueItem,
   QueueSource,
-  StopList,
   QueueSettings,
   AISettings,
 } from "./queue.types"
 import type {
-  JobFiltersConfig,
   PrefilterPolicy,
   MatchPolicy,
-  TechnologyRanksConfig,
   SchedulerSettings,
-  JobMatchConfig,
   AIProviderType,
   AIInterfaceType,
   WorkerSettings,
-  CompanyMatchWeights,
 } from "./config.types"
 import type { PersonalInfo } from "./generator.types"
 // Import and re-export type guards from queue.types for convenience
@@ -131,21 +126,6 @@ export function isQueueItem(value: unknown): value is QueueItem {
 }
 
 /**
- * Type guard for StopList
- */
-export function isStopList(value: unknown): value is StopList {
-  if (!isObject(value)) return false
-
-  const stopList = value as Partial<StopList>
-
-  return (
-    isStringArray(stopList.excludedCompanies) &&
-    isStringArray(stopList.excludedKeywords) &&
-    isStringArray(stopList.excludedDomains)
-  )
-}
-
-/**
  * Type guard for QueueSettings
  */
 export function isQueueSettings(value: unknown): value is QueueSettings {
@@ -237,109 +217,70 @@ export function isAISettings(value: unknown): value is AISettings {
 
 }
 
-/**
- * Type guard for JobMatchConfig
- */
-export function isJobMatchConfig(value: unknown): value is JobMatchConfig {
-  if (!isObject(value)) return false
+export function isPrefilterPolicy(value: unknown): value is PrefilterPolicy {
+  if (!isObject(value)) return false;
+  const v = value as Partial<PrefilterPolicy>;
 
-  const config = value as Partial<JobMatchConfig>
-
-  return (
-    typeof config.minMatchScore === "number" &&
-    typeof config.portlandOfficeBonus === "number" &&
-    typeof config.userTimezone === "number" &&
-    typeof config.preferLargeCompanies === "boolean" &&
-    typeof config.generateIntakeData === "boolean"
-  )
-}
-
-export function isJobFiltersConfig(value: unknown): value is JobFiltersConfig {
-  if (!isObject(value)) return false
-  const v = value as Partial<JobFiltersConfig>
-  return (
-    typeof v.enabled === "boolean" &&
-    typeof v.strikeThreshold === "number" &&
-    isObject(v.hardRejections) &&
-    (v.hardRejections.excludedJobTypes === undefined || isStringArray(v.hardRejections.excludedJobTypes)) &&
-    (v.hardRejections.excludedSeniority === undefined || isStringArray(v.hardRejections.excludedSeniority)) &&
-    (v.hardRejections.excludedCompanies === undefined || isStringArray(v.hardRejections.excludedCompanies)) &&
-    (v.hardRejections.excludedKeywords === undefined || isStringArray(v.hardRejections.excludedKeywords)) &&
-    (v.hardRejections.minSalaryFloor === undefined || typeof v.hardRejections.minSalaryFloor === "number") &&
-    (v.hardRejections.rejectCommissionOnly === undefined || typeof v.hardRejections.rejectCommissionOnly === "boolean") &&
-    isObject(v.remotePolicy) &&
-    (v.remotePolicy.allowRemote === undefined || typeof v.remotePolicy.allowRemote === "boolean") &&
-    (v.remotePolicy.allowHybridPortland === undefined || typeof v.remotePolicy.allowHybridPortland === "boolean") &&
-    (v.remotePolicy.allowOnsite === undefined || typeof v.remotePolicy.allowOnsite === "boolean") &&
-    isObject(v.salaryStrike) &&
-    (v.salaryStrike.enabled === undefined || typeof v.salaryStrike.enabled === "boolean") &&
-    (v.salaryStrike.threshold === undefined || typeof v.salaryStrike.threshold === "number") &&
-    (v.salaryStrike.points === undefined || typeof v.salaryStrike.points === "number") &&
-    isObject(v.experienceStrike) &&
-    (v.experienceStrike.enabled === undefined || typeof v.experienceStrike.enabled === "boolean") &&
-    (v.experienceStrike.minPreferred === undefined || typeof v.experienceStrike.minPreferred === "number") &&
-    (v.experienceStrike.points === undefined || typeof v.experienceStrike.points === "number") &&
-    (v.seniorityStrikes === undefined || isObject(v.seniorityStrikes)) &&
-    isObject(v.qualityStrikes) &&
-    (v.qualityStrikes.minDescriptionLength === undefined || typeof v.qualityStrikes.minDescriptionLength === "number") &&
-    (v.qualityStrikes.shortDescriptionPoints === undefined || typeof v.qualityStrikes.shortDescriptionPoints === "number") &&
-    (v.qualityStrikes.buzzwords === undefined || isStringArray(v.qualityStrikes.buzzwords)) &&
-    (v.qualityStrikes.buzzwordPoints === undefined || typeof v.qualityStrikes.buzzwordPoints === "number") &&
-    isObject(v.ageStrike) &&
-    (v.ageStrike.enabled === undefined || typeof v.ageStrike.enabled === "boolean") &&
-    (v.ageStrike.strikeDays === undefined || typeof v.ageStrike.strikeDays === "number") &&
-    (v.ageStrike.rejectDays === undefined || typeof v.ageStrike.rejectDays === "number") &&
-    (v.ageStrike.points === undefined || typeof v.ageStrike.points === "number")
-  )
-}
-
-export function isTechnologyRanksConfig(value: unknown): value is TechnologyRanksConfig {
-  if (!isObject(value)) return false
-  const v = value as Partial<TechnologyRanksConfig>
-
-  const isTechEntry = (entry: unknown): boolean => {
-    if (!isObject(entry)) return false
-    const e = entry as Record<string, unknown>
-    return (
-      typeof e.rank === "string" &&
-      ["required", "ok", "strike", "fail"].includes(e.rank) &&
-      (e.points === undefined || typeof e.points === "number") &&
-      (e.mentions === undefined || typeof e.mentions === "number")
-    )
+  if (!isObject(v.stopList)) return false;
+  const stopList = v.stopList as any;
+  if (!isStringArray(stopList.excludedCompanies) || !isStringArray(stopList.excludedKeywords) || !isStringArray(stopList.excludedDomains)) {
+    return false;
   }
 
-  const technologiesValid =
-    isObject(v.technologies) && Object.values(v.technologies ?? {}).every(isTechEntry)
+  if (!isObject(v.strikeEngine)) return false;
+  const strikeEngine = v.strikeEngine as any;
+  if (
+    typeof strikeEngine.enabled !== 'boolean' ||
+    typeof strikeEngine.strikeThreshold !== 'number' ||
+    !isObject(strikeEngine.hardRejections) ||
+    !isObject(strikeEngine.remotePolicy) ||
+    !isObject(strikeEngine.salaryStrike) ||
+    !isObject(strikeEngine.experienceStrike) ||
+    !isObject(strikeEngine.qualityStrikes) ||
+    !isObject(strikeEngine.ageStrike)
+  ) {
+    return false;
+  }
 
-  const strikesValid =
-    v.strikes === undefined ||
-    (isObject(v.strikes) &&
-      (v.strikes.missingAllRequired === undefined ||
-        typeof v.strikes.missingAllRequired === "number") &&
-      (v.strikes.perBadTech === undefined || typeof v.strikes.perBadTech === "number"))
-
-  return technologiesValid && strikesValid
-}
-
-export function isPrefilterPolicy(value: unknown): value is PrefilterPolicy {
-  const v = value as Partial<PrefilterPolicy>
-  return !!v && isStopList(v.stopList) && isJobFiltersConfig(v.strikeEngine) && isTechnologyRanksConfig(v.technologyRanks)
+  if (!isObject(v.technologyRanks)) return false;
+  const techRanks = v.technologyRanks as any;
+  if (!isObject(techRanks.technologies)) {
+    return false;
+  }
+  
+  return true;
 }
 
 export function isMatchPolicy(value: unknown): value is MatchPolicy {
-  const v = value as Partial<MatchPolicy>
-  const companyWeightsOk = isObject(v.companyWeights)
-  const db = (v.dealbreakers || {}) as Record<string, unknown>
-  return (
-    !!v &&
-    isJobMatchConfig(v.jobMatch) &&
-    companyWeightsOk &&
-    !!db &&
-    typeof db.maxTimezoneDiffHours === "number" &&
-    Array.isArray(db.blockedLocations) &&
-    typeof db.requireRemote === "boolean" &&
-    typeof db.allowHybridInTimezone === "boolean"
-  )
+  if (!isObject(value)) return false;
+  const v = value as Partial<MatchPolicy>;
+
+  if (!isObject(v.jobMatch)) return false;
+  const jobMatch = v.jobMatch as any;
+  if (
+    typeof jobMatch.minMatchScore !== 'number' ||
+    typeof jobMatch.portlandOfficeBonus !== 'number' ||
+    typeof jobMatch.userTimezone !== 'number' ||
+    typeof jobMatch.preferLargeCompanies !== 'boolean' ||
+    typeof jobMatch.generateIntakeData !== 'boolean'
+  ) {
+    return false;
+  }
+
+  if (!isObject(v.companyWeights)) return false;
+
+  if (!isObject(v.dealbreakers)) return false;
+  const dealbreakers = v.dealbreakers as any;
+  if (
+    typeof dealbreakers.maxTimezoneDiffHours !== 'number' ||
+    !isStringArray(dealbreakers.blockedLocations) ||
+    typeof dealbreakers.requireRemote !== 'boolean' ||
+    typeof dealbreakers.allowHybridInTimezone !== 'boolean'
+  ) {
+    return false;
+  }
+  
+  return true;
 }
 
 export function isSchedulerSettings(value: unknown): value is SchedulerSettings {

@@ -68,17 +68,11 @@ class StrikeFilterEngine:
         self.salary_strike_threshold = salary_strike.get("threshold", 150000)
         self.salary_strike_points = salary_strike.get("points", 2)
 
-        # Strike: Experience
-        exp_strike = config.get("experienceStrike", {})
-        self.experience_strike_enabled = exp_strike.get("enabled", True)
-        self.min_experience_preferred = exp_strike.get("minPreferred", 6)
-        self.experience_strike_points = exp_strike.get("points", 1)
+        # NOTE: Experience strike REMOVED - seniority filtering handles this.
+        # 5+ years is standard for senior roles.
 
-        # Strike: Job type (soft gate instead of hard reject)
-        job_type_strike = config.get("jobTypeStrike", {})
-        self.job_type_strike_enabled = job_type_strike.get("enabled", True)
-        self.job_type_strike_points = job_type_strike.get("points", 2)
-        self.job_type_strike_keywords = [k.lower() for k in job_type_strike.get("keywords", [])]
+        # NOTE: Job-type strike REMOVED - let AI analysis handle this.
+        # A software engineer at a sales company is still a good match.
 
         # Strike: Seniority
         self.seniority_strikes = config.get("seniorityStrikes", {})
@@ -97,11 +91,8 @@ class StrikeFilterEngine:
         self.age_reject_days = age_strike.get("rejectDays", 7)  # > 7 days = reject
         self.age_strike_points = age_strike.get("points", 1)
 
-        # Technology ranks
+        # Technology ranks - only penalize for undesired tech, not missing tech info
         self.technologies = self.tech_ranks.get("technologies", {})
-        self.missing_required_tech_points = self.tech_ranks.get("strikes", {}).get(
-            "missingAllRequired", 1
-        )
 
     def evaluate_job(self, job_data: dict) -> FilterResult:
         """
@@ -167,12 +158,11 @@ class StrikeFilterEngine:
         if self.salary_strike_enabled:
             self._check_salary_strike(salary, result)
 
-        # Job type strike (soft signals like marketing/support, no hard reject)
-        self._check_job_type_strike(title, description, result)
+        # NOTE: Job-type strike REMOVED - let AI analysis handle this.
+        # A software engineer at a sales company is still a good match.
 
-        # Experience strike (< 6 years preferred)
-        if self.experience_strike_enabled:
-            self._check_experience_strike(description, result)
+        # NOTE: Experience strike REMOVED - seniority filtering (intern, entry-level,
+        # associate, etc.) handles this. 5+ years is standard for senior roles.
 
         # Seniority strikes (mid-level, principal, director)
         self._check_seniority_strikes(title, result)
@@ -242,36 +232,8 @@ class StrikeFilterEngine:
             points=0,
         )
 
-    def _check_job_type_strike(self, title: str, description: str, result: FilterResult) -> None:
-        """Soft gate for potentially off-target job types.
-
-        Adds strikes (never hard-rejects) when job-type keywords appear in title
-        or description. This prevents false negatives for engineering roles that
-        collaborate with other teams (marketing/support/etc.).
-        """
-        if not self.job_type_strike_enabled or not self.job_type_strike_keywords:
-            return
-
-        title_lower = title.lower()
-        description_lower = description.lower()
-
-        for job_type in self.job_type_strike_keywords:
-            pattern = r"\b" + re.escape(job_type) + r"\b"
-
-            in_title = bool(re.search(pattern, title_lower))
-            in_desc = bool(re.search(pattern, description_lower))
-
-            if in_title or in_desc:
-                field = "title" if in_title else "description"
-                result.add_strike(
-                    filter_category="job_type",
-                    filter_name="job_type_signal",
-                    reason=f"Job-type signal: {job_type}",
-                    detail=f"Matched '{job_type}' in {field}",
-                    points=self.job_type_strike_points,
-                )
-                # Only one strike per job to avoid stacking similar signals
-                return
+    # NOTE: _check_job_type_strike REMOVED - let AI analysis determine job fit.
+    # A software engineer at a sales company is still a good match.
 
     def _is_excluded_seniority(self, title: str, result: FilterResult) -> bool:
         """Check if seniority is too junior."""
@@ -524,36 +486,8 @@ class StrikeFilterEngine:
                 points=self.salary_strike_points,
             )
 
-    def _check_experience_strike(self, description: str, result: FilterResult) -> None:
-        """Add strike if < 6 years experience required."""
-        # Parse experience patterns
-        patterns = [
-            r"(\d+)\+?\s*years?",
-            r"(\d+)\s*-\s*(\d+)\s*years?",
-            r"minimum\s+(\d+)\s*years?",
-            r"at least\s+(\d+)\s*years?",
-        ]
-
-        years_required = []
-        for pattern in patterns:
-            matches = re.finditer(pattern, description.lower())
-            for match in matches:
-                nums = [int(g) for g in match.groups() if g]
-                if nums:
-                    years_required.append(max(nums))
-
-        if not years_required:
-            return  # No experience mentioned = no strike
-
-        max_required = max(years_required)
-        if max_required < self.min_experience_preferred:
-            result.add_strike(
-                filter_category="experience",
-                filter_name="low_experience",
-                reason=f"Requires <{self.min_experience_preferred} years",
-                detail=f"Job requires {max_required} years, prefer {self.min_experience_preferred}+",
-                points=self.experience_strike_points,
-            )
+    # NOTE: _check_experience_strike REMOVED - seniority filtering (intern, entry-level,
+    # associate, etc.) handles this. 5+ years is standard for senior roles.
 
     def _check_seniority_strikes(self, title: str, result: FilterResult) -> None:
         """Add strikes for non-ideal seniority levels."""
@@ -571,11 +505,20 @@ class StrikeFilterEngine:
                 return  # Only count first match
 
     def _check_technology_strikes(self, title: str, description: str, result: FilterResult) -> None:
-        """Check technology stack and add strikes."""
+        """Check technology stack and add strikes for undesired technologies.
+
+        Only penalizes jobs that explicitly require technologies the user doesn't
+        have experience with. Vague or unclear tech requirements are OK - we don't
+        penalize for missing tech info, only for explicitly bad tech matches.
+
+        Technology ranks:
+        - "required": Tech user wants to work with (positive signal, no penalty if missing)
+        - "preferred": Nice to have tech (no penalty)
+        - "strike": Tech user doesn't have/want (adds strike points)
+        - "fail": Absolute dealbreaker tech (hard reject)
+        """
         combined = f"{title} {description}".lower()
 
-        # Track tech found
-        required_found = []
         strikes_found = []
         fails_found = []
 
@@ -586,14 +529,12 @@ class StrikeFilterEngine:
             # Word boundary search to avoid Java/JavaScript confusion
             pattern = r"\b" + re.escape(tech_name.lower()) + r"\b"
             if re.search(pattern, combined):
-                if rank == "required":
-                    required_found.append(tech_name)
-                elif rank == "strike":
+                if rank == "strike":
                     strikes_found.append((tech_name, points))
                 elif rank == "fail":
                     fails_found.append(tech_name)
 
-        # Check for "fail" technologies (immediate rejection, but shouldn't happen with current config)
+        # Check for "fail" technologies (immediate rejection)
         for tech in fails_found:
             result.add_rejection(
                 filter_category="hard_reject",
@@ -604,28 +545,19 @@ class StrikeFilterEngine:
                 points=0,
             )
 
-        # Add strikes for bad tech
+        # Add strikes for tech user doesn't have experience with
         for tech_name, points in strikes_found:
             result.add_strike(
                 filter_category="tech_stack",
-                filter_name="bad_tech",
+                filter_name="undesired_tech",
                 reason=f"Undesired tech: {tech_name}",
-                detail=f"Job requires {tech_name}",
+                detail=f"Job requires {tech_name} which user lacks experience in",
                 points=points,
             )
 
-        # Add strike if NO required tech found
-        if not required_found and self.missing_required_tech_points > 0:
-            required_list = [
-                name for name, data in self.technologies.items() if data.get("rank") == "required"
-            ]
-            result.add_strike(
-                filter_category="tech_stack",
-                filter_name="missing_required_tech",
-                reason="Missing all required technologies",
-                detail=f"None of required tech found: {', '.join(required_list[:5])}...",
-                points=self.missing_required_tech_points,
-            )
+        # NOTE: We intentionally do NOT penalize for missing/vague tech requirements.
+        # If a job is unclear about their tech stack, that's fine - AI analysis will
+        # evaluate fit. We only penalize for explicitly bad tech matches.
 
     def _check_quality_strikes(self, description: str, result: FilterResult) -> None:
         """Check description quality and add strikes."""

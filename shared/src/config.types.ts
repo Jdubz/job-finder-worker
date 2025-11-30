@@ -18,12 +18,6 @@ export interface PromptConfig {
 // Core app configuration payloads
 // -----------------------------------------------------------
 
-export interface StopList {
-  excludedCompanies: string[]
-  excludedKeywords: string[]
-  excludedDomains: string[]
-}
-
 export interface QueueSettings {
   processingTimeoutSeconds: number
   isProcessingEnabled?: boolean // Controls whether the worker processes queue items (defaults to true)
@@ -115,21 +109,6 @@ export interface AISettings {
 // Job Match Configuration (scoring preferences)
 // -----------------------------------------------------------
 
-export interface JobMatchConfig {
-  /** Minimum match score threshold (0-100) */
-  minMatchScore: number
-  /** Bonus points for Portland office jobs */
-  portlandOfficeBonus: number
-  /** User's timezone offset from UTC (e.g., -8 for PST) */
-  userTimezone: number
-  /** Whether to prefer larger companies in scoring */
-  preferLargeCompanies: boolean
-  /** Whether to generate resume intake data for matches */
-  generateIntakeData: boolean
-  /** Company-influenced score weights */
-  companyWeights?: CompanyMatchWeights
-}
-
 export interface CompanyMatchWeights {
   bonuses: {
     remoteFirst: number
@@ -154,53 +133,63 @@ export interface CompanyMatchWeights {
   }
 }
 
-export interface JobFiltersConfig {
-  enabled: boolean
-  strikeThreshold: number
-  hardRejections: {
-    excludedJobTypes?: string[]
-    excludedSeniority?: string[]
-    excludedCompanies?: string[]
-    excludedKeywords?: string[]
-    /** Whitelist: Job title MUST contain at least one of these keywords to be considered */
-    requiredTitleKeywords?: string[]
-    minSalaryFloor?: number
-    rejectCommissionOnly?: boolean
-  }
-  remotePolicy: {
-    allowRemote?: boolean
-    allowHybridPortland?: boolean
-    allowOnsite?: boolean
-  }
-  salaryStrike: {
-    enabled?: boolean
-    threshold?: number
-    points?: number
-  }
-  experienceStrike: {
-    enabled?: boolean
-    minPreferred?: number
-    points?: number
-  }
-  seniorityStrikes?: Record<string, number>
-  qualityStrikes: {
-    minDescriptionLength?: number
-    shortDescriptionPoints?: number
-    buzzwords?: string[]
-    buzzwordPoints?: number
-  }
-  ageStrike: {
-    enabled?: boolean
-    strikeDays?: number
-    rejectDays?: number
-    points?: number
-  }
-}
-
 export interface PrefilterPolicy {
-  stopList: StopList
-  strikeEngine: JobFiltersConfig
-  technologyRanks: TechnologyRanksConfig
+  stopList: {
+    excludedCompanies: string[]
+    excludedKeywords: string[]
+    excludedDomains: string[]
+  }
+  strikeEngine: {
+    enabled: boolean
+    strikeThreshold: number
+    hardRejections: {
+      excludedJobTypes?: string[]
+      excludedSeniority?: string[]
+      excludedCompanies?: string[]
+      excludedKeywords?: string[]
+      /** Whitelist: Job title MUST contain at least one of these keywords to be considered */
+      requiredTitleKeywords?: string[]
+      minSalaryFloor?: number
+      rejectCommissionOnly?: boolean
+    }
+    remotePolicy: {
+      allowRemote?: boolean
+      allowHybridPortland?: boolean
+      allowOnsite?: boolean
+    }
+    salaryStrike: {
+      enabled?: boolean
+      threshold?: number
+      points?: number
+    }
+    experienceStrike: {
+      enabled?: boolean
+      minPreferred?: number
+      points?: number
+    }
+    seniorityStrikes?: Record<string, number>
+    qualityStrikes: {
+      minDescriptionLength?: number
+      shortDescriptionPoints?: number
+      buzzwords?: string[]
+      buzzwordPoints?: number
+    }
+    ageStrike: {
+      enabled?: boolean
+      strikeDays?: number
+      rejectDays?: number
+      points?: number
+    }
+  }
+  technologyRanks: {
+    technologies: Record<string, TechnologyRank>
+    strikes?: {
+      missingAllRequired?: number
+      perBadTech?: number
+    }
+    extractedFromJobs?: number
+    version?: string
+  }
   version?: string
   updatedBy?: string
 }
@@ -213,7 +202,20 @@ export interface MatchDealbreakers {
 }
 
 export interface MatchPolicy {
-  jobMatch: JobMatchConfig
+  jobMatch: {
+    /** Minimum match score threshold (0-100) */
+    minMatchScore: number
+    /** Bonus points for Portland office jobs */
+    portlandOfficeBonus: number
+    /** User's timezone offset from UTC (e.g., -8 for PST) */
+    userTimezone: number
+    /** Whether to prefer larger companies in scoring */
+    preferLargeCompanies: boolean
+    /** Whether to generate resume intake data for matches */
+    generateIntakeData: boolean
+    /** Company-influenced score weights */
+    companyWeights?: CompanyMatchWeights
+  }
   companyWeights: CompanyMatchWeights
   dealbreakers: MatchDealbreakers
   techPreferences?: Record<string, number>
@@ -225,16 +227,6 @@ export type TechnologyRank = {
   rank: "required" | "ok" | "strike" | "fail"
   points?: number
   mentions?: number
-}
-
-export interface TechnologyRanksConfig {
-  technologies: Record<string, TechnologyRank>
-  strikes?: {
-    missingAllRequired?: number
-    perBadTech?: number
-  }
-  extractedFromJobs?: number
-  version?: string
 }
 
 export interface SchedulerSettings {
@@ -281,26 +273,22 @@ export interface WorkerSettings {
 // -----------------------------------------------------------
 
 export type JobFinderConfigId =
-  | "stop-list"
   | "queue-settings"
   | "ai-settings"
   | "ai-prompts"
   | "personal-info"
-  | "job-filters"
-  | "job-match"
-  | "technology-ranks"
+  | "prefilter-policy"
+  | "match-policy"
   | "scheduler-settings"
   | "worker-settings"
 
 export type JobFinderConfigPayloadMap = {
-  "stop-list": StopList
   "queue-settings": QueueSettings
   "ai-settings": AISettings
   "ai-prompts": PromptConfig
   "personal-info": PersonalInfo
-  "job-filters": JobFiltersConfig
-  "job-match": JobMatchConfig
-  "technology-ranks": TechnologyRanksConfig
+  "prefilter-policy": PrefilterPolicy
+  "match-policy": MatchPolicy
   "scheduler-settings": SchedulerSettings
   "worker-settings": WorkerSettings
 }
@@ -308,12 +296,6 @@ export type JobFinderConfigPayloadMap = {
 // -----------------------------------------------------------
 // Defaults (single source of truth)
 // -----------------------------------------------------------
-
-export const DEFAULT_STOP_LIST: StopList = {
-  excludedCompanies: [],
-  excludedKeywords: [],
-  excludedDomains: [],
-}
 
 export const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
   processingTimeoutSeconds: 1800,
@@ -355,13 +337,7 @@ export const DEFAULT_PERSONAL_INFO: PersonalInfo = {
   accentColor: "#3b82f6",
 }
 
-export const DEFAULT_JOB_MATCH: JobMatchConfig = {
-  minMatchScore: 70,
-  portlandOfficeBonus: 15,
-  userTimezone: -8,
-  preferLargeCompanies: true,
-  generateIntakeData: true,
-  companyWeights: {
+export const DEFAULT_COMPANY_WEIGHTS: CompanyMatchWeights = {
     bonuses: {
       remoteFirst: 15,
       aiMlFocus: 10,
@@ -383,66 +359,70 @@ export const DEFAULT_JOB_MATCH: JobMatchConfig = {
       high: 85,
       medium: 70,
     },
-  },
-}
-
-export const DEFAULT_COMPANY_WEIGHTS = DEFAULT_JOB_MATCH.companyWeights
-
-export const DEFAULT_JOB_FILTERS: JobFiltersConfig = {
-  enabled: true,
-  strikeThreshold: 5,
-  hardRejections: {
-    excludedJobTypes: [],
-    excludedSeniority: [],
-    excludedCompanies: [],
-    excludedKeywords: [],
-    requiredTitleKeywords: ["software", "developer", "engineer", "frontend", "full stack", "fullstack"],
-    minSalaryFloor: 100000,
-    rejectCommissionOnly: true,
-  },
-  remotePolicy: {
-    allowRemote: true,
-    allowHybridPortland: true,
-    allowOnsite: false,
-  },
-  salaryStrike: {
-    enabled: true,
-    threshold: 150000,
-    points: 2,
-  },
-  experienceStrike: {
-    enabled: true,
-    minPreferred: 6,
-    points: 1,
-  },
-  seniorityStrikes: {},
-  qualityStrikes: {
-    minDescriptionLength: 200,
-    shortDescriptionPoints: 1,
-    buzzwords: [],
-    buzzwordPoints: 1,
-  },
-  ageStrike: {
-    enabled: true,
-    strikeDays: 1,
-    rejectDays: 7,
-    points: 1,
-  },
-}
-
-export const DEFAULT_TECH_RANKS: TechnologyRanksConfig = {
-  technologies: {},
-  strikes: { missingAllRequired: 1, perBadTech: 2 },
 }
 
 export const DEFAULT_PREFILTER_POLICY: PrefilterPolicy = {
-  stopList: DEFAULT_STOP_LIST,
-  strikeEngine: DEFAULT_JOB_FILTERS,
-  technologyRanks: DEFAULT_TECH_RANKS,
+  stopList: {
+    excludedCompanies: [],
+    excludedKeywords: [],
+    excludedDomains: [],
+  },
+  strikeEngine: {
+    enabled: true,
+    strikeThreshold: 5,
+    hardRejections: {
+      excludedJobTypes: [],
+      excludedSeniority: [],
+      excludedCompanies: [],
+      excludedKeywords: [],
+      requiredTitleKeywords: ["software", "developer", "engineer", "frontend", "full stack", "fullstack"],
+      minSalaryFloor: 100000,
+      rejectCommissionOnly: true,
+    },
+    remotePolicy: {
+      allowRemote: true,
+      allowHybridPortland: true,
+      allowOnsite: false,
+    },
+    salaryStrike: {
+      enabled: true,
+      threshold: 150000,
+      points: 2,
+    },
+    experienceStrike: {
+      enabled: true,
+      minPreferred: 6,
+      points: 1,
+    },
+    seniorityStrikes: {},
+    qualityStrikes: {
+      minDescriptionLength: 200,
+      shortDescriptionPoints: 1,
+      buzzwords: [],
+      buzzwordPoints: 1,
+    },
+    ageStrike: {
+      enabled: true,
+      strikeDays: 1,
+      rejectDays: 7,
+      points: 1,
+    },
+  },
+  technologyRanks: {
+    technologies: {},
+    strikes: { missingAllRequired: 1, perBadTech: 2 },
+  },
 }
 
 export const DEFAULT_MATCH_POLICY: MatchPolicy = {
-  jobMatch: DEFAULT_JOB_MATCH,
+  jobMatch: {
+    minMatchScore: 70,
+    portlandOfficeBonus: 15,
+    userTimezone: -8,
+    preferLargeCompanies: true,
+    generateIntakeData: true,
+    companyWeights: DEFAULT_COMPANY_WEIGHTS,
+  },
   companyWeights: DEFAULT_COMPANY_WEIGHTS!,
   dealbreakers: {
     maxTimezoneDiffHours: 8,
