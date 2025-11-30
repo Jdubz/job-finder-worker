@@ -240,20 +240,52 @@ jobs:
         working-directory: job-finder-worker
         run: mypy src --ignore-missing-imports
 
-  # E2E tests (commented out but ready to enable)
-  # e2e:
-  #   name: E2E Tests
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 20
-  #         cache: npm
-  #     - run: npm ci
-  #     - name: Run e2e suite
-  #       env:
-  #         NODE_ENV: test
-  #         VITE_AUTH_BYPASS: "true"
-  #         VITE_E2E_AUTH_TOKEN: "e2e-test-token"
-  #       run: npm run test:e2e
+  # Playwright E2E tests
+  playwright-e2e:
+    name: Playwright E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright tests
+        env:
+          CI: true
+        run: npm run test:e2e --workspace job-finder-FE
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: job-finder-FE/playwright-report/
+          retention-days: 30
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: job-finder-FE/test-results/
+          retention-days: 7
+
+  # Vitest E2E integration tests
+  vitest-e2e:
+    name: Vitest Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run Vitest e2e tests
+        env:
+          NODE_ENV: test
+        run: npm run test:e2e
