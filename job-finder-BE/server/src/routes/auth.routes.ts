@@ -10,18 +10,12 @@ import { UserRepository } from '../modules/users/user.repository'
 import { logger } from '../logger'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError } from '../middleware/api-error'
-import adminConfig from '../config/admins.json'
 
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
 const SESSION_TTL_DAYS = env.SESSION_TTL_DAYS
 export const SESSION_COOKIE = 'jf_session'
 
 const userRepository = new UserRepository()
-const adminEmails = new Set(adminConfig.adminEmails)
-
-function isAdminEmail(email: string): boolean {
-  return adminEmails.has(email)
-}
 
 const LoginSchema = z.object({
   credential: z.string().min(1, 'credential is required'),
@@ -124,14 +118,10 @@ export function buildAuthRouter() {
       }
 
       // Upsert user and create session
+      // Database is the source of truth for roles
+      // Existing users keep their roles, new users get 'viewer' role by default
       const existingUser = userRepository.findByEmail(googleUser.email)
-      // For existing users, use their stored roles (database is source of truth)
-      // For new users, auto-assign admin role if email is in admin list
-      const roles = existingUser?.roles?.length
-        ? existingUser.roles
-        : isAdminEmail(googleUser.email)
-          ? ['admin', 'viewer']
-          : ['viewer']
+      const roles = existingUser?.roles?.length ? existingUser.roles : ['viewer']
 
       const user = userRepository.upsertUser(
         googleUser.email,

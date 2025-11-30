@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
-import adminConfig from '../src/config/admins.json' with { type: 'json' }
 import { openNavigationDrawer } from './utils/ui'
+
+// Test admin email - this user should have admin role in the database
+const TEST_ADMIN_EMAIL = 'dev-admin@jobfinder.dev'
 
 const TEST_AUTH_STATE_KEY = '__JF_E2E_AUTH_STATE__'
 const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
@@ -9,8 +11,8 @@ const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
 test.describe('Admin Route Protection', () => {
   test.describe('with admin user', () => {
     test.beforeEach(async ({ page }) => {
-      // Set up admin authentication using one of the configured admin emails
-      const adminEmail = adminConfig.adminEmails[0]
+      // Set up admin authentication using test admin email
+      const adminEmail = TEST_ADMIN_EMAIL
       await page.context().clearCookies()
       await page.addInitScript(({ email, stateKey, tokenKey }) => {
         const adminAuthState = {
