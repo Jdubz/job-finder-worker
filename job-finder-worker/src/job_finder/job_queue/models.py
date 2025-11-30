@@ -330,12 +330,22 @@ class JobQueueItem(BaseModel):
             processed_at=parse_dt(record.get("processed_at")),
             completed_at=parse_dt(record.get("completed_at")),
             scraped_data=output_data.get("scraped_data"),
-            scrape_config=ScrapeConfig(**input_data["scrape_config"]) if input_data.get("scrape_config") else None,
-            source_discovery_config=SourceDiscoveryConfig(**input_data["source_discovery_config"]) if input_data.get("source_discovery_config") else None,
+            scrape_config=(
+                ScrapeConfig(**input_data["scrape_config"])
+                if input_data.get("scrape_config")
+                else None
+            ),
+            source_discovery_config=(
+                SourceDiscoveryConfig(**input_data["source_discovery_config"])
+                if input_data.get("source_discovery_config")
+                else None
+            ),
             source_id=input_data.get("source_id"),
             source_type=input_data.get("source_type"),
             source_config=input_data.get("source_config"),
-            source_tier=SourceTier(input_data["source_tier"]) if input_data.get("source_tier") else None,
+            source_tier=(
+                SourceTier(input_data["source_tier"]) if input_data.get("source_tier") else None
+            ),
             pipeline_state=output_data.get("pipeline_state"),
             parent_item_id=record.get("parent_item_id"),
             tracking_id=record.get("tracking_id", ""),

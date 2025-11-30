@@ -90,7 +90,14 @@ class ScraperIntake:
     def _is_likely_board_path(self, url: str) -> bool:
         # Lightweight path heuristic to catch board/collection pages
         lower = url.lower()
-        board_tokens = ["/careers", "/jobs", "/job-board", "boards.greenhouse.io", "ashbyhq.com", "workdayjobs"]
+        board_tokens = [
+            "/careers",
+            "/jobs",
+            "/job-board",
+            "boards.greenhouse.io",
+            "ashbyhq.com",
+            "workdayjobs",
+        ]
         return any(token in lower for token in board_tokens)
 
     def _check_job_exists(self, normalized_url: str) -> bool:
