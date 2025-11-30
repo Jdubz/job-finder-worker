@@ -293,6 +293,32 @@ describe("QueueManagementPage", () => {
     })
   })
 
+  describe("Resilience", () => {
+    it("does not crash when pipeline_state is a JSON string", async () => {
+      vi.mocked(useQueueItems).mockReturnValue({
+        queueItems: [
+          {
+            ...mockQueueItems[0],
+            pipeline_state: JSON.stringify({ match_result: { score: 0.8 } }),
+          },
+        ] as any,
+        loading: false,
+        error: null,
+        connectionStatus: "connected",
+        eventLog: [],
+        updateQueueItem: mockUpdateQueueItem,
+        refetch: vi.fn(),
+      } as any)
+
+      render(<QueueManagementPage />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
+        expect(screen.getByText("Save")).toBeInTheDocument()
+      })
+    })
+  })
+
   describe("Details Modal", () => {
     it("opens when a row is clicked", async () => {
       const user = userEvent.setup()

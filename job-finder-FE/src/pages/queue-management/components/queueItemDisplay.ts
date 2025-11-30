@@ -13,26 +13,49 @@ export function getTaskTypeLabel(item: QueueItem): string {
 }
 
 export function getStageLabel(item: QueueItem): string | null {
-  const { pipeline_state, type } = item
+  const pipelineState = coercePipelineState(item.pipeline_state)
+  const { type } = item
 
   // Use explicit pipeline_stage if available (set by worker)
-  if (pipeline_state?.pipeline_stage) {
-    const stage = pipeline_state.pipeline_stage
+  if (pipelineState?.pipeline_stage && typeof pipelineState.pipeline_stage === "string") {
+    const stage = pipelineState.pipeline_stage
     // Capitalize first letter
     return stage.charAt(0).toUpperCase() + stage.slice(1)
   }
 
   // Fall back to deriving stage from pipeline_state keys (legacy)
-  if (pipeline_state) {
-    if ("match_result" in pipeline_state) return "Save"
-    if ("filter_result" in pipeline_state) return "Analyze"
-    if ("job_data" in pipeline_state) return "Filter"
+  if (pipelineState) {
+    if ("match_result" in pipelineState) return "Save"
+    if ("filter_result" in pipelineState) return "Analyze"
+    if ("job_data" in pipelineState) return "Filter"
   }
 
   if (type === "company") return "Company"
   if (type === "job") return "Scrape"
   if (type === "scrape") return "Scrape sweep"
   if (type === "source_discovery") return "Discovery"
+  return null
+}
+
+function coercePipelineState(value: unknown): Record<string, unknown> | null {
+  if (!value) return null
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value)
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // Ignore malformed JSON; treat as absent to avoid UI crashes
+      return null
+    }
+  }
+
   return null
 }
 
