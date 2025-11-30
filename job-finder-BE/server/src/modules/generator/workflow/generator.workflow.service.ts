@@ -36,26 +36,6 @@ export interface GenerateDocumentPayload {
   jobMatchId?: string
 }
 
-export interface GenerateDocumentResult {
-  requestId: string
-  resumeUrl?: string
-  coverLetterUrl?: string
-  success: boolean
-  message?: string
-}
-
-const DEFAULT_PERSONAL_INFO: PersonalInfo = {
-  name: 'Candidate',
-  email: 'candidate@example.com',
-  accentColor: '#2563eb',
-  phone: undefined,
-  github: undefined,
-  linkedin: undefined,
-  location: undefined,
-  website: undefined,
-  summary: undefined
-}
-
 export class GeneratorWorkflowService {
   private readonly userFriendlyError =
     'AI generation failed. Please retry in a moment or contact support if it keeps happening.'
@@ -69,11 +49,6 @@ export class GeneratorWorkflowService {
     private readonly configRepo = new ConfigRepository(),
     private readonly log: Logger = logger
   ) {}
-
-  async generate(payload: GenerateDocumentPayload): Promise<GenerateDocumentResult> {
-    const { requestId } = await this.createRequest(payload)
-    return this.runAllSteps(requestId, payload)
-  }
 
   async createRequest(payload: GenerateDocumentPayload) {
     const requestId = generateRequestId()
@@ -93,32 +68,6 @@ export class GeneratorWorkflowService {
     })
     const nextStep = steps.find((s) => s.status === 'pending')?.id
     return { requestId, steps, nextStep }
-  }
-
-  async runAllSteps(requestId: string, payload: GenerateDocumentPayload): Promise<GenerateDocumentResult> {
-    try {
-      let result = await this.runNextStep(requestId, payload)
-      while (result && result.steps.some((step) => step.status === 'pending')) {
-        result = await this.runNextStep(requestId, payload)
-      }
-
-      const finalRequest = this.workflowRepo.getRequest(requestId)
-      return {
-        requestId,
-        resumeUrl: finalRequest?.resumeUrl ?? undefined,
-        coverLetterUrl: finalRequest?.coverLetterUrl ?? undefined,
-        success: finalRequest?.status === 'completed',
-        message: finalRequest?.status === 'completed' ? undefined : 'Generation incomplete'
-      }
-    } catch (error) {
-      this.log.error({ err: error }, 'Generator workflow failed')
-      this.workflowRepo.updateRequest(requestId, { status: 'failed' })
-      return {
-        requestId,
-        success: false,
-        message: this.buildUserMessage(error, this.userFriendlyError)
-      }
-    }
   }
 
   async runNextStep(requestId: string, _payload?: GenerateDocumentPayload) {
@@ -141,7 +90,13 @@ export class GeneratorWorkflowService {
       }
     }
 
-    const personalInfo = request.personalInfo ?? (await this.personalInfoStore.get()) ?? DEFAULT_PERSONAL_INFO
+    const personalInfo = request.personalInfo ?? (await this.personalInfoStore.get()) ?? null
+    if (!personalInfo) {
+      const message =
+        'Personal info is not configured. Please set your name, email, and other details in the config entry "personal-info" (e.g., via /api/config/personal-info) before generating documents.'
+      this.workflowRepo.updateRequest(requestId, { status: 'failed' })
+      throw new UserFacingError(message)
+    }
     this.workflowRepo.updateRequest(requestId, { personalInfo, steps })
 
     if (pendingStep.id === 'collect-data') {

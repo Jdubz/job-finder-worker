@@ -121,12 +121,9 @@ vi.mock("@/api/generator-client", async () => {
   const actual = await vi.importActual<typeof import("@/api/generator-client")>("@/api/generator-client")
   const instance = actual.generatorClient
   const subclassed = Object.assign(Object.create(Object.getPrototypeOf(instance)), instance)
-  subclassed.generateDocument = vi.fn()
   subclassed.startGeneration = vi.fn()
   subclassed.executeStep = vi.fn()
   subclassed.getHistory = vi.fn()
-  subclassed.getUserDefaults = vi.fn()
-  subclassed.updateUserDefaults = vi.fn()
   subclassed.deleteDocument = vi.fn()
   return {
     ...actual,
@@ -268,7 +265,6 @@ vi.mock("@/constants", () => ({
 // Mock types
 vi.mock("@/types/generator", () => ({
   GenerateDocumentRequest: {},
-  GenerateDocumentResponse: {},
   StartGenerationResponse: {},
   ExecuteStepResponse: {},
   GenerationStep: {},

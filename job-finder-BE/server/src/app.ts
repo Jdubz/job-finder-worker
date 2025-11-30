@@ -12,7 +12,6 @@ import { buildCompanyRouter } from './modules/companies/company.routes'
 import { buildJobSourceRouter } from './modules/job-sources/job-source.routes'
 import { buildConfigRouter } from './modules/config/config.routes'
 import { buildGeneratorRouter } from './modules/generator/generator.routes'
-import { buildGeneratorApiRouter } from './modules/generator/generator.api'
 import { buildGeneratorWorkflowRouter } from './modules/generator/generator.workflow.routes'
 import { buildGeneratorArtifactsRouter } from './modules/generator/generator.artifacts.routes'
 import { buildGeneratorAssetsRouter, buildGeneratorAssetsServeRouter } from './modules/generator/generator.assets.routes'
@@ -77,7 +76,6 @@ export function buildApp() {
   const generatorPipeline = express.Router()
   generatorPipeline.use(express.json({ limit: '10mb' }))
   generatorPipeline.use(express.urlencoded({ extended: true }))
-  generatorPipeline.use(buildGeneratorApiRouter())
   generatorPipeline.use('/assets', buildGeneratorAssetsRouter())
   generatorPipeline.use(buildGeneratorWorkflowRouter())
 

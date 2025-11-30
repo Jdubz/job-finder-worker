@@ -74,17 +74,17 @@ if [[ ! -f "$PAYLOAD_FILE" ]]; then
   exit 1
 fi
 
-curl -sS -X POST "http://localhost:${API_PORT}/api/generator/generate" \
+START_RESPONSE=$(curl -sS -X POST "http://localhost:${API_PORT}/api/generator/start" \
   -H "Authorization: Bearer $AUTH_TOKEN" \
   -H "Content-Type: application/json" \
-  --data "@${PAYLOAD_FILE}" \
-  -o "$RESPONSE_FILE"
+  --data "@${PAYLOAD_FILE}")
 
-echo "Response saved to $RESPONSE_FILE"
+echo "$START_RESPONSE" > "$RESPONSE_FILE"
 
-REQUEST_ID=$(jq -r '.data.generationId // .data.requestId // empty' "$RESPONSE_FILE" || true)
-RESUME_URL=$(jq -r '.data.resumeUrl // empty' "$RESPONSE_FILE" || true)
-COVER_URL=$(jq -r '.data.coverLetterUrl // empty' "$RESPONSE_FILE" || true)
+REQUEST_ID=$(echo "$START_RESPONSE" | jq -r '.data.requestId // empty')
+NEXT_STEP=$(echo "$START_RESPONSE" | jq -r '.data.nextStep // empty')
+RESUME_URL=$(echo "$START_RESPONSE" | jq -r '.data.resumeUrl // empty')
+COVER_URL=$(echo "$START_RESPONSE" | jq -r '.data.coverLetterUrl // empty')
 
 if [[ -z "$REQUEST_ID" ]]; then
   echo "ERROR: No requestId in response. See $RESPONSE_FILE" >&2
@@ -92,6 +92,25 @@ if [[ -z "$REQUEST_ID" ]]; then
 fi
 
 echo "Generator request id: $REQUEST_ID"
+
+# Execute remaining steps
+while [[ -n "$NEXT_STEP" ]]; do
+  STEP_RESPONSE=$(curl -sS -X POST "http://localhost:${API_PORT}/api/generator/step/${REQUEST_ID}" \
+    -H "Authorization: Bearer $AUTH_TOKEN" \
+    -H "Content-Type: application/json")
+  echo "$STEP_RESPONSE" > "$RESPONSE_FILE"
+  STATUS=$(echo "$STEP_RESPONSE" | jq -r '.data.status // empty')
+  RESUME_URL=$(echo "$STEP_RESPONSE" | jq -r '.data.resumeUrl // empty')
+  COVER_URL=$(echo "$STEP_RESPONSE" | jq -r '.data.coverLetterUrl // empty')
+  if [[ "$STATUS" == "failed" ]]; then
+    echo "ERROR: Generation failed. See $RESPONSE_FILE" >&2
+    exit 1
+  fi
+  NEXT_STEP=$(echo "$STEP_RESPONSE" | jq -r '.data.nextStep // empty')
+done
+
+# Final response saved
+echo "Response saved to $RESPONSE_FILE"
 
 # Verify DB state
 if command -v sqlite3 >/dev/null; then
