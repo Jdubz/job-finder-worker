@@ -49,6 +49,18 @@ function formatDate(date: unknown): string {
   })
 }
 
+// Defensive helper: never let arbitrary objects reach React text nodes
+const safeText = (value: unknown, fallback = "—") => {
+  if (value === null || value === undefined) return fallback
+  if (typeof value === "string" || typeof value === "number") return value
+  // Some backends occasionally send nested objects/arrays; stringify to avoid render crashes
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return fallback
+  }
+}
+
 /** Thresholds for company data quality assessment */
 const DATA_QUALITY_THRESHOLDS = {
   COMPLETE: { ABOUT: 100, CULTURE: 50 },
@@ -334,9 +346,9 @@ export function CompaniesPage() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => setSelectedCompany(company)}
                   >
-                    <TableCell className="font-medium">{company.name}</TableCell>
+                    <TableCell className="font-medium">{safeText(company.name)}</TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {company.industry || "—"}
+                      {safeText(company.industry)}
                     </TableCell>
                     <TableCell>
                       <CompanyStatusBadge company={company} />
@@ -362,9 +374,9 @@ export function CompaniesPage() {
               <DialogHeader>
                 <div className="flex items-start justify-between">
                   <div>
-                    <DialogTitle className="text-xl">{selectedCompany.name}</DialogTitle>
+                    <DialogTitle className="text-xl">{safeText(selectedCompany.name)}</DialogTitle>
                     <DialogDescription className="mt-1">
-                      {selectedCompany.industry || "Industry not specified"}
+                      {safeText(selectedCompany.industry, "Industry not specified")}
                     </DialogDescription>
                   </div>
                   <CompanyStatusBadge company={selectedCompany} />
@@ -375,7 +387,7 @@ export function CompaniesPage() {
                 {/* ID */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">ID</Label>
-                  <p className="mt-1 text-sm font-mono text-muted-foreground">{selectedCompany.id || "—"}</p>
+                  <p className="mt-1 text-sm font-mono text-muted-foreground">{safeText(selectedCompany.id)}</p>
                 </div>
 
                 {/* Website */}
@@ -388,7 +400,7 @@ export function CompaniesPage() {
                       rel="noopener noreferrer"
                       className="flex items-center text-blue-600 hover:underline mt-1"
                     >
-                      {selectedCompany.website}
+                      {safeText(selectedCompany.website)}
                       <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
                     </a>
                   ) : (
@@ -399,19 +411,19 @@ export function CompaniesPage() {
                 {/* Industry */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Industry</Label>
-                  <p className="mt-1">{selectedCompany.industry || "—"}</p>
+                  <p className="mt-1">{safeText(selectedCompany.industry)}</p>
                 </div>
 
                 {/* Headquarters */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Headquarters</Label>
-                  <p className="mt-1">{selectedCompany.headquartersLocation || "—"}</p>
+                  <p className="mt-1">{safeText(selectedCompany.headquartersLocation)}</p>
                 </div>
 
                 {/* Company Size */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company Size</Label>
-                  <p className="mt-1 capitalize">{selectedCompany.companySizeCategory || "—"}</p>
+                  <p className="mt-1 capitalize">{safeText(selectedCompany.companySizeCategory)}</p>
                 </div>
 
                 {/* Tech Stack */}
@@ -419,11 +431,15 @@ export function CompaniesPage() {
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Tech Stack</Label>
                   {selectedCompany.techStack && selectedCompany.techStack.length > 0 ? (
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {selectedCompany.techStack.map((tech) => (
-                        <Badge key={tech} variant="outline" className="text-xs">
-                          {tech}
-                        </Badge>
-                      ))}
+                      {selectedCompany.techStack.map((tech, index) => {
+                        const label = safeText(tech)
+                        const key = typeof tech === "string" || typeof tech === "number" ? tech : index
+                        return (
+                          <Badge key={key} variant="outline" className="text-xs">
+                            {label}
+                          </Badge>
+                        )
+                      })}
                     </div>
                   ) : (
                     <p className="mt-1 text-muted-foreground">—</p>
@@ -433,19 +449,19 @@ export function CompaniesPage() {
                 {/* About */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">About</Label>
-                  <p className="mt-1 text-sm">{selectedCompany.about || "—"}</p>
+                  <p className="mt-1 text-sm">{safeText(selectedCompany.about)}</p>
                 </div>
 
                 {/* Culture */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Culture</Label>
-                  <p className="mt-1 text-sm">{selectedCompany.culture || "—"}</p>
+                  <p className="mt-1 text-sm">{safeText(selectedCompany.culture)}</p>
                 </div>
 
                 {/* Mission */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Mission</Label>
-                  <p className="mt-1 text-sm">{selectedCompany.mission || "—"}</p>
+                  <p className="mt-1 text-sm">{safeText(selectedCompany.mission)}</p>
                 </div>
 
                 {/* Timestamps */}
