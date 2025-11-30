@@ -59,7 +59,7 @@ export function JobFinderConfigPage() {
       <div className="flex items-center justify-center min-h-[400px]">
         <Alert className="max-w-md">
           <AlertDescription>
-            You do not have permission to access job finder configuration. Editor role required.
+            You do not have permission to access job finder configuration. Admin access required.
           </AlertDescription>
         </Alert>
       </div>

@@ -2,12 +2,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { googleLogout } from '@react-oauth/google'
 import { authClient, AuthError } from '@/api/auth-client'
-import adminConfig from '@/config/admins.json'
-
-// Admin emails for owner/admin role determination
-const adminEmailSet = new Set(
-  Array.isArray(adminConfig.adminEmails) ? adminConfig.adminEmails : []
-)
 
 const IS_DEVELOPMENT = import.meta.env.VITE_ENVIRONMENT === 'development'
 
@@ -47,7 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const response = await authClient.fetchSession()
         if (mounted && response.user) {
           setUser(response.user)
-          setIsOwner(adminEmailSet.has(response.user.email))
+          // Check if user has admin role (users table is source of truth)
+          setIsOwner(response.user.roles?.includes('admin') ?? false)
         }
       } catch (error) {
         // 401 is expected when not logged in - silently ignore
@@ -82,7 +77,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await authClient.login(credential)
       setUser(response.user)
-      setIsOwner(adminEmailSet.has(response.user.email))
+      // Check if user has admin role (users table is source of truth)
+      setIsOwner(response.user.roles?.includes('admin') ?? false)
     } catch (error) {
       console.error('Login failed:', error)
       throw error
@@ -130,7 +126,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await authClient.login(devCredential)
       setUser(response.user)
-      setIsOwner(role === 'admin')
+      // Check if user has admin role (users table is source of truth)
+      setIsOwner(response.user.roles?.includes('admin') ?? false)
     } catch (error) {
       console.error('Dev login failed:', error)
     }

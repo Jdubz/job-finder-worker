@@ -19,6 +19,7 @@ vi.mock("@/api/auth-client", () => {
             email: "owner@test.dev",
             name: "Test User",
             picture: "avatar.png",
+            roles: ["admin", "viewer"],
           },
         })
       ),
@@ -35,12 +36,6 @@ vi.mock("@/api/auth-client", () => {
     },
   }
 })
-
-vi.mock("@/config/admins.json", () => ({
-  default: {
-    adminEmails: ["owner@test.dev"],
-  },
-}))
 
 vi.mock("@react-oauth/google", () => {
   const googleLogout = vi.fn()

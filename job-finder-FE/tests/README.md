@@ -86,8 +86,8 @@ VITE_AUTH_BYPASS=false
 # Test User Credentials
 VITE_TEST_USER_EMAIL=test@example.com
 VITE_TEST_USER_PASSWORD=testpassword123
-VITE_TEST_EDITOR_EMAIL=editor@example.com
-VITE_TEST_EDITOR_PASSWORD=editorpassword123
+VITE_TEST_ADMIN_EMAIL=admin@example.com
+VITE_TEST_ADMIN_PASSWORD=adminpassword123
 ```
 
 ### Authentication Helpers

@@ -4,11 +4,12 @@ export const ROUTES = {
   CONTENT_ITEMS: "/content-items",
   DOCUMENT_BUILDER: "/document-builder",
   AI_PROMPTS: "/ai-prompts",
-  // Editor-only routes
+  // Authenticated routes (viewer or admin)
   JOB_APPLICATIONS: "/job-applications",
   JOB_LISTINGS: "/job-listings",
   COMPANIES: "/companies",
   SOURCES: "/sources",
+  // Admin-only routes
   QUEUE_MANAGEMENT: "/queue-management",
   JOB_FINDER_CONFIG: "/job-finder-config",
   // Legal pages
@@ -24,12 +25,16 @@ export const ROUTES = {
 export type RouteKey = keyof typeof ROUTES
 export type RoutePath = (typeof ROUTES)[RouteKey]
 
-// Editor-only routes that require authentication
-export const EDITOR_ROUTES: RoutePath[] = [
+// Routes that require authentication (viewer or admin role)
+export const AUTHENTICATED_ROUTES: RoutePath[] = [
   ROUTES.JOB_APPLICATIONS,
   ROUTES.JOB_LISTINGS,
   ROUTES.COMPANIES,
   ROUTES.SOURCES,
+]
+
+// Routes that require admin role
+export const ADMIN_ROUTES: RoutePath[] = [
   ROUTES.QUEUE_MANAGEMENT,
   ROUTES.JOB_FINDER_CONFIG,
 ]

@@ -15,18 +15,18 @@ type TestUser = {
   roles: string[]
 }
 
-const TEST_USERS: Record<"regular" | "editor", TestUser> = {
+const TEST_USERS: Record<"regular" | "admin", TestUser> = {
   regular: {
     id: "test-regular-user",
     email: process.env.VITE_TEST_USER_EMAIL || "test@example.com",
     name: "Regular Tester",
-    roles: ["admin"],
+    roles: ["viewer"],
   },
-  editor: {
-    id: "test-editor-user",
-    email: process.env.VITE_TEST_EDITOR_EMAIL || "editor@example.com",
-    name: "Editor Tester",
-    roles: ["admin"],
+  admin: {
+    id: "test-admin-user",
+    email: process.env.VITE_TEST_ADMIN_EMAIL || "admin@example.com",
+    name: "Admin Tester",
+    roles: ["admin", "viewer"],
   },
 }
 
@@ -51,7 +51,7 @@ export function getIntegrationDescribe(): typeof describe {
  * In the new cookie-based auth, this is mostly a no-op for tracking purposes.
  * Actual auth happens via the session cookie set by the backend.
  */
-export async function signInTestUser(userType: "regular" | "editor" = "regular") {
+export async function signInTestUser(userType: "regular" | "admin" = "regular") {
   currentUser = TEST_USERS[userType]
   return currentUser
 }
@@ -61,7 +61,7 @@ export async function signInTestUser(userType: "regular" | "editor" = "regular")
  * This is used for tests that need to send a Bearer token (e.g., for dev mode).
  */
 export async function getTestAuthToken(
-  userType: "regular" | "editor" = "regular"
+  userType: "regular" | "admin" = "regular"
 ): Promise<string> {
   if (!currentUser || currentUser !== TEST_USERS[userType]) {
     await signInTestUser(userType)
