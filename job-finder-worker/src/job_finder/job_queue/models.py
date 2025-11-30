@@ -186,157 +186,114 @@ class SourceDiscoveryConfig(BaseModel):
 
 class JobQueueItem(BaseModel):
     """
-    Queue item representing a job or company to be processed.
-
-    TypeScript equivalent: QueueItem interface in queue.types.ts
-    This model represents rows in the job_queue table. Items are processed
-    in FIFO order (oldest created_at first).
-
-    IMPORTANT: This model must match the TypeScript QueueItem interface exactly.
-    See: https://github.com/Jdubz/job-finder-shared-types/blob/main/src/queue.types.ts
+    Lean queue item for the worker. Only first-class columns map to SQLite; all
+    task-specific parameters/results live inside `input` and `output` blobs.
     """
 
     # Identity
     id: Optional[str] = None
-    type: QueueItemType = Field(description="Type of item (job or company)")
+    type: QueueItemType = Field(description="Type of item (job/company/etc.)")
 
     # Status tracking
-    status: QueueStatus = Field(
-        default=QueueStatus.PENDING, description="Current processing status"
-    )
-    result_message: Optional[str] = Field(
-        default=None, description="Why skipped/failed, or success details"
-    )
-    error_details: Optional[str] = Field(
-        default=None, description="Technical error details for debugging"
-    )
+    status: QueueStatus = Field(default=QueueStatus.PENDING)
+    result_message: Optional[str] = None
+    error_details: Optional[str] = None
 
-    # Input data
-    url: str = Field(
-        default="", description="URL to scrape (job posting or company page, empty for SCRAPE type)"
-    )
-    company_name: str = Field(default="", description="Company name (empty for SCRAPE type)")
-    company_id: Optional[str] = Field(default=None, description="Company record ID")
-    source: QueueSource = Field(
-        default="scraper",
-        description="Source of submission: scraper, user_submission, webhook, email",
-    )
-    submitted_by: Optional[str] = Field(
-        default=None, description="User ID if submitted by authenticated user"
-    )
+    # Scheduling / routing
+    url: Optional[str] = None  # canonical per-type URL used for dedupe/filters
+    tracking_id: str = Field(default_factory=lambda: str(__import__("uuid").uuid4()))
+    parent_item_id: Optional[str] = None
 
-    # Timestamps (for FIFO ordering)
-    created_at: Optional[datetime] = Field(default=None, description="When item was added to queue")
-    updated_at: Optional[datetime] = Field(default=None, description="Last update to status/data")
-    processed_at: Optional[datetime] = Field(default=None, description="When processing started")
-    completed_at: Optional[datetime] = Field(
-        default=None, description="When processing finished (success/failed/skipped)"
-    )
+    # Payloads
+    input: Dict[str, Any] = Field(default_factory=dict, description="Task-specific inputs")
+    output: Dict[str, Any] = Field(default_factory=dict, description="Task results/telemetry")
 
-    # Optional scraped data (populated by scrapers or API submissions)
-    scraped_data: Optional[Dict[str, Any]] = Field(
-        default=None, description="Pre-scraped job or company data"
-    )
+    # Legacy convenience fields (kept in-memory, persisted inside input/output)
+    company_name: Optional[str] = None
+    company_id: Optional[str] = None
+    source: Optional[QueueSource] = None
+    submitted_by: Optional[str] = None
+    scrape_config: Optional[ScrapeConfig] = None
+    scraped_data: Optional[Dict[str, Any]] = None
+    source_discovery_config: Optional[SourceDiscoveryConfig] = None
+    source_id: Optional[str] = None
+    source_type: Optional[str] = None
+    source_config: Optional[Dict[str, Any]] = None
+    source_tier: Optional[SourceTier] = None
+    pipeline_state: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
 
-    # Scrape configuration (only used when type is SCRAPE)
-    scrape_config: Optional[ScrapeConfig] = Field(
-        default=None, description="Configuration for scrape requests"
-    )
-
-    # Source discovery configuration (only used when type is SOURCE_DISCOVERY)
-    source_discovery_config: Optional[SourceDiscoveryConfig] = Field(
-        default=None, description="Configuration for source discovery"
-    )
-
-    # Scrape source fields (only used when type is SCRAPE_SOURCE)
-    source_id: Optional[str] = Field(
-        default=None,
-        description="Reference to job-sources table entry (for SCRAPE_SOURCE type)",
-    )
-    source_type: Optional[str] = Field(
-        default=None,
-        description="Generic scraping method: api, rss, html (vendor auto-detected from config)",
-    )
-    source_config: Optional[Dict[str, Any]] = Field(
-        default=None, description="Source-specific configuration (selectors, API keys, etc.)"
-    )
-    source_tier: Optional[SourceTier] = Field(
-        default=None, description="Priority tier (S/A/B/C/D) for scheduling optimization"
-    )
-
-    # Pipeline state for multi-step processing
-    pipeline_state: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="State passed between pipeline steps (scraped data, filter results, etc.)",
-    )
-    parent_item_id: Optional[str] = Field(
-        default=None, description="Document ID of parent item that spawned this sub-task"
-    )
-
-    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional metadata blob")
-
-    # Agent review notes - analysis of what went wrong and recovery attempts
-    review_notes: Optional[str] = Field(
-        default=None,
-        description="Agent reviewer's analysis: what went wrong, why task failed, recovery attempts",
-    )
-
-    # Loop prevention - tracking_id links related items
-    tracking_id: str = Field(
-        default_factory=lambda: str(__import__("uuid").uuid4()),
-        description="UUID that tracks entire job lineage. Generated at root, inherited by all spawned children.",
-    )
+    # Timestamps
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    processed_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
 
     model_config = ConfigDict(use_enum_values=True)
 
+    def _dt(self, value: Optional[datetime]) -> Optional[str]:
+        return value.isoformat() if value else None
+
+    @staticmethod
+    def _enum_val(value: Any) -> Any:
+        if value is None:
+            return None
+        return getattr(value, "value", value)
+
+    def _build_input(self) -> Dict[str, Any]:
+        data = {**(self.input or {})}
+        # Store legacy fields inside input for compatibility with processors
+        if self.company_name is not None:
+            data.setdefault("company_name", self.company_name)
+        if self.company_id is not None:
+            data.setdefault("company_id", self.company_id)
+        if self.source is not None:
+            data.setdefault("source", self.source)
+        if self.submitted_by is not None:
+            data.setdefault("submitted_by", self.submitted_by)
+        if self.scrape_config is not None:
+            data["scrape_config"] = self.scrape_config.model_dump()
+        if self.source_discovery_config is not None:
+            data["source_discovery_config"] = self.source_discovery_config.model_dump()
+        if self.source_id is not None:
+            data.setdefault("source_id", self.source_id)
+        if self.source_type is not None:
+            data.setdefault("source_type", self.source_type)
+        if self.source_config is not None:
+            data.setdefault("source_config", self.source_config)
+        if self.source_tier is not None:
+            data.setdefault("source_tier", self._enum_val(self.source_tier))
+        if self.metadata is not None:
+            data.setdefault("metadata", self.metadata)
+        return data
+
+    def _build_output(self) -> Dict[str, Any]:
+        data = {**(self.output or {})}
+        if self.scraped_data is not None:
+            data["scraped_data"] = self.scraped_data
+        if self.pipeline_state is not None:
+            data["pipeline_state"] = self.pipeline_state
+        return data
+
     def to_record(self) -> Dict[str, Any]:
-        """Convert the queue item into a SQLite-ready dictionary."""
-
-        def enum_val(value: Any) -> Any:
-            """Return the raw value for Enum-like inputs."""
-            if value is None:
-                return None
-            return getattr(value, "value", value)
-
-        def serialize(value: Optional[Dict[str, Any]] | Optional[List[Any]]) -> Optional[str]:
-            if value is None:
-                return None
-            return json.dumps(value)
-
-        def dt(value: Optional[datetime]) -> Optional[str]:
-            return value.isoformat() if value else None
+        input_payload = self._build_input()
+        output_payload = self._build_output()
 
         return {
             "id": self.id,
-            "type": enum_val(self.type),
-            "status": enum_val(self.status),
+            "type": self._enum_val(self.type),
+            "status": self._enum_val(self.status),
             "url": self.url,
-            "company_name": self.company_name,
-            "company_id": self.company_id,
-            "source": self.source,
-            "submitted_by": self.submitted_by,
-            "created_at": dt(self.created_at),
-            "updated_at": dt(self.updated_at),
-            "processed_at": dt(self.processed_at),
-            "completed_at": dt(self.completed_at),
-            "scraped_data": serialize(self.scraped_data),
-            "scrape_config": serialize(
-                self.scrape_config.model_dump() if self.scrape_config else None
-            ),
-            "source_discovery_config": serialize(
-                self.source_discovery_config.model_dump() if self.source_discovery_config else None
-            ),
-            "source_id": self.source_id,
-            "source_type": self.source_type,
-            "source_config": serialize(self.source_config),
-            "source_tier": enum_val(self.source_tier),
-            "pipeline_state": serialize(self.pipeline_state),
-            "parent_item_id": self.parent_item_id,
             "tracking_id": self.tracking_id,
+            "parent_item_id": self.parent_item_id,
+            "input": json.dumps(input_payload) if input_payload else None,
+            "output": json.dumps(output_payload) if output_payload else None,
             "result_message": self.result_message,
             "error_details": self.error_details,
-            "metadata": serialize(self.metadata),
-            "review_notes": self.review_notes,
+            "created_at": self._dt(self.created_at),
+            "updated_at": self._dt(self.updated_at),
+            "processed_at": self._dt(self.processed_at),
+            "completed_at": self._dt(self.completed_at),
         }
 
     @classmethod
@@ -354,31 +311,35 @@ class JobQueueItem(BaseModel):
         def parse_dt(value: Optional[str]) -> Optional[datetime]:
             return datetime.fromisoformat(value) if value else None
 
+        input_data = parse_json(record.get("input")) or {}
+        output_data = parse_json(record.get("output")) or {}
+
         return cls(
             id=record["id"],
             type=QueueItemType(record["type"]),
             status=QueueStatus(record["status"]),
-            url=record["url"],
-            company_name=record.get("company_name", ""),
-            company_id=record.get("company_id"),
-            source=record.get("source", "scraper"),
-            submitted_by=record.get("submitted_by"),
+            url=record.get("url"),
+            input=input_data,
+            output=output_data,
+            company_name=input_data.get("company_name"),
+            company_id=input_data.get("company_id"),
+            source=input_data.get("source"),
+            submitted_by=input_data.get("submitted_by"),
             created_at=parse_dt(record.get("created_at")),
             updated_at=parse_dt(record.get("updated_at")),
             processed_at=parse_dt(record.get("processed_at")),
             completed_at=parse_dt(record.get("completed_at")),
-            scraped_data=parse_json(record.get("scraped_data")),
-            scrape_config=parse_json(record.get("scrape_config")),
-            source_discovery_config=parse_json(record.get("source_discovery_config")),
-            source_id=record.get("source_id"),
-            source_type=record.get("source_type"),
-            source_config=parse_json(record.get("source_config")),
-            source_tier=SourceTier(record["source_tier"]) if record.get("source_tier") else None,
-            pipeline_state=parse_json(record.get("pipeline_state")),
+            scraped_data=output_data.get("scraped_data"),
+            scrape_config=ScrapeConfig(**input_data["scrape_config"]) if input_data.get("scrape_config") else None,
+            source_discovery_config=SourceDiscoveryConfig(**input_data["source_discovery_config"]) if input_data.get("source_discovery_config") else None,
+            source_id=input_data.get("source_id"),
+            source_type=input_data.get("source_type"),
+            source_config=input_data.get("source_config"),
+            source_tier=SourceTier(input_data["source_tier"]) if input_data.get("source_tier") else None,
+            pipeline_state=output_data.get("pipeline_state"),
             parent_item_id=record.get("parent_item_id"),
             tracking_id=record.get("tracking_id", ""),
             result_message=record.get("result_message"),
             error_details=record.get("error_details"),
-            metadata=parse_json(record.get("metadata")),
-            review_notes=record.get("review_notes"),
+            metadata=input_data.get("metadata"),
         )

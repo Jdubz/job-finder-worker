@@ -131,38 +131,17 @@ export interface QueueItem {
   id?: string
   type: QueueItemType
   status: QueueStatus
-  url: string
-  company_name: string
-  company_id: string | null
-  source: QueueSource
-  /** User UID for user submissions - tracks who submitted the item */
-  submitted_by?: string | null
-  result_message?: string
-  error_details?: string
+  url?: string | null
+  tracking_id?: string // UUID linking a task family
+  parent_item_id?: string | null
+  input?: Record<string, unknown> | null // Task-specific inputs (source IDs, configs, company hints, etc.)
+  output?: Record<string, unknown> | null // Task results/telemetry (scraped data, pipeline state, stats, etc.)
+  result_message?: string | null
+  error_details?: string | null
   created_at: TimestampLike
   updated_at: TimestampLike
   processed_at?: TimestampLike | null
   completed_at?: TimestampLike | null
-  scrape_config?: ScrapeConfig | null // Configuration for scrape requests (only used when type is "scrape")
-  scraped_data?: Record<string, any> | null // Pre-scraped job or company data
-  source_discovery_config?: SourceDiscoveryConfig | null // Configuration for source discovery (only used when type is "source_discovery")
-  source_id?: string | null // job_sources row reference when spawned from source scheduler
-  source_type?: string | null // Generic scraping method: "api" | "rss" | "html" (vendor auto-detected from config)
-  source_config?: Record<string, unknown> | null // Serialized source configuration blob
-  source_tier?: SourceTier | null // Priority tier for scheduling
-
-  // Pipeline state for multi-step processing
-  pipeline_state?: Record<string, any> | null // State passed between pipeline steps (scraped data, filter results, etc.)
-  parent_item_id?: string | null // Document ID of parent item that spawned this sub-task
-
-  // Additional metadata (for pre-generated documents or other contextual data)
-  metadata?: Record<string, any> | null
-
-  // Agent review notes - analysis of what went wrong and recovery attempts
-  review_notes?: string | null
-
-  // Loop-prevention - tracking_id links related items
-  tracking_id?: string // UUID that tracks entire job lineage. Generated at root, inherited by all spawned children.
 }
 
 /**

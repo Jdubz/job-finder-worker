@@ -30,28 +30,17 @@ CREATE TABLE IF NOT EXISTS job_queue (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     status TEXT NOT NULL,
-    url TEXT NOT NULL UNIQUE,
-    company_name TEXT NOT NULL,
-    company_id TEXT,
-    source TEXT DEFAULT 'manual_submission',
-    submitted_by TEXT,
+    url TEXT,
+    tracking_id TEXT,
+    parent_item_id TEXT,
+    input TEXT,
+    output TEXT,
     result_message TEXT,
     error_details TEXT,
     created_at TEXT,
     updated_at TEXT,
     processed_at TEXT,
-    completed_at TEXT,
-    scrape_config TEXT,
-    scraped_data TEXT,
-    source_discovery_config TEXT,
-    source_id TEXT,
-    source_type TEXT,
-    source_config TEXT,
-    source_tier TEXT,
-    pipeline_state TEXT,
-    parent_item_id TEXT,
-    metadata TEXT,
-    tracking_id TEXT
+    completed_at TEXT
 )
 """
 
@@ -84,14 +73,14 @@ def db_with_item(db_path):
     now = datetime.now(timezone.utc).isoformat()
     conn = sqlite3.connect(db_path)
     conn.execute(
-        """INSERT INTO job_queue (id, type, status, url, company_name, created_at, updated_at, tracking_id)
+        """INSERT INTO job_queue (id, type, status, url, input, created_at, updated_at, tracking_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             "test-item-1",
             "job",
             "pending",
             "https://example.com/job/1",
-            "Test Company",
+            json.dumps({"company_name": "Test Company", "source": "manual_submission"}),
             now,
             now,
             "track-1",

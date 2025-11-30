@@ -112,7 +112,6 @@ class AgentReviewProcessor(BaseProcessor):
                 item.id,
                 QueueStatus.NEEDS_REVIEW,
                 "AI provider unavailable - requires manual review",
-                review_notes="Agent review attempted but no AI provider configured.",
             )
             return
 
@@ -155,7 +154,6 @@ class AgentReviewProcessor(BaseProcessor):
                 item.id,
                 QueueStatus.SUCCESS,
                 "Agent review completed",
-                review_notes=review_notes,
             )
 
             # Also update the parent item's review_notes if available
@@ -164,7 +162,6 @@ class AgentReviewProcessor(BaseProcessor):
                     parent_item.id,
                     QueueStatus(parent_item.status),  # Keep existing status
                     parent_item.result_message,
-                    review_notes=review_notes,
                 )
 
             logger.info(f"AGENT_REVIEW complete for {item.id}")
@@ -177,7 +174,6 @@ class AgentReviewProcessor(BaseProcessor):
                 QueueStatus.FAILED,
                 error_msg,
                 error_details=traceback.format_exc(),
-                review_notes=f"Agent review encountered an error: {str(e)}",
             )
 
     def _build_analysis_prompt(

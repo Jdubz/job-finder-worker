@@ -63,7 +63,6 @@ class QueueManager:
                     tuple(record.values()),
                 )
         except sqlite3.IntegrityError as exc:
-            # UNIQUE constraint on url - this is expected during concurrent scraping
             if "UNIQUE constraint failed" in str(exc):
                 raise DuplicateQueueItemError(f"Duplicate URL in queue: {item.url}") from exc
             raise StorageError(f"Failed to insert queue item: {exc}") from exc
@@ -90,6 +89,37 @@ class QueueManager:
 
         return _rows_to_items(rows)
 
+    def _persist_item(self, item: JobQueueItem) -> None:
+        record = item.to_record()
+        values = (
+            record["type"],
+            record["status"],
+            record["url"],
+            record["tracking_id"],
+            record["parent_item_id"],
+            record["input"],
+            record["output"],
+            record["result_message"],
+            record["error_details"],
+            record["created_at"],
+            record["updated_at"],
+            record["processed_at"],
+            record["completed_at"],
+            record["id"],
+        )
+
+        with sqlite_connection(self.db_path) as conn:
+            conn.execute(
+                """
+                UPDATE job_queue
+                SET type=?, status=?, url=?, tracking_id=?, parent_item_id=?,
+                    input=?, output=?, result_message=?, error_details=?,
+                    created_at=?, updated_at=?, processed_at=?, completed_at=?
+                WHERE id=?
+                """,
+                values,
+            )
+
     def update_status(
         self,
         item_id: str,
@@ -97,42 +127,38 @@ class QueueManager:
         result_message: Optional[str] = None,
         scraped_data: Optional[dict] = None,
         error_details: Optional[str] = None,
-        review_notes: Optional[str] = None,
         pipeline_state: Optional[dict] = None,
     ) -> None:
-        now = _iso(_utcnow())
-        update_data: Dict[str, Any] = {
-            "status": status.value,
-            "updated_at": now,
-        }
+        item = self.get_item(item_id)
+        if not item:
+            logger.error("update_status: item %s not found", item_id)
+            return
+
+        now_dt = _utcnow()
+        now_iso = _iso(now_dt)
+        item.status = status
+        item.updated_at = now_dt
 
         if result_message is not None:
-            update_data["result_message"] = result_message
+            item.result_message = result_message
         if scraped_data is not None:
-            update_data["scraped_data"] = json.dumps(scraped_data)
+            item.scraped_data = scraped_data
         if error_details is not None:
-            update_data["error_details"] = error_details
-        if review_notes is not None:
-            update_data["review_notes"] = review_notes
+            item.error_details = error_details
         if pipeline_state is not None:
-            update_data["pipeline_state"] = json.dumps(pipeline_state)
+            item.pipeline_state = pipeline_state
 
         if status == QueueStatus.PROCESSING:
-            update_data["processed_at"] = now
+            item.processed_at = now_dt
         if status in (
             QueueStatus.SUCCESS,
             QueueStatus.FAILED,
             QueueStatus.SKIPPED,
             QueueStatus.FILTERED,
         ):
-            update_data["completed_at"] = now
+            item.completed_at = now_dt
 
-        assignments = ", ".join(f"{col} = ?" for col in update_data)
-        values = list(update_data.values()) + [item_id]
-
-        with sqlite_connection(self.db_path) as conn:
-            conn.execute(f"UPDATE job_queue SET {assignments} WHERE id = ?", values)
-
+        self._persist_item(item)
         logger.debug("Updated queue item %s -> %s", item_id, status.value)
         self._notify_item_updated(item_id)
 
@@ -306,20 +332,13 @@ class QueueManager:
         pipeline_state: Dict[str, Any],
     ) -> None:
         """Update a queue item in-place to progress to the next pipeline stage."""
-        with sqlite_connection(self.db_path) as conn:
-            conn.execute(
-                """
-                UPDATE job_queue
-                SET pipeline_state = ?, status = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    json.dumps(pipeline_state),
-                    QueueStatus.PENDING.value,
-                    _iso(_utcnow()),
-                    item_id,
-                ),
-            )
+        item = self.get_item(item_id)
+        if not item:
+            logger.error("requeue_with_state: item %s not found", item_id)
+            return
 
-        # Notify FE of the stage transition so queue UI stays in sync
+        item.pipeline_state = pipeline_state
+        item.status = QueueStatus.PENDING
+        item.updated_at = _utcnow()
+        self._persist_item(item)
         self._notify_item_updated(item_id)
