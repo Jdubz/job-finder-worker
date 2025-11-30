@@ -363,22 +363,24 @@ export function JobListingsPage() {
                     <TableCell className="max-w-[150px] sm:max-w-[250px] md:max-w-[300px]">
                       <div className="font-medium truncate">{listing.title}</div>
                       {/* Show company and location on mobile as secondary text */}
-                      <div className="md:hidden text-xs text-muted-foreground mt-0.5 truncate">
-                        {listing.companyId ? (
-                          <button
-                            type="button"
-                            className="text-blue-600 hover:underline"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setSelectedCompanyId(listing.companyId!)
-                            }}
-                          >
-                            {listing.companyName}
-                          </button>
-                        ) : (
-                          listing.companyName
-                        )}
-                        {listing.location && ` • ${listing.location}`}
+                      <div className="md:hidden text-xs text-muted-foreground mt-0.5 flex min-w-0">
+                        <span className="truncate">
+                          {listing.companyId ? (
+                            <button
+                              type="button"
+                              className="text-blue-600 hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedCompanyId(listing.companyId!)
+                              }}
+                            >
+                              {listing.companyName}
+                            </button>
+                          ) : (
+                            listing.companyName
+                          )}
+                        </span>
+                        {listing.location && <span className="flex-shrink-0">{` • ${listing.location}`}</span>}
                       </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">

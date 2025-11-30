@@ -237,7 +237,7 @@ export function JobDetailsDialog({
         </Tabs>
 
         {/* Footer Actions */}
-        <div className="flex flex-col-reverse sm:flex-row gap-2 pt-4 mt-auto border-t flex-shrink-0">
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 mt-auto border-t flex-shrink-0">
           {onGenerateResume && (
             <Button onClick={() => onGenerateResume(match)} className="flex-1">
               <FileText className="mr-2 h-4 w-4" />
