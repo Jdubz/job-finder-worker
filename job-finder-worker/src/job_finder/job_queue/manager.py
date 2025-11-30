@@ -52,6 +52,17 @@ class QueueManager:
         item.updated_at = now
         item.status = item.status or QueueStatus.PENDING
 
+        # Enforce URL rules by type to reduce ambiguity
+        if item.type == QueueItemType.JOB:
+            if not item.url:
+                raise StorageError("JOB items require a job posting URL")
+        if item.type == QueueItemType.COMPANY:
+            # Prefer keeping company tasks url-less; allow only if clearly a company site
+            if item.url and "job" in item.url.lower():
+                raise StorageError("COMPANY items should not use job board URLs")
+        if item.type == QueueItemType.SCRAPE:
+            item.url = None  # SCRAPE does not target a single URL
+
         record = item.to_record()
         columns = ", ".join(record.keys())
         placeholders = ", ".join(["?"] * len(record))
@@ -313,6 +324,10 @@ class QueueManager:
         if not isinstance(target_type, QueueItemType):
             target_type = QueueItemType(target_type)
             new_item_data["type"] = target_type
+
+        if target_type == QueueItemType.JOB and not target_url:
+            logger.error("Cannot spawn JOB without job URL")
+            return None
 
         can_spawn, reason = self.can_spawn_item(current_item, target_url, target_type)
         if not can_spawn:

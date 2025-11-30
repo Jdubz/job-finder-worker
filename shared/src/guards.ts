@@ -124,11 +124,7 @@ export function isQueueItem(value: unknown): value is QueueItem {
   return (
     queueItemTypeGuard(item.type as string) &&
     queueStatusGuard(item.status as string) &&
-    typeof item.url === "string" &&
-    typeof item.company_name === "string" &&
-    (item.company_id === null || typeof item.company_id === "string") &&
-    isQueueSource(item.source) &&
-    (item.submitted_by === null || typeof item.submitted_by === "string") &&
+    (item.url === undefined || item.url === null || typeof item.url === "string") &&
     isDateLike(item.created_at) &&
     isDateLike(item.updated_at)
   )

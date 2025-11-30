@@ -117,15 +117,17 @@ class BaseProcessor:
         """
         return JobQueueItem(
             type=QueueItemType.AGENT_REVIEW,
-            url=item.url,
-            company_name=item.company_name,
-            company_id=item.company_id,
-            source=item.source,
             status=QueueStatus.PENDING,
             result_message=reason,
             scraped_data={**context, "agent_prompt": prompt},
             parent_item_id=item.id,
             tracking_id=item.tracking_id,
+            input={
+                "source": item.source,
+                "company_name": item.company_name,
+                "company_id": item.company_id,
+            },
+            url=item.url,
         )
 
     def _spawn_agent_review(
