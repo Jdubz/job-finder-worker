@@ -63,20 +63,12 @@ class QueueManager:
         data = dict(item_dict)
 
         pipeline_state = data.get("pipeline_state")
-        if isinstance(pipeline_state, dict):
-            job_data = pipeline_state.get("job_data")
-            if isinstance(job_data, dict):
-                job_data = dict(job_data)
-                job_data.pop("description", None)
-                job_data.pop("full_text", None)
-                job_data.pop("raw_html", None)
-                pipeline_state["job_data"] = job_data
+        if pipeline_state is not None:
             data["pipeline_state"] = self._sanitize_payload(pipeline_state)
-        else:
-            data.pop("pipeline_state", None)
 
-        # Drop scraped_data entirely to keep events lean
-        data.pop("scraped_data", None)
+        scraped_data = data.get("scraped_data")
+        if scraped_data is not None:
+            data["scraped_data"] = self._sanitize_payload(scraped_data)
 
         for key in ("metadata", "input", "output"):
             if key in data:

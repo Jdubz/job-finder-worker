@@ -60,7 +60,7 @@ function coercePipelineState(value: unknown): Record<string, unknown> | null {
 }
 
 export function getJobTitle(item: QueueItem): string | undefined {
-  const state = item.pipeline_state ?? {}
+  const state = coercePipelineState(item.pipeline_state) ?? {}
   const metadata = item.metadata ?? {}
   const scraped = item.scraped_data ?? {}
 
@@ -114,7 +114,7 @@ export function getScrapeTitle(item: QueueItem): string | undefined {
 }
 
 export function getCompanyName(item: QueueItem): string | undefined {
-  const state = item.pipeline_state ?? {}
+  const state = coercePipelineState(item.pipeline_state) ?? {}
   const metadata = item.metadata ?? {}
   const scraped = item.scraped_data ?? {}
 

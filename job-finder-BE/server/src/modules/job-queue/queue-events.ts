@@ -51,14 +51,6 @@ function sanitizeQueueItem(item: QueueItem): QueueItem {
       const result: Record<string, unknown> = {}
       for (const [key, val] of Object.entries(value)) {
         if (DROP_KEY_SET.has(key)) continue
-
-        // Drop especially heavy nested fields we never need in SSE
-        if (key === 'description' || key === 'raw_html' || key === 'full_text') continue
-
-        if (typeof val === 'string' && val.length > MAX_STRING_LENGTH) {
-          result[key] = `${val.slice(0, MAX_STRING_LENGTH)}…`
-          continue
-        }
         result[key] = sanitizeUnknown(val)
       }
       return result
@@ -68,14 +60,7 @@ function sanitizeQueueItem(item: QueueItem): QueueItem {
   }
 
   if (clone.pipeline_state) clone.pipeline_state = sanitizeUnknown(clone.pipeline_state) as any
-  // Ensure we drop bulky descriptions in known locations
-  if ((clone.pipeline_state as any)?.job_data) {
-    delete (clone.pipeline_state as any).job_data.description
-    delete (clone.pipeline_state as any).job_data.full_text
-    delete (clone.pipeline_state as any).job_data.raw_html
-  }
   if (clone.scraped_data) clone.scraped_data = sanitizeUnknown(clone.scraped_data) as any
-  if ((clone.scraped_data as any)?.description) delete (clone.scraped_data as any).description
   if ((clone as any).input) (clone as any).input = sanitizeUnknown((clone as any).input) as any
   if (clone.metadata) clone.metadata = sanitizeUnknown(clone.metadata) as any
 
