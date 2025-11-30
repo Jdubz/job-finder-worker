@@ -68,7 +68,10 @@ export function buildApp() {
           callback(null, false)
         }
       },
-      credentials: true
+      credentials: true,
+      methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      optionsSuccessStatus: 204
     })
   )
   app.use(httpLogger)

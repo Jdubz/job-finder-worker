@@ -7,6 +7,7 @@ import type {
   QueueEventDataMap,
   CancelCommand,
 } from '@shared/types'
+import { logger } from '../../logger'
 import type { WebSocket } from 'ws'
 import { HEARTBEAT_INTERVAL_MS, initSseStream, type SseClient } from '../shared/sse'
 
@@ -14,18 +15,109 @@ const clients = new Set<SseClient>()
 const commandQueue = new Map<string, CancelCommand[]>()
 let workerSocket: WebSocket | null = null
 
+const MAX_STRING_LENGTH = 2000
+const DROP_KEY_SET = new Set([
+  'raw_html',
+  'raw',
+  'raw_listing',
+  'full_text',
+  'html',
+  'description',
+])
+
 const toEventString = <E extends QueueSseEventName>(payload: QueueSsePayload<E>) =>
   `id: ${payload.id}\nevent: ${payload.event}\ndata: ${JSON.stringify(payload.data)}\n\n`
+
+// ---------------------------------------------------------------------------
+// Payload sanitizers (reduce SSE size; avoid giant job descriptions)
+// ---------------------------------------------------------------------------
+
+function sanitizeQueueItem(item: QueueItem): QueueItem {
+  const beforeSize = byteLengthSafe(item)
+  const clone: QueueItem = { ...item }
+
+  const sanitizeUnknown = (value: unknown): unknown => {
+    if (!value) return value
+
+    if (typeof value === 'string') {
+      return value.length > MAX_STRING_LENGTH ? `${value.slice(0, MAX_STRING_LENGTH)}…` : value
+    }
+
+    if (Array.isArray(value)) {
+      return value.map(sanitizeUnknown)
+    }
+
+    if (typeof value === 'object') {
+      const result: Record<string, unknown> = {}
+      for (const [key, val] of Object.entries(value)) {
+        if (DROP_KEY_SET.has(key)) continue
+        result[key] = sanitizeUnknown(val)
+      }
+      return result
+    }
+
+    return value
+  }
+
+  if (clone.pipeline_state) clone.pipeline_state = sanitizeUnknown(clone.pipeline_state) as any
+  if (clone.scraped_data) clone.scraped_data = sanitizeUnknown(clone.scraped_data) as any
+  if ((clone as any).input) (clone as any).input = sanitizeUnknown((clone as any).input) as any
+  if (clone.metadata) clone.metadata = sanitizeUnknown(clone.metadata) as any
+
+  const afterSize = byteLengthSafe(clone)
+  if (afterSize < beforeSize) {
+    logger.debug(
+      {
+        itemId: item.id,
+        sizeBefore: beforeSize,
+        sizeAfter: afterSize,
+      },
+      'Sanitized queue item payload for SSE'
+    )
+  }
+
+  return clone
+}
+
+function sanitizeEventData<E extends QueueSseEventName>(
+  event: E,
+  data: E extends keyof QueueEventDataMap ? QueueEventDataMap[E] : Record<string, unknown>
+): E extends keyof QueueEventDataMap ? QueueEventDataMap[E] : Record<string, unknown> {
+  if (event === 'snapshot' && 'items' in (data as any)) {
+    return {
+      ...(data as any),
+      items: (data as any).items.map((item: QueueItem) => sanitizeQueueItem(item)),
+    } as any
+  }
+
+  if (event === 'item.created' || event === 'item.updated') {
+    return {
+      ...(data as any),
+      queueItem: sanitizeQueueItem((data as any).queueItem),
+    }
+  }
+
+  return data
+}
+
+function byteLengthSafe(value: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), 'utf8')
+  } catch {
+    return 0
+  }
+}
 
 export function broadcastQueueEvent<E extends QueueSseEventName>(
   event: E,
   data: E extends keyof QueueEventDataMap ? QueueEventDataMap[E] : Record<string, unknown>
 ) {
   if (clients.size === 0) return
+  const safeData = sanitizeEventData(event, data)
   const payload: QueueSsePayload<E> = {
     id: randomUUID(),
     event,
-    data,
+    data: safeData,
     ts: new Date().toISOString()
   }
   const serialized = toEventString(payload)
@@ -42,7 +134,7 @@ export function handleQueueEventsSse(req: Request, res: Response, items: QueueIt
   const snapshot: QueueSsePayload<'snapshot'> = {
     id: randomUUID(),
     event: 'snapshot',
-    data: { items },
+    data: sanitizeEventData('snapshot', { items }),
     ts: new Date().toISOString()
   }
   res.write(toEventString(snapshot))
