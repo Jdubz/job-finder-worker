@@ -65,7 +65,9 @@ class CompanyInfoFetcher:
     # MAIN ENTRY POINT
     # ============================================================
 
-    def fetch_company_info(self, company_name: str, url_hint: Optional[str] = None) -> Dict[str, Any]:
+    def fetch_company_info(
+        self, company_name: str, url_hint: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Fetch comprehensive company information.
 
@@ -228,9 +230,7 @@ Return ONLY valid JSON, no other text."""
             model_settings = models_config.get(model_name, {})
             max_tokens = min(model_settings.get("max_tokens", 1000), 1000)
 
-            response = self.ai_provider.generate(
-                prompt, max_tokens=max_tokens, temperature=0.1
-            )
+            response = self.ai_provider.generate(prompt, max_tokens=max_tokens, temperature=0.1)
 
             return self._parse_json_response(response)
 
@@ -337,9 +337,7 @@ Be factual. Return ONLY valid JSON."""
             model_settings = models_config.get(model_name, {})
             max_tokens = min(model_settings.get("max_tokens", 1000), 1000)
 
-            response = self.ai_provider.generate(
-                prompt, max_tokens=max_tokens, temperature=0.2
-            )
+            response = self.ai_provider.generate(prompt, max_tokens=max_tokens, temperature=0.2)
 
             return self._parse_json_response(response) or {}
 
@@ -392,7 +390,8 @@ Be factual. Return ONLY valid JSON."""
             p in content_lower for p in ["remote-first", "fully remote", "distributed team"]
         )
         result["aiMlFocus"] = any(
-            p in content_lower for p in ["machine learning", "artificial intelligence", "ai-powered"]
+            p in content_lower
+            for p in ["machine learning", "artificial intelligence", "ai-powered"]
         )
 
         # Employee count
@@ -477,7 +476,9 @@ Be factual. Return ONLY valid JSON."""
         for key, val in secondary.items():
             if key == "website":
                 # Replace with better website if current is empty or a job board
-                if val and (not merged.get("website") or self._is_job_board_url(merged.get("website"))):
+                if val and (
+                    not merged.get("website") or self._is_job_board_url(merged.get("website"))
+                ):
                     merged["website"] = val
             elif key == "sources":
                 merged["sources"] = val or merged.get("sources") or []
@@ -501,7 +502,15 @@ Be factual. Return ONLY valid JSON."""
         try:
             data = json.loads(response_clean)
             # Ensure expected keys have defaults
-            for key in ["website", "about", "culture", "mission", "industry", "founded", "headquarters"]:
+            for key in [
+                "website",
+                "about",
+                "culture",
+                "mission",
+                "industry",
+                "founded",
+                "headquarters",
+            ]:
                 data.setdefault(key, "")
             for key in ["employeeCount", "timezoneOffset"]:
                 data.setdefault(key, None)

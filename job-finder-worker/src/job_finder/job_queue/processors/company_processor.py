@@ -9,7 +9,7 @@ URL is a hint, not a requirement. AI extracts from search results.
 
 import logging
 from contextlib import contextmanager
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue.config_loader import ConfigLoader
