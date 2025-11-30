@@ -36,6 +36,58 @@ class QueueManager:
     ):
         self.db_path = db_path
         self.notifier = notifier
+        self._max_string_length = 2000
+
+    def _sanitize_payload(self, obj: Any) -> Any:
+        """Trim oversized strings and drop heavy description fields before emitting events."""
+        if obj is None:
+            return obj
+
+        if isinstance(obj, str):
+            return obj[: self._max_string_length] + "…" if len(obj) > self._max_string_length else obj
+
+        if isinstance(obj, list):
+            return [self._sanitize_payload(v) for v in obj]
+
+        if isinstance(obj, dict):
+            cleaned: Dict[str, Any] = {}
+            for key, val in obj.items():
+                if key in {"description", "raw_html", "full_text", "raw_listing", "html"}:
+                    continue
+                cleaned[key] = self._sanitize_payload(val)
+            return cleaned
+
+        return obj
+
+    def _sanitize_queue_item_dict(self, item_dict: Dict[str, Any]) -> Dict[str, Any]:
+        data = dict(item_dict)
+
+        pipeline_state = data.get("pipeline_state")
+        if isinstance(pipeline_state, dict):
+            job_data = pipeline_state.get("job_data")
+            if isinstance(job_data, dict):
+                job_data = dict(job_data)
+                job_data.pop("description", None)
+                job_data.pop("full_text", None)
+                job_data.pop("raw_html", None)
+                pipeline_state["job_data"] = job_data
+            data["pipeline_state"] = self._sanitize_payload(pipeline_state)
+
+        scraped_data = data.get("scraped_data")
+        if isinstance(scraped_data, dict):
+            scraped_data = dict(scraped_data)
+            scraped_data.pop("description", None)
+            data["scraped_data"] = self._sanitize_payload(scraped_data)
+
+        for key in ("metadata", "input", "output"):
+            if key in data:
+                data[key] = self._sanitize_payload(data[key])
+
+        for key, val in list(data.items()):
+            if isinstance(val, str) and len(val) > self._max_string_length:
+                data[key] = val[: self._max_string_length] + "…"
+
+        return data
 
     # --------------------------------------------------------------------- #
     # CRUD HELPERS
@@ -82,7 +134,8 @@ class QueueManager:
         type_label = item.type if not hasattr(item.type, "value") else item.type.value
         logger.info("Added queue item %s (%s)", item.id, type_label)
         if self.notifier:
-            self.notifier.send_event("item.created", {"queueItem": item.model_dump(mode="json")})
+            payload = self._sanitize_queue_item_dict(item.model_dump(mode="json"))
+            self.notifier.send_event("item.created", {"queueItem": payload})
         return item.id
 
     def get_pending_items(self, limit: int = 10) -> List[JobQueueItem]:
@@ -181,9 +234,8 @@ class QueueManager:
         if self.notifier:
             updated_item = self.get_item(item_id)
             if updated_item:
-                self.notifier.send_event(
-                    "item.updated", {"queueItem": updated_item.model_dump(mode="json")}
-                )
+                payload = self._sanitize_queue_item_dict(updated_item.model_dump(mode="json"))
+                self.notifier.send_event("item.updated", {"queueItem": payload})
 
     def url_exists_in_queue(self, url: str) -> bool:
         with sqlite_connection(self.db_path) as conn:
