@@ -81,17 +81,26 @@ function normalizeJobMatch(match: Record<string, unknown>): {
     return fallback
   }
 
+  const getDate = (obj: Record<string, unknown>, keys: string[]): Date | undefined => {
+    for (const key of keys) {
+      const value = obj[key]
+      if (value instanceof Date) return value
+      if (typeof value === "string" || typeof value === "number") {
+        const d = new Date(value)
+        if (!isNaN(d.getTime())) return d
+      }
+    }
+    return undefined
+  }
+
   const jobTitle =
     getString(match, ["jobTitle", "job_title", "title"]) ||
-    getString(listing, ["title"], "Unknown Title") ||
-    "Unknown Title"
+    getString(listing, ["title"], "Unknown Title")
 
-  const rawCompanyName =
+  const companyName =
     getString(match, ["companyName", "company_name"]) ||
     getString(listing, ["companyName"]) ||
     getString(company, ["name"], "Unknown Company")
-
-  const companyName = rawCompanyName || "Unknown Company"
 
   const location = getString(match, ["location"]) || getString(listing, ["location"], "Remote")
 
@@ -103,12 +112,14 @@ function normalizeJobMatch(match: Record<string, unknown>): {
     getNumber(listing, ["matchScore"], 0)
 
   const analyzedAt =
-    (match.analyzedAt as Date | string | undefined) ||
-    (match.analyzed_at as Date | string | undefined) ||
-    (listing.analyzedAt as Date | string | undefined) ||
+    getDate(match, ["analyzedAt", "analyzed_at"]) ??
+    getDate(listing, ["analyzedAt"]) ??
     new Date()
 
-  const idValue = (match.id as string | number | undefined) || (listing.id as string | number | undefined) || ""
+  const idValue =
+    (match.id as string | number | undefined) ??
+    (listing.id as string | number | undefined) ??
+    ""
 
   return {
     id: typeof idValue === "string" ? idValue : String(idValue),
