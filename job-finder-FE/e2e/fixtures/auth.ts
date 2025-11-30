@@ -43,12 +43,9 @@ export async function loginWithDevToken(
     throw new Error("Session cookie was not set in context after login.")
   }
 
-  // The login response sets the cookie on the API origin with SameSite=Lax.
-  // For cross-origin requests from the frontend (different port), we need
-  // to ensure the cookie is available on the API domain.
-  //
-  // The original cookie from login is already correct - don't modify it.
-  // Just add a copy for the frontend origin so the UI shows auth state.
+  // The login response sets the session cookie on the API origin.
+  // Playwright's browser context automatically stores this cookie and sends it
+  // on subsequent requests to the API origin, so no manual cookie handling is needed here.
 }
 
 export async function applyAuthState(page: Page, state?: AuthBypassState) {

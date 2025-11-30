@@ -33,8 +33,8 @@ const createSchema = z.object({
   companyName: z.string().min(1),
   location: z.string().optional(),
   salaryRange: z.string().optional(),
-  description: z.string(),
-  postedDate: z.string().optional(),
+  description: z.string().min(1),
+  postedDate: z.string().datetime().optional(),
   status: z.enum(['pending', 'filtered', 'analyzing', 'analyzed', 'skipped', 'matched']).optional(),
   filterResult: z.record(z.unknown()).optional()
 })
