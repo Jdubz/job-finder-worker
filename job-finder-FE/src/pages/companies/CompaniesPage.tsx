@@ -51,7 +51,7 @@ function formatDate(date: unknown): string {
 
 // Defensive helper: never let arbitrary objects reach React text nodes
 const safeText = (value: unknown, fallback = "—") => {
-  if (value === null || value === undefined) return fallback
+  if (value === null || value === undefined || value === "") return fallback
   if (typeof value === "string" || typeof value === "number") return value
   // Some backends occasionally send nested objects/arrays; stringify to avoid render crashes
   try {
@@ -431,15 +431,11 @@ export function CompaniesPage() {
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Tech Stack</Label>
                   {selectedCompany.techStack && selectedCompany.techStack.length > 0 ? (
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {selectedCompany.techStack.map((tech, index) => {
-                        const label = safeText(tech)
-                        const key = typeof tech === "string" || typeof tech === "number" ? tech : index
-                        return (
-                          <Badge key={key} variant="outline" className="text-xs">
-                            {label}
-                          </Badge>
-                        )
-                      })}
+                      {selectedCompany.techStack.map((tech, index) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {safeText(tech)}
+                        </Badge>
+                      ))}
                     </div>
                   ) : (
                     <p className="mt-1 text-muted-foreground">—</p>
