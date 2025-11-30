@@ -86,6 +86,8 @@ export default defineConfig({
       url: `${apiOrigin}/healthz`,
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
+      stdout: "pipe",
+      stderr: "pipe",
     },
     {
       command: [
@@ -110,6 +112,8 @@ export default defineConfig({
       url: frontendBaseUrl,
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
+      stdout: "pipe",
+      stderr: "pipe",
     },
   ],
 })
