@@ -56,10 +56,10 @@ class StrikeFilterEngine:
         # Explicit allow for onsite/hybrid paired with location allowlists
         self.allow_onsite = remote.get("allowOnsite", True)
         self.allowed_onsite_locations = [
-            l.lower() for l in remote.get("allowedOnsiteLocations", [])
+            loc.lower() for loc in remote.get("allowedOnsiteLocations", [])
         ]
         self.allowed_hybrid_locations = [
-            l.lower() for l in remote.get("allowedHybridLocations", [])
+            loc.lower() for loc in remote.get("allowedHybridLocations", [])
         ]
 
         # Strike: Salary
