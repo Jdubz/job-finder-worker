@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test"
+import { test, expect } from "./fixtures/test"
 import { loginWithDevToken } from "./fixtures/auth"
 import { seedContentItem, seedQueueJob } from "./fixtures/api-client"
 
@@ -24,6 +24,8 @@ test.describe("Content and queue management", () => {
       metadata: {
         title: "Queue ingestion test",
       },
+      // Provide legacy-shaped stringified pipeline_state to catch parsing regressions
+      pipeline_state: JSON.stringify({ job_data: { title: "Queue ingestion test" } }),
     })
 
     await page.goto("/content-items")
@@ -39,5 +41,13 @@ test.describe("Content and queue management", () => {
     await expect(page.getByRole("heading", { name: "Queue Management" })).toBeVisible()
     await expect(page.getByText("Total Items")).toBeVisible()
     await expect(page.getByText("Pending")).toBeVisible()
+
+    // Open first queue item detail dialog and verify metadata renders
+    await page.getByTestId(/queue-item-/).first().click()
+    const dialog = page.getByRole("dialog")
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText(queueCompany)
+    await expect(dialog).toContainText("Queue ingestion test")
+    await dialog.getByRole("button", { name: /close/i }).click()
   })
 })
