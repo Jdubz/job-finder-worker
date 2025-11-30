@@ -1,0 +1,7 @@
+{
+  "$comment": "NOTE: Email addresses in this file are publicly visible in the repository. For public repositories, consider using environment variables instead. This configuration approach is used for persistence across database resets.",
+  "adminEmails": [
+    "contact@joshwentworth.com",
+    "jess.castaldi@gmail.com"
+  ]
+}

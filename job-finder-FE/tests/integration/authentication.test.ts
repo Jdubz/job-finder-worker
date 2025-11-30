@@ -34,12 +34,12 @@ describe("Authentication Helpers", () => {
     expect(user.id).toBe(TEST_USERS.regular.id)
   })
 
-  it("signs in the editor test user", async () => {
-    const user = await signInTestUser("editor")
+  it("signs in the admin test user", async () => {
+    const user = await signInTestUser("admin")
 
     expect(user).toBeDefined()
-    expect(user.email).toBe(TEST_USERS.editor.email)
-    expect(user.id).toBe(TEST_USERS.editor.id)
+    expect(user.email).toBe(TEST_USERS.admin.email)
+    expect(user.id).toBe(TEST_USERS.admin.id)
   })
 
   it("returns the bypass token when requesting auth credentials", async () => {
