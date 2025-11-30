@@ -98,7 +98,6 @@ export function QueueFilters({
                 <SelectItem value="failed">Failed</SelectItem>
                 <SelectItem value="skipped">Skipped</SelectItem>
                 <SelectItem value="filtered">Filtered</SelectItem>
-                <SelectItem value="needs_review">Needs Review</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -124,7 +123,6 @@ export function QueueFilters({
                 <SelectItem value="scrape">Scrape</SelectItem>
                 <SelectItem value="source_discovery">Source Discovery</SelectItem>
                 <SelectItem value="scrape_source">Scrape Source</SelectItem>
-                <SelectItem value="agent_review">Agent Review</SelectItem>
               </SelectContent>
             </Select>
           </div>
