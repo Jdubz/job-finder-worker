@@ -50,6 +50,7 @@ class ScraperIntake:
         queue_manager: QueueManager,
         job_listing_storage=None,
         companies_manager=None,
+        sources_manager=None,
         filter_engine=None,
         # Legacy parameter - still accepted but job_listing_storage takes precedence
         job_storage=None,
@@ -67,9 +68,24 @@ class ScraperIntake:
         self.queue_manager = queue_manager
         self.job_listing_storage = job_listing_storage
         self.companies_manager = companies_manager
+        self.sources_manager = sources_manager
         self.filter_engine = filter_engine
         # Legacy fallback - will be removed in future version
         self._legacy_job_storage = job_storage
+
+    def _is_aggregator_domain(self, url: str) -> bool:
+        if not self.sources_manager:
+            return False
+        try:
+            from urllib.parse import urlparse
+
+            host = urlparse(url).hostname or ""
+            if not host:
+                return False
+            agg_domains = self.sources_manager.get_aggregator_domains()
+            return any(host.endswith(agg) for agg in agg_domains)
+        except Exception:
+            return False
 
     def _check_job_exists(self, normalized_url: str) -> bool:
         """Check if job URL already exists in job_listings (or legacy job_matches)."""
@@ -347,9 +363,14 @@ class ScraperIntake:
             # Normalize URL for consistent comparison
             normalized_url = normalize_url(url)
 
+            # If this looks like an aggregator/job board, avoid using it as the canonical queue URL
+            # to prevent confusing agents; keep it in input for context.
+            is_aggregator = self._is_aggregator_domain(normalized_url)
+            queue_url = None if is_aggregator else normalized_url
+
             # Check if URL already in queue
-            if self.queue_manager.url_exists_in_queue(normalized_url):
-                logger.debug(f"Company already in queue: {normalized_url}")
+            if queue_url and self.queue_manager.url_exists_in_queue(queue_url):
+                logger.debug(f"Company already in queue: {queue_url}")
                 return None
 
             # Check if company already exists in companies collection
@@ -372,11 +393,16 @@ class ScraperIntake:
             # Create single-pass company item
             queue_item = JobQueueItem(
                 type=QueueItemType.COMPANY,
-                url=normalized_url,
+                url=queue_url,
                 company_name=cleaned_name,
                 company_id=company_id,
                 source=source,
                 tracking_id=tracking_id,  # Root tracking ID
+                input={
+                    "company_website": normalized_url,
+                    "board_url": normalized_url if is_aggregator else None,
+                    "source": source,
+                },
             )
 
             # Add to queue
