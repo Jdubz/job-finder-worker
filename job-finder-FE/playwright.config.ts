@@ -58,8 +58,8 @@ export default defineConfig({
     /* Screenshot on failure */
     screenshot: "only-on-failure",
 
-    /* Video on failure */
-    video: "retain-on-failure",
+    /* CI artifacts: skip video to speed runs; traces still captured on retry */
+    video: "off",
 
     /* Timeout settings for faster failure detection */
     actionTimeout: 5000,

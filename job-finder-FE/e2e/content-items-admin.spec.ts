@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test"
+import { test, expect, type Page } from "./fixtures/test"
 import { readFile } from "node:fs/promises"
 import { loginWithDevToken } from "./fixtures/auth"
 import { deleteContentItem, listContentItems, seedContentItem } from "./fixtures/api-client"

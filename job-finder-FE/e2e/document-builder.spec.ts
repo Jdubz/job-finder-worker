@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test"
+import { test, expect } from "./fixtures/test"
 import { loginWithDevToken } from "./fixtures/auth"
 import { seedJobMatch, seedQueueJob } from "./fixtures/api-client"
 

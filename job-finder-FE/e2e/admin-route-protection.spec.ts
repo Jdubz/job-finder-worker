@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures/test'
 import { ROUTES } from '../src/types/routes'
 import { openNavigationDrawer } from './utils/ui'
 import { loginWithDevToken } from './fixtures/auth'
