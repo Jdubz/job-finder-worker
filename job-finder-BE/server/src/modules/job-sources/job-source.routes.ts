@@ -32,7 +32,7 @@ const updateSchema = z.object({
   configJson: z.record(z.unknown()).optional(),
   tags: z.array(z.string()).nullable().optional(),
   companyId: z.string().nullable().optional(),
-  companyName: z.string().nullable().optional()
+  aggregatorDomain: z.string().nullable().optional()
 })
 
 export function buildJobSourceRouter() {

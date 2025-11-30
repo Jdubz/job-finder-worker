@@ -35,7 +35,7 @@ describe("SourcesPage", () => {
       name: "Acme Greenhouse",
       sourceType: "greenhouse",
       status: "active",
-      companyName: "Acme Corporation",
+      aggregatorDomain: null,
       companyId: "company-1",
       configJson: { url: "https://boards.greenhouse.io/acme" },
       lastScrapedAt: new Date(),
@@ -47,7 +47,7 @@ describe("SourcesPage", () => {
       name: "TechCorp RSS",
       sourceType: "rss",
       status: "active",
-      companyName: "TechCorp",
+      aggregatorDomain: null,
       companyId: "company-2",
       configJson: { url: "https://careers.techcorp.io/jobs.rss" },
       lastScrapedAt: new Date(),
@@ -56,12 +56,12 @@ describe("SourcesPage", () => {
     },
     {
       id: "source-3",
-      name: "StartupXYZ Careers",
-      sourceType: "html",
+      name: "Remotive Jobs",
+      sourceType: "api",
       status: "paused",
-      companyName: null,
+      aggregatorDomain: "remotive.com",
       companyId: null,
-      configJson: { url: "https://startupxyz.com/careers" },
+      configJson: { url: "https://remotive.com/api/remote-jobs" },
       lastScrapedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -129,7 +129,7 @@ describe("SourcesPage", () => {
       await waitFor(() => {
         expect(screen.getByText("Acme Greenhouse")).toBeInTheDocument()
         expect(screen.getByText("TechCorp RSS")).toBeInTheDocument()
-        expect(screen.getByText("StartupXYZ Careers")).toBeInTheDocument()
+        expect(screen.getByText("Remotive Jobs")).toBeInTheDocument()
       })
     })
 
@@ -160,7 +160,7 @@ describe("SourcesPage", () => {
       await waitFor(() => {
         expect(screen.getByText("Greenhouse")).toBeInTheDocument()
         expect(screen.getByText("RSS")).toBeInTheDocument()
-        expect(screen.getByText("HTML")).toBeInTheDocument()
+        expect(screen.getByText("API")).toBeInTheDocument()
       })
     })
 

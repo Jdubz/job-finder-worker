@@ -487,11 +487,11 @@ export interface JobSource {
   /** Tags for categorization */
   tags?: string[] | null
 
-  /** Associated company ID */
+  /** Associated company ID (for company-specific sources) */
   companyId?: string | null
 
-  /** Associated company name */
-  companyName?: string | null
+  /** Aggregator domain (for job board platforms like greenhouse.io, remotive.com) */
+  aggregatorDomain?: string | null
 
   /** When source was last scraped */
   lastScrapedAt?: TimestampLike | null

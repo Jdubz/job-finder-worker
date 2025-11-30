@@ -238,13 +238,16 @@ class ScrapeRunner:
         source_type = source.get("sourceType", "api")
         config = source.get("config", {})
 
-        # Get company metadata
+        # Determine if this is an aggregator or company-specific source
+        is_aggregator = bool(source.get("aggregator_domain") or source.get("aggregatorDomain"))
         company_id = source.get("company_id") or source.get("companyId")
-        company_name = source.get("company_name") or source.get("companyName") or source_name
-        if company_id:
+
+        # Get company name ONLY from linked company - never fall back to source name
+        company_name = None
+        if not is_aggregator and company_id:
             company = self.companies_manager.get_company_by_id(company_id)
             if company:
-                company_name = company.get("name") or company_name
+                company_name = company.get("name")
 
         logger.info(f"\nScraping source: {source_name} (type={source_type})")
 

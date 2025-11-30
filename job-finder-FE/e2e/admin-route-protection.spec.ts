@@ -1,32 +1,14 @@
 import { test, expect } from '@playwright/test'
 import { ROUTES } from '../src/types/routes'
 import { openNavigationDrawer } from './utils/ui'
-
-// Test admin email - this user should have admin role in the database
-const TEST_ADMIN_EMAIL = 'dev-admin@jobfinder.dev'
-
-const TEST_AUTH_STATE_KEY = '__JF_E2E_AUTH_STATE__'
-const TEST_AUTH_TOKEN_KEY = '__JF_E2E_AUTH_TOKEN__'
+import { loginWithDevToken } from './fixtures/auth'
 
 test.describe('Admin Route Protection', () => {
   test.describe('with admin user', () => {
-    test.beforeEach(async ({ page }) => {
-      // Set up admin authentication using test admin email
-      const adminEmail = TEST_ADMIN_EMAIL
-      await page.context().clearCookies()
-      await page.addInitScript(({ email, stateKey, tokenKey }) => {
-        const adminAuthState = {
-          uid: 'admin-test-user',
-          email: email,
-          displayName: 'Test Admin',
-          isOwner: true,
-          emailVerified: true,
-          token: 'mock-admin-token'
-        }
-
-        window.localStorage.setItem(stateKey, JSON.stringify(adminAuthState))
-        window.localStorage.setItem(tokenKey, 'mock-admin-token')
-      }, { email: adminEmail, stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
+    test.beforeEach(async ({ context }) => {
+      // Authenticate with backend to get session cookie
+      await context.clearCookies()
+      await loginWithDevToken(context, 'dev-admin-token')
     })
 
     test('can access AI Prompts page', async ({ page }) => {
@@ -71,7 +53,7 @@ test.describe('Admin Route Protection', () => {
     test('shows admin/owner role in profile', async ({ page }) => {
       await page.goto(ROUTES.HOME)
 
-      const userButton = page.getByRole('button', { name: new RegExp(adminConfig.adminEmails[0], 'i') }).first()
+      const userButton = page.getByRole('button', { name: /dev-admin@jobfinder\.dev/i }).first()
       if (await userButton.isVisible()) {
         await userButton.click()
 
@@ -92,22 +74,10 @@ test.describe('Admin Route Protection', () => {
   })
 
   test.describe('with non-admin authenticated user', () => {
-    test.beforeEach(async ({ page }) => {
-      // Set up viewer authentication (non-admin)
-      await page.context().clearCookies()
-      await page.addInitScript(({ stateKey, tokenKey }) => {
-        const viewerAuthState = {
-          uid: 'viewer-test-user',
-          email: 'viewer@example.com',
-          displayName: 'Test Viewer',
-          isOwner: false,
-          emailVerified: true,
-          token: 'mock-viewer-token'
-        }
-
-        window.localStorage.setItem(stateKey, JSON.stringify(viewerAuthState))
-        window.localStorage.setItem(tokenKey, 'mock-viewer-token')
-      }, { stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
+    test.beforeEach(async ({ context }) => {
+      // Authenticate with viewer token (non-admin)
+      await context.clearCookies()
+      await loginWithDevToken(context, 'dev-viewer-token')
     })
 
     test('is blocked from AI Prompts page', async ({ page }) => {
@@ -166,41 +136,4 @@ test.describe('Admin Route Protection', () => {
     })
   })
 
-  test.describe('admin configuration validation', () => {
-    test('admin config has valid emails', () => {
-      expect(Array.isArray(adminConfig.adminEmails)).toBe(true)
-      expect(adminConfig.adminEmails.length).toBeGreaterThan(0)
-
-      adminConfig.adminEmails.forEach(email => {
-        expect(email).toMatch(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
-      })
-    })
-
-    test('both configured admins are recognized', async ({ context }) => {
-      for (const adminEmail of adminConfig.adminEmails) {
-        // Create new page with fresh context for each email
-        const testPage = await context.newPage()
-
-        await testPage.addInitScript(({ email, stateKey, tokenKey }) => {
-          const adminAuthState = {
-            uid: `admin-${email}`,
-            email: email,
-            displayName: `Admin ${email}`,
-            isOwner: true,
-            emailVerified: true,
-            token: `mock-token-${email}`
-          }
-
-          window.localStorage.setItem(stateKey, JSON.stringify(adminAuthState))
-          window.localStorage.setItem(tokenKey, `mock-token-${email}`)
-        }, { email: adminEmail, stateKey: TEST_AUTH_STATE_KEY, tokenKey: TEST_AUTH_TOKEN_KEY })
-
-        // Try accessing an admin page
-        await testPage.goto(ROUTES.AI_PROMPTS)
-        await expect(testPage).toHaveURL(ROUTES.AI_PROMPTS)
-
-        await testPage.close()
-      }
-    })
-  })
 })

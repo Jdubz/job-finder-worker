@@ -66,7 +66,7 @@ class JobSourcesManager:
             "config": config,
             "tags": parse_json(row.get("tags"), []),
             "companyId": row.get("company_id"),
-            "companyName": row.get("company_name"),
+            "aggregatorDomain": row.get("aggregator_domain"),
             "lastScrapedAt": row.get("last_scraped_at"),
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
@@ -83,7 +83,7 @@ class JobSourcesManager:
         source_type: str,
         config: Dict[str, Any],
         company_id: Optional[str] = None,
-        company_name: Optional[str] = None,
+        aggregator_domain: Optional[str] = None,
         tags: Optional[List[str]] = None,
         status: SourceStatus = SourceStatus.ACTIVE,
     ) -> str:
@@ -93,8 +93,8 @@ class JobSourcesManager:
             name: Unique name for the source
             source_type: Type of source (api, rss, html)
             config: Configuration dict for the source
-            company_id: Optional associated company ID
-            company_name: Optional associated company name
+            company_id: FK to company if this is a company-specific source
+            aggregator_domain: Domain if this is an aggregator (e.g., "greenhouse.io")
             tags: Optional list of tags
             status: Initial status (default: ACTIVE)
 
@@ -103,7 +103,15 @@ class JobSourcesManager:
 
         Raises:
             DuplicateSourceError: If a source with this name already exists
+            ValueError: If neither company_id nor aggregator_domain is provided
         """
+        # Every source must be EITHER company-specific OR an aggregator
+        if not company_id and not aggregator_domain:
+            raise ValueError(
+                f"Source '{name}' must have either company_id (company-specific) "
+                "or aggregator_domain (job board platform)"
+            )
+
         # Check for existing source with same name
         existing = self.get_source_by_name(name)
         if existing:
@@ -119,7 +127,7 @@ class JobSourcesManager:
                 """
                 INSERT INTO job_sources (
                     id, name, source_type, status, config_json, tags,
-                    company_id, company_name, last_scraped_at,
+                    company_id, aggregator_domain, last_scraped_at,
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
                 """,
@@ -131,7 +139,7 @@ class JobSourcesManager:
                     json.dumps(config),
                     json.dumps(tags or []),
                     company_id,
-                    company_name,
+                    aggregator_domain,
                     now,
                     now,
                 ),
@@ -278,22 +286,31 @@ class JobSourcesManager:
         name: str,
         source_type: str,
         config: Dict[str, Any],
-        company_id: Optional[str],
-        company_name: Optional[str],
+        company_id: Optional[str] = None,
+        aggregator_domain: Optional[str] = None,
         tags: Optional[List[str]] = None,
         status: SourceStatus = SourceStatus.ACTIVE,
-        # Legacy parameters - ignored but kept for backwards compatibility during transition
-        discovered_via: Optional[str] = None,
-        discovered_by: Optional[str] = None,
-        discovery_confidence: Optional[str] = None,
-        discovery_queue_item_id: Optional[str] = None,
     ) -> str:
+        """Create a source from discovery process.
+
+        Args:
+            name: Unique name for the source
+            source_type: Type of source (greenhouse, lever, api, rss, etc.)
+            config: Configuration dict for the source
+            company_id: FK to company if this is a company-specific source
+            aggregator_domain: Domain if this is an aggregator platform
+            tags: Optional list of tags
+            status: Initial status (default: ACTIVE)
+
+        Returns:
+            The ID of the newly created source
+        """
         return self.add_source(
             name=name,
             source_type=source_type,
             config=config,
             company_id=company_id,
-            company_name=company_name,
+            aggregator_domain=aggregator_domain,
             tags=tags,
             status=status,
         )
@@ -333,6 +350,24 @@ class JobSourcesManager:
                 raise StorageError(f"Source {source_id} not found")
 
     # ------------------------------------------------------------------ #
+    # Aggregator Domain Lookup
+    # ------------------------------------------------------------------ #
+
+    def get_aggregator_domains(self) -> List[str]:
+        """Return all unique aggregator_domain values (non-null).
+
+        Used for validating that company websites are not job board URLs.
+
+        Returns:
+            List of aggregator domain strings (e.g., ["greenhouse.io", "lever.co"])
+        """
+        with sqlite_connection(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT aggregator_domain FROM job_sources WHERE aggregator_domain IS NOT NULL"
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    # ------------------------------------------------------------------ #
     # Company Resolution
     # ------------------------------------------------------------------ #
 
@@ -355,8 +390,8 @@ class JobSourcesManager:
         Returns:
             Dict with resolution info, or None if no matching source:
             - company_id: Linked company ID (or None if aggregator)
-            - company_name: Actual company name (or None if aggregator)
-            - is_aggregator: True if source has no linked company
+            - is_aggregator: True if source has aggregator_domain set
+            - aggregator_domain: The aggregator domain if set
             - source_id: The matched source ID
             - source_name: The source name
         """
@@ -374,12 +409,12 @@ class JobSourcesManager:
             return None
 
         company_id = source.get("companyId")
-        company_name = source.get("companyName")
+        aggregator_domain = source.get("aggregatorDomain")
 
         return {
             "company_id": company_id,
-            "company_name": company_name,
-            "is_aggregator": company_id is None,
+            "is_aggregator": aggregator_domain is not None,
+            "aggregator_domain": aggregator_domain,
             "source_id": source.get("id"),
             "source_name": source.get("name"),
         }
@@ -447,18 +482,12 @@ class JobSourcesManager:
             # Normalize source name for comparison: "Coinbase Jobs" -> "coinbase"
             source_normalized = normalize_company_name(source_name)
 
-            # Also check the linked company_name
-            linked_company = source.get("companyName", "")
-            linked_normalized = normalize_company_name(linked_company) if linked_company else ""
-
-            # Exact match on source base name or linked company
-            if normalized == source_normalized or normalized == linked_normalized:
+            # Exact match on source base name
+            if normalized == source_normalized:
                 return source
 
             # Partial match scoring: prefer longer matches
             score = self._compute_partial_match_score(normalized, source_normalized)
-            if linked_normalized:
-                score = max(score, self._compute_partial_match_score(normalized, linked_normalized))
 
             if score > best_match_score:
                 best_match = source
