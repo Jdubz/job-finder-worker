@@ -42,6 +42,7 @@ import {
   Plus,
 } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
+import { CompanyDetailsModal } from "@/components/company"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
 function formatDate(date: unknown): string {
@@ -114,6 +115,9 @@ export function JobListingsPage() {
   const [companyName, setCompanyName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // Company details modal state
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
 
   // Calculate status counts in a single pass for performance
   const statusCounts = useMemo(() => {
@@ -236,7 +240,7 @@ export function JobListingsPage() {
 
       {/* Stats Overview - Clickable Pills */}
       {!loading && listings.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        <div className="flex overflow-x-auto pb-2 sm:flex-wrap items-center gap-2 text-sm scrollbar-thin">
           <StatPill
             label="Total"
             value={listings.length}
@@ -291,36 +295,38 @@ export function JobListingsPage() {
       {/* Listings Table */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>Job Listings</CardTitle>
               <CardDescription>Click on a listing to view details</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               <Input
                 placeholder="Search listings..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="w-[200px]"
+                className="w-full sm:w-[200px]"
               />
-              <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="analyzing">Analyzing</SelectItem>
-                  <SelectItem value="analyzed">Analyzed</SelectItem>
-                  <SelectItem value="filtered">Filtered</SelectItem>
-                  <SelectItem value="skipped">Skipped</SelectItem>
-                  <SelectItem value="matched">Matched</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="icon" onClick={handleSearch}>
-                <Search className="h-4 w-4" />
-              </Button>
+              <div className="flex gap-2">
+                <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
+                  <SelectTrigger className="flex-1 sm:w-[140px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="analyzing">Analyzing</SelectItem>
+                    <SelectItem value="analyzed">Analyzed</SelectItem>
+                    <SelectItem value="filtered">Filtered</SelectItem>
+                    <SelectItem value="skipped">Skipped</SelectItem>
+                    <SelectItem value="matched">Matched</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" onClick={handleSearch} className="flex-shrink-0">
+                  <Search className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -351,14 +357,47 @@ export function JobListingsPage() {
                 {filteredListings.map((listing) => (
                   <TableRow
                     key={listing.id}
-                    className="cursor-pointer hover:bg-muted/50"
+                    className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
                     onClick={() => setSelectedListing(listing)}
                   >
-                    <TableCell className="font-medium max-w-[300px] truncate">
-                      {listing.title}
+                    <TableCell className="max-w-[150px] sm:max-w-[250px] md:max-w-[300px]">
+                      <div className="font-medium truncate">{listing.title}</div>
+                      {/* Show company and location on mobile as secondary text */}
+                      <div className="md:hidden text-xs text-muted-foreground mt-0.5 flex min-w-0">
+                        <span className="truncate">
+                          {listing.companyId ? (
+                            <button
+                              type="button"
+                              className="text-blue-600 hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedCompanyId(listing.companyId!)
+                              }}
+                            >
+                              {listing.companyName}
+                            </button>
+                          ) : (
+                            listing.companyName
+                          )}
+                        </span>
+                        {listing.location && <span className="flex-shrink-0">{` • ${listing.location}`}</span>}
+                      </div>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {listing.companyName}
+                    <TableCell className="hidden md:table-cell">
+                      {listing.companyId ? (
+                        <button
+                          type="button"
+                          className="text-blue-600 hover:underline text-left"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedCompanyId(listing.companyId!)
+                          }}
+                        >
+                          {listing.companyName}
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground">{listing.companyName}</span>
+                      )}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-muted-foreground">
                       {listing.location || "—"}
@@ -383,7 +422,7 @@ export function JobListingsPage() {
 
       {/* Detail Modal */}
       <Dialog open={!!selectedListing} onOpenChange={(open) => !open && setSelectedListing(null)}>
-        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col">
           {selectedListing && (
             <>
               <DialogHeader>
@@ -398,13 +437,13 @@ export function JobListingsPage() {
                 </div>
               </DialogHeader>
 
-              <div className="space-y-4">
+              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
                 {/* ID */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">
                     ID
                   </Label>
-                  <p className="mt-1 text-sm font-mono text-muted-foreground">
+                  <p className="mt-1 text-sm font-mono text-muted-foreground break-all">
                     {selectedListing.id}
                   </p>
                 </div>
@@ -475,7 +514,7 @@ export function JobListingsPage() {
                     Filter Result
                   </Label>
                   {selectedListing.filterResult ? (
-                    <pre className="mt-1 text-sm bg-muted p-2 rounded overflow-auto max-h-[100px]">
+                    <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-[100px] sm:max-h-[120px] break-all whitespace-pre-wrap">
                       {JSON.stringify(selectedListing.filterResult, null, 2)}
                     </pre>
                   ) : (
@@ -499,7 +538,7 @@ export function JobListingsPage() {
                     })()}
                   </div>
                   {selectedListing.analysisResult ? (
-                    <pre className="mt-1 text-sm bg-muted p-2 rounded overflow-auto max-h-[240px]">
+                    <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-[150px] sm:max-h-[200px] break-all whitespace-pre-wrap">
                       {JSON.stringify(selectedListing.analysisResult, null, 2)}
                     </pre>
                   ) : (
@@ -512,7 +551,7 @@ export function JobListingsPage() {
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">
                     Description
                   </Label>
-                  <div className="mt-1 text-sm bg-muted p-3 rounded max-h-[200px] overflow-auto whitespace-pre-wrap">
+                  <div className="mt-1 text-sm bg-muted p-3 rounded max-h-[150px] sm:max-h-[200px] overflow-auto whitespace-pre-wrap break-words">
                     {selectedListing.description || "—"}
                   </div>
                 </div>
@@ -538,12 +577,12 @@ export function JobListingsPage() {
                 </div>
               </div>
 
-              <DialogFooter className="flex justify-between sm:justify-between">
-                <Button variant="destructive" onClick={() => handleDelete(selectedListing.id)}>
+              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between pt-4 border-t flex-shrink-0 mt-4">
+                <Button variant="destructive" onClick={() => handleDelete(selectedListing.id)} className="w-full sm:w-auto">
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
                 </Button>
-                <Button variant="ghost" onClick={() => setSelectedListing(null)}>
+                <Button variant="ghost" onClick={() => setSelectedListing(null)} className="w-full sm:w-auto">
                   Close
                 </Button>
               </DialogFooter>
@@ -629,6 +668,13 @@ export function JobListingsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Company Details Modal */}
+      <CompanyDetailsModal
+        companyId={selectedCompanyId}
+        open={!!selectedCompanyId}
+        onOpenChange={(open) => !open && setSelectedCompanyId(null)}
+      />
     </div>
   )
 }
