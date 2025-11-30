@@ -49,18 +49,6 @@ AGGREGATOR_DOMAINS = {
     "remoteok.io": "remoteok.com",
 }
 
-# Agent prompt for source discovery/scraping recovery tasks
-SOURCE_AGENT_PROMPT = (
-    "You are the primary agent for job source configuration recovery. "
-    "The automated pipeline failed to discover or scrape this source. "
-    "Your tasks: (1) analyze the source URL and determine the correct type "
-    "(greenhouse, ashby, workday, lever, rss, api, or html), "
-    "(2) generate a valid SourceConfig with correct selectors/endpoints, "
-    "(3) test scrape to verify the config works, "
-    "(4) if scraping failed, identify why and fix the config, "
-    "(5) create or update the job-sources record with a working configuration."
-)
-
 
 class SourceProcessor(BaseProcessor):
     """Processor for source discovery and scraping queue items."""
@@ -116,6 +104,11 @@ class SourceProcessor(BaseProcessor):
 
         logger.info(f"SOURCE_DISCOVERY: Processing {url}")
 
+        # Set PROCESSING status at the start
+        self.queue_manager.update_status(
+            item.id, QueueStatus.PROCESSING, f"Discovering source at {url}"
+        )
+
         try:
             from job_finder.ai.providers import create_provider_from_config
             from job_finder.ai.source_discovery import SourceDiscovery
@@ -141,17 +134,11 @@ class SourceProcessor(BaseProcessor):
                 source_config, validation_meta = discovery_result, {}
 
             if not source_config:
-                # Recoverable: agent can manually configure the source
-                self._handoff_to_agent_review(
-                    item,
-                    SOURCE_AGENT_PROMPT,
-                    reason="Source discovery produced no config",
-                    context={
-                        "url": url,
-                        "type_hint": config.type_hint,
-                        "company_name": config.company_name,
-                    },
-                    status_message="Agent review required: discovery produced no config",
+                # Discovery produced no config - mark as failed
+                self._update_item_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Source discovery produced no config for {url}",
                 )
                 return
 
@@ -271,6 +258,14 @@ class SourceProcessor(BaseProcessor):
                 error_details=traceback.format_exc(),
             )
 
+    def _extract_base_url(self, url: str) -> str:
+        """Extract base URL (scheme + domain) from a full URL."""
+        try:
+            parsed = urlparse(url)
+            return f"{parsed.scheme}://{parsed.netloc}"
+        except Exception:
+            return url
+
     def _extract_company_from_url(self, url: str) -> str:
         """Extract company name from URL."""
         try:
@@ -338,6 +333,11 @@ class SourceProcessor(BaseProcessor):
         source_url = item.url if item.url else None
 
         logger.info(f"SCRAPE_SOURCE: Processing source {source_id or source_url}")
+
+        # Set PROCESSING status at the start
+        self.queue_manager.update_status(
+            item.id, QueueStatus.PROCESSING, f"Scraping source {source_id or source_url}"
+        )
 
         try:
             # Fetch source configuration
@@ -416,7 +416,8 @@ class SourceProcessor(BaseProcessor):
 
                 logger.info(f"Found {len(jobs)} jobs from {source_name}")
 
-                # Submit jobs to queue
+                # Submit jobs to queue (if any found)
+                jobs_added = 0
                 if jobs and not self._is_sparse_jobs(jobs):
                     source_label = f"{source_type}:{source_name}"
                     jobs_added = self.scraper_intake.submit_jobs(
@@ -426,56 +427,42 @@ class SourceProcessor(BaseProcessor):
                     )
                     logger.info(f"Submitted {jobs_added} jobs to queue from {source_name}")
 
-                    # Record success
-                    self.sources_manager.record_scraping_success(
-                        source_id=source.get("id"),
-                    )
+                # Record success - the scrape completed (even if 0 jobs found)
+                # Having no jobs is a valid state (company may have no openings)
+                self.sources_manager.record_scraping_success(
+                    source_id=source.get("id"),
+                )
 
-                    self.queue_manager.update_status(
-                        item.id,
-                        QueueStatus.SUCCESS,
-                        f"Scraped {len(jobs)} jobs, submitted {jobs_added} to queue",
-                        scraped_data={
-                            "jobs_found": len(jobs),
-                            "jobs_submitted": jobs_added,
-                            "source_name": source_name,
-                        },
-                    )
+                jobs_found = len(jobs) if jobs else 0
+                if jobs_found > 0:
+                    result_msg = f"Scraped {jobs_found} jobs, submitted {jobs_added} to queue"
                 else:
-                    # Recoverable: agent can review and fix the source config
-                    logger.info(f"Scrape yielded no usable jobs for {source_name}")
-                    self._handoff_to_agent_review(
-                        item,
-                        SOURCE_AGENT_PROMPT,
-                        reason="Scrape produced no usable jobs",
-                        context={
-                            "source_id": source.get("id"),
-                            "source_name": source_name,
-                            "source_type": source_type,
-                            "config": config,
-                            "jobs_found": len(jobs) if jobs else 0,
-                        },
-                        status_message="Agent review required: scrape produced no usable jobs",
-                    )
+                    result_msg = f"Scrape completed, no jobs currently listed for {source_name}"
+                    logger.info(result_msg)
+
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.SUCCESS,
+                    result_msg,
+                    scraped_data={
+                        "jobs_found": jobs_found,
+                        "jobs_submitted": jobs_added,
+                        "source_name": source_name,
+                    },
+                )
 
             except Exception as scrape_error:
-                # Recoverable: agent can investigate and fix the issue
+                # Scrape failed - record failure and mark as failed
                 logger.error(f"Error scraping source {source_name}: {scrape_error}")
                 self.sources_manager.record_scraping_failure(
                     source_id=source.get("id"),
                     error_message=str(scrape_error),
                 )
-                self._handoff_to_agent_review(
-                    item,
-                    SOURCE_AGENT_PROMPT,
-                    reason="Source scrape failed",
-                    context={
-                        "source_id": source.get("id"),
-                        "source_name": source_name,
-                        "error": str(scrape_error),
-                        "traceback": traceback.format_exc(),
-                    },
-                    status_message=f"Agent review required: scraping failed: {str(scrape_error)}",
+                self._update_item_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Scraping failed: {str(scrape_error)}",
+                    error_details=traceback.format_exc(),
                 )
 
         except Exception as e:

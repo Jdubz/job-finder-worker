@@ -18,7 +18,7 @@ class QueueItemType(str, Enum):
     Type of queue item.
 
     TypeScript equivalent: QueueItemType in queue.types.ts
-    Values must match exactly: "job" | "company" | "scrape" | "source_discovery" | "scrape_source" | "agent_review"
+    Values must match exactly: "job" | "company" | "scrape" | "source_discovery" | "scrape_source"
     """
 
     JOB = "job"
@@ -26,7 +26,6 @@ class QueueItemType(str, Enum):
     SCRAPE = "scrape"
     SOURCE_DISCOVERY = "source_discovery"
     SCRAPE_SOURCE = "scrape_source"  # For automated source scraping
-    AGENT_REVIEW = "agent_review"  # Agent-only review/recovery task
 
 
 class SourceStatus(str, Enum):
@@ -75,15 +74,14 @@ class QueueStatus(str, Enum):
     Status of queue item processing.
 
     TypeScript equivalent: QueueStatus in queue.types.ts
-    Lifecycle: pending → processing → success/failed/skipped/filtered/needs_review
+    Lifecycle: pending → processing → success/failed/skipped/filtered
 
     - PENDING: In queue, waiting to be processed
     - PROCESSING: Currently being processed
     - FILTERED: Rejected by filter engine (did not pass intake filters)
     - SKIPPED: Skipped (duplicate or stop list blocked)
     - SUCCESS: Successfully processed and saved to job-matches
-    - FAILED: Processing error occurred (terminal, not recoverable)
-    - NEEDS_REVIEW: Requires agent intervention (recoverable failure)
+    - FAILED: Processing error occurred (terminal)
     """
 
     PENDING = "pending"
@@ -92,7 +90,6 @@ class QueueStatus(str, Enum):
     SKIPPED = "skipped"
     FAILED = "failed"
     SUCCESS = "success"
-    NEEDS_REVIEW = "needs_review"  # Requires agent intervention
 
 
 # QueueSource type - matches TypeScript literal type
@@ -275,12 +272,6 @@ class JobQueueItem(BaseModel):
 
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional metadata blob")
 
-    # Agent review notes - analysis of what went wrong and recovery attempts
-    review_notes: Optional[str] = Field(
-        default=None,
-        description="Agent reviewer's analysis: what went wrong, why task failed, recovery attempts",
-    )
-
     # Loop prevention - tracking_id links related items
     tracking_id: str = Field(
         default_factory=lambda: str(__import__("uuid").uuid4()),
@@ -336,7 +327,6 @@ class JobQueueItem(BaseModel):
             "result_message": self.result_message,
             "error_details": self.error_details,
             "metadata": serialize(self.metadata),
-            "review_notes": self.review_notes,
         }
 
     @classmethod
@@ -380,5 +370,4 @@ class JobQueueItem(BaseModel):
             result_message=record.get("result_message"),
             error_details=record.get("error_details"),
             metadata=parse_json(record.get("metadata")),
-            review_notes=record.get("review_notes"),
         )

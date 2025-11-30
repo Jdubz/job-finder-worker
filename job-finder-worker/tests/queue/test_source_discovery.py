@@ -118,6 +118,7 @@ def make_discovery_item(
 
 class TestQueueRouting:
     def test_routes_source_discovery_items(self, processor: QueueItemProcessor, mock_dependencies):
+        """Test that SOURCE_DISCOVERY items are routed to source_processor."""
         item = make_discovery_item(url="https://boards.greenhouse.io/stripe")
 
         with patch.object(
@@ -126,24 +127,22 @@ class TestQueueRouting:
             processor.process_item(item)
 
         mocked.assert_called_once_with(item)
-        # First status update should move item to PROCESSING
-        assert (
-            mock_dependencies["queue_manager"].update_status.call_args_list[0][0][1]
-            == QueueStatus.PROCESSING
-        )
+        # Note: PROCESSING status is set inside process_source_discovery,
+        # which is mocked here. The test verifies routing works correctly.
 
-    def test_missing_config_only_sets_processing_status(
+    def test_missing_config_does_not_update_status(
         self, processor: QueueItemProcessor, mock_dependencies
     ):
+        """Test that items without source_discovery_config exit early without status update."""
         item = make_discovery_item(url="https://boards.greenhouse.io/stripe")
         item.source_discovery_config = None
 
         processor.process_item(item)
 
+        # The process_source_discovery method returns early without updating status
+        # when source_discovery_config is missing
         calls = mock_dependencies["queue_manager"].update_status.call_args_list
-        assert len(calls) == 1
-        assert calls[0][0][0] == item.id
-        assert calls[0][0][1] == QueueStatus.PROCESSING
+        assert len(calls) == 0
 
 
 class TestSourceDiscoverySuccess:
@@ -275,15 +274,9 @@ class TestSourceDiscoveryFailure:
         item = make_discovery_item(url="https://example.com/invalid")
         source_processor.process_source_discovery(item)
 
-        # Should mark as needs_review (recoverable failure requiring agent intervention)
+        # Should mark as failed (no config produced)
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
-        assert status_call[0][1] == QueueStatus.NEEDS_REVIEW
-
-        # Should spawn AGENT_REVIEW item, not SCRAPE_SOURCE
-        add_calls = mock_dependencies["queue_manager"].add_item.call_args_list
-        if add_calls:
-            added_item = add_calls[-1][0][0]
-            assert added_item.type == QueueItemType.AGENT_REVIEW
+        assert status_call[0][1] == QueueStatus.FAILED
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
