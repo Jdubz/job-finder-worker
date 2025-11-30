@@ -32,7 +32,7 @@ export function JobDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh]">
+      <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-2xl">{match.listing.title}</DialogTitle>
           <DialogDescription className="text-lg">
@@ -42,21 +42,21 @@ export function JobDetailsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="overview" className="mt-4">
-          <TabsList className="grid w-full grid-cols-4">
+        <Tabs defaultValue="overview" className="mt-4 flex-1 flex flex-col min-h-0">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 flex-shrink-0">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="skills">Skills</TabsTrigger>
-            <TabsTrigger value="customization">Customization</TabsTrigger>
+            <TabsTrigger value="customization">Customize</TabsTrigger>
             <TabsTrigger value="description">Description</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4">
-            <ScrollArea className="h-[400px] pr-4">
+          <TabsContent value="overview" className="flex-1 min-h-0 mt-2">
+            <ScrollArea className="h-[250px] sm:h-[350px] md:h-[400px] pr-4">
               {/* Match Score */}
               <div className="mb-4">
                 <h3 className="font-semibold mb-2">Match Analysis</h3>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                   <div className="text-center p-3 bg-secondary rounded-lg">
                     <div className="text-2xl font-bold text-green-600">{match.matchScore}%</div>
                     <div className="text-xs text-muted-foreground">Overall Match</div>
@@ -123,8 +123,8 @@ export function JobDetailsDialog({
           </TabsContent>
 
           {/* Skills Tab */}
-          <TabsContent value="skills" className="space-y-4">
-            <ScrollArea className="h-[400px] pr-4">
+          <TabsContent value="skills" className="flex-1 min-h-0 mt-2">
+            <ScrollArea className="h-[250px] sm:h-[350px] md:h-[400px] pr-4">
               {/* Matched Skills */}
               <div>
                 <h3 className="font-semibold mb-2 text-green-600">
@@ -168,8 +168,8 @@ export function JobDetailsDialog({
           </TabsContent>
 
           {/* Customization Tab */}
-          <TabsContent value="customization" className="space-y-4">
-            <ScrollArea className="h-[400px] pr-4">
+          <TabsContent value="customization" className="flex-1 min-h-0 mt-2">
+            <ScrollArea className="h-[250px] sm:h-[350px] md:h-[400px] pr-4">
               {match.customizationRecommendations &&
               match.customizationRecommendations.length > 0 ? (
                 <div>
@@ -215,8 +215,8 @@ export function JobDetailsDialog({
           </TabsContent>
 
           {/* Description Tab */}
-          <TabsContent value="description" className="space-y-4">
-            <ScrollArea className="h-[400px] pr-4">
+          <TabsContent value="description" className="flex-1 min-h-0 mt-2">
+            <ScrollArea className="h-[250px] sm:h-[350px] md:h-[400px] pr-4">
               <div className="prose prose-sm dark:prose-invert max-w-none">
                 {companyInfo && (
                   <div className="mb-4">
@@ -237,16 +237,18 @@ export function JobDetailsDialog({
         </Tabs>
 
         {/* Footer Actions */}
-        <div className="flex gap-2 mt-4">
+        <div className="flex flex-col-reverse sm:flex-row gap-2 pt-4 mt-auto border-t flex-shrink-0">
           {onGenerateResume && (
             <Button onClick={() => onGenerateResume(match)} className="flex-1">
               <FileText className="mr-2 h-4 w-4" />
-              Generate Custom Resume
+              <span className="hidden sm:inline">Generate Custom Resume</span>
+              <span className="sm:hidden">Generate Resume</span>
             </Button>
           )}
           <Button variant="outline" onClick={() => window.open(match.listing.url, "_blank")}>
             <ExternalLink className="mr-2 h-4 w-4" />
-            View Job Posting
+            <span className="hidden sm:inline">View Job Posting</span>
+            <span className="sm:hidden">View Job</span>
           </Button>
         </div>
       </DialogContent>

@@ -303,36 +303,38 @@ export function SourcesPage() {
       {/* Sources List */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>Configured Sources</CardTitle>
               <CardDescription>
                 Click on a source to view details
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               <Input
                 placeholder="Search sources..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="w-[200px]"
+                className="w-full sm:w-[200px]"
               />
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[110px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="paused">Paused</SelectItem>
-                  <SelectItem value="disabled">Disabled</SelectItem>
-                  <SelectItem value="error">Error</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="icon" onClick={handleSearch}>
-                <Search className="h-4 w-4" />
-              </Button>
+              <div className="flex gap-2">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="flex-1 sm:w-[110px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="paused">Paused</SelectItem>
+                    <SelectItem value="disabled">Disabled</SelectItem>
+                    <SelectItem value="error">Error</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" onClick={handleSearch}>
+                  <Search className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -362,10 +364,16 @@ export function SourcesPage() {
                 {filteredSources.map((source: JobSource) => (
                   <TableRow
                     key={source.id}
-                    className="cursor-pointer hover:bg-muted/50"
+                    className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
                     onClick={() => setSelectedSource(source)}
                   >
-                    <TableCell className="font-medium">{source.name}</TableCell>
+                    <TableCell>
+                      <div className="font-medium">{source.name}</div>
+                      {/* Show company info on mobile as secondary text */}
+                      <div className="md:hidden text-xs text-muted-foreground mt-0.5">
+                        {source.aggregatorDomain || (source.companyId ? "Company source" : "")}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline">
                         {sourceTypeLabels[source.sourceType] || source.sourceType}
@@ -377,11 +385,7 @@ export function SourcesPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {source.aggregatorDomain
-                        ? `Aggregator: ${source.aggregatorDomain}`
-                        : source.companyId
-                          ? "Company-specific"
-                          : "—"}
+                      {source.aggregatorDomain || (source.companyId ? "Company source" : "—")}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -394,9 +398,24 @@ export function SourcesPage() {
                             setScrapeDialogOpen(true)
                           }
                         }}
+                        className="hidden sm:inline-flex"
                       >
                         <Plus className="h-4 w-4 mr-1" />
                         New scrape
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (source.id) {
+                            setScrapePrefillSourceId(source.id)
+                            setScrapeDialogOpen(true)
+                          }
+                        }}
+                        className="sm:hidden h-8 w-8"
+                      >
+                        <Plus className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -409,7 +428,7 @@ export function SourcesPage() {
 
       {/* Detail Modal */}
       <Dialog open={!!selectedSource} onOpenChange={(open) => !open && setSelectedSource(null)}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="w-[95vw] sm:max-w-[600px] max-h-[90vh] overflow-hidden flex flex-col">
           {selectedSource && (
             <>
               <DialogHeader>
@@ -430,11 +449,11 @@ export function SourcesPage() {
                 </div>
               </DialogHeader>
 
-              <div className="space-y-4">
+              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
                 {/* ID */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">ID</Label>
-                  <p className="mt-1 text-sm font-mono text-muted-foreground">{selectedSource.id || "—"}</p>
+                  <p className="mt-1 text-sm font-mono text-muted-foreground break-all">{selectedSource.id || "—"}</p>
                 </div>
 
                 {/* Source URL */}
@@ -450,10 +469,10 @@ export function SourcesPage() {
                         href={url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center text-blue-600 hover:underline mt-1"
+                        className="flex items-start text-blue-600 hover:underline mt-1 break-all text-sm"
                       >
-                        {url}
-                        <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
+                        <span className="flex-1">{url}</span>
+                        <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0 mt-1" />
                       </a>
                     )
                   })()}
@@ -506,7 +525,7 @@ export function SourcesPage() {
                 {/* Config JSON */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">Config</Label>
-                  <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-40">
+                  <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-[120px] sm:max-h-[160px] break-all whitespace-pre-wrap">
                     {JSON.stringify(selectedSource.configJson, null, 2)}
                   </pre>
                 </div>
@@ -530,11 +549,12 @@ export function SourcesPage() {
                 </div>
               </div>
 
-              <DialogFooter className="flex justify-between sm:justify-between">
-                <div className="flex gap-2">
+              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between pt-4 border-t flex-shrink-0 mt-4">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   <Button
                     variant="outline"
                     onClick={() => handleToggleStatus(selectedSource)}
+                    className="w-full sm:w-auto"
                   >
                     {selectedSource.status === "active" ? (
                       <>
@@ -551,12 +571,13 @@ export function SourcesPage() {
                   <Button
                     variant="destructive"
                     onClick={() => selectedSource.id && handleDelete(selectedSource.id)}
+                    className="w-full sm:w-auto"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Delete
                   </Button>
                 </div>
-                <Button variant="ghost" onClick={() => setSelectedSource(null)}>
+                <Button variant="ghost" onClick={() => setSelectedSource(null)} className="w-full sm:w-auto">
                   Close
                 </Button>
               </DialogFooter>
