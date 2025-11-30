@@ -136,7 +136,7 @@ class TestStrikeFilterEngineInit:
 
     def test_init_with_missing_fields(self):
         """Test engine handles missing configuration fields."""
-        minimal_config = {"enabled": True}
+        minimal_config = {}
         engine = StrikeFilterEngine(minimal_config)
 
         assert engine.strike_threshold == 5  # Default from constants
@@ -538,13 +538,17 @@ class TestComplexScenarios:
     """Test complex real-world scenarios."""
 
     def test_hybrid_portland_allowed(self, prefilter_policy, valid_job):
-        """Test hybrid Portland jobs are allowed when configured."""
+        """Hybrid Portland jobs allowed when location lists permit."""
+        prefilter_policy["strikeEngine"]["remotePolicy"]["allowOnsite"] = True
+        prefilter_policy["strikeEngine"]["remotePolicy"]["allowedHybridLocations"] = [
+            "portland, or"
+        ]
         engine = StrikeFilterEngine(prefilter_policy)
         valid_job["location"] = "Hybrid - Portland, OR"
 
         result = engine.evaluate_job(valid_job)
 
-        assert not any("remote" in r.reason.lower() for r in result.rejections)
+        assert not any(r.filter_name == "remote_policy" for r in result.rejections)
 
     def test_case_insensitive_matching(self, prefilter_policy, valid_job):
         """Test matching is case-insensitive."""

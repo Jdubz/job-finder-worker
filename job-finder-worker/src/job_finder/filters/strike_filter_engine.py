@@ -54,7 +54,7 @@ class StrikeFilterEngine:
         remote = config.get("remotePolicy", {})
         self.allow_remote = remote.get("allowRemote", True)
         # Explicit allow for onsite/hybrid paired with location allowlists
-        self.allow_onsite = remote.get("allowOnsite", True)
+        self.allow_location_based_roles = remote.get("allowOnsite", True)
         self.allowed_onsite_locations = [
             loc.lower() for loc in remote.get("allowedOnsiteLocations", [])
         ]
@@ -454,11 +454,11 @@ class StrikeFilterEngine:
         if is_remote and self.allow_remote:
             return False  # Remote OK, no location requirement
 
-        if is_hybrid and self.allow_onsite:
+        if is_hybrid and self.allow_location_based_roles:
             if _matches_allowlist(location_lower, self.allowed_hybrid_locations):
                 return False  # Hybrid allowed in configured locations
 
-        if is_onsite and self.allow_onsite:
+        if is_onsite and self.allow_location_based_roles:
             if _matches_allowlist(location_lower, self.allowed_onsite_locations):
                 return False  # Onsite allowed only in configured locations
 
