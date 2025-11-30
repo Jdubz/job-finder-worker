@@ -1,7 +1,7 @@
 """Tests for search API client."""
 
 import os
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -42,7 +42,7 @@ class TestTavilySearchClient:
             with pytest.raises(ValueError, match="TAVILY_API_KEY not set"):
                 TavilySearchClient()
 
-    @patch('requests.post')
+    @patch("requests.post")
     def test_search_success(self, mock_post):
         # Mock Tavily API response
         mock_response = Mock()
@@ -70,7 +70,7 @@ class TestTavilySearchClient:
         assert results[0].url == "https://example.com"
         assert results[0].snippet == "Example company description"
 
-    @patch('requests.post')
+    @patch("requests.post")
     def test_search_api_error(self, mock_post):
         # Mock API error
         mock_response = Mock()
@@ -94,7 +94,7 @@ class TestBraveSearchClient:
             with pytest.raises(ValueError, match="BRAVE_API_KEY not set"):
                 BraveSearchClient()
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_search_success(self, mock_get):
         # Mock Brave API response
         mock_response = Mock()

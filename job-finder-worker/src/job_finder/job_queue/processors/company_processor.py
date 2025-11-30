@@ -107,20 +107,22 @@ class CompanyProcessor(BaseProcessor):
             if not company_website:
                 # No website URL provided - fetch search results to assist agent research
                 search_results = self._get_search_results(company_name)
-                context = {
+                context_data: Dict[str, Any] = {
                     "company_name": company_name,
                     "company_id": company_id,
                     "instruction": "Find the company's official website URL first, then gather all company information.",
                 }
                 if search_results:
-                    context["search_results"] = search_results
-                    logger.info(f"Including {len(search_results)} search results for agent review of {company_name}")
+                    context_data["search_results"] = search_results
+                    logger.info(
+                        f"Including {len(search_results)} search results for agent review of {company_name}"
+                    )
 
                 self._handoff_to_agent_review(
                     item,
                     COMPANY_NO_URL_AGENT_PROMPT,
                     reason="No company website URL provided",
-                    context=context,
+                    context=context_data,
                     status_message="Agent review required: no website URL - needs research",
                 )
                 return
@@ -130,20 +132,22 @@ class CompanyProcessor(BaseProcessor):
             if not html_content:
                 # Recoverable: agent can use search results when pages can't be fetched
                 search_results = self._get_search_results(company_name)
-                context = {
+                context_data2: Dict[str, Any] = {
                     "attempted_urls": pages_to_try,
                     "company_name": company_name,
                     "company_website": company_website,
                 }
                 if search_results:
-                    context["search_results"] = search_results
-                    logger.info(f"Including {len(search_results)} search results for agent review of {company_name}")
+                    context_data2["search_results"] = search_results
+                    logger.info(
+                        f"Including {len(search_results)} search results for agent review of {company_name}"
+                    )
 
                 self._handoff_to_agent_review(
                     item,
                     COMPANY_AGENT_PROMPT,
                     reason="No company pages fetched",
-                    context=context,
+                    context=context_data2,
                     status_message="Agent review required: could not fetch company pages",
                 )
                 return
@@ -152,20 +156,22 @@ class CompanyProcessor(BaseProcessor):
             if not extracted_info:
                 # Recoverable: agent can use search results + HTML to extract info
                 search_results = self._get_search_results(company_name)
-                context = {
+                context_data3: Dict[str, Any] = {
                     "html_samples": {k: v[:5000] for k, v in html_content.items()},
                     "company_name": company_name,
                     "company_website": company_website,
                 }
                 if search_results:
-                    context["search_results"] = search_results
-                    logger.info(f"Including {len(search_results)} search results for agent review of {company_name}")
+                    context_data3["search_results"] = search_results
+                    logger.info(
+                        f"Including {len(search_results)} search results for agent review of {company_name}"
+                    )
 
                 self._handoff_to_agent_review(
                     item,
                     COMPANY_AGENT_PROMPT,
                     reason="Company extraction failed",
-                    context=context,
+                    context=context_data3,
                     status_message="Agent review required: extraction failed",
                 )
                 return
@@ -189,19 +195,21 @@ class CompanyProcessor(BaseProcessor):
                 if self.company_info_fetcher._needs_ai_enrichment(extracted_info):
                     # Provide search results to help agent fill gaps
                     search_results = self._get_search_results(company_name)
-                    context = {
+                    context_data4: Dict[str, Any] = {
                         "extracted_info": extracted_info,
                         "html_samples": {k: v[:5000] for k, v in html_content.items()},
                     }
                     if search_results:
-                        context["search_results"] = search_results
-                        logger.info(f"Including {len(search_results)} search results for agent review of {company_name}")
+                        context_data4["search_results"] = search_results
+                        logger.info(
+                            f"Including {len(search_results)} search results for agent review of {company_name}"
+                        )
 
                     self._handoff_to_agent_review(
                         item,
                         COMPANY_AGENT_PROMPT,
                         reason="Company fields still sparse after AI enrichment",
-                        context=context,
+                        context=context_data4,
                         status_message="Agent review required: enrichment still sparse",
                     )
                     return
