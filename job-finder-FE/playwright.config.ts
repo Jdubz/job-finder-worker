@@ -81,7 +81,7 @@ export default defineConfig({
     {
       command: [
         "cd ..",
-        `JF_E2E_API_PORT=${apiPort} JF_E2E_AUTH_TOKEN=${authToken} node scripts/dev/start-api-e2e.mjs`,
+        `LOG_LEVEL=warn JF_E2E_API_PORT=${apiPort} JF_E2E_AUTH_TOKEN=${authToken} node scripts/dev/start-api-e2e.mjs`,
       ].join(" && "),
       url: `${apiOrigin}/healthz`,
       reuseExistingServer: !process.env.CI,
