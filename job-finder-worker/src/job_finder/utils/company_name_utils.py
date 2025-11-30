@@ -96,18 +96,15 @@ def is_source_name(name: str) -> bool:
         r"^himalayas\s+remote\b",  # Himalayas Remote
         r"^jobicy\s+remote\b",  # Jobicy Remote
         r"^remotive\b",  # Remotive (board name, not company)
-
         # Job board names WITH job-related suffixes (not the companies themselves)
         r"^indeed\s+(jobs?|api|prime)\b",  # Indeed Jobs, Indeed API (NOT just "Indeed")
         r"^linkedin\s+(jobs?|api)\b",  # LinkedIn Jobs, LinkedIn API (NOT just "LinkedIn")
         r"^glassdoor\s+(jobs?|api)\b",  # Glassdoor Jobs (NOT just "Glassdoor")
-
         # Other job boards
         r"^github\s+jobs\b",  # GitHub Jobs
         r"^stack\s+overflow\s+jobs\b",  # Stack Overflow Jobs
         r"^ziprecruiter\b",  # ZipRecruiter
         r"^careerbuilder\b",  # CareerBuilder
-
         # Scraper patterns: "SourceName - Category" (very specific)
         # Only match if it looks like a scraper categorization, not a division name
         r"^(remoteok|remote ok|we work remotely|himalayas|jobicy|remotive)\s+-\s+",

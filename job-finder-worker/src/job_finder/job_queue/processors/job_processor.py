@@ -674,7 +674,7 @@ class JobProcessor(BaseProcessor):
         if is_source_name(company_name_clean):
             logger.warning(
                 "Company name '%s' detected as source name (scraper bug) - skipping company enrichment",
-                company_name_clean
+                company_name_clean,
             )
             job_data["company"] = company_name_clean
             job_data["company_id"] = None
@@ -727,13 +727,15 @@ class JobProcessor(BaseProcessor):
         # Spawn enrichment task and wait if data is sparse
         if not self.companies_manager.has_good_company_data(company):
             if not pipeline_state.get("awaiting_company"):
-                task_spawned = self._try_spawn_company_task(item, company_id, company_name, company_website)
+                task_spawned = self._try_spawn_company_task(
+                    item, company_id, company_name, company_website
+                )
                 if not task_spawned:
                     # Company enrichment task could not be spawned - proceed with sparse data
                     # This prevents infinite waiting when enrichment is impossible
                     logger.info(
                         "Proceeding with sparse company data for %s (enrichment task spawn failed)",
-                        company_name
+                        company_name,
                     )
                     job_data["company_id"] = company_id
                     job_data["companyId"] = company_id
@@ -780,7 +782,9 @@ class JobProcessor(BaseProcessor):
             company_url = f"https://www.google.com/search?q={quote_plus(company_name)}"
         else:
             # Fallback if company name is somehow empty/None
-            logger.warning("Cannot spawn company task: both company_name and company_website are empty")
+            logger.warning(
+                "Cannot spawn company task: both company_name and company_website are empty"
+            )
             return False
 
         try:
@@ -798,7 +802,10 @@ class JobProcessor(BaseProcessor):
                 logger.info("Spawned company enrichment task %s for %s", task_id, company_name)
                 return True
             else:
-                logger.warning("Failed to spawn company task for %s: spawn_item_safely returned None", company_name)
+                logger.warning(
+                    "Failed to spawn company task for %s: spawn_item_safely returned None",
+                    company_name,
+                )
                 return False
         except DuplicateQueueItemError:
             logger.debug("Company task for %s already in queue, skipping spawn", company_name)
