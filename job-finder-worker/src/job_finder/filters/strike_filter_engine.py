@@ -25,29 +25,8 @@ class StrikeFilterEngine:
     Tier 2: Strike accumulation (fail if >= threshold)
     """
 
-    def __init__(self, policy: dict, legacy_tech_ranks: dict | None = None):
-        """Initialize strike-based filter engine.
-
-        Supports both the new consolidated prefilter policy shape and the legacy
-        (filters, tech_ranks) arguments used in older tests. If legacy_tech_ranks is
-        provided and the policy does not already contain strikeEngine/stopList keys,
-        we wrap it into the new structure.
-        """
-
-        if (
-            legacy_tech_ranks is not None
-            and "strikeEngine" not in policy
-            and "stopList" not in policy
-        ):
-            policy = {
-                "stopList": {
-                    "excludedCompanies": [],
-                    "excludedKeywords": [],
-                    "excludedDomains": [],
-                },
-                "strikeEngine": policy,
-                "technologyRanks": legacy_tech_ranks or {},
-            }
+    def __init__(self, policy: dict):
+        """Initialize strike-based filter engine (new config shape only)."""
 
         self.policy = policy
         self.stop_list = policy.get("stopList", {})
@@ -74,14 +53,10 @@ class StrikeFilterEngine:
         # Remote Policy
         remote = config.get("remotePolicy", {})
         self.allow_remote = remote.get("allowRemote", True)
-        self.allow_hybrid_portland = remote.get("allowHybridPortland", True)
         # Explicit allow for onsite/hybrid paired with location allowlists
         self.allow_onsite = remote.get("allowOnsite", True)
         self.allowed_onsite_locations = [l.lower() for l in remote.get("allowedOnsiteLocations", [])]
         self.allowed_hybrid_locations = [l.lower() for l in remote.get("allowedHybridLocations", [])]
-        # Back-compat: old flag allowHybridPortland toggles Portland into hybrid allowlist
-        if self.allow_hybrid_portland and "portland, or" not in self.allowed_hybrid_locations:
-            self.allowed_hybrid_locations.append("portland, or")
 
         # Strike: Salary
         salary_strike = config.get("salaryStrike", {})
@@ -470,21 +445,18 @@ class StrikeFilterEngine:
         # Apply policy to detected arrangements
         def _matches_allowlist(location_val: str, allowlist: list[str]) -> bool:
             loc = location_val.lower()
-            return any(allowed in loc for allowed in allowlist)
+            return bool(allowlist) and any(allowed in loc for allowed in allowlist)
 
         if is_remote and self.allow_remote:
             return False  # Remote OK, no location requirement
 
-        if is_hybrid:
-            if self.allow_hybrid_portland or self.allowed_hybrid_locations:
-                if _matches_allowlist(location_lower, self.allowed_hybrid_locations):
-                    return False  # Hybrid allowed in configured locations
-            # fallthrough to reject below
+        if is_hybrid and self.allow_onsite:
+            if _matches_allowlist(location_lower, self.allowed_hybrid_locations):
+                return False  # Hybrid allowed in configured locations
 
-        if is_onsite:
-            if self.allow_onsite and self.allowed_onsite_locations:
-                if _matches_allowlist(location_lower, self.allowed_onsite_locations):
-                    return False  # Onsite allowed only in configured locations
+        if is_onsite and self.allow_onsite:
+            if _matches_allowlist(location_lower, self.allowed_onsite_locations):
+                return False  # Onsite allowed only in configured locations
 
         # Only reject if we detected an arrangement that violates policy
         if is_remote:
@@ -498,7 +470,7 @@ class StrikeFilterEngine:
             filter_category="hard_reject",
             filter_name="remote_policy",
             reason=policy_reason,
-            detail=f"Remote: {is_remote}, Hybrid: {is_hybrid}, Portland: {is_portland}, Onsite: {is_onsite}",
+            detail=f"Remote: {is_remote}, Hybrid: {is_hybrid}, Onsite: {is_onsite}",
             severity="hard_reject",
             points=0,
         )

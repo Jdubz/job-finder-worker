@@ -297,7 +297,6 @@ class ConfigLoader:
                 },
                 "remotePolicy": {
                     "allowRemote": True,
-                    "allowHybridPortland": True,
                     "allowOnsite": False,
                     "allowedOnsiteLocations": ["portland, or"],
                     "allowedHybridLocations": ["portland, or"],
