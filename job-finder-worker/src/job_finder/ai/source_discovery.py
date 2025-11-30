@@ -47,11 +47,26 @@ class SourceDiscovery:
             Tuple of (SourceConfig dict or None, metadata dict)
         """
         try:
+            # Step 0: Try URL-based heuristics FIRST (before fetch)
+            # Some platforms (Workday, Ashby HTML pages) can be detected by URL pattern
+            # even when the page itself is JS-rendered or returns errors
+            heuristic_config = self._try_url_based_heuristics(url)
+            if heuristic_config:
+                validation = self._validate_config(heuristic_config)
+                if validation.get("success"):
+                    logger.info(f"URL-based heuristic succeeded for {url}")
+                    return heuristic_config, validation
+                # If validation failed, continue to try fetching
+
             # Step 1: Detect source type and fetch sample
             source_type, sample = self._detect_and_fetch(url)
 
             if not sample:
                 logger.warning(f"Could not fetch content from {url}")
+                # Even if fetch failed, heuristic config might still be usable
+                # (e.g., Workday POST API might work even if GET fails)
+                if heuristic_config:
+                    return heuristic_config, {"success": False, "error": "fetch_failed_but_heuristic_available"}
                 return None, {}
 
             logger.info(f"Detected source type '{source_type}' for {url}")
@@ -286,6 +301,88 @@ class SourceDiscovery:
                 "location": "locationsText",
                 "url": "externalPath",
                 "posted_date": "postedOn",
+            },
+        }
+
+    def _try_url_based_heuristics(self, url: str) -> Optional[Dict[str, Any]]:
+        """
+        Try URL-based heuristics that don't require fetching the page.
+
+        This handles platforms where:
+        - The page is JS-rendered (so fetch returns unusable HTML)
+        - The page returns errors (500, etc.)
+        - But we can derive the API endpoint from the URL pattern
+
+        Args:
+            url: Source URL to analyze
+
+        Returns:
+            Config dictionary or None
+        """
+        # Try Workday first - their pages often return 500 but API works
+        config = self._try_workday_config(url)
+        if config:
+            return config
+
+        # Try Ashby HTML URL -> API URL conversion
+        config = self._try_ashby_html_to_api(url)
+        if config:
+            return config
+
+        return None
+
+    def _try_ashby_html_to_api(self, url: str) -> Optional[Dict[str, Any]]:
+        """
+        Convert Ashby HTML job board URL to API URL.
+
+        jobs.ashbyhq.com/{board_name} -> api.ashbyhq.com/posting-api/job-board/{board_name}
+
+        The HTML pages are JS-rendered and return unusable content,
+        but the API endpoint is predictable and returns JSON.
+        """
+        import re
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+
+        # Check if it's an Ashby HTML page
+        if "jobs.ashbyhq.com" not in parsed.netloc:
+            return None
+
+        # Extract board name from path (e.g., /supabase or /The%20Browser%20Company)
+        path_parts = parsed.path.strip("/").split("/")
+        if not path_parts or not path_parts[0]:
+            return None
+
+        board_name = path_parts[0]
+
+        # Construct API URL
+        api_url = f"https://api.ashbyhq.com/posting-api/job-board/{board_name}?includeCompensation=true"
+
+        # Validate by fetching API
+        try:
+            response = requests.get(
+                api_url,
+                headers={"Accept": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if "jobs" not in data:
+                return None
+        except (requests.RequestException, json.JSONDecodeError):
+            return None
+
+        return {
+            "type": "api",
+            "url": api_url,
+            "response_path": "jobs",
+            "fields": {
+                "title": "title",
+                "location": "location",
+                "description": "descriptionHtml",
+                "url": "jobUrl",
+                "posted_date": "publishedAt",
             },
         }
 
