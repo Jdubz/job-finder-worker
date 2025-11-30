@@ -2,59 +2,58 @@
 > Owner: @jdubz
 > Last Updated: 2025-11-29
 
-# Web Search Prefetch for Company Discovery
+# Web Search for Company Discovery
 
-Purpose: give the worker a deterministic, quota-aware way to pre-populate company records with public facts (website, description, HQ, socials, size band) using a browserless search API, reducing reliance on live agent search and keeping us within free tiers.
+**Purpose**: Provide web search results to the AI agent during company enrichment to prevent sparse data and reduce hallucination.
 
-## Goals
-- Preload structured snippets for each new company so agents extract instead of searching live.
-- Keep daily search requests below chosen provider free-tier limits (Tavily/Brave).
-- Make usage observable (per-day counters, failures, latency).
+## The Problem
+Currently, company enrichment uses a Google search URL placeholder (`https://www.google.com/search?q={company_name}`). The AI agent has no actual search results to work with, leading to incomplete company profiles.
 
-## Non-Goals
-- Full scraping/crawling of target sites.
-- UI changes.
+## The Solution
+Call a search API (Tavily or Brave) and pass the raw results directly to the AI agent for extraction.
 
-## Provider Choice (initial)
-- Primary: Tavily (LLM-friendly JSON, 1k/mo free).
-- Fallback: Brave (independent index, 2k/mo free). Abstract behind interface to swap/disable.
+## Implementation
 
-## High-Level Design
-1) **Trigger**: when a `company` queue item is created and fields `website` or `about` are empty.
-2) **Search Call**: call `SearchClient.search(query=company name + "official site", max_results=5)`; capture snippets + URLs.
-3) **Storage**: **MVP = in‑memory only.** Hold the response JSON in task scope; do **not** persist raw payloads. Persist only lightweight metadata (`search_provider`, `request_id`, `result_count`) in logs/metrics.
-4) **Extraction Step**: run deterministic parser to fill fields (website, headquarters_location, company_size_category, description, socials) with confidence flags; only overwrite empty fields.
-5) **Quota Guard**: per-day counter in Redis/SQLite; if over threshold, skip search and tag queue item `search_skipped:quota`.
-6) **Telemetry**: log structured event `company_search` with latency, result_count, success/error, provider; include `search_attempted_at` and `search_attempt_status` for retry hygiene.
+### 1. Add Search Client
+Create a simple search client interface with Tavily implementation:
 
-## Storage Strategy (DB vs in-memory)
-- **Default (MVP): in-memory only.** Keep search responses in task scope and apply extracted fields immediately; nothing is persisted once the company item finishes. Persist only derived fields (website, HQ, size category, description, socials) and optional confidence scores.
-- **Optional future value: new `company_searches` table.** If we later need auditability, replay, or offline evaluation, create a dedicated table with: `id`, `company_id`, `provider`, `query`, `response_json`, `result_count`, `latency_ms`, `created_at`. This keeps search data separate from `companies` and can be pruned by TTL.
-- **Avoid storing raw payloads on `companies`.** Limit `companies` writes to derived fields plus confidence scores (if we add them). If we stay in-memory, confidence stays transient as well.
+```python
+class SearchClient:
+    def search(self, query: str, max_results: int = 5) -> List[Dict]:
+        """Returns list of search results with title, url, snippet."""
+        pass
+```
 
-## Implementation Steps (MVP)
-1) Add `SearchClient` interface + providers (`tavily`, `brave`) in worker code; config via env `SEARCH_PROVIDER`, `SEARCH_API_KEY`, `SEARCH_DAILY_CAP`.
-2) Add queue middleware for `company` items to check cap, call search, **keep payload in memory**, and log `company_search` metadata (provider/request_id/result_count/latency).
-3) Implement parser that prefers official domains (.com/.io) and geocodes HQ from snippet text when present; emit confidence scores.
-4) Update company-upsert to apply extracted fields only when target columns are null/empty.
-5) Add counter + cap: increment per successful API call; skip when `today_count >= cap`.
-6) Tests: unit (SearchClient), parser cases, cap behavior; integration that runs a fake provider and verifies company fields populate.
+### 2. Integrate in Company Processor
+In `company_processor.py`, when processing a company task:
+- Call `search_client.search(company_name + " official website")`
+- Pass results to AI agent in the prompt context
+- Let AI extract website, HQ, size, description, etc.
 
-## Rollout & Ops
-- Default `SEARCH_PROVIDER` unset (feature off). Enable in staging, then prod with `SEARCH_DAILY_CAP=100`.
-- Add dashboard/log-based alert: if `company_search.error_rate > 10%` or latency p95 > 5s.
-- Document runbook entry for rotating API keys and changing caps.
+### 3. Configuration
+```bash
+SEARCH_PROVIDER=tavily  # or brave
+SEARCH_API_KEY=<key>
+```
 
-## Risks / Mitigations
-- **Quota blow-up**: enforce per-day cap + one-call-per-company guard.
-- **Bad data overwrite**: only fill empty fields; store confidence for auditing.
-- **Provider outage**: graceful skip with `search_skipped:provider_down`.
+No feature flag - always on when API key is set.
 
-## One-Call-Per-Company Guard
-- Mark an attempt per company item (`search_attempted_at`, `search_attempt_status`) in queue metadata or company record.
-- Skip subsequent searches if an attempt exists unless a configurable backoff TTL has expired.
-- This prevents retries when website/about stay empty after a transient failure while still allowing controlled re-attempts.
+## That's It
+- No quota management (we'll add later if needed)
+- No parsing/extraction (AI does this)
+- No persistence of search results
+- No confidence scores
+- No one-call-per-company guards
 
-## Open Questions
-- Do we also prefetch for existing companies older than 7 days? (suggest batch backfill behind cap).
-- Should we geocode HQ via a maps API for higher accuracy? (out of scope MVP).
+Just fetch search results and give them to the AI.
+
+## Monitoring and Future Safeguards
+**Important**: This MVP implementation defers several operational safeguards to keep things simple:
+
+- **Cost Risk**: Without quota management, a large influx of companies could exhaust free tier quotas (Tavily: 1k/month, Brave: 2k/month) and incur unexpected costs. Monitor usage closely.
+- **Redundancy Risk**: Without one-call-per-company guards, repeated processing attempts may waste API calls on the same company.
+
+**Action Items**:
+- Monitor search API usage in logs and dashboard
+- Consider implementing quota tracking and one-call-per-company guards if usage is higher than expected
+- Set up alerts for approaching quota limits

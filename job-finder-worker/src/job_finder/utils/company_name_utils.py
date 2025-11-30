@@ -1,11 +1,11 @@
 """Company name normalization and cleaning utilities."""
 
 import re
-from typing import List
+from typing import List, Pattern
 
 
 # NOTE: Order matters – handle separator variants before plain suffixes
-JOB_BOARD_SUFFIX_PATTERNS: List[str] = [
+_JOB_BOARD_SUFFIX_PATTERN_STRINGS: List[str] = [
     r"\s+-\s+careers?[\s.,;:]*$",  # " - Careers"
     r"\s+\|\s+careers?[\s.,;:]*$",  # " | Careers"
     r"\s+careers?[\s.,;:]*$",  # "Careers" or "Career"
@@ -18,7 +18,7 @@ JOB_BOARD_SUFFIX_PATTERNS: List[str] = [
     r"\s+openings?[\s.,;:]*$",
 ]
 
-LEGAL_SUFFIX_PATTERNS: List[str] = [
+_LEGAL_SUFFIX_PATTERN_STRINGS: List[str] = [
     r"\s+incorporated$",
     r"\s+corp\.?$",
     r"\s+corporation$",
@@ -30,12 +30,48 @@ LEGAL_SUFFIX_PATTERNS: List[str] = [
     r",?\s+llc\.?$",
 ]
 
+# Pre-compile regex patterns for performance
+JOB_BOARD_SUFFIX_PATTERNS: List[Pattern] = [
+    re.compile(pattern, re.IGNORECASE) for pattern in _JOB_BOARD_SUFFIX_PATTERN_STRINGS
+]
 
-def _remove_suffix_patterns(value: str, patterns: List[str]) -> str:
+LEGAL_SUFFIX_PATTERNS: List[Pattern] = [
+    re.compile(pattern, re.IGNORECASE) for pattern in _LEGAL_SUFFIX_PATTERN_STRINGS
+]
+
+# Source name detection patterns (pre-compiled for performance)
+_SOURCE_PATTERN_STRINGS: List[str] = [
+    # Specific aggregator/scraper names with identifying suffixes
+    r"^remoteok\s+(api|remote)?\s*$",  # RemoteOK API, RemoteOK (exact)
+    r"^remote\s*ok\s+(api)?\s*$",  # Remote OK, Remote OK API (exact)
+    r"^we\s+work\s+remotely\b",  # We Work Remotely (with anything after)
+    r"^himalayas\s+remote\b",  # Himalayas Remote
+    r"^jobicy\s+remote\b",  # Jobicy Remote
+    r"^remotive\b",  # Remotive (board name, not company)
+    # Job board names WITH job-related suffixes (not the companies themselves)
+    r"^indeed\s+(jobs?|api|prime)\b",  # Indeed Jobs, Indeed API (NOT just "Indeed")
+    r"^linkedin\s+(jobs?|api)\b",  # LinkedIn Jobs, LinkedIn API (NOT just "LinkedIn")
+    r"^glassdoor\s+(jobs?|api)\b",  # Glassdoor Jobs (NOT just "Glassdoor")
+    # Other job boards
+    r"^github\s+jobs\b",  # GitHub Jobs
+    r"^stack\s+overflow\s+jobs\b",  # Stack Overflow Jobs
+    r"^ziprecruiter\b",  # ZipRecruiter
+    r"^careerbuilder\b",  # CareerBuilder
+    # Scraper patterns: "SourceName - Category" (very specific)
+    # Only match if it looks like a scraper categorization, not a division name
+    r"^(remoteok|remote ok|we work remotely|himalayas|jobicy|remotive)\s+-\s+",
+]
+
+SOURCE_NAME_PATTERNS: List[Pattern] = [
+    re.compile(pattern, re.IGNORECASE) for pattern in _SOURCE_PATTERN_STRINGS
+]
+
+
+def _remove_suffix_patterns(value: str, patterns: List[Pattern]) -> str:
     """Strip regex suffix patterns from the end of a string."""
     stripped = value
     for pattern in patterns:
-        stripped = re.sub(pattern, "", stripped, flags=re.IGNORECASE)
+        stripped = pattern.sub("", stripped)
     return stripped
 
 
@@ -60,6 +96,34 @@ def clean_company_name(name: str) -> str:
         cleaned = cleaned.rstrip(".,;:")
 
     return cleaned.strip()
+
+
+def is_source_name(name: str) -> bool:
+    """
+    Check if a company name is actually a job source/aggregator name.
+
+    This is a scraper bug where source names leak into company fields.
+    Returns True if the name matches known source patterns.
+
+    Examples:
+        >>> is_source_name("RemoteOK API")
+        True
+        >>> is_source_name("We Work Remotely - DevOps")
+        True
+        >>> is_source_name("Google")
+        False
+        >>> is_source_name("Indeed")
+        False
+        >>> is_source_name("LinkedIn")
+        False
+    """
+    if not name:
+        return False
+
+    name_lower = name.lower().strip()
+
+    # Use pre-compiled patterns for performance
+    return any(pattern.search(name_lower) for pattern in SOURCE_NAME_PATTERNS)
 
 
 def normalize_company_name(name: str) -> str:
