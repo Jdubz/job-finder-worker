@@ -52,23 +52,13 @@ class ConfigLoader:
 
     def get_stop_list(self) -> Dict[str, Any]:
         policy = self.get_prefilter_policy()
-        return policy.get(
-            "stopList", {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []}
-        )
+        stop_list = policy.get("stopList") if isinstance(policy, dict) else None
+        if not isinstance(stop_list, dict):
+            raise InitializationError("stopList missing from prefilter-policy")
+        return stop_list
 
     def get_queue_settings(self) -> Dict[str, Any]:
-        default = {"processingTimeoutSeconds": 1800, "isProcessingEnabled": True, "taskDelaySeconds": 1}
-        try:
-            settings = self._get_config("queue-settings")
-            # Ensure isProcessingEnabled defaults to True if not present
-            if "isProcessingEnabled" not in settings:
-                settings["isProcessingEnabled"] = True
-            if "taskDelaySeconds" not in settings:
-                settings["taskDelaySeconds"] = 1
-            return settings
-        except InitializationError:
-            logger.warning("Queue settings missing; seeding defaults")
-            return self._seed_config("queue-settings", default)
+        return self._get_config("queue-settings")
 
     def is_processing_enabled(self) -> bool:
         """Check if queue processing is enabled. Defaults to True if not set."""
@@ -156,12 +146,8 @@ class ConfigLoader:
             "documentGenerator": {"selected": dict(default_selection)},
             "options": default_options,
         }
-        try:
-            raw = self._get_config("ai-settings")
-            return self._normalize_ai_settings(raw, default_selection, default_options)
-        except InitializationError:
-            logger.warning("AI settings missing; seeding defaults")
-            return self._seed_config("ai-settings", default)
+        raw = self._get_config("ai-settings")
+        return self._normalize_ai_settings(raw, default_selection, default_options)
 
     @staticmethod
     def _normalize_ai_settings(
@@ -171,11 +157,12 @@ class ConfigLoader:
     ) -> Dict[str, Any]:
         """Upgrade legacy AI settings into tiered provider/interface/model schema."""
         if not isinstance(settings, dict):
-            return {
-                "worker": {"selected": dict(default_selection)},
-                "documentGenerator": {"selected": dict(default_selection)},
-                "options": default_options,
-            }
+            raise InitializationError("ai-settings must be an object")
+
+        if not isinstance(settings.get("worker"), dict):
+            raise InitializationError("ai-settings.worker missing or invalid")
+        if not isinstance(settings.get("documentGenerator"), dict):
+            raise InitializationError("ai-settings.documentGenerator missing or invalid")
 
         legacy_selected = (
             settings.get("selected") if isinstance(settings.get("selected"), dict) else None
@@ -207,7 +194,9 @@ class ConfigLoader:
             return default_selection["model"]
 
         def build_selection(selected: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-            provider = (selected or {}).get("provider", default_selection["provider"])
+            provider = (selected or {}).get("provider")
+            if not provider:
+                raise InitializationError("ai-settings selection missing provider")
             interface = pick_interface(provider, (selected or {}).get("interface"))
             model = pick_model(provider, interface, (selected or {}).get("model"))
             return {"provider": provider, "interface": interface, "model": model}
@@ -287,126 +276,22 @@ class ConfigLoader:
                 "ambiguousLocationPenaltyPoints": 40,
             },
         }
-        try:
-            return self._get_config("match-policy") or default
-        except InitializationError:
-            logger.warning("Match policy missing; seeding defaults")
-            return self._seed_config("match-policy", default)
+        return self._get_config("match-policy")
 
     def get_job_match(self) -> Dict[str, Any]:
         """Get job matching settings from match-policy.jobMatch."""
         policy = self.get_match_policy()
-        default = {
-            "minMatchScore": 70,
-            "portlandOfficeBonus": 15,
-            "userTimezone": -8,
-            "preferLargeCompanies": True,
-            "generateIntakeData": True,
-        }
-        job_match = policy.get("jobMatch", default)
-        # Merge with defaults for any missing keys
-        for key, value in default.items():
-            if key not in job_match:
-                job_match[key] = value
-        # Also include companyWeights for callers that need priority thresholds
-        job_match["companyWeights"] = policy.get("companyWeights", {})
+        job_match = policy.get("jobMatch") if isinstance(policy, dict) else None
+        if not isinstance(job_match, dict):
+            raise InitializationError("jobMatch missing from match-policy")
+        job_match["companyWeights"] = policy.get("companyWeights", {}) if isinstance(policy, dict) else {}
         return job_match
 
     def get_prefilter_policy(self) -> Dict[str, Any]:
-        default = {
-            "stopList": {"excludedCompanies": [], "excludedKeywords": [], "excludedDomains": []},
-            "strikeEngine": {
-                "enabled": True,
-                "strikeThreshold": 5,
-                "hardRejections": {
-                    "excludedJobTypes": [],
-                    "excludedSeniority": ["intern", "entry", "entry-level", "entry level"],
-                    "excludedCompanies": [],
-                    "excludedKeywords": [],
-                    "requiredTitleKeywords": [
-                        "software",
-                        "developer",
-                        "engineer",
-                        "frontend",
-                        "front end",
-                        "front-end",
-                        "full stack",
-                        "fullstack",
-                        "full-stack",
-                        "backend",
-                        "back end",
-                        "back-end",
-                    ],
-                    "minSalaryFloor": 100000,
-                    "rejectCommissionOnly": True,
-                },
-                "remotePolicy": {
-                    "allowRemote": True,
-                    "allowHybridInTimezone": True,
-                    "allowOnsite": False,
-                    "maxTimezoneDiffHours": 8,
-                    "perHourTimezonePenalty": 1,
-                    "hardTimezonePenalty": 3,
-                },
-                "salaryStrike": {"enabled": True, "threshold": 150000, "points": 2},
-                # NOTE: experienceStrike REMOVED - seniority filtering handles this
-                # NOTE: jobTypeStrike REMOVED - AI analysis handles job fit determination
-                "seniorityStrikes": {},
-                "qualityStrikes": {
-                    "minDescriptionLength": 200,
-                    "shortDescriptionPoints": 1,
-                    "buzzwords": [],
-                    "buzzwordPoints": 1,
-                },
-                "ageStrike": {"enabled": True, "strikeDays": 1, "rejectDays": 7, "points": 1},
-            },
-            "technologyRanks": {
-                "technologies": {},
-            },
-        }
-        try:
-            return self._get_config("prefilter-policy") or default
-        except InitializationError:
-            logger.warning("Prefilter policy missing; seeding defaults")
-            return self._seed_config("prefilter-policy", default)
+        return self._get_config("prefilter-policy")
 
     def get_scheduler_settings(self) -> Dict[str, Any]:
-        default = {"pollIntervalSeconds": 60}
-        try:
-            return self._get_config("scheduler-settings")
-        except InitializationError:
-            logger.warning("Scheduler settings missing; seeding defaults")
-            return self._seed_config("scheduler-settings", default)
+        return self._get_config("scheduler-settings")
 
     def get_worker_settings(self) -> Dict[str, Any]:
-        default = {
-            "scraping": {
-                "requestTimeoutSeconds": 30,
-                "rateLimitDelaySeconds": 2,
-                "maxRetries": 3,
-                "maxHtmlSampleLength": 20000,
-                "maxHtmlSampleLengthSmall": 15000,
-            },
-            "health": {
-                "maxConsecutiveFailures": 5,
-                "healthCheckIntervalSeconds": 3600,
-            },
-            "cache": {
-                "companyInfoTtlSeconds": 86400,
-                "sourceConfigTtlSeconds": 3600,
-            },
-            "textLimits": {
-                "minCompanyPageLength": 200,
-                "minSparseCompanyInfoLength": 100,
-                "maxIntakeTextLength": 500,
-                "maxIntakeDescriptionLength": 2000,
-                "maxIntakeFieldLength": 400,
-                "maxDescriptionPreviewLength": 500,
-                "maxCompanyInfoTextLength": 1000,
-            },
-        }
-        try:
-            return self._get_config("worker-settings")
-        except InitializationError:
-            logger.warning("Worker settings missing; seeding defaults")
-            return self._seed_config("worker-settings", default)
+        return self._get_config("worker-settings")
