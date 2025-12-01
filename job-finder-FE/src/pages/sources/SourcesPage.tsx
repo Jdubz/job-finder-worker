@@ -526,10 +526,31 @@ export function SourcesPage() {
                   </p>
                 </div>
 
-                {/* Company ID */}
+                {/* Linked Company */}
                 <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company ID</Label>
-                  <p className="mt-1 text-sm font-mono text-muted-foreground">{selectedSource.companyId || "—"}</p>
+                  <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
+                    <Building2 className="h-3 w-3" />
+                    Linked Company
+                  </Label>
+                  {selectedSource.companyId ? (
+                    <div className="mt-1">
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-blue-600 hover:underline"
+                        onClick={() => {
+                          setSelectedCompanyId(selectedSource.companyId!)
+                        }}
+                      >
+                        View Company Details
+                      </Button>
+                      <p className="text-xs font-mono text-muted-foreground mt-1">{selectedSource.companyId}</p>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      No company linked
+                    </p>
+                  )}
                 </div>
 
                 {/* Aggregator Domain */}

@@ -43,6 +43,8 @@ import {
 } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
 import { CompanyDetailsModal } from "@/components/company"
+import { SourceDetailsModal } from "@/components/source"
+import { ROUTES } from "@/types/routes"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
 function formatDate(date: unknown): string {
@@ -118,6 +120,9 @@ export function JobListingsPage() {
 
   // Company details modal state
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
+
+  // Source details modal state
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
 
   // Calculate status counts in a single pass for performance
   const statusCounts = useMemo(() => {
@@ -464,24 +469,56 @@ export function JobListingsPage() {
                   </a>
                 </div>
 
-                {/* Source ID */}
+                {/* Source */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Source ID
+                    Source
                   </Label>
-                  <p className="mt-1 text-sm font-mono">
-                    {selectedListing.sourceId || "—"}
-                  </p>
+                  {selectedListing.sourceId ? (
+                    <div className="mt-1">
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-blue-600 hover:underline text-sm"
+                        onClick={() => setSelectedSourceId(selectedListing.sourceId!)}
+                      >
+                        View Source Details
+                      </Button>
+                      <p className="text-xs font-mono text-muted-foreground mt-1">
+                        {selectedListing.sourceId}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground flex items-center gap-1 text-sm">
+                      <AlertCircle className="h-3 w-3" />
+                      No source linked
+                    </p>
+                  )}
                 </div>
 
-                {/* Company ID */}
+                {/* Company */}
                 <div>
                   <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Company ID
+                    Company
                   </Label>
-                  <p className="mt-1 text-sm font-mono">
-                    {selectedListing.companyId || "—"}
-                  </p>
+                  {selectedListing.companyId ? (
+                    <div className="mt-1">
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-blue-600 hover:underline text-sm"
+                        onClick={() => setSelectedCompanyId(selectedListing.companyId!)}
+                      >
+                        View Company Details
+                      </Button>
+                      <p className="text-xs font-mono text-muted-foreground mt-1">
+                        {selectedListing.companyId}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground flex items-center gap-1 text-sm">
+                      <AlertCircle className="h-3 w-3" />
+                      No company linked
+                    </p>
+                  )}
                 </div>
 
                 {/* Location */}
@@ -582,9 +619,24 @@ export function JobListingsPage() {
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
                 </Button>
-                <Button variant="ghost" onClick={() => setSelectedListing(null)} className="w-full sm:w-auto">
-                  Close
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {selectedListing.status === "matched" && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedListing(null)
+                        navigate(ROUTES.JOB_APPLICATIONS)
+                      }}
+                      className="w-full sm:w-auto"
+                    >
+                      <Briefcase className="mr-2 h-4 w-4" />
+                      View in Applications
+                    </Button>
+                  )}
+                  <Button variant="ghost" onClick={() => setSelectedListing(null)} className="w-full sm:w-auto">
+                    Close
+                  </Button>
+                </div>
               </DialogFooter>
             </>
           )}
@@ -674,6 +726,17 @@ export function JobListingsPage() {
         companyId={selectedCompanyId}
         open={!!selectedCompanyId}
         onOpenChange={(open) => !open && setSelectedCompanyId(null)}
+      />
+
+      {/* Source Details Modal */}
+      <SourceDetailsModal
+        sourceId={selectedSourceId}
+        open={!!selectedSourceId}
+        onOpenChange={(open) => !open && setSelectedSourceId(null)}
+        onCompanyClick={(companyId) => {
+          setSelectedSourceId(null)
+          setSelectedCompanyId(companyId)
+        }}
       />
     </div>
   )
