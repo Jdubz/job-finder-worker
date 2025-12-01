@@ -46,9 +46,12 @@ export class JobMatchesClient extends BaseApiClient {
     return payload?.matches ?? []
   }
 
-  private unwrapMatch(response: JobMatchResponseShape): JobMatchWithListing | null {
+  private unwrapMatch(response: JobMatchResponseShape): JobMatchWithListing {
     const payload = "data" in response ? response.data : response
-    return payload?.match ?? null
+    if (!payload?.match) {
+      throw new Error("Match not found in response")
+    }
+    return payload.match
   }
 
   async listMatches(filters: JobMatchFilters = {}): Promise<JobMatchWithListing[]> {
@@ -59,7 +62,7 @@ export class JobMatchesClient extends BaseApiClient {
     return this.unwrapMatches(response)
   }
 
-  async getMatch(matchId: string): Promise<JobMatchWithListing | null> {
+  async getMatch(matchId: string): Promise<JobMatchWithListing> {
     const response = await this.get<JobMatchResponseShape>(`/job-matches/${matchId}`)
     return this.unwrapMatch(response)
   }

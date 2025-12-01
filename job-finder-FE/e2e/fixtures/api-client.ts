@@ -89,13 +89,6 @@ export async function fetchQueueItem(
   return body.data.queueItem
 }
 
-export async function sendWorkerQueueEvent(
-  request: APIRequestContext,
-  payload: { event: string; data: Record<string, unknown> }
-) {
-  await apiPost(request, `/queue/worker/events`, payload)
-}
-
 export async function clearQueue(request: APIRequestContext) {
   // Fetch all queue items with a high limit to ensure we get everything
   const response = await request.get(`${API_BASE}/queue?limit=1000`, {

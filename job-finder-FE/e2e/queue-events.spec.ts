@@ -63,7 +63,7 @@ test.describe("Queue events live updates", () => {
     await waitForProcessingText(page, "Now Processing")
     await waitForProcessingText(page, "Worker picked up")
 
-    // Update to success status via API (this persists to DB, unlike sendWorkerQueueEvent which only broadcasts)
+    // Update to success status via API
     await updateQueueItem(request, firstId, {
       status: "success",
       result_message: "Worker finished via event bridge",

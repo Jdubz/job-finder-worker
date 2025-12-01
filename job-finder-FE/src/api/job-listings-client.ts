@@ -54,9 +54,12 @@ export class JobListingsClient extends BaseApiClient {
     }
   }
 
-  private unwrapListing(response: JobListingResponseShape): JobListingRecord | null {
+  private unwrapListing(response: JobListingResponseShape): JobListingRecord {
     const payload = "data" in response ? response.data : response
-    return payload?.listing ?? null
+    if (!payload?.listing) {
+      throw new Error("Listing not found in response")
+    }
+    return payload.listing
   }
 
   async listListings(
@@ -69,7 +72,7 @@ export class JobListingsClient extends BaseApiClient {
     return this.unwrapListings(response)
   }
 
-  async getListing(id: string): Promise<JobListingRecord | null> {
+  async getListing(id: string): Promise<JobListingRecord> {
     const response = await this.get<JobListingResponseShape>(`/job-listings/${id}`)
     return this.unwrapListing(response)
   }

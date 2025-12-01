@@ -20,7 +20,7 @@ export class ConfigClient extends BaseApiClient {
     super(baseUrl)
   }
 
-  private async getConfigEntry<T>(id: string): Promise<T | null> {
+  private async getConfigEntry<T>(id: string): Promise<T> {
     const response = await this.get<ApiSuccessResponse<GetConfigEntryResponse>>(
       `/config/${id}`
     )
@@ -34,13 +34,16 @@ export class ConfigClient extends BaseApiClient {
     return response.data.config
   }
 
-  async getQueueSettings(): Promise<QueueSettings | null> {
+  async getQueueSettings(): Promise<QueueSettings> {
     return this.getConfigEntry<QueueSettings>("queue-settings")
   }
 
   async updateQueueSettings(settings: Partial<QueueSettings>): Promise<void> {
-    const existing = (await this.getQueueSettings()) ?? {
-      processingTimeoutSeconds: 1800,
+    let existing: QueueSettings
+    try {
+      existing = await this.getQueueSettings()
+    } catch {
+      existing = { processingTimeoutSeconds: 1800 }
     }
     await this.updateConfigEntry("queue-settings", {
       ...existing,
@@ -48,12 +51,17 @@ export class ConfigClient extends BaseApiClient {
     })
   }
 
-  async getAISettings(): Promise<AISettings | null> {
+  async getAISettings(): Promise<AISettings> {
     return this.getConfigEntry<AISettings>("ai-settings")
   }
 
   async updateAISettings(settings: Partial<AISettings>): Promise<void> {
-    const existing = (await this.getAISettings()) ?? DEFAULT_AI_SETTINGS
+    let existing: AISettings
+    try {
+      existing = await this.getAISettings()
+    } catch {
+      existing = DEFAULT_AI_SETTINGS
+    }
     const legacySelected = (settings as Partial<{ selected: AISettings["worker"]["selected"] }>).selected
 
     await this.updateConfigEntry("ai-settings", {
@@ -73,7 +81,7 @@ export class ConfigClient extends BaseApiClient {
     })
   }
 
-  async getPrefilterPolicy(): Promise<PrefilterPolicy | null> {
+  async getPrefilterPolicy(): Promise<PrefilterPolicy> {
     return this.getConfigEntry<PrefilterPolicy>("prefilter-policy")
   }
 
@@ -81,7 +89,7 @@ export class ConfigClient extends BaseApiClient {
     await this.updateConfigEntry("prefilter-policy", policy)
   }
 
-  async getMatchPolicy(): Promise<MatchPolicy | null> {
+  async getMatchPolicy(): Promise<MatchPolicy> {
     return this.getConfigEntry<MatchPolicy>("match-policy")
   }
 
@@ -89,7 +97,7 @@ export class ConfigClient extends BaseApiClient {
     await this.updateConfigEntry("match-policy", policy)
   }
 
-  async getSchedulerSettings(): Promise<SchedulerSettings | null> {
+  async getSchedulerSettings(): Promise<SchedulerSettings> {
     return this.getConfigEntry<SchedulerSettings>("scheduler-settings")
   }
 
@@ -97,7 +105,7 @@ export class ConfigClient extends BaseApiClient {
     await this.updateConfigEntry("scheduler-settings", settings)
   }
 
-  async getWorkerSettings(): Promise<WorkerSettings | null> {
+  async getWorkerSettings(): Promise<WorkerSettings> {
     return this.getConfigEntry<WorkerSettings>("worker-settings")
   }
 
@@ -105,7 +113,7 @@ export class ConfigClient extends BaseApiClient {
     await this.updateConfigEntry("worker-settings", settings)
   }
 
-  async getPersonalInfo(): Promise<PersonalInfo | null> {
+  async getPersonalInfo(): Promise<PersonalInfo> {
     return this.getConfigEntry<PersonalInfo>("personal-info")
   }
 
@@ -113,12 +121,15 @@ export class ConfigClient extends BaseApiClient {
     updates: Partial<PersonalInfo>,
     userEmail: string
   ): Promise<PersonalInfo> {
-    const existing =
-      (await this.getPersonalInfo()) ??
-      {
+    let existing: PersonalInfo
+    try {
+      existing = await this.getPersonalInfo()
+    } catch {
+      existing = {
         ...DEFAULT_PERSONAL_INFO,
         email: userEmail || DEFAULT_PERSONAL_INFO.email,
       }
+    }
 
     const payload: PersonalInfo = {
       ...existing,
@@ -135,7 +146,7 @@ export class ConfigClient extends BaseApiClient {
     return response.data.configs
   }
 
-  async getEntry(id: string): Promise<GetConfigEntryResponse["config"] | null> {
+  async getEntry(id: string): Promise<GetConfigEntryResponse["config"]> {
     const response = await this.get<ApiSuccessResponse<GetConfigEntryResponse>>(`/config/${id}`)
     return response.data.config
   }
