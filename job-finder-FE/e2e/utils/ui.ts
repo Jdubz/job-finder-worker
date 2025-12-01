@@ -32,7 +32,16 @@ export async function openAuthModal(page: Page, state: AuthStateVariant = "any")
 
   await trigger.click({ force: true })
 
-  const dialog = page.getByRole("dialog", { name: /authentication/i })
+  // Try accessible name first, fall back to any dialog containing "Authentication" text
+  const dialogByName = page.getByRole("dialog", { name: /authentication/i })
+  const dialogByContent = page.getByRole("dialog").filter({ hasText: /authentication/i })
+
+  // Wait for either selector to be visible
+  const dialog = await Promise.race([
+    dialogByName.waitFor({ state: "visible", timeout: 15000 }).then(() => dialogByName),
+    dialogByContent.waitFor({ state: "visible", timeout: 15000 }).then(() => dialogByContent)
+  ]).catch(() => dialogByContent)
+
   await expect(dialog).toBeVisible({ timeout: 15000 })
   return dialog
 }
