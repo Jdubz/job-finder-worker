@@ -133,6 +133,32 @@ class SourceProcessor(BaseProcessor):
                 source_config, validation_meta = discovery_result, {}
 
             if not source_config:
+                # If auth required or bot protection detected, create a disabled placeholder source with notes
+                if validation_meta.get("error") in {"auth_required", "bot_protection"}:
+                    disabled_reason = validation_meta.get("error")
+                    placeholder_config = {"type": "api", "url": url, "headers": {}}
+                    source_type = placeholder_config.get("type", "unknown")
+                    aggregator_domain = self._detect_aggregator_domain(url)
+                    source_id = self.sources_manager.create_from_discovery(
+                        name=f"{urlparse(url).netloc} Jobs",
+                        source_type=source_type,
+                        config=placeholder_config,
+                        company_id=None,
+                        aggregator_domain=aggregator_domain,
+                        status=SourceStatus.DISABLED,
+                        disabled_notes=disabled_reason,
+                    )
+                    self.queue_manager.update_status(
+                        item.id,
+                        QueueStatus.SUCCESS,
+                        f"Source disabled due to {disabled_reason}; created placeholder {source_id}",
+                        scraped_data={
+                            "source_id": source_id,
+                            "disabled_notes": disabled_reason,
+                        },
+                    )
+                    return
+
                 # Discovery produced no config - mark as failed
                 self._update_item_status(
                     item.id,

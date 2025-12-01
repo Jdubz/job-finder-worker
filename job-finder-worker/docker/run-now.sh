@@ -17,7 +17,7 @@ fi
 
 # Run the scheduler (same entrypoint cron uses)
 cd /app
-/usr/sbin/gosu node /home/node/.local/bin/python -m job_finder.cron.submit_scrape
+/usr/sbin/gosu node /app/docker/cron-submit-scrape.sh
 
 echo ""
 echo "========================================"

@@ -70,13 +70,15 @@ COPY scripts/ ./scripts/
 COPY docker/crontab /etc/cron.d/job-finder-cron
 COPY docker/entrypoint.sh /app/entrypoint.sh
 COPY docker/run-now.sh /app/docker/run-now.sh
+COPY docker/cron-submit-scrape.sh /app/docker/cron-submit-scrape.sh
 
 # Set proper permissions for cron and scripts
 RUN chmod 0644 /etc/cron.d/job-finder-cron && \
     crontab /etc/cron.d/job-finder-cron && \
     touch /var/log/cron.log && \
     chmod +x /app/entrypoint.sh && \
-    chmod +x /app/docker/run-now.sh
+    chmod +x /app/docker/run-now.sh && \
+    chmod +x /app/docker/cron-submit-scrape.sh
 
 # Make PATH include user-installed packages (node user)
 ENV PATH=/home/node/.local/bin:$PATH
