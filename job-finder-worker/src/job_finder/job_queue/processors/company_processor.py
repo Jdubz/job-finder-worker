@@ -90,9 +90,7 @@ class CompanyProcessor(BaseProcessor):
             existing = self.companies_manager.get_company_by_id(company_id)
             if existing:
                 company_name = existing.get("name")
-                logger.info(
-                    "Resolved company name from ID: %s -> %s", company_id, company_name
-                )
+                logger.info("Resolved company name from ID: %s -> %s", company_id, company_name)
 
         # Fail if we still don't have a company name - this is a data quality issue
         if not company_name:
@@ -101,9 +99,7 @@ class CompanyProcessor(BaseProcessor):
                 f"company_id={company_id}, url={item.url}"
             )
             logger.error(error_msg)
-            self.queue_manager.update_status(
-                item.id, QueueStatus.FAILED, error_msg
-            )
+            self.queue_manager.update_status(item.id, QueueStatus.FAILED, error_msg)
             return
 
         _, company_display = format_company_name(company_name)
@@ -211,7 +207,9 @@ class CompanyProcessor(BaseProcessor):
 
                     if spawned_id:
                         source_spawned = True
-                        logger.info(f"Spawned SOURCE_DISCOVERY for {company_display}: {job_board_url}")
+                        logger.info(
+                            f"Spawned SOURCE_DISCOVERY for {company_display}: {job_board_url}"
+                        )
                     else:
                         logger.info(f"SOURCE_DISCOVERY blocked by spawn rules for {job_board_url}")
                 else:
@@ -243,7 +241,9 @@ class CompanyProcessor(BaseProcessor):
                 "culture_chars": culture_len,
                 "website": extracted_info.get("website") or "",
                 "source_discovered": job_board_url if source_spawned else None,
-                "discovery_method": "search" if search_discovered else "provided" if job_board_url else None,
+                "discovery_method": (
+                    "search" if search_discovered else "provided" if job_board_url else None
+                ),
             }
             self.queue_manager.update_status(
                 item.id,
@@ -355,9 +355,15 @@ class CompanyProcessor(BaseProcessor):
 
                 # High score for ATS platforms
                 ats_domains = [
-                    "greenhouse.io", "lever.co", "myworkdayjobs.com",
-                    "workday.com", "smartrecruiters.com", "ashbyhq.com",
-                    "breezy.hr", "jobvite.com", "icims.com"
+                    "greenhouse.io",
+                    "lever.co",
+                    "myworkdayjobs.com",
+                    "workday.com",
+                    "smartrecruiters.com",
+                    "ashbyhq.com",
+                    "breezy.hr",
+                    "jobvite.com",
+                    "icims.com",
                 ]
                 for ats in ats_domains:
                     if ats in netloc:
@@ -378,8 +384,11 @@ class CompanyProcessor(BaseProcessor):
 
                 # Penalize aggregators (we want company-specific pages)
                 aggregator_domains = [
-                    "indeed.com", "linkedin.com", "glassdoor.com",
-                    "ziprecruiter.com", "monster.com"
+                    "indeed.com",
+                    "linkedin.com",
+                    "glassdoor.com",
+                    "ziprecruiter.com",
+                    "monster.com",
                 ]
                 for agg in aggregator_domains:
                     if agg in netloc:

@@ -213,7 +213,9 @@ class SourceProcessor(BaseProcessor):
                     },
                 )
                 if scrape_item_id:
-                    logger.info(f"Spawned SCRAPE_SOURCE item {scrape_item_id} for source {source_id}")
+                    logger.info(
+                        f"Spawned SCRAPE_SOURCE item {scrape_item_id} for source {source_id}"
+                    )
                 else:
                     logger.info(f"SCRAPE_SOURCE blocked by spawn rules for source {source_id}")
             else:
