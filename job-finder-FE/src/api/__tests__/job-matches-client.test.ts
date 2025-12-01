@@ -63,7 +63,7 @@ describe("JobMatchesClient", () => {
       headers: { get: () => "application/json" },
     } as unknown as Response)
 
-    const matches = await client.getMatches({ minScore: 80 })
+    const matches = await client.listMatches({ minScore: 80 })
 
     expect(global.fetch).toHaveBeenCalledWith(
       `${baseUrl}/job-matches?minScore=80`,
@@ -103,22 +103,20 @@ describe("JobMatchesClient", () => {
       headers: { get: () => "application/json" },
     } as unknown as Response)
 
-    const matches = await client.getMatches()
+    const matches = await client.listMatches()
     expect(matches).toEqual(mockMatches)
   })
 
-  it("returns null when match fetch fails", async () => {
+  it("throws when match fetch fails", async () => {
     mockFetch.mockRejectedValue(new Error("network"))
 
-    const result = await client.getMatch("missing")
-
-    expect(result).toBeNull()
+    await expect(client.getMatch("missing")).rejects.toThrow("network")
   })
 
   it("polls matches via subscribeToMatches", async () => {
     const callback = vi.fn()
     const matches: JobMatchWithListing[] = []
-    const spy = vi.spyOn(client, "getMatches").mockResolvedValue(matches)
+    const spy = vi.spyOn(client, "listMatches").mockResolvedValue(matches)
 
     const unsubscribe = client.subscribeToMatches(callback, undefined, undefined, 0)
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -134,7 +132,7 @@ describe("JobMatchesClient", () => {
       createMockMatch({ applicationPriority: "Medium", matchScore: 80 }),
       createMockMatch({ applicationPriority: "Low", matchScore: 70 }),
     ]
-    vi.spyOn(client, "getMatches").mockResolvedValue(matches)
+    vi.spyOn(client, "listMatches").mockResolvedValue(matches)
 
     const stats = await client.getMatchStats()
 

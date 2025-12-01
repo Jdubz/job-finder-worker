@@ -13,32 +13,31 @@ from job_finder.filters.strike_filter_engine import StrikeFilterEngine
 def base_config():
     """Return a minimal strike-filter configuration that focuses on remote policy."""
     return {
-        "enabled": True,
-        "strikeThreshold": 3,
-        "hardRejections": {
-            "excludedJobTypes": [],
-            "excludedSeniority": [],
-            "excludedCompanies": [],
-            "excludedKeywords": [],
-            "minSalaryFloor": 0,
-            "rejectCommissionOnly": False,
+        "strikeEngine": {
+            "enabled": True,
+            "strikeThreshold": 3,
+            "hardRejections": {
+                "excludedJobTypes": [],
+                "excludedSeniority": [],
+                "excludedCompanies": [],
+                "excludedKeywords": [],
+                "minSalaryFloor": 0,
+                "rejectCommissionOnly": False,
+            },
+            "remotePolicy": {
+                "allowRemote": True,
+                "allowOnsite": True,  # Enable location-based role checks
+                "allowedOnsiteLocations": [],  # No pure onsite allowed
+                "allowedHybridLocations": ["portland"],  # Hybrid allowed in Portland
+            },
+            "salaryStrike": {"enabled": False},
+            "experienceStrike": {"enabled": False},
+            "seniorityStrikes": {},
+            "qualityStrikes": {},
+            "ageStrike": {"enabled": False},
         },
-        "remotePolicy": {
-            "allowRemote": True,
-            "allowHybridPortland": True,
-            "allowOnsite": False,
-        },
-        "salaryStrike": {"enabled": False},
-        "experienceStrike": {"enabled": False},
-        "seniorityStrikes": {},
-        "qualityStrikes": {},
-        "ageStrike": {"enabled": False},
+        "technologyRanks": {"technologies": {}, "strikes": {}},
     }
-
-
-@pytest.fixture()
-def tech_ranks():
-    return {"technologies": {}, "strikes": {}}
 
 
 def make_job(**overrides):
@@ -55,39 +54,39 @@ def make_job(**overrides):
 
 
 class TestRemotePolicy:
-    def test_remote_keyword_in_location_passes(self, base_config, tech_ranks):
-        engine = StrikeFilterEngine(base_config, tech_ranks)
+    def test_remote_keyword_in_location_passes(self, base_config):
+        engine = StrikeFilterEngine(base_config)
         result = engine.evaluate_job(make_job())
         assert result.passed is True
 
-    def test_remote_in_description_detected(self, base_config, tech_ranks):
-        engine = StrikeFilterEngine(base_config, tech_ranks)
+    def test_remote_in_description_detected(self, base_config):
+        engine = StrikeFilterEngine(base_config)
         job = make_job(location="United States", description="This is a work from home role")
         result = engine.evaluate_job(job)
         assert result.passed is True
 
-    def test_onsite_rejected_when_disallowed(self, base_config, tech_ranks):
-        engine = StrikeFilterEngine(base_config, tech_ranks)
+    def test_onsite_rejected_when_disallowed(self, base_config):
+        engine = StrikeFilterEngine(base_config)
         job = make_job(location="New York, NY", description="Office-based role in Manhattan")
         result = engine.evaluate_job(job)
         assert result.passed is False
         assert any("on-site" in rejection.reason.lower() for rejection in result.rejections)
 
-    def test_portland_hybrid_allowed(self, base_config, tech_ranks):
-        engine = StrikeFilterEngine(base_config, tech_ranks)
+    def test_portland_hybrid_allowed(self, base_config):
+        engine = StrikeFilterEngine(base_config)
         job = make_job(location="Portland, OR", description="Hybrid 2 days in office, 3 remote")
         result = engine.evaluate_job(job)
         assert result.passed is True
 
-    def test_non_portland_hybrid_rejected(self, base_config, tech_ranks):
-        engine = StrikeFilterEngine(base_config, tech_ranks)
+    def test_non_portland_hybrid_rejected(self, base_config):
+        engine = StrikeFilterEngine(base_config)
         job = make_job(location="Seattle, WA", description="Hybrid schedule with office days")
         result = engine.evaluate_job(job)
         assert result.passed is False
         assert any("hybrid" in rejection.reason.lower() for rejection in result.rejections)
 
-    def test_case_insensitive_matching(self, base_config, tech_ranks):
-        engine = StrikeFilterEngine(base_config, tech_ranks)
+    def test_case_insensitive_matching(self, base_config):
+        engine = StrikeFilterEngine(base_config)
         job = make_job(location="REMOTE - us", description="WFH opportunity for US engineers")
         result = engine.evaluate_job(job)
         assert result.passed is True

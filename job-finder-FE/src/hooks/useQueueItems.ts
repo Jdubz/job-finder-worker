@@ -3,6 +3,7 @@ import { queueClient } from "@/api"
 import type { QueueItem, SubmitJobRequest } from "@shared/types"
 import { API_CONFIG } from "@/config/api"
 import { consumeSavedProviderState, registerStateProvider } from "@/lib/restart-persistence"
+import { normalizeDateValue, normalizeObjectValue } from "@/utils/dateFormat"
 
 interface UseQueueItemsOptions {
   limit?: number
@@ -74,39 +75,16 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   }, [])
 
   const normalizeQueueItem = useCallback((item: QueueItem): QueueItem => {
-    const normalizeDate = (value: unknown): Date | null => {
-      if (!value) return null
-      if (value instanceof Date) return value
-      if (typeof value === "string" || typeof value === "number") return new Date(value)
-      return null
-    }
-
-    const normalizeObject = (value: unknown): Record<string, unknown> | null => {
-      if (!value) return null
-      if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>
-      if (typeof value === "string") {
-        try {
-          const parsed = JSON.parse(value)
-          if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-            return parsed as Record<string, unknown>
-          }
-        } catch {
-          /* ignore invalid JSON */
-        }
-      }
-      return null
-    }
-
     return {
       ...item,
-      created_at: normalizeDate(item.created_at) ?? new Date(),
-      updated_at: normalizeDate(item.updated_at) ?? new Date(),
-      processed_at: normalizeDate(item.processed_at ?? null) ?? undefined,
-      completed_at: normalizeDate(item.completed_at ?? null) ?? undefined,
+      created_at: normalizeDateValue(item.created_at) ?? new Date(),
+      updated_at: normalizeDateValue(item.updated_at) ?? new Date(),
+      processed_at: normalizeDateValue(item.processed_at ?? null) ?? undefined,
+      completed_at: normalizeDateValue(item.completed_at ?? null) ?? undefined,
       // Some backends still serialize these as JSON strings; coerce to objects to keep UI stable.
-      pipeline_state: normalizeObject(item.pipeline_state),
-      metadata: normalizeObject(item.metadata),
-      scraped_data: normalizeObject(item.scraped_data),
+      pipeline_state: normalizeObjectValue(item.pipeline_state),
+      metadata: normalizeObjectValue(item.metadata),
+      scraped_data: normalizeObjectValue(item.scraped_data),
     } as QueueItem
   }, [])
 

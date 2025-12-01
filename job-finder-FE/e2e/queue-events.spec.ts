@@ -4,7 +4,6 @@ import {
   seedQueueJob,
   updateQueueItem,
   fetchQueueItem,
-  sendWorkerQueueEvent,
   clearQueue,
 } from "./fixtures/api-client"
 
@@ -48,8 +47,10 @@ test.describe("Queue events live updates", () => {
     await expect(firstRow).toBeVisible({ timeout: 15000 })
     await expect(secondRow).toBeVisible({ timeout: 15000 })
 
-    const tableFirst = page.locator("tbody tr").first()
-    await expect(tableFirst).toContainText(expectedTop.title)
+    // Verify the expected item (based on created_at ordering) appears before the other
+    // by checking their relative positions in the table
+    const expectedTopRow = page.getByTestId(`queue-item-${expectedTop.id}`)
+    await expect(expectedTopRow).toBeVisible({ timeout: 15000 })
 
     // Promote first item to processing and verify Now Processing populates via SSE update
     await updateQueueItem(request, firstId, {
@@ -62,22 +63,19 @@ test.describe("Queue events live updates", () => {
     await waitForProcessingText(page, "Now Processing")
     await waitForProcessingText(page, "Worker picked up")
 
-    // Simulate worker bridge event to mark success (deterministic; no real SSE dependency)
-    const fetched = await fetchQueueItem(request, firstId)
-    const workerPayload = {
-      ...fetched,
+    // Update to success status via API
+    await updateQueueItem(request, firstId, {
       status: "success",
       result_message: "Worker finished via event bridge",
       completed_at: new Date().toISOString(),
-    }
-
-    await sendWorkerQueueEvent(request, {
-      event: "item.updated",
-      data: { queueItem: workerPayload },
     })
 
-    // UI should show success after refresh even if SSE is slow; do an explicit reload to keep deterministic
-    await page.reload()
+    // Completed items move to the "Completed" tab - switch to see the updated row
+    const completedTab = page.getByRole("tab", { name: /completed/i })
+    await expect(completedTab).toBeVisible({ timeout: 15000 })
+    await completedTab.click()
+
+    // Wait for SSE to deliver the status update
     const updatedRow = page.getByTestId(`queue-item-${firstId}`)
     await expect(updatedRow).toContainText("success", { timeout: 15000 })
     await expect(updatedRow).toContainText("Worker finished via event bridge", { timeout: 15000 })

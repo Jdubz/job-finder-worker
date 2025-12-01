@@ -141,7 +141,8 @@ def test_queue_scrape_end_to_end(temp_db):
             "company_website": "https://e2e.example.com",
             "location": "Remote",
             "description": "A" * 300,  # avoid quality strikes
-            "url": "https://e2e.example.com/jobs/pipeline-engineer",
+            # Use /job/ (singular) instead of /jobs/ to avoid board path detection
+            "url": "https://e2e.example.com/job/pipeline-engineer",
             "posted_date": datetime.now(timezone.utc).isoformat(),
         }
         submitted = scrape_runner.scraper_intake.submit_jobs(
@@ -168,11 +169,11 @@ def test_queue_scrape_end_to_end(temp_db):
         conn.row_factory = sqlite3.Row
         listing = conn.execute(
             "SELECT id, url, company_name FROM job_listings WHERE url = ?",
-            ("https://e2e.example.com/jobs/pipeline-engineer",),
+            ("https://e2e.example.com/job/pipeline-engineer",),
         ).fetchone()
 
     assert listing is not None
-    assert listing["url"] == "https://e2e.example.com/jobs/pipeline-engineer"
+    assert listing["url"] == "https://e2e.example.com/job/pipeline-engineer"
     assert listing["company_name"] == "E2E Co"
 
     # Verify job_match was created with FK to job_listing

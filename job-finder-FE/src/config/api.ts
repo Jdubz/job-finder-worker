@@ -41,19 +41,6 @@ export const API_CONFIG = {
   retryDelay: 1000,
 }
 
-/**
- * Firebase Cloud Functions endpoints
- * Note: Staging functions use -staging suffix, production has no suffix
- */
-export const api = {
-  get baseUrl() {
-    return `${resolveApiBaseUrl()}/api`
-  },
-  get generatorBaseUrl() {
-    return `${resolveApiBaseUrl()}/api/generator`
-  },
-}
-
 // Legacy authenticatedFetch removed – use cookie-based auth via credentials: include
 
 /**

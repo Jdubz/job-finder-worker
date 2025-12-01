@@ -1,11 +1,13 @@
 import { test, expect } from "./fixtures/test"
 import { loginWithDevToken } from "./fixtures/auth"
-import { seedContentItem, seedQueueJob } from "./fixtures/api-client"
+import { seedContentItem, seedQueueJob, clearQueue } from "./fixtures/api-client"
 
 test.describe("Content and queue management", () => {
-  test.beforeEach(async ({ context }) => {
+  test.beforeEach(async ({ context, request }) => {
     // Authenticate using dev token for admin access
     await loginWithDevToken(context, 'dev-admin-token')
+    // Clear queue to ensure test isolation
+    await clearQueue(request)
   })
 
   test("renders content editing flow and queue management UI", async ({ page, request }) => {
@@ -18,9 +20,7 @@ test.describe("Content and queue management", () => {
       },
     })
 
-    const queueCompany = `Queue Ops ${Date.now()}`
-    await seedQueueJob(request, {
-      companyName: queueCompany,
+    const queueId = await seedQueueJob(request, {
       metadata: {
         title: "Queue ingestion test",
       },
@@ -46,12 +46,13 @@ test.describe("Content and queue management", () => {
     await expect(page.getByRole("button", { name: /^Total\s+\d+$/i })).toBeVisible()
     await expect(page.getByRole("button", { name: /^Pending\s+\d+$/i })).toBeVisible()
 
-    // Open first queue item detail dialog and verify metadata renders
-    await page.getByTestId(/queue-item-/).first().click()
+    // Open the specific queue item detail dialog and verify metadata renders
+    await page.getByTestId(`queue-item-${queueId}`).click()
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText(queueCompany)
+    // Dialog shows URL domain as company, and job title from metadata
+    await expect(dialog).toContainText("example.com")
     await expect(dialog).toContainText("Queue ingestion test")
-    await dialog.getByRole("button", { name: /close/i }).click()
+    await dialog.getByRole("button", { name: /close/i }).first().click()
   })
 })

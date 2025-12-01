@@ -165,7 +165,7 @@ export function DocumentBuilderPage() {
     const loadMatches = async () => {
       try {
         setLoadingMatches(true)
-        const matches = await jobMatchesClient.getMatches({
+        const matches = await jobMatchesClient.listMatches({
           minScore: 70, // Only show good matches
           limit: 50,
         })

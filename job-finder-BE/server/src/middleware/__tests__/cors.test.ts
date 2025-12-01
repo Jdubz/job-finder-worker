@@ -14,6 +14,7 @@ import { buildApp } from '../../app'
 describe('CORS configuration', () => {
   const app = buildApp()
   const testOrigin = 'http://localhost:5173'
+  const productionOrigin = 'https://job-finder.joshwentworth.com'
 
   describe('preflight requests', () => {
     it('allows Content-Type header', async () => {
@@ -106,6 +107,98 @@ describe('CORS configuration', () => {
       expect(allowedMethods).toMatch(/PUT/i)
       expect(allowedMethods).toMatch(/DELETE/i)
       expect(allowedMethods).toMatch(/OPTIONS/i)
+    })
+  })
+
+  describe('production origins', () => {
+    it('allows preflight from production frontend origin', async () => {
+      const res = await request(app)
+        .options('/api/queue')
+        .set('Origin', productionOrigin)
+        .set('Access-Control-Request-Method', 'GET')
+        .set('Access-Control-Request-Headers', 'Content-Type, Authorization')
+
+      expect(res.status).toBe(204)
+      expect(res.headers['access-control-allow-origin']).toBe(productionOrigin)
+      expect(res.headers['access-control-allow-credentials']).toBe('true')
+    })
+
+    it('returns correct origin header for production requests', async () => {
+      const res = await request(app)
+        .get('/healthz')
+        .set('Origin', productionOrigin)
+
+      expect(res.headers['access-control-allow-origin']).toBe(productionOrigin)
+      expect(res.headers['access-control-allow-credentials']).toBe('true')
+    })
+
+    it.each([
+      '/api/queue',
+      '/healthz',
+      '/api/job-listings',
+    ])('allows preflight for production endpoint %s', async (endpoint) => {
+      const res = await request(app)
+        .options(endpoint)
+        .set('Origin', productionOrigin)
+        .set('Access-Control-Request-Method', 'GET')
+
+      expect(res.status).toBe(204)
+      expect(res.headers['access-control-allow-origin']).toBe(productionOrigin)
+    })
+  })
+
+  describe('origin rejection', () => {
+    const maliciousOrigin = 'https://evil-site.com'
+
+    it('rejects requests from non-allowed origins', async () => {
+      const res = await request(app)
+        .get('/healthz')
+        .set('Origin', maliciousOrigin)
+
+      // CORS middleware returns no Access-Control-Allow-Origin for rejected origins
+      expect(res.headers['access-control-allow-origin']).toBeUndefined()
+    })
+
+    it('rejects preflight from non-allowed origins', async () => {
+      const res = await request(app)
+        .options('/api/queue')
+        .set('Origin', maliciousOrigin)
+        .set('Access-Control-Request-Method', 'GET')
+
+      expect(res.headers['access-control-allow-origin']).toBeUndefined()
+    })
+  })
+
+  describe('CORS on error responses', () => {
+    it('includes CORS headers on 404 errors', async () => {
+      // Use a non-API route to avoid auth middleware
+      const res = await request(app)
+        .get('/nonexistent-endpoint')
+        .set('Origin', productionOrigin)
+
+      expect(res.status).toBe(404)
+      expect(res.headers['access-control-allow-origin']).toBe(productionOrigin)
+    })
+
+    it('includes CORS headers on 401 errors (protected routes)', async () => {
+      const res = await request(app)
+        .get('/api/queue')
+        .set('Origin', productionOrigin)
+        // No auth token - should get 401
+
+      expect(res.status).toBe(401)
+      expect(res.headers['access-control-allow-origin']).toBe(productionOrigin)
+    })
+
+    it('includes CORS headers on preflight for non-existent routes', async () => {
+      const res = await request(app)
+        .options('/api/nonexistent-endpoint')
+        .set('Origin', productionOrigin)
+        .set('Access-Control-Request-Method', 'GET')
+
+      // Preflight should succeed even for non-existent routes
+      expect(res.status).toBe(204)
+      expect(res.headers['access-control-allow-origin']).toBe(productionOrigin)
     })
   })
 })
