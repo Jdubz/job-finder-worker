@@ -79,6 +79,13 @@ class CompanyProcessor(BaseProcessor):
             logger.error("Cannot process item without ID")
             return
 
+        # Refresh configs so each company task uses latest settings
+        try:
+            self.config_loader.get_queue_settings()
+        except Exception as exc:
+            logger.error(f"Missing queue-settings for company processing: {exc}")
+            return
+
         company_name = item.company_name or "Unknown Company"
         company_id = item.company_id
 
