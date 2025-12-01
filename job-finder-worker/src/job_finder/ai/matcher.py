@@ -413,7 +413,9 @@ class AIJobMatcher:
             # Config-driven dealbreakers
             db = self.dealbreakers or {}
             max_diff = db.get("maxTimezoneDiffHours", 8)
-            tz_hard_penalty = -abs(db.get("hardTimezonePenalty", db.get("timezoneHardPenaltyPoints", 60)))
+            tz_hard_penalty = -abs(
+                db.get("hardTimezonePenalty", db.get("timezoneHardPenaltyPoints", 60))
+            )
             require_remote = bool(db.get("requireRemote", False))
             allow_hybrid = bool(db.get("allowHybridInTimezone", True))
             per_hour_penalty = -abs(db.get("perHourTimezonePenalty", 5))

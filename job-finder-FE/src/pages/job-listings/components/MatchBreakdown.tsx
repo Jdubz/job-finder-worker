@@ -23,12 +23,21 @@ function pick<T>(
 function normalizeBreakdown(analysis: Record<string, unknown>): ScoreBreakdown | null {
   const raw = pick<Record<string, unknown>>(analysis, ["score_breakdown", "scoreBreakdown"])
   if (raw) {
-    const baseScore = raw.baseScore ?? raw.base_score
-    const finalScore = raw.finalScore ?? raw.final_score
-    const adjustments = raw.adjustments ?? []
+    const baseScoreRaw = raw.baseScore ?? raw.base_score
+    const finalScoreRaw = raw.finalScore ?? raw.final_score
+    const adjustmentsRaw = raw.adjustments
+    const baseScore = typeof baseScoreRaw === "number" ? baseScoreRaw : Number(baseScoreRaw)
+    const finalScore = typeof finalScoreRaw === "number" ? finalScoreRaw : Number(finalScoreRaw)
+    const adjustments = Array.isArray(adjustmentsRaw)
+      ? (adjustmentsRaw as string[])
+      : []
     return {
-      baseScore: baseScore ?? 0,
-      finalScore: finalScore ?? baseScore ?? 0,
+      baseScore: Number.isFinite(baseScore) ? baseScore : 0,
+      finalScore: Number.isFinite(finalScore)
+        ? finalScore
+        : Number.isFinite(baseScore)
+          ? baseScore
+          : 0,
       adjustments,
     }
   }
