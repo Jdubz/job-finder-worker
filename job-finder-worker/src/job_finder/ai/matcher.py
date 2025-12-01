@@ -450,7 +450,6 @@ class AIJobMatcher:
                     match_analysis["application_priority"] = "Low"
 
             # Hard-stop mismatch: user only works 8a-8p PT and will not relocate.
-            location_text = job_location or headquarters_location or company_name
             location_text = job_location or headquarters_location or company_name or ""
             india_like = any(
                 k in location_text.lower() for k in ["india", "bangalore", "bengaluru", "ist"]

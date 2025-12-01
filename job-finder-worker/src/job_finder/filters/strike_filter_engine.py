@@ -562,6 +562,11 @@ class StrikeFilterEngine:
                     break
                 if not go_match:
                     continue
+                if rank == "strike":
+                    strikes_found.append((tech_name, points))
+                elif rank == "fail":
+                    fails_found.append(tech_name)
+                continue
 
             if re.search(pattern, combined):
                 if rank == "strike":

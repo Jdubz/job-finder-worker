@@ -268,11 +268,11 @@ export interface SubmitSourceDiscoveryResponse {
 
 // Type guard helpers
 export function isQueueStatus(status: string): status is QueueStatus {
-  return ["pending", "processing", "success", "failed", "skipped", "filtered"].includes(status)
+  return ["pending", "processing", "success", "failed", "skipped", "filtered", "needs_review"].includes(status)
 }
 
 export function isQueueItemType(type: string): type is QueueItemType {
-  return ["job", "company", "scrape", "source_discovery", "scrape_source"].includes(type)
+  return ["job", "company", "scrape", "source_discovery", "scrape_source", "agent_review"].includes(type)
 }
 
 export function isSourceTypeHint(hint: string): hint is SourceTypeHint {

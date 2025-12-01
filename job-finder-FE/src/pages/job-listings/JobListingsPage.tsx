@@ -215,6 +215,7 @@ export function JobListingsPage() {
         metadata: { job_listing_id: selectedListing.id },
       }
       await submitJob(payload)
+      setSelectedListing(null)
       navigate("/queue-management")
     } catch (err) {
       console.error("Failed to resubmit listing:", err)
