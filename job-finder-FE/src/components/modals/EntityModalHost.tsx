@@ -1,4 +1,4 @@
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 import { CompanyDetailsModalContent } from "./entities/CompanyModalContent"
 import { JobListingModalContent } from "./entities/JobListingModalContent"
@@ -38,6 +38,19 @@ export function EntityModalHost() {
     }
   }
 
+  const title =
+    modal.type === "company"
+      ? "Company details"
+      : modal.type === "jobListing"
+        ? "Job listing"
+        : modal.type === "jobMatch"
+          ? "Job match"
+          : modal.type === "jobSource"
+            ? "Job source"
+            : modal.type === "jobQueueItem"
+              ? "Queue item"
+              : "Details"
+
   const widthClass =
     modal.type === "jobListing" || modal.type === "jobMatch"
       ? "w-[98vw] sm:max-w-6xl"
@@ -48,6 +61,9 @@ export function EntityModalHost() {
   return (
     <Dialog open={!!modal} onOpenChange={(open) => !open && closeModal()}>
       <DialogContent className={`${widthClass} max-h-[95vh] overflow-hidden flex flex-col`}>
+        <DialogHeader>
+          <DialogTitle className="sr-only">{title}</DialogTitle>
+        </DialogHeader>
         {renderContent()}
       </DialogContent>
     </Dialog>

@@ -90,8 +90,8 @@ export async function fetchQueueItem(
 }
 
 export async function clearQueue(request: APIRequestContext) {
-  // Fetch all queue items with a high limit to ensure we get everything
-  const response = await request.get(`${API_BASE}/queue?limit=1000`, {
+  // API caps limit at 100; that's sufficient for e2e seed data.
+  const response = await request.get(`${API_BASE}/queue?limit=100`, {
     headers: {
       Authorization: `Bearer ${AUTH_TOKEN}`,
     },
