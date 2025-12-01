@@ -46,8 +46,10 @@ export async function loginWithDevToken(
   // The server sets the cookie with sameSite: 'lax' for development, but cross-origin
   // fetch() requests from the frontend (port 5173) to the API (port 5080) won't include
   // lax cookies. We need to re-add the cookie with sameSite: 'none' so it's sent.
-  // Note: In Playwright's context, we can set sameSite: 'None' without Secure since
-  // we're in a test environment.
+  // Note: Real browsers require Secure=true when sameSite='None', and will reject such
+  // cookies over HTTP. This configuration only works in Playwright's test environment,
+  // which bypasses this restriction, allowing us to test cross-origin cookie behavior
+  // over HTTP without SSL. Do NOT use this pattern in production.
   await context.addCookies([
     {
       name: sessionCookie.name,

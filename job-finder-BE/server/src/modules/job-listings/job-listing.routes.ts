@@ -66,6 +66,14 @@ export function buildJobListingRouter() {
     '/',
     asyncHandler((req, res) => {
       const payload = createSchema.parse(req.body)
+
+      // Check for existing listing with the same URL
+      const existing = repo.getByUrl(payload.url)
+      if (existing) {
+        res.status(409).json(failure(ApiErrorCode.RESOURCE_CONFLICT, 'Job listing with this URL already exists', { listingId: existing.id }))
+        return
+      }
+
       const listing = repo.create({
         url: payload.url,
         sourceId: payload.sourceId ?? null,
