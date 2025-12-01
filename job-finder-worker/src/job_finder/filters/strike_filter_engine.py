@@ -65,9 +65,7 @@ class StrikeFilterEngine:
         allowed_hybrid_raw = remote.get("allowedHybridLocations")
         if allowed_hybrid_raw is None:
             allowed_hybrid_raw = remote.get("allowedOnsiteLocations", [])
-        self.allowed_hybrid_locations = [
-            loc.lower() for loc in (allowed_hybrid_raw or [])
-        ]
+        self.allowed_hybrid_locations = [loc.lower() for loc in (allowed_hybrid_raw or [])]
         if self.allow_hybrid and not self.allowed_hybrid_locations:
             self.allowed_hybrid_locations = ["portland, or", "portland"]
 

@@ -222,31 +222,28 @@ class AIJobMatcher:
 
         combined = f"{description} {location}".lower()
 
-        is_remote = (
-            any(
-                token in combined
-                for token in (
-                    "fully remote",
-                    "100% remote",
-                    "remote position",
-                    "remote role",
-                    "remote job",
-                    "remote opportunity",
-                    "remote work",
-                    "remote only",
-                    "remote-only",
-                    "work from home",
-                    "work from anywhere",
-                    "wfh",
-                    "remote-first",
-                    "remote friendly",
-                    "remote-friendly",
-                    "remotely",
-                    "hiring remote",
-                )
+        is_remote = any(
+            token in combined
+            for token in (
+                "fully remote",
+                "100% remote",
+                "remote position",
+                "remote role",
+                "remote job",
+                "remote opportunity",
+                "remote work",
+                "remote only",
+                "remote-only",
+                "work from home",
+                "work from anywhere",
+                "wfh",
+                "remote-first",
+                "remote friendly",
+                "remote-friendly",
+                "remotely",
+                "hiring remote",
             )
-            or bool(re.search(r"\bremote\b", location, re.IGNORECASE))
-        )
+        ) or bool(re.search(r"\bremote\b", location, re.IGNORECASE))
 
         # Enforce precedence: remote > hybrid > onsite
         is_hybrid = False
@@ -549,7 +546,8 @@ class AIJobMatcher:
 
         blocked_locations = [loc.lower() for loc in self.dealbreakers.get("blockedLocations", [])]
         if blocked_locations and any(
-            re.search(rf"\b{re.escape(loc)}\b", f"{description} {location}") for loc in blocked_locations
+            re.search(rf"\b{re.escape(loc)}\b", f"{description} {location}")
+            for loc in blocked_locations
         ):
             penalty = -abs(self.dealbreakers.get("locationPenaltyPoints", 60))
             return penalty, f"🚫 Blocked location ({location_raw or 'unspecified'}): {penalty}"
