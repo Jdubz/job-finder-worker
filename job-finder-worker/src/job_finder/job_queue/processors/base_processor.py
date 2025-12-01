@@ -23,7 +23,6 @@ from job_finder.logging_config import get_structured_logger
 
 if TYPE_CHECKING:
     from job_finder.storage.job_sources_manager import JobSourcesManager
-    from job_finder.storage.companies_manager import CompaniesManager
 
 logger = logging.getLogger(__name__)
 

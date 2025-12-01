@@ -259,27 +259,6 @@ class CompanyProcessor(BaseProcessor):
     # HELPER METHODS
     # ============================================================
 
-    # Known job board domains that indicate a careers page
-    _JOB_BOARD_DOMAINS = frozenset([
-        # ATS providers
-        "greenhouse.io",
-        "lever.co",
-        "myworkdayjobs.com",
-        "workday.com",
-        "smartrecruiters.com",
-        "ashbyhq.com",
-        "breezy.hr",
-        "applytojob.com",
-        "jobvite.com",
-        "icims.com",
-        "ultipro.com",
-        "taleo.net",
-        # Company career page patterns
-        "careers.",
-        "/careers",
-        "/jobs",
-    ])
-
     def _detect_job_board_for_discovery(
         self, website: Optional[str], provided_url: Optional[str]
     ) -> Optional[str]:

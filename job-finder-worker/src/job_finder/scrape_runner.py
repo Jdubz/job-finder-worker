@@ -234,7 +234,7 @@ class ScrapeRunner:
         Returns:
             Stats dict with jobs_found and jobs_submitted counts
         """
-        source_name = source.get("name", "Unknown")
+        source_name = source.get("name") or ""
         source_type = source.get("sourceType", "api")
         config = source.get("config", {})
 

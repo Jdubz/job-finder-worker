@@ -370,7 +370,7 @@ class SourceProcessor(BaseProcessor):
                 )
                 return
 
-            source_name = source.get("name", "Unknown")
+            source_name = source.get("name") or ""
             source_type = source.get("sourceType", "api")
             config = source.get("config", {})
 
