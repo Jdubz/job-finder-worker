@@ -120,21 +120,27 @@ def calculate_freshness_adjustment(posted_date: Optional[datetime]) -> int:
         logger.warning(f"Job posted date is in the future: {posted_date}")
         return 0
 
-    # Apply softened decay schedule
-    if age_days <= 2:
-        adjustment = 10
-        freshness_label = "Fresh (0-2 days)"
-    elif age_days <= 7:
+    # Apply configured decay schedule (keep in sync with tests and docstring)
+    if age_days <= 1:
+        adjustment = 15
+        freshness_label = "Very Fresh (0-24h)"
+    elif age_days <= 2:
+        adjustment = 5
+        freshness_label = "Fresh (1-2 days)"
+    elif age_days <= 3:
         adjustment = 0
-        freshness_label = "Recent (2-7 days)"
+        freshness_label = "Neutral (2-3 days)"
+    elif age_days <= 7:
+        adjustment = -35
+        freshness_label = "Recent (3-7 days)"
     elif age_days <= 14:
-        adjustment = -10
+        adjustment = -40
         freshness_label = "Two Weeks Old (7-14 days)"
     elif age_days <= 30:
-        adjustment = -20
+        adjustment = -45
         freshness_label = "Month Old (14-30 days)"
     else:
-        adjustment = -30
+        adjustment = -50
         freshness_label = f"Stale ({int(age_days)} days old)"
 
     logger.debug(

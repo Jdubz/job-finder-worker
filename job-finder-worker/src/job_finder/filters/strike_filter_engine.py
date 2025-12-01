@@ -25,8 +25,11 @@ class StrikeFilterEngine:
     Tier 2: Strike accumulation (fail if >= threshold)
     """
 
-    def __init__(self, policy: dict):
-        """Initialize strike-based filter engine (new config shape only)."""
+    def __init__(self, policy: dict, tech_ranks: Optional[dict] = None):
+        """Initialize strike-based filter engine (new config shape only).
+
+        tech_ranks kept for backward compatibility with tests that passed it separately.
+        """
 
         self.policy = policy
         self.stop_list = policy.get("stopList", {})
@@ -34,7 +37,7 @@ class StrikeFilterEngine:
         self.stop_keywords = [k.lower() for k in self.stop_list.get("excludedKeywords", [])]
         self.stop_domains = [d.lower() for d in self.stop_list.get("excludedDomains", [])]
         config = policy.get("strikeEngine", {})
-        self.tech_ranks = policy.get("technologyRanks", {})
+        self.tech_ranks = tech_ranks or policy.get("technologyRanks", {})
         self.enabled = config.get("enabled", True)
         self.strike_threshold = config.get("strikeThreshold", 5)
 
@@ -55,12 +58,16 @@ class StrikeFilterEngine:
         self.allow_remote = remote.get("allowRemote", True)
         # Explicit allow for onsite/hybrid paired with location allowlists
         self.allow_location_based_roles = remote.get("allowOnsite", True)
+        self.allow_hybrid = remote.get("allowHybridPortland", remote.get("allowHybrid", True))
         self.allowed_onsite_locations = [
             loc.lower() for loc in remote.get("allowedOnsiteLocations", [])
         ]
-        self.allowed_hybrid_locations = [
-            loc.lower() for loc in remote.get("allowedHybridLocations", [])
-        ]
+        allowed_hybrid_raw = remote.get("allowedHybridLocations")
+        if allowed_hybrid_raw is None:
+            allowed_hybrid_raw = remote.get("allowedOnsiteLocations", [])
+        self.allowed_hybrid_locations = [loc.lower() for loc in (allowed_hybrid_raw or [])]
+        if self.allow_hybrid and not self.allowed_hybrid_locations:
+            self.allowed_hybrid_locations = ["portland, or", "portland"]
 
         # Strike: Salary
         salary_strike = config.get("salaryStrike", {})
@@ -93,6 +100,10 @@ class StrikeFilterEngine:
 
         # Technology ranks - only penalize for undesired tech, not missing tech info
         self.technologies = self.tech_ranks.get("technologies", {})
+
+    def empty_pass_result(self) -> FilterResult:
+        """Return a pass result with zero strikes (used for bypass scenarios)."""
+        return FilterResult(passed=True, total_strikes=0, strike_threshold=self.strike_threshold)
 
     def evaluate_job(self, job_data: dict) -> FilterResult:
         """
@@ -202,6 +213,10 @@ class StrikeFilterEngine:
         Job title MUST contain at least one of the required keywords to be considered.
         This is a pre-filter to ensure we only process relevant software/engineering jobs.
         """
+        if not title:
+            # If no title was provided (e.g., manual entry without scrape), don't hard reject here;
+            # downstream analysis will make a determination.
+            return
         # If no required keywords configured, skip this check
         if not self.required_title_keywords:
             return
@@ -416,9 +431,12 @@ class StrikeFilterEngine:
         if is_remote and self.allow_remote:
             return False  # Remote OK, no location requirement
 
-        if is_hybrid and self.allow_location_based_roles:
-            if _matches_allowlist(location_lower, self.allowed_hybrid_locations):
-                return False  # Hybrid allowed in configured locations
+        if is_hybrid:
+            if self.allow_hybrid and (
+                not self.allowed_hybrid_locations
+                or _matches_allowlist(location_lower, self.allowed_hybrid_locations)
+            ):
+                return False  # Hybrid allowed (either globally or within allowlist)
 
         if is_onsite and self.allow_location_based_roles:
             if _matches_allowlist(location_lower, self.allowed_onsite_locations):
@@ -528,6 +546,24 @@ class StrikeFilterEngine:
 
             # Word boundary search to avoid Java/JavaScript confusion
             pattern = r"\b" + re.escape(tech_name.lower()) + r"\b"
+            if tech_name.lower() == "go":
+                matches = list(re.finditer(pattern, combined))
+                go_match = False
+                for m in matches:
+                    after = combined[m.end() : m.end() + 6]
+                    # Skip verbs like "go to market" or "go-to-market"
+                    if re.match(r"[\s-]*to\b", after):
+                        continue
+                    go_match = True
+                    break
+                if not go_match:
+                    continue
+                if rank == "strike":
+                    strikes_found.append((tech_name, points))
+                elif rank == "fail":
+                    fails_found.append(tech_name)
+                continue
+
             if re.search(pattern, combined):
                 if rank == "strike":
                     strikes_found.append((tech_name, points))

@@ -54,6 +54,11 @@ const submitJobSchema = z.object({
   companyName: z.string().optional(),
   companyId: z.string().nullable().optional(),
   companyUrl: z.string().url().optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  location: z.string().optional(),
+  techStack: z.string().optional(),
+  bypassFilter: z.boolean().optional(),
   generationId: z.string().optional(),
   source: z.enum(queueSources).optional(),
   metadata: z.record(z.unknown()).optional()

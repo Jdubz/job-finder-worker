@@ -257,6 +257,25 @@ class ConfigLoader:
                 "blockedLocations": ["india", "bangalore", "bengaluru", "ist"],
                 "requireRemote": False,
                 "allowHybridInTimezone": True,
+                "allowedOnsiteLocations": [
+                    "portland, or",
+                    "pdx",
+                    "beaverton",
+                    "hillsboro",
+                    "vancouver, wa",
+                ],
+                "allowedHybridLocations": [
+                    "portland, or",
+                    "pdx",
+                    "beaverton",
+                    "hillsboro",
+                    "vancouver, wa",
+                ],
+                "locationPenaltyPoints": 60,
+                "relocationPenaltyPoints": 80,
+                "ambiguousLocationPenaltyPoints": 40,
+                "timezonePenaltyPoints": 40,
+                "timezoneHardPenaltyPoints": 60,
             },
         }
         try:

@@ -9,6 +9,11 @@ export type SubmitJobInput = {
   source?: QueueSource
   companyId?: string | null
   generationId?: string
+  title?: string
+  description?: string
+  location?: string
+  techStack?: string
+  bypassFilter?: boolean
   metadata?: Record<string, unknown>
 }
 
@@ -50,7 +55,13 @@ export class JobQueueService {
     const hasPrebuiltDocs = Boolean(input.generationId)
     const metadata = {
       ...(input.metadata ?? {}),
-      ...(input.companyUrl ? { companyUrl: input.companyUrl } : {})
+      ...(input.companyUrl ? { companyUrl: input.companyUrl } : {}),
+      ...(input.title ? { manualTitle: input.title } : {}),
+      ...(input.description ? { manualDescription: input.description } : {}),
+      ...(input.location ? { manualLocation: input.location } : {}),
+      ...(input.techStack ? { manualTechStack: input.techStack } : {}),
+      ...(input.bypassFilter ? { bypassFilter: true } : {}),
+      ...(input.companyName ? { manualCompanyName: input.companyName } : {})
     }
 
     const item: NewQueueItem = {

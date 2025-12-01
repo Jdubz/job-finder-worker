@@ -5,10 +5,12 @@ import { useJobListings } from "@/hooks/useJobListings"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -43,7 +45,7 @@ import {
 } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
 import { CompanyDetailsModal } from "@/components/company"
-import type { JobListingRecord, JobListingStatus } from "@shared/types"
+import type { JobListingRecord, JobListingStatus, SubmitJobRequest } from "@shared/types"
 
 function formatDate(date: unknown): string {
   if (!date) return "—"
@@ -112,8 +114,14 @@ export function JobListingsPage() {
   // Add job modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [jobUrl, setJobUrl] = useState("")
+  const [jobTitle, setJobTitle] = useState("")
+  const [jobDescription, setJobDescription] = useState("")
+  const [jobLocation, setJobLocation] = useState("")
+  const [jobTechStack, setJobTechStack] = useState("")
+  const [bypassFilter, setBypassFilter] = useState(false)
   const [companyName, setCompanyName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isResubmitting, setIsResubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   // Company details modal state
@@ -132,6 +140,11 @@ export function JobListingsPage() {
 
   const resetAddForm = () => {
     setJobUrl("")
+    setJobTitle("")
+    setJobDescription("")
+    setJobLocation("")
+    setJobTechStack("")
+    setBypassFilter(false)
     setCompanyName("")
     setSubmitError(null)
   }
@@ -144,10 +157,27 @@ export function JobListingsPage() {
       setSubmitError("Job URL is required")
       return
     }
+    if (!jobTitle.trim()) {
+      setSubmitError("Job title is required")
+      return
+    }
+    if (!jobDescription.trim()) {
+      setSubmitError("Job description is required")
+      return
+    }
 
     try {
       setIsSubmitting(true)
-      await submitJob(jobUrl.trim(), companyName.trim() || undefined)
+      const payload: SubmitJobRequest = {
+        url: jobUrl.trim(),
+        companyName: companyName.trim() || undefined,
+        title: jobTitle.trim(),
+        description: jobDescription.trim(),
+        location: jobLocation.trim() || undefined,
+        techStack: jobTechStack.trim() || undefined,
+        bypassFilter,
+      }
+      await submitJob(payload)
       resetAddForm()
       setIsAddModalOpen(false)
       navigate("/queue-management")
@@ -166,6 +196,32 @@ export function JobListingsPage() {
       setSelectedListing(null)
     } catch (err) {
       console.error("Failed to delete job listing:", err)
+    }
+  }
+
+  const handleResubmitBypass = async () => {
+    if (!selectedListing) return
+    setSubmitError(null)
+    setIsResubmitting(true)
+    try {
+      const payload: SubmitJobRequest = {
+        url: selectedListing.url,
+        companyName: selectedListing.companyName,
+        companyId: selectedListing.companyId ?? undefined,
+        title: selectedListing.title,
+        description: selectedListing.description,
+        location: selectedListing.location ?? undefined,
+        bypassFilter: true,
+        metadata: { job_listing_id: selectedListing.id },
+      }
+      await submitJob(payload)
+      setSelectedListing(null)
+      navigate("/queue-management")
+    } catch (err) {
+      console.error("Failed to resubmit listing:", err)
+      setSubmitError(err instanceof Error ? err.message : "Failed to resubmit listing")
+    } finally {
+      setIsResubmitting(false)
     }
   }
 
@@ -437,6 +493,13 @@ export function JobListingsPage() {
                 </div>
               </DialogHeader>
 
+              {submitError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{submitError}</AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-4 overflow-y-auto flex-1 pr-2">
                 {/* ID */}
                 <div>
@@ -582,6 +645,21 @@ export function JobListingsPage() {
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
                 </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handleResubmitBypass}
+                  disabled={isResubmitting || !selectedListing}
+                  className="w-full sm:w-auto"
+                >
+                  {isResubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Re-running...
+                    </>
+                  ) : (
+                    "Re-run (bypass filters)"
+                  )}
+                </Button>
                 <Button variant="ghost" onClick={() => setSelectedListing(null)} className="w-full sm:w-auto">
                   Close
                 </Button>
@@ -603,7 +681,7 @@ export function JobListingsPage() {
           <DialogHeader>
             <DialogTitle>Add Job for Analysis</DialogTitle>
             <DialogDescription>
-              Submit a job posting URL to analyze and add to your listings.
+              Submit a job posting URL with key details for analysis. Title and description are required.
             </DialogDescription>
           </DialogHeader>
 
@@ -631,6 +709,58 @@ export function JobListingsPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="jobTitle">Job Title *</Label>
+              <Input
+                id="jobTitle"
+                type="text"
+                placeholder="Senior Frontend Engineer"
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="jobDescription">Job Description *</Label>
+              <Textarea
+                id="jobDescription"
+                placeholder="Paste the full job description"
+                value={jobDescription}
+                onChange={(e) => setJobDescription(e.target.value)}
+                disabled={isSubmitting}
+                className="min-h-[140px]"
+              />
+              <p className="text-sm text-muted-foreground">
+                Providing the description avoids false negatives in keyword/tech filters.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="jobLocation">Location (optional)</Label>
+                <Input
+                  id="jobLocation"
+                  type="text"
+                  placeholder="Portland, OR or Remote"
+                  value={jobLocation}
+                  onChange={(e) => setJobLocation(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="techStack">Tech Stack (optional)</Label>
+                <Input
+                  id="techStack"
+                  type="text"
+                  placeholder="React, TypeScript, GraphQL"
+                  value={jobTechStack}
+                  onChange={(e) => setJobTechStack(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="companyName">Company Name (optional)</Label>
               <Input
                 id="companyName"
@@ -643,6 +773,21 @@ export function JobListingsPage() {
               <p className="text-sm text-muted-foreground">
                 If known, helps with analysis accuracy
               </p>
+            </div>
+
+            <div className="flex items-start space-x-2">
+              <Checkbox
+                id="bypassFilter"
+                checked={bypassFilter}
+                onCheckedChange={(checked) => setBypassFilter(Boolean(checked))}
+                disabled={isSubmitting}
+              />
+              <div className="grid gap-1 leading-tight">
+                <Label htmlFor="bypassFilter">Bypass intake filters</Label>
+                <p className="text-sm text-muted-foreground">
+                  Skip automated pre-filtering for this submission and send it directly to analysis.
+                </p>
+              </div>
             </div>
 
             <DialogFooter>
