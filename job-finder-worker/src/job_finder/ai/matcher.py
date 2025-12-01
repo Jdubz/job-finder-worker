@@ -218,61 +218,49 @@ class AIJobMatcher:
         """Infer remote/hybrid/onsite and relocation cues from text."""
 
         combined = f"{description} {location}".lower()
+        location_lower = location.lower()
 
-        is_remote = any(
-            token in combined
-            for token in (
-                "fully remote",
-                "100% remote",
-                "remote position",
-                "remote role",
-                "remote job",
-                "remote opportunity",
-                "remote work",
-                "remote only",
-                "remote-only",
-                "work from home",
-                "work from anywhere",
-                "wfh",
-                "remote-first",
-                "remote friendly",
-                "remote-friendly",
-                "remotely",
-                "hiring remote",
-            )
-        ) or bool(re.search(r"\bremote\b", location, re.IGNORECASE))
+        # Use word boundary regex to avoid false positives from substring matching
+        # e.g., "unhybridized" matching "hybrid"
+        remote_pattern = (
+            r"\bfully remote\b|\b100% remote\b|\bremote position\b|\bremote role\b|"
+            r"\bremote job\b|\bremote opportunity\b|\bremote work\b|\bremote only\b|"
+            r"\bremote-only\b|\bwork from home\b|\bwork from anywhere\b|\bwfh\b|"
+            r"\bremote-first\b|\bremote friendly\b|\bremote-friendly\b|\bremotely\b|"
+            r"\bhiring remote\b"
+        )
+        is_remote = bool(re.search(remote_pattern, combined)) or bool(
+            re.search(r"\bremote\b", location_lower)
+        )
 
         # Enforce precedence: remote > hybrid > onsite
         is_hybrid = False
         is_onsite = False
 
         if not is_remote:
-            is_hybrid = any(
-                token in combined for token in ("hybrid", "days in office", "office/remote")
-            )
+            hybrid_pattern = r"\bhybrid\b|\bdays in office\b|\boffice/remote\b"
+            is_hybrid = bool(re.search(hybrid_pattern, combined))
+
             if not is_hybrid:
-                is_onsite = any(
-                    token in combined
-                    for token in ("on-site", "onsite", "in-office", "office-based")
-                )
+                onsite_pattern = r"\bon-site\b|\bonsite\b|\bin-office\b|\boffice-based\b"
+                is_onsite = bool(re.search(onsite_pattern, combined))
 
             # Concrete location with no explicit remote/hybrid cues -> assume onsite expectation
             if not is_onsite and location.strip():
                 is_onsite = True
 
-        relocation_required = any(
-            token in combined
-            for token in (
-                "relocate",
-                "relocation",
-                "must be on-site",
-                "must be onsite",
-                "office in",
-                "based in",
-                "nyc-based",
-                "sf-based",
-            )
+        # Use word boundary regex to avoid false positives like
+        # "Circuit-Based Interpretability" matching "based in"
+        # Combined pattern is more efficient than iterating multiple searches
+        relocation_pattern = (
+            r"\brelocat|"  # matches relocate, relocation, relocating
+            r"\bmust be on-?site\b|"
+            r"\boffice in\b|"
+            r"\bbased in\b|"
+            r"\b(?:nyc|sf|la|ny)-based\b"
         )
+        # No need for re.IGNORECASE since combined is already lowercased
+        relocation_required = bool(re.search(relocation_pattern, combined))
 
         return {
             "remote": is_remote,
