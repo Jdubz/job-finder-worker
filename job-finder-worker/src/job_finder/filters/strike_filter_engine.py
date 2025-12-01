@@ -202,6 +202,10 @@ class StrikeFilterEngine:
         Job title MUST contain at least one of the required keywords to be considered.
         This is a pre-filter to ensure we only process relevant software/engineering jobs.
         """
+        if not title:
+            # If no title was provided (e.g., manual entry without scrape), don't hard reject here;
+            # downstream analysis will make a determination.
+            return
         # If no required keywords configured, skip this check
         if not self.required_title_keywords:
             return
@@ -528,6 +532,19 @@ class StrikeFilterEngine:
 
             # Word boundary search to avoid Java/JavaScript confusion
             pattern = r"\b" + re.escape(tech_name.lower()) + r"\b"
+            if tech_name.lower() == "go":
+                matches = list(re.finditer(pattern, combined))
+                go_match = False
+                for m in matches:
+                    after = combined[m.end() : m.end() + 6]
+                    # Skip verbs like "go to market" or "go-to-market"
+                    if re.match(r"[\s-]*to\b", after):
+                        continue
+                    go_match = True
+                    break
+                if not go_match:
+                    continue
+
             if re.search(pattern, combined):
                 if rank == "strike":
                     strikes_found.append((tech_name, points))

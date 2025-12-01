@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -221,31 +222,38 @@ class AIJobMatcher:
 
         combined = f"{description} {location}".lower()
 
-        is_remote = any(
-            token in combined
-            for token in (
-                "fully remote",
-                "100% remote",
-                "remote position",
-                "remote role",
-                "remote job",
-                "remote opportunity",
-                "remote work",
-                "remote only",
-                "remote-only",
-                "work from home",
-                "work from anywhere",
-                "wfh",
-                "remote-first",
-                "remote friendly",
-                "remote-friendly",
-                "remotely",
-                "hiring remote",
+        is_remote = (
+            any(
+                token in combined
+                for token in (
+                    "fully remote",
+                    "100% remote",
+                    "remote position",
+                    "remote role",
+                    "remote job",
+                    "remote opportunity",
+                    "remote work",
+                    "remote only",
+                    "remote-only",
+                    "work from home",
+                    "work from anywhere",
+                    "wfh",
+                    "remote-first",
+                    "remote friendly",
+                    "remote-friendly",
+                    "remotely",
+                    "hiring remote",
+                )
             )
-        ) or "remote" in location
+            or "remote" in location
+        )
 
-        is_hybrid = any(token in combined for token in ("hybrid", "days in office", "office/remote"))
-        is_onsite = any(token in combined for token in ("on-site", "onsite", "in-office", "office-based"))
+        is_hybrid = any(
+            token in combined for token in ("hybrid", "days in office", "office/remote")
+        )
+        is_onsite = any(
+            token in combined for token in ("on-site", "onsite", "in-office", "office-based")
+        )
 
         if not is_remote and not is_hybrid and not is_onsite and location.strip():
             is_onsite = True  # Concrete location implies in-office expectation
@@ -297,10 +305,10 @@ class AIJobMatcher:
         priority_thresholds = weights.get("priorityThresholds", {})
 
         # Apply location penalties/bonuses before other adjustments
-        location_penalty, location_reason = self._calculate_location_penalty(job)
+        location_penalty, penalty_reason = self._calculate_location_penalty(job)
         if location_penalty != 0:
             match_score += location_penalty
-            adjustments.append(location_reason)
+            adjustments.append(penalty_reason)
 
         # Apply Portland office bonus
         if has_portland_office and self.portland_office_bonus > 0:
@@ -527,7 +535,9 @@ class AIJobMatcher:
         arrangement = self._detect_work_arrangement(description, location)
 
         blocked_locations = [loc.lower() for loc in self.dealbreakers.get("blockedLocations", [])]
-        if blocked_locations and any(loc in f"{description} {location}" for loc in blocked_locations):
+        if blocked_locations and any(
+            loc in f"{description} {location}" for loc in blocked_locations
+        ):
             penalty = -abs(self.dealbreakers.get("locationPenaltyPoints", 60))
             return penalty, f"🚫 Blocked location ({location_raw or 'unspecified'}): {penalty}"
 
@@ -539,7 +549,6 @@ class AIJobMatcher:
             "beaverton",
             "hillsboro",
             "vancouver, wa",
-            "oregon",
         ]
         allowed_onsite = [
             loc.lower() for loc in self.dealbreakers.get("allowedOnsiteLocations", [])
@@ -555,7 +564,7 @@ class AIJobMatcher:
 
         def _matches(loc_value: str, allowlist: list[str]) -> bool:
             loc_value = (loc_value or "").lower()
-            return any(allowed in loc_value for allowed in allowlist)
+            return any(re.search(rf"\b{re.escape(allowed)}\b", loc_value) for allowed in allowlist)
 
         # Remote and no relocation requirement: no penalty
         if arrangement["remote"] and not arrangement["relocation_required"]:
@@ -564,7 +573,7 @@ class AIJobMatcher:
         # Hybrid handling
         if arrangement["hybrid"]:
             if require_remote:
-                return base_penalty, "🏠 Remote required; hybrid outside preference"
+                return base_penalty, "🏠 Remote required; hybrid not allowed"
             if not _matches(location, allowed_hybrid):
                 return base_penalty, f"🏢 Hybrid outside Portland allowance: {base_penalty}"
             return 0, ""
@@ -579,7 +588,10 @@ class AIJobMatcher:
 
         # Relocation demand without clear allowed city
         if arrangement["relocation_required"] and not _matches(location, allowed_onsite):
-            return relocation_penalty, f"🧳 Relocation required away from Portland: {relocation_penalty}"
+            return (
+                relocation_penalty,
+                f"🧳 Relocation required away from Portland: {relocation_penalty}",
+            )
 
         # Ambiguous arrangement: penalize only if remote is mandatory
         if require_remote:

@@ -223,6 +223,22 @@ class TestHardRejections:
 
         assert result.passed is False
 
+    def test_allows_go_as_verb(self, prefilter_policy, valid_job):
+        """Ensure the word 'go' as a verb doesn't trigger undesired tech strikes."""
+        prefilter_policy["technologyRanks"] = {
+            "technologies": {"go": {"rank": "strike", "points": 2}}
+        }
+        engine = StrikeFilterEngine(prefilter_policy)
+
+        valid_job["description"] = (
+            "We will go-to-market fast and go to production weekly. " * 5
+        )
+
+        result = engine.evaluate_job(valid_job)
+
+        assert result.passed is True
+        assert result.total_strikes == 0
+
     def test_rejects_onsite_when_not_allowed(self, prefilter_policy, valid_job):
         """Test rejects on-site jobs when not allowed."""
         engine = StrikeFilterEngine(prefilter_policy)

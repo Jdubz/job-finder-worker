@@ -601,7 +601,9 @@ class TestAnalyzeJob:
         assert result is not None
         # Base mock score 85 minus 60 penalty = 25
         assert result.match_score == 25
-        assert any("Onsite" in adj or "Relocation" in adj for adj in result.score_breakdown.adjustments)
+        assert any(
+            "Onsite" in adj or "Relocation" in adj for adj in result.score_breakdown.adjustments
+        )
 
     def test_analyze_job_allows_portland_hybrid(self, mock_provider, mock_profile, sample_job):
         """Hybrid roles in Portland should proceed to AI analysis."""
@@ -661,11 +663,18 @@ class TestAnalyzeJob:
         matcher.dealbreakers["maxTimezoneDiffHours"] = 8
         matcher.dealbreakers["timezonePenaltyPoints"] = 50
         matcher.dealbreakers["timezoneHardPenaltyPoints"] = 70
+        matcher.company_weights["timezoneAdjustments"] = {
+            "sameTimezone": 0,
+            "diff1to2hr": 0,
+            "diff3to4hr": 0,
+            "diff5to8hr": 0,
+            "diff9plusHr": 0,
+        }
 
         result = matcher.analyze_job(sample_job, return_below_threshold=True)
 
-        # Base 90 - 15 (timezone weight) - 50 penalty = 25
-        assert result.match_score == 25
+        # Base 90 - 50 penalty = 40 (no tz weight)
+        assert result.match_score == 40
         assert any("timezone" in adj.lower() for adj in result.score_breakdown.adjustments)
 
 
