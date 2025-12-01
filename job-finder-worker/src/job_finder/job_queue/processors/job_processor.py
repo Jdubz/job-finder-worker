@@ -12,7 +12,7 @@ Job Listings Integration:
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 from urllib.parse import urlparse, quote_plus
 
 from job_finder.ai.matcher import AIJobMatcher
@@ -346,23 +346,24 @@ class JobProcessor(BaseProcessor):
             return
 
         # Update status to processing and set pipeline_stage for UI
-        updated_state = {**(item.pipeline_state or {}), "pipeline_stage": "scrape"}
+        scrape_state: Dict[str, Any] = {**(item.pipeline_state or {}), "pipeline_stage": "scrape"}
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, "Scraping job data", pipeline_state=updated_state
+            item.id, QueueStatus.PROCESSING, "Scraping job data", pipeline_state=scrape_state
         )
 
         try:
             # Get source configuration for this URL
             source = self.sources_manager.get_source_for_url(item.url)
 
+            scraped_job_data: Optional[Dict[str, Any]] = None
             if source:
                 # Use source-specific scraping method
-                job_data = self._scrape_with_source_config(item.url, source)
+                scraped_job_data = self._scrape_with_source_config(item.url, source)
             else:
                 # Fall back to generic scraping (or use AI extraction)
-                job_data = self._scrape_job(item)
+                scraped_job_data = self._scrape_job(item)
 
-            if not job_data:
+            if not scraped_job_data:
                 error_msg = "Could not scrape job details from URL"
                 error_details = f"Failed to extract data from: {item.url}"
                 self.queue_manager.update_status(
@@ -371,9 +372,10 @@ class JobProcessor(BaseProcessor):
                 return
 
             # Update pipeline state with scraped data
-            updated_state = {
+            job_data_dict = cast(Dict[str, Any], scraped_job_data)
+            scraped_state: Dict[str, Any] = {
                 **(item.pipeline_state or {}),
-                "job_data": job_data,
+                "job_data": job_data_dict,
                 "scrape_method": source.get("name") if source else "generic",
             }
 
