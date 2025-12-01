@@ -556,7 +556,7 @@ class TestAnalyzeJob:
     @patch("job_finder.ai.matcher.detect_company_size")
     @patch("job_finder.ai.matcher.detect_timezone_for_job")
     @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
-    def test_analyze_job_blocks_onsite_outside_portland(
+    def test_analyze_job_penalizes_onsite_outside_portland(
         self,
         mock_role_adj,
         mock_tz_detect,
@@ -599,11 +599,9 @@ class TestAnalyzeJob:
 
         mock_provider.generate.assert_called_once()
         assert result is not None
-        # Base mock score 85 minus 60 penalty = 25
-        assert result.match_score == 25
-        assert any(
-            "Onsite" in adj or "Relocation" in adj for adj in result.score_breakdown.adjustments
-        )
+        # Base mock score 85 minus relocation penalty 80 = 5
+        assert result.match_score == 5
+        assert any("Relocation required" in adj for adj in result.score_breakdown.adjustments)
 
     def test_analyze_job_allows_portland_hybrid(self, mock_provider, mock_profile, sample_job):
         """Hybrid roles in Portland should proceed to AI analysis."""

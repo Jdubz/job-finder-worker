@@ -245,18 +245,26 @@ class AIJobMatcher:
                     "hiring remote",
                 )
             )
-            or "remote" in location
+            or bool(re.search(r"\bremote\b", location, re.IGNORECASE))
         )
 
-        is_hybrid = any(
-            token in combined for token in ("hybrid", "days in office", "office/remote")
-        )
-        is_onsite = any(
-            token in combined for token in ("on-site", "onsite", "in-office", "office-based")
-        )
+        # Enforce precedence: remote > hybrid > onsite
+        is_hybrid = False
+        is_onsite = False
 
-        if not is_remote and not is_hybrid and not is_onsite and location.strip():
-            is_onsite = True  # Concrete location implies in-office expectation
+        if not is_remote:
+            is_hybrid = any(
+                token in combined for token in ("hybrid", "days in office", "office/remote")
+            )
+            if not is_hybrid:
+                is_onsite = any(
+                    token in combined
+                    for token in ("on-site", "onsite", "in-office", "office-based")
+                )
+
+            # Concrete location with no explicit remote/hybrid cues -> assume onsite expectation
+            if not is_onsite and location.strip():
+                is_onsite = True
 
         relocation_required = any(
             token in combined
@@ -542,23 +550,15 @@ class AIJobMatcher:
 
         blocked_locations = [loc.lower() for loc in self.dealbreakers.get("blockedLocations", [])]
         if blocked_locations and any(
-            loc in f"{description} {location}" for loc in blocked_locations
+            re.search(rf"\b{re.escape(loc)}\b", f"{description} {location}") for loc in blocked_locations
         ):
             penalty = -abs(self.dealbreakers.get("locationPenaltyPoints", 60))
             return penalty, f"🚫 Blocked location ({location_raw or 'unspecified'}): {penalty}"
 
         # Allowed local options for onsite/hybrid work
-        fallback_allow = [
-            "portland, or",
-            "portland",
-            "pdx",
-            "beaverton",
-            "hillsboro",
-            "vancouver, wa",
-        ]
         allowed_onsite = [
             loc.lower() for loc in self.dealbreakers.get("allowedOnsiteLocations", [])
-        ] or fallback_allow
+        ]
         allowed_hybrid = [
             loc.lower() for loc in self.dealbreakers.get("allowedHybridLocations", [])
         ] or allowed_onsite
@@ -576,6 +576,13 @@ class AIJobMatcher:
         if arrangement["remote"] and not arrangement["relocation_required"]:
             return 0, ""
 
+        # Relocation demand without clear allowed city (takes precedence)
+        if arrangement["relocation_required"] and not _matches(location, allowed_onsite):
+            return (
+                relocation_penalty,
+                f"🧳 Relocation required away from Portland: {relocation_penalty}",
+            )
+
         # Hybrid handling
         if arrangement["hybrid"]:
             if require_remote:
@@ -589,19 +596,8 @@ class AIJobMatcher:
             if require_remote:
                 return base_penalty, "🏠 Remote required; onsite role"
             if not _matches(location, allowed_onsite):
-                penalty = relocation_penalty if arrangement["relocation_required"] else base_penalty
-                reason = "🏢 Onsite outside Portland allowance"
-                if arrangement["relocation_required"]:
-                    reason += " + relocation required"
-                return penalty, f"{reason}: {penalty}"
+                return base_penalty, f"🏢 Onsite outside Portland allowance: {base_penalty}"
             return 0, ""
-
-        # Relocation demand without clear allowed city
-        if arrangement["relocation_required"] and not _matches(location, allowed_onsite):
-            return (
-                relocation_penalty,
-                f"🧳 Relocation required away from Portland: {relocation_penalty}",
-            )
 
         # Ambiguous arrangement: penalize only if remote is mandatory
         if require_remote:

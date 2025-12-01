@@ -342,7 +342,7 @@ class JobProcessor(BaseProcessor):
                 QueueStatus.SUCCESS,
                 "Job data provided manually",
             )
-            self._respawn_job_with_state(item, updated_state, next_stage="filter")
+            self._respawn_job_with_state(item, scraped_state, next_stage="filter")
             return
 
         # Update status to processing and set pipeline_stage for UI
@@ -387,10 +387,10 @@ class JobProcessor(BaseProcessor):
             )
 
             # Re-spawn same URL with updated state
-            self._respawn_job_with_state(item, updated_state, next_stage="filter")
+            self._respawn_job_with_state(item, scraped_state, next_stage="filter")
 
             logger.info(
-                f"JOB_SCRAPE complete: {job_data.get('title')} at {job_data.get('company')}"
+                f"JOB_SCRAPE complete: {scraped_job_data.get('title')} at {scraped_job_data.get('company')}"
             )
 
             self.slogger.pipeline_stage(
