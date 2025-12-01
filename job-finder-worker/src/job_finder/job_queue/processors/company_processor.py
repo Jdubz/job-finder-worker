@@ -169,28 +169,11 @@ class CompanyProcessor(BaseProcessor):
             )
 
             # If no job board URL from provided data, search for one
-            # Only search if company doesn't already have a linked source
             search_discovered = False
-            if not job_board_url and company_id:
-                # Check if company already has any sources (optimized query)
-                has_existing_source = self.sources_manager.has_source_for_company(company_id)
-
-                if has_existing_source:
-                    logger.info(
-                        "Skipping career page search for %s - company already has source(s)",
-                        company_display,
-                    )
-                else:
-                    # Search for career page via web search
-                    logger.info(
-                        "Searching for career page for %s (no existing sources)",
-                        company_display,
-                    )
-                    job_board_url = self._search_for_career_page(company_name)
-                    if job_board_url:
-                        search_discovered = True
-                    else:
-                        logger.info("No career page found via search for %s", company_display)
+            if not job_board_url:
+                job_board_url, search_discovered = self._find_career_page_if_needed(
+                    company_id, company_name, company_display
+                )
 
             source_spawned = False
             if job_board_url:
@@ -288,6 +271,51 @@ class CompanyProcessor(BaseProcessor):
             return provided_url
 
         return None
+
+    def _find_career_page_if_needed(
+        self,
+        company_id: Optional[str],
+        company_name: str,
+        company_display: str,
+    ) -> tuple[Optional[str], bool]:
+        """
+        Search for a career page if the company doesn't already have a source.
+
+        Only performs a web search if company_id is provided and no existing
+        sources are linked to the company.
+
+        Args:
+            company_id: Company ID to check for existing sources
+            company_name: Company name for search queries
+            company_display: Formatted company name for logging
+
+        Returns:
+            Tuple of (career_page_url, was_search_discovered)
+        """
+        if not company_id:
+            return None, False
+
+        # Check if company already has any sources (optimized query)
+        has_existing_source = self.sources_manager.has_source_for_company(company_id)
+
+        if has_existing_source:
+            logger.info(
+                "Skipping career page search for %s - company already has source(s)",
+                company_display,
+            )
+            return None, False
+
+        # Search for career page via web search
+        logger.info(
+            "Searching for career page for %s (no existing sources)",
+            company_display,
+        )
+        job_board_url = self._search_for_career_page(company_name)
+        if job_board_url:
+            return job_board_url, True
+
+        logger.info("No career page found via search for %s", company_display)
+        return None, False
 
     def _search_for_career_page(self, company_name: str) -> Optional[str]:
         """
