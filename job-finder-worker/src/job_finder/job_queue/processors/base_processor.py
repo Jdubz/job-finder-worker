@@ -26,6 +26,22 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ATS (Applicant Tracking System) platform domains used for career page detection
+# Shared across processors to ensure consistency
+ATS_DOMAINS = frozenset(
+    [
+        "greenhouse.io",
+        "lever.co",
+        "myworkdayjobs.com",
+        "workday.com",
+        "smartrecruiters.com",
+        "ashbyhq.com",
+        "breezy.hr",
+        "jobvite.com",
+        "icims.com",
+    ]
+)
+
 
 class BaseProcessor:
     """Base class for queue item processors with shared dependencies."""

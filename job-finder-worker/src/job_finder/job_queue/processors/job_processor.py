@@ -10,6 +10,7 @@ Job Listings Integration:
 - Job matches reference job_listings via foreign key (job_listing_id)
 """
 
+import json
 import logging
 import time
 from typing import Any, Dict, Optional
@@ -36,7 +37,7 @@ from job_finder.job_queue.models import (
     QueueStatus,
 )
 
-from .base_processor import BaseProcessor
+from .base_processor import ATS_DOMAINS, BaseProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -1176,8 +1177,6 @@ class JobProcessor(BaseProcessor):
                 schema = soup.find("script", type="application/ld+json")
                 if schema:
                     try:
-                        import json
-
                         # Use get_text() instead of .string to handle elements with
                         # multiple children or None values safely
                         schema_text = schema.get_text()
@@ -1187,29 +1186,19 @@ class JobProcessor(BaseProcessor):
                                 company_name = data.get("hiringOrganization", {}).get("name", "")
                                 if not company_name:
                                     company_name = data.get("name", "")
-                    except (json.JSONDecodeError, AttributeError, TypeError):
-                        pass
+                    except (json.JSONDecodeError, AttributeError, TypeError) as e:
+                        # Failed to parse schema.org data; fallback extraction continues
+                        logger.debug("Failed to extract company from schema.org: %s", e)
 
             # 3. Try to extract from domain name (last resort)
             if not company_name:
-                from urllib.parse import urlparse
-
                 parsed = urlparse(url)
                 domain = parsed.netloc.replace("www.", "")
                 # Check against known job board base domains (exact match on suffix)
                 # This avoids false positives like "greenhouse-tech.com" being excluded
-                job_board_domains = [
-                    "greenhouse.io",
-                    "lever.co",
-                    "myworkdayjobs.com",
-                    "workday.com",
-                    "ashbyhq.com",
-                    "smartrecruiters.com",
-                    "jobvite.com",
-                ]
                 domain_parts = domain.split(".")
                 base_domain = ".".join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain
-                is_job_board = base_domain in job_board_domains
+                is_job_board = base_domain in ATS_DOMAINS
 
                 if not is_job_board:
                     # Extract company name from subdomain or domain
