@@ -10,7 +10,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2, Info } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   useFieldArray,
   useFormContext,
@@ -26,14 +28,41 @@ export type CheckboxRowProps = {
   label: string
   description?: string
   field: { value?: boolean; onChange: (val: boolean) => void }
+  info?: string
 }
 
-export function CheckboxRow({ label, description, field }: CheckboxRowProps) {
+export const InfoTooltip = ({ content }: { content?: string }) => {
+  if (!content) return null
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            tabIndex={0}
+            className="h-4 w-4 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border flex items-center justify-center"
+            aria-label="Field info"
+          >
+            <Info className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs leading-relaxed">
+          {content}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+export function CheckboxRow({ label, description, info, field }: CheckboxRowProps) {
   return (
     <div className="flex items-center space-x-3">
       <Checkbox checked={Boolean(field.value)} onCheckedChange={(val) => field.onChange(Boolean(val))} />
       <div>
-        <Label>{label}</Label>
+        <Label className="flex items-center gap-1">
+          {label}
+          <InfoTooltip content={info} />
+        </Label>
         {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </div>
     </div>
@@ -46,21 +75,37 @@ export type NumericFieldProps<T extends FieldValues> = {
   name: FieldPath<T>
   label: string
   description?: string
+  disabled?: boolean
+  inputClassName?: string
+  info?: string
 }
 
-export function NumericField<T extends FieldValues>({ control, name, label, description }: NumericFieldProps<T>) {
+export function NumericField<T extends FieldValues>({
+  control,
+  name,
+  label,
+  description,
+  disabled,
+  inputClassName,
+  info,
+}: NumericFieldProps<T>) {
   return (
     <FormField
       control={control}
       name={name}
       render={({ field }) => (
         <FormItem>
-          <FormLabel>{label}</FormLabel>
+          <FormLabel className="flex items-center gap-1">
+            {label}
+            <InfoTooltip content={info} />
+          </FormLabel>
           <FormControl>
             <Input
               type="number"
               value={typeof field.value === "number" || typeof field.value === "string" ? field.value : ""}
               onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+              className={cn("max-w-[11rem]", inputClassName)}
+              disabled={disabled}
             />
           </FormControl>
           {description ? <FormDescription>{description}</FormDescription> : null}
@@ -77,18 +122,23 @@ export type TextInputFieldProps<T extends FieldValues> = {
   name: FieldPath<T>
   label: string
   description?: string
+  disabled?: boolean
+  info?: string
 }
 
-export function TextInputField<T extends FieldValues>({ control, name, label, description }: TextInputFieldProps<T>) {
+export function TextInputField<T extends FieldValues>({ control, name, label, description, disabled, info }: TextInputFieldProps<T>) {
   return (
     <FormField
       control={control}
       name={name}
       render={({ field }) => (
         <FormItem>
-          <FormLabel>{label}</FormLabel>
+          <FormLabel className="flex items-center gap-1">
+            {label}
+            <InfoTooltip content={info} />
+          </FormLabel>
           <FormControl>
-            <Input {...field} value={(field.value as string | undefined) ?? ""} />
+            <Input {...field} value={(field.value as string | undefined) ?? ""} disabled={disabled} />
           </FormControl>
           {description ? <FormDescription>{description}</FormDescription> : null}
         </FormItem>
@@ -105,6 +155,7 @@ export type StringListFieldProps<TFieldValues extends FieldValues> = {
   description?: string
   placeholder?: string
   helperError?: string
+  info?: string
 }
 
 export function StringListField<TFieldValues extends FieldValues>({
@@ -114,6 +165,7 @@ export function StringListField<TFieldValues extends FieldValues>({
   description,
   placeholder,
   helperError,
+  info,
 }: StringListFieldProps<TFieldValues>) {
   const { register } = useFormContext<TFieldValues>()
   const { fields, append, remove } = useFieldArray({ control, name: name as ArrayPath<TFieldValues> })
@@ -123,7 +175,10 @@ export function StringListField<TFieldValues extends FieldValues>({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label>{label}</Label>
+        <Label className="flex items-center gap-1">
+          {label}
+          <InfoTooltip content={info} />
+        </Label>
         <Button type="button" variant="outline" size="sm" onClick={() => append(emptyValue)}>
           <Plus className="h-4 w-4 mr-1" /> Add
         </Button>
