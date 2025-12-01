@@ -192,6 +192,24 @@ export async function listContentItems(
   return flatten(body.data.items ?? [])
 }
 
+export async function seedJobListing(
+  request: APIRequestContext,
+  overrides: Record<string, unknown> = {}
+) {
+  const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const payload = {
+    url: `https://example.com/jobs/e2e-listing-${uniqueSuffix}`,
+    title: "E2E Test Role",
+    companyName: "E2E Test Company",
+    description: "End-to-end test job listing",
+    status: "analyzed",
+    ...overrides,
+  }
+
+  const data = await apiPost<{ listing: { id: string } }>(request, "/job-listings", payload)
+  return data.listing.id
+}
+
 export async function seedJobMatch(
   request: APIRequestContext,
   overrides: Record<string, unknown> = {}
@@ -205,16 +223,21 @@ export async function seedJobMatch(
   const jobTitle = overrideJobTitle ?? "E2E Automation Engineer"
   const companyName = overrideCompany ?? "SQLite Systems"
 
+  // Create a job listing first if jobListingId is not provided
+  let jobListingId = overrides.jobListingId as string | undefined
+  if (!jobListingId) {
+    jobListingId = await seedJobListing(request, {
+      title: jobTitle,
+      companyName,
+      url: `https://example.com/jobs/e2e-listing-${uniqueSuffix}`,
+      description: "Owns automation coverage.",
+    })
+  }
+
   const payload = {
-    jobTitle,
-    companyName,
-    url: `https://example.com/jobs/e2e-automation-${uniqueSuffix}`,
+    jobListingId,
     matchScore: 92,
-    queueItemId: overrides.queueItemId ?? null,
-    location: "Remote",
-    salaryRange: "$150k",
-    jobDescription: "Owns automation coverage.",
-    companyInfo: "Automation focused org",
+    queueItemId: overrides.queueItemId ?? `queue-${uniqueSuffix}`,
     matchedSkills: ["typescript", "sqlite"],
     missingSkills: [],
     matchReasons: ["High automation focus"],

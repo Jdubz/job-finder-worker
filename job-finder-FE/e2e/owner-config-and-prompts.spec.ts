@@ -13,8 +13,8 @@ test.describe("Owner configuration and prompts", () => {
     const getActiveTab = () => page.locator('[role="tabpanel"][data-state="active"]').first()
 
     // Prefilter tab (default)
-    await expect(getActiveTab().getByLabel("Strike Threshold")).toBeVisible()
-    await getActiveTab().getByLabel("Strike Threshold").fill("7")
+    await expect(getActiveTab().getByLabel("Strike Threshold", { exact: true })).toBeVisible()
+    await getActiveTab().getByLabel("Strike Threshold", { exact: true }).fill("7")
     await page.getByRole("button", { name: /save changes/i }).click()
     await expect(page.getByText(/Prefilter policy saved/i)).toBeVisible()
 
@@ -31,7 +31,8 @@ test.describe("Owner configuration and prompts", () => {
 
     // AI settings tab
     await page.getByRole("tab", { name: "AI" }).click()
-    await expect(getActiveTab().getByRole("combobox", { name: /Provider/i })).toBeVisible()
+    // There are multiple Provider comboboxes - just check the first one is visible
+    await expect(getActiveTab().getByRole("combobox", { name: /Provider/i }).first()).toBeVisible()
 
     // AI prompts page
     await page.goto("/ai-prompts")

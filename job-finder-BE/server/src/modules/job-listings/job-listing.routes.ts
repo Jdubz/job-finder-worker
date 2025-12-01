@@ -4,6 +4,7 @@ import { ApiErrorCode } from '@shared/types'
 import type {
   ListJobListingsResponse,
   GetJobListingResponse,
+  CreateJobListingResponse,
   UpdateJobListingResponse,
   DeleteJobListingResponse
 } from '@shared/types'
@@ -22,6 +23,20 @@ const listQuerySchema = z.object({
   search: z.string().min(1).optional(),
   sortBy: z.enum(['date', 'title', 'company', 'status', 'updated', 'score']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional()
+})
+
+const createSchema = z.object({
+  url: z.string().url(),
+  sourceId: z.string().optional(),
+  companyId: z.string().optional(),
+  title: z.string().min(1),
+  companyName: z.string().min(1),
+  location: z.string().optional(),
+  salaryRange: z.string().optional(),
+  description: z.string().min(1),
+  postedDate: z.string().datetime().optional(),
+  status: z.enum(['pending', 'filtered', 'analyzing', 'analyzed', 'skipped', 'matched']).optional(),
+  filterResult: z.record(z.unknown()).optional()
 })
 
 const updateSchema = z.object({
@@ -44,6 +59,38 @@ export function buildJobListingRouter() {
         count: total
       }
       res.json(success(response))
+    })
+  )
+
+  router.post(
+    '/',
+    asyncHandler((req, res) => {
+      const payload = createSchema.parse(req.body)
+
+      // Check for existing listing with the same URL
+      const existing = repo.getByUrl(payload.url)
+      if (existing) {
+        res.status(409).json(failure(ApiErrorCode.RESOURCE_CONFLICT, 'Job listing with this URL already exists', { listingId: existing.id }))
+        return
+      }
+
+      const listing = repo.create({
+        url: payload.url,
+        sourceId: payload.sourceId ?? null,
+        companyId: payload.companyId ?? null,
+        title: payload.title,
+        companyName: payload.companyName,
+        location: payload.location ?? null,
+        salaryRange: payload.salaryRange ?? null,
+        description: payload.description,
+        postedDate: payload.postedDate ?? null,
+        status: payload.status ?? 'pending',
+        filterResult: payload.filterResult ?? null,
+        analysisResult: null,
+        matchScore: null
+      })
+      const response: CreateJobListingResponse = { listing }
+      res.status(201).json(success(response))
     })
   )
 
