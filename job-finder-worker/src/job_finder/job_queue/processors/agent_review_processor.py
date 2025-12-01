@@ -107,11 +107,11 @@ class AgentReviewProcessor(BaseProcessor):
         # Get AI provider
         provider = self._get_ai_provider()
         if not provider:
-            # No AI available - mark as needs_review for manual handling
+            # No AI available - mark as failed
             self.queue_manager.update_status(
                 item.id,
-                QueueStatus.NEEDS_REVIEW,
-                "AI provider unavailable - requires manual review",
+                QueueStatus.FAILED,
+                "AI provider unavailable - cannot process agent review",
             )
             return
 
