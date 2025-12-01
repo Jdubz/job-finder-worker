@@ -174,12 +174,12 @@ class BaseProcessor:
         status_message: str,
     ) -> Optional[str]:
         """
-        Spawn an agent review and mark the parent as NEEDS_REVIEW in one step.
+        Spawn an agent review and mark the parent as FAILED in one step.
 
         This is the primary method for handling recoverable failures that need
         agent intervention. It:
         1. Creates an AGENT_REVIEW queue item with instructions
-        2. Marks the parent item as NEEDS_REVIEW
+        2. Marks the parent item as FAILED (awaiting agent resolution)
 
         Args:
             item: Parent queue item that failed and needs review
@@ -192,5 +192,5 @@ class BaseProcessor:
             ID of the created agent review item, or None if creation failed
         """
         review_id = self._spawn_agent_review(item, prompt, reason, context)
-        self._update_item_status(item.id, QueueStatus.NEEDS_REVIEW, status_message)
+        self._update_item_status(item.id, QueueStatus.FAILED, status_message)
         return review_id
