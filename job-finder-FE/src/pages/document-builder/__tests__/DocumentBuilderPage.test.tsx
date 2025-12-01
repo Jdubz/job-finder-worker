@@ -15,7 +15,7 @@ import { generatorClient } from "@/api/generator-client"
 // Mock the API clients
 vi.mock("@/api/job-matches-client", () => ({
   jobMatchesClient: {
-    getMatches: vi.fn(),
+    listMatches: vi.fn(),
   },
 }))
 
@@ -115,7 +115,7 @@ const mockExecuteStepResponse = {
 describe("DocumentBuilderPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(jobMatchesClient.getMatches).mockResolvedValue(mockJobMatches as any)
+    vi.mocked(jobMatchesClient.listMatches).mockResolvedValue(mockJobMatches as any)
     vi.mocked(generatorClient.startGeneration).mockResolvedValue(mockStartGenerationResponse as any)
     vi.mocked(generatorClient.executeStep).mockResolvedValue(mockExecuteStepResponse as any)
   })
@@ -142,7 +142,7 @@ describe("DocumentBuilderPage", () => {
     })
 
     it("should show loading state while fetching job matches", async () => {
-      vi.mocked(jobMatchesClient.getMatches).mockImplementation(
+      vi.mocked(jobMatchesClient.listMatches).mockImplementation(
         () => new Promise((resolve) => setTimeout(() => resolve(mockJobMatches as any), 100))
       )
 
@@ -156,7 +156,7 @@ describe("DocumentBuilderPage", () => {
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(jobMatchesClient.getMatches).toHaveBeenCalledWith({
+        expect(jobMatchesClient.listMatches).toHaveBeenCalledWith({
           minScore: 70,
           limit: 50,
         })
@@ -347,7 +347,7 @@ describe("DocumentBuilderPage", () => {
     })
 
     it("should handle job matches load failure gracefully", async () => {
-      vi.mocked(jobMatchesClient.getMatches).mockRejectedValue(new Error("Failed to load"))
+      vi.mocked(jobMatchesClient.listMatches).mockRejectedValue(new Error("Failed to load"))
 
       renderWithRouter(<DocumentBuilderPage />)
 

@@ -57,12 +57,6 @@ function buildHumanReadablePath(metadata: ArtifactMetadata): { folder: string; f
   return { folder, filename }
 }
 
-// Legacy path builder for backwards compatibility
-function buildRelativePath(requestId: string, artifactType: ArtifactType, filename: string) {
-  const safeRequestId = requestId.replace(/[^a-zA-Z0-9-_]/g, '')
-  return path.join(safeRequestId, artifactType, filename)
-}
-
 function detectExtension(mime: string): string {
   if (mime === 'image/svg+xml') return '.svg'
   if (mime === 'image/png') return '.png'
@@ -80,21 +74,6 @@ export class LocalStorageService {
   async saveArtifactWithMetadata(buffer: Buffer, metadata: ArtifactMetadata): Promise<UploadResult> {
     const { folder, filename } = buildHumanReadablePath(metadata)
     const relativePath = path.join(folder, filename)
-    const absolutePath = path.join(this.rootDir, relativePath)
-    await ensureDir(path.dirname(absolutePath))
-    await fs.writeFile(absolutePath, buffer)
-    return {
-      storagePath: relativePath.replace(/\\/g, '/'),
-      filename,
-      size: buffer.length
-    }
-  }
-
-  /**
-   * @deprecated Use saveArtifactWithMetadata for new code
-   */
-  async saveArtifact(buffer: Buffer, requestId: string, artifactType: ArtifactType, filename: string): Promise<UploadResult> {
-    const relativePath = buildRelativePath(requestId, artifactType, filename)
     const absolutePath = path.join(this.rootDir, relativePath)
     await ensureDir(path.dirname(absolutePath))
     await fs.writeFile(absolutePath, buffer)

@@ -114,9 +114,9 @@ export class GeneratorClient extends BaseApiClient {
   }
 
   /**
-   * Get document generation history
+   * List document generation history
    */
-  async getHistory(): Promise<DocumentHistoryItem[]> {
+  async listHistory(): Promise<DocumentHistoryItem[]> {
     type HistoryResponse = { requests: DocumentHistoryItem[]; count: number }
     const response = await this.get<HistoryResponse | ApiEnvelope<HistoryResponse>>(`/requests`)
     const data = unwrapResponse(response)

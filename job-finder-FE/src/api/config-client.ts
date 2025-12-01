@@ -21,15 +21,10 @@ export class ConfigClient extends BaseApiClient {
   }
 
   private async getConfigEntry<T>(id: string): Promise<T | null> {
-    try {
-      const response = await this.get<ApiSuccessResponse<GetConfigEntryResponse>>(
-        `/config/${id}`
-      )
-      return response.data.config.payload as T
-    } catch (error) {
-      console.warn(`Failed to fetch config entry ${id}:`, error)
-      return null
-    }
+    const response = await this.get<ApiSuccessResponse<GetConfigEntryResponse>>(
+      `/config/${id}`
+    )
+    return response.data.config.payload as T
   }
 
   private async updateConfigEntry(id: string, payload: unknown) {
@@ -141,13 +136,8 @@ export class ConfigClient extends BaseApiClient {
   }
 
   async getEntry(id: string): Promise<GetConfigEntryResponse["config"] | null> {
-    try {
-      const response = await this.get<ApiSuccessResponse<GetConfigEntryResponse>>(`/config/${id}`)
-      return response.data.config
-    } catch (error) {
-      console.warn(`Failed to fetch config entry ${id}`, error)
-      return null
-    }
+    const response = await this.get<ApiSuccessResponse<GetConfigEntryResponse>>(`/config/${id}`)
+    return response.data.config
   }
 }
 

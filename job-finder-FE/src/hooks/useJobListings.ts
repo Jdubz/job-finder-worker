@@ -23,7 +23,7 @@ export function useJobListings(initialFilters: JobListingFilters = {}): UseJobLi
     try {
       setLoading(true)
       setError(null)
-      const result = await jobListingsClient.getListings(filters)
+      const result = await jobListingsClient.listListings(filters)
       setListings(result.listings)
       setCount(result.count)
     } catch (err) {

@@ -1,60 +1,36 @@
-import { API_CONFIG } from '@/config/api'
-import type { LoginResponseData, SessionResponseData } from '@shared/types'
+import { API_CONFIG } from "@/config/api"
+import { BaseApiClient, ApiError } from "./base-client"
+import type { LoginResponseData, SessionResponseData, ApiSuccessResponse } from "@shared/types"
 
 // Re-export types for consumers that import from auth-client
-export type { SessionUser, LoginResponseData, SessionResponseData } from '@shared/types'
+export type { SessionUser, LoginResponseData, SessionResponseData } from "@shared/types"
 
 export type LoginResponse = LoginResponseData
 export type SessionResponse = SessionResponseData
 
 /**
- * Retry a function with exponential backoff.
- * Only retries on network errors, not on HTTP errors (like 401).
+ * Auth-specific error with status code.
+ * Extends ApiError for compatibility while maintaining auth-specific semantics.
  */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  options: { maxRetries?: number; baseDelayMs?: number } = {}
-): Promise<T> {
-  const { maxRetries = 3, baseDelayMs = 500 } = options
-  let lastError: Error | null = null
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn()
-    } catch (error) {
-      lastError = error as Error
-
-      // Don't retry HTTP errors (like 401) - only network failures
-      if (error instanceof AuthError) {
-        throw error
-      }
-
-      // Don't retry on last attempt
-      if (attempt === maxRetries) {
-        break
-      }
-
-      // Exponential backoff: 500ms, 1000ms, 2000ms
-      const delay = baseDelayMs * Math.pow(2, attempt)
-      await new Promise((resolve) => setTimeout(resolve, delay))
-    }
+export class AuthError extends ApiError {
+  constructor(message: string, statusCode: number) {
+    super(message, statusCode, undefined, "AUTH_ERROR")
+    this.name = "AuthError"
   }
-
-  throw lastError
 }
 
 /**
  * Auth client for session-based authentication.
+ * Extends BaseApiClient for consistent HTTP handling, retry logic, and error handling.
  * All requests use credentials: 'include' to send/receive cookies.
- * No Bearer tokens - authentication is cookie-based only.
  */
-class AuthClient {
-  private baseUrl: string
-  private timeout: number
-
-  constructor(baseUrl: string, options?: { timeout?: number }) {
-    this.baseUrl = baseUrl
-    this.timeout = options?.timeout ?? 30000
+class AuthClient extends BaseApiClient {
+  constructor(baseUrl: string | (() => string), options?: { timeout?: number }) {
+    super(baseUrl, {
+      timeout: options?.timeout ?? 30000,
+      retryAttempts: 3,
+      retryDelay: 500,
+    })
   }
 
   /**
@@ -62,24 +38,19 @@ class AuthClient {
    * This is the single entry point for authentication.
    */
   async login(credential: string): Promise<LoginResponse> {
-    const response = await fetch(`${this.baseUrl}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ credential }),
-      signal: AbortSignal.timeout(this.timeout),
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new AuthError(
-        error.error?.message || `Login failed: ${response.status}`,
-        response.status
+    try {
+      const response = await this.post<ApiSuccessResponse<LoginResponseData>>(
+        "/auth/login",
+        { credential },
+        { retryAttempts: 1 } // Don't retry auth requests
       )
+      return response.data
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw new AuthError(error.message, error.statusCode ?? 500)
+      }
+      throw error
     }
-
-    const json = await response.json()
-    return json.data // Unwrap from { success: true, data: { user } }
   }
 
   /**
@@ -88,59 +59,37 @@ class AuthClient {
    * Retries on network errors with exponential backoff.
    */
   async fetchSession(): Promise<SessionResponse> {
-    return withRetry(async () => {
-      const response = await fetch(`${this.baseUrl}/auth/session`, {
-        method: 'GET',
-        credentials: 'include',
-        signal: AbortSignal.timeout(this.timeout),
-      })
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}))
-        throw new AuthError(
-          error.error?.message || `Session fetch failed: ${response.status}`,
-          response.status
-        )
+    try {
+      const response = await this.get<ApiSuccessResponse<SessionResponseData>>("/auth/session")
+      return response.data
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw new AuthError(error.message, error.statusCode ?? 500)
       }
-
-      const json = await response.json()
-      return json.data // Unwrap from { success: true, data: { user } }
-    })
+      throw error
+    }
   }
 
   /**
    * Clear session cookie and invalidate server-side session.
    */
   async logout(): Promise<{ loggedOut: boolean }> {
-    const response = await fetch(`${this.baseUrl}/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
-      signal: AbortSignal.timeout(this.timeout),
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new AuthError(
-        error.error?.message || `Logout failed: ${response.status}`,
-        response.status
+    try {
+      const response = await this.post<ApiSuccessResponse<{ loggedOut: boolean }>>(
+        "/auth/logout",
+        undefined,
+        { retryAttempts: 1 } // Don't retry logout
       )
+      return response.data
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw new AuthError(error.message, error.statusCode ?? 500)
+      }
+      throw error
     }
-
-    const json = await response.json()
-    return json.data // Unwrap from { success: true, data: { loggedOut } }
   }
 }
 
-export class AuthError extends Error {
-  statusCode: number
-
-  constructor(message: string, statusCode: number) {
-    super(message)
-    this.name = 'AuthError'
-    this.statusCode = statusCode
-  }
-}
-
-export const authClient = new AuthClient(API_CONFIG.baseUrl, {
+export const authClient = new AuthClient(() => API_CONFIG.baseUrl, {
   timeout: API_CONFIG.timeout,
 })
