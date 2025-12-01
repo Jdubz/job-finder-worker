@@ -132,24 +132,25 @@ describe('CORS configuration', () => {
       expect(res.headers['access-control-allow-credentials']).toBe('true')
     })
 
-    it('allows preflight for all production endpoints', async () => {
-      const endpoints = ['/api/queue', '/healthz', '/api/job-listings']
+    it.each([
+      '/api/queue',
+      '/healthz',
+      '/api/job-listings',
+    ])('allows preflight for production endpoint %s', async (endpoint) => {
+      const res = await request(app)
+        .options(endpoint)
+        .set('Origin', productionOrigin)
+        .set('Access-Control-Request-Method', 'GET')
 
-      for (const endpoint of endpoints) {
-        const res = await request(app)
-          .options(endpoint)
-          .set('Origin', productionOrigin)
-          .set('Access-Control-Request-Method', 'GET')
-
-        expect(res.status).toBe(204)
-        expect(res.headers['access-control-allow-origin']).toBe(productionOrigin)
-      }
+      expect(res.status).toBe(204)
+      expect(res.headers['access-control-allow-origin']).toBe(productionOrigin)
     })
   })
 
   describe('origin rejection', () => {
+    const maliciousOrigin = 'https://evil-site.com'
+
     it('rejects requests from non-allowed origins', async () => {
-      const maliciousOrigin = 'https://evil-site.com'
       const res = await request(app)
         .get('/healthz')
         .set('Origin', maliciousOrigin)
@@ -159,7 +160,6 @@ describe('CORS configuration', () => {
     })
 
     it('rejects preflight from non-allowed origins', async () => {
-      const maliciousOrigin = 'https://evil-site.com'
       const res = await request(app)
         .options('/api/queue')
         .set('Origin', maliciousOrigin)
