@@ -22,6 +22,10 @@ Scope: Align backend/worker behavior, configs, and UI so every config key is liv
 - 2025-12-01: Updated shared types (personal-info city/timezone/relocationAllowed; match dealbreaker penalty fields), default AI provider to Gemini; started backend runtime reload path (JobProcessor refreshes configs/providers per item) and queue/task delay defaults. Further steps pending: unified stop list, strike-first refactor, relocation/TZ helper, FE/full UI changes, migrations, and tests.
 - 2025-12-01: Consolidation work in progress: stop-list now treated as single source; strike engine updated to apply stop-list as strikes, reserved hard rejects remain for explicit hardRejections. Defaults seeded for relocation penalties in shared types. Gemini defaults wired in config loader and per-item refresh scaffolded. Next: relocate TZ/city helper, migration to drop legacy rows, matcher tech/experience scoring shift, FE coverage, screenshot tool.
 
+### New instructions (Dec 1, 2025)
+- Migrations may directly edit the SQLite DB JSON payloads (no schema migration needed); site downtime is acceptable during edits.
+- Remove all implicit defaults at runtime: missing configs must fail loudly to surface schema/key mismatches. The only defaults that remain are for type definitions, not runtime fallbacks.
+
 ### 1) Backend/Worker Config Hygiene
 1. Reload configs **per item** (or batch item) for: prefilter-policy, match-policy, queue-settings, scheduler-settings, ai-settings, worker-settings, personal-info. Avoid stale in-memory copies.
 2. Remove legacy rows (`job-match`, `job-filters`, `stop-list`, `technology-ranks`) and migrate data into canonical keys; add one-time migrator that deletes old rows after backup.
