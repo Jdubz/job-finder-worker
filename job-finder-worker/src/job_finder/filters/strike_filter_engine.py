@@ -25,8 +25,11 @@ class StrikeFilterEngine:
     Tier 2: Strike accumulation (fail if >= threshold)
     """
 
-    def __init__(self, policy: dict):
-        """Initialize strike-based filter engine (new config shape only)."""
+    def __init__(self, policy: dict, tech_ranks: Optional[dict] = None):
+        """Initialize strike-based filter engine (new config shape only).
+
+        tech_ranks kept for backward compatibility with tests that passed it separately.
+        """
 
         self.policy = policy
         self.stop_list = policy.get("stopList", {})
@@ -34,7 +37,7 @@ class StrikeFilterEngine:
         self.stop_keywords = [k.lower() for k in self.stop_list.get("excludedKeywords", [])]
         self.stop_domains = [d.lower() for d in self.stop_list.get("excludedDomains", [])]
         config = policy.get("strikeEngine", {})
-        self.tech_ranks = policy.get("technologyRanks", {})
+        self.tech_ranks = tech_ranks or policy.get("technologyRanks", {})
         self.enabled = config.get("enabled", True)
         self.strike_threshold = config.get("strikeThreshold", 5)
 
@@ -55,12 +58,20 @@ class StrikeFilterEngine:
         self.allow_remote = remote.get("allowRemote", True)
         # Explicit allow for onsite/hybrid paired with location allowlists
         self.allow_location_based_roles = remote.get("allowOnsite", True)
+        self.allow_hybrid = remote.get("allowHybridPortland", remote.get("allowHybrid", True))
         self.allowed_onsite_locations = [
             loc.lower() for loc in remote.get("allowedOnsiteLocations", [])
         ]
         self.allowed_hybrid_locations = [
-            loc.lower() for loc in remote.get("allowedHybridLocations", [])
+            loc.lower()
+            for loc in (
+                remote.get("allowedHybridLocations")
+                or remote.get("allowedOnsiteLocations", [])
+                or []
+            )
         ]
+        if self.allow_hybrid and not self.allowed_hybrid_locations:
+            self.allowed_hybrid_locations = ["portland, or", "portland"]
 
         # Strike: Salary
         salary_strike = config.get("salaryStrike", {})
@@ -424,9 +435,12 @@ class StrikeFilterEngine:
         if is_remote and self.allow_remote:
             return False  # Remote OK, no location requirement
 
-        if is_hybrid and self.allow_location_based_roles:
-            if _matches_allowlist(location_lower, self.allowed_hybrid_locations):
-                return False  # Hybrid allowed in configured locations
+        if is_hybrid:
+            if self.allow_hybrid and (
+                not self.allowed_hybrid_locations
+                or _matches_allowlist(location_lower, self.allowed_hybrid_locations)
+            ):
+                return False  # Hybrid allowed (either globally or within allowlist)
 
         if is_onsite and self.allow_location_based_roles:
             if _matches_allowlist(location_lower, self.allowed_onsite_locations):

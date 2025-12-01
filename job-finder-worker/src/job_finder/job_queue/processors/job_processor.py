@@ -146,7 +146,15 @@ class JobProcessor(BaseProcessor):
         """
 
         remote_policy = (prefilter_policy.get("strikeEngine") or {}).get("remotePolicy") or {}
-        dealbreakers = {**(self.ai_matcher.dealbreakers or {})}
+        existing_raw = getattr(self.ai_matcher, "dealbreakers", {}) or {}
+        if isinstance(existing_raw, dict):
+            existing = existing_raw
+        else:
+            try:
+                existing = dict(existing_raw)
+            except Exception:
+                existing = {}
+        dealbreakers = {**existing}
 
         if remote_policy.get("allowedOnsiteLocations"):
             dealbreakers.setdefault(

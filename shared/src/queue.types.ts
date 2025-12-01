@@ -42,6 +42,7 @@ export type QueueStatus =
   | "failed"
   | "skipped"
   | "filtered"
+  | "needs_review"
 
 /**
  * Queue item types
@@ -52,6 +53,7 @@ export type QueueItemType =
   | "scrape"
   | "source_discovery"
   | "scrape_source"
+  | "agent_review"
 
 /**
  * Source of queue submission
