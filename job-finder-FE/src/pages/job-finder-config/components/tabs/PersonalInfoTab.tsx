@@ -116,6 +116,39 @@ export function PersonalInfoTab({
             />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="city">City</Label>
+            <Input
+              id="city"
+              placeholder="City"
+              value={currentPersonalInfo.city ?? ""}
+              onChange={(e) => updatePersonalInfoState({ city: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="timezone">Timezone Offset</Label>
+            <Input
+              id="timezone"
+              type="number"
+              step="0.5"
+              placeholder="e.g. -8"
+              value={currentPersonalInfo.timezone ?? ""}
+              onChange={(e) => updatePersonalInfoState({ timezone: Number(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="relocationAllowed">Relocation Allowed</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="relocationAllowed"
+                type="checkbox"
+                className="h-4 w-4"
+                checked={currentPersonalInfo.relocationAllowed ?? false}
+                onChange={(e) => updatePersonalInfoState({ relocationAllowed: e.target.checked })}
+              />
+              <span className="text-sm text-muted-foreground">Willing to relocate for onsite/hybrid</span>
+            </div>
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="phone">Phone</Label>
             <Input
               id="phone"
