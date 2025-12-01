@@ -41,6 +41,9 @@ export interface TokenUsage {
 export interface PersonalInfo {
   name: string
   email: string
+  city?: string
+  timezone?: number
+  relocationAllowed?: boolean
   phone?: string
   location?: string
   website?: string

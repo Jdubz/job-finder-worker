@@ -208,6 +208,9 @@ export interface MatchDealbreakers {
   hardTimezonePenalty: number
   requireRemote: boolean
   allowHybridInTimezone: boolean
+  relocationPenaltyPoints?: number
+  ambiguousLocationPenaltyPoints?: number
+  locationPenaltyPoints?: number
 }
 
 export interface MatchPolicy {
@@ -325,9 +328,9 @@ export const AI_PROVIDER_OPTIONS: AIProviderOption[] = Object.entries(AI_PROVIDE
 )
 
 export const DEFAULT_AI_SELECTION: AIProviderSelection = {
-  provider: "codex",
-  interface: "cli",
-  model: "gpt-4o",
+  provider: "gemini",
+  interface: "api",
+  model: "gemini-2.0-flash",
 }
 
 export const DEFAULT_AI_SETTINGS: AISettings = {
@@ -344,6 +347,9 @@ export const DEFAULT_PERSONAL_INFO: PersonalInfo = {
   name: "",
   email: "",
   accentColor: "#3b82f6",
+  city: "",
+  timezone: undefined,
+  relocationAllowed: false,
 }
 
 export const DEFAULT_COMPANY_WEIGHTS: CompanyMatchWeights = {
@@ -442,6 +448,9 @@ export const DEFAULT_MATCH_POLICY: MatchPolicy = {
     hardTimezonePenalty: 60,
     requireRemote: false,
     allowHybridInTimezone: true,
+    relocationPenaltyPoints: 80,
+    locationPenaltyPoints: 60,
+    ambiguousLocationPenaltyPoints: 40,
   },
 }
 

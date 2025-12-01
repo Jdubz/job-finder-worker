@@ -57,12 +57,14 @@ class ConfigLoader:
         )
 
     def get_queue_settings(self) -> Dict[str, Any]:
-        default = {"processingTimeoutSeconds": 1800, "isProcessingEnabled": True}
+        default = {"processingTimeoutSeconds": 1800, "isProcessingEnabled": True, "taskDelaySeconds": 1}
         try:
             settings = self._get_config("queue-settings")
             # Ensure isProcessingEnabled defaults to True if not present
             if "isProcessingEnabled" not in settings:
                 settings["isProcessingEnabled"] = True
+            if "taskDelaySeconds" not in settings:
+                settings["taskDelaySeconds"] = 1
             return settings
         except InitializationError:
             logger.warning("Queue settings missing; seeding defaults")
@@ -79,9 +81,9 @@ class ConfigLoader:
     def get_ai_settings(self) -> Dict[str, Any]:
         """Get AI provider configuration (provider selection only)."""
         default_selection = {
-            "provider": "codex",
-            "interface": "cli",
-            "model": "gpt-5-codex",
+            "provider": "gemini",
+            "interface": "api",
+            "model": "gemini-2.0-flash",
         }
         default_options = [
             {
@@ -133,12 +135,24 @@ class ConfigLoader:
                         "value": "api",
                         "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
                         "enabled": True,
+                    },
+                    {
+                        "value": "cli",
+                        "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+                        "enabled": True,
                     }
                 ],
             },
         ]
         default = {
-            "worker": {"selected": dict(default_selection)},
+            "worker": {
+                "selected": dict(default_selection),
+                "tasks": {
+                    "jobMatch": dict(default_selection),
+                    "companyDiscovery": dict(default_selection),
+                    "sourceDiscovery": dict(default_selection),
+                },
+            },
             "documentGenerator": {"selected": dict(default_selection)},
             "options": default_options,
         }
@@ -214,9 +228,19 @@ class ConfigLoader:
             else default_options
         )
 
+        worker_tasks = None
+        doc_tasks = None
+        if isinstance(settings.get("worker"), dict):
+            worker_tasks = settings.get("worker", {}).get("tasks")
+        if isinstance(settings.get("documentGenerator"), dict):
+            doc_tasks = settings.get("documentGenerator", {}).get("tasks")
+
         return {
-            "worker": {"selected": worker_selected},
-            "documentGenerator": {"selected": doc_selected},
+            "worker": {"selected": worker_selected, **({"tasks": worker_tasks} if worker_tasks else {})},
+            "documentGenerator": {
+                "selected": doc_selected,
+                **({"tasks": doc_tasks} if doc_tasks else {}),
+            },
             "options": options,
         }
 

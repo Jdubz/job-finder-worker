@@ -35,6 +35,7 @@ from job_finder.job_queue.models import (
     QueueItemType,
     QueueStatus,
 )
+from job_finder.ai.providers import create_provider_from_config
 
 from .base_processor import BaseProcessor
 
@@ -137,6 +138,73 @@ class JobProcessor(BaseProcessor):
         )
 
         # Align AI matcher dealbreakers with the prefilter remote policy so scoring respects the same rules.
+        self._sync_matcher_dealbreakers(prefilter_policy)
+
+    def _refresh_runtime_config(self) -> None:
+        """Reload config-driven components so the next item uses fresh settings."""
+        try:
+            ai_settings = self.config_loader.get_ai_settings()
+        except Exception:
+            ai_settings = {}
+
+        try:
+            match_policy = self.config_loader.get_match_policy()
+        except Exception:
+            match_policy = {}
+
+        job_match = match_policy.get("jobMatch", {}) if isinstance(match_policy, dict) else {}
+
+        try:
+            prefilter_policy = self.config_loader.get_prefilter_policy()
+        except Exception:
+            prefilter_policy = {}
+
+        # Rebuild strike filter engine with latest policy
+        self.filter_engine = StrikeFilterEngine(prefilter_policy)
+        try:
+            self.filter_engine.set_user_timezone(job_match.get("userTimezone"))
+        except Exception:
+            logger.warning("Unable to sync user timezone into strike filter", exc_info=True)
+
+        # Propagate new filter engine into downstream helpers
+        if hasattr(self.scrape_runner, "filter_engine"):
+            self.scrape_runner.filter_engine = self.filter_engine
+        if hasattr(self.scraper_intake, "filter_engine"):
+            self.scraper_intake.filter_engine = self.filter_engine
+
+        # Refresh AI providers per task
+        try:
+            self.ai_matcher.provider = create_provider_from_config(ai_settings, task="jobMatch")
+        except Exception:
+            logger.warning("Failed to refresh jobMatch provider; keeping previous", exc_info=True)
+
+        try:
+            company_provider = create_provider_from_config(ai_settings, task="companyDiscovery")
+            if hasattr(self.company_info_fetcher, "ai_provider"):
+                self.company_info_fetcher.ai_provider = company_provider
+        except Exception:
+            logger.warning("Failed to refresh companyDiscovery provider; keeping previous", exc_info=True)
+
+        # Refresh matcher thresholds and weights
+        try:
+            company_weights = match_policy.get("companyWeights", {}) if isinstance(match_policy, dict) else {}
+            dealbreakers = match_policy.get("dealbreakers", {}) if isinstance(match_policy, dict) else {}
+
+            self.ai_matcher.min_match_score = job_match.get("minMatchScore", self.ai_matcher.min_match_score)
+            self.ai_matcher.generate_intake = job_match.get("generateIntakeData", self.ai_matcher.generate_intake)
+            self.ai_matcher.portland_office_bonus = job_match.get(
+                "portlandOfficeBonus", self.ai_matcher.portland_office_bonus
+            )
+            self.ai_matcher.user_timezone = job_match.get("userTimezone", self.ai_matcher.user_timezone)
+            self.ai_matcher.prefer_large_companies = job_match.get(
+                "preferLargeCompanies", self.ai_matcher.prefer_large_companies
+            )
+            self.ai_matcher.company_weights = company_weights or self.ai_matcher.company_weights
+            self.ai_matcher.dealbreakers = dealbreakers or self.ai_matcher.dealbreakers
+        except Exception:
+            logger.warning("Failed to refresh match policy settings", exc_info=True)
+
+        # Align matcher dealbreakers with prefilter policy for remote/hybrid rules
         self._sync_matcher_dealbreakers(prefilter_policy)
 
     # ============================================================
@@ -263,6 +331,9 @@ class JobProcessor(BaseProcessor):
 
         # Get current pipeline state
         state = item.pipeline_state or {}
+
+        # Refresh config-driven components so this item uses the latest settings
+        self._refresh_runtime_config()
 
         # If no pipeline_state but scraped_data is present, bootstrap pipeline_state
         # so we skip re-scraping known data and proceed to filtering/analysis.
@@ -1395,6 +1466,9 @@ class JobProcessor(BaseProcessor):
         if not item.id:
             logger.error("Cannot process scrape item without ID")
             return
+
+        # Refresh runtime config before executing scrape pipeline
+        self._refresh_runtime_config()
 
         # Get scrape configuration
         scrape_config = item.scrape_config
