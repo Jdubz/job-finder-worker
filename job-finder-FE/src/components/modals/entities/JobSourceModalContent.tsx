@@ -1,8 +1,10 @@
 import { useMemo } from "react"
+import { useEntityModal } from "@/contexts/EntityModalContext"
+import { useSource } from "@/hooks/useSource"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { ExternalLink, Pause, Play, Trash2 } from "lucide-react"
+import { ExternalLink, Pause, Play, Trash2, Building2, AlertCircle, Loader2 } from "lucide-react"
 import type { JobSource, JobSourceStatus } from "@shared/types"
 
 const statusColors: Record<JobSourceStatus, string> = {
@@ -77,15 +79,51 @@ const getSourceUrl = (source: JobSource): string | null => {
 }
 
 interface JobSourceModalContentProps {
-  source: JobSource
+  source?: JobSource | null
+  sourceId?: string | null
   handlers?: {
     onToggleStatus?: (source: JobSource) => void | Promise<void>
     onDelete?: (id: string) => void | Promise<void>
   }
 }
 
-export function JobSourceModalContent({ source, handlers }: JobSourceModalContentProps) {
-  const url = useMemo(() => getSourceUrl(source), [source])
+export function JobSourceModalContent({ source: providedSource, sourceId, handlers }: JobSourceModalContentProps) {
+  const { openModal } = useEntityModal()
+
+  // Fetch source if only sourceId provided
+  const { source: fetchedSource, loading, error } = useSource(
+    providedSource ? null : sourceId,
+    { autoFetch: !providedSource && !!sourceId }
+  )
+
+  const source = providedSource || fetchedSource
+  const url = useMemo(() => source ? getSourceUrl(source) : null, [source])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <span className="ml-2 text-muted-foreground">Loading source...</span>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <p>Failed to load source details.</p>
+        <p className="text-sm mt-1">{error.message}</p>
+      </div>
+    )
+  }
+
+  if (!source) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <p>No source selected</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4 overflow-y-auto flex-1 pr-2">
@@ -131,8 +169,27 @@ export function JobSourceModalContent({ source, handlers }: JobSourceModalConten
           <p className="mt-1">{sourceTypeLabels[source.sourceType] || source.sourceType}</p>
         </div>
         <div>
-          <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company ID</Label>
-          <p className="mt-1 text-sm font-mono text-muted-foreground">{source.companyId || "—"}</p>
+          <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
+            <Building2 className="h-3 w-3" />
+            Linked Company
+          </Label>
+          {source.companyId ? (
+            <div className="mt-1">
+              <Button
+                variant="link"
+                className="h-auto p-0 text-blue-600 hover:underline text-sm"
+                onClick={() => openModal({ type: "company", companyId: source.companyId })}
+              >
+                View Company Details
+              </Button>
+              <p className="text-xs font-mono text-muted-foreground mt-1">{source.companyId}</p>
+            </div>
+          ) : (
+            <p className="mt-1 text-muted-foreground flex items-center gap-1 text-sm">
+              <AlertCircle className="h-3 w-3" />
+              No company linked
+            </p>
+          )}
         </div>
       </div>
 

@@ -28,6 +28,7 @@ export function EntityModalHost() {
         return (
           <JobSourceModalContent
             source={modal.source}
+            sourceId={modal.sourceId}
             handlers={{ onToggleStatus: modal.onToggleStatus, onDelete: modal.onDelete }}
           />
         )
