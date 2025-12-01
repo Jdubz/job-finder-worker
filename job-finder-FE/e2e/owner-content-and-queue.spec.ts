@@ -20,9 +20,7 @@ test.describe("Content and queue management", () => {
       },
     })
 
-    const queueCompany = `Queue Ops ${Date.now()}`
     const queueId = await seedQueueJob(request, {
-      companyName: queueCompany,
       metadata: {
         title: "Queue ingestion test",
       },
@@ -52,7 +50,8 @@ test.describe("Content and queue management", () => {
     await page.getByTestId(`queue-item-${queueId}`).click()
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText(queueCompany)
+    // Dialog shows URL domain as company, and job title from metadata
+    await expect(dialog).toContainText("example.com")
     await expect(dialog).toContainText("Queue ingestion test")
     await dialog.getByRole("button", { name: /close/i }).click()
   })

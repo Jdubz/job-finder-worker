@@ -70,8 +70,7 @@ test.describe("Queue events live updates", () => {
       completed_at: new Date().toISOString(),
     })
 
-    // UI should show success after refresh
-    await page.reload()
+    // Wait for SSE to deliver the status update (no reload - completed items may be filtered out by default)
     const updatedRow = page.getByTestId(`queue-item-${firstId}`)
     await expect(updatedRow).toContainText("success", { timeout: 15000 })
     await expect(updatedRow).toContainText("Worker finished via event bridge", { timeout: 15000 })
