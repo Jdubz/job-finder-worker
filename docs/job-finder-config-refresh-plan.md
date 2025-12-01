@@ -1,5 +1,9 @@
 # Job Finder Config & UX Remediation Plan
 
+> Status: Draft
+> Owner: Codex (pairing with jdubz)
+> Last Updated: 2025-12-01
+
 Date: 2025-12-01
 Owner: Codex (pairing with jdubz)
 Scope: Align backend/worker behavior, configs, and UI so every config key is live, visible, and applied per task; remove legacy data; improve match/location logic; modernize AI defaults; and refresh the configuration UI/preview experience.
@@ -33,6 +37,13 @@ Scope: Align backend/worker behavior, configs, and UI so every config key is liv
    - Hybrid/onsite within same city bypass relocation fail; hybrid in same timezone but different city uses normal penalties.
    - Remote-first jobs reduce or skip timezone penalties unless job text explicitly requires overlap hours.
 4. Prefilter should share the same remote/relocation gates as scorer to avoid disagreement.
+
+### 2b) Strike vs Hard-Reject Simplification
+1. Adopt **strike-first** filtering: prefer strike accumulation with explicit thresholds; reserve hard rejects only for absolute dealbreakers (e.g., city mismatch when relocation disallowed, forbidden tech `fail`).
+2. Consolidate stop lists (companies/keywords/domains) into one source of truth used by both prefilter and matcher; remove duplicate lists (`stopList`, `strikeEngine.hardRejections.*`) so each item is checked once and contributes strikes or a hard fail, not both.
+3. Normalize salary logic: single check path that (a) hard-rejects commission-only when configured, (b) applies strike for low max salary, and (c) enforces minSalaryFloor only once.
+4. Normalize timezone logic: one function that computes penalties/fails based on user city/timezone, relocation flag, remote-first tolerance, and explicit overlap requirements; reuse in prefilter and matcher to avoid double counting.
+5. Document the scoring order: stop-list → hard-fail rules (minimal) → strike accumulation (all dimensions) → final threshold decision.
 
 ### 3) Tech & Experience Scoring
 1. Reintroduce `experienceStrike` but apply in match scoring (not prefilter). Map to configurable points that subtract from score when required YOE exceeds candidate YOE or when titles imply junior/senior mismatch.
