@@ -46,12 +46,15 @@ export class JobMatchesClient extends BaseApiClient {
     return payload?.matches ?? []
   }
 
-  private unwrapMatch(response: JobMatchResponseShape): JobMatchWithListing | null {
+  private unwrapMatch(response: JobMatchResponseShape): JobMatchWithListing {
     const payload = "data" in response ? response.data : response
-    return payload?.match ?? null
+    if (!payload?.match) {
+      throw new Error("Match not found in response")
+    }
+    return payload.match
   }
 
-  async getMatches(filters: JobMatchFilters = {}): Promise<JobMatchWithListing[]> {
+  async listMatches(filters: JobMatchFilters = {}): Promise<JobMatchWithListing[]> {
     const query = this.buildQuery(filters)
     const response = await this.get<JobMatchesResponseShape>(
       `/job-matches${query ? `?${query}` : ""}`
@@ -59,14 +62,9 @@ export class JobMatchesClient extends BaseApiClient {
     return this.unwrapMatches(response)
   }
 
-  async getMatch(matchId: string): Promise<JobMatchWithListing | null> {
-    try {
-      const response = await this.get<JobMatchResponseShape>(`/job-matches/${matchId}`)
-      return this.unwrapMatch(response)
-    } catch (error) {
-      console.warn(`Failed to fetch job match ${matchId}`, error)
-      return null
-    }
+  async getMatch(matchId: string): Promise<JobMatchWithListing> {
+    const response = await this.get<JobMatchResponseShape>(`/job-matches/${matchId}`)
+    return this.unwrapMatch(response)
   }
 
   subscribeToMatches(
@@ -79,7 +77,7 @@ export class JobMatchesClient extends BaseApiClient {
 
     const poll = async () => {
       try {
-        const matches = await this.getMatches(filters)
+        const matches = await this.listMatches(filters)
         if (!stopped) {
           callback(matches)
         }
@@ -108,7 +106,7 @@ export class JobMatchesClient extends BaseApiClient {
     lowPriority: number
     averageScore: number
   }> {
-    const matches = await this.getMatches()
+    const matches = await this.listMatches()
     const stats = {
       total: matches.length,
       highPriority: matches.filter((m) => m.applicationPriority === "High").length,

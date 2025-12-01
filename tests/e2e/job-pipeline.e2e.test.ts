@@ -214,7 +214,7 @@ describe("Frontend clients", () => {
     const queueData = await queueClient.listQueueItems({ status: "success" })
     expect(queueData.items.length).toBeGreaterThan(0)
 
-    const matches = await jobMatchesClient.getMatches({ minScore: 50 })
+    const matches = await jobMatchesClient.listMatches({ minScore: 50 })
     expect(matches.length).toBeGreaterThan(0)
     expect(matches[0].applicationPriority).toBe("High")
   })
@@ -250,7 +250,7 @@ describe("Job match access", () => {
   it("filters matches, fetches details, and reads stats", async () => {
     await seedJobMatch("job-match-access")
     const { jobMatchesClient } = await initFrontendClients()
-    const matches = await jobMatchesClient.getMatches({ minScore: 80 })
+    const matches = await jobMatchesClient.listMatches({ minScore: 80 })
     expect(matches.length).toBeGreaterThan(0)
 
     const detail = await jobMatchesClient.getMatch(matches[0].id)

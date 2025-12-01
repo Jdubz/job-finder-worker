@@ -89,31 +89,37 @@ export async function fetchQueueItem(
   return body.data.queueItem
 }
 
-export async function sendWorkerQueueEvent(
-  request: APIRequestContext,
-  payload: { event: string; data: Record<string, unknown> }
-) {
-  await apiPost(request, `/queue/worker/events`, payload)
-}
-
 export async function clearQueue(request: APIRequestContext) {
-  const response = await request.get(`${API_BASE}/queue`, {
+  // Fetch all queue items with a high limit to ensure we get everything
+  const response = await request.get(`${API_BASE}/queue?limit=1000`, {
     headers: {
       Authorization: `Bearer ${AUTH_TOKEN}`,
     },
   })
 
-  if (!response.ok()) return
+  if (!response.ok()) {
+    console.warn(`clearQueue: Failed to fetch queue items (${response.status()})`)
+    return
+  }
 
   const body = (await response.json()) as ApiSuccess<{ items: Array<{ id: string }> }>
   const ids = body.data.items?.map((i) => i.id).filter(Boolean) || []
-  await Promise.all(
-    ids.map((id) =>
-      request.delete(`${API_BASE}/queue/${id}`, {
+
+  if (ids.length === 0) return
+
+  // Delete items sequentially to avoid overwhelming the server
+  for (const id of ids) {
+    try {
+      await request.delete(`${API_BASE}/queue/${id}`, {
         headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
       })
-    )
-  )
+    } catch (err) {
+      console.warn(`clearQueue: Failed to delete item ${id}:`, err)
+    }
+  }
+
+  // Brief pause to let deletions settle
+  await new Promise((resolve) => setTimeout(resolve, 100))
 }
 
 export async function seedContentItem(

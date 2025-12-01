@@ -6,6 +6,51 @@
 import type { TimestampLike } from "@shared/types"
 
 /**
+ * Normalize any date-like value to a Date object.
+ * Handles: Date objects, ISO strings, Unix timestamps (numbers),
+ * Firebase Timestamps (objects with toDate method), and null/undefined.
+ *
+ * @param value - Any value that might represent a date
+ * @returns Date object or null if the value cannot be converted
+ */
+export function normalizeDateValue(value: unknown): Date | null {
+  if (!value) return null
+  if (value instanceof Date) return value
+  if (typeof value === "string" || typeof value === "number") return new Date(value)
+  // Handle Firebase Timestamps and similar objects with toDate method
+  if (typeof value === "object" && "toDate" in (value as Record<string, unknown>)) {
+    const toDateFn = (value as { toDate: () => Date }).toDate
+    if (typeof toDateFn === "function") return toDateFn.call(value)
+  }
+  return null
+}
+
+/**
+ * Normalize any JSON-like value to an object.
+ * Handles objects directly, or JSON strings that parse to objects.
+ *
+ * @param value - Any value that might be an object or JSON string
+ * @returns Object or null if the value cannot be converted
+ */
+export function normalizeObjectValue(value: unknown): Record<string, unknown> | null {
+  if (!value) return null
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value)
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      /* ignore invalid JSON */
+    }
+  }
+  return null
+}
+
+/**
  * Convert TimestampLike to Date
  * Handles both Date objects and structured timestamps
  * @param timestamp TimestampLike value (Date or structured timestamp)

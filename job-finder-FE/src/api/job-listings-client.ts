@@ -54,12 +54,15 @@ export class JobListingsClient extends BaseApiClient {
     }
   }
 
-  private unwrapListing(response: JobListingResponseShape): JobListingRecord | null {
+  private unwrapListing(response: JobListingResponseShape): JobListingRecord {
     const payload = "data" in response ? response.data : response
-    return payload?.listing ?? null
+    if (!payload?.listing) {
+      throw new Error("Listing not found in response")
+    }
+    return payload.listing
   }
 
-  async getListings(
+  async listListings(
     filters: JobListingFilters = {}
   ): Promise<{ listings: JobListingRecord[]; count: number }> {
     const query = this.buildQuery(filters)
@@ -69,27 +72,17 @@ export class JobListingsClient extends BaseApiClient {
     return this.unwrapListings(response)
   }
 
-  async getListing(id: string): Promise<JobListingRecord | null> {
-    try {
-      const response = await this.get<JobListingResponseShape>(`/job-listings/${id}`)
-      return this.unwrapListing(response)
-    } catch (error) {
-      console.warn(`Failed to fetch job listing ${id}`, error)
-      return null
-    }
+  async getListing(id: string): Promise<JobListingRecord> {
+    const response = await this.get<JobListingResponseShape>(`/job-listings/${id}`)
+    return this.unwrapListing(response)
   }
 
   async deleteListing(id: string): Promise<boolean> {
-    try {
-      const response = await this.delete<ApiSuccessResponse<DeleteJobListingResponse>>(
-        `/job-listings/${id}`
-      )
-      const payload = "data" in response ? response.data : response
-      return (payload as DeleteJobListingResponse)?.deleted ?? false
-    } catch (error) {
-      console.error(`Failed to delete job listing ${id}`, error)
-      throw error
-    }
+    const response = await this.delete<ApiSuccessResponse<DeleteJobListingResponse>>(
+      `/job-listings/${id}`
+    )
+    const payload = "data" in response ? response.data : response
+    return (payload as DeleteJobListingResponse)?.deleted ?? false
   }
 }
 

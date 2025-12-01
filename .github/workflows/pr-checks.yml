@@ -186,7 +186,6 @@ jobs:
         run: |
           pytest \
             tests/test_search_orchestrator.py \
-            tests/test_placeholder.py \
             tests/queue/test_job_pipeline_comprehensive.py \
             tests/queue/test_scraper_intake.py
 

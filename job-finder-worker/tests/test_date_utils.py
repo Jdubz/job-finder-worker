@@ -68,54 +68,57 @@ class TestParseJobDate:
 
 
 class TestCalculateFreshnessAdjustment:
-    """Test freshness score adjustments."""
+    """Test freshness score adjustments.
+
+    Current schedule (softened decay):
+    - 0-2 days: +10 points (fresh)
+    - 2-7 days: 0 points (recent)
+    - 7-14 days: -10 points (two weeks old)
+    - 14-30 days: -20 points (month old)
+    - 30+ days: -30 points (stale)
+    - Unknown date: -10 points
+    """
 
     def test_none_date_returns_penalty(self):
         """Test None date gets -10 penalty."""
         adjustment = calculate_freshness_adjustment(None)
         assert adjustment == -10
 
-    def test_very_fresh_job_under_24_hours(self):
-        """Test job posted under 24 hours gets +15 bonus."""
+    def test_fresh_job_under_2_days(self):
+        """Test job posted under 2 days gets +10 bonus."""
         posted_date = datetime.now(timezone.utc) - timedelta(hours=12)
         adjustment = calculate_freshness_adjustment(posted_date)
-        assert adjustment == 15
+        assert adjustment == 10
 
     def test_fresh_job_1_to_2_days(self):
-        """Test job posted 1-2 days ago gets +5 bonus."""
+        """Test job posted 1-2 days ago gets +10 bonus."""
         posted_date = datetime.now(timezone.utc) - timedelta(days=1.5)
         adjustment = calculate_freshness_adjustment(posted_date)
-        assert adjustment == 5
+        assert adjustment == 10
 
-    def test_recent_job_2_to_3_days(self):
-        """Test job posted 2-3 days ago gets 0 adjustment."""
-        posted_date = datetime.now(timezone.utc) - timedelta(days=2.5)
+    def test_recent_job_2_to_7_days(self):
+        """Test job posted 2-7 days ago gets 0 adjustment."""
+        posted_date = datetime.now(timezone.utc) - timedelta(days=5)
         adjustment = calculate_freshness_adjustment(posted_date)
         assert adjustment == 0
 
-    def test_week_old_job_3_to_7_days(self):
-        """Test job posted 3-7 days ago gets -35 penalty."""
-        posted_date = datetime.now(timezone.utc) - timedelta(days=5)
-        adjustment = calculate_freshness_adjustment(posted_date)
-        assert adjustment == -35
-
     def test_two_weeks_old_job_7_to_14_days(self):
-        """Test job posted 7-14 days ago gets -40 penalty."""
+        """Test job posted 7-14 days ago gets -10 penalty."""
         posted_date = datetime.now(timezone.utc) - timedelta(days=10)
         adjustment = calculate_freshness_adjustment(posted_date)
-        assert adjustment == -40
+        assert adjustment == -10
 
     def test_month_old_job_14_to_30_days(self):
-        """Test job posted 14-30 days ago gets -45 penalty."""
+        """Test job posted 14-30 days ago gets -20 penalty."""
         posted_date = datetime.now(timezone.utc) - timedelta(days=20)
         adjustment = calculate_freshness_adjustment(posted_date)
-        assert adjustment == -45
+        assert adjustment == -20
 
     def test_stale_job_over_30_days(self):
-        """Test job posted over 30 days ago gets -50 penalty."""
+        """Test job posted over 30 days ago gets -30 penalty."""
         posted_date = datetime.now(timezone.utc) - timedelta(days=45)
         adjustment = calculate_freshness_adjustment(posted_date)
-        assert adjustment == -50
+        assert adjustment == -30
 
     def test_future_date_returns_zero(self):
         """Test future date (bad data) returns 0."""
@@ -129,8 +132,8 @@ class TestCalculateFreshnessAdjustment:
         posted_date = datetime.now() - timedelta(hours=12)
         adjustment = calculate_freshness_adjustment(posted_date)
 
-        # Should still process correctly and give +15 bonus
-        assert adjustment == 15
+        # Should still process correctly and give +10 bonus
+        assert adjustment == 10
 
 
 class TestFormatJobAge:

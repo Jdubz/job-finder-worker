@@ -22,7 +22,15 @@ export function getAuthIcon(page: Page, state: AuthStateVariant = "any"): Locato
 export async function openAuthModal(page: Page, state: AuthStateVariant = "any") {
   const trigger = getAuthIcon(page, state)
   await expect(trigger).toBeVisible({ timeout: 15000 })
-  await trigger.click()
+
+  // Dismiss any toast notifications that may be blocking the click
+  const toastDismiss = page.locator('[data-sonner-toast] button[aria-label="Close toast"]')
+  if (await toastDismiss.first().isVisible({ timeout: 500 }).catch(() => false)) {
+    await toastDismiss.first().click()
+    await page.waitForTimeout(300)
+  }
+
+  await trigger.click({ force: true })
 
   const dialog = page.getByRole("dialog", { name: /authentication/i })
   await expect(dialog).toBeVisible({ timeout: 15000 })

@@ -134,7 +134,7 @@ vi.mock("@/api/generator-client", async () => {
 vi.mock("@/api/job-matches-client", async () => {
   const actual = await vi.importActual<typeof import("@/api/job-matches-client")>("@/api/job-matches-client")
   const subclassed = cloneApiClient(actual.jobMatchesClient)
-  subclassed.getMatches = vi.fn().mockResolvedValue([])
+  subclassed.listMatches = vi.fn().mockResolvedValue([])
   subclassed.getMatch = vi.fn().mockResolvedValue(null)
   subclassed.subscribeToMatches = vi.fn(() => vi.fn())
   subclassed.getMatchStats = vi.fn().mockResolvedValue({

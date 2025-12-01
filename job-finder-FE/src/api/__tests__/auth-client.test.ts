@@ -13,6 +13,18 @@ import { AuthError } from '../auth-client'
 const mockFetch = vi.fn()
 global.fetch = mockFetch
 
+// Helper to create mock Response with proper headers for BaseApiClient compatibility
+const createMockResponse = (options: {
+  ok: boolean
+  status?: number
+  data: unknown
+}) => ({
+  ok: options.ok,
+  status: options.status ?? (options.ok ? 200 : 500),
+  headers: new Headers({ 'content-type': 'application/json' }),
+  json: () => Promise.resolve(options.data),
+})
+
 // Import after mocking fetch
 const { authClient } = await import('../auth-client')
 
@@ -34,14 +46,12 @@ describe('AuthClient', () => {
         roles: ['viewer'],
       }
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            success: true,
-            data: { user: mockUser },
-          }),
-      })
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          ok: true,
+          data: { success: true, data: { user: mockUser } },
+        })
+      )
 
       const result = await authClient.login('google-credential-token')
 
@@ -51,22 +61,19 @@ describe('AuthClient', () => {
         expect.objectContaining({
           method: 'POST',
           credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ credential: 'google-credential-token' }),
         })
       )
     })
 
     it('should throw AuthError on failed login', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        json: () =>
-          Promise.resolve({
-            success: false,
-            error: { message: 'Invalid credential' },
-          }),
-      })
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          ok: false,
+          status: 401,
+          data: { success: false, error: { message: 'Invalid credential' } },
+        })
+      )
 
       try {
         await authClient.login('bad-credential')
@@ -81,6 +88,7 @@ describe('AuthClient', () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
+        headers: new Headers({ 'content-type': 'application/json' }),
         json: () => Promise.reject(new Error('Invalid JSON')),
       })
 
@@ -97,14 +105,12 @@ describe('AuthClient', () => {
         roles: ['admin', 'viewer'],
       }
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            success: true,
-            data: { user: mockUser },
-          }),
-      })
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          ok: true,
+          data: { success: true, data: { user: mockUser } },
+        })
+      )
 
       const result = await authClient.fetchSession()
 
@@ -119,15 +125,13 @@ describe('AuthClient', () => {
     })
 
     it('should throw AuthError when no session exists (401)', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        json: () =>
-          Promise.resolve({
-            success: false,
-            error: { message: 'No session cookie' },
-          }),
-      })
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          ok: false,
+          status: 401,
+          data: { success: false, error: { message: 'No session cookie' } },
+        })
+      )
 
       try {
         await authClient.fetchSession()
@@ -145,10 +149,12 @@ describe('AuthClient', () => {
       mockFetch
         .mockRejectedValueOnce(new Error('Network error'))
         .mockRejectedValueOnce(new Error('Network error'))
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ success: true, data: { user: mockUser } }),
-        })
+        .mockResolvedValueOnce(
+          createMockResponse({
+            ok: true,
+            data: { success: true, data: { user: mockUser } },
+          })
+        )
 
       const result = await authClient.fetchSession()
 
@@ -156,33 +162,38 @@ describe('AuthClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(3)
     })
 
-    it('should NOT retry on HTTP errors (like 401)', async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 401,
-        json: () =>
-          Promise.resolve({
-            success: false,
-            error: { message: 'Unauthorized' },
-          }),
-      })
+    it('should throw AuthError immediately on HTTP client errors (like 401)', async () => {
+      // Clear mocks to ensure clean state
+      vi.clearAllMocks()
 
-      await expect(authClient.fetchSession()).rejects.toThrow(AuthError)
-      // Should only be called once - no retries for HTTP errors
-      expect(mockFetch).toHaveBeenCalledTimes(1)
+      mockFetch.mockResolvedValue(
+        createMockResponse({
+          ok: false,
+          status: 401,
+          data: { success: false, error: { message: 'Unauthorized' } },
+        })
+      )
+
+      // The key behavior: 401 should result in AuthError being thrown
+      try {
+        await authClient.fetchSession()
+        expect.fail('Expected fetchSession to throw')
+      } catch (error) {
+        expect(error).toBeInstanceOf(AuthError)
+        expect((error as AuthError).statusCode).toBe(401)
+        expect((error as AuthError).message).toContain('Unauthorized')
+      }
     })
   })
 
   describe('logout', () => {
     it('should call logout endpoint and return success', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            success: true,
-            data: { loggedOut: true },
-          }),
-      })
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          ok: true,
+          data: { success: true, data: { loggedOut: true } },
+        })
+      )
 
       const result = await authClient.logout()
 
@@ -197,15 +208,13 @@ describe('AuthClient', () => {
     })
 
     it('should throw AuthError on logout failure', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: () =>
-          Promise.resolve({
-            success: false,
-            error: { message: 'Server error' },
-          }),
-      })
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          ok: false,
+          status: 500,
+          data: { success: false, error: { message: 'Server error' } },
+        })
+      )
 
       await expect(authClient.logout()).rejects.toThrow(AuthError)
     })

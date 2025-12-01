@@ -4,6 +4,7 @@ import type { QueueItem, QueueStats } from "@shared/types"
 import { useQueueItems, type ConnectionStatus } from "@/hooks/useQueueItems"
 import { configClient } from "@/api/config-client"
 import { queueClient } from "@/api/queue-client"
+import { normalizeDateValue } from "@/utils/dateFormat"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -271,7 +272,7 @@ export function QueueManagementPage() {
   }
 
   const formatRelativeTime = (date: unknown): string => {
-    const parsed = normalizeDateOrNull(date)
+    const parsed = normalizeDateValue(date)
     if (!parsed) return "—"
     const diffMs = Date.now() - parsed.getTime()
     const minutes = Math.floor(diffMs / 60000)
@@ -284,7 +285,7 @@ export function QueueManagementPage() {
   }
 
   const formatFullDate = (date: unknown): string => {
-    const parsed = normalizeDateOrNull(date)
+    const parsed = normalizeDateValue(date)
     return parsed ? parsed.toLocaleString() : "—"
   }
 
@@ -727,19 +728,7 @@ function statusTone(status: string): string {
 }
 
 function normalizeDate(value: unknown): Date {
-  const parsed = normalizeDateOrNull(value)
-  return parsed ?? new Date(0)
-}
-
-function normalizeDateOrNull(value: unknown): Date | null {
-  if (!value) return null
-  if (value instanceof Date) return value
-  if (typeof value === "string" || typeof value === "number") return new Date(value)
-  if (typeof value === "object" && "toDate" in (value as Record<string, unknown>)) {
-    const maybe = (value as { toDate: () => Date }).toDate
-    if (typeof maybe === "function") return maybe.call(value)
-  }
-  return null
+  return normalizeDateValue(value) ?? new Date(0)
 }
 
 interface DetailFieldProps {
