@@ -134,8 +134,9 @@ class SourceProcessor(BaseProcessor):
                 source_config, validation_meta = discovery_result, {}
 
             if not source_config:
-                # If auth required, create a disabled placeholder source with notes
-                if validation_meta.get("error") == "auth_required":
+                # If auth required or bot protection detected, create a disabled placeholder source with notes
+                if validation_meta.get("error") in {"auth_required", "bot_protection"}:
+                    disabled_reason = validation_meta.get("error")
                     placeholder_config = {"type": "api", "url": url, "headers": {}}
                     source_type = placeholder_config.get("type", "unknown")
                     aggregator_domain = self._detect_aggregator_domain(url)
@@ -146,13 +147,16 @@ class SourceProcessor(BaseProcessor):
                         company_id=None,
                         aggregator_domain=aggregator_domain,
                         status=SourceStatus.DISABLED,
-                        disabled_notes="auth_required",
+                        disabled_notes=disabled_reason,
                     )
                     self.queue_manager.update_status(
                         item.id,
                         QueueStatus.SUCCESS,
-                        f"Source requires authentication; created disabled source {source_id}",
-                        scraped_data={"source_id": source_id, "disabled_notes": "auth_required"},
+                        f"Source disabled due to {disabled_reason}; created placeholder {source_id}",
+                        scraped_data={
+                            "source_id": source_id,
+                            "disabled_notes": disabled_reason,
+                        },
                     )
                     return
 
