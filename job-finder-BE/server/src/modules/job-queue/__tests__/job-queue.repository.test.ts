@@ -11,7 +11,7 @@ describe('JobQueueRepository', () => {
   })
 
   const buildQueueItem = (overrides: Partial<NewQueueItem> = {}): NewQueueItem => ({
-    type: 'job_scrape',
+    type: 'job',
     status: 'pending',
     url: 'https://example.com/job/123',
     ...overrides
@@ -24,13 +24,13 @@ describe('JobQueueRepository', () => {
           metadata: { job_title: 'Software Engineer' },
           company_name: 'Test Corp',
           company_id: 'company-123',
-          source: { type: 'manual', value: 'test' },
+          source: 'manual_submission',
           submitted_by: 'user-1',
-          scrape_config: { timeout: 30000 },
+          scrape_config: { target_matches: 5 },
           source_id: 'source-1',
           source_type: 'greenhouse',
           source_config: { baseUrl: 'https://greenhouse.io' },
-          source_tier: 'priority'
+          source_tier: 'S'
         })
       )
 
@@ -39,13 +39,13 @@ describe('JobQueueRepository', () => {
       expect(item.metadata).toEqual({ job_title: 'Software Engineer' })
       expect(item.company_name).toBe('Test Corp')
       expect(item.company_id).toBe('company-123')
-      expect(item.source).toEqual({ type: 'manual', value: 'test' })
+      expect(item.source).toBe('manual_submission')
       expect(item.submitted_by).toBe('user-1')
-      expect(item.scrape_config).toEqual({ timeout: 30000 })
+      expect(item.scrape_config).toEqual({ target_matches: 5 })
       expect(item.source_id).toBe('source-1')
       expect(item.source_type).toBe('greenhouse')
       expect(item.source_config).toEqual({ baseUrl: 'https://greenhouse.io' })
-      expect(item.source_tier).toBe('priority')
+      expect(item.source_tier).toBe('S')
 
       // Verify the data is stored in input column (not lost)
       expect(item.input).toMatchObject({
@@ -98,7 +98,7 @@ describe('JobQueueRepository', () => {
         })
       )
 
-      const updated = repo.update(created.id, {
+      const updated = repo.update(created.id!, {
         metadata: { job_title: 'Updated Title' }
       })
 
@@ -117,7 +117,7 @@ describe('JobQueueRepository', () => {
         })
       )
 
-      const updated = repo.update(created.id, {
+      const updated = repo.update(created.id!, {
         pipeline_state: { step: 'completed' }
       })
 
@@ -137,7 +137,7 @@ describe('JobQueueRepository', () => {
         })
       )
 
-      const updated = repo.update(created.id, {
+      const updated = repo.update(created.id!, {
         company_name: 'Updated Name',
         metadata: { job_title: 'Updated Title', new_field: 'new_value' }
       })
@@ -156,7 +156,7 @@ describe('JobQueueRepository', () => {
       )
 
       // Update with only status change - convenience fields should be preserved
-      const updated = repo.update(created.id, {
+      const updated = repo.update(created.id!, {
         status: 'processing'
       })
 
@@ -173,7 +173,7 @@ describe('JobQueueRepository', () => {
         })
       )
 
-      const updated = repo.update(created.id, {
+      const updated = repo.update(created.id!, {
         company_name: null as unknown as string, // Explicit null
         metadata: null as unknown as Record<string, unknown> // Explicit null
       })
@@ -195,7 +195,7 @@ describe('JobQueueRepository', () => {
         })
       )
 
-      const updated = repo.update(created.id, {
+      const updated = repo.update(created.id!, {
         input: { new_input_field: 'new_value' },
         source_id: 'new-source'
       })
@@ -229,7 +229,7 @@ describe('JobQueueRepository', () => {
         })
       )
 
-      const fetched = repo.getById(created.id)
+      const fetched = repo.getById(created.id!)
 
       expect(fetched?.metadata).toEqual({ job_title: 'Test' })
       expect(fetched?.scraped_data).toEqual({ content: 'scraped' })
