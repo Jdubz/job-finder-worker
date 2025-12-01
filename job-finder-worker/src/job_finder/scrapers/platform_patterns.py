@@ -224,7 +224,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         name="linkedin_stub",
         url_pattern=r"linkedin\.com",
         api_url_template="https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
-        response_path="",  # returns HTML fragments; treat as auth/anti-bot sensitive
+        response_path="",  # returns HTML fragments; treat as auth/anti-Bot sensitive
         fields={
             "title": "title",
             "url": "url",

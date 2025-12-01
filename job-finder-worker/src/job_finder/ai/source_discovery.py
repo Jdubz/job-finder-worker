@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 from urllib.parse import urlparse
 
 import feedparser
@@ -66,9 +66,10 @@ class SourceDiscovery:
                     return pattern_config, validation
                 # If validation failed, continue to try fetching
 
+            fetch_meta: Dict[str, Any] = {}
+
             # Step 1: Detect source type and fetch sample
             source_type, sample = self._detect_and_fetch(url)
-            fetch_meta: Dict[str, Any] = {}
             if source_type == "auth_required" and not sample:
                 fetch_meta = {"success": False, "error": "auth_required"}
 
@@ -105,7 +106,7 @@ class SourceDiscovery:
                         logger.info(f"Search-assisted discovery succeeded for {url}")
                         return search_config, {**validation, **search_meta}
                 logger.warning(f"Could not generate config for {url}")
-                return None, fetch_meta if 'fetch_meta' in locals() and fetch_meta else {}
+                return None, fetch_meta
 
             # Step 3: Validate config
             validation = self._validate_config(config)
@@ -322,7 +323,7 @@ class SourceDiscovery:
             f"{domain} careers json",
         ]
 
-        results: list[SearchResult] = []
+        results: List[SearchResult] = []
         for q in queries:
             try:
                 results.extend(search_client.search(q, max_results=3))

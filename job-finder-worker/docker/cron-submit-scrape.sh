@@ -4,7 +4,7 @@ set -euo pipefail
 # Ensure cron jobs get the same environment as the container
 if [ -f /etc/environment ]; then
     set -a
-    # shellcheck source=/etc/environment
+    # shellcheck source=/etc/environment  # tell shellcheck not to follow this file during analysis
     . /etc/environment
     set +a
 fi
