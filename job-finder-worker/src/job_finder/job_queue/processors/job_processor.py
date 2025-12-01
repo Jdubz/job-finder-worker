@@ -29,6 +29,7 @@ from job_finder.storage.job_storage import JobStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name, is_source_name
+from job_finder.utils.location_rules import LocationContext, evaluate_location_rules
 from job_finder.utils.url_utils import normalize_url
 from job_finder.job_queue.models import (
     JobQueueItem,

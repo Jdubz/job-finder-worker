@@ -183,23 +183,9 @@ def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
 
 
 def get_processing_timeout(config_loader: ConfigLoader) -> int:
-    """Lookup processing timeout with safe defaults."""
-    try:
-        queue_settings = config_loader.get_queue_settings()
-        return max(5, int(queue_settings.get("processingTimeoutSeconds", 1800)))
-    except Exception as exc:  # pragma: no cover - defensive
-        slogger.worker_status("queue_settings_load_failed", {"error": str(exc)})
-        return 1800
-
-    # Load scheduler settings
-    try:
-        scheduler_settings = config_loader.get_scheduler_settings()
-        if scheduler_settings and "pollIntervalSeconds" in scheduler_settings:
-            worker_state["poll_interval"] = max(
-                5, int(scheduler_settings.get("pollIntervalSeconds", 60))
-            )
-    except Exception as exc:  # pragma: no cover - defensive
-        slogger.worker_status("scheduler_settings_load_failed", {"error": str(exc)})
+    """Lookup processing timeout (fail loud on missing config)."""
+    queue_settings = config_loader.get_queue_settings()
+    return max(5, int(queue_settings.get("processingTimeoutSeconds", 1800)))
 
 
 def initialize_components(config: Dict[str, Any]) -> tuple:
@@ -353,6 +339,12 @@ def worker_loop():
 
                 # Refresh timeout from DB each loop (allows runtime changes)
                 processing_timeout = get_processing_timeout(config_loader)
+                # Apply task-level delay between items if configured
+                try:
+                    queue_settings = config_loader.get_queue_settings()
+                    task_delay = max(0, int(queue_settings.get("taskDelaySeconds", 0)))
+                except Exception:
+                    task_delay = 0
 
                 # Check if processing is enabled (allows pausing via config)
                 if not config_loader.is_processing_enabled():
@@ -429,6 +421,9 @@ def worker_loop():
                             worker_state["last_error"] = str(e)
                         finally:
                             worker_state["current_item_id"] = None
+
+                        if task_delay:
+                            time.sleep(task_delay)
 
                     if pause_requested:
                         batch_paused = True

@@ -131,6 +131,7 @@ class AIJobMatcher:
             "locationPenaltyPoints": 60,
             "relocationPenaltyPoints": 80,
             "ambiguousLocationPenaltyPoints": 40,
+            "relocationAllowed": False,
         }
         self.prompts = JobMatchPrompts()
 
