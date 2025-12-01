@@ -52,7 +52,6 @@ export type QueueItemType =
   | "scrape"
   | "source_discovery"
   | "scrape_source"
-  | "agent_review"
 
 /**
  * Source of queue submission
@@ -266,7 +265,7 @@ export function isQueueStatus(status: string): status is QueueStatus {
 }
 
 export function isQueueItemType(type: string): type is QueueItemType {
-  return ["job", "company", "scrape", "source_discovery", "scrape_source", "agent_review"].includes(type)
+  return ["job", "company", "scrape", "source_discovery", "scrape_source"].includes(type)
 }
 
 export function isSourceTypeHint(hint: string): hint is SourceTypeHint {

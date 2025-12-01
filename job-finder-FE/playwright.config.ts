@@ -31,8 +31,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
 
   /* Use single worker to avoid session conflicts with SQLite backend.
-   * The backend stores one session per user - parallel logins invalidate each other.
-   * TODO: Fix backend to support multiple concurrent sessions per user. */
+   * The backend stores one session per user - parallel logins invalidate each other. */
   workers: 1,
 
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */

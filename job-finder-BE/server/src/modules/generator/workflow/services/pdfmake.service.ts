@@ -141,7 +141,6 @@ async function fetchImageAsBase64(
 export class PdfMakeService {
   constructor(private readonly log: Logger = rootLogger) {}
 
-  // TODO: Implement style variants (modern, traditional, technical, executive)
   async generateResumePDF(
     content: ResumeContent,
     _style = 'modern',

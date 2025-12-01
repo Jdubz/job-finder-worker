@@ -18,7 +18,7 @@ class QueueItemType(str, Enum):
     Type of queue item.
 
     TypeScript equivalent: QueueItemType in queue.types.ts
-    Values must match exactly: "job" | "company" | "scrape" | "source_discovery" | "scrape_source" | "agent_review"
+    Values must match exactly: "job" | "company" | "scrape" | "source_discovery" | "scrape_source"
     """
 
     JOB = "job"
@@ -26,7 +26,6 @@ class QueueItemType(str, Enum):
     SCRAPE = "scrape"
     SOURCE_DISCOVERY = "source_discovery"
     SCRAPE_SOURCE = "scrape_source"  # For automated source scraping
-    AGENT_REVIEW = "agent_review"  # Agent-only review/recovery task
 
 
 class SourceStatus(str, Enum):
