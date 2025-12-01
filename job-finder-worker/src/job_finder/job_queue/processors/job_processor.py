@@ -1064,9 +1064,7 @@ class JobProcessor(BaseProcessor):
 
             # Extract company from URL (boards.greenhouse.io/{company}/jobs/...)
             company_match = re.search(r"boards\.greenhouse\.io/([^/]+)", url)
-            company_name = (
-                company_match.group(1).replace("-", " ").title() if company_match else ""
-            )
+            company_name = company_match.group(1).replace("-", " ").title() if company_match else ""
 
             # Extract job details using updated selectors (Greenhouse HTML structure changed)
             title_elem = soup.find("h1", class_="section-header")
@@ -1180,12 +1178,16 @@ class JobProcessor(BaseProcessor):
                     try:
                         import json
 
-                        data = json.loads(schema.string)
-                        if isinstance(data, dict):
-                            company_name = data.get("hiringOrganization", {}).get("name", "")
-                            if not company_name:
-                                company_name = data.get("name", "")
-                    except (json.JSONDecodeError, AttributeError):
+                        # Use get_text() instead of .string to handle elements with
+                        # multiple children or None values safely
+                        schema_text = schema.get_text()
+                        if schema_text:
+                            data = json.loads(schema_text)
+                            if isinstance(data, dict):
+                                company_name = data.get("hiringOrganization", {}).get("name", "")
+                                if not company_name:
+                                    company_name = data.get("name", "")
+                    except (json.JSONDecodeError, AttributeError, TypeError):
                         pass
 
             # 3. Try to extract from domain name (last resort)
@@ -1194,18 +1196,22 @@ class JobProcessor(BaseProcessor):
 
                 parsed = urlparse(url)
                 domain = parsed.netloc.replace("www.", "")
-                # Remove common job board domains from consideration
-                if not any(
-                    jb in domain
-                    for jb in [
-                        "greenhouse",
-                        "lever",
-                        "workday",
-                        "careers",
-                        "jobs",
-                        "ashby",
-                    ]
-                ):
+                # Check against known job board base domains (exact match on suffix)
+                # This avoids false positives like "greenhouse-tech.com" being excluded
+                job_board_domains = [
+                    "greenhouse.io",
+                    "lever.co",
+                    "myworkdayjobs.com",
+                    "workday.com",
+                    "ashbyhq.com",
+                    "smartrecruiters.com",
+                    "jobvite.com",
+                ]
+                domain_parts = domain.split(".")
+                base_domain = ".".join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain
+                is_job_board = base_domain in job_board_domains
+
+                if not is_job_board:
                     # Extract company name from subdomain or domain
                     parts = domain.split(".")
                     if len(parts) >= 2:

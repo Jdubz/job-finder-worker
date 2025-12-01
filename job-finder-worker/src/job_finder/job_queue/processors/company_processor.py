@@ -176,11 +176,8 @@ class CompanyProcessor(BaseProcessor):
             # Only search if company doesn't already have a linked source
             search_discovered = False
             if not job_board_url and company_id:
-                # Check if company already has any sources
-                existing_sources = self.sources_manager.get_active_sources()
-                has_existing_source = any(
-                    s.get("companyId") == company_id for s in existing_sources
-                )
+                # Check if company already has any sources (optimized query)
+                has_existing_source = self.sources_manager.has_source_for_company(company_id)
 
                 if not has_existing_source:
                     # Search for career page via web search
