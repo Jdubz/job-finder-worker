@@ -8,14 +8,7 @@ echo "========================================"
 echo "Started at: $(date)"
 echo ""
 
-# Source environment variables (needed when run from cron or minimal shell)
-if [ -f /etc/environment ]; then
-    set -a
-    . /etc/environment
-    set +a
-fi
-
-# Run the scheduler (same entrypoint cron uses)
+# Run the scheduler - cron-submit-scrape.sh handles environment loading internally
 cd /app
 /usr/sbin/gosu node /app/docker/cron-submit-scrape.sh
 
