@@ -1,0 +1,15 @@
+{
+  "cookies": [
+    {
+      "name": "jf_session",
+      "value": "c6f62796-0076-4a57-9787-a94c2213ec2b",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1767139129,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}
