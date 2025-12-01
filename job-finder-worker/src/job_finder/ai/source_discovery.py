@@ -518,6 +518,23 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
                 meta["error"] = "auth_required"
                 return meta
 
+            # Bot protection check for RSS feeds (e.g., Cloudflare HTML instead of XML)
+            if config.get("type") == "rss":
+                try:
+                    headers = {
+                        "User-Agent": "Mozilla/5.0",
+                        "Accept": "application/rss+xml, application/xml",
+                    }
+                    resp = requests.get(config.get("url", ""), headers=headers, timeout=15)
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    if "html" in content_type or "cloudflare" in resp.text.lower():
+                        meta["error"] = "bot_protection"
+                        meta["needs_api_key"] = True
+                        return meta
+                except requests.RequestException:
+                    # fall through to existing validation
+                    pass
+
             # Create SourceConfig and validate schema
             source_config = SourceConfig.from_dict(config)
             source_config.validate()
