@@ -1,5 +1,4 @@
-import { useMemo } from "react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -58,11 +57,19 @@ function normalizeAnalysis(analysis?: JobAnalysisResult | Record<string, unknown
   const baseScore = breakdown?.baseScore ?? pick<number>(data, ["match_score", "matchScore"], 0)
   const finalScore = breakdown?.finalScore ?? baseScore
   const adjustments = breakdown?.adjustments ?? []
-  const potentialConcerns = pick<string[]>(data, ["potential_concerns", "potentialConcerns"], []) || []
-  const matchReasons = pick<string[]>(data, ["match_reasons", "matchReasons"], []) || []
-  const keyStrengths = pick<string[]>(data, ["key_strengths", "keyStrengths"], []) || []
-  const matchedSkills = pick<string[]>(data, ["matched_skills", "matchedSkills"], []) || []
-  const missingSkills = pick<string[]>(data, ["missing_skills", "missingSkills"], []) || []
+  const potentialConcernsRaw = pick<unknown>(data, ["potential_concerns", "potentialConcerns"], [])
+  const matchReasonsRaw = pick<unknown>(data, ["match_reasons", "matchReasons"], [])
+  const keyStrengthsRaw = pick<unknown>(data, ["key_strengths", "keyStrengths"], [])
+  const matchedSkillsRaw = pick<unknown>(data, ["matched_skills", "matchedSkills"], [])
+  const missingSkillsRaw = pick<unknown>(data, ["missing_skills", "missingSkills"], [])
+
+  const potentialConcerns = Array.isArray(potentialConcernsRaw)
+    ? (potentialConcernsRaw as string[])
+    : []
+  const matchReasons = Array.isArray(matchReasonsRaw) ? (matchReasonsRaw as string[]) : []
+  const keyStrengths = Array.isArray(keyStrengthsRaw) ? (keyStrengthsRaw as string[]) : []
+  const matchedSkills = Array.isArray(matchedSkillsRaw) ? (matchedSkillsRaw as string[]) : []
+  const missingSkills = Array.isArray(missingSkillsRaw) ? (missingSkillsRaw as string[]) : []
 
   const priority = pick<string>(data, ["application_priority", "applicationPriority"], undefined)
 
@@ -186,6 +193,7 @@ export function MatchBreakdown({ analysis }: { analysis?: JobAnalysisResult | Re
             className="mt-1"
             onClick={() => setShowRaw((v) => !v)}
             aria-expanded={showRaw}
+            aria-controls="raw-json-content"
           >
             {showRaw ? (
               <>
@@ -198,7 +206,10 @@ export function MatchBreakdown({ analysis }: { analysis?: JobAnalysisResult | Re
             )}
           </Button>
           {showRaw && (
-            <pre className="mt-2 text-xs bg-background border rounded p-2 overflow-auto max-h-72 whitespace-pre-wrap break-all">
+            <pre
+              id="raw-json-content"
+              className="mt-2 text-xs bg-background border rounded p-2 overflow-auto max-h-72 whitespace-pre-wrap break-all"
+            >
               {JSON.stringify(normalized.raw, null, 2)}
             </pre>
           )}

@@ -126,7 +126,6 @@ class AIJobMatcher:
             "maxTimezoneDiffHours": 8,
             "perHourTimezonePenalty": 5,
             "hardTimezonePenalty": 60,
-            "baseTimezoneOffset": -8,
             "requireRemote": False,
             "allowHybridInTimezone": True,
             "allowedOnsiteLocations": [],
@@ -406,19 +405,20 @@ class AIJobMatcher:
                 tz_adj = tz_weights.get("diff9plusHr", 0)
                 desc = f"{hour_diff}h timezone difference"
 
-            if tz_adj != 0:
+            # Avoid double-penalizing: if per-hour penalty is configured, skip weight-based tz adj
+            db = self.dealbreakers or {}
+            per_hour_penalty = -abs(db.get("perHourTimezonePenalty", 5))
+            if per_hour_penalty == 0 and tz_adj != 0:
                 match_score += tz_adj
                 adjustments.append(f"⏰ {desc} {tz_adj:+}")
 
             # Config-driven dealbreakers
-            db = self.dealbreakers or {}
             max_diff = db.get("maxTimezoneDiffHours", 8)
             tz_hard_penalty = -abs(
                 db.get("hardTimezonePenalty", db.get("timezoneHardPenaltyPoints", 60))
             )
             require_remote = bool(db.get("requireRemote", False))
             allow_hybrid = bool(db.get("allowHybridInTimezone", True))
-            per_hour_penalty = -abs(db.get("perHourTimezonePenalty", 5))
 
             applied_tz_penalty = False
 
@@ -432,15 +432,15 @@ class AIJobMatcher:
                     concerns.append("Role requires onsite/hybrid but policy requires remote-only.")
                     match_analysis["application_priority"] = "Low"
 
-            # Apply configurable Pacific-based penalty per hour difference
-            pacific_diff = abs((job_timezone or 0) - self.user_timezone)
-            if pacific_diff > 0:
-                penalty = int(round(per_hour_penalty * pacific_diff))
+            # Apply configurable per-hour timezone penalty from user's timezone
+            tz_diff = abs((job_timezone or 0) - self.user_timezone)
+            if tz_diff > 0 and per_hour_penalty != 0:
+                penalty = int(round(per_hour_penalty * tz_diff))
                 if penalty != 0:
                     match_score += penalty
-                    adjustments.append(f"⏰ User TZ offset {pacific_diff}h: {penalty}")
+                    adjustments.append(f"⏰ User TZ offset {tz_diff}h: {penalty}")
 
-            if pacific_diff > max_diff and not applied_tz_penalty:
+            if tz_diff > max_diff and not applied_tz_penalty:
                 mismatch_penalty = tz_hard_penalty
                 match_score += mismatch_penalty
                 adjustments.append(
@@ -448,7 +448,7 @@ class AIJobMatcher:
                 )
                 concerns = match_analysis.setdefault("potential_concerns", [])
                 concerns.append(
-                    "Timezone mismatch: role appears far outside Pacific working window and candidate will not relocate."
+                    "Timezone mismatch: role appears far outside the user's working timezone window and candidate will not relocate."
                 )
                 match_analysis["application_priority"] = "Low"
 
