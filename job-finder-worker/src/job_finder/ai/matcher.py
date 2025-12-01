@@ -124,7 +124,9 @@ class AIJobMatcher:
         self.company_weights = company_weights or self.DEFAULT_COMPANY_WEIGHTS
         self.dealbreakers = dealbreakers or {
             "maxTimezoneDiffHours": 8,
-            "blockedLocations": [],
+            "perHourTimezonePenalty": 5,
+            "hardTimezonePenalty": 60,
+            "baseTimezoneOffset": -8,
             "requireRemote": False,
             "allowHybridInTimezone": True,
             "allowedOnsiteLocations": [],
@@ -411,30 +413,13 @@ class AIJobMatcher:
             # Config-driven dealbreakers
             db = self.dealbreakers or {}
             max_diff = db.get("maxTimezoneDiffHours", 8)
-            tz_penalty = -abs(db.get("timezonePenaltyPoints", 40))
-            tz_hard_penalty = -abs(db.get("timezoneHardPenaltyPoints", 60))
+            tz_hard_penalty = -abs(db.get("hardTimezonePenalty", db.get("timezoneHardPenaltyPoints", 60)))
             require_remote = bool(db.get("requireRemote", False))
             allow_hybrid = bool(db.get("allowHybridInTimezone", True))
-
-            tz_beyond = hour_diff > max_diff if max_diff is not None else False
+            base_tz = db.get("baseTimezoneOffset", -8)
+            per_hour_penalty = -abs(db.get("perHourTimezonePenalty", 5))
 
             applied_tz_penalty = False
-            if tz_beyond:
-                overshoot = hour_diff - max_diff if max_diff else 0
-                scale_denominator = max(1, (max_diff or 1) / 2)
-                scale = min(1.0, overshoot / scale_denominator)
-                target_penalty = int(
-                    abs(tz_penalty) + scale * (abs(tz_hard_penalty) - abs(tz_penalty))
-                )
-                mismatch_penalty = -target_penalty
-                match_score += mismatch_penalty
-                adjustments.append(f"🚫 Dealbreaker: timezone/location ({desc}) {mismatch_penalty}")
-                concerns = match_analysis.setdefault("potential_concerns", [])
-                concerns.append(
-                    "Timezone/location mismatch: outside preferred window; candidate will not relocate or work incompatible hours."
-                )
-                match_analysis["application_priority"] = "Low"
-                applied_tz_penalty = True
 
             if require_remote:
                 location_lower = (job_location or "").lower()
@@ -446,12 +431,15 @@ class AIJobMatcher:
                     concerns.append("Role requires onsite/hybrid but policy requires remote-only.")
                     match_analysis["application_priority"] = "Low"
 
-            # Hard-stop mismatch: user only works 8a-8p PT and will not relocate.
-            location_text = job_location or headquarters_location or company_name or ""
-            india_like = any(
-                k in location_text.lower() for k in ["india", "bangalore", "bengaluru", "ist"]
-            )
-            if (hour_diff > 8 or india_like) and not applied_tz_penalty:
+            # Apply configurable Pacific-based penalty per hour difference
+            pacific_diff = abs((job_timezone or 0) - base_tz)
+            if pacific_diff > 0:
+                penalty = int(round(per_hour_penalty * pacific_diff))
+                if penalty != 0:
+                    match_score += penalty
+                    adjustments.append(f"⏰ Pacific offset {pacific_diff}h: {penalty}")
+
+            if pacific_diff > max_diff and not applied_tz_penalty:
                 mismatch_penalty = tz_hard_penalty
                 match_score += mismatch_penalty
                 adjustments.append(
@@ -459,9 +447,8 @@ class AIJobMatcher:
                 )
                 concerns = match_analysis.setdefault("potential_concerns", [])
                 concerns.append(
-                    "Timezone mismatch: role appears far outside 8a–8p PT and candidate will not relocate or work IST hours."
+                    "Timezone mismatch: role appears far outside Pacific working window and candidate will not relocate."
                 )
-                # Push priority down so UI flags it as low-fit even if base score was high
                 match_analysis["application_priority"] = "Low"
 
         # Apply company size adjustment using weights
@@ -543,14 +530,6 @@ class AIJobMatcher:
         location_raw = job.get("location") or ""
         location = location_raw.lower()
         arrangement = self._detect_work_arrangement(description, location)
-
-        blocked_locations = [loc.lower() for loc in self.dealbreakers.get("blockedLocations", [])]
-        if blocked_locations and any(
-            re.search(rf"\b{re.escape(loc)}\b", f"{description} {location}")
-            for loc in blocked_locations
-        ):
-            penalty = -abs(self.dealbreakers.get("locationPenaltyPoints", 60))
-            return penalty, f"🚫 Blocked location ({location_raw or 'unspecified'}): {penalty}"
 
         # Allowed local options for onsite/hybrid work
         allowed_onsite = [

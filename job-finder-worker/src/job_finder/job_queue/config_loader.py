@@ -254,7 +254,9 @@ class ConfigLoader:
             },
             "dealbreakers": {
                 "maxTimezoneDiffHours": 8,
-                "blockedLocations": ["india", "bangalore", "bengaluru", "ist"],
+                "perHourTimezonePenalty": 5,
+                "hardTimezonePenalty": 60,
+                "baseTimezoneOffset": -8,
                 "requireRemote": False,
                 "allowHybridInTimezone": True,
                 "allowedOnsiteLocations": [

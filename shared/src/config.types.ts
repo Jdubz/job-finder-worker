@@ -196,7 +196,12 @@ export interface PrefilterPolicy {
 
 export interface MatchDealbreakers {
   maxTimezoneDiffHours: number
-  blockedLocations: string[]
+  /** Points subtracted per hour of difference from Pacific (UTC-8). */
+  perHourTimezonePenalty: number
+  /** Hard penalty applied when hour difference exceeds maxTimezoneDiffHours. */
+  hardTimezonePenalty: number
+  /** Base timezone offset to compare against (defaults to Pacific / -8). */
+  baseTimezoneOffset?: number
   requireRemote: boolean
   allowHybridInTimezone: boolean
 }
@@ -426,7 +431,9 @@ export const DEFAULT_MATCH_POLICY: MatchPolicy = {
   companyWeights: DEFAULT_COMPANY_WEIGHTS!,
   dealbreakers: {
     maxTimezoneDiffHours: 8,
-    blockedLocations: ["india", "bangalore", "bengaluru", "ist"],
+    perHourTimezonePenalty: 5,
+    hardTimezonePenalty: 60,
+    baseTimezoneOffset: -8,
     requireRemote: false,
     allowHybridInTimezone: true,
   },

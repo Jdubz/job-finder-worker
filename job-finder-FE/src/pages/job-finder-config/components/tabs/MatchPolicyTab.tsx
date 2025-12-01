@@ -12,7 +12,6 @@ import { TabCard } from "../shared"
 import {
   CheckboxRow,
   NumericField,
-  StringListField,
   TextInputField,
 } from "../shared/form-fields"
 import type { MatchPolicy, CompanyMatchWeights, MatchDealbreakers } from "@shared/types"
@@ -55,8 +54,6 @@ const ImpactBadge = ({ label, tone = "neutral" }: { label: string; tone?: "posit
 const numberOrUndefined = (value?: number | null) =>
   value === null || value === undefined || Number.isNaN(value) ? undefined : Number(value)
 
-const cleanList = (items: string[]) => items.map((item) => item.trim()).filter(Boolean)
-
 const mapPolicyToForm = (policy: MatchPolicy): MatchFormValues => {
   const merged: MatchPolicy = {
     ...DEFAULT_MATCH_POLICY,
@@ -98,7 +95,6 @@ const mapPolicyToForm = (policy: MatchPolicy): MatchFormValues => {
     companyWeights: merged.companyWeights,
     dealbreakers: {
       ...merged.dealbreakers,
-      blockedLocations: merged.dealbreakers.blockedLocations ?? [],
     },
     techPreferences: Object.entries(merged.techPreferences ?? {}).map(([name, weight]) => ({
       name,
@@ -124,7 +120,6 @@ const mapFormToPolicy = (values: MatchFormValues): MatchPolicy => {
     },
     dealbreakers: {
       ...values.dealbreakers,
-      blockedLocations: cleanList(values.dealbreakers.blockedLocations ?? []),
     },
     techPreferences: Object.keys(techPreferences).length ? techPreferences : undefined,
     version: values.version?.trim() || undefined,
@@ -182,6 +177,22 @@ export function MatchPolicyTab({ isSaving, policy, onSave, onReset }: MatchPolic
                   info="Hard reject if absolute difference between user timezone and job timezone is greater than this number of hours."
                   inputClassName="max-w-[8rem]"
                 />
+                <NumericField
+                  control={form.control}
+                  name="dealbreakers.perHourTimezonePenalty"
+                  label="Per-Hour TZ Penalty"
+                  description="Points removed per hour from Pacific."
+                  info="Subtract this many points for each hour the job timezone differs from Pacific (UTC-8)."
+                  inputClassName="max-w-[8rem]"
+                />
+                <NumericField
+                  control={form.control}
+                  name="dealbreakers.hardTimezonePenalty"
+                  label="Hard TZ Penalty"
+                  description="Applied when beyond max difference."
+                  info="If the job exceeds the max timezone difference, subtract this hard penalty."
+                  inputClassName="max-w-[8rem]"
+                />
                 <Controller
                   control={form.control}
                   name="dealbreakers.requireRemote"
@@ -207,13 +218,6 @@ export function MatchPolicyTab({ isSaving, policy, onSave, onReset }: MatchPolic
                   )}
                 />
               </div>
-              <StringListField
-                control={form.control}
-                name="dealbreakers.blockedLocations"
-                label="Blocked Locations"
-                placeholder="Location keyword"
-                description="Locations that should always be rejected."
-              />
             </section>
 
             <section className="space-y-3">

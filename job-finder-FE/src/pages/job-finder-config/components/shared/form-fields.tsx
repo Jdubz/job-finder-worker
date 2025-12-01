@@ -59,10 +59,10 @@ export function CheckboxRow({ label, description, info, field }: CheckboxRowProp
     <div className="flex items-center space-x-3">
       <Checkbox checked={Boolean(field.value)} onCheckedChange={(val) => field.onChange(Boolean(val))} />
       <div>
-        <Label className="flex items-center gap-1">
-          {label}
+        <div className="flex items-center gap-1">
+          <Label>{label}</Label>
           <InfoTooltip content={info} />
-        </Label>
+        </div>
         {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </div>
     </div>
@@ -95,10 +95,10 @@ export function NumericField<T extends FieldValues>({
       name={name}
       render={({ field }) => (
         <FormItem>
-          <FormLabel className="flex items-center gap-1">
-            {label}
+          <div className="flex items-center gap-1">
+            <FormLabel>{label}</FormLabel>
             <InfoTooltip content={info} />
-          </FormLabel>
+          </div>
           <FormControl>
             <Input
               type="number"
@@ -133,10 +133,10 @@ export function TextInputField<T extends FieldValues>({ control, name, label, de
       name={name}
       render={({ field }) => (
         <FormItem>
-          <FormLabel className="flex items-center gap-1">
-            {label}
+          <div className="flex items-center gap-1">
+            <FormLabel>{label}</FormLabel>
             <InfoTooltip content={info} />
-          </FormLabel>
+          </div>
           <FormControl>
             <Input {...field} value={(field.value as string | undefined) ?? ""} disabled={disabled} />
           </FormControl>
@@ -175,10 +175,10 @@ export function StringListField<TFieldValues extends FieldValues>({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label className="flex items-center gap-1">
-          {label}
+        <div className="flex items-center gap-1">
+          <Label>{label}</Label>
           <InfoTooltip content={info} />
-        </Label>
+        </div>
         <Button type="button" variant="outline" size="sm" onClick={() => append(emptyValue)}>
           <Plus className="h-4 w-4 mr-1" /> Add
         </Button>
