@@ -87,4 +87,3 @@ class BaseProcessor:
             Pipeline state dictionary (empty dict if not present)
         """
         return item.pipeline_state or {}
-
