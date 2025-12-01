@@ -23,12 +23,11 @@ import {
 } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Loader2, Search, Briefcase } from "lucide-react"
-import { JobDetailsDialog } from "./components/JobDetailsDialog"
-import { CompanyDetailsModal } from "@/components/company"
 import { ROUTES } from "@/types/routes"
 import type { JobMatchWithListing } from "@shared/types"
 import { logger } from "@/services/logging"
 import { toDate } from "@/utils/dateFormat"
+import { useEntityModal } from "@/contexts/EntityModalContext"
 
 function getPriorityBadge(priority: string) {
   switch (priority) {
@@ -52,20 +51,16 @@ function getScoreColor(score: number) {
 export function JobApplicationsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { openModal } = useEntityModal()
   const [matches, setMatches] = useState<JobMatchWithListing[]>([])
   const [filteredMatches, setFilteredMatches] = useState<JobMatchWithListing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedMatch, setSelectedMatch] = useState<JobMatchWithListing | null>(null)
-  const [dialogOpen, setDialogOpen] = useState(false)
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("")
   const [priorityFilter, setPriorityFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState<string>("score")
-
-  // Company details modal state
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
 
   // Subscribe to real-time job matches
   useEffect(() => {
@@ -166,8 +161,11 @@ export function JobApplicationsPage() {
   }, [matches, searchQuery, priorityFilter, sortBy])
 
   const handleRowClick = (match: JobMatchWithListing) => {
-    setSelectedMatch(match)
-    setDialogOpen(true)
+    openModal({
+      type: "jobMatch",
+      match,
+      onGenerateResume: handleGenerateResume,
+    })
   }
 
   const handleGenerateResume = (match: JobMatchWithListing) => {
@@ -319,20 +317,19 @@ export function JobApplicationsPage() {
                       <div className="font-medium truncate">{match.listing.title}</div>
                     </TableCell>
                     <TableCell>
-                      {match.listing.companyId ? (
-                        <button
-                          type="button"
-                          className="text-blue-600 hover:underline text-left"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setSelectedCompanyId(match.listing.companyId!)
-                          }}
-                        >
-                          {match.listing.companyName}
-                        </button>
-                      ) : (
-                        <div className="text-muted-foreground">{match.listing.companyName}</div>
-                      )}
+                      <button
+                        type="button"
+                        className="text-blue-600 hover:underline text-left"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openModal({
+                            type: "company",
+                            companyId: match.listing.companyId || undefined,
+                          })
+                        }}
+                      >
+                        {match.listing.companyName}
+                      </button>
                       {/* Show location on mobile as secondary text */}
                       <div className="md:hidden text-xs text-muted-foreground mt-0.5">
                         {match.listing.location || ""}
@@ -353,20 +350,6 @@ export function JobApplicationsPage() {
         </CardContent>
       </Card>
 
-      {/* Job Details Dialog */}
-      <JobDetailsDialog
-        match={selectedMatch}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onGenerateResume={handleGenerateResume}
-      />
-
-      {/* Company Details Modal */}
-      <CompanyDetailsModal
-        companyId={selectedCompanyId}
-        open={!!selectedCompanyId}
-        onOpenChange={(open) => !open && setSelectedCompanyId(null)}
-      />
     </div>
   )
 }

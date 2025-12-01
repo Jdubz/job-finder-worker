@@ -154,8 +154,14 @@ export interface PrefilterPolicy {
     }
     remotePolicy: {
       allowRemote?: boolean
-      allowHybridPortland?: boolean
+      allowHybridInTimezone?: boolean
       allowOnsite?: boolean
+      /** Absolute hour difference allowed for onsite/hybrid vs user timezone. */
+      maxTimezoneDiffHours?: number
+      /** Strike points (prefilter) per hour of timezone gap when onsite/hybrid. */
+      perHourTimezonePenalty?: number
+      /** Strike points when timezone gap exceeds maxTimezoneDiffHours. */
+      hardTimezonePenalty?: number
     }
     salaryStrike: {
       enabled?: boolean
@@ -196,7 +202,10 @@ export interface PrefilterPolicy {
 
 export interface MatchDealbreakers {
   maxTimezoneDiffHours: number
-  blockedLocations: string[]
+  /** Points subtracted per hour of difference from the configured user timezone. */
+  perHourTimezonePenalty: number
+  /** Hard penalty applied when hour difference exceeds maxTimezoneDiffHours. */
+  hardTimezonePenalty: number
   requireRemote: boolean
   allowHybridInTimezone: boolean
 }
@@ -381,8 +390,11 @@ export const DEFAULT_PREFILTER_POLICY: PrefilterPolicy = {
     },
     remotePolicy: {
       allowRemote: true,
-      allowHybridPortland: true,
+      allowHybridInTimezone: true,
       allowOnsite: false,
+      maxTimezoneDiffHours: 8,
+      perHourTimezonePenalty: 1,
+      hardTimezonePenalty: 3,
     },
     salaryStrike: {
       enabled: true,
@@ -426,7 +438,8 @@ export const DEFAULT_MATCH_POLICY: MatchPolicy = {
   companyWeights: DEFAULT_COMPANY_WEIGHTS!,
   dealbreakers: {
     maxTimezoneDiffHours: 8,
-    blockedLocations: ["india", "bangalore", "bengaluru", "ist"],
+    perHourTimezonePenalty: 5,
+    hardTimezonePenalty: 60,
     requireRemote: false,
     allowHybridInTimezone: true,
   },

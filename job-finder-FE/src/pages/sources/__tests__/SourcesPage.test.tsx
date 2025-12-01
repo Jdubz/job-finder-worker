@@ -17,6 +17,7 @@ import { SourcesPage } from "../SourcesPage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobSources } from "@/hooks/useJobSources"
 import { useQueueItems } from "@/hooks/useQueueItems"
+import { EntityModalProvider } from "@/contexts/EntityModalContext"
 
 vi.mock("@/contexts/AuthContext")
 vi.mock("@/hooks/useJobSources")
@@ -73,6 +74,12 @@ describe("SourcesPage", () => {
   const mockUpdateSource = vi.fn()
   const mockRefetch = vi.fn()
   const mockSetFilters = vi.fn()
+  const renderWithProvider = () =>
+    render(
+      <EntityModalProvider>
+        <SourcesPage />
+      </EntityModalProvider>
+    )
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -113,7 +120,7 @@ describe("SourcesPage", () => {
 
   describe("Initial Rendering", () => {
     it("should render the sources page with title", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("heading", { name: /sources/i })).toBeInTheDocument()
@@ -124,7 +131,7 @@ describe("SourcesPage", () => {
     })
 
     it("should display source names in simplified list", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Greenhouse")).toBeInTheDocument()
@@ -134,7 +141,7 @@ describe("SourcesPage", () => {
     })
 
     it("should display essential columns: Name, Type, Status", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         // Check table headers
@@ -145,7 +152,7 @@ describe("SourcesPage", () => {
     })
 
     it("should display status badges for each source", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         const activeBadges = screen.getAllByText("active")
@@ -155,7 +162,7 @@ describe("SourcesPage", () => {
     })
 
     it("should display source type badges", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText("Greenhouse")).toBeInTheDocument()
@@ -165,7 +172,7 @@ describe("SourcesPage", () => {
     })
 
     it("should render Add Source button", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /add source/i })).toBeInTheDocument()
@@ -173,7 +180,7 @@ describe("SourcesPage", () => {
     })
 
     it("should show clickable rows instruction", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText(/click on a source to view details/i)).toBeInTheDocument()
@@ -183,7 +190,7 @@ describe("SourcesPage", () => {
 
   describe("Table Rows", () => {
     it("should have clickable rows", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Greenhouse")).toBeInTheDocument()
@@ -210,7 +217,7 @@ describe("SourcesPage", () => {
         setFilters: mockSetFilters,
       } as any)
 
-      render(<SourcesPage />)
+      renderWithProvider()
 
       expect(screen.getByRole("heading", { name: /sources/i })).toBeInTheDocument()
     })
@@ -231,7 +238,7 @@ describe("SourcesPage", () => {
         setFilters: mockSetFilters,
       } as any)
 
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText(/no sources found/i)).toBeInTheDocument()
@@ -249,7 +256,7 @@ describe("SourcesPage", () => {
         signInWithGoogle: vi.fn(),
       } as any)
 
-      render(<SourcesPage />)
+      renderWithProvider()
 
       expect(screen.getByText(/sign in to view sources/i)).toBeInTheDocument()
       expect(screen.queryByRole("button", { name: /add source/i })).not.toBeInTheDocument()
@@ -258,7 +265,7 @@ describe("SourcesPage", () => {
 
   describe("Add Source Button", () => {
     it("should render Add Source button", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /add source/i })).toBeInTheDocument()
@@ -268,7 +275,7 @@ describe("SourcesPage", () => {
 
   describe("Filtering", () => {
     it("should have status filter dropdown", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         const combobox = screen.getByRole("combobox")
@@ -277,7 +284,7 @@ describe("SourcesPage", () => {
     })
 
     it("should have search input", async () => {
-      render(<SourcesPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/search sources/i)).toBeInTheDocument()

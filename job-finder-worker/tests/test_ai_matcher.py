@@ -497,8 +497,8 @@ class TestAnalyzeJob:
         result = matcher.analyze_job(sample_job)
 
         assert result is not None
-        # Same-timezone bonus applies, raising base score to 90
-        assert result.match_score == 90
+        # Base 85, per-hour penalty configured so no extra tz weight applied
+        assert result.match_score == 85
         assert result.resume_intake_data is not None
 
     def test_analyze_job_below_threshold(self, mock_provider, mock_profile, sample_job):
@@ -671,8 +671,8 @@ class TestAnalyzeJob:
 
         result = matcher.analyze_job(sample_job, return_below_threshold=True)
 
-        # Base 90 with scaled penalty (-55) for 9h diff and hard cap 70
-        assert result.match_score == 35
+        # Base 90 minus hard timezone penalty 60 = 30
+        assert result.match_score == 30
         assert any("timezone" in adj.lower() for adj in result.score_breakdown.adjustments)
 
 

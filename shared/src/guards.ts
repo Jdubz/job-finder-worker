@@ -273,7 +273,8 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
   const dealbreakers = v.dealbreakers as any;
   if (
     typeof dealbreakers.maxTimezoneDiffHours !== 'number' ||
-    !isStringArray(dealbreakers.blockedLocations) ||
+    typeof dealbreakers.perHourTimezonePenalty !== 'number' ||
+    typeof dealbreakers.hardTimezonePenalty !== 'number' ||
     typeof dealbreakers.requireRemote !== 'boolean' ||
     typeof dealbreakers.allowHybridInTimezone !== 'boolean'
   ) {

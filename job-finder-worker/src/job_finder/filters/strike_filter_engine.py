@@ -56,18 +56,12 @@ class StrikeFilterEngine:
         # Remote Policy
         remote = config.get("remotePolicy", {})
         self.allow_remote = remote.get("allowRemote", True)
-        # Explicit allow for onsite/hybrid paired with location allowlists
-        self.allow_location_based_roles = remote.get("allowOnsite", True)
-        self.allow_hybrid = remote.get("allowHybridPortland", remote.get("allowHybrid", True))
-        self.allowed_onsite_locations = [
-            loc.lower() for loc in remote.get("allowedOnsiteLocations", [])
-        ]
-        allowed_hybrid_raw = remote.get("allowedHybridLocations")
-        if allowed_hybrid_raw is None:
-            allowed_hybrid_raw = remote.get("allowedOnsiteLocations", [])
-        self.allowed_hybrid_locations = [loc.lower() for loc in (allowed_hybrid_raw or [])]
-        if self.allow_hybrid and not self.allowed_hybrid_locations:
-            self.allowed_hybrid_locations = ["portland, or", "portland"]
+        self.allow_location_based_roles = remote.get("allowOnsite", False)
+        self.allow_hybrid = remote.get("allowHybridInTimezone", True)
+        self.max_timezone_diff_hours = remote.get("maxTimezoneDiffHours", 8)
+        self.per_hour_timezone_penalty = abs(remote.get("perHourTimezonePenalty", 1))
+        self.hard_timezone_penalty = abs(remote.get("hardTimezonePenalty", 3))
+        self.user_timezone: Optional[float] = policy.get("userTimezone")
 
         # Strike: Salary
         salary_strike = config.get("salaryStrike", {})
@@ -100,6 +94,10 @@ class StrikeFilterEngine:
 
         # Technology ranks - only penalize for undesired tech, not missing tech info
         self.technologies = self.tech_ranks.get("technologies", {})
+
+    def set_user_timezone(self, timezone_offset: Optional[float]) -> None:
+        """Propagate the user's timezone offset into the filter after construction."""
+        self.user_timezone = timezone_offset
 
     def empty_pass_result(self) -> FilterResult:
         """Return a pass result with zero strikes (used for bypass scenarios)."""
@@ -373,82 +371,110 @@ class StrikeFilterEngine:
     def _violates_remote_policy(
         self, description: str, location: str, result: FilterResult
     ) -> bool:
-        """Check if job violates remote/hybrid/onsite policy with location allowlists."""
+        """Check remote/hybrid/onsite policy using timezone distance instead of city allowlists."""
         description_lower = description.lower()
         location_lower = location.lower()
         combined = f"{description_lower} {location_lower}"
 
         # Detect work arrangement
-        # Check for strong remote indicators first
-        is_remote = any(
-            ind in combined
-            for ind in (
-                "fully remote",
-                "100% remote",
-                "remote position",
-                "remote role",
-                "remote job",
-                "remote opportunity",
-                "remote work",
-                "remote only",
-                "remote-only",
-                "work from home",
-                "work from anywhere",
-                "wfh",
-                "remote-first",
-                "remote friendly",
-                "remote-friendly",
-                "remotely",
-                "hiring remote",
+        is_remote = (
+            any(
+                ind in combined
+                for ind in (
+                    "fully remote",
+                    "100% remote",
+                    "remote position",
+                    "remote role",
+                    "remote job",
+                    "remote opportunity",
+                    "remote work",
+                    "remote only",
+                    "remote-only",
+                    "work from home",
+                    "work from anywhere",
+                    "wfh",
+                    "remote-first",
+                    "remote friendly",
+                    "remote-friendly",
+                    "remotely",
+                    "hiring remote",
+                )
             )
+            or "remote" in location_lower
         )
 
-        # Also check for "remote" in location field specifically (e.g., "Remote - US", "US, Remote")
-        if not is_remote and "remote" in location_lower:
-            # Avoid false positives like "remote access" in description
-            is_remote = True
-
         is_hybrid = any(ind in combined for ind in ["hybrid", "days in office", "days remote"])
-
         is_onsite = any(
             ind in combined for ind in ["on-site", "onsite", "in-office", "office-based"]
         )
 
-        # If a concrete location is provided but no remote/hybrid/onsite keywords were detected,
-        # treat it as onsite (e.g., "Berlin" or "Bangalore"), so the remote policy applies.
         if not is_remote and not is_hybrid and not is_onsite and location_lower.strip():
             is_onsite = True
 
-        # If we can't detect work arrangement, pass it through (don't reject on missing data)
         if not is_remote and not is_hybrid and not is_onsite:
             return False  # Unclear = allow (let AI analysis handle it)
 
-        # Apply policy to detected arrangements
-        def _matches_allowlist(location_val: str, allowlist: list[str]) -> bool:
-            loc = location_val.lower()
-            return bool(allowlist) and any(allowed in loc for allowed in allowlist)
+        # Timezone-aware penalty/blocks for onsite/hybrid
+        tz_diff = None
+        if self.user_timezone is not None:
+            from job_finder.utils.timezone_utils import detect_timezone_for_job
 
+            job_tz = detect_timezone_for_job(
+                job_location=location,
+                job_description=description,
+                company_size=None,
+                headquarters_location=None,
+                company_name=None,
+                company_info=None,
+            )
+            if job_tz is not None:
+                tz_diff = abs(job_tz - self.user_timezone)
+
+        # Remote allowed? short-circuit
         if is_remote and self.allow_remote:
-            return False  # Remote OK, no location requirement
+            return False
 
-        if is_hybrid:
-            if self.allow_hybrid and (
-                not self.allowed_hybrid_locations
-                or _matches_allowlist(location_lower, self.allowed_hybrid_locations)
-            ):
-                return False  # Hybrid allowed (either globally or within allowlist)
+        # Hybrid/onsite allowed when timezone gap is tolerable
+        if (is_hybrid and self.allow_hybrid) or (is_onsite and self.allow_location_based_roles):
+            if tz_diff is None:
+                # Can't compute gap; allow but warn via strike so downstream UI can surface it
+                result.add_strike(
+                    filter_category="location",
+                    filter_name="timezone_unknown",
+                    reason="Timezone not detected",
+                    detail="Unable to infer job timezone for onsite/hybrid role",
+                    points=1,
+                )
+                return False
 
-        if is_onsite and self.allow_location_based_roles:
-            if _matches_allowlist(location_lower, self.allowed_onsite_locations):
-                return False  # Onsite allowed only in configured locations
+            # Hard block if outside window
+            if tz_diff > self.max_timezone_diff_hours:
+                result.add_rejection(
+                    filter_category="hard_reject",
+                    filter_name="timezone_gap",
+                    reason="Timezone gap too large",
+                    detail=f"Gap {tz_diff}h exceeds {self.max_timezone_diff_hours}h window",
+                    severity="hard_reject",
+                    points=self.hard_timezone_penalty,
+                )
+                return True
 
-        # Only reject if we detected an arrangement that violates policy
-        if is_remote:
-            policy_reason = "Remote jobs not allowed"
-        elif is_hybrid:
-            policy_reason = "Hybrid location not allowed"
-        else:  # is_onsite
-            policy_reason = "On-site location not allowed"
+            if self.per_hour_timezone_penalty > 0 and tz_diff > 0:
+                result.add_strike(
+                    filter_category="location",
+                    filter_name="timezone_gap",
+                    reason="Timezone gap",
+                    detail=f"Gap {tz_diff}h from user timezone",
+                    points=int(round(self.per_hour_timezone_penalty * tz_diff)),
+                )
+            return False
+
+        # Only reject if arrangement violates allow flags
+        policy_reason = (
+            "Remote jobs not allowed"
+            if is_remote
+            else "Hybrid not allowed" if is_hybrid else "On-site not allowed"
+        )
 
         result.add_rejection(
             filter_category="hard_reject",

@@ -254,28 +254,13 @@ class ConfigLoader:
             },
             "dealbreakers": {
                 "maxTimezoneDiffHours": 8,
-                "blockedLocations": ["india", "bangalore", "bengaluru", "ist"],
+                "perHourTimezonePenalty": 5,
+                "hardTimezonePenalty": 60,
                 "requireRemote": False,
                 "allowHybridInTimezone": True,
-                "allowedOnsiteLocations": [
-                    "portland, or",
-                    "pdx",
-                    "beaverton",
-                    "hillsboro",
-                    "vancouver, wa",
-                ],
-                "allowedHybridLocations": [
-                    "portland, or",
-                    "pdx",
-                    "beaverton",
-                    "hillsboro",
-                    "vancouver, wa",
-                ],
                 "locationPenaltyPoints": 60,
                 "relocationPenaltyPoints": 80,
                 "ambiguousLocationPenaltyPoints": 40,
-                "timezonePenaltyPoints": 40,
-                "timezoneHardPenaltyPoints": 60,
             },
         }
         try:
@@ -333,9 +318,11 @@ class ConfigLoader:
                 },
                 "remotePolicy": {
                     "allowRemote": True,
-                    "allowOnsite": True,
-                    "allowedOnsiteLocations": ["portland, or"],
-                    "allowedHybridLocations": ["portland, or"],
+                    "allowHybridInTimezone": True,
+                    "allowOnsite": False,
+                    "maxTimezoneDiffHours": 8,
+                    "perHourTimezonePenalty": 1,
+                    "hardTimezonePenalty": 3,
                 },
                 "salaryStrike": {"enabled": True, "threshold": 150000, "points": 2},
                 # NOTE: experienceStrike REMOVED - seniority filtering handles this
