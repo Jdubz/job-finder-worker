@@ -409,7 +409,11 @@ class AIJobMatcher:
             per_hour_penalty = -abs(
                 db.get("perHourTimezonePenalty", db.get("timezonePenaltyPoints", 5))
             )
-            if tz_adj != 0 and "perHourTimezonePenalty" not in db and "timezonePenaltyPoints" not in db:
+            if (
+                tz_adj != 0
+                and "perHourTimezonePenalty" not in db
+                and "timezonePenaltyPoints" not in db
+            ):
                 match_score += tz_adj
                 adjustments.append(f"⏰ {desc} {tz_adj:+}")
 
@@ -539,7 +543,9 @@ class AIJobMatcher:
         relocation_penalty = -abs(self.dealbreakers.get("relocationPenaltyPoints", 80))
         ambiguous_penalty = -abs(self.dealbreakers.get("ambiguousLocationPenaltyPoints", 40))
         per_hour_penalty = -abs(
-            self.dealbreakers.get("perHourTimezonePenalty", self.dealbreakers.get("timezonePenaltyPoints", 5))
+            self.dealbreakers.get(
+                "perHourTimezonePenalty", self.dealbreakers.get("timezonePenaltyPoints", 5)
+            )
         )
         max_tz_diff = self.dealbreakers.get("maxTimezoneDiffHours", 8)
         hard_tz_penalty = -abs(self.dealbreakers.get("hardTimezonePenalty", 60))
