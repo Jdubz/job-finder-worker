@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { configClient } from "@/api/config-client"
 import { queueClient } from "@/api/queue-client"
+import { EntityModalProvider } from "@/contexts/EntityModalContext"
 
 vi.mock("@/contexts/AuthContext")
 vi.mock("@/hooks/useQueueItems")
@@ -84,6 +85,12 @@ describe("QueueManagementPage", () => {
   ]
 
   const mockUpdateQueueItem = vi.fn()
+  const renderWithProvider = () =>
+    render(
+      <EntityModalProvider>
+        <QueueManagementPage />
+      </EntityModalProvider>
+    )
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -127,7 +134,7 @@ describe("QueueManagementPage", () => {
 
   describe("Initial Rendering", () => {
     it("renders the queue management page", async () => {
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText(/queue management/i)).toBeInTheDocument()
@@ -135,7 +142,7 @@ describe("QueueManagementPage", () => {
     })
 
     it("displays pending queue items in the pending tab", async () => {
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         // Pending tab shows pending and processing items
@@ -158,7 +165,7 @@ describe("QueueManagementPage", () => {
         refetch: vi.fn(),
       } as any)
 
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       expect(screen.getByRole("heading", { name: /queue management/i })).toBeInTheDocument()
       expect(document.querySelector(".animate-spin")).toBeTruthy()
@@ -175,7 +182,7 @@ describe("QueueManagementPage", () => {
         refetch: vi.fn(),
       } as any)
 
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText(/failed to load/i)).toBeInTheDocument()
@@ -194,7 +201,7 @@ describe("QueueManagementPage", () => {
     })
 
     it("updates stats when API returns new counts", async () => {
-      const { rerender } = render(<QueueManagementPage />)
+      const { rerender } = renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText("4")).toBeInTheDocument()
@@ -234,7 +241,11 @@ describe("QueueManagementPage", () => {
         refetch: vi.fn(),
       } as any)
 
-      rerender(<QueueManagementPage />)
+      rerender(
+        <EntityModalProvider>
+          <QueueManagementPage />
+        </EntityModalProvider>
+      )
 
       await waitFor(() => {
         expect(screen.getByText("5")).toBeInTheDocument()
@@ -252,7 +263,7 @@ describe("QueueManagementPage", () => {
         signInWithGoogle: vi.fn(),
       } as any)
 
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       expect(screen.getByText(/sign in/i)).toBeInTheDocument()
     })
@@ -266,7 +277,7 @@ describe("QueueManagementPage", () => {
         signInWithGoogle: vi.fn(),
       } as any)
 
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       expect(screen.getByText(/editor permissions/i)).toBeInTheDocument()
     })
@@ -284,7 +295,7 @@ describe("QueueManagementPage", () => {
         refetch: vi.fn(),
       } as any)
 
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       // With tabs, empty pending tab shows "no pending tasks"
       expect(screen.getByText(/no pending tasks/i)).toBeInTheDocument()
@@ -308,7 +319,7 @@ describe("QueueManagementPage", () => {
         refetch: vi.fn(),
       } as any)
 
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
@@ -320,7 +331,7 @@ describe("QueueManagementPage", () => {
   describe("Details Modal", () => {
     it("opens when a row is clicked", async () => {
       const user = userEvent.setup()
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByTestId("queue-item-queue-1")).toBeInTheDocument()
@@ -336,7 +347,7 @@ describe("QueueManagementPage", () => {
 
   describe("Live Badge", () => {
     it("shows Live badge when processing is enabled", async () => {
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText("Live")).toBeInTheDocument()
@@ -349,7 +360,7 @@ describe("QueueManagementPage", () => {
         isProcessingEnabled: false,
       })
 
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText("Paused")).toBeInTheDocument()
@@ -359,7 +370,7 @@ describe("QueueManagementPage", () => {
 
   describe("Queue Processing Toggle", () => {
     it("shows Pause Queue button when processing is enabled", async () => {
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
@@ -372,7 +383,7 @@ describe("QueueManagementPage", () => {
         isProcessingEnabled: false,
       })
 
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /start queue/i })).toBeInTheDocument()
@@ -381,7 +392,7 @@ describe("QueueManagementPage", () => {
 
     it("opens confirmation modal when Pause Queue is clicked", async () => {
       const user = userEvent.setup()
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
@@ -402,7 +413,7 @@ describe("QueueManagementPage", () => {
       })
 
       const user = userEvent.setup()
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /start queue/i })).toBeInTheDocument()
@@ -418,7 +429,7 @@ describe("QueueManagementPage", () => {
 
     it("closes confirmation modal when Cancel is clicked", async () => {
       const user = userEvent.setup()
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
@@ -439,7 +450,7 @@ describe("QueueManagementPage", () => {
 
     it("pauses processing when confirmed", async () => {
       const user = userEvent.setup()
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
