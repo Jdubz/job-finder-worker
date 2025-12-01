@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect } from "react"
 import { useForm, useFieldArray, Controller } from "react-hook-form"
 import { TabsContent } from "@/components/ui/tabs"
 import {
@@ -15,7 +15,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TabCard } from "../shared"
 import {
@@ -24,6 +23,7 @@ import {
   StringListField,
   TextInputField,
   InfoTooltip,
+  ImpactBadge,
 } from "../shared/form-fields"
 import type {
   PrefilterPolicy,
@@ -65,21 +65,6 @@ type PrefilterPolicyTabProps = {
   policy: PrefilterPolicy
   onSave: (policy: PrefilterPolicy) => Promise<void> | void
   onReset: () => PrefilterPolicy
-}
-
-const ImpactBadge = ({ label, tone = "neutral" }: { label: string; tone?: "positive" | "negative" | "neutral" }) => {
-  const toneClasses = useMemo(() => {
-    switch (tone) {
-      case "positive":
-        return "bg-emerald-50 text-emerald-700 border-emerald-100"
-      case "negative":
-        return "bg-rose-50 text-rose-700 border-rose-100"
-      default:
-        return "bg-slate-50 text-slate-700 border-slate-200"
-    }
-  }, [tone])
-
-  return <Badge variant="outline" className={`text-[11px] font-semibold px-2 py-0.5 ${toneClasses}`}>{label}</Badge>
 }
 
 const numberOrUndefined = (value?: number | null) =>

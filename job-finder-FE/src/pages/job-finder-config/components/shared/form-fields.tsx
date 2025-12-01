@@ -1,4 +1,6 @@
+import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import {
   FormControl,
   FormDescription,
@@ -39,14 +41,19 @@ export const InfoTooltip = ({ content }: { content?: string }) => {
         <TooltipTrigger asChild>
           <button
             type="button"
-            tabIndex={0}
             className="h-4 w-4 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border flex items-center justify-center"
             aria-label="Field info"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                ;(e.currentTarget as HTMLButtonElement).click()
+              }
+            }}
           >
             <Info className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </TooltipTrigger>
-        <TooltipContent className="max-w-xs leading-relaxed">
+        <TooltipContent className="max-w-sm leading-relaxed">
           {content}
         </TooltipContent>
       </Tooltip>
@@ -66,6 +73,31 @@ export function CheckboxRow({ label, description, info, field }: CheckboxRowProp
         {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </div>
     </div>
+  )
+}
+
+export const ImpactBadge = ({
+  label,
+  tone = "neutral",
+}: {
+  label: string
+  tone?: "positive" | "negative" | "neutral"
+}) => {
+  const toneClasses = useMemo(() => {
+    switch (tone) {
+      case "positive":
+        return "bg-emerald-50 text-emerald-700 border-emerald-100"
+      case "negative":
+        return "bg-rose-50 text-rose-700 border-rose-100"
+      default:
+        return "bg-slate-50 text-slate-700 border-slate-200"
+    }
+  }, [tone])
+
+  return (
+    <Badge variant="outline" className={cn("text-[11px] font-semibold px-2 py-0.5", toneClasses)}>
+      {label}
+    </Badge>
   )
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect } from "react"
 import { useForm, useFieldArray, Controller } from "react-hook-form"
 import { TabsContent } from "@/components/ui/tabs"
 import {
@@ -6,13 +6,13 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TabCard } from "../shared"
 import {
   CheckboxRow,
   NumericField,
   TextInputField,
+  ImpactBadge,
 } from "../shared/form-fields"
 import type { MatchPolicy, CompanyMatchWeights, MatchDealbreakers } from "@shared/types"
 import { DEFAULT_MATCH_POLICY } from "@shared/types"
@@ -34,21 +34,6 @@ type MatchPolicyTabProps = {
   policy: MatchPolicy
   onSave: (policy: MatchPolicy) => Promise<void> | void
   onReset: () => MatchPolicy
-}
-
-const ImpactBadge = ({ label, tone = "neutral" }: { label: string; tone?: "positive" | "negative" | "neutral" }) => {
-  const toneClasses = useMemo(() => {
-    switch (tone) {
-      case "positive":
-        return "bg-emerald-50 text-emerald-700 border-emerald-100"
-      case "negative":
-        return "bg-rose-50 text-rose-700 border-rose-100"
-      default:
-        return "bg-slate-50 text-slate-700 border-slate-200"
-    }
-  }, [tone])
-
-  return <Badge variant="outline" className={`text-[11px] font-semibold px-2 py-0.5 ${toneClasses}`}>{label}</Badge>
 }
 
 const numberOrUndefined = (value?: number | null) =>
@@ -182,7 +167,7 @@ export function MatchPolicyTab({ isSaving, policy, onSave, onReset }: MatchPolic
                   name="dealbreakers.perHourTimezonePenalty"
                   label="Per-Hour TZ Penalty"
                   description="Points removed per hour from user timezone."
-                  info="Subtract this many points for each hour the job timezone differs from the user's timezone setting above."
+                  info="Subtract this many points for each hour the job timezone differs from the configured user timezone."
                   inputClassName="max-w-[8rem]"
                 />
                 <NumericField

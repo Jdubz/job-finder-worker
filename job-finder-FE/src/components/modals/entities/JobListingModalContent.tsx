@@ -163,7 +163,7 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
           </div>
           <div>
             <Label className="text-muted-foreground text-xs uppercase tracking-wide">Posted Date</Label>
-            <p className="mt-1">{listing.postedDate || "—"}</p>
+            <p className="mt-1">{formatDate(listing.postedDate)}</p>
           </div>
         </div>
 
