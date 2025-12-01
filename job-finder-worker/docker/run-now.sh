@@ -8,6 +8,13 @@ echo "========================================"
 echo "Started at: $(date)"
 echo ""
 
+# Source environment variables (needed when run from cron or minimal shell)
+if [ -f /etc/environment ]; then
+    set -a
+    . /etc/environment
+    set +a
+fi
+
 # Run the scheduler (same entrypoint cron uses)
 cd /app
 /usr/sbin/gosu node /home/node/.local/bin/python -m job_finder.cron.submit_scrape
