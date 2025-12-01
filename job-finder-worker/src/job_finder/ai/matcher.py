@@ -353,6 +353,18 @@ class AIJobMatcher:
             match_score += location_penalty
             adjustments.append(penalty_reason)
 
+        # Technology rank adjustments
+        tech_delta, tech_reason = self._apply_technology_ranks(job)
+        if tech_delta != 0:
+            match_score += tech_delta
+            adjustments.append(tech_reason)
+
+        # Experience strike adjustments
+        exp_delta, exp_reason = self._apply_experience_strike(job)
+        if exp_delta != 0:
+            match_score += exp_delta
+            adjustments.append(exp_reason)
+
         # Apply Portland office bonus
         if has_portland_office and self.portland_office_bonus > 0:
             match_score += self.portland_office_bonus
@@ -574,6 +586,55 @@ class AIJobMatcher:
             return -abs(ctx.location_penalty), eval_result.reason or "location fail", False
 
         return -abs(eval_result.strikes), eval_result.reason or "", eval_result.strikes > 0
+
+    def _apply_technology_ranks(self, job: Dict[str, Any]) -> tuple[int, str]:
+        tech_ranks = (
+            job.get("technologyRanks")
+            or job.get("technology_ranks")
+            or (self.config.get("technologyRanks") if isinstance(self.config, dict) else {})
+        )
+        techs_cfg = (tech_ranks or {}).get("technologies") if isinstance(tech_ranks, dict) else {}
+        if not isinstance(techs_cfg, dict) or not techs_cfg:
+            return 0, ""
+
+        text = f"{job.get('title','')} {job.get('description','')}".lower()
+        delta = 0
+        reasons = []
+
+        for tech, meta in techs_cfg.items():
+            try:
+                rank = (meta or {}).get("rank")
+                points = int((meta or {}).get("points", 1))
+            except Exception:
+                continue
+            tech_lower = str(tech).lower()
+            present = f" {tech_lower} " in f" {text} "
+            if rank == "fail" and present:
+                delta -= max(points, 10)
+                reasons.append(f"⛔ fail tech {tech_lower}")
+            elif rank == "strike" and present:
+                delta -= points
+                reasons.append(f"⚠ strike tech {tech_lower} (-{points})")
+            elif rank == "required" and present:
+                reasons.append(f"✅ required tech {tech_lower}")
+
+        reason = "; ".join(reasons) if reasons else ""
+        return delta, reason
+
+    def _apply_experience_strike(self, job: Dict[str, Any]) -> tuple[int, str]:
+        exp_cfg = self.config.get("experienceStrike") if isinstance(self.config, dict) else None
+        if not isinstance(exp_cfg, dict) or not exp_cfg.get("enabled", False):
+            return 0, ""
+
+        min_pref = exp_cfg.get("minPreferred")
+        points = int(exp_cfg.get("points", 1))
+        user_years = getattr(self.profile, "years_of_experience", None)
+        if user_years is None or min_pref is None:
+            return 0, ""
+
+        if user_years < min_pref:
+            return -abs(points), f"📉 experience gap ({user_years}y vs {min_pref}y)"
+        return 0, ""
 
     def _build_match_result(
         self,
