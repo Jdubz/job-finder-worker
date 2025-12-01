@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobListings } from "@/hooks/useJobListings"
 import { useQueueItems } from "@/hooks/useQueueItems"
+import { useEntityModal } from "@/contexts/EntityModalContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -38,15 +39,11 @@ import {
   AlertCircle,
   Loader2,
   Briefcase,
-  ExternalLink,
-  Trash2,
   Search,
   Plus,
 } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
-import { CompanyDetailsModal } from "@/components/company"
 import type { JobListingRecord, JobListingStatus, SubmitJobRequest } from "@shared/types"
-import { MatchBreakdown } from "./components/MatchBreakdown"
 
 function formatDate(date: unknown): string {
   if (!date) return "—"
@@ -108,7 +105,7 @@ export function JobListingsPage() {
     sortOrder: "desc",
   })
   const { submitJob } = useQueueItems()
-  const [selectedListing, setSelectedListing] = useState<JobListingRecord | null>(null)
+  const { openModal, closeModal } = useEntityModal()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
 
@@ -122,11 +119,7 @@ export function JobListingsPage() {
   const [bypassFilter, setBypassFilter] = useState(false)
   const [companyName, setCompanyName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isResubmitting, setIsResubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-
-  // Company details modal state
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
 
   // Calculate status counts in a single pass for performance
   const statusCounts = useMemo(() => {
@@ -194,35 +187,33 @@ export function JobListingsPage() {
     if (!confirm("Are you sure you want to delete this job listing?")) return
     try {
       await deleteListing(id)
-      setSelectedListing(null)
+      closeModal()
     } catch (err) {
       console.error("Failed to delete job listing:", err)
+      throw err
     }
   }
 
-  const handleResubmitBypass = async () => {
-    if (!selectedListing) return
+  const handleResubmitBypass = async (listing: JobListingRecord) => {
     setSubmitError(null)
-    setIsResubmitting(true)
     try {
       const payload: SubmitJobRequest = {
-        url: selectedListing.url,
-        companyName: selectedListing.companyName,
-        companyId: selectedListing.companyId ?? undefined,
-        title: selectedListing.title,
-        description: selectedListing.description,
-        location: selectedListing.location ?? undefined,
+        url: listing.url,
+        companyName: listing.companyName,
+        companyId: listing.companyId ?? undefined,
+        title: listing.title,
+        description: listing.description,
+        location: listing.location ?? undefined,
         bypassFilter: true,
-        metadata: { job_listing_id: selectedListing.id },
+        metadata: { job_listing_id: listing.id },
       }
       await submitJob(payload)
-      setSelectedListing(null)
+      closeModal()
       navigate("/queue-management")
     } catch (err) {
       console.error("Failed to resubmit listing:", err)
       setSubmitError(err instanceof Error ? err.message : "Failed to resubmit listing")
-    } finally {
-      setIsResubmitting(false)
+      throw err
     }
   }
 
@@ -415,46 +406,51 @@ export function JobListingsPage() {
                   <TableRow
                     key={listing.id}
                     className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
-                    onClick={() => setSelectedListing(listing)}
+                    onClick={() =>
+                      openModal({
+                        type: "jobListing",
+                        listing,
+                        onDelete: handleDelete,
+                        onResubmit: () => handleResubmitBypass(listing),
+                      })
+                    }
                   >
                     <TableCell className="max-w-[150px] sm:max-w-[250px] md:max-w-[300px]">
                       <div className="font-medium truncate">{listing.title}</div>
                       {/* Show company and location on mobile as secondary text */}
                       <div className="md:hidden text-xs text-muted-foreground mt-0.5 flex min-w-0">
                         <span className="truncate">
-                          {listing.companyId ? (
-                            <button
-                              type="button"
-                              className="text-blue-600 hover:underline"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setSelectedCompanyId(listing.companyId!)
-                              }}
-                            >
-                              {listing.companyName}
-                            </button>
-                          ) : (
-                            listing.companyName
-                          )}
+                          <button
+                            type="button"
+                            className="text-blue-600 hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openModal({
+                                type: "company",
+                                companyId: listing.companyId || undefined,
+                              })
+                            }}
+                          >
+                            {listing.companyName}
+                          </button>
                         </span>
                         {listing.location && <span className="flex-shrink-0">{` • ${listing.location}`}</span>}
                       </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      {listing.companyId ? (
-                        <button
-                          type="button"
-                          className="text-blue-600 hover:underline text-left"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setSelectedCompanyId(listing.companyId!)
-                          }}
-                        >
-                          {listing.companyName}
-                        </button>
-                      ) : (
-                        <span className="text-muted-foreground">{listing.companyName}</span>
-                      )}
+                      <button
+                        type="button"
+                        className="text-blue-600 hover:underline text-left"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openModal({
+                            type: "company",
+                            companyId: listing.companyId || undefined,
+                          })
+                        }}
+                      >
+                        {listing.companyName}
+                      </button>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-muted-foreground">
                       {listing.location || "—"}
@@ -476,148 +472,6 @@ export function JobListingsPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Detail Modal */}
-      <Dialog open={!!selectedListing} onOpenChange={(open) => !open && setSelectedListing(null)}>
-        <DialogContent className="w-[98vw] sm:max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
-          {selectedListing && (
-            <>
-              <DialogHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 pr-4">
-                    <DialogTitle className="text-xl">{selectedListing.title}</DialogTitle>
-                    <DialogDescription className="mt-1">
-                      {selectedListing.companyName}
-                    </DialogDescription>
-                  </div>
-                  {getStatusBadge(selectedListing.status)}
-                </div>
-              </DialogHeader>
-
-              {submitError && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{submitError}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-5 overflow-y-auto flex-1 pr-2">
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">ID</Label>
-                    <p className="mt-1 text-sm font-mono text-muted-foreground break-all">{selectedListing.id}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Source ID</Label>
-                    <p className="mt-1 text-sm font-mono">{selectedListing.sourceId || "—"}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company ID</Label>
-                    <p className="mt-1 text-sm font-mono">{selectedListing.companyId || "—"}</p>
-                  </div>
-                  <div className="md:col-span-2 lg:col-span-3">
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">URL</Label>
-                    <a
-                      href={selectedListing.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center text-blue-600 hover:underline mt-1 text-sm break-all"
-                    >
-                      {selectedListing.url}
-                      <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
-                    </a>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Location</Label>
-                    <p className="mt-1">{selectedListing.location || "—"}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Salary Range</Label>
-                    <p className="mt-1">{selectedListing.salaryRange || "—"}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Posted Date</Label>
-                    <p className="mt-1">{selectedListing.postedDate || "—"}</p>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-muted-foreground text-xs uppercase tracking-wide">Filter Result</Label>
-                      {selectedListing.filterResult ? (
-                        <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-48 whitespace-pre-wrap break-all">
-                          {JSON.stringify(selectedListing.filterResult, null, 2)}
-                        </pre>
-                      ) : (
-                        <p className="mt-1 text-muted-foreground">—</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-2">
-                        Match Analysis
-                        {(() => {
-                          const score = extractMatchScore(selectedListing)
-                          return score !== null ? (
-                            <Badge variant="outline">Score: {score}</Badge>
-                          ) : null
-                        })()}
-                      </Label>
-                      <div className="mt-2">
-                        <MatchBreakdown analysis={selectedListing.analysisResult ?? undefined} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Description</Label>
-                    <div className="text-sm bg-muted/50 p-4 rounded min-h-[200px] max-h-[60vh] overflow-auto whitespace-pre-wrap leading-relaxed">
-                      {selectedListing.description || "—"}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Created</Label>
-                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedListing.createdAt)}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Updated</Label>
-                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedListing.updatedAt)}</p>
-                  </div>
-                </div>
-              </div>
-
-              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between pt-4 border-t flex-shrink-0 mt-4">
-                <Button variant="destructive" onClick={() => handleDelete(selectedListing.id)} className="w-full sm:w-auto">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={handleResubmitBypass}
-                  disabled={isResubmitting || !selectedListing}
-                  className="w-full sm:w-auto"
-                >
-                  {isResubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Re-running...
-                    </>
-                  ) : (
-                    "Re-run (bypass filters)"
-                  )}
-                </Button>
-                <Button variant="ghost" onClick={() => setSelectedListing(null)} className="w-full sm:w-auto">
-                  Close
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Add Job Modal */}
       <Dialog
@@ -764,12 +618,6 @@ export function JobListingsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Company Details Modal */}
-      <CompanyDetailsModal
-        companyId={selectedCompanyId}
-        open={!!selectedCompanyId}
-        onOpenChange={(open) => !open && setSelectedCompanyId(null)}
-      />
     </div>
   )
 }

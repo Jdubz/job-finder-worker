@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useEntityModal } from "@/contexts/EntityModalContext"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -24,16 +25,6 @@ import { StatPill } from "@/components/ui/stat-pill"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
 import { QueueTable } from "./components/QueueTable"
-import {
-  getCompanyName,
-  getDomain,
-  getJobTitle,
-  getSourceLabel,
-  getStageLabel,
-  getTaskTypeLabel,
-} from "./components/queueItemDisplay"
-
-type QueueStatusTone = "pending" | "processing" | "success" | "failed" | "skipped" | "filtered"
 type CompletedStatus = "success" | "failed" | "skipped" | "filtered"
 
 const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered"]
@@ -41,6 +32,7 @@ const STATS_FETCH_DEBOUNCE_MS = 500
 
 export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
+  const { openModal } = useEntityModal()
 
   const { queueItems, loading, error, connectionStatus, eventLog, updateQueueItem, refetch } = useQueueItems({ limit: 100 })
 
@@ -49,7 +41,6 @@ export function QueueManagementPage() {
   const [usingFallbackStats, setUsingFallbackStats] = useState(false)
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null)
   const [activeProcessingId, setActiveProcessingId] = useState<string | null>(null)
   const [processingConflictCount, setProcessingConflictCount] = useState<number>(0)
   const conflictRefetched = useRef(false)
@@ -282,11 +273,6 @@ export function QueueManagementPage() {
     if (hours < 24) return `${hours}h ago`
     const days = Math.floor(hours / 24)
     return `${days}d ago`
-  }
-
-  const formatFullDate = (date: unknown): string => {
-    const parsed = normalizeDateValue(date)
-    return parsed ? parsed.toLocaleString() : "—"
   }
 
   const formatTime = (ts: number) => new Date(ts).toLocaleTimeString()
@@ -538,7 +524,15 @@ export function QueueManagementPage() {
               ) : (
                 <QueueTable
                   items={pendingItems}
-                  onRowClick={setSelectedItem}
+                  onRowClick={(item) =>
+                    openModal({
+                      type: "jobQueueItem",
+                      item,
+                      onCancel: () => {
+                        if (item.id) return handleCancelItem(item.id)
+                      },
+                    })
+                  }
                   onCancel={handleCancelItem}
                   formatRelativeTime={formatRelativeTime}
                 />
@@ -558,7 +552,12 @@ export function QueueManagementPage() {
               ) : (
                 <QueueTable
                   items={completedItems}
-                  onRowClick={setSelectedItem}
+                  onRowClick={(item) =>
+                    openModal({
+                      type: "jobQueueItem",
+                      item,
+                    })
+                  }
                   onCancel={handleCancelItem}
                   formatRelativeTime={formatRelativeTime}
                 />
@@ -647,102 +646,12 @@ export function QueueManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Dialog open={Boolean(selectedItem)} onOpenChange={(open) => !open && setSelectedItem(null)}>
-        <DialogContent className="sm:max-w-[520px]" data-testid="queue-item-dialog">
-          {selectedItem && (
-            <>
-              <DialogHeader>
-                <DialogTitle>{getJobTitle(selectedItem) || "Queue Item Details"}</DialogTitle>
-                <DialogDescription>
-                  {getCompanyName(selectedItem) || getDomain(selectedItem.url || "") || "Pending metadata"}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-3 text-sm">
-                <div className="flex flex-wrap gap-2">
-                  <Badge className={statusTone(selectedItem.status)}>{selectedItem.status}</Badge>
-                  <Badge variant="outline">{getTaskTypeLabel(selectedItem)}</Badge>
-                  {getStageLabel(selectedItem) && <Badge variant="secondary">{getStageLabel(selectedItem)}</Badge>}
-                  {getSourceLabel(selectedItem) && <Badge variant="outline">{getSourceLabel(selectedItem)}</Badge>}
-                </div>
-
-                <div className="rounded-md border p-3 space-y-1 bg-muted/60" data-testid="queue-item-url">
-                  <p className="text-xs text-muted-foreground">URL</p>
-                  <a
-                    className="text-primary underline break-all"
-                    href={selectedItem.url || undefined}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {selectedItem.url}
-                  </a>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <DetailField label="Created" value={formatFullDate(selectedItem.created_at)} />
-                  <DetailField label="Updated" value={formatFullDate(selectedItem.updated_at)} />
-                  <DetailField label="Processed" value={formatFullDate(selectedItem.processed_at)} />
-                  <DetailField label="Completed" value={formatFullDate(selectedItem.completed_at)} />
-                </div>
-
-                {selectedItem.result_message && (
-                  <div className="rounded-md border p-3 bg-muted/60" data-testid="queue-item-result">
-                    <p className="text-xs text-muted-foreground mb-1">Result</p>
-                    <p className="text-sm text-foreground">{selectedItem.result_message}</p>
-                  </div>
-                )}
-              </div>
-
-              <DialogFooter className="mt-4">
-                {(selectedItem.status === "pending" || selectedItem.status === "processing") && (
-                  <Button
-                    variant="destructive"
-                    onClick={() => selectedItem.id && handleCancelItem(selectedItem.id)}
-                  >
-                    Cancel Task
-                  </Button>
-                )}
-                <Button variant="ghost" onClick={() => setSelectedItem(null)}>
-                  Close
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
-}
-
-function statusTone(status: string): string {
-  const tones: Record<QueueStatusTone, string> = {
-    pending: "bg-yellow-100 text-yellow-800",
-    processing: "bg-blue-100 text-blue-800",
-    success: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
-    skipped: "bg-gray-100 text-gray-800",
-    filtered: "bg-orange-100 text-orange-800",
-  }
-  return tones[status as QueueStatusTone] ?? "bg-muted text-foreground"
 }
 
 function normalizeDate(value: unknown): Date {
   return normalizeDateValue(value) ?? new Date(0)
-}
-
-interface DetailFieldProps {
-  label: string
-  value: string
-}
-
-function DetailField({ label, value }: DetailFieldProps) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground">{value}</p>
-    </div>
-  )
 }
 
 interface ConnectionStatusBadgeProps {
