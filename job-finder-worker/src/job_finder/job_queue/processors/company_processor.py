@@ -175,11 +175,22 @@ class CompanyProcessor(BaseProcessor):
                 # Check if company already has any sources (optimized query)
                 has_existing_source = self.sources_manager.has_source_for_company(company_id)
 
-                if not has_existing_source:
+                if has_existing_source:
+                    logger.info(
+                        "Skipping career page search for %s - company already has source(s)",
+                        company_display,
+                    )
+                else:
                     # Search for career page via web search
+                    logger.info(
+                        "Searching for career page for %s (no existing sources)",
+                        company_display,
+                    )
                     job_board_url = self._search_for_career_page(company_name)
                     if job_board_url:
                         search_discovered = True
+                    else:
+                        logger.info("No career page found via search for %s", company_display)
 
             source_spawned = False
             if job_board_url:
@@ -293,7 +304,10 @@ class CompanyProcessor(BaseProcessor):
         """
         search_client = get_search_client()
         if not search_client:
-            logger.debug("No search client available for career page discovery")
+            logger.warning(
+                "No search client available for career page discovery "
+                "(set TAVILY_API_KEY or BRAVE_API_KEY)"
+            )
             return None
 
         try:
