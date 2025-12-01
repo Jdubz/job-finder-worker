@@ -111,6 +111,29 @@ export class JobQueueRepository {
     const processedAt = toISOString(data.processed_at) ?? null
     const completedAt = toISOString(data.completed_at) ?? null
 
+    // Pack top-level convenience fields into input/output JSON columns
+    // This ensures data set by the service is properly persisted
+    const inputData: Record<string, unknown> = {
+      ...(data.input ?? {}),
+      ...(data.company_name !== undefined && { company_name: data.company_name }),
+      ...(data.company_id !== undefined && { company_id: data.company_id }),
+      ...(data.source !== undefined && { source: data.source }),
+      ...(data.submitted_by !== undefined && { submitted_by: data.submitted_by }),
+      ...(data.metadata !== undefined && { metadata: data.metadata }),
+      ...(data.scrape_config !== undefined && { scrape_config: data.scrape_config }),
+      ...(data.source_discovery_config !== undefined && { source_discovery_config: data.source_discovery_config }),
+      ...(data.source_id !== undefined && { source_id: data.source_id }),
+      ...(data.source_type !== undefined && { source_type: data.source_type }),
+      ...(data.source_config !== undefined && { source_config: data.source_config }),
+      ...(data.source_tier !== undefined && { source_tier: data.source_tier })
+    }
+
+    const outputData: Record<string, unknown> = {
+      ...(data.output ?? {}),
+      ...(data.scraped_data !== undefined && { scraped_data: data.scraped_data }),
+      ...(data.pipeline_state !== undefined && { pipeline_state: data.pipeline_state })
+    }
+
     const stmt = this.db.prepare(`
       INSERT INTO job_queue (
         id, type, status, url, tracking_id, parent_item_id,
@@ -126,8 +149,8 @@ export class JobQueueRepository {
       data.url ?? null,
       trackingId,
       data.parent_item_id ?? null,
-      serializeJson(data.input),
-      serializeJson(data.output),
+      serializeJson(Object.keys(inputData).length ? inputData : null),
+      serializeJson(Object.keys(outputData).length ? outputData : null),
       data.result_message ?? null,
       data.error_details ?? null,
       createdAt,
@@ -196,8 +219,31 @@ export class JobQueueRepository {
 
     const nextUpdatedAt = toISOString(updates.updated_at) ?? new Date().toISOString()
 
-    const nextInput = updates.input ?? existing.input ?? null
-    const nextOutput = updates.output ?? existing.output ?? null
+    // Merge top-level convenience fields into input/output JSON columns
+    const existingInput = existing.input ?? {}
+    const nextInput: Record<string, unknown> = {
+      ...existingInput,
+      ...(updates.input ?? {}),
+      ...(updates.company_name !== undefined && { company_name: updates.company_name }),
+      ...(updates.company_id !== undefined && { company_id: updates.company_id }),
+      ...(updates.source !== undefined && { source: updates.source }),
+      ...(updates.submitted_by !== undefined && { submitted_by: updates.submitted_by }),
+      ...(updates.metadata !== undefined && { metadata: updates.metadata }),
+      ...(updates.scrape_config !== undefined && { scrape_config: updates.scrape_config }),
+      ...(updates.source_discovery_config !== undefined && { source_discovery_config: updates.source_discovery_config }),
+      ...(updates.source_id !== undefined && { source_id: updates.source_id }),
+      ...(updates.source_type !== undefined && { source_type: updates.source_type }),
+      ...(updates.source_config !== undefined && { source_config: updates.source_config }),
+      ...(updates.source_tier !== undefined && { source_tier: updates.source_tier })
+    }
+
+    const existingOutput = existing.output ?? {}
+    const nextOutput: Record<string, unknown> = {
+      ...existingOutput,
+      ...(updates.output ?? {}),
+      ...(updates.scraped_data !== undefined && { scraped_data: updates.scraped_data }),
+      ...(updates.pipeline_state !== undefined && { pipeline_state: updates.pipeline_state })
+    }
 
     this.db
       .prepare(
@@ -213,8 +259,8 @@ export class JobQueueRepository {
         updates.url ?? existing.url ?? null,
         updates.tracking_id ?? existing.tracking_id ?? null,
         updates.parent_item_id ?? existing.parent_item_id ?? null,
-        serializeJson(nextInput),
-        serializeJson(nextOutput),
+        serializeJson(Object.keys(nextInput).length ? nextInput : null),
+        serializeJson(Object.keys(nextOutput).length ? nextOutput : null),
         updates.result_message ?? existing.result_message ?? null,
         updates.error_details ?? existing.error_details ?? null,
         nextUpdatedAt,

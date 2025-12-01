@@ -70,7 +70,12 @@ test.describe("Queue events live updates", () => {
       completed_at: new Date().toISOString(),
     })
 
-    // Wait for SSE to deliver the status update (no reload - completed items may be filtered out by default)
+    // Completed items move to the "Completed" tab - switch to see the updated row
+    const completedTab = page.getByRole("tab", { name: /completed/i })
+    await expect(completedTab).toBeVisible({ timeout: 15000 })
+    await completedTab.click()
+
+    // Wait for SSE to deliver the status update
     const updatedRow = page.getByTestId(`queue-item-${firstId}`)
     await expect(updatedRow).toContainText("success", { timeout: 15000 })
     await expect(updatedRow).toContainText("Worker finished via event bridge", { timeout: 15000 })

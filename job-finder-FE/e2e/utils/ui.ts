@@ -21,19 +21,52 @@ export function getAuthIcon(page: Page, state: AuthStateVariant = "any"): Locato
 
 export async function openAuthModal(page: Page, state: AuthStateVariant = "any") {
   const trigger = getAuthIcon(page, state)
-  await expect(trigger).toBeVisible({ timeout: 15000 })
 
-  // Dismiss any toast notifications that may be blocking the click
-  const toastDismiss = page.locator('[data-sonner-toast] button[aria-label="Close toast"]')
-  if (await toastDismiss.first().isVisible({ timeout: 500 }).catch(() => false)) {
-    await toastDismiss.first().click()
-    await page.waitForTimeout(300)
+  // Wait for the button to be visible AND enabled (auth context finished loading)
+  await expect(trigger).toBeVisible({ timeout: 15000 })
+  await expect(trigger).toBeEnabled({ timeout: 15000 })
+
+  // Wait for any toast notifications to disappear (they auto-dismiss)
+  const toast = page.locator('[data-sonner-toast]')
+
+  // Wait up to 5 seconds for toasts to auto-dismiss
+  try {
+    await toast.first().waitFor({ state: "hidden", timeout: 5000 })
+  } catch {
+    // If toast still visible, try to click close button or use force click
+    const closeButton = toast.first().locator('button[aria-label="Close toast"]')
+    if (await closeButton.isVisible({ timeout: 500 }).catch(() => false)) {
+      await closeButton.click()
+      await page.waitForTimeout(300)
+    }
   }
 
-  await trigger.click({ force: true })
+  // Scroll the button into view and ensure it's stable
+  await trigger.scrollIntoViewIfNeeded()
+  await page.waitForTimeout(100) // Brief pause for any scroll animations
 
-  const dialog = page.getByRole("dialog", { name: /authentication/i })
-  await expect(dialog).toBeVisible({ timeout: 15000 })
+  // Click - use JavaScript dispatch if normal click fails (more reliable for React)
+  try {
+    await trigger.click({ timeout: 3000 })
+  } catch {
+    // Fall back to JavaScript click dispatch which properly bubbles to React
+    await trigger.evaluate((el: HTMLElement) => {
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }))
+    })
+  }
+
+  // Try accessible name first, fall back to any dialog containing "Authentication" text
+  const dialogByName = page.getByRole("dialog", { name: /authentication/i })
+  const dialogByContent = page.getByRole("dialog").filter({ hasText: /authentication/i })
+
+  // Wait for either selector to be visible
+  const dialog = await Promise.any([
+    dialogByName.waitFor({ state: "visible", timeout: 15000 }).then(() => dialogByName),
+    dialogByContent.waitFor({ state: "visible", timeout: 15000 }).then(() => dialogByContent)
+  ]).catch(() => {
+    throw new Error("Authentication dialog did not appear within 15 seconds")
+  })
+
   return dialog
 }
 

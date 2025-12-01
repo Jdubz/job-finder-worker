@@ -53,6 +53,6 @@ test.describe("Content and queue management", () => {
     // Dialog shows URL domain as company, and job title from metadata
     await expect(dialog).toContainText("example.com")
     await expect(dialog).toContainText("Queue ingestion test")
-    await dialog.getByRole("button", { name: /close/i }).click()
+    await dialog.getByRole("button", { name: /close/i }).first().click()
   })
 })
