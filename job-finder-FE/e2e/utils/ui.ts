@@ -37,12 +37,13 @@ export async function openAuthModal(page: Page, state: AuthStateVariant = "any")
   const dialogByContent = page.getByRole("dialog").filter({ hasText: /authentication/i })
 
   // Wait for either selector to be visible
-  const dialog = await Promise.race([
+  const dialog = await Promise.any([
     dialogByName.waitFor({ state: "visible", timeout: 15000 }).then(() => dialogByName),
     dialogByContent.waitFor({ state: "visible", timeout: 15000 }).then(() => dialogByContent)
-  ]).catch(() => dialogByContent)
+  ]).catch(() => {
+    throw new Error("Authentication dialog did not appear within 15 seconds")
+  })
 
-  await expect(dialog).toBeVisible({ timeout: 15000 })
   return dialog
 }
 
