@@ -44,6 +44,10 @@ class PlatformPattern:
     headers: Dict[str, str] = field(default_factory=dict)
     # Expected key in response to validate API works (e.g., "jobs")
     validation_key: str = "jobs"
+    # Whether this platform requires auth (creates disabled stub)
+    auth_required: bool = False
+    # Config type: api | rss | html
+    config_type: str = "api"
 
 
 # Platform patterns registry - add new platforms here, not in code
@@ -139,6 +143,97 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         },
         validation_key="",  # Array response, check for list
     ),
+    PlatformPattern(
+        name="remotive_api",
+        url_pattern=r"remotive\.(?:com|io)",
+        api_url_template="https://remotive.com/api/remote-jobs",
+        response_path="jobs",
+        fields={
+            "title": "title",
+            "company": "company_name",
+            "location": "candidate_required_location",
+            "description": "description",
+            "url": "url",
+            "posted_date": "publication_date",
+        },
+        validation_key="jobs",
+    ),
+    PlatformPattern(
+        name="remoteok_api",
+        url_pattern=r"remoteok\.(?:io|com)",
+        api_url_template="https://remoteok.com/api",
+        response_path="",  # array of jobs
+        fields={
+            "title": "position",
+            "company": "company",
+            "location": "location",
+            "description": "description",
+            "url": "url",
+            "posted_date": "date",
+        },
+        validation_key="",  # validate list
+        headers={"Accept": "application/json"},
+    ),
+    PlatformPattern(
+        name="monster_rss",
+        url_pattern=r"monster\.com/jobs/rss\.aspx(?P<query>.*)",
+        api_url_template="https://www.monster.com/jobs/rss.aspx{query}",
+        response_path="items",
+        fields={
+            "title": "title",
+            "url": "link",
+            "description": "description",
+            "posted_date": "pubDate",
+        },
+        validation_key="items",
+        config_type="rss",
+    ),
+    PlatformPattern(
+        name="indeed_partner_api",
+        url_pattern=r"apis\.indeed\.com",
+        api_url_template="https://apis.indeed.com/graphql",
+        method="POST",
+        post_body_template={},
+        response_path="data.jobs",
+        fields={
+            "title": "title",
+            "company": "company",
+            "location": "location",
+            "description": "description",
+            "url": "jobUrl",
+        },
+        headers={"Content-Type": "application/json"},
+        validation_key="data",
+        auth_required=True,
+    ),
+    PlatformPattern(
+        name="indeed_rss",
+        url_pattern=r"https?://(?P<domain>[^/]*indeed\.[^/]+)/rss(?P<query>.*)",
+        api_url_template="https://{domain}/rss{query}",
+        response_path="items",
+        fields={
+            "title": "title",
+            "url": "link",
+            "description": "description",
+            "posted_date": "pubDate",
+        },
+        validation_key="items",
+        config_type="rss",
+    ),
+    PlatformPattern(
+        name="linkedin_stub",
+        url_pattern=r"linkedin\.com",
+        api_url_template="https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+        response_path="",  # returns HTML fragments; treat as auth/anti-bot sensitive
+        fields={
+            "title": "title",
+            "url": "url",
+            "description": "description",
+        },
+        headers={"User-Agent": "Mozilla/5.0"},
+        validation_key="",  # will likely fail without params; flagged auth_required
+        auth_required=True,
+    ),
 ]
 
 
@@ -162,6 +257,7 @@ def match_platform(url: str) -> Optional[Tuple[PlatformPattern, Dict[str, str]]]
 def build_config_from_pattern(
     pattern: PlatformPattern,
     groups: Dict[str, str],
+    original_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Build a source config from a matched platform pattern.
@@ -173,17 +269,26 @@ def build_config_from_pattern(
     Returns:
         Source config dictionary
     """
+    template_kwargs = dict(groups)
+    if original_url:
+        template_kwargs.setdefault("original_url", original_url)
+
     config: Dict[str, Any] = {
-        "type": "api",
-        "url": pattern.api_url_template.format(**groups),
-        "response_path": pattern.response_path,
+        "type": pattern.config_type,
+        "url": pattern.api_url_template.format(**template_kwargs),
         "fields": pattern.fields.copy(),
     }
 
-    if pattern.method != "GET":
+    if pattern.config_type != "rss":
+        config["response_path"] = pattern.response_path
+
+    if pattern.auth_required:
+        config["auth_required"] = True
+
+    if pattern.method != "GET" and pattern.config_type == "api":
         config["method"] = pattern.method
 
-    if pattern.post_body_template:
+    if pattern.post_body_template and pattern.config_type == "api":
         config["post_body"] = pattern.post_body_template.copy()
 
     if pattern.base_url_template:

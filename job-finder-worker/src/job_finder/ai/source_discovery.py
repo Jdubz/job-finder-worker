@@ -3,11 +3,13 @@
 import json
 import logging
 from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 import feedparser
 import requests
 
 from job_finder.ai.providers import AIProvider
+from job_finder.ai.search_client import get_search_client, SearchResult
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.platform_patterns import (
     PlatformPattern,
@@ -66,9 +68,21 @@ class SourceDiscovery:
 
             # Step 1: Detect source type and fetch sample
             source_type, sample = self._detect_and_fetch(url)
+            fetch_meta: Dict[str, Any] = {}
+            if source_type == "auth_required" and not sample:
+                fetch_meta = {"success": False, "error": "auth_required"}
 
             if not sample:
                 logger.warning(f"Could not fetch content from {url}")
+                # Try search-assisted discovery before giving up
+                search_config, search_meta = self._discover_via_search(url)
+                if search_config:
+                    validation = self._validate_config(search_config)
+                    if validation.get("success"):
+                        return search_config, {**validation, **search_meta}
+                if fetch_meta:
+                    # Propagate auth_required so callers can disable source
+                    return None, fetch_meta
                 # Even if fetch failed, pattern config might still be usable
                 if pattern_config:
                     return pattern_config, {
@@ -83,8 +97,15 @@ class SourceDiscovery:
             config = self._generate_config(url, source_type, sample)
 
             if not config:
+                # Try search-assisted discovery as a final fallback
+                search_config, search_meta = self._discover_via_search(url)
+                if search_config:
+                    validation = self._validate_config(search_config)
+                    if validation.get("success"):
+                        logger.info(f"Search-assisted discovery succeeded for {url}")
+                        return search_config, {**validation, **search_meta}
                 logger.warning(f"Could not generate config for {url}")
-                return None, {}
+                return None, fetch_meta if 'fetch_meta' in locals() and fetch_meta else {}
 
             # Step 3: Validate config
             validation = self._validate_config(config)
@@ -119,7 +140,11 @@ class SourceDiscovery:
             return None
 
         pattern, groups = result
-        config = build_config_from_pattern(pattern, groups)
+        config = build_config_from_pattern(pattern, groups, original_url=url)
+
+        # RSS patterns don't need API probe
+        if pattern.config_type == "rss":
+            return config
 
         # Validate by making a test request to the API
         if not self._validate_api_endpoint(config, pattern):
@@ -217,6 +242,10 @@ class SourceDiscovery:
             return "html", response.text
 
         except requests.RequestException as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status in (401, 403):
+                logger.error(f"Auth-required fetching {url}: {e}")
+                return "auth_required", None
             logger.error(f"Error fetching {url}: {e}")
             return "unknown", None
 
@@ -264,6 +293,80 @@ class SourceDiscovery:
             logger.error(f"Error generating config: {e}")
             return None
 
+    def _discover_via_search(self, url: str) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Use a search API + AI to infer a config when direct fetch/patterns fail.
+
+        Args:
+            url: Original source URL
+
+        Returns:
+            Tuple of (config or None, metadata)
+        """
+        meta: Dict[str, Any] = {"success": False, "source": "search"}
+
+        if not self.provider:
+            logger.warning("AI provider unavailable; cannot run search-assisted discovery")
+            meta["error"] = "ai_provider_unavailable"
+            return None, meta
+
+        search_client = get_search_client()
+        if not search_client:
+            meta["error"] = "search_client_unavailable"
+            return None, meta
+
+        domain = urlparse(url).netloc
+        queries = [
+            f"{domain} jobs api",
+            f"{domain} jobs rss feed",
+            f"{domain} careers json",
+        ]
+
+        results: list[SearchResult] = []
+        for q in queries:
+            try:
+                results.extend(search_client.search(q, max_results=3))
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug("Search query failed for '%s': %s", q, exc)
+
+        # Deduplicate by URL
+        seen = set()
+        deduped = []
+        for r in results:
+            if r.url and r.url in seen:
+                continue
+            seen.add(r.url)
+            deduped.append(r)
+
+        if not deduped:
+            meta["error"] = "no_search_results"
+            return None, meta
+
+        snippets = "\n\n".join(
+            [f"Title: {r.title}\nURL: {r.url}\nSnippet: {r.snippet}" for r in deduped]
+        )
+
+        prompt = f"""We could not fetch {url} directly (possible bot block). Below are search results about its job board or APIs. Infer the best scraper configuration in JSON.
+
+Search results:
+{snippets}
+
+Return a JSON config with the fields described earlier (type, url, response_path/job_selector, fields mapping, headers/method/post_body if needed). Prefer any API endpoints you see. If only RSS feeds are available, return type="rss". Include base_url if links are relative. Do not add explanations.
+"""
+
+        try:
+            response = self.provider.generate(prompt, max_tokens=1200, temperature=0.1)
+            config = self._parse_response(response, source_type="unknown", url=url)
+            if config:
+                meta["success"] = True
+            else:
+                meta["error"] = "parse_failed"
+            return config, meta
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("Search-assisted discovery failed for %s: %s", url, exc)
+            meta["error"] = str(exc)
+            return None, meta
+
     def _try_pattern_with_sample(
         self, url: str, source_type: str, sample: str
     ) -> Optional[Dict[str, Any]]:
@@ -293,7 +396,7 @@ class SourceDiscovery:
         result = match_platform(url)
         if result:
             pattern, groups = result
-            config = build_config_from_pattern(pattern, groups)
+            config = build_config_from_pattern(pattern, groups, original_url=url)
             # Already validated during URL match, but verify response has expected key
             if pattern.validation_key and pattern.validation_key in data:
                 return config
@@ -409,6 +512,11 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
         }
 
         try:
+            if config.get("auth_required"):
+                meta["needs_api_key"] = True
+                meta["error"] = "auth_required"
+                return meta
+
             # Create SourceConfig and validate schema
             source_config = SourceConfig.from_dict(config)
             source_config.validate()
