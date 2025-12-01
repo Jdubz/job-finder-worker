@@ -565,7 +565,7 @@ export function JobListingsPage() {
                         })()}
                       </Label>
                       <div className="mt-2">
-                        <MatchBreakdown analysis={selectedListing.analysisResult as any} />
+                        <MatchBreakdown analysis={selectedListing.analysisResult ?? undefined} />
                       </div>
                     </div>
                   </div>

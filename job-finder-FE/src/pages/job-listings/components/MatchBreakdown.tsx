@@ -8,7 +8,11 @@ import { ChevronDown, ChevronUp } from "lucide-react"
 import type { JobAnalysisResult, ScoreBreakdown } from "@shared/types"
 
 // Accept both camelCase and snake_case from the worker
-function pick<T>(obj: Record<string, any> | undefined, keys: string[], fallback?: T): T | undefined {
+function pick<T>(
+  obj: Record<string, unknown> | undefined,
+  keys: string[],
+  fallback?: T
+): T | undefined {
   if (!obj) return fallback
   for (const key of keys) {
     if (obj[key] !== undefined && obj[key] !== null) return obj[key] as T
@@ -16,8 +20,8 @@ function pick<T>(obj: Record<string, any> | undefined, keys: string[], fallback?
   return fallback
 }
 
-function normalizeBreakdown(analysis: Record<string, any>): ScoreBreakdown | null {
-  const raw = pick<Record<string, any>>(analysis, ["score_breakdown", "scoreBreakdown"])
+function normalizeBreakdown(analysis: Record<string, unknown>): ScoreBreakdown | null {
+  const raw = pick<Record<string, unknown>>(analysis, ["score_breakdown", "scoreBreakdown"])
   if (raw) {
     const baseScore = raw.baseScore ?? raw.base_score
     const finalScore = raw.finalScore ?? raw.final_score
@@ -39,8 +43,8 @@ function normalizeBreakdown(analysis: Record<string, any>): ScoreBreakdown | nul
   }
 }
 
-function normalizeAnalysis(analysis?: JobAnalysisResult | Record<string, any>) {
-  const data = (analysis || {}) as Record<string, any>
+function normalizeAnalysis(analysis?: JobAnalysisResult | Record<string, unknown>) {
+  const data = (analysis || {}) as Record<string, unknown>
   const breakdown = normalizeBreakdown(data)
   const baseScore = breakdown?.baseScore ?? pick<number>(data, ["match_score", "matchScore"], 0)
   const finalScore = breakdown?.finalScore ?? baseScore
@@ -48,6 +52,8 @@ function normalizeAnalysis(analysis?: JobAnalysisResult | Record<string, any>) {
   const potentialConcerns = pick<string[]>(data, ["potential_concerns", "potentialConcerns"], []) || []
   const matchReasons = pick<string[]>(data, ["match_reasons", "matchReasons"], []) || []
   const keyStrengths = pick<string[]>(data, ["key_strengths", "keyStrengths"], []) || []
+  const matchedSkills = pick<string[]>(data, ["matched_skills", "matchedSkills"], []) || []
+  const missingSkills = pick<string[]>(data, ["missing_skills", "missingSkills"], []) || []
 
   const priority = pick<string>(data, ["application_priority", "applicationPriority"], undefined)
 
@@ -58,12 +64,14 @@ function normalizeAnalysis(analysis?: JobAnalysisResult | Record<string, any>) {
     potentialConcerns,
     matchReasons,
     keyStrengths,
+    matchedSkills,
+    missingSkills,
     priority,
     raw: data,
   }
 }
 
-export function MatchBreakdown({ analysis }: { analysis?: JobAnalysisResult | Record<string, any> }) {
+export function MatchBreakdown({ analysis }: { analysis?: JobAnalysisResult | Record<string, unknown> }) {
   const normalized = useMemo(() => normalizeAnalysis(analysis), [analysis])
   const [showRaw, setShowRaw] = useState(false)
 
@@ -113,7 +121,7 @@ export function MatchBreakdown({ analysis }: { analysis?: JobAnalysisResult | Re
           </div>
         ) : null}
 
-        {(normalized.matchReasons.length || normalized.keyStrengths.length) ? (
+        {(normalized.matchReasons.length || normalized.keyStrengths.length || normalized.matchedSkills.length || normalized.missingSkills.length) ? (
           <div className="grid gap-3 md:grid-cols-2">
             {normalized.matchReasons.length ? (
               <div>
@@ -133,6 +141,30 @@ export function MatchBreakdown({ analysis }: { analysis?: JobAnalysisResult | Re
                     <li key={i}>{s}</li>
                   ))}
                 </ul>
+              </div>
+            ) : null}
+            {normalized.matchedSkills.length ? (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Matched skills</p>
+                <div className="flex flex-wrap gap-1 text-xs">
+                  {normalized.matchedSkills.map((s, i) => (
+                    <Badge key={i} variant="outline" className="rounded-full">
+                      {s}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {normalized.missingSkills.length ? (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Missing skills</p>
+                <div className="flex flex-wrap gap-1 text-xs">
+                  {normalized.missingSkills.map((s, i) => (
+                    <Badge key={i} variant="destructive" className="rounded-full bg-rose-50 text-rose-800 border-rose-200">
+                      {s}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             ) : null}
           </div>
