@@ -20,6 +20,18 @@ def company_processor():
     }
     companies_manager = Mock()
     sources_manager = Mock()
+    # Mock get_aggregator_domains to return ATS platforms from "database"
+    sources_manager.get_aggregator_domains.return_value = [
+        "greenhouse.io",
+        "lever.co",
+        "myworkdayjobs.com",
+        "workday.com",
+        "smartrecruiters.com",
+        "ashbyhq.com",
+        "breezy.hr",
+        "jobvite.com",
+        "icims.com",
+    ]
     company_info_fetcher = Mock()
 
     return CompanyProcessor(

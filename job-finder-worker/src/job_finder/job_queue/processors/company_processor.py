@@ -27,7 +27,7 @@ from job_finder.job_queue.models import (
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
-from .base_processor import ATS_DOMAINS, BaseProcessor
+from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -353,8 +353,9 @@ class CompanyProcessor(BaseProcessor):
 
                 score = 0
 
-                # High score for ATS platforms (use shared constant)
-                for ats in ATS_DOMAINS:
+                # High score for ATS platforms (from database)
+                ats_domains = self.sources_manager.get_aggregator_domains()
+                for ats in ats_domains:
                     if ats in netloc:
                         score += 100
                         break

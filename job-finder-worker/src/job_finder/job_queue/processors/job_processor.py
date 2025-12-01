@@ -37,7 +37,7 @@ from job_finder.job_queue.models import (
     QueueStatus,
 )
 
-from .base_processor import ATS_DOMAINS, BaseProcessor
+from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -1194,11 +1194,12 @@ class JobProcessor(BaseProcessor):
             if not company_name:
                 parsed = urlparse(url)
                 domain = parsed.netloc.replace("www.", "")
-                # Check against known job board base domains (exact match on suffix)
+                # Check against known job board base domains from database
                 # This avoids false positives like "greenhouse-tech.com" being excluded
                 domain_parts = domain.split(".")
                 base_domain = ".".join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain
-                is_job_board = base_domain in ATS_DOMAINS
+                aggregator_domains = self.sources_manager.get_aggregator_domains()
+                is_job_board = base_domain in aggregator_domains
 
                 if not is_job_board:
                     # Extract company name from subdomain or domain
