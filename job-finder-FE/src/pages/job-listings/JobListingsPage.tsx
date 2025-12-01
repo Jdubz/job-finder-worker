@@ -46,6 +46,7 @@ import {
 import { StatPill } from "@/components/ui/stat-pill"
 import { CompanyDetailsModal } from "@/components/company"
 import type { JobListingRecord, JobListingStatus, SubmitJobRequest } from "@shared/types"
+import { MatchBreakdown } from "./components/MatchBreakdown"
 
 function formatDate(date: unknown): string {
   if (!date) return "—"
@@ -478,7 +479,7 @@ export function JobListingsPage() {
 
       {/* Detail Modal */}
       <Dialog open={!!selectedListing} onOpenChange={(open) => !open && setSelectedListing(null)}>
-        <DialogContent className="w-[95vw] sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-[98vw] sm:max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
           {selectedListing && (
             <>
               <DialogHeader>
@@ -500,142 +501,91 @@ export function JobListingsPage() {
                 </Alert>
               )}
 
-              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-                {/* ID */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    ID
-                  </Label>
-                  <p className="mt-1 text-sm font-mono text-muted-foreground break-all">
-                    {selectedListing.id}
-                  </p>
-                </div>
-
-                {/* URL */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    URL
-                  </Label>
-                  <a
-                    href={selectedListing.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center text-blue-600 hover:underline mt-1 text-sm break-all"
-                  >
-                    {selectedListing.url}
-                    <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
-                  </a>
-                </div>
-
-                {/* Source ID */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Source ID
-                  </Label>
-                  <p className="mt-1 text-sm font-mono">
-                    {selectedListing.sourceId || "—"}
-                  </p>
-                </div>
-
-                {/* Company ID */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Company ID
-                  </Label>
-                  <p className="mt-1 text-sm font-mono">
-                    {selectedListing.companyId || "—"}
-                  </p>
-                </div>
-
-                {/* Location */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Location
-                  </Label>
-                  <p className="mt-1">{selectedListing.location || "—"}</p>
-                </div>
-
-                {/* Salary Range */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Salary Range
-                  </Label>
-                  <p className="mt-1">{selectedListing.salaryRange || "—"}</p>
-                </div>
-
-                {/* Posted Date */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Posted Date
-                  </Label>
-                  <p className="mt-1">{selectedListing.postedDate || "—"}</p>
-                </div>
-
-                {/* Filter Result */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Filter Result
-                  </Label>
-                  {selectedListing.filterResult ? (
-                    <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-[100px] sm:max-h-[120px] break-all whitespace-pre-wrap">
-                      {JSON.stringify(selectedListing.filterResult, null, 2)}
-                    </pre>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">—</p>
-                  )}
-                </div>
-
-                {/* Match Analysis */}
-                <div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                      Match Analysis
-                    </Label>
-                    {(() => {
-                      const score = extractMatchScore(selectedListing)
-                      return score !== null ? (
-                        <Badge variant="outline" className="ml-2">
-                          Score: {score}
-                        </Badge>
-                      ) : null
-                    })()}
+              <div className="space-y-5 overflow-y-auto flex-1 pr-2">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">ID</Label>
+                    <p className="mt-1 text-sm font-mono text-muted-foreground break-all">{selectedListing.id}</p>
                   </div>
-                  {selectedListing.analysisResult ? (
-                    <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-[150px] sm:max-h-[200px] break-all whitespace-pre-wrap">
-                      {JSON.stringify(selectedListing.analysisResult, null, 2)}
-                    </pre>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">—</p>
-                  )}
-                </div>
-
-                {/* Description */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Description
-                  </Label>
-                  <div className="mt-1 text-sm bg-muted p-3 rounded max-h-[150px] sm:max-h-[200px] overflow-auto whitespace-pre-wrap break-words">
-                    {selectedListing.description || "—"}
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Source ID</Label>
+                    <p className="mt-1 text-sm font-mono">{selectedListing.sourceId || "—"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company ID</Label>
+                    <p className="mt-1 text-sm font-mono">{selectedListing.companyId || "—"}</p>
+                  </div>
+                  <div className="md:col-span-2 lg:col-span-3">
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">URL</Label>
+                    <a
+                      href={selectedListing.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center text-blue-600 hover:underline mt-1 text-sm break-all"
+                    >
+                      {selectedListing.url}
+                      <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
+                    </a>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Location</Label>
+                    <p className="mt-1">{selectedListing.location || "—"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Salary Range</Label>
+                    <p className="mt-1">{selectedListing.salaryRange || "—"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Posted Date</Label>
+                    <p className="mt-1">{selectedListing.postedDate || "—"}</p>
                   </div>
                 </div>
 
-                {/* Timestamps */}
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-muted-foreground text-xs uppercase tracking-wide">Filter Result</Label>
+                      {selectedListing.filterResult ? (
+                        <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-48 whitespace-pre-wrap break-all">
+                          {JSON.stringify(selectedListing.filterResult, null, 2)}
+                        </pre>
+                      ) : (
+                        <p className="mt-1 text-muted-foreground">—</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-2">
+                        Match Analysis
+                        {(() => {
+                          const score = extractMatchScore(selectedListing)
+                          return score !== null ? (
+                            <Badge variant="outline">Score: {score}</Badge>
+                          ) : null
+                        })()}
+                      </Label>
+                      <div className="mt-2">
+                        <MatchBreakdown analysis={selectedListing.analysisResult as any} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Description</Label>
+                    <div className="text-sm bg-muted/50 p-4 rounded min-h-[200px] max-h-[60vh] overflow-auto whitespace-pre-wrap leading-relaxed">
+                      {selectedListing.description || "—"}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4 pt-2 border-t">
                   <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                      Created
-                    </Label>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {formatDate(selectedListing.createdAt)}
-                    </p>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Created</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedListing.createdAt)}</p>
                   </div>
                   <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                      Updated
-                    </Label>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {formatDate(selectedListing.updatedAt)}
-                    </p>
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Updated</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedListing.updatedAt)}</p>
                   </div>
                 </div>
               </div>
