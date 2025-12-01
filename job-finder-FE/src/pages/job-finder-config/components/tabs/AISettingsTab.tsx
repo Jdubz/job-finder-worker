@@ -77,6 +77,27 @@ export function AISettingsTab({
         options,
         [section]: {
           selected: selection,
+          tasks: (base as AISettings)?.[section]?.tasks,
+        },
+      }
+    })
+  }
+
+  const updateTaskSelection = (
+    task: "jobMatch" | "companyDiscovery" | "sourceDiscovery",
+    selection: { provider: AIProviderType; interface: AIInterfaceType; model: string }
+  ) => {
+    setAISettings((prev: AISettings | null) => {
+      const base = prev ?? DEFAULT_AI_SETTINGS
+      const worker = base.worker ?? DEFAULT_AI_SETTINGS.worker
+      const tasks = { ...(worker.tasks ?? {}) }
+      tasks[task] = selection
+      return {
+        ...base,
+        options,
+        worker: {
+          ...worker,
+          tasks,
         },
       }
     })
@@ -240,6 +261,123 @@ export function AISettingsTab({
             "Document generator AI agent",
             "Provider chain for resume/cover letter generation."
           )}
+
+          <div className="space-y-3">
+            <h3 className="text-lg font-medium">Worker Task Overrides</h3>
+            <p className="text-sm text-muted-foreground">
+              Override provider/interface/model per worker task. Falls back to worker defaults when empty.
+            </p>
+            <div className="space-y-6">
+              {(["jobMatch", "companyDiscovery", "sourceDiscovery"] as const).map((task) => {
+                const taskLabel =
+                  task === "jobMatch"
+                    ? "Job Match"
+                    : task === "companyDiscovery"
+                    ? "Company Discovery"
+                    : "Source Discovery"
+                const base = aiSettings?.worker?.tasks?.[task] ?? getSectionSelection("worker")
+                const providerOption = resolveProvider(base.provider)
+                const availableInterfaces: AIInterfaceOption[] = providerOption?.interfaces ?? []
+                const interfaceOption =
+                  availableInterfaces.find((i) => i.value === base.interface) ?? availableInterfaces[0]
+                const models = interfaceOption?.models ?? []
+
+                return (
+                  <div key={task} className="space-y-3 border rounded-md p-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">{taskLabel}</span>
+                      <span className="text-xs text-muted-foreground">({task})</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>Provider</Label>
+                        <Select
+                          value={base.provider}
+                          onValueChange={(value) => {
+                            const fallback = chooseFallbackInterface(value as AIProviderType)
+                            updateTaskSelection(task, {
+                              provider: value as AIProviderType,
+                              interface: fallback.interface,
+                              model: fallback.model,
+                            })
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(options.map((opt) => opt.value) as AIProviderType[]).map((provider) => {
+                              const enabled = isProviderEnabled(provider)
+                              const reason = getProviderDisabledReason(provider)
+                              return (
+                                <SelectItem key={provider} value={provider} disabled={!enabled}>
+                                  {PROVIDER_LABELS[provider]}
+                                  {!enabled && reason && (
+                                    <span className="ml-2 text-xs text-gray-400">({reason})</span>
+                                  )}
+                                </SelectItem>
+                              )
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Interface</Label>
+                        <Select
+                          value={interfaceOption?.value ?? base.interface}
+                          onValueChange={(value) =>
+                            updateTaskSelection(task, {
+                              provider: base.provider,
+                              interface: value as AIInterfaceType,
+                              model: (resolveInterface(base.provider, value as AIInterfaceType)?.models[0] ?? ""),
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableInterfaces.map((iface) => (
+                              <SelectItem key={iface.value} value={iface.value} disabled={!iface.enabled}>
+                                {INTERFACE_LABELS[iface.value]}
+                                {!iface.enabled && iface.reason && (
+                                  <span className="ml-2 text-xs text-gray-400">({iface.reason})</span>
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Model</Label>
+                        <Select
+                          value={base.model}
+                          onValueChange={(value) =>
+                            updateTaskSelection(task, {
+                              provider: base.provider,
+                              interface: interfaceOption?.value ?? base.interface,
+                              model: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {models.map((model) => (
+                              <SelectItem key={model} value={model}>
+                                {model}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </TabCard>
     </TabsContent>
