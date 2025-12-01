@@ -192,7 +192,7 @@ describe("QueueManagementPage", () => {
 
   describe("Queue Stats", () => {
     it("displays queue statistics", async () => {
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText(/total/i)).toBeInTheDocument()
@@ -482,7 +482,7 @@ describe("QueueManagementPage", () => {
       })
 
       const user = userEvent.setup()
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /start queue/i })).toBeInTheDocument()
@@ -511,7 +511,7 @@ describe("QueueManagementPage", () => {
       vi.mocked(configClient.updateQueueSettings).mockRejectedValue(new Error("Network error"))
 
       const user = userEvent.setup()
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
@@ -533,7 +533,7 @@ describe("QueueManagementPage", () => {
     it("defaults to enabled when getQueueSettings fails", async () => {
       vi.mocked(configClient.getQueueSettings).mockRejectedValue(new Error("Failed to load"))
 
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText("Live")).toBeInTheDocument()
@@ -546,7 +546,7 @@ describe("QueueManagementPage", () => {
         processingTimeoutSeconds: 1800,
       } as any)
 
-      render(<QueueManagementPage />)
+      renderWithProvider()
 
       await waitFor(() => {
         expect(screen.getByText("Live")).toBeInTheDocument()
