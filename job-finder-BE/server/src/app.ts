@@ -70,7 +70,7 @@ export function buildApp() {
       },
       credentials: true,
       methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
       optionsSuccessStatus: 204
     })
   )

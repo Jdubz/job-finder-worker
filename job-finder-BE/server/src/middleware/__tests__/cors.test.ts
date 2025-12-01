@@ -49,18 +49,30 @@ describe('CORS configuration', () => {
       expect(res.headers['access-control-allow-headers']).toMatch(/cache-control/i)
     })
 
+    it('allows Pragma header', async () => {
+      const res = await request(app)
+        .options('/api/healthz')
+        .set('Origin', testOrigin)
+        .set('Access-Control-Request-Method', 'GET')
+        .set('Access-Control-Request-Headers', 'Pragma')
+
+      expect(res.status).toBe(204)
+      expect(res.headers['access-control-allow-headers']).toMatch(/pragma/i)
+    })
+
     it('allows multiple headers in preflight request', async () => {
       const res = await request(app)
         .options('/api/healthz')
         .set('Origin', testOrigin)
         .set('Access-Control-Request-Method', 'POST')
-        .set('Access-Control-Request-Headers', 'Content-Type, Authorization, Cache-Control')
+        .set('Access-Control-Request-Headers', 'Content-Type, Authorization, Cache-Control, Pragma')
 
       expect(res.status).toBe(204)
       const allowedHeaders = res.headers['access-control-allow-headers']
       expect(allowedHeaders).toMatch(/content-type/i)
       expect(allowedHeaders).toMatch(/authorization/i)
       expect(allowedHeaders).toMatch(/cache-control/i)
+      expect(allowedHeaders).toMatch(/pragma/i)
     })
   })
 
