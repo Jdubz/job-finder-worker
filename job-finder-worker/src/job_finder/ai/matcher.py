@@ -260,18 +260,18 @@ class AIJobMatcher:
             if not is_onsite and location.strip():
                 is_onsite = True
 
+        # Use word boundary regex to avoid false positives like
+        # "Circuit-Based Interpretability" matching "based in"
+        relocation_patterns = [
+            r"\brelocat",  # matches relocate, relocation, relocating
+            r"\bmust be on-?site\b",
+            r"\boffice in\b",
+            r"\bbased in\b",
+            r"\b(?:nyc|sf|la|ny)-based\b",
+        ]
         relocation_required = any(
-            token in combined
-            for token in (
-                "relocate",
-                "relocation",
-                "must be on-site",
-                "must be onsite",
-                "office in",
-                "based in",
-                "nyc-based",
-                "sf-based",
-            )
+            re.search(pattern, combined, re.IGNORECASE)
+            for pattern in relocation_patterns
         )
 
         return {
