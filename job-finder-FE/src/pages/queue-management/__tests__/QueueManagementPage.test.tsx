@@ -340,7 +340,7 @@ describe("QueueManagementPage", () => {
       await user.click(screen.getByTestId("queue-item-queue-1"))
 
       await waitFor(() => {
-        expect(screen.getByText(/queue item details/i)).toBeInTheDocument()
+        expect(screen.getByTestId("queue-item-dialog")).toBeInTheDocument()
       })
     })
   })
