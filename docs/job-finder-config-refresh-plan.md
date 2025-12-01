@@ -9,21 +9,20 @@ Owner: Codex (pairing with jdubz)
 Scope: Align backend/worker behavior, configs, and UI so every config key is live, visible, and applied per task; remove legacy data; improve match/location logic; modernize AI defaults; and refresh the configuration UI/preview experience.
 
 ## Objectives
-- **Config immediacy:** Every task (scrape, prefilter, match) must re-load the latest configs before processing.
-- **Single source of truth:** No legacy/dead config rows. All stored keys are rendered in UI and consumed in worker logic.
-- **Correct location handling:** Use user city & timezone; apply nuanced timezone penalties and relocation rules for onsite/hybrid vs remote-first.
-- **Tech & experience scoring:** Apply experience strikes and tech-rank weights in the match score (not just prefilter).
-- **AI defaults & per-task agents:** Default provider is Gemini; allow per-agent/task provider/interface/model selection (worker, document generator, company discovery, match, etc.).
-- **UI clarity & preview:** Clean layout, clear grouping, no wasted space; provide a screenshot generator using real config data for visual QA.
+- **Config immediacy:** Every task (scrape, prefilter, match) reloads fresh configs before processing the next item.
+- **Single source of truth:** No legacy/dead config rows; one consolidated stop list; every stored key is rendered in UI and consumed in worker logic.
+- **Correct location handling:** Use user city & timezone; timezone penalties apply only to remote roles; onsite/hybrid outside user city hard-reject unless relocation is allowed (then apply relocation penalty).
+- **Tech & experience scoring:** Apply experience strikes and tech-rank weights in the match score (prefilter only enforces absolute fail-tech and minimal gates).
+- **AI defaults & per-task agents:** Default provider Gemini; per-task provider/interface/model selection (match, company discovery, doc gen, scraping assist, etc.).
+- **UI clarity & preview:** Full-key coverage, clear grouping, minimal wasted space; screenshot generator with real data for QA.
 
 ## Workstreams & Steps
 
 ### 1) Backend/Worker Config Hygiene
-1. Add a lightweight config cache layer that reloads _before each task_ (or per batch item) for:
-   - prefilter-policy, match-policy, queue-settings, scheduler-settings, ai-settings, worker-settings, personal-info.
-2. Remove support for legacy rows (`job-match`, `job-filters`, `stop-list`, `technology-ranks`) and migrate data into canonical keys; add a one-time migrator that deletes or transforms old rows.
-3. Ensure `/config/reload` refreshes: StrikeFilterEngine, QueueManager timeouts, scheduler poll interval, AI provider selections, and any task-delay settings.
-4. Wire queue processing delay (`taskDelaySeconds`) into the worker loop if present.
+1. Reload configs **per item** (or batch item) for: prefilter-policy, match-policy, queue-settings, scheduler-settings, ai-settings, worker-settings, personal-info. Avoid stale in-memory copies.
+2. Remove legacy rows (`job-match`, `job-filters`, `stop-list`, `technology-ranks`) and migrate data into canonical keys; add one-time migrator that deletes old rows after backup.
+3. `/config/reload` must rebuild: StrikeFilterEngine, matcher inputs, QueueManager timeout, scheduler poll interval, AI providers, `taskDelaySeconds`.
+4. Apply `taskDelaySeconds` from queue-settings in worker loop.
 
 ### 2) Location & Timezone Rules (Match & Prefilter Alignment)
 1. Store user city and timezone in `personal-info`; ensure FE collects both.
@@ -32,48 +31,45 @@ Scope: Align backend/worker behavior, configs, and UI so every config key is liv
    - `locationPenaltyPoints`, `relocationPenaltyPoints`, `ambiguousLocationPenaltyPoints` (already present)
    - `remoteFirstTolerance` flag to soften timezone penalties when company/job is remote-first unless explicit constraints appear.
 3. Scoring rules:
-   - Base per-hour penalty from user TZ to job TZ; cap via `hardTimezonePenalty` when exceeding `maxTimezoneDiffHours`.
-   - If job is onsite/hybrid and `relocationAllowed` is false and city != user city → hard fail.
-   - Hybrid/onsite within same city bypass relocation fail; hybrid in same timezone but different city uses normal penalties.
-   - Remote-first jobs reduce or skip timezone penalties unless job text explicitly requires overlap hours.
-4. Prefilter should share the same remote/relocation gates as scorer to avoid disagreement.
+   - Remote roles only: per-hour penalty from user TZ to job TZ; cap via `hardTimezonePenalty` beyond `maxTimezoneDiffHours`; remote-first jobs still use this rule but are eligible for a reduced penalty if explicitly configured later.
+   - Onsite/Hybrid: if city ≠ user city and `relocationAllowed` is false → hard reject. If `relocationAllowed` is true → apply `relocationPenaltyPoints` (configurable) once; no duplicate penalties.
+   - Hybrid/onsite within same city bypass relocation fail; timezone penalties apply only to remote roles.
+4. Prefilter shares the same city/relocation gates and uses the shared TZ helper to avoid duplicate logic.
 
 ### 2b) Strike vs Hard-Reject Simplification
 1. Adopt **strike-first** filtering: prefer strike accumulation with explicit thresholds; reserve hard rejects only for absolute dealbreakers (e.g., city mismatch when relocation disallowed, forbidden tech `fail`).
-2. Consolidate stop lists (companies/keywords/domains) into one source of truth used by both prefilter and matcher; remove duplicate lists (`stopList`, `strikeEngine.hardRejections.*`) so each item is checked once and contributes strikes or a hard fail, not both.
-3. Normalize salary logic: single check path that (a) hard-rejects commission-only when configured, (b) applies strike for low max salary, and (c) enforces minSalaryFloor only once.
-4. Normalize timezone logic: one function that computes penalties/fails based on user city/timezone, relocation flag, remote-first tolerance, and explicit overlap requirements; reuse in prefilter and matcher to avoid double counting.
+2. Consolidate stop lists (companies/keywords/domains) into one source of truth used by both prefilter and matcher; remove duplicate lists (`stopList` vs `hardRejections.*`).
+3. Normalize salary logic: one path that (a) hard-rejects commission-only if configured, (b) applies strike for low max salary, (c) enforces `minSalaryFloor` once.
+4. Normalize timezone logic: one helper that computes penalties/fails based on user city/timezone and relocation flag; reuse in prefilter and matcher.
 5. Document the scoring order: stop-list → hard-fail rules (minimal) → strike accumulation (all dimensions) → final threshold decision.
 
 ### 3) Tech & Experience Scoring
-1. Reintroduce `experienceStrike` but apply in match scoring (not prefilter). Map to configurable points that subtract from score when required YOE exceeds candidate YOE or when titles imply junior/senior mismatch.
-2. Use `technologyRanks` (strike/fail) inside matcher scoring: subtract points for strike tech; hard-reject on fail tech; add small bonus for required/preferred tech presence.
-3. Keep prefilter tech checks minimal (only fail techs and blatant mismatches) to avoid double penalties.
+1. Apply `experienceStrike` in match scoring (not prefilter). Configurable points for YOE gaps or seniority mismatch.
+2. Use `technologyRanks` in matcher scoring: strikes subtract points; `fail` triggers hard reject; small bonuses for required/preferred presence.
+3. Prefilter tech checks only handle `fail` tech and obvious mismatches.
 
 ### 4) AI Configuration
 1. Default provider selection to **Gemini** across tasks when DB is missing.
-2. Support per-task agent selection (worker match, document generator, company discovery, scraping assist, prompt analysis). `ai-settings` schema: `{ taskName: { selected, options? } }` with fallbacks.
+2. Per-task agent selection (match, company discovery, document generator, scraping assist, prompt analysis). `ai-settings` schema: `{ taskName: { selected, options? } }` with fallbacks.
 3. Normalize legacy `selected` to task-specific entries during load; persist upgraded shape.
 
 ### 5) UI / UX Improvements
-1. Render every config key that exists in the canonical schemas; no hidden/unrendered fields. Add sections for location penalties, relocation flag, taskDelaySeconds, tech strike weights, experience strike weights, per-task AI agents.
-2. Improve layout:
-   - Responsive tab bar (scrollable on small screens), reduce empty gutters, align forms into 2–3 column grids with clear section headers.
-   - Per-section Save/Reset with sticky action bar on scroll.
-   - Show “Last updated” and “Updated by” per config card.
-3. Add a screenshot generator: button to capture the current config page state (using Playwright or html-to-image) and download/share for QA.
-4. Surface validation helptext for timezone/city and relocation semantics.
+1. Render every config key in canonical schemas; no hidden fields. Sections: stop list, salary, relocation flag/penalty, TZ penalties, taskDelaySeconds, tech strike weights, experience strike weights, per-task AI agents.
+2. Layout: responsive scrollable tabs, tighter grids, sticky Save/Reset per card, show “Last updated/by” per card.
+3. Screenshot generator to capture current page with real data (Playwright/html-to-image) for QA.
+4. Validation helptext for city/timezone and relocation semantics.
 
 ### 6) Testing & Verification
-1. Unit tests for config loader to confirm per-task reload and legacy-pruning migration.
-2. Integration tests for worker reload endpoint to ensure new settings apply to the next processed item.
-3. Matcher tests covering timezone penalties, relocation fail, remote-first softening, tech strike/fail impacts, experience strike impact.
-4. FE component tests for form serialization to ensure no keys are dropped and defaults round-trip.
-5. Visual regression via screenshot generator snapshot in CI (optional if headless allowed).
+1. Unit: config loader per-task refresh; legacy migration; stop-list consolidation.
+2. Integration: worker reload applies to next item; taskDelaySeconds honored.
+3. Matcher: timezone/relocation rules (remote vs hybrid/onsite), relocation penalty, tech strike/fail, experience strike, remote-only TZ penalty rule.
+4. Prefilter: unified stop-list, strike-first salary/keywords (no duplicate hard rejects).
+5. FE: form round-trip includes all keys; screenshot generator smoke test.
+6. Optional visual regression via screenshot generator in CI.
 
 ### 7) Migration & Rollout
-1. Write a DB migration to drop legacy rows and upgrade `ai-settings` shape; back up prior payloads to a JSON file.
-2. Add feature flag (env) to enable per-task reload; default ON in prod.
+1. DB migration: back up existing config rows to JSON, drop legacy rows, add new keys (city, timezone, relocationAllowed, relocationPenaltyPoints, taskDelaySeconds), normalize ai-settings shape.
+2. Feature flag (env) for per-task reload; default ON in prod.
 3. Deploy BE first (routes + worker), then FE; validate by saving configs and confirming immediate effect on next queue item.
 
 ## Deliverables
