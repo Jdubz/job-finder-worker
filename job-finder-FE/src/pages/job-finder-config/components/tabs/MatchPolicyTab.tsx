@@ -181,8 +181,8 @@ export function MatchPolicyTab({ isSaving, policy, onSave, onReset }: MatchPolic
                   control={form.control}
                   name="dealbreakers.perHourTimezonePenalty"
                   label="Per-Hour TZ Penalty"
-                  description="Points removed per hour from Pacific."
-                  info="Subtract this many points for each hour the job timezone differs from Pacific (UTC-8)."
+                  description="Points removed per hour from user timezone."
+                  info="Subtract this many points for each hour the job timezone differs from the user's timezone setting above."
                   inputClassName="max-w-[8rem]"
                 />
                 <NumericField
@@ -190,7 +190,7 @@ export function MatchPolicyTab({ isSaving, policy, onSave, onReset }: MatchPolic
                   name="dealbreakers.hardTimezonePenalty"
                   label="Hard TZ Penalty"
                   description="Applied when beyond max difference."
-                  info="If the job exceeds the max timezone difference, subtract this hard penalty."
+                  info="If the job exceeds the max timezone difference, subtract this hard penalty regardless of other scores."
                   inputClassName="max-w-[8rem]"
                 />
                 <Controller

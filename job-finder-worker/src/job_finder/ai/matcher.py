@@ -416,7 +416,6 @@ class AIJobMatcher:
             tz_hard_penalty = -abs(db.get("hardTimezonePenalty", db.get("timezoneHardPenaltyPoints", 60)))
             require_remote = bool(db.get("requireRemote", False))
             allow_hybrid = bool(db.get("allowHybridInTimezone", True))
-            base_tz = db.get("baseTimezoneOffset", -8)
             per_hour_penalty = -abs(db.get("perHourTimezonePenalty", 5))
 
             applied_tz_penalty = False
@@ -432,12 +431,12 @@ class AIJobMatcher:
                     match_analysis["application_priority"] = "Low"
 
             # Apply configurable Pacific-based penalty per hour difference
-            pacific_diff = abs((job_timezone or 0) - base_tz)
+            pacific_diff = abs((job_timezone or 0) - self.user_timezone)
             if pacific_diff > 0:
                 penalty = int(round(per_hour_penalty * pacific_diff))
                 if penalty != 0:
                     match_score += penalty
-                    adjustments.append(f"⏰ Pacific offset {pacific_diff}h: {penalty}")
+                    adjustments.append(f"⏰ User TZ offset {pacific_diff}h: {penalty}")
 
             if pacific_diff > max_diff and not applied_tz_penalty:
                 mismatch_penalty = tz_hard_penalty

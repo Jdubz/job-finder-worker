@@ -275,7 +275,6 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
     typeof dealbreakers.maxTimezoneDiffHours !== 'number' ||
     typeof dealbreakers.perHourTimezonePenalty !== 'number' ||
     typeof dealbreakers.hardTimezonePenalty !== 'number' ||
-    (dealbreakers.baseTimezoneOffset !== undefined && typeof dealbreakers.baseTimezoneOffset !== 'number') ||
     typeof dealbreakers.requireRemote !== 'boolean' ||
     typeof dealbreakers.allowHybridInTimezone !== 'boolean'
   ) {

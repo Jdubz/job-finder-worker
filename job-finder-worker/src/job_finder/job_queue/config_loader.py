@@ -256,7 +256,6 @@ class ConfigLoader:
                 "maxTimezoneDiffHours": 8,
                 "perHourTimezonePenalty": 5,
                 "hardTimezonePenalty": 60,
-                "baseTimezoneOffset": -8,
                 "requireRemote": False,
                 "allowHybridInTimezone": True,
                 "allowedOnsiteLocations": [
