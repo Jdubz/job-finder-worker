@@ -130,9 +130,42 @@ class JobProcessor(BaseProcessor):
             filter_engine=self.filter_engine,
         )
 
+        # Align AI matcher dealbreakers with the prefilter remote policy so scoring respects the same rules.
+        self._sync_matcher_dealbreakers(prefilter_policy)
+
     # ============================================================
     # JOB LISTING HELPERS
     # ============================================================
+
+    def _sync_matcher_dealbreakers(self, prefilter_policy: Dict[str, Any]) -> None:
+        """
+        Merge remote/hybrid allowances from prefilter-policy into the AI matcher dealbreakers.
+
+        This keeps scoring penalties aligned with the same remote rules used by the strike filter.
+        Match-policy can still override any of these values explicitly.
+        """
+
+        remote_policy = (prefilter_policy.get("strikeEngine") or {}).get("remotePolicy") or {}
+        dealbreakers = {**(self.ai_matcher.dealbreakers or {})}
+
+        if remote_policy.get("allowedOnsiteLocations"):
+            dealbreakers.setdefault(
+                "allowedOnsiteLocations", remote_policy["allowedOnsiteLocations"]
+            )
+        if remote_policy.get("allowedHybridLocations"):
+            dealbreakers.setdefault(
+                "allowedHybridLocations", remote_policy["allowedHybridLocations"]
+            )
+
+        allow_onsite = remote_policy.get("allowOnsite")
+        allow_hybrid = remote_policy.get("allowHybridPortland")
+
+        if allow_onsite is False and "requireRemote" not in dealbreakers:
+            dealbreakers["requireRemote"] = True
+        if allow_hybrid is False:
+            dealbreakers["allowHybridInTimezone"] = False
+
+        self.ai_matcher.dealbreakers = dealbreakers
 
     def _get_or_create_job_listing(
         self, item: JobQueueItem, job_data: Dict[str, Any]
@@ -276,6 +309,34 @@ class JobProcessor(BaseProcessor):
 
         logger.info(f"JOB_SCRAPE: Extracting job data from {(item.url or '')[:50]}...")
 
+        # If manual job data was provided in metadata, skip scraping and use it directly
+        manual_title = (item.metadata or {}).get("manualTitle")
+        manual_desc = (item.metadata or {}).get("manualDescription")
+        manual_company = (item.metadata or {}).get("manualCompanyName")
+        manual_location = (item.metadata or {}).get("manualLocation")
+        manual_tech = (item.metadata or {}).get("manualTechStack")
+        if manual_title or manual_desc:
+            job_data = {
+                "title": manual_title or "",
+                "description": manual_desc or "",
+                "company": manual_company or (item.company_name or "Unknown"),
+                "location": manual_location or "",
+                "tech_stack": manual_tech,
+                "url": item.url,
+            }
+            updated_state = {
+                **(item.pipeline_state or {}),
+                "job_data": job_data,
+                "scrape_method": "manual",
+            }
+            self.queue_manager.update_status(
+                item.id,
+                QueueStatus.SUCCESS,
+                "Job data provided manually",
+            )
+            self._respawn_job_with_state(item, updated_state, next_stage="filter")
+            return
+
         # Update status to processing and set pipeline_stage for UI
         updated_state = {**(item.pipeline_state or {}), "pipeline_stage": "scrape"}
         self.queue_manager.update_status(
@@ -376,13 +437,20 @@ class JobProcessor(BaseProcessor):
         listing_id = self._get_or_create_job_listing(item, job_data)
 
         try:
-            # Run strike-based filter
-            filter_result = self.filter_engine.evaluate_job(job_data)
+            # Run strike-based filter (unless bypass requested)
+            bypass_filter = bool((item.metadata or {}).get("bypassFilter"))
+            if bypass_filter:
+                filter_result = self.filter_engine.empty_pass_result()
+            else:
+                filter_result = self.filter_engine.evaluate_job(job_data)
 
             if not filter_result.passed:
                 # Job rejected by filters - TERMINAL STATE
                 rejection_summary = filter_result.get_rejection_summary()
                 rejection_data = filter_result.to_dict()
+
+                # Proactively spawn company/source tasks even for filtered jobs
+                self._spawn_company_and_source(item, job_data)
 
                 logger.info(f"JOB_FILTER: Rejected - {rejection_summary}")
 
@@ -814,6 +882,36 @@ class JobProcessor(BaseProcessor):
         except Exception as e:
             logger.error("Could not spawn company task for %s: %s", company_name, e)
             return False
+
+    def _spawn_company_and_source(self, item: JobQueueItem, job_data: Dict[str, Any]) -> None:
+        """Ensure company stub exists and spawn COMPANY and SOURCE_DISCOVERY tasks even for filtered jobs."""
+
+        company_name = job_data.get("company") or item.company_name or "Unknown"
+        company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
+
+        company = self.companies_manager.get_company(
+            company_name
+        ) or self.companies_manager.create_company_stub(company_name, company_website or "")
+
+        company_id = company.get("id")
+        # Spawn company enrichment task
+        if company_id:
+            self._try_spawn_company_task(item, company_id, company_name, company_website or "")
+
+        # Spawn source discovery task to track posting source
+        try:
+            self.queue_manager.spawn_item_safely(
+                item,
+                {
+                    "type": QueueItemType.SOURCE_DISCOVERY,
+                    "url": job_data.get("company_website") or job_data.get("url") or item.url,
+                    "company_name": company_name,
+                    "company_id": company_id,
+                    "source": item.source,
+                },
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Failed to spawn source discovery for %s: %s", company_name, e)
 
     @staticmethod
     def _is_job_board_url(url: str) -> bool:

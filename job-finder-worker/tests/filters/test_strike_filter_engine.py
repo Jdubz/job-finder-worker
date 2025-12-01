@@ -230,9 +230,7 @@ class TestHardRejections:
         }
         engine = StrikeFilterEngine(prefilter_policy)
 
-        valid_job["description"] = (
-            "We will go-to-market fast and go to production weekly. " * 5
-        )
+        valid_job["description"] = "We will go-to-market fast and go to production weekly. " * 5
 
         result = engine.evaluate_job(valid_job)
 

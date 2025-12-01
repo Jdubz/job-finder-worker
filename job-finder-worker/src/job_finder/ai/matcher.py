@@ -415,7 +415,13 @@ class AIJobMatcher:
 
             applied_tz_penalty = False
             if tz_beyond:
-                mismatch_penalty = tz_penalty
+                overshoot = hour_diff - max_diff if max_diff else 0
+                scale_denominator = max(1, (max_diff or 1) / 2)
+                scale = min(1.0, overshoot / scale_denominator)
+                target_penalty = int(
+                    abs(tz_penalty) + scale * (abs(tz_hard_penalty) - abs(tz_penalty))
+                )
+                mismatch_penalty = -target_penalty
                 match_score += mismatch_penalty
                 adjustments.append(f"🚫 Dealbreaker: timezone/location ({desc}) {mismatch_penalty}")
                 concerns = match_analysis.setdefault("potential_concerns", [])
@@ -583,7 +589,11 @@ class AIJobMatcher:
             if require_remote:
                 return base_penalty, "🏠 Remote required; onsite role"
             if not _matches(location, allowed_onsite):
-                return base_penalty, f"🏢 Onsite outside Portland allowance: {base_penalty}"
+                penalty = relocation_penalty if arrangement["relocation_required"] else base_penalty
+                reason = "🏢 Onsite outside Portland allowance"
+                if arrangement["relocation_required"]:
+                    reason += " + relocation required"
+                return penalty, f"{reason}: {penalty}"
             return 0, ""
 
         # Relocation demand without clear allowed city

@@ -186,6 +186,11 @@ export interface SubmitJobRequest {
   companyId?: string | null
   generationId?: string // Optional: Link to portfolio generation request ID
   source?: QueueSource
+  title?: string
+  description?: string
+  location?: string
+  techStack?: string
+  bypassFilter?: boolean
   metadata?: Record<string, unknown>
 }
 

@@ -94,6 +94,10 @@ class StrikeFilterEngine:
         # Technology ranks - only penalize for undesired tech, not missing tech info
         self.technologies = self.tech_ranks.get("technologies", {})
 
+    def empty_pass_result(self) -> FilterResult:
+        """Return a pass result with zero strikes (used for bypass scenarios)."""
+        return FilterResult(passed=True, total_strikes=0, strike_threshold=self.strike_threshold)
+
     def evaluate_job(self, job_data: dict) -> FilterResult:
         """
         Evaluate job with strike-based system.
