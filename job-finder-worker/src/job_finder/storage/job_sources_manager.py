@@ -349,6 +349,34 @@ class JobSourcesManager:
             if updated.rowcount == 0:
                 raise StorageError(f"Source {source_id} not found")
 
+    def update_company_link(self, source_id: str, company_id: str) -> bool:
+        """
+        Link a source to a company (self-healing FK repair).
+
+        Only updates if the source currently has no company_id set.
+        This prevents accidentally overwriting existing company associations.
+
+        Args:
+            source_id: The source ID to update
+            company_id: The company ID to link
+
+        Returns:
+            True if the link was updated, False if already linked or not found
+        """
+        with sqlite_connection(self.db_path) as conn:
+            result = conn.execute(
+                """
+                UPDATE job_sources
+                SET company_id = ?, updated_at = ?
+                WHERE id = ? AND company_id IS NULL
+                """,
+                (company_id, _utcnow_iso(), source_id),
+            )
+        updated = result.rowcount > 0
+        if updated:
+            logger.info("Linked source %s to company %s", source_id, company_id)
+        return updated
+
     # ------------------------------------------------------------------ #
     # Aggregator Domain Lookup
     # ------------------------------------------------------------------ #

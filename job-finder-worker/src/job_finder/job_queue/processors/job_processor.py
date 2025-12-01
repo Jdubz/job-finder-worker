@@ -717,6 +717,18 @@ class JobProcessor(BaseProcessor):
         company_id = company.get("id")
         company_name = job_data["company"]  # Guaranteed set by _ensure_company_dependency
 
+        # Self-heal FK relationships (company <-> source linkage)
+        if company_id:
+            company_id, source_id = self.ensure_company_source_link(
+                self.sources_manager,
+                company_id=company_id,
+                source_id=item.source_id,
+                source_url=item.url,
+            )
+            # Update item's source_id if we resolved one
+            if source_id and not item.source_id:
+                state_updates["source_id"] = source_id
+
         # Update job_listing with company_id if we have a listing
         listing_id = pipeline_state.get("job_listing_id")
         if listing_id and company_id:

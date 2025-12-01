@@ -6,19 +6,24 @@ This base class provides common functionality for all specialized processors:
 - Stop list checking
 - Logging utilities
 - Error handling patterns
+- FK relationship repair helpers
 
 Note: Heavy dependencies like filter_engine, scrape_runner, and scraper_intake
 are initialized only by processors that need them (JobProcessor).
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueStatus
 from job_finder.utils.company_info import should_skip_by_stop_list
 from job_finder.logging_config import get_structured_logger
+
+if TYPE_CHECKING:
+    from job_finder.storage.job_sources_manager import JobSourcesManager
+    from job_finder.storage.companies_manager import CompaniesManager
 
 logger = logging.getLogger(__name__)
 
@@ -87,3 +92,69 @@ class BaseProcessor:
             Pipeline state dictionary (empty dict if not present)
         """
         return item.pipeline_state or {}
+
+    # ============================================================
+    # FK RELATIONSHIP REPAIR HELPERS
+    # ============================================================
+
+    @staticmethod
+    def ensure_company_source_link(
+        sources_manager: "JobSourcesManager",
+        company_id: Optional[str],
+        source_id: Optional[str],
+        source_url: Optional[str] = None,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Ensure company and source are properly linked (self-healing).
+
+        This helper implements FK relationship repair:
+        - If we have source_id but no company_id, look up company from source
+        - If we have company_id and source_id but source isn't linked, link them
+        - If we have company_id and source_url but no source_id, look up and link
+
+        Args:
+            sources_manager: Job sources manager for lookups/updates
+            company_id: Known company ID (may be None)
+            source_id: Known source ID (may be None)
+            source_url: Optional source URL for lookup
+
+        Returns:
+            Tuple of (company_id, source_id) - potentially updated values
+        """
+        # If we have source_id but no company_id, look up company from source
+        if source_id and not company_id:
+            source = sources_manager.get_source_by_id(source_id)
+            if source and source.get("companyId"):
+                company_id = source["companyId"]
+                logger.debug(
+                    "Resolved company_id=%s from source_id=%s",
+                    company_id,
+                    source_id,
+                )
+
+        # If we have company but source isn't linked, try to link
+        if company_id and source_id:
+            source = sources_manager.get_source_by_id(source_id)
+            if source and not source.get("companyId"):
+                sources_manager.update_company_link(source_id, company_id)
+                logger.info(
+                    "Self-healed: linked source %s to company %s",
+                    source_id,
+                    company_id,
+                )
+
+        # If we have company and source_url but no source_id, look up source
+        if company_id and source_url and not source_id:
+            source = sources_manager.get_source_for_url(source_url)
+            if source:
+                source_id = source["id"]
+                if not source.get("companyId"):
+                    sources_manager.update_company_link(source_id, company_id)
+                    logger.info(
+                        "Self-healed: linked source %s (url=%s) to company %s",
+                        source_id,
+                        source_url,
+                        company_id,
+                    )
+
+        return company_id, source_id

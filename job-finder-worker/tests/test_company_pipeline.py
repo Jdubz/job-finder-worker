@@ -40,13 +40,17 @@ class TestCompanyPipeline:
         company_info_fetcher = Mock()
         company_info_fetcher._is_job_board_url.return_value = False
 
+        sources_manager = Mock()
+        sources_manager.get_source_for_url.return_value = None
+        sources_manager.get_active_sources.return_value = []
+
         return {
             "queue_manager": Mock(),
             "config_loader": config_loader,
             "job_storage": Mock(),
             "job_listing_storage": Mock(),
             "companies_manager": Mock(),
-            "sources_manager": Mock(),
+            "sources_manager": sources_manager,
             "company_info_fetcher": company_info_fetcher,
             "ai_matcher": Mock(),
         }
@@ -82,10 +86,11 @@ class TestCompanyPipeline:
 
         # Company saved
         mock_dependencies["companies_manager"].save_company.assert_called_once()
-        # Source discovery enqueued (since URL is a job board)
-        mock_dependencies["queue_manager"].add_item.assert_called_once()
-        source_item = mock_dependencies["queue_manager"].add_item.call_args[0][0]
-        assert source_item.type == QueueItemType.SOURCE_DISCOVERY
+        # Source discovery enqueued (since URL is a job board) via spawn_item_safely
+        mock_dependencies["queue_manager"].spawn_item_safely.assert_called_once()
+        spawn_call = mock_dependencies["queue_manager"].spawn_item_safely.call_args
+        new_item_data = spawn_call.kwargs.get("new_item_data", {})
+        assert new_item_data.get("type") == QueueItemType.SOURCE_DISCOVERY
         # Status set to success
         mock_dependencies["queue_manager"].update_status.assert_called()
         final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]

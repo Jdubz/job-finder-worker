@@ -545,8 +545,9 @@ class TestGenericScraperEdgeCases:
         scraper = GenericScraper(config)
         jobs = scraper.scrape()
 
-        assert jobs[0]["company"] == "Unknown"
-        assert jobs[0]["location"] == "Unknown"
+        # Empty strings are used as defaults instead of "Unknown"
+        assert jobs[0]["company"] == ""
+        assert jobs[0]["location"] == ""
         assert jobs[0]["description"] == ""
         assert jobs[0]["company_website"] == ""
 

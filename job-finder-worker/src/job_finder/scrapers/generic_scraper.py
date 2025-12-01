@@ -212,11 +212,11 @@ class GenericScraper:
             if url.startswith("/"):
                 job["url"] = f"{self.config.base_url}{url}"
 
-        # Ensure required fields have defaults
+        # Ensure required fields have defaults (empty string, not "Unknown")
         if not job.get("company"):
-            job["company"] = "Unknown"
+            job["company"] = ""
         if not job.get("location"):
-            job["location"] = "Unknown"
+            job["location"] = ""
         if not job.get("description"):
             job["description"] = ""
 
