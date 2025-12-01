@@ -349,6 +349,65 @@ class JobSourcesManager:
             if updated.rowcount == 0:
                 raise StorageError(f"Source {source_id} not found")
 
+    def update_company_link(self, source_id: str, company_id: str) -> bool:
+        """
+        Link a source to a company by setting the company_id foreign key.
+
+        This method performs "self-healing FK repair" by associating a job source
+        with a company only if the source currently has no company_id set (i.e.,
+        the foreign key is missing). This situation can arise from:
+        - Legacy data created before FK enforcement
+        - Import errors or race conditions during source creation
+        - Sources created from aggregator discovery before company was known
+
+        The method should be used when reconciling data to ensure sources are
+        properly linked to their corresponding companies, without overwriting
+        any existing links. If a source is already linked to a company, this
+        method will make no changes.
+
+        Args:
+            source_id: The source ID to update
+            company_id: The company ID to link
+
+        Returns:
+            True if the link was updated (source was previously unlinked),
+            False if the source was already linked or not found
+        """
+        with sqlite_connection(self.db_path) as conn:
+            result = conn.execute(
+                """
+                UPDATE job_sources
+                SET company_id = ?, updated_at = ?
+                WHERE id = ? AND company_id IS NULL
+                """,
+                (company_id, _utcnow_iso(), source_id),
+            )
+        updated = result.rowcount > 0
+        if updated:
+            logger.info("Linked source %s to company %s", source_id, company_id)
+        return updated
+
+    def has_source_for_company(self, company_id: str) -> bool:
+        """
+        Check if a company has any associated job sources.
+
+        This is an optimized query that only checks for existence rather than
+        fetching all sources. Use this instead of filtering get_active_sources()
+        when you only need to know if any source exists.
+
+        Args:
+            company_id: The company ID to check
+
+        Returns:
+            True if the company has at least one source, False otherwise
+        """
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM job_sources WHERE company_id = ? LIMIT 1",
+                (company_id,),
+            ).fetchone()
+        return row is not None
+
     # ------------------------------------------------------------------ #
     # Aggregator Domain Lookup
     # ------------------------------------------------------------------ #
