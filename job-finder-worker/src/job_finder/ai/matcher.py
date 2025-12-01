@@ -531,101 +531,49 @@ class AIJobMatcher:
     def _calculate_location_penalty(
         self, job: Dict[str, Any], job_timezone: Optional[float] = None
     ) -> tuple[int, str, bool]:
-        """Return (penalty, reason, applied_tz_penalty) for location/onsite preference violations."""
+        """Return (penalty, reason, applied_tz_penalty) using unified location rules."""
 
         description = (job.get("description") or "").lower()
         location_raw = job.get("location") or ""
         location = location_raw.lower()
         arrangement = self._detect_work_arrangement(description, location)
 
-        # Allowed local options for onsite/hybrid work
-        require_remote = bool(self.dealbreakers.get("requireRemote", False))
-        base_penalty = -abs(self.dealbreakers.get("locationPenaltyPoints", 60))
-        relocation_penalty = -abs(self.dealbreakers.get("relocationPenaltyPoints", 80))
-        ambiguous_penalty = -abs(self.dealbreakers.get("ambiguousLocationPenaltyPoints", 40))
-        per_hour_penalty = -abs(
-            self.dealbreakers.get(
-                "perHourTimezonePenalty", self.dealbreakers.get("timezonePenaltyPoints", 5)
-            )
+        from job_finder.utils.timezone_utils import detect_timezone_for_job
+        from job_finder.utils.location_rules import LocationContext, evaluate_location_rules
+
+        job_tz = detect_timezone_for_job(
+            job_location=location_raw,
+            job_description=description,
+            company_size=None,
+            headquarters_location=None,
+            company_name=job.get("company"),
+            company_info=None,
         )
-        max_tz_diff = self.dealbreakers.get("maxTimezoneDiffHours", 8)
-        hard_tz_penalty = -abs(self.dealbreakers.get("hardTimezonePenalty", 60))
-        tz_diff = None
-        if job_timezone is not None:
-            tz_diff = abs(job_timezone - self.user_timezone)
 
-        # Remote and no relocation requirement: no penalty
-        if arrangement["remote"] and not arrangement["relocation_required"]:
-            return 0, "", False
+        ctx = LocationContext(
+            user_city=self.profile.location or "",
+            user_timezone=self.user_timezone,
+            relocation_allowed=self.dealbreakers.get("relocationAllowed", False),
+            relocation_penalty=self.dealbreakers.get("relocationPenaltyPoints", 80),
+            location_penalty=self.dealbreakers.get("locationPenaltyPoints", 60),
+            ambiguous_location_penalty=self.dealbreakers.get("ambiguousLocationPenaltyPoints", 40),
+            max_timezone_diff_hours=self.dealbreakers.get("maxTimezoneDiffHours", 8),
+            per_hour_penalty=self.dealbreakers.get("perHourTimezonePenalty", 5),
+            hard_timezone_penalty=self.dealbreakers.get("hardTimezonePenalty", 60),
+        )
 
-        # Relocation demand without clear allowed city (takes precedence)
-        if arrangement["relocation_required"]:
-            penalty = relocation_penalty
-            if tz_diff is not None and tz_diff > max_tz_diff:
-                penalty = min(penalty, hard_tz_penalty)
-            return (
-                penalty,
-                f"🧳 Relocation required (tz diff {tz_diff or '?'}h): {penalty}",
-                bool(tz_diff),
-            )
+        eval_result = evaluate_location_rules(
+            job_city=location_raw,
+            job_timezone=job_tz,
+            remote=arrangement["remote"],
+            hybrid=arrangement["hybrid"],
+            ctx=ctx,
+        )
 
-        # Hybrid handling
-        if arrangement["hybrid"]:
-            if require_remote:
-                return base_penalty, "🏠 Remote required; hybrid not allowed", False
+        if eval_result.hard_reject:
+            return -abs(ctx.location_penalty), eval_result.reason or "location fail", False
 
-            if tz_diff is None:
-                return ambiguous_penalty, "❓ Hybrid location unclear", False
-
-            if tz_diff > max_tz_diff:
-                penalty = hard_tz_penalty
-                return (
-                    penalty,
-                    f"🏢 Hybrid too far from user timezone ({tz_diff}h): {penalty}",
-                    True,
-                )
-
-            if per_hour_penalty != 0 and tz_diff > 0:
-                penalty = int(round(per_hour_penalty * tz_diff))
-                return (
-                    penalty,
-                    f"🏢 Hybrid timezone gap {tz_diff}h: {penalty}",
-                    True,
-                )
-
-            return 0, "", bool(tz_diff)
-
-        # Onsite handling
-        if arrangement["onsite"]:
-            if require_remote:
-                return base_penalty, "🏠 Remote required; onsite role", False
-
-            if tz_diff is None:
-                return ambiguous_penalty, "❓ Onsite location unclear", False
-
-            if tz_diff > max_tz_diff:
-                penalty = hard_tz_penalty
-                return (
-                    penalty,
-                    f"🏢 Onsite too far from user timezone ({tz_diff}h): {penalty}",
-                    True,
-                )
-
-            if per_hour_penalty != 0 and tz_diff > 0:
-                penalty = int(round(per_hour_penalty * tz_diff))
-                return (
-                    penalty,
-                    f"🏢 Onsite timezone gap {tz_diff}h: {penalty}",
-                    True,
-                )
-
-            return 0, "", bool(tz_diff)
-
-        # Ambiguous arrangement: penalize only if remote is mandatory
-        if require_remote:
-            return ambiguous_penalty, f"❓ Ambiguous remote support: {ambiguous_penalty}", False
-
-        return 0, "", False
+        return -abs(eval_result.strikes), eval_result.reason or "", eval_result.strikes > 0
 
     def _build_match_result(
         self,

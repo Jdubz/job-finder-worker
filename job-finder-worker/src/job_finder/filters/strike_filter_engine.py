@@ -13,6 +13,7 @@ from typing import Optional
 
 from job_finder.filters.models import FilterResult
 from job_finder.utils.date_utils import parse_job_date
+from job_finder.utils.location_rules import LocationContext, evaluate_location_rules
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,13 @@ class StrikeFilterEngine:
         self.per_hour_timezone_penalty = abs(remote.get("perHourTimezonePenalty", 1))
         self.hard_timezone_penalty = abs(remote.get("hardTimezonePenalty", 3))
         self.user_timezone: Optional[float] = policy.get("userTimezone")
+
+        # Location context for relocation rules
+        self.user_city = policy.get("userCity") or None
+        self.relocation_allowed = policy.get("relocationAllowed", False)
+        self.relocation_penalty = policy.get("relocationPenaltyPoints", 80)
+        self.location_penalty = policy.get("locationPenaltyPoints", 60)
+        self.ambiguous_location_penalty = policy.get("ambiguousLocationPenaltyPoints", 40)
 
         # Strike: Salary
         salary_strike = config.get("salaryStrike", {})
@@ -151,7 +159,7 @@ class StrikeFilterEngine:
         if self._is_commission_only(description, result):
             return result
 
-        # Check remote policy
+        # Check remote/location policy (uses strike-first for remote, hard fail for onsite/hybrid outside city)
         if self._violates_remote_policy(description, location, result):
             return result
 
@@ -361,12 +369,11 @@ class StrikeFilterEngine:
     def _violates_remote_policy(
         self, description: str, location: str, result: FilterResult
     ) -> bool:
-        """Check remote/hybrid/onsite policy using timezone distance instead of city allowlists."""
+        """Apply unified remote/hybrid/onsite + relocation + timezone rules."""
         description_lower = description.lower()
         location_lower = location.lower()
         combined = f"{description_lower} {location_lower}"
 
-        # Detect work arrangement
         is_remote = (
             any(
                 ind in combined
@@ -401,80 +408,61 @@ class StrikeFilterEngine:
         if not is_remote and not is_hybrid and not is_onsite and location_lower.strip():
             is_onsite = True
 
-        if not is_remote and not is_hybrid and not is_onsite:
-            return False  # Unclear = allow (let AI analysis handle it)
+        if not (is_remote or is_hybrid or is_onsite):
+            return False
 
-        # Timezone-aware penalty/blocks for onsite/hybrid
-        tz_diff = None
-        if self.user_timezone is not None:
-            from job_finder.utils.timezone_utils import detect_timezone_for_job
+        from job_finder.utils.timezone_utils import detect_timezone_for_job
 
-            job_tz = detect_timezone_for_job(
-                job_location=location,
-                job_description=description,
-                company_size=None,
-                headquarters_location=None,
-                company_name=None,
-                company_info=None,
+        job_tz = detect_timezone_for_job(
+            job_location=location,
+            job_description=description,
+            company_size=None,
+            headquarters_location=None,
+            company_name=None,
+            company_info=None,
+        )
+
+        ctx = LocationContext(
+            user_city=self.user_city,
+            user_timezone=self.user_timezone,
+            relocation_allowed=self.relocation_allowed,
+            relocation_penalty=self.relocation_penalty,
+            location_penalty=self.location_penalty,
+            ambiguous_location_penalty=self.ambiguous_location_penalty,
+            max_timezone_diff_hours=self.max_timezone_diff_hours,
+            per_hour_penalty=self.per_hour_timezone_penalty,
+            hard_timezone_penalty=self.hard_timezone_penalty,
+        )
+
+        eval_result = evaluate_location_rules(
+            job_city=location,
+            job_timezone=job_tz,
+            remote=is_remote,
+            hybrid=is_hybrid,
+            ctx=ctx,
+        )
+
+        if eval_result.hard_reject:
+            result.add_rejection(
+                filter_category="hard_reject",
+                filter_name="location_policy",
+                reason=eval_result.reason or "Location policy failure",
+                detail=eval_result.reason or "Location policy failure",
+                severity="hard_reject",
+                points=0,
             )
-            if job_tz is not None:
-                tz_diff = abs(job_tz - self.user_timezone)
+            return True
 
-        # Remote allowed? short-circuit
-        if is_remote and self.allow_remote:
-            return False
+        if eval_result.strikes:
+            result.add_strike(
+                filter_category="location",
+                filter_name="timezone_penalty" if is_remote else "relocation_penalty",
+                reason=eval_result.reason or "Location penalty",
+                detail=eval_result.reason or "Location penalty",
+                points=eval_result.strikes,
+            )
 
-        # Hybrid/onsite allowed when timezone gap is tolerable
-        if (is_hybrid and self.allow_hybrid) or (is_onsite and self.allow_location_based_roles):
-            if tz_diff is None:
-                # Can't compute gap; allow but warn via strike so downstream UI can surface it
-                result.add_strike(
-                    filter_category="location",
-                    filter_name="timezone_unknown",
-                    reason="Timezone not detected",
-                    detail="Unable to infer job timezone for onsite/hybrid role",
-                    points=1,
-                )
-                return False
-
-            # Hard block if outside window
-            if tz_diff > self.max_timezone_diff_hours:
-                result.add_rejection(
-                    filter_category="hard_reject",
-                    filter_name="timezone_gap",
-                    reason="Timezone gap too large",
-                    detail=f"Gap {tz_diff}h exceeds {self.max_timezone_diff_hours}h window",
-                    severity="hard_reject",
-                    points=self.hard_timezone_penalty,
-                )
-                return True
-
-            if self.per_hour_timezone_penalty > 0 and tz_diff > 0:
-                result.add_strike(
-                    filter_category="location",
-                    filter_name="timezone_gap",
-                    reason="Timezone gap",
-                    detail=f"Gap {tz_diff}h from user timezone",
-                    points=int(round(self.per_hour_timezone_penalty * tz_diff)),
-                )
-            return False
-
-        # Only reject if arrangement violates allow flags
-        policy_reason = (
-            "Remote jobs not allowed"
-            if is_remote
-            else "Hybrid not allowed" if is_hybrid else "On-site not allowed"
-        )
-
-        result.add_rejection(
-            filter_category="hard_reject",
-            filter_name="remote_policy",
-            reason=policy_reason,
-            detail=f"Remote: {is_remote}, Hybrid: {is_hybrid}, Onsite: {is_onsite}",
-            severity="hard_reject",
-            points=0,
-        )
-        return True
+        return False
 
     def _is_too_old(self, posted_date_str: str, result: FilterResult) -> bool:
         """Check if job is older than hard reject threshold (7 days)."""
