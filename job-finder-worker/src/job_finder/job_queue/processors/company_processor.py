@@ -79,8 +79,30 @@ class CompanyProcessor(BaseProcessor):
             logger.error("Cannot process item without ID")
             return
 
-        company_name = item.company_name or "Unknown Company"
         company_id = item.company_id
+        company_name = item.company_name
+
+        # For re-analysis: if company_id is provided but name is missing,
+        # look up the existing company to get the correct name
+        if company_id and not company_name:
+            existing = self.companies_manager.get_company_by_id(company_id)
+            if existing:
+                company_name = existing.get("name")
+                logger.info(
+                    "Resolved company name from ID: %s -> %s", company_id, company_name
+                )
+
+        # Fail if we still don't have a company name - this is a data quality issue
+        if not company_name:
+            error_msg = (
+                "COMPANY task requires company_name in input. "
+                f"company_id={company_id}, url={item.url}"
+            )
+            logger.error(error_msg)
+            self.queue_manager.update_status(
+                item.id, QueueStatus.FAILED, error_msg
+            )
+            return
 
         _, company_display = format_company_name(company_name)
         logger.info(f"COMPANY: Processing {company_display}")
