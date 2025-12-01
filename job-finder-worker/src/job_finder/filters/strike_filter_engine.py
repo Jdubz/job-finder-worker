@@ -169,7 +169,7 @@ class StrikeFilterEngine:
 
         # === PHASE 2: Strike Accumulation ===
 
-        # Salary strike (< $150k)
+        # Salary strike (< threshold)
         if self.salary_strike_enabled:
             self._check_salary_strike(salary, result)
 
@@ -321,21 +321,20 @@ class StrikeFilterEngine:
         return False
 
     def _below_salary_floor(self, salary: str, result: FilterResult) -> bool:
-        """Check if salary is below hard floor ($100k)."""
+        """Check if salary is below hard floor and add strikes (no hard reject)."""
         if not salary:
-            return False  # No salary info = allow
+            return False
 
         max_salary = self._parse_salary(salary)
         if max_salary and max_salary < self.min_salary_floor:
-            result.add_rejection(
-                filter_category="hard_reject",
+            result.add_strike(
+                filter_category="salary",
                 filter_name="salary_floor",
                 reason=f"Salary below ${self.min_salary_floor // 1000}k floor",
                 detail=f"Max salary ${max_salary:,} is below minimum ${self.min_salary_floor:,}",
-                severity="hard_reject",
-                points=0,
+                points=3,
             )
-            return True
+            return False
         return False
 
     def _is_commission_only(self, description: str, result: FilterResult) -> bool:
