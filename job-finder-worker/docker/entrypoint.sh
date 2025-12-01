@@ -139,7 +139,7 @@ if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then
     chown -R node:node /app/logs
 
     # Start Flask worker in background as node user
-    gosu node /home/node/.local/bin/python /app/src/job_finder/flask_worker.py >> /app/logs/flask_worker.log 2>&1 &
+    gosu node /usr/local/bin/python /app/src/job_finder/flask_worker.py >> /app/logs/flask_worker.log 2>&1 &
     FLASK_WORKER_PID=$!
 
     # Wait a moment and check if it started
@@ -176,7 +176,7 @@ elif [ "${ENABLE_QUEUE_MODE}" = "true" ]; then
     chown -R node:node /app/logs
 
     # Start queue worker in background as node user
-    gosu node /home/node/.local/bin/python /app/scripts/workers/queue_worker.py >> /app/logs/queue_worker.log 2>&1 &
+    gosu node /usr/local/bin/python /app/scripts/workers/queue_worker.py >> /app/logs/queue_worker.log 2>&1 &
     QUEUE_WORKER_PID=$!
 
     # Wait a moment and check if it started
