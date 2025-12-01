@@ -111,6 +111,12 @@ class JobProcessor(BaseProcessor):
         # Initialize strike-based filter engine
         prefilter_policy = config_loader.get_prefilter_policy()
         self.filter_engine = StrikeFilterEngine(prefilter_policy)
+        # Keep strike engine timezone aligned with the match policy
+        try:
+            job_match_cfg = config_loader.get_job_match()
+            self.filter_engine.set_user_timezone(job_match_cfg.get("userTimezone"))
+        except Exception:
+            logger.warning("Unable to sync user timezone into strike filter", exc_info=True)
 
         # Initialize scrape runner with shared filter engine for pre-filtering
         self.scrape_runner = ScrapeRunner(
@@ -156,22 +162,18 @@ class JobProcessor(BaseProcessor):
                 existing = {}
         dealbreakers = {**existing}
 
-        if remote_policy.get("allowedOnsiteLocations"):
-            dealbreakers.setdefault(
-                "allowedOnsiteLocations", remote_policy["allowedOnsiteLocations"]
-            )
-        if remote_policy.get("allowedHybridLocations"):
-            dealbreakers.setdefault(
-                "allowedHybridLocations", remote_policy["allowedHybridLocations"]
-            )
-
         allow_onsite = remote_policy.get("allowOnsite")
-        allow_hybrid = remote_policy.get("allowHybridPortland")
+        allow_hybrid = remote_policy.get("allowHybridInTimezone")
 
         if allow_onsite is False and "requireRemote" not in dealbreakers:
             dealbreakers["requireRemote"] = True
         if allow_hybrid is False:
             dealbreakers["allowHybridInTimezone"] = False
+
+        # Carry over timezone-based penalties so scorer matches prefilter expectations
+        for key in ("maxTimezoneDiffHours", "perHourTimezonePenalty", "hardTimezonePenalty"):
+            if key in remote_policy and key not in dealbreakers:
+                dealbreakers[key] = remote_policy[key]
 
         self.ai_matcher.dealbreakers = dealbreakers
 

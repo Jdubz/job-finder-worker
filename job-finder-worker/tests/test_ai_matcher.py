@@ -671,8 +671,8 @@ class TestAnalyzeJob:
 
         result = matcher.analyze_job(sample_job, return_below_threshold=True)
 
-        # Base 90 with scaled penalty (-55) for 9h diff and hard cap 70
-        assert result.match_score == 35
+        # Base 90 with hard timezone penalty applied once
+        assert result.match_score == 30
         assert any("timezone" in adj.lower() for adj in result.score_breakdown.adjustments)
 
 

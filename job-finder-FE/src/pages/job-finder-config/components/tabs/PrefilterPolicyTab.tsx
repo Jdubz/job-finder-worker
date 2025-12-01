@@ -199,8 +199,11 @@ const mapFormToPolicy = (values: PrefilterFormValues): PrefilterPolicy => {
       },
       remotePolicy: {
         allowRemote: values.strikeEngine.remotePolicy?.allowRemote ?? false,
-        allowHybridPortland: values.strikeEngine.remotePolicy?.allowHybridPortland ?? false,
+        allowHybridInTimezone: values.strikeEngine.remotePolicy?.allowHybridInTimezone ?? false,
         allowOnsite: values.strikeEngine.remotePolicy?.allowOnsite ?? false,
+        maxTimezoneDiffHours: numberOrUndefined(values.strikeEngine.remotePolicy?.maxTimezoneDiffHours),
+        perHourTimezonePenalty: numberOrUndefined(values.strikeEngine.remotePolicy?.perHourTimezonePenalty),
+        hardTimezonePenalty: numberOrUndefined(values.strikeEngine.remotePolicy?.hardTimezonePenalty),
       },
       salaryStrike: {
         enabled: values.strikeEngine.salaryStrike?.enabled ?? false,
@@ -442,8 +445,8 @@ export function PrefilterPolicyTab({ isSaving, policy, onSave, onReset }: Prefil
               </div>
 
               <div className="space-y-3">
-                <h4 className="text-sm font-semibold flex items-center gap-2">Remote Policy <ImpactBadge label="Allow/Reject" tone="neutral" /></h4>
-                <div className="grid gap-6 md:grid-cols-3">
+                <h4 className="text-sm font-semibold flex items-center gap-2">Remote Policy <ImpactBadge label="Timezone aware" tone="neutral" /></h4>
+                <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-4">
                   <Controller
                     control={form.control}
                     name="strikeEngine.remotePolicy.allowRemote"
@@ -458,12 +461,12 @@ export function PrefilterPolicyTab({ isSaving, policy, onSave, onReset }: Prefil
                   />
                   <Controller
                     control={form.control}
-                    name="strikeEngine.remotePolicy.allowHybridPortland"
+                    name="strikeEngine.remotePolicy.allowHybridInTimezone"
                     render={({ field }) => (
                       <CheckboxRow
-                        label="Allow Hybrid (Portland)"
-                        description="Hybrid if within Portland"
-                        info="Allows hybrid roles only when location is inside the Portland area."
+                        label="Allow Hybrid (in TZ window)"
+                        description="Hybrid allowed when timezone gap is acceptable."
+                        info="Hybrid roles are allowed only when their timezone difference is within the configured hour window."
                         field={field}
                       />
                     )}
@@ -479,6 +482,33 @@ export function PrefilterPolicyTab({ isSaving, policy, onSave, onReset }: Prefil
                         field={field}
                       />
                     )}
+                  />
+                  <NumericField
+                    control={form.control}
+                    name="strikeEngine.remotePolicy.maxTimezoneDiffHours"
+                    label="Max TZ Gap (hrs)"
+                    description="Beyond this onsite/hybrid is rejected."
+                    inputClassName="max-w-[8rem]"
+                    disabled={!strikeEnabled}
+                    info="If the absolute timezone difference exceeds this value for onsite/hybrid roles, they are rejected before scoring."
+                  />
+                  <NumericField
+                    control={form.control}
+                    name="strikeEngine.remotePolicy.perHourTimezonePenalty"
+                    label="TZ Gap Strike / hr"
+                    description="Strikes per hour difference"
+                    inputClassName="max-w-[8rem]"
+                    disabled={!strikeEnabled}
+                    info="For onsite/hybrid roles within the max gap, add these strike points per hour of timezone difference."
+                  />
+                  <NumericField
+                    control={form.control}
+                    name="strikeEngine.remotePolicy.hardTimezonePenalty"
+                    label="Hard TZ Strike"
+                    description="Applied when gap is too large."
+                    inputClassName="max-w-[8rem]"
+                    disabled={!strikeEnabled}
+                    info="Strike points added when the timezone gap exceeds the maximum allowed."
                   />
                 </div>
               </div>
