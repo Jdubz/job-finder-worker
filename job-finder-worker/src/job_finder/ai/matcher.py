@@ -126,6 +126,13 @@ class AIJobMatcher:
             "blockedLocations": [],
             "requireRemote": False,
             "allowHybridInTimezone": True,
+            "allowedOnsiteLocations": [],
+            "allowedHybridLocations": [],
+            "locationPenaltyPoints": 60,
+            "relocationPenaltyPoints": 80,
+            "ambiguousLocationPenaltyPoints": 40,
+            "timezonePenaltyPoints": 40,
+            "timezoneHardPenaltyPoints": 60,
         }
         self.prompts = JobMatchPrompts()
 
@@ -171,7 +178,7 @@ class AIJobMatcher:
                 logger.warning(f"Failed to analyze job: {job.get('title')}")
                 return None
 
-            # Step 2: Apply score adjustments (Portland office bonus, freshness multiplier, etc.)
+            # Step 2: Apply score adjustments (location policy, Portland bonus, freshness, etc.)
             match_score, score_breakdown = self._calculate_adjusted_score(
                 match_analysis, has_portland_office, job
             )
@@ -209,6 +216,61 @@ class AIJobMatcher:
             logger.error(f"Error analyzing job {job.get('title', 'unknown')}: {str(e)}")
             raise
 
+    def _detect_work_arrangement(self, description: str, location: str) -> Dict[str, bool]:
+        """Infer remote/hybrid/onsite and relocation cues from text."""
+
+        combined = f"{description} {location}".lower()
+
+        is_remote = any(
+            token in combined
+            for token in (
+                "fully remote",
+                "100% remote",
+                "remote position",
+                "remote role",
+                "remote job",
+                "remote opportunity",
+                "remote work",
+                "remote only",
+                "remote-only",
+                "work from home",
+                "work from anywhere",
+                "wfh",
+                "remote-first",
+                "remote friendly",
+                "remote-friendly",
+                "remotely",
+                "hiring remote",
+            )
+        ) or "remote" in location
+
+        is_hybrid = any(token in combined for token in ("hybrid", "days in office", "office/remote"))
+        is_onsite = any(token in combined for token in ("on-site", "onsite", "in-office", "office-based"))
+
+        if not is_remote and not is_hybrid and not is_onsite and location.strip():
+            is_onsite = True  # Concrete location implies in-office expectation
+
+        relocation_required = any(
+            token in combined
+            for token in (
+                "relocate",
+                "relocation",
+                "must be on-site",
+                "must be onsite",
+                "office in",
+                "based in",
+                "nyc-based",
+                "sf-based",
+            )
+        )
+
+        return {
+            "remote": is_remote,
+            "hybrid": is_hybrid,
+            "onsite": is_onsite,
+            "relocation_required": relocation_required,
+        }
+
     def _calculate_adjusted_score(
         self, match_analysis: Dict[str, Any], has_portland_office: bool, job: Dict[str, Any]
     ) -> tuple[int, ScoreBreakdown]:
@@ -233,6 +295,12 @@ class AIJobMatcher:
         size_weights = weights.get("sizeAdjustments", {})
         tz_weights = weights.get("timezoneAdjustments", {})
         priority_thresholds = weights.get("priorityThresholds", {})
+
+        # Apply location penalties/bonuses before other adjustments
+        location_penalty, location_reason = self._calculate_location_penalty(job)
+        if location_penalty != 0:
+            match_score += location_penalty
+            adjustments.append(location_reason)
 
         # Apply Portland office bonus
         if has_portland_office and self.portland_office_bonus > 0:
@@ -330,16 +398,16 @@ class AIJobMatcher:
             # Config-driven dealbreakers
             db = self.dealbreakers or {}
             max_diff = db.get("maxTimezoneDiffHours", 8)
-            blocked_locations = [str(x).lower() for x in db.get("blockedLocations", [])]
+            tz_penalty = -abs(db.get("timezonePenaltyPoints", 40))
+            tz_hard_penalty = -abs(db.get("timezoneHardPenaltyPoints", 60))
             require_remote = bool(db.get("requireRemote", False))
             allow_hybrid = bool(db.get("allowHybridInTimezone", True))
 
-            location_text = (job_location or headquarters_location or company_name or "").lower()
-            blocked_hit = any(token in location_text for token in blocked_locations)
             tz_beyond = hour_diff > max_diff if max_diff is not None else False
 
-            if blocked_hit or tz_beyond:
-                mismatch_penalty = -40
+            applied_tz_penalty = False
+            if tz_beyond:
+                mismatch_penalty = tz_penalty
                 match_score += mismatch_penalty
                 adjustments.append(f"🚫 Dealbreaker: timezone/location ({desc}) {mismatch_penalty}")
                 concerns = match_analysis.setdefault("potential_concerns", [])
@@ -347,6 +415,7 @@ class AIJobMatcher:
                     "Timezone/location mismatch: outside preferred window; candidate will not relocate or work incompatible hours."
                 )
                 match_analysis["application_priority"] = "Low"
+                applied_tz_penalty = True
 
             if require_remote:
                 location_lower = (job_location or "").lower()
@@ -360,12 +429,12 @@ class AIJobMatcher:
 
             # Hard-stop mismatch: user only works 8a-8p PT and will not relocate.
             location_text = job_location or headquarters_location or company_name
+            location_text = job_location or headquarters_location or company_name or ""
             india_like = any(
-                k in (location_text or "").lower()
-                for k in ["india", "bangalore", "bengaluru", "ist"]
+                k in location_text.lower() for k in ["india", "bangalore", "bengaluru", "ist"]
             )
-            if hour_diff > 8 or india_like:
-                mismatch_penalty = -40
+            if (hour_diff > 8 or india_like) and not applied_tz_penalty:
+                mismatch_penalty = tz_hard_penalty
                 match_score += mismatch_penalty
                 adjustments.append(
                     f"🚫 Timezone/relocation dealbreaker ({desc or 'unknown location'}): {mismatch_penalty}"
@@ -448,6 +517,75 @@ class AIJobMatcher:
         )
 
         return match_score, breakdown
+
+    def _calculate_location_penalty(self, job: Dict[str, Any]) -> tuple[int, str]:
+        """Return (penalty, reason) for location/onsite preference violations."""
+
+        description = (job.get("description") or "").lower()
+        location_raw = job.get("location") or ""
+        location = location_raw.lower()
+        arrangement = self._detect_work_arrangement(description, location)
+
+        blocked_locations = [loc.lower() for loc in self.dealbreakers.get("blockedLocations", [])]
+        if blocked_locations and any(loc in f"{description} {location}" for loc in blocked_locations):
+            penalty = -abs(self.dealbreakers.get("locationPenaltyPoints", 60))
+            return penalty, f"🚫 Blocked location ({location_raw or 'unspecified'}): {penalty}"
+
+        # Allowed local options for onsite/hybrid work
+        fallback_allow = [
+            "portland, or",
+            "portland",
+            "pdx",
+            "beaverton",
+            "hillsboro",
+            "vancouver, wa",
+            "oregon",
+        ]
+        allowed_onsite = [
+            loc.lower() for loc in self.dealbreakers.get("allowedOnsiteLocations", [])
+        ] or fallback_allow
+        allowed_hybrid = [
+            loc.lower() for loc in self.dealbreakers.get("allowedHybridLocations", [])
+        ] or allowed_onsite
+
+        require_remote = bool(self.dealbreakers.get("requireRemote", False))
+        base_penalty = -abs(self.dealbreakers.get("locationPenaltyPoints", 60))
+        relocation_penalty = -abs(self.dealbreakers.get("relocationPenaltyPoints", 80))
+        ambiguous_penalty = -abs(self.dealbreakers.get("ambiguousLocationPenaltyPoints", 40))
+
+        def _matches(loc_value: str, allowlist: list[str]) -> bool:
+            loc_value = (loc_value or "").lower()
+            return any(allowed in loc_value for allowed in allowlist)
+
+        # Remote and no relocation requirement: no penalty
+        if arrangement["remote"] and not arrangement["relocation_required"]:
+            return 0, ""
+
+        # Hybrid handling
+        if arrangement["hybrid"]:
+            if require_remote:
+                return base_penalty, "🏠 Remote required; hybrid outside preference"
+            if not _matches(location, allowed_hybrid):
+                return base_penalty, f"🏢 Hybrid outside Portland allowance: {base_penalty}"
+            return 0, ""
+
+        # Onsite handling
+        if arrangement["onsite"]:
+            if require_remote:
+                return base_penalty, "🏠 Remote required; onsite role"
+            if not _matches(location, allowed_onsite):
+                return base_penalty, f"🏢 Onsite outside Portland allowance: {base_penalty}"
+            return 0, ""
+
+        # Relocation demand without clear allowed city
+        if arrangement["relocation_required"] and not _matches(location, allowed_onsite):
+            return relocation_penalty, f"🧳 Relocation required away from Portland: {relocation_penalty}"
+
+        # Ambiguous arrangement: penalize only if remote is mandatory
+        if require_remote:
+            return ambiguous_penalty, f"❓ Ambiguous remote support: {ambiguous_penalty}"
+
+        return 0, ""
 
     def _build_match_result(
         self,

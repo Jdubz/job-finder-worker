@@ -222,27 +222,33 @@ Before scoring, check for these AUTOMATIC DISQUALIFIERS:
    - Does it require minimal coding? (e.g., "oversee", "coordinate", "manage team" but no "build", "develop", "code")
    - **If YES to any:** Set match_score = 0 and explain why in potential_concerns
 
-2. **Remote Work Red Flags**
+2. **Location / Onsite Policy**
+   - Is the role onsite-only or hybrid outside the Portland, OR metro (Portland/Beaverton/Hillsboro/Vancouver WA)?
+   - Does it say "NYC-based", "SF-based", "must be in office", or require relocation to a city other than Portland?
+   - If the job has a specific city listed and no clear remote option, treat it as onsite in that city.
+   - **If YES to any:** Deduct at least 60 points (configurable policy) for a location mismatch and list the mismatch in potential_concerns. Do not force the score to zero unless other dealbreakers apply.
+
+3. **Remote Work Red Flags**
    - Does it require frequent travel (25%+ of time)?
    - Does it say "remote for now, relocate later" or "remote during pandemic only"?
    - Does it require specific timezone hours incompatible with Pacific Time? (e.g., "must work UK hours")
    - Is it "remote" but requires regular in-office attendance outside Portland, OR?
-   - **If YES to any:** Set match_score = 0 and explain in potential_concerns
+   - **If YES to any:** Apply a large deduction (40–60 points depending on policy) and explain in potential_concerns. Only set score to 0 if multiple hard red flags stack.
 
-3. **Compensation/Employment Structure Issues**
+4. **Compensation/Employment Structure Issues**
    - Is this a contract/1099 position when candidate wants FTE?
    - Does it emphasize equity over base salary for an unproven startup?
    - Does "competitive salary" seem like code for below-market pay?
    - Is it commission-based or performance-pay heavy?
    - **If YES to any:** Reduce score by 30 points minimum
 
-4. **Unrealistic Expectations**
+5. **Unrealistic Expectations**
    - Does it list 10+ required technologies that no one person could master?
    - Does it want senior-level skills but offer mid-level compensation?
    - Is the title inflated for the actual role? (e.g., "Senior" but requires only 2 years experience)
    - **If YES:** Reduce score by 20 points minimum
 
-5. **Quality/Culture Red Flags**
+6. **Quality/Culture Red Flags**
    - Excessive buzzwords with no substance ("rockstar", "ninja", "10x engineer")?
    - "Fast-paced startup environment" + "wear many hats" = chaotic/undefined role?
    - "Unlimited PTO" without clear team boundaries = overwork culture?
