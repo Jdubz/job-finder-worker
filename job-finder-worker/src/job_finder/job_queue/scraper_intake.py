@@ -233,13 +233,16 @@ class ScraperIntake:
                 if (is_aggregator or is_board_path) and detail_url:
                     canonical_url = normalize_url(detail_url)
                 elif is_aggregator or is_board_path:
-                    # No per-job URL; reroute as scrape_source task instead of enqueueing a JOB
-                    skipped_count += 1
-                    logger.info(
-                        "Board URL without detail; skipping job and deferring to source scrape: %s",
-                        normalized_url,
-                    )
-                    continue
+                    # If we have full text, allow this specific posting; otherwise defer.
+                    if job.get("description"):
+                        canonical_url = normalized_url
+                    else:
+                        skipped_count += 1
+                        logger.info(
+                            "Board URL without detail; skipping job and deferring to source scrape: %s",
+                            normalized_url,
+                        )
+                        continue
 
                 # Check if URL already in queue
                 if self.queue_manager.url_exists_in_queue(canonical_url):

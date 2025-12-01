@@ -1,4 +1,3 @@
-import { useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -13,8 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { ExternalLink, FileText, Building2, Database, AlertCircle } from "lucide-react"
-import { CompanyDetailsModal } from "@/components/company"
-import { SourceDetailsModal } from "@/components/source"
+import { useEntityModal } from "@/contexts/EntityModalContext"
 import type { JobMatchWithListing } from "@shared/types"
 
 interface JobDetailsDialogProps {
@@ -30,16 +28,13 @@ export function JobDetailsDialog({
   onOpenChange,
   onGenerateResume,
 }: JobDetailsDialogProps) {
-  // FK relationship modal state
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
+  const { openModal } = useEntityModal()
 
   if (!match) return null
 
   const companyInfo = match.company?.about || match.company?.culture || match.company?.mission
 
   return (
-    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
@@ -146,7 +141,7 @@ export function JobDetailsDialog({
                         <Button
                           variant="link"
                           className="h-auto p-0 text-blue-600 hover:underline text-sm"
-                          onClick={() => setSelectedCompanyId(match.listing.companyId!)}
+                          onClick={() => openModal({ type: "company", companyId: match.listing.companyId })}
                         >
                           {match.listing.companyName}
                         </Button>
@@ -170,7 +165,7 @@ export function JobDetailsDialog({
                         <Button
                           variant="link"
                           className="h-auto p-0 text-blue-600 hover:underline text-sm"
-                          onClick={() => setSelectedSourceId(match.listing.sourceId!)}
+                          onClick={() => openModal({ type: "jobSource", sourceId: match.listing.sourceId })}
                         >
                           View Source Details
                         </Button>
@@ -318,24 +313,5 @@ export function JobDetailsDialog({
         </div>
       </DialogContent>
     </Dialog>
-
-    {/* Company Details Modal */}
-    <CompanyDetailsModal
-      companyId={selectedCompanyId}
-      open={!!selectedCompanyId}
-      onOpenChange={(isOpen) => !isOpen && setSelectedCompanyId(null)}
-    />
-
-    {/* Source Details Modal */}
-    <SourceDetailsModal
-      sourceId={selectedSourceId}
-      open={!!selectedSourceId}
-      onOpenChange={(isOpen) => !isOpen && setSelectedSourceId(null)}
-      onCompanyClick={(companyId) => {
-        setSelectedSourceId(null)
-        setSelectedCompanyId(companyId)
-      }}
-    />
-    </>
   )
 }

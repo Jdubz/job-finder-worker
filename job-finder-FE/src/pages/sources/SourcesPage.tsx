@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
+import { useEntityModal } from "@/contexts/EntityModalContext"
 import { useJobSources } from "@/hooks/useJobSources"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
@@ -33,53 +34,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { AlertCircle, Loader2, Plus, Rss, ExternalLink, Trash2, Search, Pause, Play, Building2 } from "lucide-react"
-import { CompanyDetailsModal } from "@/components/company"
+import { AlertCircle, Loader2, Plus, Rss, Search, Building2 } from "lucide-react"
 import type { JobSource, JobSourceStatus } from "@shared/types"
-
-function formatRelativeTime(date: unknown): string {
-  if (!date) return "—"
-  let d: Date
-  if (date instanceof Date) {
-    d = date
-  } else if (typeof date === "string" || typeof date === "number") {
-    d = new Date(date)
-  } else if (typeof date === "object" && date !== null && "toDate" in date && typeof (date as { toDate: () => Date }).toDate === "function") {
-    d = (date as { toDate: () => Date }).toDate()
-  } else {
-    return "—"
-  }
-  const now = new Date()
-  const diffMs = now.getTime() - d.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  if (diffMins < 1) return "just now"
-  if (diffMins < 60) return `${diffMins}m ago`
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  const diffDays = Math.floor(diffHours / 24)
-  return `${diffDays}d ago`
-}
-
-function formatDate(date: unknown): string {
-  if (!date) return "—"
-  let d: Date
-  if (date instanceof Date) {
-    d = date
-  } else if (typeof date === "string" || typeof date === "number") {
-    d = new Date(date)
-  } else if (typeof date === "object" && date !== null && "toDate" in date && typeof (date as { toDate: () => Date }).toDate === "function") {
-    d = (date as { toDate: () => Date }).toDate()
-  } else {
-    return "—"
-  }
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
 
 const statusColors: Record<JobSourceStatus, string> = {
   active: "bg-green-100 text-green-800",
@@ -100,19 +56,16 @@ const sourceTypeLabels: Record<string, string> = {
 export function SourcesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { openModal } = useEntityModal()
   const { sources, loading, updateSource, deleteSource, refetch, setFilters } = useJobSources({ limit: 100 })
   const { submitSourceDiscovery } = useQueueItems()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const [selectedSource, setSelectedSource] = useState<JobSource | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false)
   const [scrapePrefillSourceId, setScrapePrefillSourceId] = useState<string | null>(null)
-
-  // Company details modal state
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
 
   // Form state
   const [sourceUrl, setSourceUrl] = useState("")
@@ -154,7 +107,6 @@ export function SourcesPage() {
     if (!confirm("Are you sure you want to delete this source?")) return
     try {
       await deleteSource(id)
-      setSelectedSource(null)
     } catch (err) {
       console.error("Failed to delete source:", err)
     }
@@ -164,10 +116,7 @@ export function SourcesPage() {
     if (!source.id) return
     const newStatus: JobSourceStatus = source.status === "active" ? "paused" : "active"
     try {
-      const updated = await updateSource(source.id, { status: newStatus })
-      if (selectedSource?.id === source.id) {
-        setSelectedSource(updated)
-      }
+      await updateSource(source.id, { status: newStatus })
     } catch (err) {
       console.error("Failed to update source status:", err)
     }
@@ -192,14 +141,6 @@ export function SourcesPage() {
     }
     return true
   })
-
-  const getSourceUrl = (source: JobSource): string | null => {
-    if (typeof source.configJson === "object" && source.configJson !== null) {
-      const config = source.configJson as Record<string, unknown>
-      if (typeof config.url === "string") return config.url
-    }
-    return null
-  }
 
   if (!user) {
     return (
@@ -369,7 +310,14 @@ export function SourcesPage() {
                   <TableRow
                     key={source.id}
                     className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
-                    onClick={() => setSelectedSource(source)}
+                    onClick={() =>
+                      openModal({
+                        type: "jobSource",
+                        source,
+                        onToggleStatus: handleToggleStatus,
+                        onDelete: (id) => handleDelete(id),
+                      })
+                    }
                   >
                     <TableCell>
                       <div className="font-medium">{source.name}</div>
@@ -381,7 +329,10 @@ export function SourcesPage() {
                             className="text-blue-600 hover:underline inline-flex items-center gap-1"
                             onClick={(e) => {
                               e.stopPropagation()
-                              setSelectedCompanyId(source.companyId!)
+                              openModal({
+                                type: "company",
+                                companyId: source.companyId || undefined,
+                              })
                             }}
                           >
                             <Building2 className="h-3 w-3" />
@@ -409,7 +360,10 @@ export function SourcesPage() {
                           className="text-blue-600 hover:underline inline-flex items-center gap-1"
                           onClick={(e) => {
                             e.stopPropagation()
-                            setSelectedCompanyId(source.companyId!)
+                            openModal({
+                              type: "company",
+                              companyId: source.companyId || undefined,
+                            })
                           }}
                         >
                           <Building2 className="h-3 w-3" />
@@ -459,199 +413,12 @@ export function SourcesPage() {
       </Card>
 
       {/* Detail Modal */}
-      <Dialog open={!!selectedSource} onOpenChange={(open) => !open && setSelectedSource(null)}>
-        <DialogContent className="w-[95vw] sm:max-w-[600px] max-h-[90vh] overflow-hidden flex flex-col">
-          {selectedSource && (
-            <>
-              <DialogHeader>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <DialogTitle className="text-xl">{selectedSource.name}</DialogTitle>
-                    <DialogDescription className="mt-1">
-                      {selectedSource.aggregatorDomain
-                        ? `Aggregator: ${selectedSource.aggregatorDomain}`
-                        : selectedSource.companyId
-                          ? "Company-specific source"
-                          : "No company associated"}
-                    </DialogDescription>
-                  </div>
-                  <Badge className={statusColors[selectedSource.status]}>
-                    {selectedSource.status}
-                  </Badge>
-                </div>
-              </DialogHeader>
-
-              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-                {/* ID */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">ID</Label>
-                  <p className="mt-1 text-sm font-mono text-muted-foreground break-all">{selectedSource.id || "—"}</p>
-                </div>
-
-                {/* Source URL */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Source URL</Label>
-                  {(() => {
-                    const url = getSourceUrl(selectedSource)
-                    if (!url) {
-                      return <p className="mt-1 text-muted-foreground">—</p>
-                    }
-                    return (
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-start text-blue-600 hover:underline mt-1 break-all text-sm"
-                      >
-                        <span className="flex-1">{url}</span>
-                        <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0 mt-1" />
-                      </a>
-                    )
-                  })()}
-                </div>
-
-                {/* Type */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Type</Label>
-                  <p className="mt-1">{sourceTypeLabels[selectedSource.sourceType] || selectedSource.sourceType}</p>
-                </div>
-
-                {/* Status */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Status</Label>
-                  <p className="mt-1">
-                    <Badge className={statusColors[selectedSource.status]}>
-                      {selectedSource.status}
-                    </Badge>
-                  </p>
-                </div>
-
-                {/* Linked Company */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
-                    <Building2 className="h-3 w-3" />
-                    Linked Company
-                  </Label>
-                  {selectedSource.companyId ? (
-                    <div className="mt-1">
-                      <Button
-                        variant="link"
-                        className="h-auto p-0 text-blue-600 hover:underline"
-                        onClick={() => {
-                          setSelectedCompanyId(selectedSource.companyId!)
-                        }}
-                      >
-                        View Company Details
-                      </Button>
-                      <p className="text-xs font-mono text-muted-foreground mt-1">{selectedSource.companyId}</p>
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      No company linked
-                    </p>
-                  )}
-                </div>
-
-                {/* Aggregator Domain */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Aggregator Domain</Label>
-                  <p className="mt-1">{selectedSource.aggregatorDomain || "—"}</p>
-                </div>
-
-                {/* Tags */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Tags</Label>
-                  {selectedSource.tags && selectedSource.tags.length > 0 ? (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {selectedSource.tags.map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">—</p>
-                  )}
-                </div>
-
-                {/* Config JSON */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Config</Label>
-                  <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-[120px] sm:max-h-[160px] break-all whitespace-pre-wrap">
-                    {JSON.stringify(selectedSource.configJson, null, 2)}
-                  </pre>
-                </div>
-
-                {/* Scraping Info */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Last Scraped</Label>
-                  <p className="mt-1">{formatRelativeTime(selectedSource.lastScrapedAt)}</p>
-                </div>
-
-                {/* Timestamps */}
-                <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Created</Label>
-                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedSource.createdAt)}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Updated</Label>
-                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedSource.updatedAt)}</p>
-                  </div>
-                </div>
-              </div>
-
-              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between pt-4 border-t flex-shrink-0 mt-4">
-                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleToggleStatus(selectedSource)}
-                    className="w-full sm:w-auto"
-                  >
-                    {selectedSource.status === "active" ? (
-                      <>
-                        <Pause className="mr-2 h-4 w-4" />
-                        Pause
-                      </>
-                    ) : (
-                      <>
-                        <Play className="mr-2 h-4 w-4" />
-                        Activate
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => selectedSource.id && handleDelete(selectedSource.id)}
-                    className="w-full sm:w-auto"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </Button>
-                </div>
-                <Button variant="ghost" onClick={() => setSelectedSource(null)} className="w-full sm:w-auto">
-                  Close
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
       <ScrapeJobDialog
         open={scrapeDialogOpen}
         onOpenChange={setScrapeDialogOpen}
         prefillSourceId={scrapePrefillSourceId}
         onSubmitted={refetch}
         sources={sources}
-      />
-
-      {/* Company Details Modal */}
-      <CompanyDetailsModal
-        companyId={selectedCompanyId}
-        open={!!selectedCompanyId}
-        onOpenChange={(open) => !open && setSelectedCompanyId(null)}
       />
     </div>
   )

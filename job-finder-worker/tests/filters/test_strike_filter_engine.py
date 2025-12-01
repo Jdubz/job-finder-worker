@@ -41,8 +41,10 @@ def base_config():
         "remotePolicy": {
             "allowRemote": True,
             "allowOnsite": False,
-            "allowedOnsiteLocations": ["portland, or"],
-            "allowedHybridLocations": ["portland, or"],
+            "allowHybridInTimezone": True,
+            "maxTimezoneDiffHours": 8,
+            "perHourTimezonePenalty": 1,
+            "hardTimezonePenalty": 3,
         },
         "salaryStrike": {
             "enabled": True,
@@ -94,6 +96,7 @@ def base_tech_ranks():
 def prefilter_policy(base_config, base_tech_ranks):
     """Prefilter policy in the modern schema."""
     return {
+        "userTimezone": -8,
         "stopList": {
             "excludedCompanies": [],
             "excludedKeywords": [],
@@ -222,6 +225,20 @@ class TestHardRejections:
         result = engine.evaluate_job(valid_job)
 
         assert result.passed is False
+
+    def test_allows_go_as_verb(self, prefilter_policy, valid_job):
+        """Ensure the word 'go' as a verb doesn't trigger undesired tech strikes."""
+        prefilter_policy["technologyRanks"] = {
+            "technologies": {"go": {"rank": "strike", "points": 2}}
+        }
+        engine = StrikeFilterEngine(prefilter_policy)
+
+        valid_job["description"] = "We will go-to-market fast and go to production weekly. " * 5
+
+        result = engine.evaluate_job(valid_job)
+
+        assert result.passed is True
+        assert result.total_strikes == 0
 
     def test_rejects_onsite_when_not_allowed(self, prefilter_policy, valid_job):
         """Test rejects on-site jobs when not allowed."""
@@ -568,11 +585,11 @@ class TestComplexScenarios:
     """Test complex real-world scenarios."""
 
     def test_hybrid_portland_allowed(self, prefilter_policy, valid_job):
-        """Hybrid Portland jobs allowed when location lists permit."""
+        """Hybrid jobs in the same timezone should pass when hybrid is allowed."""
         prefilter_policy["strikeEngine"]["remotePolicy"]["allowOnsite"] = True
-        prefilter_policy["strikeEngine"]["remotePolicy"]["allowedHybridLocations"] = [
-            "portland, or"
-        ]
+        prefilter_policy["strikeEngine"]["remotePolicy"]["allowHybridInTimezone"] = True
+        prefilter_policy["strikeEngine"]["remotePolicy"]["maxTimezoneDiffHours"] = 2
+        prefilter_policy["userTimezone"] = -8
         engine = StrikeFilterEngine(prefilter_policy)
         valid_job["location"] = "Hybrid - Portland, OR"
 

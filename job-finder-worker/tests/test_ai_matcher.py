@@ -497,8 +497,8 @@ class TestAnalyzeJob:
         result = matcher.analyze_job(sample_job)
 
         assert result is not None
-        # Same-timezone bonus applies, raising base score to 90
-        assert result.match_score == 90
+        # Base 85, per-hour penalty configured so no extra tz weight applied
+        assert result.match_score == 85
         assert result.resume_intake_data is not None
 
     def test_analyze_job_below_threshold(self, mock_provider, mock_profile, sample_job):
@@ -550,6 +550,130 @@ class TestAnalyzeJob:
         result = matcher.analyze_job(sample_job)
 
         assert result is None
+
+    @patch("job_finder.ai.matcher.parse_job_date")
+    @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
+    @patch("job_finder.ai.matcher.detect_company_size")
+    @patch("job_finder.ai.matcher.detect_timezone_for_job")
+    @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
+    def test_analyze_job_penalizes_onsite_outside_portland(
+        self,
+        mock_role_adj,
+        mock_tz_detect,
+        mock_size_detect,
+        mock_fresh_adj,
+        mock_parse_date,
+        mock_provider,
+        mock_profile,
+        sample_job,
+    ):
+        """Onsite/hybrid outside Portland should incur a configurable penalty, not auto-zero."""
+
+        mock_parse_date.return_value = datetime.now(timezone.utc)
+        mock_fresh_adj.return_value = 0
+        mock_size_detect.return_value = "medium"
+        mock_tz_detect.return_value = -8  # same timezone, no tz adj
+        mock_role_adj.return_value = (0, "Neutral role")
+
+        nyc_job = {
+            **sample_job,
+            "location": "New York City, NY",
+            "description": "Onsite in NYC office, relocation required.",
+        }
+
+        matcher = AIJobMatcher(
+            provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=False
+        )
+        # Tighten defaults for deterministic test
+        matcher.dealbreakers["locationPenaltyPoints"] = 60
+        matcher.dealbreakers["relocationPenaltyPoints"] = 80
+        matcher.company_weights["timezoneAdjustments"] = {
+            "sameTimezone": 0,
+            "diff1to2hr": 0,
+            "diff3to4hr": 0,
+            "diff5to8hr": 0,
+            "diff9plusHr": 0,
+        }
+
+        result = matcher.analyze_job(nyc_job, return_below_threshold=True)
+
+        mock_provider.generate.assert_called_once()
+        assert result is not None
+        # Base mock score 85 minus relocation penalty 80 = 5
+        assert result.match_score == 5
+        assert any("Relocation required" in adj for adj in result.score_breakdown.adjustments)
+
+    def test_analyze_job_allows_portland_hybrid(self, mock_provider, mock_profile, sample_job):
+        """Hybrid roles in Portland should proceed to AI analysis."""
+
+        portland_job = {
+            **sample_job,
+            "location": "Portland, OR",
+            "description": "Hybrid - 2 days in office, 3 remote",
+        }
+
+        matcher = AIJobMatcher(
+            provider=mock_provider, profile=mock_profile, min_match_score=70, generate_intake=False
+        )
+
+        with patch.object(
+            matcher,
+            "_calculate_adjusted_score",
+            return_value=(85, ScoreBreakdown(base_score=85, final_score=85, adjustments=[])),
+        ):
+            result = matcher.analyze_job(portland_job)
+
+        mock_provider.generate.assert_called_once()
+        assert result is not None
+        assert result.match_score == 85
+
+    @patch("job_finder.ai.matcher.parse_job_date")
+    @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
+    @patch("job_finder.ai.matcher.detect_company_size")
+    @patch("job_finder.ai.matcher.detect_timezone_for_job")
+    @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
+    def test_analyze_job_penalizes_large_timezone_gap(
+        self,
+        mock_role_adj,
+        mock_tz_detect,
+        mock_size_detect,
+        mock_fresh_adj,
+        mock_parse_date,
+        mock_provider,
+        mock_profile,
+        sample_job,
+    ):
+        """Jobs requiring far-off timezones should get a configurable penalty."""
+
+        mock_parse_date.return_value = datetime.now(timezone.utc)
+        mock_fresh_adj.return_value = 0
+        mock_size_detect.return_value = "medium"
+        # CET (UTC+1) vs PT (-8) = 9h difference
+        mock_tz_detect.return_value = 1
+        mock_role_adj.return_value = (0, "Neutral role")
+
+        mock_provider.generate.return_value = (
+            '{"match_score": 90, "matched_skills": ["Python"], '
+            '"missing_skills": [], "application_priority": "High"}'
+        )
+
+        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile, min_match_score=70)
+        matcher.dealbreakers["maxTimezoneDiffHours"] = 8
+        matcher.dealbreakers["timezonePenaltyPoints"] = 50
+        matcher.dealbreakers["timezoneHardPenaltyPoints"] = 70
+        matcher.company_weights["timezoneAdjustments"] = {
+            "sameTimezone": 0,
+            "diff1to2hr": 0,
+            "diff3to4hr": 0,
+            "diff5to8hr": 0,
+            "diff9plusHr": 0,
+        }
+
+        result = matcher.analyze_job(sample_job, return_below_threshold=True)
+
+        # Base 90 minus hard timezone penalty 60 = 30
+        assert result.match_score == 30
+        assert any("timezone" in adj.lower() for adj in result.score_breakdown.adjustments)
 
 
 class TestAnalyzeJobs:

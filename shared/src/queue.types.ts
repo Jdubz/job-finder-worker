@@ -42,6 +42,7 @@ export type QueueStatus =
   | "failed"
   | "skipped"
   | "filtered"
+  | "needs_review"
 
 /**
  * Queue item types
@@ -52,6 +53,7 @@ export type QueueItemType =
   | "scrape"
   | "source_discovery"
   | "scrape_source"
+  | "agent_review"
 
 /**
  * Source of queue submission
@@ -186,6 +188,11 @@ export interface SubmitJobRequest {
   companyId?: string | null
   generationId?: string // Optional: Link to portfolio generation request ID
   source?: QueueSource
+  title?: string
+  description?: string
+  location?: string
+  techStack?: string
+  bypassFilter?: boolean
   metadata?: Record<string, unknown>
 }
 
@@ -261,11 +268,11 @@ export interface SubmitSourceDiscoveryResponse {
 
 // Type guard helpers
 export function isQueueStatus(status: string): status is QueueStatus {
-  return ["pending", "processing", "success", "failed", "skipped", "filtered"].includes(status)
+  return ["pending", "processing", "success", "failed", "skipped", "filtered", "needs_review"].includes(status)
 }
 
 export function isQueueItemType(type: string): type is QueueItemType {
-  return ["job", "company", "scrape", "source_discovery", "scrape_source"].includes(type)
+  return ["job", "company", "scrape", "source_discovery", "scrape_source", "agent_review"].includes(type)
 }
 
 export function isSourceTypeHint(hint: string): hint is SourceTypeHint {

@@ -1,5 +1,6 @@
 import { RouterProvider } from "react-router-dom"
 import { AuthProvider } from "@/contexts/AuthContext"
+import { EntityModalProvider } from "@/contexts/EntityModalContext"
 import { router } from "@/router"
 import { GoogleOAuthProvider } from "@react-oauth/google"
 import ErrorBoundary from "@/components/error/ErrorBoundary"
@@ -15,8 +16,10 @@ function App() {
     <ErrorBoundary>
       <GoogleOAuthProvider clientId={clientId}>
         <AuthProvider>
-          <RestartOverlay />
-          <RouterProvider router={router} />
+          <EntityModalProvider>
+            <RestartOverlay />
+            <RouterProvider router={router} />
+          </EntityModalProvider>
         </AuthProvider>
       </GoogleOAuthProvider>
     </ErrorBoundary>

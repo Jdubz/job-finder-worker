@@ -7,10 +7,12 @@
 import type { ReactElement } from "react"
 import { render as rtlRender, type RenderOptions } from "@testing-library/react"
 import { BrowserRouter } from "react-router-dom"
+import { EntityModalProvider } from "@/contexts/EntityModalContext"
 
 // Custom render function that wraps components with necessary providers
 function customRender(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
   return rtlRender(ui, {
+    wrapper: ({ children }) => <EntityModalProvider>{children}</EntityModalProvider>,
     ...options,
   })
 }
@@ -18,7 +20,11 @@ function customRender(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">
 // Custom render with router
 function renderWithRouter(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
   return rtlRender(ui, {
-    wrapper: BrowserRouter,
+    wrapper: ({ children }) => (
+      <EntityModalProvider>
+        <BrowserRouter>{children}</BrowserRouter>
+      </EntityModalProvider>
+    ),
     ...options,
   })
 }

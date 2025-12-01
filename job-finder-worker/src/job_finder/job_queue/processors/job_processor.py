@@ -13,7 +13,7 @@ Job Listings Integration:
 import json
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 from urllib.parse import urlparse, quote_plus
 
 from job_finder.ai.matcher import AIJobMatcher
@@ -112,6 +112,12 @@ class JobProcessor(BaseProcessor):
         # Initialize strike-based filter engine
         prefilter_policy = config_loader.get_prefilter_policy()
         self.filter_engine = StrikeFilterEngine(prefilter_policy)
+        # Keep strike engine timezone aligned with the match policy
+        try:
+            job_match_cfg = config_loader.get_job_match()
+            self.filter_engine.set_user_timezone(job_match_cfg.get("userTimezone"))
+        except Exception:
+            logger.warning("Unable to sync user timezone into strike filter", exc_info=True)
 
         # Initialize scrape runner with shared filter engine for pre-filtering
         self.scrape_runner = ScrapeRunner(
@@ -131,9 +137,46 @@ class JobProcessor(BaseProcessor):
             filter_engine=self.filter_engine,
         )
 
+        # Align AI matcher dealbreakers with the prefilter remote policy so scoring respects the same rules.
+        self._sync_matcher_dealbreakers(prefilter_policy)
+
     # ============================================================
     # JOB LISTING HELPERS
     # ============================================================
+
+    def _sync_matcher_dealbreakers(self, prefilter_policy: Dict[str, Any]) -> None:
+        """
+        Merge remote/hybrid allowances from prefilter-policy into the AI matcher dealbreakers.
+
+        This keeps scoring penalties aligned with the same remote rules used by the strike filter.
+        Match-policy can still override any of these values explicitly.
+        """
+
+        remote_policy = (prefilter_policy.get("strikeEngine") or {}).get("remotePolicy") or {}
+        existing_raw = getattr(self.ai_matcher, "dealbreakers", {}) or {}
+        if isinstance(existing_raw, dict):
+            existing = existing_raw
+        else:
+            try:
+                existing = dict(existing_raw)
+            except Exception:
+                existing = {}
+        dealbreakers = {**existing}
+
+        allow_onsite = remote_policy.get("allowOnsite")
+        allow_hybrid = remote_policy.get("allowHybridInTimezone")
+
+        if allow_onsite is False and "requireRemote" not in dealbreakers:
+            dealbreakers["requireRemote"] = True
+        if allow_hybrid is False:
+            dealbreakers["allowHybridInTimezone"] = False
+
+        # Carry over timezone-based penalties so scorer matches prefilter expectations
+        for key in ("maxTimezoneDiffHours", "perHourTimezonePenalty", "hardTimezonePenalty"):
+            if key in remote_policy and key not in dealbreakers:
+                dealbreakers[key] = remote_policy[key]
+
+        self.ai_matcher.dealbreakers = dealbreakers
 
     def _get_or_create_job_listing(
         self, item: JobQueueItem, job_data: Dict[str, Any]
@@ -277,24 +320,63 @@ class JobProcessor(BaseProcessor):
 
         logger.info(f"JOB_SCRAPE: Extracting job data from {(item.url or '')[:50]}...")
 
+        # If manual job data was provided in metadata, skip scraping and use it directly
+        manual_title = (item.metadata or {}).get("manualTitle")
+        manual_desc = (item.metadata or {}).get("manualDescription")
+        manual_company = (item.metadata or {}).get("manualCompanyName")
+        manual_location = (item.metadata or {}).get("manualLocation")
+        manual_tech = (item.metadata or {}).get("manualTechStack")
+        if manual_title or manual_desc:
+            job_data = {
+                "title": manual_title or "",
+                "description": manual_desc or "",
+                "company": manual_company or (item.company_name or "Unknown"),
+                "location": manual_location or "",
+                "tech_stack": manual_tech,
+                "url": item.url,
+            }
+            updated_state = {
+                **(item.pipeline_state or {}),
+                "job_data": job_data,
+                "scrape_method": "manual",
+            }
+            self.queue_manager.update_status(
+                item.id,
+                QueueStatus.SUCCESS,
+                "Job data provided manually",
+            )
+            self._respawn_job_with_state(item, updated_state, next_stage="filter")
+            self.slogger.pipeline_stage(
+                item.id,
+                "scrape",
+                "completed",
+                {
+                    "url": item.url,
+                    "source": "manual",
+                    "duration_ms": round((time.monotonic() - start) * 1000),
+                },
+            )
+            return
+
         # Update status to processing and set pipeline_stage for UI
-        updated_state = {**(item.pipeline_state or {}), "pipeline_stage": "scrape"}
+        scrape_state: Dict[str, Any] = {**(item.pipeline_state or {}), "pipeline_stage": "scrape"}
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, "Scraping job data", pipeline_state=updated_state
+            item.id, QueueStatus.PROCESSING, "Scraping job data", pipeline_state=scrape_state
         )
 
         try:
             # Get source configuration for this URL
             source = self.sources_manager.get_source_for_url(item.url)
 
+            scraped_job_data: Optional[Dict[str, Any]] = None
             if source:
                 # Use source-specific scraping method
-                job_data = self._scrape_with_source_config(item.url, source)
+                scraped_job_data = self._scrape_with_source_config(item.url, source)
             else:
                 # Fall back to generic scraping (or use AI extraction)
-                job_data = self._scrape_job(item)
+                scraped_job_data = self._scrape_job(item)
 
-            if not job_data:
+            if not scraped_job_data:
                 error_msg = "Could not scrape job details from URL"
                 error_details = f"Failed to extract data from: {item.url}"
                 self.queue_manager.update_status(
@@ -303,9 +385,10 @@ class JobProcessor(BaseProcessor):
                 return
 
             # Update pipeline state with scraped data
-            updated_state = {
+            job_data_dict = cast(Dict[str, Any], scraped_job_data)
+            scraped_state: Dict[str, Any] = {
                 **(item.pipeline_state or {}),
-                "job_data": job_data,
+                "job_data": job_data_dict,
                 "scrape_method": source.get("name") if source else "generic",
             }
 
@@ -317,10 +400,10 @@ class JobProcessor(BaseProcessor):
             )
 
             # Re-spawn same URL with updated state
-            self._respawn_job_with_state(item, updated_state, next_stage="filter")
+            self._respawn_job_with_state(item, scraped_state, next_stage="filter")
 
             logger.info(
-                f"JOB_SCRAPE complete: {job_data.get('title')} at {job_data.get('company')}"
+                f"JOB_SCRAPE complete: {scraped_job_data.get('title')} at {scraped_job_data.get('company')}"
             )
 
             self.slogger.pipeline_stage(
@@ -377,13 +460,20 @@ class JobProcessor(BaseProcessor):
         listing_id = self._get_or_create_job_listing(item, job_data)
 
         try:
-            # Run strike-based filter
-            filter_result = self.filter_engine.evaluate_job(job_data)
+            # Run strike-based filter (unless bypass requested)
+            bypass_filter = bool((item.metadata or {}).get("bypassFilter"))
+            if bypass_filter:
+                filter_result = self.filter_engine.empty_pass_result()
+            else:
+                filter_result = self.filter_engine.evaluate_job(job_data)
 
             if not filter_result.passed:
                 # Job rejected by filters - TERMINAL STATE
                 rejection_summary = filter_result.get_rejection_summary()
                 rejection_data = filter_result.to_dict()
+
+                # Proactively spawn company/source tasks even for filtered jobs
+                self._spawn_company_and_source(item, job_data)
 
                 logger.info(f"JOB_FILTER: Rejected - {rejection_summary}")
 
@@ -827,6 +917,36 @@ class JobProcessor(BaseProcessor):
         except Exception as e:
             logger.error("Could not spawn company task for %s: %s", company_name, e)
             return False
+
+    def _spawn_company_and_source(self, item: JobQueueItem, job_data: Dict[str, Any]) -> None:
+        """Ensure company stub exists and spawn COMPANY and SOURCE_DISCOVERY tasks even for filtered jobs."""
+
+        company_name = job_data.get("company") or item.company_name or "Unknown"
+        company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
+
+        company = self.companies_manager.get_company(
+            company_name
+        ) or self.companies_manager.create_company_stub(company_name, company_website or "")
+
+        company_id = company.get("id")
+        # Spawn company enrichment task
+        if company_id:
+            self._try_spawn_company_task(item, company_id, company_name, company_website or "")
+
+        # Spawn source discovery task to track posting source
+        try:
+            self.queue_manager.spawn_item_safely(
+                item,
+                {
+                    "type": QueueItemType.SOURCE_DISCOVERY,
+                    "url": job_data.get("company_website") or job_data.get("url") or item.url,
+                    "company_name": company_name,
+                    "company_id": company_id,
+                    "source": item.source,
+                },
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Failed to spawn source discovery for %s: %s", company_name, e)
 
     @staticmethod
     def _is_job_board_url(url: str) -> bool:

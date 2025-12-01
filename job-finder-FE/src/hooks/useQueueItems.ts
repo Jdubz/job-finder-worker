@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { queueClient } from "@/api"
-import type { QueueItem } from "@shared/types"
+import type { QueueItem, SubmitJobRequest } from "@shared/types"
 import { API_CONFIG } from "@/config/api"
 import { consumeSavedProviderState, registerStateProvider } from "@/lib/restart-persistence"
 import { normalizeDateValue, normalizeObjectValue } from "@/utils/dateFormat"
@@ -37,7 +37,7 @@ interface UseQueueItemsResult {
   error: Error | null
   connectionStatus: ConnectionStatus
   eventLog: QueueEventLogEntry[]
-  submitJob: (url: string, companyName?: string, generationId?: string) => Promise<string>
+  submitJob: (request: SubmitJobRequest) => Promise<string>
   submitCompany: (params: SubmitCompanyParams) => Promise<string>
   submitSourceDiscovery: (params: SubmitSourceDiscoveryParams) => Promise<string>
   updateQueueItem: (id: string, data: Partial<QueueItem>) => Promise<void>
@@ -262,18 +262,19 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   }, [appendEventLog, fetchQueueItems, normalizeQueueItem])
 
   const submitJob = useCallback(
-    async (url: string, companyName?: string, generationId?: string): Promise<string> => {
+    async (request: SubmitJobRequest): Promise<string> => {
       const queueItem = await queueClient.submitJob({
-        url,
-        companyName,
-        generationId,
-        source: "user_submission",
-        metadata: generationId
-          ? {
-              generationId,
-              documentsPreGenerated: true,
-            }
-          : undefined,
+        ...request,
+        source: request.source ?? "user_submission",
+        metadata: {
+          ...(request.metadata ?? {}),
+          ...(request.generationId
+            ? {
+                generationId: request.generationId,
+                documentsPreGenerated: true,
+              }
+            : {}),
+        },
       })
 
       const normalized = normalizeQueueItem(queueItem)

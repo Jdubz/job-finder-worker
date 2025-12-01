@@ -72,10 +72,14 @@ describe("useQueueItems", () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
-      await result.current.submitJob("https://example.com")
+      await result.current.submitJob({ url: "https://example.com" } as any)
     })
 
-    expect(queueClient.submitJob).toHaveBeenCalled()
+    expect(queueClient.submitJob).toHaveBeenCalledWith({
+      url: "https://example.com",
+      source: "user_submission",
+      metadata: {},
+    })
   })
 
   it("updates queue items", async () => {

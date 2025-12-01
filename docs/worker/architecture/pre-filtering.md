@@ -94,7 +94,7 @@ Pre-filter rules are configured in `job_finder_config` table under the `job-filt
   },
   "remotePolicy": {
     "allowRemote": true,
-    "allowHybridPortland": true,
+    "allowHybridInTimezone": true,
     "allowOnsite": false
   },
   "ageStrike": {

@@ -3,12 +3,15 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobListings } from "@/hooks/useJobListings"
 import { useQueueItems } from "@/hooks/useQueueItems"
+import { useEntityModal } from "@/contexts/EntityModalContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -36,16 +39,11 @@ import {
   AlertCircle,
   Loader2,
   Briefcase,
-  ExternalLink,
-  Trash2,
   Search,
   Plus,
 } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
-import { CompanyDetailsModal } from "@/components/company"
-import { SourceDetailsModal } from "@/components/source"
-import { ROUTES } from "@/types/routes"
-import type { JobListingRecord, JobListingStatus } from "@shared/types"
+import type { JobListingRecord, JobListingStatus, SubmitJobRequest } from "@shared/types"
 
 function formatDate(date: unknown): string {
   if (!date) return "—"
@@ -107,22 +105,21 @@ export function JobListingsPage() {
     sortOrder: "desc",
   })
   const { submitJob } = useQueueItems()
-  const [selectedListing, setSelectedListing] = useState<JobListingRecord | null>(null)
+  const { openModal, closeModal } = useEntityModal()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
 
   // Add job modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [jobUrl, setJobUrl] = useState("")
+  const [jobTitle, setJobTitle] = useState("")
+  const [jobDescription, setJobDescription] = useState("")
+  const [jobLocation, setJobLocation] = useState("")
+  const [jobTechStack, setJobTechStack] = useState("")
+  const [bypassFilter, setBypassFilter] = useState(false)
   const [companyName, setCompanyName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-
-  // Company details modal state
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
-
-  // Source details modal state
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
 
   // Calculate status counts in a single pass for performance
   const statusCounts = useMemo(() => {
@@ -137,6 +134,11 @@ export function JobListingsPage() {
 
   const resetAddForm = () => {
     setJobUrl("")
+    setJobTitle("")
+    setJobDescription("")
+    setJobLocation("")
+    setJobTechStack("")
+    setBypassFilter(false)
     setCompanyName("")
     setSubmitError(null)
   }
@@ -149,10 +151,27 @@ export function JobListingsPage() {
       setSubmitError("Job URL is required")
       return
     }
+    if (!jobTitle.trim()) {
+      setSubmitError("Job title is required")
+      return
+    }
+    if (!jobDescription.trim()) {
+      setSubmitError("Job description is required")
+      return
+    }
 
     try {
       setIsSubmitting(true)
-      await submitJob(jobUrl.trim(), companyName.trim() || undefined)
+      const payload: SubmitJobRequest = {
+        url: jobUrl.trim(),
+        companyName: companyName.trim() || undefined,
+        title: jobTitle.trim(),
+        description: jobDescription.trim(),
+        location: jobLocation.trim() || undefined,
+        techStack: jobTechStack.trim() || undefined,
+        bypassFilter,
+      }
+      await submitJob(payload)
       resetAddForm()
       setIsAddModalOpen(false)
       navigate("/queue-management")
@@ -168,9 +187,33 @@ export function JobListingsPage() {
     if (!confirm("Are you sure you want to delete this job listing?")) return
     try {
       await deleteListing(id)
-      setSelectedListing(null)
+      closeModal()
     } catch (err) {
       console.error("Failed to delete job listing:", err)
+      throw err
+    }
+  }
+
+  const handleResubmitBypass = async (listing: JobListingRecord) => {
+    setSubmitError(null)
+    try {
+      const payload: SubmitJobRequest = {
+        url: listing.url,
+        companyName: listing.companyName,
+        companyId: listing.companyId ?? undefined,
+        title: listing.title,
+        description: listing.description,
+        location: listing.location ?? undefined,
+        bypassFilter: true,
+        metadata: { job_listing_id: listing.id },
+      }
+      await submitJob(payload)
+      closeModal()
+      navigate("/queue-management")
+    } catch (err) {
+      console.error("Failed to resubmit listing:", err)
+      setSubmitError(err instanceof Error ? err.message : "Failed to resubmit listing")
+      throw err
     }
   }
 
@@ -363,46 +406,51 @@ export function JobListingsPage() {
                   <TableRow
                     key={listing.id}
                     className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
-                    onClick={() => setSelectedListing(listing)}
+                    onClick={() =>
+                      openModal({
+                        type: "jobListing",
+                        listing,
+                        onDelete: handleDelete,
+                        onResubmit: () => handleResubmitBypass(listing),
+                      })
+                    }
                   >
                     <TableCell className="max-w-[150px] sm:max-w-[250px] md:max-w-[300px]">
                       <div className="font-medium truncate">{listing.title}</div>
                       {/* Show company and location on mobile as secondary text */}
                       <div className="md:hidden text-xs text-muted-foreground mt-0.5 flex min-w-0">
                         <span className="truncate">
-                          {listing.companyId ? (
-                            <button
-                              type="button"
-                              className="text-blue-600 hover:underline"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setSelectedCompanyId(listing.companyId!)
-                              }}
-                            >
-                              {listing.companyName}
-                            </button>
-                          ) : (
-                            listing.companyName
-                          )}
+                          <button
+                            type="button"
+                            className="text-blue-600 hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openModal({
+                                type: "company",
+                                companyId: listing.companyId || undefined,
+                              })
+                            }}
+                          >
+                            {listing.companyName}
+                          </button>
                         </span>
                         {listing.location && <span className="flex-shrink-0">{` • ${listing.location}`}</span>}
                       </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      {listing.companyId ? (
-                        <button
-                          type="button"
-                          className="text-blue-600 hover:underline text-left"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setSelectedCompanyId(listing.companyId!)
-                          }}
-                        >
-                          {listing.companyName}
-                        </button>
-                      ) : (
-                        <span className="text-muted-foreground">{listing.companyName}</span>
-                      )}
+                      <button
+                        type="button"
+                        className="text-blue-600 hover:underline text-left"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openModal({
+                            type: "company",
+                            companyId: listing.companyId || undefined,
+                          })
+                        }}
+                      >
+                        {listing.companyName}
+                      </button>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-muted-foreground">
                       {listing.location || "—"}
@@ -425,224 +473,6 @@ export function JobListingsPage() {
         </CardContent>
       </Card>
 
-      {/* Detail Modal */}
-      <Dialog open={!!selectedListing} onOpenChange={(open) => !open && setSelectedListing(null)}>
-        <DialogContent className="w-[95vw] sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col">
-          {selectedListing && (
-            <>
-              <DialogHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 pr-4">
-                    <DialogTitle className="text-xl">{selectedListing.title}</DialogTitle>
-                    <DialogDescription className="mt-1">
-                      {selectedListing.companyName}
-                    </DialogDescription>
-                  </div>
-                  {getStatusBadge(selectedListing.status)}
-                </div>
-              </DialogHeader>
-
-              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-                {/* ID */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    ID
-                  </Label>
-                  <p className="mt-1 text-sm font-mono text-muted-foreground break-all">
-                    {selectedListing.id}
-                  </p>
-                </div>
-
-                {/* URL */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    URL
-                  </Label>
-                  <a
-                    href={selectedListing.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center text-blue-600 hover:underline mt-1 text-sm break-all"
-                  >
-                    {selectedListing.url}
-                    <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
-                  </a>
-                </div>
-
-                {/* Source */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Source
-                  </Label>
-                  {selectedListing.sourceId ? (
-                    <div className="mt-1">
-                      <Button
-                        variant="link"
-                        className="h-auto p-0 text-blue-600 hover:underline text-sm"
-                        onClick={() => setSelectedSourceId(selectedListing.sourceId!)}
-                      >
-                        View Source Details
-                      </Button>
-                      <p className="text-xs font-mono text-muted-foreground mt-1">
-                        {selectedListing.sourceId}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground flex items-center gap-1 text-sm">
-                      <AlertCircle className="h-3 w-3" />
-                      No source linked
-                    </p>
-                  )}
-                </div>
-
-                {/* Company */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Company
-                  </Label>
-                  {selectedListing.companyId ? (
-                    <div className="mt-1">
-                      <Button
-                        variant="link"
-                        className="h-auto p-0 text-blue-600 hover:underline text-sm"
-                        onClick={() => setSelectedCompanyId(selectedListing.companyId!)}
-                      >
-                        View Company Details
-                      </Button>
-                      <p className="text-xs font-mono text-muted-foreground mt-1">
-                        {selectedListing.companyId}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground flex items-center gap-1 text-sm">
-                      <AlertCircle className="h-3 w-3" />
-                      No company linked
-                    </p>
-                  )}
-                </div>
-
-                {/* Location */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Location
-                  </Label>
-                  <p className="mt-1">{selectedListing.location || "—"}</p>
-                </div>
-
-                {/* Salary Range */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Salary Range
-                  </Label>
-                  <p className="mt-1">{selectedListing.salaryRange || "—"}</p>
-                </div>
-
-                {/* Posted Date */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Posted Date
-                  </Label>
-                  <p className="mt-1">{selectedListing.postedDate || "—"}</p>
-                </div>
-
-                {/* Filter Result */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Filter Result
-                  </Label>
-                  {selectedListing.filterResult ? (
-                    <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-[100px] sm:max-h-[120px] break-all whitespace-pre-wrap">
-                      {JSON.stringify(selectedListing.filterResult, null, 2)}
-                    </pre>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">—</p>
-                  )}
-                </div>
-
-                {/* Match Analysis */}
-                <div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                      Match Analysis
-                    </Label>
-                    {(() => {
-                      const score = extractMatchScore(selectedListing)
-                      return score !== null ? (
-                        <Badge variant="outline" className="ml-2">
-                          Score: {score}
-                        </Badge>
-                      ) : null
-                    })()}
-                  </div>
-                  {selectedListing.analysisResult ? (
-                    <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-[150px] sm:max-h-[200px] break-all whitespace-pre-wrap">
-                      {JSON.stringify(selectedListing.analysisResult, null, 2)}
-                    </pre>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">—</p>
-                  )}
-                </div>
-
-                {/* Description */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                    Description
-                  </Label>
-                  <div className="mt-1 text-sm bg-muted p-3 rounded max-h-[150px] sm:max-h-[200px] overflow-auto whitespace-pre-wrap break-words">
-                    {selectedListing.description || "—"}
-                  </div>
-                </div>
-
-                {/* Timestamps */}
-                <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                      Created
-                    </Label>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {formatDate(selectedListing.createdAt)}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">
-                      Updated
-                    </Label>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {formatDate(selectedListing.updatedAt)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between pt-4 border-t flex-shrink-0 mt-4">
-                <Button variant="destructive" onClick={() => handleDelete(selectedListing.id)} className="w-full sm:w-auto">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </Button>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  {selectedListing.status === "matched" && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedListing(null)
-                        navigate(ROUTES.JOB_APPLICATIONS)
-                      }}
-                      className="w-full sm:w-auto"
-                    >
-                      <Briefcase className="mr-2 h-4 w-4" />
-                      View in Applications
-                    </Button>
-                  )}
-                  <Button variant="ghost" onClick={() => setSelectedListing(null)} className="w-full sm:w-auto">
-                    Close
-                  </Button>
-                </div>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
       {/* Add Job Modal */}
       <Dialog
         open={isAddModalOpen}
@@ -655,7 +485,7 @@ export function JobListingsPage() {
           <DialogHeader>
             <DialogTitle>Add Job for Analysis</DialogTitle>
             <DialogDescription>
-              Submit a job posting URL to analyze and add to your listings.
+              Submit a job posting URL with key details for analysis. Title and description are required.
             </DialogDescription>
           </DialogHeader>
 
@@ -683,6 +513,58 @@ export function JobListingsPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="jobTitle">Job Title *</Label>
+              <Input
+                id="jobTitle"
+                type="text"
+                placeholder="Senior Frontend Engineer"
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="jobDescription">Job Description *</Label>
+              <Textarea
+                id="jobDescription"
+                placeholder="Paste the full job description"
+                value={jobDescription}
+                onChange={(e) => setJobDescription(e.target.value)}
+                disabled={isSubmitting}
+                className="min-h-[140px]"
+              />
+              <p className="text-sm text-muted-foreground">
+                Providing the description avoids false negatives in keyword/tech filters.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="jobLocation">Location (optional)</Label>
+                <Input
+                  id="jobLocation"
+                  type="text"
+                  placeholder="Portland, OR or Remote"
+                  value={jobLocation}
+                  onChange={(e) => setJobLocation(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="techStack">Tech Stack (optional)</Label>
+                <Input
+                  id="techStack"
+                  type="text"
+                  placeholder="React, TypeScript, GraphQL"
+                  value={jobTechStack}
+                  onChange={(e) => setJobTechStack(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="companyName">Company Name (optional)</Label>
               <Input
                 id="companyName"
@@ -695,6 +577,21 @@ export function JobListingsPage() {
               <p className="text-sm text-muted-foreground">
                 If known, helps with analysis accuracy
               </p>
+            </div>
+
+            <div className="flex items-start space-x-2">
+              <Checkbox
+                id="bypassFilter"
+                checked={bypassFilter}
+                onCheckedChange={(checked) => setBypassFilter(Boolean(checked))}
+                disabled={isSubmitting}
+              />
+              <div className="grid gap-1 leading-tight">
+                <Label htmlFor="bypassFilter">Bypass intake filters</Label>
+                <p className="text-sm text-muted-foreground">
+                  Skip automated pre-filtering for this submission and send it directly to analysis.
+                </p>
+              </div>
             </div>
 
             <DialogFooter>
@@ -721,23 +618,6 @@ export function JobListingsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Company Details Modal */}
-      <CompanyDetailsModal
-        companyId={selectedCompanyId}
-        open={!!selectedCompanyId}
-        onOpenChange={(open) => !open && setSelectedCompanyId(null)}
-      />
-
-      {/* Source Details Modal */}
-      <SourceDetailsModal
-        sourceId={selectedSourceId}
-        open={!!selectedSourceId}
-        onOpenChange={(open) => !open && setSelectedSourceId(null)}
-        onCompanyClick={(companyId) => {
-          setSelectedSourceId(null)
-          setSelectedCompanyId(companyId)
-        }}
-      />
     </div>
   )
 }

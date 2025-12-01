@@ -13,6 +13,7 @@ from job_finder.filters.strike_filter_engine import StrikeFilterEngine
 def base_config():
     """Return a minimal strike-filter configuration that focuses on remote policy."""
     return {
+        "userTimezone": -8,
         "strikeEngine": {
             "enabled": True,
             "strikeThreshold": 3,
@@ -27,8 +28,10 @@ def base_config():
             "remotePolicy": {
                 "allowRemote": True,
                 "allowOnsite": True,  # Enable location-based role checks
-                "allowedOnsiteLocations": [],  # No pure onsite allowed
-                "allowedHybridLocations": ["portland"],  # Hybrid allowed in Portland
+                "allowHybridInTimezone": True,
+                "maxTimezoneDiffHours": 2,
+                "perHourTimezonePenalty": 1,
+                "hardTimezonePenalty": 3,
             },
             "salaryStrike": {"enabled": False},
             "experienceStrike": {"enabled": False},
@@ -66,7 +69,13 @@ class TestRemotePolicy:
         assert result.passed is True
 
     def test_onsite_rejected_when_disallowed(self, base_config):
-        engine = StrikeFilterEngine(base_config)
+        custom = {**base_config}
+        custom["strikeEngine"] = {**base_config["strikeEngine"]}
+        custom["strikeEngine"]["remotePolicy"] = {
+            **base_config["strikeEngine"]["remotePolicy"],
+            "allowOnsite": False,
+        }
+        engine = StrikeFilterEngine(custom)
         job = make_job(location="New York, NY", description="Office-based role in Manhattan")
         result = engine.evaluate_job(job)
         assert result.passed is False
@@ -82,8 +91,9 @@ class TestRemotePolicy:
         engine = StrikeFilterEngine(base_config)
         job = make_job(location="Seattle, WA", description="Hybrid schedule with office days")
         result = engine.evaluate_job(job)
-        assert result.passed is False
-        assert any("hybrid" in rejection.reason.lower() for rejection in result.rejections)
+        # Seattle shares the user's timezone, so hybrid should pass under timezone-based rules
+        assert result.passed is True
+        assert all(rejection.filter_name != "remote_policy" for rejection in result.rejections)
 
     def test_case_insensitive_matching(self, base_config):
         engine = StrikeFilterEngine(base_config)
