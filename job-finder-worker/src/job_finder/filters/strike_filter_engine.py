@@ -42,11 +42,14 @@ class StrikeFilterEngine:
         self.strike_threshold = config.get("strikeThreshold", 5)
 
         # Hard Rejections
+        unified_stop_list = policy.get("stopList", {})
+        self.stop_companies = [c.lower() for c in unified_stop_list.get("excludedCompanies", [])]
+        self.stop_keywords = [k.lower() for k in unified_stop_list.get("excludedKeywords", [])]
+        self.stop_domains = [d.lower() for d in unified_stop_list.get("excludedDomains", [])]
+
         hard_rej = config.get("hardRejections", {})
         self.excluded_job_types = [t.lower() for t in hard_rej.get("excludedJobTypes", [])]
         self.excluded_seniority = [s.lower() for s in hard_rej.get("excludedSeniority", [])]
-        self.excluded_companies = [c.lower() for c in hard_rej.get("excludedCompanies", [])]
-        self.excluded_keywords = [k.lower() for k in hard_rej.get("excludedKeywords", [])]
         self.required_title_keywords = [
             k.lower() for k in hard_rej.get("requiredTitleKeywords", [])
         ]
@@ -137,13 +140,8 @@ class StrikeFilterEngine:
         if self._is_excluded_seniority(title, result):
             return result
 
-        # Check company
-        if self._is_excluded_company(company, result):
-            return result
-
-        # Check keywords
-        if self._has_excluded_keywords(description, result):
-            return result
+        # Stop-list checks (companies/domains/keywords) as strikes first, not auto-fail
+        self._check_stop_list(company, description, result)
 
         # Check salary floor
         if self._below_salary_floor(salary, result):
@@ -271,9 +269,7 @@ class StrikeFilterEngine:
         """Check if company is in exclusion list."""
         company_lower = company.lower()
 
-        combined_companies = self.excluded_companies + self.stop_companies
-
-        for excluded in combined_companies:
+        for excluded in self.excluded_companies:
             if excluded in company_lower:
                 result.add_rejection(
                     filter_category="hard_reject",
@@ -287,16 +283,11 @@ class StrikeFilterEngine:
         return False
 
     def _has_excluded_keywords(self, description: str, result: FilterResult) -> bool:
-        """Check for deal-breaker keywords."""
+        """Check for deal-breaker keywords (hard reject only from hardRejections)."""
         description_lower = description.lower()
 
-        combined_keywords = self.excluded_keywords + self.stop_keywords
-
-        for keyword in combined_keywords:
-            # For multi-word phrases, use phrase matching
-            # For single words, use word boundary matching
+        for keyword in self.excluded_keywords:
             if " " in keyword:
-                # Multi-word phrase - simple substring match is appropriate
                 if keyword in description_lower:
                     result.add_rejection(
                         filter_category="hard_reject",
@@ -308,7 +299,6 @@ class StrikeFilterEngine:
                     )
                     return True
             else:
-                # Single word - use word boundary to avoid false positives
                 pattern = r"\b" + re.escape(keyword) + r"\b"
                 if re.search(pattern, description_lower):
                     result.add_rejection(
