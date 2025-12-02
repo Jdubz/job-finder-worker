@@ -296,34 +296,29 @@ describe("Content items", () => {
 })
 
 describe("Configuration flows", () => {
-  it("updates prefilter policy (stop list), queue settings, AI settings, and personal info", async () => {
+  it("updates title filter, scoring config, queue settings, AI settings, and personal info", async () => {
     const { configClient } = await initFrontendClients()
     const userEmail = "ops@jobfinder.dev"
 
-    // Stop list is now part of prefilter-policy
-    const existingPolicy = await configClient.getPrefilterPolicy()
-    await configClient.updatePrefilterPolicy({
-      ...existingPolicy,
-      stopList: {
-        excludedCompanies: ["Bad Corp"],
-        excludedKeywords: existingPolicy?.stopList?.excludedKeywords ?? [],
-        excludedDomains: ["spam.example.com"],
-      },
-      strikeEngine: existingPolicy?.strikeEngine ?? {
-        enabled: false,
-        strikeThreshold: 5,
-        hardRejections: {},
-        remotePolicy: {},
-        salaryStrike: {},
-        experienceStrike: {},
-        qualityStrikes: {},
-        ageStrike: {},
-      },
-      technologyRanks: existingPolicy?.technologyRanks ?? { technologies: {} },
+    // Title filter replaces prefilter-policy
+    const existingTitleFilter = await configClient.getTitleFilter()
+    await configClient.updateTitleFilter({
+      ...existingTitleFilter,
+      requiredKeywords: [...(existingTitleFilter?.requiredKeywords ?? []), "engineer"],
+      excludedKeywords: [...(existingTitleFilter?.excludedKeywords ?? []), "intern"],
     })
-    const prefilterPolicy = await configClient.getPrefilterPolicy()
-    expect(prefilterPolicy?.stopList?.excludedCompanies).toContain("Bad Corp")
-    expect(prefilterPolicy?.stopList?.excludedDomains).toContain("spam.example.com")
+    const titleFilter = await configClient.getTitleFilter()
+    expect(titleFilter?.requiredKeywords).toContain("engineer")
+    expect(titleFilter?.excludedKeywords).toContain("intern")
+
+    // Scoring config replaces match-policy scoring logic
+    const existingScoringConfig = await configClient.getScoringConfig()
+    await configClient.updateScoringConfig({
+      ...existingScoringConfig,
+      minScore: 65,
+    })
+    const scoringConfig = await configClient.getScoringConfig()
+    expect(scoringConfig?.minScore).toBe(65)
 
     await configClient.updateQueueSettings({ processingTimeoutSeconds: 1200 })
     const queueSettings = await configClient.getQueueSettings()

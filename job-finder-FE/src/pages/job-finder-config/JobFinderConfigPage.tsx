@@ -9,15 +9,15 @@ import {
   AISettingsTab,
   SchedulerTab,
   PersonalInfoTab,
-  PrefilterPolicyTab,
-  MatchPolicyTab,
+  TitleFilterTab,
+  ScoringConfigTab,
 } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
 import { ScreenshotButton } from "./components/ScreenshotButton"
 
 type TabType =
-  | "prefilter"
-  | "match"
+  | "title-filter"
+  | "scoring"
   | "queue"
   | "ai"
   | "scheduler"
@@ -27,7 +27,7 @@ export function JobFinderConfigPage() {
   const { user, isOwner } = useAuth()
   const configState = useConfigState()
   const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = (searchParams.get("tab") as TabType | null) ?? "prefilter"
+  const initialTab = (searchParams.get("tab") as TabType | null) ?? "title-filter"
   const [activeTab, setActiveTab] = useState<TabType>(initialTab)
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function JobFinderConfigPage() {
   }, [searchParams, activeTab])
 
   const handleTabChange = (value: string) => {
-    const tabValue = (value as TabType) ?? "prefilter"
+    const tabValue = (value as TabType) ?? "title-filter"
     setActiveTab(tabValue)
     const params = new URLSearchParams(searchParams)
     params.set("tab", tabValue)
@@ -100,8 +100,8 @@ export function JobFinderConfigPage() {
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="prefilter">Prefilter Policy</TabsTrigger>
-          <TabsTrigger value="match">Match Policy</TabsTrigger>
+          <TabsTrigger value="title-filter">Title Filter</TabsTrigger>
+          <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
           <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
@@ -109,21 +109,21 @@ export function JobFinderConfigPage() {
         </TabsList>
 
         <div className="space-y-4 py-4">
-          {activeTab === "prefilter" && (
-            <PrefilterPolicyTab
+          {activeTab === "title-filter" && (
+            <TitleFilterTab
               isSaving={configState.isSaving}
-              policy={configState.prefilterPolicy}
-              onSave={configState.handleSavePrefilter}
-              onReset={configState.resetPrefilter}
+              config={configState.titleFilter}
+              onSave={configState.handleSaveTitleFilter}
+              onReset={configState.resetTitleFilter}
             />
           )}
 
-          {activeTab === "match" && (
-            <MatchPolicyTab
+          {activeTab === "scoring" && (
+            <ScoringConfigTab
               isSaving={configState.isSaving}
-              policy={configState.matchPolicy}
-              onSave={configState.handleSaveMatch}
-              onReset={configState.resetMatch}
+              config={configState.scoringConfig}
+              onSave={configState.handleSaveScoringConfig}
+              onReset={configState.resetScoringConfig}
             />
           )}
 

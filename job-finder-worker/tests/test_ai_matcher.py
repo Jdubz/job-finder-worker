@@ -1,11 +1,10 @@
 """Tests for AI job matcher."""
 
-from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
 import pytest
 
-from job_finder.ai.matcher import AIJobMatcher, JobMatchResult, ScoreBreakdown
+from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 
 
 @pytest.fixture
@@ -32,18 +31,12 @@ class TestAIJobMatcherInit:
             profile=mock_profile,
             min_match_score=80,
             generate_intake=True,
-            portland_office_bonus=15,
-            user_timezone=-8,
-            prefer_large_companies=True,
         )
 
         assert matcher.provider == mock_provider
         assert matcher.profile == mock_profile
         assert matcher.min_match_score == 80
         assert matcher.generate_intake is True
-        assert matcher.portland_office_bonus == 15
-        assert matcher.user_timezone == -8
-        assert matcher.prefer_large_companies is True
 
     def test_init_with_defaults(self, mock_provider, mock_profile):
         """Test matcher initialization with default values."""
@@ -51,182 +44,11 @@ class TestAIJobMatcherInit:
 
         assert matcher.min_match_score == 50
         assert matcher.generate_intake is True
-        assert matcher.portland_office_bonus == 15
-        assert matcher.user_timezone == -8
-        assert matcher.prefer_large_companies is True
 
 
-class TestCalculateAdjustedScore:
-    """Test score adjustment calculations."""
-
-    @patch("job_finder.ai.matcher.parse_job_date")
-    @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
-    @patch("job_finder.ai.matcher.detect_company_size")
-    @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
-    def test_calculate_adjusted_score_with_portland_bonus(
-        self,
-        mock_role_adj,
-        mock_tz_detect,
-        mock_size_detect,
-        mock_fresh_adj,
-        mock_parse_date,
-        mock_provider,
-        mock_profile,
-        sample_job,
-    ):
-        """Test score calculation with Portland office bonus."""
-        # Setup mocks to return no adjustments except Portland
-        mock_parse_date.return_value = datetime.now(timezone.utc)
-        mock_fresh_adj.return_value = 0
-        mock_size_detect.return_value = "medium"
-        mock_tz_detect.return_value = -8
-        mock_role_adj.return_value = (0, "Neutral role")
-
-        match_analysis = {"match_score": 70, "application_priority": "Medium"}
-
-        matcher = AIJobMatcher(
-            provider=mock_provider,
-            profile=mock_profile,
-            portland_office_bonus=15,
-            company_weights={
-                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0},
-                "sizeAdjustments": {
-                    "largeCompanyBonus": 0,
-                    "smallCompanyPenalty": 0,
-                    "largeCompanyThreshold": 10000,
-                    "smallCompanyThreshold": 100,
-                },
-                "timezoneAdjustments": {
-                    "sameTimezone": 0,
-                    "diff1to2hr": 0,
-                    "diff3to4hr": 0,
-                    "diff5to8hr": 0,
-                    "diff9plusHr": 0,
-                },
-                "priorityThresholds": {"high": 85, "medium": 70},
-            },
-        )
-        adjusted_score, breakdown = matcher._calculate_adjusted_score(
-            match_analysis, has_portland_office=True, job=sample_job
-        )
-
-        # Should add Portland bonus
-        assert adjusted_score == 85  # 70 + 15
-        assert breakdown.base_score == 70
-        assert breakdown.final_score == 85
-
-    @patch("job_finder.ai.matcher.parse_job_date")
-    @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
-    @patch("job_finder.ai.matcher.detect_company_size")
-    @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
-    def test_calculate_adjusted_score_clamps_to_100(
-        self,
-        mock_role_adj,
-        mock_tz_detect,
-        mock_size_detect,
-        mock_fresh_adj,
-        mock_parse_date,
-        mock_provider,
-        mock_profile,
-        sample_job,
-    ):
-        """Test score is clamped to maximum of 100."""
-        mock_parse_date.return_value = datetime.now(timezone.utc)
-        mock_fresh_adj.return_value = 10
-        mock_size_detect.return_value = "large"
-        mock_tz_detect.return_value = -8
-        mock_role_adj.return_value = (5, "Engineering role")
-
-        match_analysis = {"match_score": 95, "application_priority": "High"}
-
-        matcher = AIJobMatcher(
-            provider=mock_provider,
-            profile=mock_profile,
-            portland_office_bonus=15,
-            company_weights={
-                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0},
-                "sizeAdjustments": {
-                    "largeCompanyBonus": 10,
-                    "smallCompanyPenalty": 0,
-                    "largeCompanyThreshold": 100,
-                    "smallCompanyThreshold": 10,
-                },
-                "timezoneAdjustments": {
-                    "sameTimezone": 0,
-                    "diff1to2hr": 0,
-                    "diff3to4hr": 0,
-                    "diff5to8hr": 0,
-                    "diff9plusHr": 0,
-                },
-                "priorityThresholds": {"high": 85, "medium": 70},
-            },
-        )
-        adjusted_score, breakdown = matcher._calculate_adjusted_score(
-            match_analysis, has_portland_office=True, job=sample_job
-        )
-
-        # Should clamp to 100 (not 140)
-        assert adjusted_score == 100
-        assert breakdown.final_score == 100
-
-    @patch("job_finder.ai.matcher.parse_job_date")
-    @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
-    @patch("job_finder.ai.matcher.detect_company_size")
-    @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
-    def test_calculate_adjusted_score_updates_priority(
-        self,
-        mock_role_adj,
-        mock_tz_detect,
-        mock_size_detect,
-        mock_fresh_adj,
-        mock_parse_date,
-        mock_provider,
-        mock_profile,
-        sample_job,
-    ):
-        """Test priority tier is updated based on adjusted score."""
-        mock_parse_date.return_value = datetime.now(timezone.utc)
-        mock_fresh_adj.return_value = 0
-        mock_size_detect.return_value = "medium"
-        mock_tz_detect.return_value = -8
-        mock_role_adj.return_value = (0, "Neutral role")
-
-        # Start with Medium priority (score 55)
-        match_analysis = {"match_score": 55, "application_priority": "Medium"}
-
-        matcher = AIJobMatcher(
-            provider=mock_provider,
-            profile=mock_profile,
-            portland_office_bonus=25,
-            company_weights={
-                "bonuses": {"remoteFirst": 0, "aiMlFocus": 0},
-                "sizeAdjustments": {
-                    "largeCompanyBonus": 0,
-                    "smallCompanyPenalty": 0,
-                    "largeCompanyThreshold": 10000,
-                    "smallCompanyThreshold": 100,
-                },
-                "timezoneAdjustments": {
-                    "sameTimezone": 0,
-                    "diff1to2hr": 0,
-                    "diff3to4hr": 0,
-                    "diff5to8hr": 0,
-                    "diff9plusHr": 0,
-                },
-                "priorityThresholds": {"high": 75, "medium": 50},
-            },
-        )
-        adjusted_score, breakdown = matcher._calculate_adjusted_score(
-            match_analysis, has_portland_office=True, job=sample_job
-        )
-
-        # Score should be 80 (55 + 25), priority should update to High
-        assert adjusted_score == 80
-        assert breakdown.final_score == 80
-        assert match_analysis["application_priority"] == "High"
+# NOTE: TestCalculateAdjustedScore removed during hybrid scoring migration.
+# Scoring is now handled by ScoringEngine, not matcher._calculate_adjusted_score.
+# See tests/scoring/test_engine.py for scoring tests.
 
 
 class TestBuildMatchResult:
@@ -451,37 +273,19 @@ class TestOptimizeIntakeDataSize:
 
 
 class TestAnalyzeJob:
-    """Test complete job analysis flow."""
+    """Test complete job analysis flow.
 
-    @patch("job_finder.ai.matcher.parse_job_date")
-    @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
-    @patch("job_finder.ai.matcher.detect_company_size")
-    @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
-    def test_analyze_job_success(
-        self,
-        mock_role_adj,
-        mock_tz_detect,
-        mock_size_detect,
-        mock_fresh_adj,
-        mock_parse_date,
-        mock_provider,
-        mock_profile,
-        sample_job,
-    ):
-        """Test successful job analysis."""
-        # Setup mocks
-        mock_parse_date.return_value = datetime.now(timezone.utc)
-        mock_fresh_adj.return_value = 0
-        mock_size_detect.return_value = "medium"
-        mock_tz_detect.return_value = -8
-        mock_role_adj.return_value = (0, "Neutral role")
+    Note: Scoring is handled by the deterministic ScoringEngine.
+    The matcher REQUIRES 'deterministic_score' from the job dict - no fallback.
+    """
 
+    def test_analyze_job_uses_deterministic_score(self, mock_provider, mock_profile, sample_job):
+        """Test that analyze_job uses deterministic_score."""
         mock_provider.generate.side_effect = [
             # First call: match analysis
             (
-                '{"match_score": 85, "matched_skills": ["Python"], '
-                '"missing_skills": [], "application_priority": "High"}'
+                '{"match_score": 60, "matched_skills": ["Python"], '
+                '"missing_skills": [], "application_priority": "Medium"}'
             ),
             # Second call: intake data
             (
@@ -494,12 +298,31 @@ class TestAnalyzeJob:
         matcher = AIJobMatcher(
             provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=True
         )
-        result = matcher.analyze_job(sample_job)
+
+        # Provide deterministic score that's above threshold
+        job_with_score = {**sample_job, "deterministic_score": 90}
+        result = matcher.analyze_job(job_with_score)
 
         assert result is not None
-        # Base 85, per-hour penalty configured so no extra tz weight applied
-        assert result.match_score == 85
+        assert result.match_score == 90
         assert result.resume_intake_data is not None
+
+    def test_analyze_job_requires_deterministic_score(
+        self, mock_provider, mock_profile, sample_job
+    ):
+        """Test that analyze_job raises ValueError when deterministic_score is missing."""
+        mock_provider.generate.return_value = (
+            '{"match_score": 85, "matched_skills": ["Python"], '
+            '"missing_skills": [], "application_priority": "High"}'
+        )
+
+        matcher = AIJobMatcher(
+            provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=True
+        )
+
+        # No deterministic_score provided - should raise ValueError
+        with pytest.raises(ValueError, match="missing required 'deterministic_score'"):
+            matcher.analyze_job(sample_job)
 
     def test_analyze_job_below_threshold(self, mock_provider, mock_profile, sample_job):
         """Test job below threshold returns None."""
@@ -514,9 +337,9 @@ class TestAnalyzeJob:
 
         matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile, min_match_score=80)
 
-        mock_breakdown = ScoreBreakdown(base_score=50, final_score=50, adjustments=[])
-        with patch.object(matcher, "_calculate_adjusted_score", return_value=(50, mock_breakdown)):
-            result = matcher.analyze_job(sample_job)
+        # Deterministic score is below threshold
+        job_with_score = {**sample_job, "deterministic_score": 50}
+        result = matcher.analyze_job(job_with_score)
 
         assert result is None
 
@@ -535,9 +358,8 @@ class TestAnalyzeJob:
             provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=False
         )
 
-        mock_breakdown = ScoreBreakdown(base_score=85, final_score=85, adjustments=[])
-        with patch.object(matcher, "_calculate_adjusted_score", return_value=(85, mock_breakdown)):
-            result = matcher.analyze_job(sample_job)
+        job_with_score = {**sample_job, "deterministic_score": 85}
+        result = matcher.analyze_job(job_with_score)
 
         assert result is not None
         assert result.resume_intake_data is None
@@ -547,133 +369,10 @@ class TestAnalyzeJob:
         mock_provider.generate.return_value = "Invalid JSON"
 
         matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
-        result = matcher.analyze_job(sample_job)
+        job_with_score = {**sample_job, "deterministic_score": 85}
+        result = matcher.analyze_job(job_with_score)
 
         assert result is None
-
-    @patch("job_finder.ai.matcher.parse_job_date")
-    @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
-    @patch("job_finder.ai.matcher.detect_company_size")
-    @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
-    def test_analyze_job_penalizes_onsite_outside_portland(
-        self,
-        mock_role_adj,
-        mock_tz_detect,
-        mock_size_detect,
-        mock_fresh_adj,
-        mock_parse_date,
-        mock_provider,
-        mock_profile,
-        sample_job,
-    ):
-        """Onsite/hybrid outside Portland should incur a configurable penalty, not auto-zero."""
-
-        mock_parse_date.return_value = datetime.now(timezone.utc)
-        mock_fresh_adj.return_value = 0
-        mock_size_detect.return_value = "medium"
-        mock_tz_detect.return_value = -8  # same timezone, no tz adj
-        mock_role_adj.return_value = (0, "Neutral role")
-
-        nyc_job = {
-            **sample_job,
-            "location": "New York City, NY",
-            "description": "Onsite in NYC office, relocation required.",
-        }
-
-        matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=False
-        )
-        # Tighten defaults for deterministic test
-        matcher.dealbreakers["locationPenaltyPoints"] = 60
-        matcher.dealbreakers["relocationPenaltyPoints"] = 80
-        matcher.company_weights["timezoneAdjustments"] = {
-            "sameTimezone": 0,
-            "diff1to2hr": 0,
-            "diff3to4hr": 0,
-            "diff5to8hr": 0,
-            "diff9plusHr": 0,
-        }
-
-        result = matcher.analyze_job(nyc_job, return_below_threshold=True)
-
-        mock_provider.generate.assert_called_once()
-        assert result is not None
-        # Base mock score 85 minus location penalty 60 = 25
-        assert result.match_score == 25
-        assert any("outside user city" in adj for adj in result.score_breakdown.adjustments)
-
-    def test_analyze_job_allows_portland_hybrid(self, mock_provider, mock_profile, sample_job):
-        """Hybrid roles in Portland should proceed to AI analysis."""
-
-        portland_job = {
-            **sample_job,
-            "location": "Portland, OR",
-            "description": "Hybrid - 2 days in office, 3 remote",
-        }
-
-        matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, min_match_score=70, generate_intake=False
-        )
-
-        with patch.object(
-            matcher,
-            "_calculate_adjusted_score",
-            return_value=(85, ScoreBreakdown(base_score=85, final_score=85, adjustments=[])),
-        ):
-            result = matcher.analyze_job(portland_job)
-
-        mock_provider.generate.assert_called_once()
-        assert result is not None
-        assert result.match_score == 85
-
-    @patch("job_finder.ai.matcher.parse_job_date")
-    @patch("job_finder.ai.matcher.calculate_freshness_adjustment")
-    @patch("job_finder.ai.matcher.detect_company_size")
-    @patch("job_finder.ai.matcher.detect_timezone_for_job")
-    @patch("job_finder.ai.matcher.calculate_role_preference_adjustment")
-    def test_analyze_job_penalizes_large_timezone_gap(
-        self,
-        mock_role_adj,
-        mock_tz_detect,
-        mock_size_detect,
-        mock_fresh_adj,
-        mock_parse_date,
-        mock_provider,
-        mock_profile,
-        sample_job,
-    ):
-        """Jobs requiring far-off timezones should get a configurable penalty."""
-
-        mock_parse_date.return_value = datetime.now(timezone.utc)
-        mock_fresh_adj.return_value = 0
-        mock_size_detect.return_value = "medium"
-        # CET (UTC+1) vs PT (-8) = 9h difference
-        mock_tz_detect.return_value = 1
-        mock_role_adj.return_value = (0, "Neutral role")
-
-        mock_provider.generate.return_value = (
-            '{"match_score": 90, "matched_skills": ["Python"], '
-            '"missing_skills": [], "application_priority": "High"}'
-        )
-
-        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile, min_match_score=70)
-        matcher.dealbreakers["maxTimezoneDiffHours"] = 8
-        matcher.dealbreakers["timezonePenaltyPoints"] = 50
-        matcher.dealbreakers["timezoneHardPenaltyPoints"] = 70
-        matcher.company_weights["timezoneAdjustments"] = {
-            "sameTimezone": 0,
-            "diff1to2hr": 0,
-            "diff3to4hr": 0,
-            "diff5to8hr": 0,
-            "diff9plusHr": 0,
-        }
-
-        result = matcher.analyze_job(sample_job, return_below_threshold=True)
-
-        # Base 90 minus hard timezone penalty 60 = 30
-        assert result.match_score == 30
-        assert any("timezone" in adj.lower() for adj in result.score_breakdown.adjustments)
 
 
 class TestAnalyzeJobs:
@@ -703,98 +402,9 @@ class TestAnalyzeJobs:
         assert mock_analyze.call_count == 3
 
 
-class TestDetectWorkArrangement:
-    """Test work arrangement detection to prevent false positives."""
-
-    def test_no_relocation_for_research_terminology(self, mock_provider, mock_profile):
-        """Test that research terms like 'Circuit-Based Interpretability' don't trigger relocation.
-
-        This is a regression test for a bug where 'Based In' in 'Circuit-Based Interpretability'
-        was incorrectly matching the 'based in' relocation pattern due to substring matching.
-        """
-        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
-
-        # Description contains research terminology that previously caused false positives
-        result = matcher._detect_work_arrangement(
-            description="Our research includes GPT-3, Circuit-Based Interpretability, "
-            "Multimodal Neurons, and Scaling Laws. This is a remote position.",
-            location="Remote",
-        )
-
-        assert result["remote"] is True
-        assert result["relocation_required"] is False
-
-    def test_relocation_detected_for_actual_relocation_requirement(
-        self, mock_provider, mock_profile
-    ):
-        """Test that actual relocation requirements are still detected."""
-        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
-
-        result = matcher._detect_work_arrangement(
-            description="This role is based in San Francisco. Relocation assistance provided.",
-            location="San Francisco, CA",
-        )
-
-        assert result["relocation_required"] is True
-
-    def test_no_relocation_for_headquartered_boilerplate(self, mock_provider, mock_profile):
-        """Test that 'headquartered in' boilerplate doesn't trigger relocation."""
-        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
-
-        result = matcher._detect_work_arrangement(
-            description="Anthropic is headquartered in San Francisco. This is a remote role.",
-            location="Remote",
-        )
-
-        assert result["remote"] is True
-        assert result["relocation_required"] is False
-
-    def test_hybrid_detection_with_word_boundary(self, mock_provider, mock_profile):
-        """Test that hybrid is detected correctly with word boundaries."""
-        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
-
-        # Should detect hybrid
-        result = matcher._detect_work_arrangement(
-            description="This is a hybrid position with 2 days in office.",
-            location="New York, NY",
-        )
-        assert result["hybrid"] is True
-        assert result["remote"] is False
-
-        # Should NOT match 'hybrid' in unrelated words (if any existed)
-        result2 = matcher._detect_work_arrangement(
-            description="This is a remote position.",
-            location="Remote",
-        )
-        assert result2["hybrid"] is False
-        assert result2["remote"] is True
-
-    def test_onsite_detection_with_word_boundary(self, mock_provider, mock_profile):
-        """Test that onsite is detected correctly with word boundaries."""
-        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
-
-        result = matcher._detect_work_arrangement(
-            description="This is an on-site position in our NYC office.",
-            location="New York, NY",
-        )
-
-        assert result["onsite"] is True
-        assert result["remote"] is False
-        assert result["hybrid"] is False
-
-    def test_remote_precedence_over_hybrid_and_onsite(self, mock_provider, mock_profile):
-        """Test that remote takes precedence when multiple arrangements mentioned."""
-        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
-
-        # Description mentions both remote and office, but explicitly says remote
-        result = matcher._detect_work_arrangement(
-            description="Fully remote position. We have offices in SF and NYC for optional visits.",
-            location="Remote",
-        )
-
-        assert result["remote"] is True
-        assert result["hybrid"] is False
-        assert result["onsite"] is False
+# NOTE: TestDetectWorkArrangement removed during hybrid scoring migration.
+# Work arrangement detection is now handled by the AI extraction system.
+# See tests/ai/test_extraction.py for extraction tests.
 
 
 class TestJobMatchResultModel:

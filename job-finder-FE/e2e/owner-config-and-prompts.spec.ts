@@ -12,18 +12,19 @@ test.describe("Owner configuration and prompts", () => {
     await expect(page.getByRole("heading", { name: "Job Finder Configuration" })).toBeVisible()
     const getActiveTab = () => page.locator('[role="tabpanel"][data-state="active"]').first()
 
-    // Prefilter tab (default)
-    await expect(getActiveTab().getByLabel("Strike Threshold", { exact: true })).toBeVisible()
-    await getActiveTab().getByLabel("Strike Threshold", { exact: true }).fill("7")
+    // Title Filter tab (default)
+    await expect(getActiveTab().getByRole("heading", { name: /required keywords/i })).toBeVisible()
+    // Add a keyword to enable save
+    await getActiveTab().getByRole("button", { name: /add/i }).first().click()
     await page.getByRole("button", { name: /save changes/i }).click()
-    await expect(page.getByText(/Prefilter policy saved/i)).toBeVisible()
+    await expect(page.getByText(/Title filter saved/i)).toBeVisible()
 
-    // Match policy tab
-    await page.getByRole("tab", { name: "Match Policy" }).click()
-    await expect(getActiveTab().getByLabel(/Minimum Match Score/i)).toBeVisible()
-    await getActiveTab().getByLabel(/Minimum Match Score/i).fill("85")
+    // Scoring tab
+    await page.getByRole("tab", { name: "Scoring" }).click()
+    await expect(getActiveTab().getByLabel(/Minimum Score/i)).toBeVisible()
+    await getActiveTab().getByLabel(/Minimum Score/i).fill("65")
     await page.getByRole("button", { name: /save changes/i }).click()
-    await expect(page.getByText(/Match policy saved/i)).toBeVisible()
+    await expect(page.getByText(/Scoring config saved/i)).toBeVisible()
 
     // Queue settings tab
     await page.getByRole("tab", { name: "Queue" }).click()

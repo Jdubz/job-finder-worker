@@ -233,7 +233,7 @@ Before scoring, check for these AUTOMATIC DISQUALIFIERS:
    - Does it say "remote for now, relocate later" or "remote during pandemic only"?
    - Does it require specific timezone hours incompatible with Pacific Time? (e.g., "must work UK hours")
    - Is it "remote" but requires regular in-office attendance outside Portland, OR?
-   - **If YES to any:** Apply a policy-driven deduction (typically 40–60 points; see match-policy dealbreakers) and explain in potential_concerns. Only set score to 0 if multiple hard red flags stack.
+   - **If YES to any:** Apply a policy-driven deduction (typically 40–60 points) and explain in potential_concerns. Only set score to 0 if multiple hard red flags stack.
 
 4. **Compensation/Employment Structure Issues**
    - Is this a contract/1099 position when candidate wants FTE?

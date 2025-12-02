@@ -162,24 +162,12 @@ def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
     except Exception as exc:  # pragma: no cover - defensive
         slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
 
-    # Load match policy (scoring preferences + dealbreakers)
+    # Load scoring config (min_match_score comes from deterministic scoring)
     try:
-        match_policy = config_loader.get_match_policy()
-        job_match = match_policy.get("jobMatch", {})
-        company_weights = match_policy.get("companyWeights", {})
-        ai_matcher.min_match_score = job_match.get("minMatchScore", ai_matcher.min_match_score)
-        ai_matcher.generate_intake = job_match.get("generateIntakeData", ai_matcher.generate_intake)
-        ai_matcher.portland_office_bonus = job_match.get(
-            "portlandOfficeBonus", ai_matcher.portland_office_bonus
-        )
-        ai_matcher.user_timezone = job_match.get("userTimezone", ai_matcher.user_timezone)
-        ai_matcher.prefer_large_companies = job_match.get(
-            "preferLargeCompanies", ai_matcher.prefer_large_companies
-        )
-        ai_matcher.company_weights = company_weights or ai_matcher.company_weights
-        ai_matcher.dealbreakers = match_policy.get("dealbreakers", ai_matcher.dealbreakers)
+        scoring_config = config_loader.get_scoring_config()
+        ai_matcher.min_match_score = scoring_config.get("minScore", ai_matcher.min_match_score)
     except Exception as exc:  # pragma: no cover - defensive
-        slogger.worker_status("match_policy_load_failed", {"error": str(exc)})
+        slogger.worker_status("scoring_config_load_failed", {"error": str(exc)})
 
 
 def get_processing_timeout(config_loader: ConfigLoader) -> int:
@@ -248,36 +236,18 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         if isinstance(candidate, dict):
             worker_ai_config = candidate
 
-    # Get match policy (scoring + weights + dealbreakers)
-    match_policy = {
-        "jobMatch": {
-            "minMatchScore": 70,
-            "portlandOfficeBonus": 15,
-            "userTimezone": -8,
-            "preferLargeCompanies": True,
-            "generateIntakeData": True,
-        },
-        "companyWeights": {},
-        "dealbreakers": {},
-    }
+    # Get scoring config (deterministic scoring settings)
+    scoring_config = {"minScore": 60}
     try:
-        match_policy = config_loader.get_match_policy()
+        scoring_config = config_loader.get_scoring_config()
     except Exception as exc:
-        slogger.worker_status("match_policy_init_failed", {"error": str(exc)})
-
-    job_match_cfg = match_policy.get("jobMatch", {})
+        slogger.worker_status("scoring_config_init_failed", {"error": str(exc)})
 
     ai_matcher = AIJobMatcher(
         provider=job_match_provider,
-        min_match_score=job_match_cfg.get("minMatchScore", 70),
-        generate_intake=job_match_cfg.get("generateIntakeData", True),
-        portland_office_bonus=job_match_cfg.get("portlandOfficeBonus", 15),
         profile=profile,
-        user_timezone=job_match_cfg.get("userTimezone", -8),
-        prefer_large_companies=job_match_cfg.get("preferLargeCompanies", True),
-        config=job_match_cfg,
-        company_weights=match_policy.get("companyWeights"),
-        dealbreakers=match_policy.get("dealbreakers"),
+        min_match_score=scoring_config.get("minScore", 60),
+        generate_intake=True,
     )
 
     # Respect AI settings when fetching/extracting company info

@@ -10,10 +10,10 @@ import type {
   PersonalInfo,
   SchedulerSettings,
   WorkerSettings,
-  PrefilterPolicy,
-  MatchPolicy,
+  TitleFilterConfig,
+  ScoringConfig,
 } from "@shared/types"
-import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO } from "@shared/types"
+import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO, DEFAULT_TITLE_FILTER, DEFAULT_SCORING_CONFIG } from "@shared/types"
 
 export class ConfigClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
@@ -81,20 +81,28 @@ export class ConfigClient extends BaseApiClient {
     })
   }
 
-  async getPrefilterPolicy(): Promise<PrefilterPolicy> {
-    return this.getConfigEntry<PrefilterPolicy>("prefilter-policy")
+  async getTitleFilter(): Promise<TitleFilterConfig> {
+    try {
+      return await this.getConfigEntry<TitleFilterConfig>("title-filter")
+    } catch {
+      return DEFAULT_TITLE_FILTER
+    }
   }
 
-  async updatePrefilterPolicy(policy: PrefilterPolicy): Promise<void> {
-    await this.updateConfigEntry("prefilter-policy", policy)
+  async updateTitleFilter(config: TitleFilterConfig): Promise<void> {
+    await this.updateConfigEntry("title-filter", config)
   }
 
-  async getMatchPolicy(): Promise<MatchPolicy> {
-    return this.getConfigEntry<MatchPolicy>("match-policy")
+  async getScoringConfig(): Promise<ScoringConfig> {
+    try {
+      return await this.getConfigEntry<ScoringConfig>("scoring-config")
+    } catch {
+      return DEFAULT_SCORING_CONFIG
+    }
   }
 
-  async updateMatchPolicy(policy: MatchPolicy): Promise<void> {
-    await this.updateConfigEntry("match-policy", policy)
+  async updateScoringConfig(config: ScoringConfig): Promise<void> {
+    await this.updateConfigEntry("scoring-config", config)
   }
 
   async getSchedulerSettings(): Promise<SchedulerSettings> {

@@ -13,28 +13,58 @@ class TestCompanyPipeline:
     @pytest.fixture
     def mock_dependencies(self):
         config_loader = Mock()
-        config_loader.get_stop_list.return_value = {
-            "excludedCompanies": [],
-            "excludedDomains": [],
+        # New config methods for title filter and scoring
+        config_loader.get_title_filter.return_value = {
+            "requiredKeywords": ["engineer", "developer"],
             "excludedKeywords": [],
         }
-        config_loader.get_prefilter_policy.return_value = {
-            "stopList": {"excludedCompanies": [], "excludedDomains": [], "excludedKeywords": []},
-            "strikeEngine": {
-                "enabled": False,
-                "hardRejections": {
-                    "excludedJobTypes": [],
-                    "excludedSeniority": [],
-                    "excludedCompanies": [],
-                    "excludedKeywords": [],
-                },
-                "remotePolicy": {},
-                "salaryStrike": {},
-                "seniorityStrikes": {},
-                "qualityStrikes": {},
-                "ageStrike": {},
+        config_loader.get_scoring_config.return_value = {
+            "minScore": 60,
+            "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
+            "seniority": {
+                "preferred": ["senior"],
+                "acceptable": ["mid"],
+                "rejected": ["junior"],
+                "preferredBonus": 15,
+                "acceptablePenalty": 0,
+                "rejectedPenalty": -100,
             },
-            "technologyRanks": {"technologies": {}},
+            "location": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": False,
+                "userTimezone": -8,
+                "maxTimezoneDiffHours": 4,
+                "perHourPenalty": 3,
+                "hybridSameCityBonus": 10,
+            },
+            "technology": {
+                "required": [],
+                "preferred": [],
+                "disliked": [],
+                "rejected": [],
+                "requiredBonus": 10,
+                "preferredBonus": 5,
+                "dislikedPenalty": -5,
+            },
+            "salary": {
+                "minimum": None,
+                "target": None,
+                "belowTargetPenalty": 2,
+            },
+            "experience": {
+                "userYears": 10,
+                "maxRequired": 15,
+                "overqualifiedPenalty": 5,
+            },
+        }
+        config_loader.get_ai_settings.return_value = {
+            "worker": {
+                "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+            },
+            "documentGenerator": {
+                "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+            },
         }
 
         company_info_fetcher = Mock()
