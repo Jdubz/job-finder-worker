@@ -413,7 +413,7 @@ class PreFilter:
                         parsed.append(int(clean))
                     if parsed:
                         return max(parsed)
-            except Exception:
+            except (ValueError, TypeError):
                 pass
 
         return None
