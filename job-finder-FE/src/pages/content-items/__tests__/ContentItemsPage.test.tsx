@@ -33,7 +33,7 @@ describe("ContentItemsPage", () => {
     render(<ContentItemsPage />)
     expect(screen.getByText(/No content items yet/i)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /export/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /add root item/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /add experience/i })).not.toBeInTheDocument()
   })
 
   it("shows edit controls only after admin enables edit mode", () => {
@@ -42,11 +42,11 @@ describe("ContentItemsPage", () => {
     const editToggle = screen.getByRole("button", { name: /enter edit mode/i })
     fireEvent.click(editToggle)
 
-    const addRoot = screen.getByRole("button", { name: /add root item/i })
+    const addRoot = screen.getByRole("button", { name: /add experience/i })
     fireEvent.click(addRoot)
-    expect(screen.getByText(/Create Root Item/i)).toBeInTheDocument()
+    expect(screen.getByText(/Add Experience Entry/i)).toBeInTheDocument()
 
     fireEvent.click(addRoot)
-    expect(screen.queryByText(/Create Root Item/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Add Experience Entry/i)).not.toBeInTheDocument()
   })
 })
