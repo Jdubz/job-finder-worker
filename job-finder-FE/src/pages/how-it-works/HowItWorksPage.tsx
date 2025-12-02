@@ -130,6 +130,10 @@ export function HowItWorksPage() {
                 <CheckCircle2 className="h-4 w-4 text-primary mt-0.5" />
                 <span>Click any row to jump straight into document generation for that role.</span>
               </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 text-primary mt-0.5" />
+                <span>Quick stats (counts, priorities, average match scores) keep focus on the best leads.</span>
+              </div>
             </CardContent>
           </Card>
 

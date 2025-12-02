@@ -19,16 +19,37 @@ type ScoringConfigTabProps = {
 
 const cleanList = (items?: string[]) => (items ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)
 
-const mapConfigToForm = (config?: ScoringConfig): ScoringConfigFormValues => ({
-  ...(DEFAULT_SCORING_CONFIG ?? {}),
-  ...(config ?? {}),
-  weights: { ...(DEFAULT_SCORING_CONFIG?.weights ?? {}), ...(config?.weights ?? {}) },
-  seniority: { ...(DEFAULT_SCORING_CONFIG?.seniority ?? {}), ...(config?.seniority ?? {}) },
-  location: { ...(DEFAULT_SCORING_CONFIG?.location ?? {}), ...(config?.location ?? {}) },
-  technology: { ...(DEFAULT_SCORING_CONFIG?.technology ?? {}), ...(config?.technology ?? {}) },
-  salary: { ...(DEFAULT_SCORING_CONFIG?.salary ?? {}), ...(config?.salary ?? {}) },
-  experience: { ...(DEFAULT_SCORING_CONFIG?.experience ?? {}), ...(config?.experience ?? {}) },
-})
+const mapConfigToForm = (config?: ScoringConfig): ScoringConfigFormValues => {
+  const base = DEFAULT_SCORING_CONFIG ?? {
+    minScore: 0,
+    weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
+    seniority: { min: 0, max: 100, preferred: [], required: [] },
+    location: { preferredCities: [], preferredStates: [], preferredCountries: [] },
+    technology: {
+      required: [],
+      preferred: [],
+      disliked: [],
+      rejected: [],
+      requiredBonus: 0,
+      preferredBonus: 0,
+      dislikedPenalty: 0,
+    },
+    salary: { minimum: 0, target: 0, belowTargetPenalty: 0 },
+    experience: { userYears: 0, maxRequired: 0, overqualifiedPenalty: 0 },
+  }
+
+  return {
+    ...base,
+    ...(config ?? {}),
+    minScore: config?.minScore ?? base.minScore ?? 0,
+    weights: { ...base.weights, ...(config?.weights ?? {}) },
+    seniority: { ...base.seniority, ...(config?.seniority ?? {}) },
+    location: { ...base.location, ...(config?.location ?? {}) },
+    technology: { ...base.technology, ...(config?.technology ?? {}) },
+    salary: { ...base.salary, ...(config?.salary ?? {}) },
+    experience: { ...base.experience, ...(config?.experience ?? {}) },
+  }
+}
 
 const mapFormToConfig = (values: ScoringConfigFormValues): ScoringConfig => ({
   minScore: values.minScore,
