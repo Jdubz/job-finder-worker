@@ -8,7 +8,6 @@ import type {
   UpsertConfigEntryResponse,
   ApiSuccessResponse,
   PersonalInfo,
-  SchedulerSettings,
   WorkerSettings,
   TitleFilterConfig,
   MatchPolicy,
@@ -100,14 +99,6 @@ export class ConfigClient extends BaseApiClient {
 
   async updateMatchPolicy(config: MatchPolicy): Promise<void> {
     await this.updateConfigEntry("match-policy", config)
-  }
-
-  async getSchedulerSettings(): Promise<SchedulerSettings> {
-    return this.getConfigEntry<SchedulerSettings>("scheduler-settings")
-  }
-
-  async updateSchedulerSettings(settings: SchedulerSettings): Promise<void> {
-    await this.updateConfigEntry("scheduler-settings", settings)
   }
 
   async getWorkerSettings(): Promise<WorkerSettings> {

@@ -7,7 +7,6 @@ import { useConfigState } from "./hooks/useConfigState"
 import {
   QueueSettingsTab,
   AISettingsTab,
-  SchedulerTab,
   PersonalInfoTab,
   TitleFilterTab,
   MatchPolicyTab,
@@ -19,7 +18,6 @@ type TabType =
   | "scoring"
   | "queue"
   | "ai"
-  | "scheduler"
   | "personal"
 
 export function JobFinderConfigPage() {
@@ -95,12 +93,11 @@ export function JobFinderConfigPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="title-filter">Title Filter</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
-          <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
           <TabsTrigger value="personal">Personal</TabsTrigger>
         </TabsList>
 
@@ -154,17 +151,6 @@ export function JobFinderConfigPage() {
               hasAIChanges={configState.hasAIChanges}
               handleSaveAISettings={configState.handleSaveAISettings}
               resetAI={configState.resetAI}
-            />
-          )}
-
-          {activeTab === "scheduler" && (
-            <SchedulerTab
-              isSaving={configState.isSaving}
-              schedulerSettings={configState.schedulerSettings}
-              hasSchedulerChanges={configState.hasSchedulerChanges}
-              updateSchedulerState={configState.updateSchedulerState}
-              handleSaveScheduler={configState.handleSaveScheduler}
-              resetScheduler={configState.resetScheduler}
             />
           )}
 

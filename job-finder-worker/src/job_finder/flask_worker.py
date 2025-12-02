@@ -600,11 +600,11 @@ def main():
         global queue_manager, processor, config_loader, ai_matcher
         queue_manager, processor, config_loader, ai_matcher, config = initialize_components(config)
 
-        # Set poll interval from DB-backed scheduler settings if available
+        # Set poll interval from DB-backed queue settings if available
         if config_loader:
             try:
-                scheduler_settings = config_loader.get_scheduler_settings()
-                worker_state["poll_interval"] = scheduler_settings.get("pollIntervalSeconds", 60)
+                queue_settings = config_loader.get_queue_settings()
+                worker_state["poll_interval"] = queue_settings.get("pollIntervalSeconds", 60)
             except Exception:
                 worker_state["poll_interval"] = config.get("queue", {}).get("poll_interval", 60)
         else:

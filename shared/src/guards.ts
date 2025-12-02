@@ -24,7 +24,6 @@ import type {
   TitleFilterConfig,
   ScoringConfig,
   MatchPolicy,
-  SchedulerSettings,
   AIProviderType,
   AIInterfaceType,
   WorkerSettings,
@@ -375,10 +374,6 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
   }
 
   return true
-}
-
-export function isSchedulerSettings(value: unknown): value is SchedulerSettings {
-  return isObject(value) && typeof (value as Partial<SchedulerSettings>).pollIntervalSeconds === "number"
 }
 
 export function isWorkerSettings(value: unknown): value is WorkerSettings {

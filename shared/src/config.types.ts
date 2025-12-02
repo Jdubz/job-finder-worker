@@ -22,6 +22,7 @@ export interface QueueSettings {
   processingTimeoutSeconds: number
   isProcessingEnabled?: boolean // Controls whether the worker processes queue items (defaults to true)
   taskDelaySeconds?: number // Delay between processing queue items (defaults to 0)
+  pollIntervalSeconds?: number // How often the worker polls for new items (defaults to 60)
 }
 
 // -----------------------------------------------------------
@@ -392,10 +393,6 @@ export interface JobExtractionResult {
   roleTypes: string[]
 }
 
-export interface SchedulerSettings {
-  pollIntervalSeconds: number
-}
-
 // -----------------------------------------------------------
 // Worker Operational Settings
 // -----------------------------------------------------------
@@ -442,7 +439,6 @@ export type JobFinderConfigId =
   | "personal-info"
   | "title-filter"
   | "match-policy"
-  | "scheduler-settings"
   | "worker-settings"
 
 export type JobFinderConfigPayloadMap = {
@@ -452,7 +448,6 @@ export type JobFinderConfigPayloadMap = {
   "personal-info": PersonalInfo
   "title-filter": TitleFilterConfig
   "match-policy": MatchPolicy
-  "scheduler-settings": SchedulerSettings
   "worker-settings": WorkerSettings
 }
 
@@ -464,6 +459,7 @@ export const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
   processingTimeoutSeconds: 1800,
   isProcessingEnabled: true,
   taskDelaySeconds: 1, // 1 second delay between tasks to avoid rate limits
+  pollIntervalSeconds: 60, // Poll for new items every 60 seconds
 }
 
 /** Canonical provider options built from AI_PROVIDER_MODELS */
@@ -526,10 +522,6 @@ export const DEFAULT_TITLE_FILTER: TitleFilterConfig = {
 }
 
 // No DEFAULT_MATCH_POLICY - fail loud on missing config to prevent silent gaps
-
-export const DEFAULT_SCHEDULER_SETTINGS: SchedulerSettings = {
-  pollIntervalSeconds: 60,
-}
 
 export const DEFAULT_PROMPTS: PromptConfig = {
   resumeGeneration: `You are an expert resume writer creating a tailored resume for a specific job.
