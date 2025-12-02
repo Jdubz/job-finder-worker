@@ -51,6 +51,7 @@ export const AI_PROVIDER_MODELS = {
     api: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
   },
   gemini: {
+    cli: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
     api: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
   },
 } as const

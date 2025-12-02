@@ -641,3 +641,128 @@ class TestGeminiProvider:
 
         with pytest.raises(AIProviderError, match="API key must be provided"):
             GeminiProvider()
+
+
+class TestAPIKeyFallback:
+    """Test graceful fallback when API keys are missing."""
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_gemini_api_falls_back_to_cli_when_no_key(self):
+        """Should fall back to gemini/cli when GOOGLE_API_KEY is missing."""
+        import os
+
+        os.environ.pop("GOOGLE_API_KEY", None)
+        os.environ.pop("GEMINI_API_KEY", None)
+
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "gemini",
+                    "interface": "api",  # Requests API but no key available
+                    "model": "gemini-2.0-flash",
+                }
+            }
+        }
+
+        # Should not raise, should fall back to CLI
+        provider = create_provider_from_config(ai_settings)
+        assert isinstance(provider, GeminiCLIProvider)
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_claude_api_raises_when_no_key_and_no_fallback(self):
+        """Should raise error for claude/api when no key (no CLI fallback available)."""
+        import os
+
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "claude",
+                    "interface": "api",
+                    "model": "claude-sonnet-4-5-20250929",
+                }
+            }
+        }
+
+        # Claude has no CLI fallback, should raise descriptive error
+        with pytest.raises(AIProviderError, match="Missing API key"):
+            create_provider_from_config(ai_settings)
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_openai_api_raises_when_no_key_and_no_fallback(self):
+        """Should raise error for openai/api when no key (no CLI fallback available)."""
+        import os
+
+        os.environ.pop("OPENAI_API_KEY", None)
+
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "openai",
+                    "interface": "api",
+                    "model": "gpt-4o",
+                }
+            }
+        }
+
+        # OpenAI has no CLI fallback, should raise descriptive error
+        with pytest.raises(AIProviderError, match="Missing API key"):
+            create_provider_from_config(ai_settings)
+
+    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"})
+    def test_gemini_api_uses_api_when_key_present(self):
+        """Should use gemini/api when API key is available."""
+        try:
+            import google.generativeai  # noqa: F401
+        except ImportError:
+            pytest.skip("google-generativeai package not installed")
+
+        with (
+            patch("google.generativeai.configure"),
+            patch("google.generativeai.GenerativeModel"),
+        ):
+            ai_settings = {
+                "worker": {
+                    "selected": {
+                        "provider": "gemini",
+                        "interface": "api",
+                        "model": "gemini-2.0-flash",
+                    }
+                }
+            }
+
+            provider = create_provider_from_config(ai_settings)
+            assert isinstance(provider, GeminiProvider)
+
+    def test_codex_cli_works_without_any_api_keys(self):
+        """Should create codex/cli provider without any API keys."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                }
+            }
+        }
+
+        # CLI providers don't need API keys
+        provider = create_provider_from_config(ai_settings)
+        assert isinstance(provider, CodexCLIProvider)
+
+    def test_gemini_cli_works_without_any_api_keys(self):
+        """Should create gemini/cli provider without any API keys."""
+        ai_settings = {
+            "worker": {
+                "selected": {
+                    "provider": "gemini",
+                    "interface": "cli",
+                    "model": "gemini-2.0-flash",
+                }
+            }
+        }
+
+        # CLI providers don't need API keys
+        provider = create_provider_from_config(ai_settings)
+        assert isinstance(provider, GeminiCLIProvider)
