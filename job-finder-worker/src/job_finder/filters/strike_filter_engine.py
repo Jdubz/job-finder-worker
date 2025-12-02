@@ -262,15 +262,14 @@ class StrikeFilterEngine:
             # Use word boundary regex to match whole words only
             pattern = r"\b" + re.escape(seniority) + r"\b"
             if re.search(pattern, title_lower):
-                result.add_rejection(
-                    filter_category="hard_reject",
+                result.add_strike(
+                    filter_category="seniority",
                     filter_name="excluded_seniority",
                     reason=f"Too junior: {seniority}",
                     detail=f"Title contains '{seniority}' which is below required level",
-                    severity="hard_reject",
-                    points=0,
+                    points=3,
                 )
-                return True
+                return False
         return False
 
     def _is_excluded_company(self, company: str, result: FilterResult) -> bool:
