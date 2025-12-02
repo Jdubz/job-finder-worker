@@ -13,6 +13,16 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -120,6 +130,8 @@ export function JobListingsPage() {
   const [companyName, setCompanyName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [deleteRequest, setDeleteRequest] = useState<{ id: string; title?: string }>({ id: "", title: "" })
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   // Calculate status counts in a single pass for performance
   const statusCounts = useMemo(() => {
@@ -183,15 +195,8 @@ export function JobListingsPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this job listing?")) return
-    try {
-      await deleteListing(id)
-      closeModal()
-    } catch (err) {
-      console.error("Failed to delete job listing:", err)
-      throw err
-    }
+  const handleDelete = async (id: string, title?: string) => {
+    setDeleteRequest({ id, title })
   }
 
   const handleResubmitBypass = async (listing: JobListingRecord) => {
@@ -410,7 +415,7 @@ export function JobListingsPage() {
                       openModal({
                         type: "jobListing",
                         listing,
-                        onDelete: handleDelete,
+                        onDelete: (id) => handleDelete(id, listing.title),
                         onResubmit: () => handleResubmitBypass(listing),
                       })
                     }
@@ -472,6 +477,40 @@ export function JobListingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!deleteRequest.id} onOpenChange={(open) => !open && setDeleteRequest({ id: "", title: "" })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete listing?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove {deleteRequest.title ? `"${deleteRequest.title}"` : "this listing"} and associated analysis.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteRequest({ id: "", title: "" })}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={confirmingDelete}
+              onClick={async () => {
+                if (!deleteRequest.id) return
+                setConfirmingDelete(true)
+                try {
+                  await deleteListing(deleteRequest.id)
+                  closeModal()
+                } catch (err) {
+                  console.error("Failed to delete job listing:", err)
+                  throw err
+                } finally {
+                  setConfirmingDelete(false)
+                  setDeleteRequest({ id: "", title: "" })
+                }
+              }}
+            >
+              {confirmingDelete ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add Job Modal */}
       <Dialog

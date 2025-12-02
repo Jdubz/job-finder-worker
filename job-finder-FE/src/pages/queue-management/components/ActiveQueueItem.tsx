@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { QueueItem } from "@shared/types"
 import { Activity, AlertCircle, Clock, ExternalLink, Pause, Trash2 } from "lucide-react"
+import { statusBadgeClass } from "@/lib/status-badge"
 import { format, formatDistanceToNow } from "date-fns"
 import {
   getCompanyName,
@@ -53,6 +54,7 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
   const domain = getDomain(item.url || "")
   const source = getSourceLabel(item)
   const taskType = getTaskTypeLabel(item)
+  const distinctStage = stage && stage.toLowerCase() !== taskType.toLowerCase() && (!source || stage.toLowerCase() !== source.toLowerCase())
 
   return (
     <Card className={containerClasses}>
@@ -64,11 +66,13 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
             </div>
             <div className="space-y-3 min-w-0">
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <Badge className="bg-emerald-600 text-white shadow-sm">Processing</Badge>
+                <Badge className={statusBadgeClass(item.status)}>
+                  {item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : ""}
+                </Badge>
                 <Badge variant="outline" className="border-emerald-200 text-emerald-800 dark:border-emerald-800 dark:text-emerald-100">
                   {taskType}
                 </Badge>
-                {stage && <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">{stage}</Badge>}
+                {distinctStage && <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">{stage}</Badge>}
                 {source && <Badge variant="outline" className="border-slate-200 text-slate-700 dark:border-slate-800 dark:text-slate-100">{source}</Badge>}
               </div>
 
@@ -84,10 +88,6 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
                   </span>
                 )}
               </div>
-
-              {company && (
-                <div className="text-xs text-emerald-700 dark:text-emerald-200">Company: {company}</div>
-              )}
 
               <div className="grid gap-3 text-xs text-emerald-700 dark:text-emerald-200 sm:grid-cols-2">
                 <div className="flex items-center gap-2 min-w-0">

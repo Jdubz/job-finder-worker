@@ -4,7 +4,15 @@ import type { Company, JobListingRecord, JobMatchWithListing, JobSource, QueueIt
 import { EntityModalHost } from "@/components/modals/EntityModalHost"
 
 export type EntityModalDescriptor =
-  | { type: "company"; company?: Company | null; companyId?: string | null }
+  | {
+      type: "company"
+      company?: Company | null
+      companyId?: string | null
+      handlers?: {
+        onDelete?: (id: string) => void | Promise<void>
+        onReanalyze?: (company: Company) => void | Promise<void>
+      }
+    }
   | {
       type: "jobListing"
       listing: JobListingRecord
