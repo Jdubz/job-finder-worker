@@ -16,7 +16,9 @@ from job_finder.ai.providers import AIProvider
 logger = logging.getLogger(__name__)
 
 # Type aliases matching TypeScript definitions
-SeniorityLevel = Literal["junior", "mid", "senior", "staff", "lead", "principal", "unknown"]
+SeniorityLevel = Literal[
+    "junior", "mid", "senior", "staff", "lead", "principal", "unknown"
+]
 WorkArrangement = Literal["remote", "hybrid", "onsite", "unknown"]
 EmploymentType = Literal["full-time", "part-time", "contract", "unknown"]
 
@@ -59,7 +61,9 @@ class JobExtractionResult:
     def from_dict(cls, data: Dict[str, Any]) -> "JobExtractionResult":
         """Create from dictionary (supports both snake_case and camelCase)."""
         return cls(
-            seniority=_validate_seniority(data.get("seniority") or data.get("seniority_level")),
+            seniority=_validate_seniority(
+                data.get("seniority") or data.get("seniority_level")
+            ),
             work_arrangement=_validate_work_arrangement(
                 data.get("workArrangement") or data.get("work_arrangement")
             ),
@@ -67,8 +71,12 @@ class JobExtractionResult:
             city=data.get("city"),
             salary_min=_safe_int(data.get("salaryMin") or data.get("salary_min")),
             salary_max=_safe_int(data.get("salaryMax") or data.get("salary_max")),
-            experience_min=_safe_int(data.get("experienceMin") or data.get("experience_min")),
-            experience_max=_safe_int(data.get("experienceMax") or data.get("experience_max")),
+            experience_min=_safe_int(
+                data.get("experienceMin") or data.get("experience_min")
+            ),
+            experience_max=_safe_int(
+                data.get("experienceMax") or data.get("experience_max")
+            ),
             technologies=data.get("technologies") or [],
             employment_type=_validate_employment_type(
                 data.get("employmentType") or data.get("employment_type")
@@ -209,7 +217,9 @@ class JobExtractor:
             # Normalize technologies to lowercase
             if "technologies" in data and isinstance(data["technologies"], list):
                 data["technologies"] = [
-                    t.lower().strip() for t in data["technologies"] if isinstance(t, str)
+                    t.lower().strip()
+                    for t in data["technologies"]
+                    if isinstance(t, str)
                 ]
 
             return JobExtractionResult.from_dict(data)
@@ -243,7 +253,10 @@ class JobExtractor:
         desc_lower = description.lower()
 
         # Extract seniority from title
-        if any(kw in title_lower for kw in ["junior", "jr", "entry", "associate", " i ", " 1 "]):
+        if any(
+            kw in title_lower
+            for kw in ["junior", "jr", "entry", "associate", " i ", " 1 "]
+        ):
             result.seniority = "junior"
         elif any(kw in title_lower for kw in ["senior", "sr", " iii", " 3 "]):
             result.seniority = "senior"
@@ -255,7 +268,10 @@ class JobExtractor:
             result.seniority = "mid"
 
         # Extract work arrangement
-        if any(kw in desc_lower for kw in ["fully remote", "100% remote", "work from anywhere"]):
+        if any(
+            kw in desc_lower
+            for kw in ["fully remote", "100% remote", "work from anywhere"]
+        ):
             result.work_arrangement = "remote"
         elif any(kw in desc_lower for kw in ["hybrid", "2-3 days", "flexible"]):
             result.work_arrangement = "hybrid"
@@ -263,7 +279,9 @@ class JobExtractor:
             result.work_arrangement = "onsite"
 
         # Extract salary using regex
-        salary_pattern = r"\$\s*(\d{2,3})[,\s]*(\d{3})(?:\s*[-–]\s*\$?\s*(\d{2,3})[,\s]*(\d{3}))?"
+        salary_pattern = (
+            r"\$\s*(\d{2,3})[,\s]*(\d{3})(?:\s*[-–]\s*\$?\s*(\d{2,3})[,\s]*(\d{3}))?"
+        )
         salary_match = re.search(salary_pattern, description)
         if salary_match:
             groups = salary_match.groups()

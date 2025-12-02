@@ -46,7 +46,9 @@ class JobMatchResult(BaseModel):
     company_info: Optional[str] = None
 
     # Match Analysis
-    match_score: int = Field(..., ge=0, le=100, description="Overall match score (0-100)")
+    match_score: int = Field(
+        ..., ge=0, le=100, description="Overall match score (0-100)"
+    )
     matched_skills: List[str] = Field(default_factory=list)
     missing_skills: List[str] = Field(default_factory=list)
     experience_match: str = ""
@@ -260,7 +262,9 @@ class AIJobMatcher:
             potential_concerns=match_analysis.get("potential_concerns", []),
             application_priority=match_analysis.get("application_priority", "Medium"),
             score_breakdown=score_breakdown,
-            customization_recommendations=match_analysis.get("customization_recommendations", {}),
+            customization_recommendations=match_analysis.get(
+                "customization_recommendations", {}
+            ),
             resume_intake_data=intake_data,
         )
 
@@ -324,7 +328,9 @@ class AIJobMatcher:
                 "missing_skills",
                 "application_priority",
             ]
-            missing_fields = [field for field in required_fields if field not in analysis]
+            missing_fields = [
+                field for field in required_fields if field not in analysis
+            ]
             if missing_fields:
                 logger.error(f"AI response missing required fields: {missing_fields}")
                 logger.debug(f"Response was: {response[:500]}...")
@@ -377,7 +383,9 @@ class AIJobMatcher:
             Dictionary with resume intake data, or None if failed.
         """
         try:
-            prompt = self.prompts.generate_resume_intake_data(self.profile, job, match_analysis)
+            prompt = self.prompts.generate_resume_intake_data(
+                self.profile, job, match_analysis
+            )
 
             # Use slightly higher temperature for creative intake data generation
             response = self.provider.generate(prompt, max_tokens=4096, temperature=0.4)
@@ -403,7 +411,9 @@ class AIJobMatcher:
                 "skills_priority",
                 "ats_keywords",
             ]
-            missing_fields = [field for field in required_fields if field not in intake_data]
+            missing_fields = [
+                field for field in required_fields if field not in intake_data
+            ]
             if missing_fields:
                 logger.warning(f"Intake data missing optional fields: {missing_fields}")
 

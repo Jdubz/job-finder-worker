@@ -166,9 +166,13 @@ class JobProcessor(BaseProcessor):
         # Refresh AI providers per task
         extraction_provider = create_provider_from_config(ai_settings, task="jobMatch")
         self.extractor = JobExtractor(extraction_provider)
-        self.ai_matcher.provider = create_provider_from_config(ai_settings, task="jobMatch")
+        self.ai_matcher.provider = create_provider_from_config(
+            ai_settings, task="jobMatch"
+        )
 
-        company_provider = create_provider_from_config(ai_settings, task="companyDiscovery")
+        company_provider = create_provider_from_config(
+            ai_settings, task="companyDiscovery"
+        )
         if hasattr(self.company_info_fetcher, "ai_provider"):
             self.company_info_fetcher.ai_provider = company_provider
 
@@ -363,9 +367,15 @@ class JobProcessor(BaseProcessor):
             return
 
         # Update status to processing and set pipeline_stage for UI
-        scrape_state: Dict[str, Any] = {**(item.pipeline_state or {}), "pipeline_stage": "scrape"}
+        scrape_state: Dict[str, Any] = {
+            **(item.pipeline_state or {}),
+            "pipeline_stage": "scrape",
+        }
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, "Scraping job data", pipeline_state=scrape_state
+            item.id,
+            QueueStatus.PROCESSING,
+            "Scraping job data",
+            pipeline_state=scrape_state,
         )
 
         try:
@@ -458,7 +468,10 @@ class JobProcessor(BaseProcessor):
         # Update status to processing and set pipeline_stage for UI
         updated_state = {**item.pipeline_state, "pipeline_stage": "filter"}
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, "Filtering job", pipeline_state=updated_state
+            item.id,
+            QueueStatus.PROCESSING,
+            "Filtering job",
+            pipeline_state=updated_state,
         )
 
         # Get or create job_listing for this job
@@ -491,7 +504,10 @@ class JobProcessor(BaseProcessor):
                     item.id,
                     QueueStatus.FILTERED,
                     f"Rejected: {rejection_reason}",
-                    scraped_data={"job_data": job_data, "filter_result": rejection_data},
+                    scraped_data={
+                        "job_data": job_data,
+                        "filter_result": rejection_data,
+                    },
                 )
                 return
 
@@ -579,7 +595,9 @@ class JobProcessor(BaseProcessor):
 
         try:
             # Ensure company exists (spawn dependency if needed)
-            company_ready, dependency_state = self._ensure_company_dependency(item, job_data)
+            company_ready, dependency_state = self._ensure_company_dependency(
+                item, job_data
+            )
             if not company_ready:
                 updated_state = {**item.pipeline_state, **dependency_state}
                 self.queue_manager.update_status(
@@ -597,7 +615,10 @@ class JobProcessor(BaseProcessor):
             # Update status to processing
             updated_state = {**item.pipeline_state, "pipeline_stage": "analyze"}
             self.queue_manager.update_status(
-                item.id, QueueStatus.PROCESSING, "Extracting job data", pipeline_state=updated_state
+                item.id,
+                QueueStatus.PROCESSING,
+                "Extracting job data",
+                pipeline_state=updated_state,
             )
 
             # STAGE 1: AI Extraction - Extract semantic data from job posting
@@ -611,7 +632,10 @@ class JobProcessor(BaseProcessor):
 
             # STAGE 2: Deterministic Scoring - Score based on config
             self.queue_manager.update_status(
-                item.id, QueueStatus.PROCESSING, "Scoring job match", pipeline_state=updated_state
+                item.id,
+                QueueStatus.PROCESSING,
+                "Scoring job match",
+                pipeline_state=updated_state,
             )
             score_result = self.scoring_engine.score(extraction, title, description)
             logger.info(
@@ -654,7 +678,9 @@ class JobProcessor(BaseProcessor):
                 "extraction": extraction_dict,
                 "deterministic_score": score_result.final_score,
             }
-            result = self.ai_matcher.analyze_job(job_data_enriched, return_below_threshold=True)
+            result = self.ai_matcher.analyze_job(
+                job_data_enriched, return_below_threshold=True
+            )
 
             if not result:
                 # AI returned None without exception (e.g., empty response from provider)
@@ -686,7 +712,9 @@ class JobProcessor(BaseProcessor):
                     min_score = 0
 
             if result.match_score < min_score:
-                self._update_listing_status(listing_id, "skipped", analysis_result=result.to_dict())
+                self._update_listing_status(
+                    listing_id, "skipped", analysis_result=result.to_dict()
+                )
 
                 self.queue_manager.update_status(
                     item.id,
@@ -697,7 +725,9 @@ class JobProcessor(BaseProcessor):
 
             # Match passed - update state and continue
             # Update job_listing status to 'analyzed'
-            self._update_listing_status(listing_id, "analyzed", analysis_result=result.to_dict())
+            self._update_listing_status(
+                listing_id, "analyzed", analysis_result=result.to_dict()
+            )
 
             updated_state = {
                 **item.pipeline_state,
@@ -734,7 +764,9 @@ class JobProcessor(BaseProcessor):
             )
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Error after AI analysis for {job_data.get('title')}: {error_msg}")
+            logger.error(
+                f"Error after AI analysis for {job_data.get('title')}: {error_msg}"
+            )
             self._update_listing_status(listing_id, "skipped")
             self.queue_manager.update_status(
                 item.id,
@@ -758,10 +790,16 @@ class JobProcessor(BaseProcessor):
         until company data becomes available.
         """
         company_name_raw = job_data.get("company", item.company_name)
-        company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
+        company_website = job_data.get(
+            "company_website"
+        ) or self._extract_company_domain(item.url)
 
-        company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
-        company_name_clean = clean_company_name(company_name_base) or company_name_base.strip()
+        company_name_base = (
+            company_name_raw if isinstance(company_name_raw, str) else ""
+        )
+        company_name_clean = (
+            clean_company_name(company_name_base) or company_name_base.strip()
+        )
 
         state_updates: Dict[str, Any] = {}
 
@@ -816,7 +854,12 @@ class JobProcessor(BaseProcessor):
 
                 job_data["company"] = actual_company_name or company_name_clean
                 return self._finalize_company_dependency(
-                    item, job_data, company, company_website, pipeline_state, state_updates
+                    item,
+                    job_data,
+                    company,
+                    company_website,
+                    pipeline_state,
+                    state_updates,
                 )
             else:
                 # Source has stale company_id reference - company was deleted
@@ -849,7 +892,9 @@ class JobProcessor(BaseProcessor):
 
         if not company:
             # Create stub for new company
-            stub = self.companies_manager.create_company_stub(company_name_clean, company_website)
+            stub = self.companies_manager.create_company_stub(
+                company_name_clean, company_website
+            )
             company = stub
 
         return self._finalize_company_dependency(
@@ -872,7 +917,9 @@ class JobProcessor(BaseProcessor):
         Returns (ready, state_updates) tuple.
         """
         company_id = company.get("id")
-        company_name = job_data["company"]  # Guaranteed set by _ensure_company_dependency
+        company_name = job_data[
+            "company"
+        ]  # Guaranteed set by _ensure_company_dependency
 
         # Self-heal FK relationships (company <-> source linkage)
         if company_id:
@@ -969,7 +1016,9 @@ class JobProcessor(BaseProcessor):
                 },
             )
             if task_id:
-                logger.info("Spawned company enrichment task %s for %s", task_id, company_name)
+                logger.info(
+                    "Spawned company enrichment task %s for %s", task_id, company_name
+                )
                 return True
             else:
                 logger.warning(
@@ -978,26 +1027,36 @@ class JobProcessor(BaseProcessor):
                 )
                 return False
         except DuplicateQueueItemError:
-            logger.debug("Company task for %s already in queue, skipping spawn", company_name)
+            logger.debug(
+                "Company task for %s already in queue, skipping spawn", company_name
+            )
             return True  # Task exists, which is fine
         except Exception as e:
             logger.error("Could not spawn company task for %s: %s", company_name, e)
             return False
 
-    def _spawn_company_and_source(self, item: JobQueueItem, job_data: Dict[str, Any]) -> None:
+    def _spawn_company_and_source(
+        self, item: JobQueueItem, job_data: Dict[str, Any]
+    ) -> None:
         """Ensure company stub exists and spawn COMPANY and SOURCE_DISCOVERY tasks even for filtered jobs."""
 
         company_name = job_data.get("company") or item.company_name or "Unknown"
-        company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
+        company_website = job_data.get(
+            "company_website"
+        ) or self._extract_company_domain(item.url)
 
         company = self.companies_manager.get_company(
             company_name
-        ) or self.companies_manager.create_company_stub(company_name, company_website or "")
+        ) or self.companies_manager.create_company_stub(
+            company_name, company_website or ""
+        )
 
         company_id = company.get("id")
         # Spawn company enrichment task
         if company_id:
-            self._try_spawn_company_task(item, company_id, company_name, company_website or "")
+            self._try_spawn_company_task(
+                item, company_id, company_name, company_website or ""
+            )
 
         # Spawn source discovery task to track posting source
         try:
@@ -1005,14 +1064,18 @@ class JobProcessor(BaseProcessor):
                 item,
                 {
                     "type": QueueItemType.SOURCE_DISCOVERY,
-                    "url": job_data.get("company_website") or job_data.get("url") or item.url,
+                    "url": job_data.get("company_website")
+                    or job_data.get("url")
+                    or item.url,
                     "company_name": company_name,
                     "company_id": company_id,
                     "source": item.source,
                 },
             )
         except Exception as e:  # pragma: no cover - defensive
-            logger.warning("Failed to spawn source discovery for %s: %s", company_name, e)
+            logger.warning(
+                "Failed to spawn source discovery for %s: %s", company_name, e
+            )
 
     @staticmethod
     def _is_job_board_url(url: str) -> bool:
@@ -1033,7 +1096,9 @@ class JobProcessor(BaseProcessor):
                 for domain in JobProcessor._JOB_BOARD_DOMAINS
             )
         except Exception as e:
-            logger.warning("URL parsing failed in _is_job_board_url for '%s': %s", url, e)
+            logger.warning(
+                "URL parsing failed in _is_job_board_url for '%s': %s", url, e
+            )
             return False
 
     def _do_job_save(self, item: JobQueueItem) -> None:
@@ -1066,12 +1131,17 @@ class JobProcessor(BaseProcessor):
         )
         start = time.monotonic()
 
-        logger.info(f"JOB_SAVE: Saving {job_data.get('title')} at {job_data.get('company')}")
+        logger.info(
+            f"JOB_SAVE: Saving {job_data.get('title')} at {job_data.get('company')}"
+        )
 
         # Update status to processing and set pipeline_stage for UI
         updated_state = {**item.pipeline_state, "pipeline_stage": "save"}
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, "Saving job match", pipeline_state=updated_state
+            item.id,
+            QueueStatus.PROCESSING,
+            "Saving job match",
+            pipeline_state=updated_state,
         )
 
         try:
@@ -1089,7 +1159,9 @@ class JobProcessor(BaseProcessor):
             )
 
             # Mark listing as matched for clearer lifecycle tracking
-            self._update_listing_status(listing_id, "matched", analysis_result=result.to_dict())
+            self._update_listing_status(
+                listing_id, "matched", analysis_result=result.to_dict()
+            )
 
             logger.info(
                 f"Job matched and saved: {job_data.get('title')} at {job_data.get('company')} "
@@ -1155,7 +1227,9 @@ class JobProcessor(BaseProcessor):
 
         # Update the same item with new state and mark as pending for re-processing
         try:
-            self.queue_manager.requeue_with_state(current_item.id, updated_state_with_stage)
+            self.queue_manager.requeue_with_state(
+                current_item.id, updated_state_with_stage
+            )
             logger.info(
                 f"Requeued item {current_item.id} for {next_stage}: {(current_item.url or '')[:50]}"
             )
@@ -1232,7 +1306,9 @@ class JobProcessor(BaseProcessor):
         if job_data:
             # Ensure URL is set
             job_data["url"] = url
-            logger.debug(f"Job scraped: {job_data.get('title')} at {job_data.get('company')}")
+            logger.debug(
+                f"Job scraped: {job_data.get('title')} at {job_data.get('company')}"
+            )
             return job_data
 
         return None
@@ -1251,7 +1327,11 @@ class JobProcessor(BaseProcessor):
 
             # Extract company from URL (boards.greenhouse.io/{company}/jobs/...)
             company_match = re.search(r"boards\.greenhouse\.io/([^/]+)", url)
-            company_name = company_match.group(1).replace("-", " ").title() if company_match else ""
+            company_name = (
+                company_match.group(1).replace("-", " ").title()
+                if company_match
+                else ""
+            )
 
             # Extract job details using updated selectors (Greenhouse HTML structure changed)
             title_elem = soup.find("h1", class_="section-header")
@@ -1369,7 +1449,9 @@ class JobProcessor(BaseProcessor):
                         if schema_text:
                             data = json.loads(schema_text)
                             if isinstance(data, dict):
-                                company_name = data.get("hiringOrganization", {}).get("name", "")
+                                company_name = data.get("hiringOrganization", {}).get(
+                                    "name", ""
+                                )
                                 if not company_name:
                                     company_name = data.get("name", "")
                     except (json.JSONDecodeError, AttributeError, TypeError) as e:
@@ -1383,7 +1465,9 @@ class JobProcessor(BaseProcessor):
                 # Check against known job board base domains from database
                 # This avoids false positives like "greenhouse-tech.com" being excluded
                 domain_parts = domain.split(".")
-                base_domain = ".".join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain
+                base_domain = (
+                    ".".join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain
+                )
                 aggregator_domains = self.sources_manager.get_aggregator_domains()
                 is_job_board = base_domain in aggregator_domains
 
@@ -1398,7 +1482,9 @@ class JobProcessor(BaseProcessor):
                 "company": company_name,
                 "location": "",
                 "description": (
-                    description.get_text(separator="\n", strip=True) if description else ""
+                    description.get_text(separator="\n", strip=True)
+                    if description
+                    else ""
                 ),
                 "company_website": self._extract_company_domain(url),
                 "url": url,
@@ -1429,7 +1515,9 @@ class JobProcessor(BaseProcessor):
 
             if not selectors:
                 # No selectors, fall back to generic
-                logger.debug(f"No selectors for source {source.get('name')}, using generic scrape")
+                logger.debug(
+                    f"No selectors for source {source.get('name')}, using generic scrape"
+                )
                 return None
 
             # Fetch HTML
@@ -1442,17 +1530,25 @@ class JobProcessor(BaseProcessor):
                 "url": url,
                 "title": self._extract_with_selector(soup, selectors.get("title")),
                 "company": self._extract_with_selector(soup, selectors.get("company")),
-                "location": self._extract_with_selector(soup, selectors.get("location")),
-                "description": self._extract_with_selector(soup, selectors.get("description")),
+                "location": self._extract_with_selector(
+                    soup, selectors.get("location")
+                ),
+                "description": self._extract_with_selector(
+                    soup, selectors.get("description")
+                ),
                 "salary": self._extract_with_selector(soup, selectors.get("salary")),
-                "posted_date": self._extract_with_selector(soup, selectors.get("posted_date")),
+                "posted_date": self._extract_with_selector(
+                    soup, selectors.get("posted_date")
+                ),
             }
 
             # Remove None values
             job_data = {k: v for k, v in job_data.items() if v is not None}
 
             if not job_data.get("title") or not job_data.get("description"):
-                logger.warning("Missing required fields (title/description) from selector scrape")
+                logger.warning(
+                    "Missing required fields (title/description) from selector scrape"
+                )
                 return None
 
             return job_data
@@ -1461,7 +1557,9 @@ class JobProcessor(BaseProcessor):
             logger.error(f"Error scraping with source config: {e}")
             return None
 
-    def _extract_with_selector(self, soup: Any, selector: Optional[str]) -> Optional[str]:
+    def _extract_with_selector(
+        self, soup: Any, selector: Optional[str]
+    ) -> Optional[str]:
         """
         Extract text using CSS selector.
 

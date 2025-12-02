@@ -60,10 +60,18 @@ class TestCompanyPipeline:
         }
         config_loader.get_ai_settings.return_value = {
             "worker": {
-                "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+                "selected": {
+                    "provider": "gemini",
+                    "interface": "api",
+                    "model": "gemini-2.0-flash",
+                }
             },
             "documentGenerator": {
-                "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+                "selected": {
+                    "provider": "gemini",
+                    "interface": "api",
+                    "model": "gemini-2.0-flash",
+                }
             },
         }
 
@@ -307,17 +315,23 @@ class TestCompanyPipeline:
             "about": "Great company with lots of information about what they do",
             "culture": "Amazing collaborative culture",
         }
-        mock_dependencies["companies_manager"].save_company.return_value = "existing-company-id"
+        mock_dependencies["companies_manager"].save_company.return_value = (
+            "existing-company-id"
+        )
 
         processor.company_processor.process_company(item)
 
         # Should have looked up company by ID
-        mock_dependencies["companies_manager"].get_company_by_id.assert_called_once_with(
-            "existing-company-id"
-        )
+        mock_dependencies[
+            "companies_manager"
+        ].get_company_by_id.assert_called_once_with("existing-company-id")
         # Should have fetched info using the resolved name
-        mock_dependencies["company_info_fetcher"].fetch_company_info.assert_called_once()
-        call_args = mock_dependencies["company_info_fetcher"].fetch_company_info.call_args
+        mock_dependencies[
+            "company_info_fetcher"
+        ].fetch_company_info.assert_called_once()
+        call_args = mock_dependencies[
+            "company_info_fetcher"
+        ].fetch_company_info.call_args
         assert call_args[1]["company_name"] == "Resolved Company"
         # Should succeed
         final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]

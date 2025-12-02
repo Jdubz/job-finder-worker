@@ -85,7 +85,11 @@ class ConfigLoader:
             # Return defaults if not configured
             return {
                 "minScore": 60,
-                "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
+                "weights": {
+                    "skillMatch": 40,
+                    "experienceMatch": 30,
+                    "seniorityMatch": 30,
+                },
                 "seniority": {
                     "preferred": ["senior", "staff", "lead"],
                     "acceptable": ["mid", ""],

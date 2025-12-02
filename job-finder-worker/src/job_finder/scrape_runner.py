@@ -74,7 +74,9 @@ class ScrapeRunner:
                 loader = ConfigLoader(job_listing_storage.db_path)
                 self.title_filter = self._create_title_filter(loader)
             except Exception as e:
-                logger.warning(f"Could not create title filter: {e}. Pre-filtering disabled.")
+                logger.warning(
+                    f"Could not create title filter: {e}. Pre-filtering disabled."
+                )
                 self.title_filter = None
 
         self.scraper_intake = ScraperIntake(
@@ -132,15 +134,21 @@ class ScrapeRunner:
 
         for source in sources:
             if target_matches is not None and potential_matches >= target_matches:
-                logger.info(f"\nReached target: {potential_matches} enqueued jobs, stopping")
+                logger.info(
+                    f"\nReached target: {potential_matches} enqueued jobs, stopping"
+                )
                 break
 
             try:
                 remaining_needed = (
-                    None if target_matches is None else max(target_matches - potential_matches, 0)
+                    None
+                    if target_matches is None
+                    else max(target_matches - potential_matches, 0)
                 )
                 if remaining_needed == 0:
-                    logger.info("Reached target before scraping next source; stopping early")
+                    logger.info(
+                        "Reached target before scraping next source; stopping early"
+                    )
                     break
 
                 source_stats = self._scrape_source(source, remaining_needed)
@@ -194,7 +202,9 @@ class ScrapeRunner:
             return sources
         return self._get_next_sources_by_rotation(max_sources)
 
-    def _get_next_sources_by_rotation(self, limit: Optional[int]) -> List[Dict[str, Any]]:
+    def _get_next_sources_by_rotation(
+        self, limit: Optional[int]
+    ) -> List[Dict[str, Any]]:
         """
         Get sources sorted by chronological rotation (oldest scraped first).
 
@@ -210,7 +220,9 @@ class ScrapeRunner:
             last_scraped_str = source.get("lastScrapedAt") or source.get("scraped_at")
             if last_scraped_str:
                 try:
-                    return datetime.fromisoformat(last_scraped_str.replace("Z", "+00:00"))
+                    return datetime.fromisoformat(
+                        last_scraped_str.replace("Z", "+00:00")
+                    )
                 except (ValueError, AttributeError):
                     return min_datetime
             return min_datetime
@@ -239,7 +251,9 @@ class ScrapeRunner:
         config = source.get("config", {})
 
         # Determine if this is an aggregator or company-specific source
-        is_aggregator = bool(source.get("aggregator_domain") or source.get("aggregatorDomain"))
+        is_aggregator = bool(
+            source.get("aggregator_domain") or source.get("aggregatorDomain")
+        )
         company_id = source.get("company_id") or source.get("companyId")
 
         # Get company name ONLY from linked company - never fall back to source name
@@ -270,7 +284,9 @@ class ScrapeRunner:
 
         # Create SourceConfig with company name override
         try:
-            source_config = SourceConfig.from_dict(expanded_config, company_name=company_name)
+            source_config = SourceConfig.from_dict(
+                expanded_config, company_name=company_name
+            )
         except Exception as e:
             raise ConfigurationError(f"Invalid config for source {source_name}: {e}")
 

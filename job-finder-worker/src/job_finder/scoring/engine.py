@@ -73,16 +73,22 @@ class ScoringEngine:
 
         # Pre-process technology lists for efficient lookup
         self._required_tech = {t.lower() for t in self.tech_config.get("required", [])}
-        self._preferred_tech = {t.lower() for t in self.tech_config.get("preferred", [])}
+        self._preferred_tech = {
+            t.lower() for t in self.tech_config.get("preferred", [])
+        }
         self._disliked_tech = {t.lower() for t in self.tech_config.get("disliked", [])}
         self._rejected_tech = {t.lower() for t in self.tech_config.get("rejected", [])}
 
         # Pre-process seniority lists
-        self._preferred_seniority = {s.lower() for s in self.seniority_config.get("preferred", [])}
+        self._preferred_seniority = {
+            s.lower() for s in self.seniority_config.get("preferred", [])
+        }
         self._acceptable_seniority = {
             s.lower() for s in self.seniority_config.get("acceptable", [])
         }
-        self._rejected_seniority = {s.lower() for s in self.seniority_config.get("rejected", [])}
+        self._rejected_seniority = {
+            s.lower() for s in self.seniority_config.get("rejected", [])
+        }
 
     def score(
         self,
@@ -170,7 +176,9 @@ class ScoringEngine:
             )
 
         # 5. Experience scoring
-        exp_result = self._score_experience(extraction.experience_min, extraction.experience_max)
+        exp_result = self._score_experience(
+            extraction.experience_min, extraction.experience_max
+        )
         score += exp_result["points"]
         if exp_result.get("reason"):
             adjustments.append(exp_result["reason"])
@@ -191,7 +199,9 @@ class ScoringEngine:
             adjustments=adjustments,
             passed=passed,
             rejection_reason=(
-                None if passed else f"Score {final_score} below threshold {self.min_score}"
+                None
+                if passed
+                else f"Score {final_score} below threshold {self.min_score}"
             ),
         )
 
@@ -220,7 +230,10 @@ class ScoringEngine:
             }
 
         # Check acceptable seniority (neutral or small penalty)
-        if seniority_lower in self._acceptable_seniority or "" in self._acceptable_seniority:
+        if (
+            seniority_lower in self._acceptable_seniority
+            or "" in self._acceptable_seniority
+        ):
             penalty = self.seniority_config.get("acceptablePenalty", 0)
             if penalty != 0:
                 return {
@@ -273,7 +286,9 @@ class ScoringEngine:
         # Unknown work arrangement - neutral
         return {"points": 0, "reason": None}
 
-    def _score_timezone(self, extraction: JobExtractionResult, is_hybrid: bool) -> Dict[str, Any]:
+    def _score_timezone(
+        self, extraction: JobExtractionResult, is_hybrid: bool
+    ) -> Dict[str, Any]:
         """Score based on timezone difference for hybrid/onsite roles."""
         job_tz = extraction.timezone
         user_tz = self.location_config.get("userTimezone", -8)
@@ -308,7 +323,10 @@ class ScoringEngine:
                 }
 
         if penalty != 0:
-            return {"points": penalty, "reason": f"Timezone diff {tz_diff}h ({penalty:+d})"}
+            return {
+                "points": penalty,
+                "reason": f"Timezone diff {tz_diff}h ({penalty:+d})",
+            }
         return {"points": 0, "reason": None}
 
     def _score_technology(self, technologies: List[str]) -> Dict[str, Any]:
@@ -335,11 +353,15 @@ class ScoringEngine:
         if required_found:
             bonus = len(required_found) * self.tech_config.get("requiredBonus", 10)
             points += bonus
-            reasons.append(f"Required tech matched: {', '.join(required_found)} ({bonus:+d})")
+            reasons.append(
+                f"Required tech matched: {', '.join(required_found)} ({bonus:+d})"
+            )
         elif self._required_tech:
             # None of the required tech found - significant penalty
             points -= 15
-            reasons.append(f"Missing required tech: {', '.join(self._required_tech)} (-15)")
+            reasons.append(
+                f"Missing required tech: {', '.join(self._required_tech)} (-15)"
+            )
 
         # Check preferred technologies
         preferred_found = tech_set & self._preferred_tech
@@ -357,7 +379,9 @@ class ScoringEngine:
 
         return {"points": points, "reasons": reasons}
 
-    def _score_salary(self, min_salary: Optional[int], max_salary: Optional[int]) -> Dict[str, Any]:
+    def _score_salary(
+        self, min_salary: Optional[int], max_salary: Optional[int]
+    ) -> Dict[str, Any]:
         """Score based on salary range."""
         config_min = self.salary_config.get("minimum")
         config_target = self.salary_config.get("target")
@@ -394,7 +418,9 @@ class ScoringEngine:
 
         return {"points": 0, "reason": None}
 
-    def _score_experience(self, min_exp: Optional[int], max_exp: Optional[int]) -> Dict[str, Any]:
+    def _score_experience(
+        self, min_exp: Optional[int], max_exp: Optional[int]
+    ) -> Dict[str, Any]:
         """Score based on experience requirements."""
         user_years = self.experience_config.get("userYears", 0)
         max_required = self.experience_config.get("maxRequired", 15)
@@ -437,7 +463,10 @@ class ScoringEngine:
             }
 
         # Good experience match
-        return {"points": 5, "reason": f"Experience match ({job_min}-{job_max}y required) (+5)"}
+        return {
+            "points": 5,
+            "reason": f"Experience match ({job_min}-{job_max}y required) (+5)",
+        }
 
     def _score_skills(self, description: str) -> Dict[str, Any]:
         """Score based on skill keywords in description."""
