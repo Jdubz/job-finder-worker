@@ -11,7 +11,6 @@ import { buildJobListingRouter } from './modules/job-listings/job-listing.routes
 import { buildCompanyRouter } from './modules/companies/company.routes'
 import { buildJobSourceRouter } from './modules/job-sources/job-source.routes'
 import { buildConfigRouter } from './modules/config/config.routes'
-import { buildGeneratorRouter } from './modules/generator/generator.routes'
 import { buildGeneratorWorkflowRouter } from './modules/generator/generator.workflow.routes'
 import { buildGeneratorArtifactsRouter } from './modules/generator/generator.artifacts.routes'
 import { buildGeneratorAssetsRouter, buildGeneratorAssetsServeRouter } from './modules/generator/generator.assets.routes'
@@ -119,7 +118,6 @@ export function buildApp() {
   app.use('/api/companies', buildCompanyRouter())
   app.use('/api/job-sources', buildJobSourceRouter())
   app.use('/api/config', requireRole('admin'), buildConfigRouter())
-  app.use('/api/generator-docs', buildGeneratorRouter())
 
   app.get('/healthz', healthHandler)
   app.get('/readyz', healthHandler)

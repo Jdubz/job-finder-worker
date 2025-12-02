@@ -19,6 +19,7 @@ export * from "./contact.types"
 export * from "./api.types"
 export * from "./api/auth.types"
 export * from "./api/generator.types"
+// generator.docs types removed (deprecated)
 export * from "./api/content.types"
 export * from "./api/queue.types"
 export * from "./api/job-match.types"
