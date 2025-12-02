@@ -5,6 +5,7 @@ The selected provider/interface/model is used for all AI tasks.
 """
 
 import json
+import logging
 import os
 import subprocess
 from abc import ABC, abstractmethod
@@ -343,6 +344,36 @@ _PROVIDER_MAP: Dict[tuple, type] = {
     ("gemini", "cli"): GeminiCLIProvider,
 }
 
+# Map of API-based providers to their required environment variables
+_API_KEY_REQUIREMENTS: Dict[tuple, list] = {
+    ("claude", "api"): ["ANTHROPIC_API_KEY"],
+    ("openai", "api"): ["OPENAI_API_KEY"],
+    ("gemini", "api"): ["GOOGLE_API_KEY", "GEMINI_API_KEY"],  # Either one works
+}
+
+# Fallback interfaces for providers when API keys are missing
+_INTERFACE_FALLBACKS: Dict[str, str] = {
+    "gemini": "cli",  # gemini/api -> gemini/cli
+    # codex only has cli, claude/openai only have api (no fallback)
+}
+
+
+def _check_api_key_available(provider: str, interface: str) -> bool:
+    """Check if the required API key(s) are available for this provider/interface."""
+    key = (provider, interface)
+    required_vars = _API_KEY_REQUIREMENTS.get(key)
+    if not required_vars:
+        return True  # CLI interfaces don't need API keys
+    # For providers that accept multiple keys (like gemini), any one is sufficient
+    return any(os.getenv(var) for var in required_vars)
+
+
+def _get_missing_api_key_names(provider: str, interface: str) -> list:
+    """Get the names of missing API keys for this provider/interface."""
+    key = (provider, interface)
+    required_vars = _API_KEY_REQUIREMENTS.get(key, [])
+    return [var for var in required_vars if not os.getenv(var)]
+
 
 def create_provider_from_config(
     ai_settings: Dict[str, Any],
@@ -415,6 +446,25 @@ def create_provider_from_config(
     # Infer interface if not set: CLI for codex/gemini, API for others
     if not interface_type:
         interface_type = "cli" if provider_type in ("codex", "gemini") else "api"
+
+    # Check if the requested interface has available credentials
+    if not _check_api_key_available(provider_type, interface_type):
+        missing_keys = _get_missing_api_key_names(provider_type, interface_type)
+        fallback_interface = _INTERFACE_FALLBACKS.get(provider_type)
+
+        if fallback_interface and (provider_type, fallback_interface) in _PROVIDER_MAP:
+            # Log warning and fall back to CLI interface
+            logging.warning(
+                f"API key not found for {provider_type}/{interface_type}. "
+                f"Falling back to {provider_type}/{fallback_interface}."
+            )
+            interface_type = fallback_interface
+        else:
+            # No fallback available - raise descriptive error
+            raise AIProviderError(
+                f"Missing API key for {provider_type}/{interface_type}. "
+                f"Set one of these environment variables: {', '.join(missing_keys)}"
+            )
 
     # Enforce supported combinations to avoid invalid invocations
     supported_keys = set(_PROVIDER_MAP.keys())

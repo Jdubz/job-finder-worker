@@ -28,10 +28,19 @@ This document consolidates the environment variables for the job-finder-bot. Rep
 
 ## AI/LLM Services
 
-**Anthropic and OpenAI API credentials.**
+**API keys for AI providers (optional - depends on interface type).**
 
-- `ANTHROPIC_API_KEY` - Anthropic Claude API key
-- `OPENAI_API_KEY` - OpenAI API key
+API keys are only needed when using "api" interface providers in the `ai-settings` config.
+CLI-based providers use OAuth credentials instead:
+- `codex/cli` - Uses `~/.codex/auth.json` (via `codex login`)
+- `gemini/cli` - Uses `~/.gemini/oauth_creds.json` (via `gemini auth login`)
+
+If you configure an API interface without the required key, the system will automatically
+fall back to CLI interface when available (e.g., `gemini/api` → `gemini/cli`).
+
+- `ANTHROPIC_API_KEY` - Anthropic Claude API key (only for `claude/api`)
+- `OPENAI_API_KEY` - OpenAI API key (only for `openai/api`)
+- `GOOGLE_API_KEY` or `GEMINI_API_KEY` - Google Gemini API key (only for `gemini/api`)
 
 ## Frontend Configuration
 
@@ -96,10 +105,12 @@ VITE_SENTRY_DSN=your-sentry-dsn
 
 ```env
 SQLITE_PATH=/data/sqlite/jobfinder.db
-ANTHROPIC_API_KEY=your-anthropic-key
-OPENAI_API_KEY=your-openai-key
 LOG_LEVEL=INFO
 SELENIUM_HEADLESS=true
+# API keys only needed if using api interfaces (not cli interfaces)
+# ANTHROPIC_API_KEY=your-anthropic-key  # Only for claude/api
+# OPENAI_API_KEY=your-openai-key        # Only for openai/api
+# GOOGLE_API_KEY=your-gemini-key        # Only for gemini/api
 ```
 
 ## Configuration Management
