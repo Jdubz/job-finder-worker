@@ -72,6 +72,9 @@ class SourceDiscovery:
             source_type, sample = self._detect_and_fetch(url)
             if source_type in {"auth_required", "bot_protection", "dns_error", "fetch_error"} and not sample:
                 fetch_meta = {"success": False, "error": source_type}
+                # If bot or DNS blocked, stop early so caller can create disabled source
+                if source_type in {"bot_protection", "dns_error"}:
+                    return None, fetch_meta
 
             if not sample:
                 logger.warning(f"Could not fetch content from {url}")
