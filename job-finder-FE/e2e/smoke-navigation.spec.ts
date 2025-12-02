@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures/test"
+import { test, expect, type Page } from "./fixtures/test"
 import { loginWithDevToken } from "./fixtures/auth"
 
 test.describe("Smoke navigation", () => {
@@ -6,7 +6,7 @@ test.describe("Smoke navigation", () => {
     await loginWithDevToken(context, "dev-admin-token")
   })
 
-  type Check = [string, (page: typeof test.extend["page"]) => Promise<void>]
+  type Check = [string, (page: Page) => Promise<void>]
 
   const paths: Check[] = [
     ["/queue-management", async (page) => {
