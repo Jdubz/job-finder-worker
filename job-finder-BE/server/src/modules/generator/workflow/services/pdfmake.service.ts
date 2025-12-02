@@ -598,7 +598,18 @@ export class PdfMakeService {
 
   async generateCoverLetterPDF(
     content: CoverLetterContent,
-    options: { name: string; email: string; accentColor?: string; date?: string; logo?: string }
+    options: {
+      name: string
+      email: string
+      location?: string
+      phone?: string
+      website?: string
+      linkedin?: string
+      github?: string
+      accentColor?: string
+      date?: string
+      logo?: string
+    }
   ): Promise<Buffer> {
     const accentColor = options.accentColor ?? '#3B82F6'
     const date =
@@ -617,19 +628,24 @@ export class PdfMakeService {
 
     const styles: StyleDictionary = {
       name: {
-        fontSize: 18,
+        fontSize: 20,
         bold: true,
-        color: accentColor
+        color: accentColor,
+        margin: [0, 0, 0, 4]
       },
       contact: {
         fontSize: 9,
-        color: '#6B7280',
-        margin: [0, 2, 0, 24]
+        color: '#1F2937'
+      },
+      contactChip: {
+        fontSize: 9,
+        color: '#1F2937',
+        lineHeight: 1.1
       },
       date: {
         fontSize: 10,
         color: '#374151',
-        margin: [0, 0, 0, 16]
+        margin: [0, 8, 0, 12]
       },
       greeting: {
         fontSize: 10,
@@ -651,7 +667,7 @@ export class PdfMakeService {
         fontSize: 10,
         bold: true,
         color: '#111827',
-        margin: [0, 20, 0, 0]
+        margin: [0, 16, 0, 0]
       },
       footer: {
         fontSize: 7.5,
@@ -665,6 +681,113 @@ export class PdfMakeService {
       text: para,
       style: 'body'
     }))
+
+    const iconColor = '#6B7280'
+    const linkColor = '#2563EB'
+    const buildContactCell = (iconKey: keyof typeof CONTACT_ICONS, label: string, link?: string): Content => ({
+      columns: [
+        {
+          svg: CONTACT_ICONS[iconKey].replace(/stroke="currentColor"/g, `stroke="${iconColor}"`),
+          fit: [12, 12],
+          margin: [0, 0.5, 6, 0],
+          alignment: 'center'
+        },
+        {
+          text: label,
+          link,
+          color: link ? linkColor : '#1F2937',
+          fontSize: 9,
+          style: 'contactChip',
+          margin: [0, 0.5, 0, 0]
+        }
+      ],
+      columnGap: 6,
+      alignment: 'center',
+      margin: [2, 1, 2, 1]
+    })
+
+    const contactItems: Content[] = []
+    if (options.email) contactItems.push(buildContactCell('email', options.email, `mailto:${options.email}`))
+    if (options.phone) contactItems.push(buildContactCell('phone', options.phone))
+    if (options.location) contactItems.push(buildContactCell('location', options.location))
+    if (options.website) {
+      const url = options.website.startsWith('http') ? options.website : `https://${options.website}`
+      contactItems.push(buildContactCell('website', 'Portfolio', url))
+    }
+    if (options.linkedin) {
+      const url = options.linkedin.startsWith('http') ? options.linkedin : `https://${options.linkedin}`
+      contactItems.push(buildContactCell('linkedin', 'LinkedIn', url))
+    }
+    if (options.github) {
+      const url = options.github.startsWith('http') ? options.github : `https://${options.github}`
+      contactItems.push(buildContactCell('github', 'GitHub', url))
+    }
+
+    let contactRow: Content | null = null
+    if (contactItems.length > 0) {
+      const contactRowCells: Content[] = []
+      contactItems.forEach((item, index) => {
+        if (index > 0) {
+          contactRowCells.push({
+            text: '•',
+            fontSize: 10,
+            color: '#CBD5E1',
+            alignment: 'center',
+            margin: [6, 0.5, 6, 0]
+          })
+        }
+        contactRowCells.push(item)
+      })
+
+      contactRow = {
+        table: {
+          widths: contactRowCells.map(() => 'auto'),
+          body: [contactRowCells]
+        },
+        layout: {
+          hLineWidth: () => 0,
+          vLineWidth: () => 0,
+          paddingLeft: () => 0,
+          paddingRight: () => 0,
+          paddingTop: () => 2,
+          paddingBottom: () => 2
+        },
+        alignment: 'center' as const,
+        margin: [0, 6, 0, 10]
+      }
+    }
+
+    // Build header with optional logo + contact chips to avoid top dead space
+    const headerColumns: any[] = []
+
+    if (logoDataUri) {
+      headerColumns.push({
+        image: logoDataUri,
+        width: 32,
+        height: 32,
+        margin: [0, 2, 8, 0]
+      })
+    } else {
+      headerColumns.push({ text: '', width: 32 })
+    }
+
+    const headerStack: Content[] = [
+      { text: options.name, style: 'name', alignment: 'left' }
+    ]
+    if (contactRow) {
+      headerStack.push(contactRow)
+    }
+
+    headerColumns.push({
+      stack: headerStack,
+      width: '*'
+    })
+
+    const headerBlock: Content = {
+      columns: headerColumns,
+      columnGap: 12,
+      margin: [0, 0, 0, 12]
+    }
 
     // Build footer with optional logo
     const footerContent = (): Content => {
@@ -699,7 +822,7 @@ export class PdfMakeService {
 
     const docDefinition: TDocumentDefinitions = {
       pageSize: 'LETTER',
-      pageMargins: [50, 50, 50, 50],
+      pageMargins: [50, 42, 50, 50],
       defaultStyle: {
         font: 'Helvetica'
       },
@@ -707,8 +830,7 @@ export class PdfMakeService {
       footer: footerContent,
       content: [
         // Header
-        { text: options.name, style: 'name' },
-        { text: options.email, style: 'contact' },
+        headerBlock,
 
         // Date
         { text: date, style: 'date' },
