@@ -311,14 +311,23 @@ describe("Configuration flows", () => {
     expect(titleFilter?.requiredKeywords).toContain("engineer")
     expect(titleFilter?.excludedKeywords).toContain("intern")
 
-    // Scoring config replaces match-policy scoring logic
-    const existingScoringConfig = await configClient.getScoringConfig()
-    await configClient.updateScoringConfig({
-      ...existingScoringConfig,
+    // Match policy (not seeded by default - must create a complete config)
+    const testMatchPolicy = {
       minScore: 65,
-    })
-    const scoringConfig = await configClient.getScoringConfig()
-    expect(scoringConfig?.minScore).toBe(65)
+      weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
+      seniority: { preferred: ["senior"], acceptable: ["mid"], rejected: ["intern"], preferredBonus: 10, acceptablePenalty: 0, rejectedPenalty: -100 },
+      location: { allowRemote: true, allowHybrid: true, allowOnsite: false, userTimezone: -8, maxTimezoneDiffHours: 4, perHourPenalty: 3, hybridSameCityBonus: 10 },
+      technology: { required: ["typescript"], preferred: ["react"], disliked: [], rejected: [], requiredBonus: 10, preferredBonus: 5, dislikedPenalty: -5 },
+      salary: { minimum: 100000, target: 150000, belowTargetPenalty: 2 },
+      experience: { userYears: 8, maxRequired: 15, overqualifiedPenalty: 5 },
+      freshness: { freshBonusDays: 7, freshBonus: 5, staleThresholdDays: 30, stalePenalty: -5, veryStaleDays: 60, veryStalePenalty: -15, repostPenalty: -10 },
+      roleFit: { backendBonus: 10, mlAiBonus: 5, devopsSreBonus: 5, dataBonus: 5, securityBonus: 5, leadBonus: 10, frontendPenalty: -5, consultingPenalty: -10, clearancePenalty: -100, managementPenalty: -5 },
+      company: { preferredCityBonus: 5, remoteFirstBonus: 5, aiMlFocusBonus: 5, largeCompanyBonus: 5, smallCompanyPenalty: -5, largeCompanyThreshold: 1000, smallCompanyThreshold: 50, startupBonus: 0 },
+      dealbreakers: { blockedLocations: [], locationPenalty: -50, relocationPenalty: -50, ambiguousLocationPenalty: -10 },
+    }
+    await configClient.updateMatchPolicy(testMatchPolicy)
+    const matchPolicy = await configClient.getMatchPolicy()
+    expect(matchPolicy?.minScore).toBe(65)
 
     await configClient.updateQueueSettings({ processingTimeoutSeconds: 1200 })
     const queueSettings = await configClient.getQueueSettings()
