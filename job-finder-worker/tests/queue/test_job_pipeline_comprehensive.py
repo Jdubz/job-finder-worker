@@ -227,6 +227,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
     processor.job_processor._refresh_runtime_config = lambda: None  # type: ignore[method-assign]
     # Mock title filter to always pass
     from job_finder.filters.title_filter import TitleFilterResult
+
     processor.job_processor.title_filter.filter = lambda _title: TitleFilterResult(passed=True)  # type: ignore[method-assign]
     # Mock extractor to avoid AI call
     from job_finder.ai.extraction import JobExtractionResult

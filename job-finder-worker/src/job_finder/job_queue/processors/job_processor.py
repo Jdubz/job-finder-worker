@@ -642,7 +642,10 @@ class JobProcessor(BaseProcessor):
 
             # STAGE 3: AI Match Analysis - Generate detailed reasoning
             self.queue_manager.update_status(
-                item.id, QueueStatus.PROCESSING, "Generating match analysis", pipeline_state=updated_state
+                item.id,
+                QueueStatus.PROCESSING,
+                "Generating match analysis",
+                pipeline_state=updated_state,
             )
 
             # Inject extraction data into job_data for matcher

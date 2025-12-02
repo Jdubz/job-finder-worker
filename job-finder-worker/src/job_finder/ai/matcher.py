@@ -300,9 +300,7 @@ class AIJobMatcher:
             prompt = self.prompts.analyze_job_match(self.profile, job)
 
             # Use sensible defaults for AI generation
-            response = self.provider.generate(
-                prompt, max_tokens=4096, temperature=0.3
-            )
+            response = self.provider.generate(prompt, max_tokens=4096, temperature=0.3)
 
             # Parse JSON response
             # Try to extract JSON from response (in case there's extra text)
@@ -382,9 +380,7 @@ class AIJobMatcher:
             prompt = self.prompts.generate_resume_intake_data(self.profile, job, match_analysis)
 
             # Use slightly higher temperature for creative intake data generation
-            response = self.provider.generate(
-                prompt, max_tokens=4096, temperature=0.4
-            )
+            response = self.provider.generate(prompt, max_tokens=4096, temperature=0.4)
 
             # Parse JSON response
             response_clean = response.strip()

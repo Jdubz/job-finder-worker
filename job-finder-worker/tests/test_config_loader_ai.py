@@ -188,9 +188,7 @@ class TestConfigLoaderIntegration:
         """Should return consistent results across multiple calls."""
         conn = sqlite3.connect(db_path)
         payload = {
-            "worker": {
-                "selected": {"provider": "openai", "interface": "api", "model": "gpt-4o"}
-            },
+            "worker": {"selected": {"provider": "openai", "interface": "api", "model": "gpt-4o"}},
             "documentGenerator": {
                 "selected": {"provider": "claude", "interface": "api", "model": "claude-sonnet"}
             },

@@ -273,9 +273,7 @@ class ScoringEngine:
         # Unknown work arrangement - neutral
         return {"points": 0, "reason": None}
 
-    def _score_timezone(
-        self, extraction: JobExtractionResult, is_hybrid: bool
-    ) -> Dict[str, Any]:
+    def _score_timezone(self, extraction: JobExtractionResult, is_hybrid: bool) -> Dict[str, Any]:
         """Score based on timezone difference for hybrid/onsite roles."""
         job_tz = extraction.timezone
         user_tz = self.location_config.get("userTimezone", -8)
@@ -359,9 +357,7 @@ class ScoringEngine:
 
         return {"points": points, "reasons": reasons}
 
-    def _score_salary(
-        self, min_salary: Optional[int], max_salary: Optional[int]
-    ) -> Dict[str, Any]:
+    def _score_salary(self, min_salary: Optional[int], max_salary: Optional[int]) -> Dict[str, Any]:
         """Score based on salary range."""
         config_min = self.salary_config.get("minimum")
         config_target = self.salary_config.get("target")
@@ -398,9 +394,7 @@ class ScoringEngine:
 
         return {"points": 0, "reason": None}
 
-    def _score_experience(
-        self, min_exp: Optional[int], max_exp: Optional[int]
-    ) -> Dict[str, Any]:
+    def _score_experience(self, min_exp: Optional[int], max_exp: Optional[int]) -> Dict[str, Any]:
         """Score based on experience requirements."""
         user_years = self.experience_config.get("userYears", 0)
         max_required = self.experience_config.get("maxRequired", 15)

@@ -8,7 +8,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, cast
 
 from job_finder.ai.extraction_prompts import build_extraction_prompt
 from job_finder.ai.providers import AIProvider
@@ -90,7 +90,9 @@ def _validate_seniority(value: Optional[str]) -> SeniorityLevel:
         "principal",
         "unknown",
     ]
-    return normalized if normalized in valid_values else "unknown"
+    if normalized in valid_values:
+        return cast(SeniorityLevel, normalized)
+    return "unknown"
 
 
 def _validate_work_arrangement(value: Optional[str]) -> WorkArrangement:
@@ -99,7 +101,9 @@ def _validate_work_arrangement(value: Optional[str]) -> WorkArrangement:
         return "unknown"
     normalized = value.lower().strip()
     valid_values: List[WorkArrangement] = ["remote", "hybrid", "onsite", "unknown"]
-    return normalized if normalized in valid_values else "unknown"
+    if normalized in valid_values:
+        return cast(WorkArrangement, normalized)
+    return "unknown"
 
 
 def _validate_employment_type(value: Optional[str]) -> EmploymentType:
@@ -108,7 +112,9 @@ def _validate_employment_type(value: Optional[str]) -> EmploymentType:
         return "unknown"
     normalized = value.lower().strip().replace("_", "-")
     valid_values: List[EmploymentType] = ["full-time", "part-time", "contract", "unknown"]
-    return normalized if normalized in valid_values else "unknown"
+    if normalized in valid_values:
+        return cast(EmploymentType, normalized)
+    return "unknown"
 
 
 def _safe_int(value: Any) -> Optional[int]:

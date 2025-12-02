@@ -307,7 +307,9 @@ class TestAnalyzeJob:
         assert result.match_score == 90
         assert result.resume_intake_data is not None
 
-    def test_analyze_job_requires_deterministic_score(self, mock_provider, mock_profile, sample_job):
+    def test_analyze_job_requires_deterministic_score(
+        self, mock_provider, mock_profile, sample_job
+    ):
         """Test that analyze_job raises ValueError when deterministic_score is missing."""
         mock_provider.generate.return_value = (
             '{"match_score": 85, "matched_skills": ["Python"], '

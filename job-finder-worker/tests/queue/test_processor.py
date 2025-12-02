@@ -75,11 +75,14 @@ def mock_managers():
 def processor(mock_managers):
     """Create processor with mocked dependencies."""
     # Patch ScrapeRunner and provider creation to avoid creating real instances
-    with patch(
-        "job_finder.job_queue.processors.job_processor.ScrapeRunner"
-    ) as mock_scrape_runner_class, patch(
-        "job_finder.job_queue.processors.job_processor.create_provider_from_config"
-    ) as mock_create_provider:
+    with (
+        patch(
+            "job_finder.job_queue.processors.job_processor.ScrapeRunner"
+        ) as mock_scrape_runner_class,
+        patch(
+            "job_finder.job_queue.processors.job_processor.create_provider_from_config"
+        ) as mock_create_provider,
+    ):
         mock_scrape_runner_instance = MagicMock()
         mock_scrape_runner_class.return_value = mock_scrape_runner_instance
         mock_create_provider.return_value = MagicMock()  # Mock provider

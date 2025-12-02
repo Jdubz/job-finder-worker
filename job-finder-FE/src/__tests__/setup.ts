@@ -279,8 +279,8 @@ vi.mock("@shared/types", async (importOriginal) => {
     // Explicitly include defaults that are used in tests
     DEFAULT_PERSONAL_INFO: actual.DEFAULT_PERSONAL_INFO,
     DEFAULT_AI_SETTINGS: actual.DEFAULT_AI_SETTINGS,
-    DEFAULT_PREFILTER_POLICY: actual.DEFAULT_PREFILTER_POLICY,
-    DEFAULT_MATCH_POLICY: actual.DEFAULT_MATCH_POLICY,
+    DEFAULT_TITLE_FILTER: actual.DEFAULT_TITLE_FILTER,
+    DEFAULT_SCORING_CONFIG: actual.DEFAULT_SCORING_CONFIG,
   }
 })
 
