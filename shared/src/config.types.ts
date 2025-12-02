@@ -27,7 +27,6 @@ export interface QueueSettings {
     target_matches?: number | null
     max_sources?: number | null
     source_ids?: string[]
-    min_match_score?: number | null
   }
 }
 

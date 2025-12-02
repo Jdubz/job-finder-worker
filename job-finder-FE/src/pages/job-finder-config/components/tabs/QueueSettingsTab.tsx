@@ -135,26 +135,6 @@ export function QueueSettingsTab({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="minMatchScore">Minimum Match Score</Label>
-          <Input
-            id="minMatchScore"
-            type="number"
-            min="0"
-            max="100"
-            value={queueSettings.scrapeConfig?.min_match_score ?? ""}
-            onChange={(e) =>
-              setQueueSettings({
-                scrapeConfig: {
-                  ...queueSettings.scrapeConfig,
-                  min_match_score: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)),
-                },
-              })
-            }
-          />
-          <p className="text-xs text-muted-foreground">Filter out matches below this score; 0 means no filter.</p>
-        </div>
-
-        <div className="space-y-2">
           <Label htmlFor="sourceIds">Source IDs (comma-separated)</Label>
           <Input
             id="sourceIds"

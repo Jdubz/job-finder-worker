@@ -38,7 +38,6 @@ function loadScrapeConfig() {
 
   const targetMatches = coalesceNumber(raw.target_matches, raw.targetMatches)
   const maxSources = coalesceNumber(raw.max_sources, raw.maxSources)
-  const minMatchScore = coalesceNumber(raw.min_match_score, raw.minMatchScore)
   const sourceIdsRaw = raw.source_ids ?? raw.sourceIds
   const sourceIds = Array.isArray(sourceIdsRaw)
     ? sourceIdsRaw
@@ -46,14 +45,13 @@ function loadScrapeConfig() {
       ? sourceIdsRaw.split(',').map((s: string) => s.trim()).filter(Boolean)
       : undefined
 
-  if (targetMatches === undefined && maxSources === undefined && sourceIds === undefined && minMatchScore === undefined) {
-    throw new Error('queue-settings.scrapeConfig must specify at least one of target_matches, max_sources, min_match_score, or source_ids')
+  if (targetMatches === undefined && maxSources === undefined && sourceIds === undefined) {
+    throw new Error('queue-settings.scrapeConfig must specify at least one of target_matches, max_sources, or source_ids')
   }
 
   return {
     target_matches: targetMatches ?? null,
     max_sources: maxSources ?? null,
-    min_match_score: minMatchScore ?? null,
     source_ids: sourceIds
   }
 }
