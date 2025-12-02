@@ -170,12 +170,12 @@ export function ContentItemsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Content Items</h1>
+          <h1 className="text-2xl font-semibold">Career Story</h1>
           <p className="text-sm text-muted-foreground">
-            Unified resume content with nested hierarchy and inline editing.
+            Centralize experience, achievements, and bio snippets you reuse in resumes and cover letters.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -198,7 +198,7 @@ export function ContentItemsPage() {
                 {importing ? "Importing…" : "Import"}
               </Button>
               <Button onClick={() => setShowRootForm((prev) => !prev)}>
-                <Plus className="mr-2 h-4 w-4" /> {showRootForm ? "Hide Root Form" : "Add Root Item"}
+                <Plus className="mr-2 h-4 w-4" /> {showRootForm ? "Hide New Entry" : "Add Experience"}
               </Button>
             </>
           )}
@@ -230,7 +230,7 @@ export function ContentItemsPage() {
 
       {canEdit && showRootForm && (
         <div className="rounded-lg border bg-card p-4">
-          <h2 className="mb-3 text-lg font-semibold">Create Root Item</h2>
+          <h2 className="mb-3 text-lg font-semibold">Add Experience Entry</h2>
           <ContentItemForm
             onSubmit={handleCreateRoot}
             onCancel={() => setShowRootForm(false)}
@@ -247,7 +247,7 @@ export function ContentItemsPage() {
 
       {!loading && !sortedContentItems.length && (
         <div className="rounded-lg border border-dashed bg-muted/40 p-6 text-center text-sm text-muted-foreground">
-          No content items yet.
+          No experience entries yet. Add a few accomplishments to reuse across resumes and cover letters.
         </div>
       )}
 

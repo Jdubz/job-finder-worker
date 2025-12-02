@@ -21,8 +21,8 @@ test.describe('Unauthenticated User Access', () => {
     await page.goto(ROUTES.CONTENT_ITEMS, { waitUntil: 'domcontentloaded' })
     await expect(page).toHaveURL(ROUTES.CONTENT_ITEMS)
 
-    // Should see the Content Items interface
-    await expect(page.getByRole('heading', { name: /content items/i }).first()).toBeVisible({ timeout: 15000 })
+    // Should see the Career Story interface
+    await expect(page.getByRole('heading', { name: /career story|experience/i }).first()).toBeVisible({ timeout: 15000 })
   })
 
   test('can access Document Builder page', async ({ page }) => {

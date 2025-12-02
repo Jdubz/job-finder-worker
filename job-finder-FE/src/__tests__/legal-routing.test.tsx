@@ -42,7 +42,7 @@ vi.mock("@/pages/ai-prompts/AIPromptsPage", () => ({
 }))
 
 vi.mock("@/pages/job-applications/JobApplicationsPage", () => ({
-  JobApplicationsPage: () => <div data-testid="job-applications-page">Job Applications Page</div>,
+  JobApplicationsPage: () => <div data-testid="job-applications-page">Matches Page</div>,
 }))
 
 vi.mock("@/pages/queue-management/QueueManagementPage", () => ({

@@ -37,7 +37,7 @@ const publicLinks: NavLink[] = [
 
 const jobFinderLinks: NavLink[] = [
   { to: ROUTES.JOB_LISTINGS, label: "Job Listings", icon: List },
-  { to: ROUTES.JOB_APPLICATIONS, label: "Job Applications", icon: FileText },
+  { to: ROUTES.JOB_APPLICATIONS, label: "Matches", icon: FileText },
   { to: ROUTES.COMPANIES, label: "Companies", icon: Building2 },
   { to: ROUTES.SOURCES, label: "Sources", icon: Rss },
   { to: ROUTES.QUEUE_MANAGEMENT, label: "Queue Management", icon: ListChecks },

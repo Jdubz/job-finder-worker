@@ -16,7 +16,7 @@ type MatchPolicyTabProps = {
   onReset: () => MatchPolicy
 }
 
-const cleanList = (items: string[]) => items.map((item) => item.trim().toLowerCase()).filter(Boolean)
+const cleanList = (items?: string[]) => (items ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)
 
 // No defaults - config is required and validated by backend
 const mapConfigToForm = (config: MatchPolicy): MatchPolicyFormValues => config

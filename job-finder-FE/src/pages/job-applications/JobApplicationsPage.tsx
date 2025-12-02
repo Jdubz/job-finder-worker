@@ -179,12 +179,21 @@ export function JobApplicationsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Job Applications</h1>
-        <p className="text-muted-foreground mt-2">AI-matched opportunities ranked by relevance</p>
+        <h1 className="text-3xl font-bold tracking-tight">Matches</h1>
+        <p className="text-muted-foreground mt-2">AI-ranked roles with quick filters and doc generation</p>
       </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => navigate(ROUTES.DOCUMENT_BUILDER)}>
+            Build Documents
+          </Button>
+          <Button variant="secondary" onClick={() => navigate(ROUTES.JOB_LISTINGS)}>
+            Add New Job
+          </Button>
+        </div>
 
       {/* Stats Overview */}
       {!loading && matches.length > 0 && (
@@ -264,10 +273,22 @@ export function JobApplicationsPage() {
                   <SelectItem value="company">Company</SelectItem>
                 </SelectContent>
               </Select>
+              {(searchQuery.trim() || priorityFilter !== "all" || sortBy !== "score") && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setSearchQuery("")
+                    setPriorityFilter("all")
+                    setSortBy("score")
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -296,7 +317,7 @@ export function JobApplicationsPage() {
               </Button>
             </div>
           ) : (
-            <Table>
+            <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Job Title</TableHead>
