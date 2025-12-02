@@ -22,7 +22,7 @@ What it does:
 Add a cron entry on the host (runs daily at 07:05):
 
 ```cron
-5 7 * * * /home/jdubz/Development/job-finder-bot/scripts/sync_codex_credentials.sh >> /var/log/codex-sync.log 2>&1
+5 7 * * * /path/to/job-finder-bot/scripts/sync_codex_credentials.sh >> /var/log/codex-sync.log 2>&1
 ```
 
 Adjust the path/time as needed.
@@ -41,7 +41,6 @@ systemctl --user enable --now codex-sync.path
 systemctl --user start codex-sync.service
 ```
 
-The path unit watches `~/.codex/auth.json`, `config.toml`, and `history.jsonl`; any change triggers the sync service which calls `scripts/sync_codex_credentials.sh`.
 The path unit watches `~/.codex/auth.json` only; any change triggers the sync service which calls `scripts/sync_codex_credentials.sh`.
 
 ## Why this matters
