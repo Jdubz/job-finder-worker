@@ -556,13 +556,15 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
 
             # Detect auth requirement for APIs before scraping
             if source_config.type == "api":
-                api_ok, api_jobs, needs_key = self._probe_api(source_config)
+                api_ok, api_jobs, needs_key, api_error = self._probe_api(source_config)
                 if needs_key:
                     meta["needs_api_key"] = True
                     meta["error"] = "auth_required"
                     return meta
                 if not api_ok:
                     meta["error"] = "api_probe_failed"
+                    if api_error:
+                        meta["error_details"] = api_error
                     return meta
                 jobs = api_jobs
             else:
@@ -592,7 +594,7 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
             meta["error"] = str(e)
             return meta
 
-    def _probe_api(self, source_config: SourceConfig) -> Tuple[bool, list, bool]:
+    def _probe_api(self, source_config: SourceConfig) -> Tuple[bool, list, bool, str]:
         """
         Make a single API call to detect auth needs and return parsed jobs or errors.
         """
@@ -620,14 +622,14 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
                 resp = requests.get(url, headers=headers, timeout=30)
 
             if resp.status_code in (401, 403):
-                return False, [], True
+                return False, [], True, ""
             resp.raise_for_status()
             data = resp.json()
             jobs = GenericScraper(source_config)._navigate_path(data, source_config.response_path)
-            return True, jobs, False
+            return True, jobs, False, ""
         except (requests.RequestException, json.JSONDecodeError) as exc:
             logger.warning("API probe failed for %s: %s", source_config.url, exc)
-            return False, [], False
+            return False, [], False, str(exc)
 
 
 def discover_source(

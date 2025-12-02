@@ -321,6 +321,28 @@ class TestSourceDiscoveryFailure:
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    def test_disables_on_dns_inside_api_probe(
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+    ):
+        """If API probe fails due to DNS resolution, treat as dns_error and disable."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = (
+            None,
+            {"error": "api_probe_failed", "error_details": "Failed to resolve 'boards-api.consider.com'"},
+        )
+        mock_discovery_class.return_value = mock_discovery
+
+        item = make_discovery_item(url="https://careers.nea.com/jobs/perplexity-ai")
+        source_processor.process_source_discovery(item)
+
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["status"] == SourceStatus.DISABLED
+        assert create_kwargs["config"]["disabled_notes"] == "dns_error"
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        assert status_call[0][1] == QueueStatus.SUCCESS
+
+    @patch("job_finder.ai.providers.create_provider_from_config")
+    @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_handles_discovery_exception(
         self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
     ):
