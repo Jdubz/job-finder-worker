@@ -17,17 +17,17 @@ type ScoringConfigTabProps = {
   onReset: () => ScoringConfig
 }
 
-const cleanList = (items: string[]) => items.map((item) => item.trim().toLowerCase()).filter(Boolean)
+const cleanList = (items?: string[]) => (items ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)
 
-const mapConfigToForm = (config: ScoringConfig): ScoringConfigFormValues => ({
-  ...DEFAULT_SCORING_CONFIG,
-  ...config,
-  weights: { ...DEFAULT_SCORING_CONFIG.weights, ...config.weights },
-  seniority: { ...DEFAULT_SCORING_CONFIG.seniority, ...config.seniority },
-  location: { ...DEFAULT_SCORING_CONFIG.location, ...config.location },
-  technology: { ...DEFAULT_SCORING_CONFIG.technology, ...config.technology },
-  salary: { ...DEFAULT_SCORING_CONFIG.salary, ...config.salary },
-  experience: { ...DEFAULT_SCORING_CONFIG.experience, ...config.experience },
+const mapConfigToForm = (config?: ScoringConfig): ScoringConfigFormValues => ({
+  ...(DEFAULT_SCORING_CONFIG ?? {}),
+  ...(config ?? {}),
+  weights: { ...(DEFAULT_SCORING_CONFIG?.weights ?? {}), ...(config?.weights ?? {}) },
+  seniority: { ...(DEFAULT_SCORING_CONFIG?.seniority ?? {}), ...(config?.seniority ?? {}) },
+  location: { ...(DEFAULT_SCORING_CONFIG?.location ?? {}), ...(config?.location ?? {}) },
+  technology: { ...(DEFAULT_SCORING_CONFIG?.technology ?? {}), ...(config?.technology ?? {}) },
+  salary: { ...(DEFAULT_SCORING_CONFIG?.salary ?? {}), ...(config?.salary ?? {}) },
+  experience: { ...(DEFAULT_SCORING_CONFIG?.experience ?? {}), ...(config?.experience ?? {}) },
 })
 
 const mapFormToConfig = (values: ScoringConfigFormValues): ScoringConfig => ({
