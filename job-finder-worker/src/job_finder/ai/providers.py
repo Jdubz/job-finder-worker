@@ -16,6 +16,8 @@ from openai import OpenAI
 
 from job_finder.exceptions import AIProviderError
 
+logger = logging.getLogger(__name__)
+
 
 class AIProvider(ABC):
     """Abstract base class for AI providers."""
@@ -455,11 +457,8 @@ def create_provider_from_config(
     if not interface_type:
         interface_type = "cli" if provider_type in ("codex", "gemini") else "api"
 
-    logger = logging.getLogger(__name__)
     task_info = f" (task={task})" if task else ""
-    logger.info(
-        f"AI provider selected: {provider_type}/{interface_type} model={model}{task_info}"
-    )
+    logger.info(f"AI provider selected: {provider_type}/{interface_type} model={model}{task_info}")
 
     # Check if the requested interface has available credentials
     if not _check_api_key_available(provider_type, interface_type):

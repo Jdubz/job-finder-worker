@@ -1,6 +1,7 @@
 """Generic scraper for all job source types."""
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -338,8 +339,6 @@ class GenericScraper:
         Returns:
             Value at path or None
         """
-        import re
-
         if not path:
             return None
 
