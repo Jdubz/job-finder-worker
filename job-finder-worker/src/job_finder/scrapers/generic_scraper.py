@@ -250,6 +250,15 @@ class GenericScraper:
                 value = sanitize_company_name(str(value))
             elif field == "description" and value:
                 value = sanitize_html_description(str(value))
+            elif field == "departments" and value:
+                value = self._extract_names_from_list(value)
+            elif field == "offices" and value:
+                value = self._extract_names_from_list(value)
+            elif field == "metadata" and value:
+                value = self._metadata_to_dict(value)
+            elif field == "tags" and value:
+                # Tags might be a list of strings or objects - normalize to strings
+                value = self._normalize_tags(value)
 
             job[field] = value
 
@@ -546,3 +555,80 @@ class GenericScraper:
             return f"${min_num:,}+"
         except (ValueError, TypeError):
             return ""
+
+    def _extract_names_from_list(self, items: Any) -> List[str]:
+        """
+        Extract name values from a list of objects.
+
+        Handles Greenhouse-style arrays like:
+            [{"id": 1, "name": "Engineering"}, {"id": 2, "name": "Product"}]
+
+        Args:
+            items: List of objects with 'name' field
+
+        Returns:
+            List of name strings
+        """
+        if not isinstance(items, list):
+            return []
+        names = []
+        for item in items:
+            if isinstance(item, dict) and "name" in item:
+                names.append(str(item["name"]))
+            elif isinstance(item, str):
+                names.append(item)
+        return names
+
+    def _metadata_to_dict(self, metadata: Any) -> Dict[str, str]:
+        """
+        Convert metadata array to a dictionary.
+
+        Handles Greenhouse-style metadata:
+            [{"name": "Location Type", "value": "Remote"}]
+        to:
+            {"Location Type": "Remote"}
+
+        Args:
+            metadata: List of objects with 'name' and 'value' fields
+
+        Returns:
+            Dictionary of name->value mappings
+        """
+        if not isinstance(metadata, list):
+            return {}
+        result = {}
+        for item in metadata:
+            if isinstance(item, dict) and "name" in item:
+                name = str(item.get("name", ""))
+                value = item.get("value")
+                if name and value is not None:
+                    result[name] = str(value) if not isinstance(value, (list, dict)) else value
+        return result
+
+    def _normalize_tags(self, tags: Any) -> List[str]:
+        """
+        Normalize tags to a list of strings.
+
+        Handles both string lists and object lists.
+
+        Args:
+            tags: List of strings or objects with name/tag field
+
+        Returns:
+            List of tag strings
+        """
+        if not isinstance(tags, list):
+            if isinstance(tags, str):
+                return [tags]
+            return []
+        result = []
+        for tag in tags:
+            if isinstance(tag, str):
+                result.append(tag)
+            elif isinstance(tag, dict):
+                # Try common field names
+                for key in ("name", "tag", "label", "value"):
+                    if key in tag:
+                        result.append(str(tag[key]))
+                        break
+        return result
