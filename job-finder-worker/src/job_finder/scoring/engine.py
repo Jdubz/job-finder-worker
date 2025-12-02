@@ -269,14 +269,14 @@ class ScoringEngine:
 
         # Check rejected seniority (hard reject)
         if seniority_lower in self._rejected_seniority:
-            penalty = self.seniority_config.get("rejectedPenalty", -100)
+            score = self.seniority_config.get("rejectedScore", -100)
             return {
-                "points": penalty,
+                "points": score,
                 "adjustments": [
                     ScoreAdjustment(
                         category="seniority",
                         reason=f"Rejected seniority '{seniority}'",
-                        points=penalty,
+                        points=score,
                     )
                 ],
                 "hard_reject": True,
@@ -284,29 +284,29 @@ class ScoringEngine:
 
         # Check preferred seniority (bonus)
         if seniority_lower in self._preferred_seniority:
-            bonus = self.seniority_config.get("preferredBonus", 15)
+            score = self.seniority_config.get("preferredScore", 15)
             return {
-                "points": bonus,
+                "points": score,
                 "adjustments": [
                     ScoreAdjustment(
                         category="seniority",
                         reason=f"Preferred seniority '{seniority}'",
-                        points=bonus,
+                        points=score,
                     )
                 ],
             }
 
-        # Check acceptable seniority (neutral or small penalty)
+        # Check acceptable seniority (neutral or adjustment)
         if seniority_lower in self._acceptable_seniority or "" in self._acceptable_seniority:
-            penalty = self.seniority_config.get("acceptablePenalty", 0)
-            if penalty != 0:
+            score = self.seniority_config.get("acceptableScore", 0)
+            if score != 0:
                 return {
-                    "points": penalty,
+                    "points": score,
                     "adjustments": [
                         ScoreAdjustment(
                             category="seniority",
                             reason=f"Acceptable seniority '{seniority}'",
-                            points=penalty,
+                            points=score,
                         )
                     ],
                 }
@@ -321,18 +321,18 @@ class ScoringEngine:
         allow_remote = self.location_config.get("allowRemote", True)
         allow_hybrid = self.location_config.get("allowHybrid", True)
         allow_onsite = self.location_config.get("allowOnsite", False)
-        relocation_penalty = self.location_config.get("relocationPenalty", -50)
+        relocation_score = self.location_config.get("relocationScore", -50)
 
         # Check relocation requirement first
         if extraction.relocation_required:
-            # Relocation required - apply penalty or hard reject
-            if relocation_penalty <= -100:
+            # Relocation required - apply adjustment or hard reject
+            if relocation_score <= -100:
                 return {
-                    "points": relocation_penalty,
+                    "points": relocation_score,
                     "hard_reject": True,
                     "rejection_reason": "Relocation required",
                 }
-            # Apply relocation penalty and continue with timezone scoring
+            # Apply relocation adjustment and continue with timezone scoring
             is_hybrid = work_arrangement == "hybrid"
             base_result = self._score_timezone(extraction, is_hybrid=is_hybrid)
             adjustments = list(base_result.get("adjustments", []))
@@ -340,11 +340,11 @@ class ScoringEngine:
                 ScoreAdjustment(
                     category="location",
                     reason="Relocation required",
-                    points=relocation_penalty,
+                    points=relocation_score,
                 )
             )
             return {
-                "points": base_result.get("points", 0) + relocation_penalty,
+                "points": base_result.get("points", 0) + relocation_score,
                 "adjustments": adjustments,
             }
 
@@ -357,14 +357,14 @@ class ScoringEngine:
                     "rejection_reason": "Remote work not allowed per config",
                 }
             # Remote is allowed - bonus for remote-friendly
-            remote_bonus = self.location_config.get("remoteBonus", 5)
+            remote_score = self.location_config.get("remoteScore", 5)
             return {
-                "points": remote_bonus,
+                "points": remote_score,
                 "adjustments": [
                     ScoreAdjustment(
                         category="location",
                         reason="Remote position",
-                        points=remote_bonus,
+                        points=remote_score,
                     )
                 ],
             }
@@ -397,19 +397,19 @@ class ScoringEngine:
         job_tz = extraction.timezone
         user_tz = self.location_config.get("userTimezone", -8)
         max_diff = self.location_config.get("maxTimezoneDiffHours", 4)
-        per_hour_penalty = self.location_config.get("perHourPenalty", 3)
-        unknown_tz_penalty = self.location_config.get("unknownTimezonePenalty", -5)
+        per_hour_score = self.location_config.get("perHourScore", -3)
+        unknown_tz_score = self.location_config.get("unknownTimezoneScore", -5)
 
         # Handle None or invalid timezone types
         if job_tz is None or not isinstance(job_tz, (int, float)):
-            # Unknown/invalid timezone - configurable penalty for uncertainty
+            # Unknown/invalid timezone - configurable adjustment for uncertainty
             return {
-                "points": unknown_tz_penalty,
+                "points": unknown_tz_score,
                 "adjustments": [
                     ScoreAdjustment(
                         category="location",
                         reason="Unknown timezone",
-                        points=unknown_tz_penalty,
+                        points=unknown_tz_score,
                     )
                 ],
             }
@@ -424,40 +424,40 @@ class ScoringEngine:
                 "rejection_reason": f"Timezone difference {tz_diff}h exceeds max {max_diff}h",
             }
 
-        # Apply per-hour penalty
-        penalty = -int(tz_diff * per_hour_penalty)
+        # Apply per-hour score adjustment (should be negative)
+        tz_adjustment = int(tz_diff * per_hour_score)
         adjustments: List[ScoreAdjustment] = []
 
         # Bonus for hybrid in same city
         if is_hybrid and extraction.city:
             user_city = self.location_config.get("userCity", "").lower()
             if user_city and extraction.city.lower() == user_city:
-                bonus = self.location_config.get("hybridSameCityBonus", 10)
+                same_city_score = self.location_config.get("hybridSameCityScore", 10)
                 adjustments.append(
                     ScoreAdjustment(
                         category="location",
                         reason="Hybrid in same city",
-                        points=bonus,
+                        points=same_city_score,
                     )
                 )
-                if penalty != 0:
+                if tz_adjustment != 0:
                     adjustments.append(
                         ScoreAdjustment(
                             category="location",
                             reason=f"Timezone diff {tz_diff}h",
-                            points=penalty,
+                            points=tz_adjustment,
                         )
                     )
-                return {"points": penalty + bonus, "adjustments": adjustments}
+                return {"points": tz_adjustment + same_city_score, "adjustments": adjustments}
 
-        if penalty != 0:
+        if tz_adjustment != 0:
             return {
-                "points": penalty,
+                "points": tz_adjustment,
                 "adjustments": [
                     ScoreAdjustment(
                         category="location",
                         reason=f"Timezone diff {tz_diff}h",
-                        points=penalty,
+                        points=tz_adjustment,
                     )
                 ],
             }
@@ -491,50 +491,50 @@ class ScoringEngine:
         # Check required technologies
         required_found = tech_set & self._required_tech
         if required_found:
-            bonus = len(required_found) * self.tech_config.get("requiredBonus", 10)
-            points += bonus
+            score = len(required_found) * self.tech_config.get("requiredScore", 10)
+            points += score
             adjustments.append(
                 ScoreAdjustment(
                     category="technology",
                     reason=f"Required tech matched: {', '.join(required_found)}",
-                    points=bonus,
+                    points=score,
                 )
             )
         elif self._required_tech:
-            # None of the required tech found - configurable penalty
-            missing_penalty = self.tech_config.get("missingRequiredPenalty", -15)
-            points += missing_penalty
+            # None of the required tech found - configurable adjustment
+            missing_score = self.tech_config.get("missingRequiredScore", -15)
+            points += missing_score
             adjustments.append(
                 ScoreAdjustment(
                     category="technology",
                     reason=f"Missing required tech: {', '.join(self._required_tech)}",
-                    points=missing_penalty,
+                    points=missing_score,
                 )
             )
 
         # Check preferred technologies
         preferred_found = tech_set & self._preferred_tech
         if preferred_found:
-            bonus = len(preferred_found) * self.tech_config.get("preferredBonus", 5)
-            points += bonus
+            score = len(preferred_found) * self.tech_config.get("preferredScore", 5)
+            points += score
             adjustments.append(
                 ScoreAdjustment(
                     category="technology",
                     reason=f"Preferred tech: {', '.join(preferred_found)}",
-                    points=bonus,
+                    points=score,
                 )
             )
 
         # Check disliked technologies
         disliked_found = tech_set & self._disliked_tech
         if disliked_found:
-            penalty = len(disliked_found) * self.tech_config.get("dislikedPenalty", -5)
-            points += penalty
+            score = len(disliked_found) * self.tech_config.get("dislikedScore", -5)
+            points += score
             adjustments.append(
                 ScoreAdjustment(
                     category="technology",
                     reason=f"Disliked tech: {', '.join(disliked_found)}",
-                    points=penalty,
+                    points=score,
                 )
             )
 
@@ -550,11 +550,11 @@ class ScoringEngine:
         """Score based on salary range, equity, and contract status."""
         config_min = self.salary_config.get("minimum")
         config_target = self.salary_config.get("target")
-        below_target_penalty = self.salary_config.get("belowTargetPenalty", 2)
-        equity_bonus = self.salary_config.get("equityBonus", 5)
-        contract_penalty = self.salary_config.get("contractPenalty", -15)
-        missing_salary_penalty = self.salary_config.get("missingSalaryPenalty", -5)
-        meets_target_bonus = self.salary_config.get("meetsTargetBonus", 5)
+        below_target_score = self.salary_config.get("belowTargetScore", -2)
+        equity_score = self.salary_config.get("equityScore", 5)
+        contract_score = self.salary_config.get("contractScore", -15)
+        missing_salary_score = self.salary_config.get("missingSalaryScore", -5)
+        meets_target_score = self.salary_config.get("meetsTargetScore", 5)
 
         points = 0
         adjustments: List[ScoreAdjustment] = []
@@ -563,13 +563,13 @@ class ScoringEngine:
         job_salary = max_salary or min_salary
 
         if job_salary is None:
-            # No salary info - configurable penalty for uncertainty
-            points += missing_salary_penalty
+            # No salary info - configurable adjustment for uncertainty
+            points += missing_salary_score
             adjustments.append(
                 ScoreAdjustment(
                     category="salary",
                     reason="No salary info",
-                    points=missing_salary_penalty,
+                    points=missing_salary_score,
                 )
             )
         else:
@@ -590,47 +590,48 @@ class ScoringEngine:
             # Check against target salary
             if config_target and job_salary < config_target:
                 diff = config_target - job_salary
-                penalty_units = diff // 10000  # Per $10k below target
-                penalty = -int(penalty_units * below_target_penalty)
-                penalty = max(penalty, -20)  # Cap penalty at -20
-                points += penalty
+                units = diff // 10000  # Per $10k below target
+                # below_target_score should already be negative
+                adjustment = int(units * below_target_score)
+                adjustment = max(adjustment, -20)  # Cap at -20
+                points += adjustment
                 adjustments.append(
                     ScoreAdjustment(
                         category="salary",
                         reason=f"Salary ${job_salary:,} below target ${config_target:,}",
-                        points=penalty,
+                        points=adjustment,
                     )
                 )
             elif config_target:
-                # At or above target - configurable bonus
-                points += meets_target_bonus
+                # At or above target - configurable adjustment
+                points += meets_target_score
                 adjustments.append(
                     ScoreAdjustment(
                         category="salary",
                         reason=f"Salary ${job_salary:,} meets target",
-                        points=meets_target_bonus,
+                        points=meets_target_score,
                     )
                 )
 
-        # Equity bonus
-        if includes_equity and equity_bonus:
-            points += equity_bonus
+        # Equity score adjustment
+        if includes_equity and equity_score:
+            points += equity_score
             adjustments.append(
                 ScoreAdjustment(
                     category="salary",
                     reason="Includes equity",
-                    points=equity_bonus,
+                    points=equity_score,
                 )
             )
 
-        # Contract penalty
-        if is_contract and contract_penalty:
-            points += contract_penalty
+        # Contract score adjustment
+        if is_contract and contract_score:
+            points += contract_score
             adjustments.append(
                 ScoreAdjustment(
                     category="salary",
                     reason="Contract position",
-                    points=contract_penalty,
+                    points=contract_score,
                 )
             )
 
@@ -640,7 +641,7 @@ class ScoringEngine:
         """Score based on experience requirements."""
         user_years = self.experience_config.get("userYears", 0)
         max_required = self.experience_config.get("maxRequired", 15)
-        overqualified_penalty = self.experience_config.get("overqualifiedPenalty", 5)
+        overqualified_score = self.experience_config.get("overqualifiedScore", -5)
 
         if min_exp is None and max_exp is None:
             return {"points": 0, "adjustments": []}
@@ -691,14 +692,15 @@ class ScoringEngine:
         # Check if user is overqualified
         if job_max and user_years > job_max + 3:
             over_years = user_years - job_max
-            penalty = -min(over_years * overqualified_penalty, 15)
+            # overqualified_score should already be negative
+            adjustment = max(over_years * overqualified_score, -15)
             return {
-                "points": penalty,
+                "points": adjustment,
                 "adjustments": [
                     ScoreAdjustment(
                         category="experience",
                         reason=f"User overqualified ({user_years}y vs {job_max}y max)",
-                        points=penalty,
+                        points=adjustment,
                     )
                 ],
             }
@@ -752,22 +754,22 @@ class ScoringEngine:
         Score based on job freshness (days since posting).
 
         Uses match-policy.freshness config (all fields required):
-        - freshBonusDays: Days threshold for fresh bonus
-        - freshBonus: Points bonus for fresh jobs
-        - staleThresholdDays: Days threshold for stale penalty
-        - stalePenalty: Points penalty for stale jobs
-        - veryStaleDays: Days threshold for very stale penalty
-        - veryStalePenalty: Points penalty for very stale jobs
-        - repostPenalty: Points penalty for reposts
+        - freshDays: Days threshold for fresh score
+        - freshScore: Points adjustment for fresh jobs (positive)
+        - staleDays: Days threshold for stale score
+        - staleScore: Points adjustment for stale jobs (negative)
+        - veryStaleDays: Days threshold for very stale score
+        - veryStaleScore: Points adjustment for very stale jobs (negative)
+        - repostScore: Points adjustment for reposts (negative)
         """
         # Use pre-loaded config (required fields, no defaults)
-        fresh_bonus_days = self.freshness_config["freshBonusDays"]
-        fresh_bonus = self.freshness_config["freshBonus"]
-        stale_threshold_days = self.freshness_config["staleThresholdDays"]
-        stale_penalty = self.freshness_config["stalePenalty"]
+        fresh_days = self.freshness_config["freshDays"]
+        fresh_score = self.freshness_config["freshScore"]
+        stale_days = self.freshness_config["staleDays"]
+        stale_score = self.freshness_config["staleScore"]
         very_stale_days = self.freshness_config["veryStaleDays"]
-        very_stale_penalty = self.freshness_config["veryStalePenalty"]
-        repost_penalty = self.freshness_config["repostPenalty"]
+        very_stale_score = self.freshness_config["veryStaleScore"]
+        repost_score = self.freshness_config["repostScore"]
 
         days_old = extraction.days_old
         is_repost = extraction.is_repost
@@ -779,42 +781,42 @@ class ScoringEngine:
         points = 0
         adjustments: List[ScoreAdjustment] = []
 
-        if days_old <= fresh_bonus_days:
-            points = fresh_bonus
+        if days_old <= fresh_days:
+            points = fresh_score
             adjustments.append(
                 ScoreAdjustment(
                     category="freshness",
                     reason=f"Fresh job ({days_old}d old)",
-                    points=fresh_bonus,
+                    points=fresh_score,
                 )
             )
         elif days_old >= very_stale_days:
-            points = very_stale_penalty
+            points = very_stale_score
             adjustments.append(
                 ScoreAdjustment(
                     category="freshness",
                     reason=f"Very stale job ({days_old}d old)",
-                    points=very_stale_penalty,
+                    points=very_stale_score,
                 )
             )
-        elif days_old >= stale_threshold_days:
-            points = stale_penalty
+        elif days_old >= stale_days:
+            points = stale_score
             adjustments.append(
                 ScoreAdjustment(
                     category="freshness",
                     reason=f"Stale job ({days_old}d old)",
-                    points=stale_penalty,
+                    points=stale_score,
                 )
             )
 
-        # Additional penalty for reposts
+        # Additional adjustment for reposts
         if is_repost:
-            points += repost_penalty
+            points += repost_score
             adjustments.append(
                 ScoreAdjustment(
                     category="freshness",
                     reason="Reposted job",
-                    points=repost_penalty,
+                    points=repost_score,
                 )
             )
 
@@ -825,12 +827,12 @@ class ScoringEngine:
         Score based on role types (backend, ML/AI, DevOps, etc.).
 
         Uses match-policy.roleFit config (all fields required):
-        - preferred: List of role types that get preferredBonus
+        - preferred: List of role types that get preferredScore
         - acceptable: List of role types that are neutral
-        - penalized: List of role types that get penalizedPenalty
+        - penalized: List of role types that get penalizedScore
         - rejected: List of role types that cause hard rejection
-        - preferredBonus: Points bonus per matched preferred role
-        - penalizedPenalty: Points penalty per matched penalized role
+        - preferredScore: Points adjustment per matched preferred role (positive)
+        - penalizedScore: Points adjustment per matched penalized role (negative)
         """
         if not extraction.role_types:
             return {"points": 0, "adjustments": []}
@@ -855,31 +857,31 @@ class ScoringEngine:
                 "rejection_reason": f"Rejected role type: {', '.join(rejected_found)}",
             }
 
-        # Check preferred roles (bonus)
-        preferred_bonus = self.role_fit_config["preferredBonus"]
+        # Check preferred roles (positive adjustment)
+        preferred_score = self.role_fit_config["preferredScore"]
         preferred_found = role_set & self._preferred_roles
         if preferred_found:
-            bonus = len(preferred_found) * preferred_bonus
-            points += bonus
+            score = len(preferred_found) * preferred_score
+            points += score
             adjustments.append(
                 ScoreAdjustment(
                     category="role_fit",
                     reason=f"Preferred role: {', '.join(preferred_found)}",
-                    points=bonus,
+                    points=score,
                 )
             )
 
-        # Check penalized roles (penalty)
-        penalized_penalty = self.role_fit_config["penalizedPenalty"]
+        # Check penalized roles (negative adjustment)
+        penalized_score = self.role_fit_config["penalizedScore"]
         penalized_found = role_set & self._penalized_roles
         if penalized_found:
-            penalty = len(penalized_found) * penalized_penalty
-            points += penalty
+            score = len(penalized_found) * penalized_score
+            points += score
             adjustments.append(
                 ScoreAdjustment(
                     category="role_fit",
                     reason=f"Penalized role: {', '.join(penalized_found)}",
-                    points=penalty,
+                    points=score,
                 )
             )
 
@@ -892,15 +894,15 @@ class ScoringEngine:
         Score based on company signals from enriched company data.
 
         Uses match-policy.company config (all fields required):
-        - preferredCityBonus: Bonus for companies with office in preferred city
+        - preferredCityScore: Adjustment for companies with office in preferred city (positive)
         - preferredCity: User's preferred city for office bonus
-        - remoteFirstBonus: Bonus for remote-first companies
-        - aiMlFocusBonus: Bonus for AI/ML focused companies
-        - largeCompanyBonus: Bonus for large companies
-        - smallCompanyPenalty: Penalty for small companies
+        - remoteFirstScore: Adjustment for remote-first companies (positive)
+        - aiMlFocusScore: Adjustment for AI/ML focused companies (positive)
+        - largeCompanyScore: Adjustment for large companies (positive)
+        - smallCompanyScore: Adjustment for small companies (negative)
         - largeCompanyThreshold: Employee count for "large"
         - smallCompanyThreshold: Employee count for "small"
-        - startupBonus: Alternative bonus for startups
+        - startupScore: Alternative adjustment for startups (positive or 0)
         """
         points = 0
         adjustments: List[ScoreAdjustment] = []
@@ -916,39 +918,39 @@ class ScoringEngine:
         # Normalize locations to lowercase strings
         locations_lower = [str(loc).lower() for loc in locations if loc]
 
-        # 1. Preferred city office bonus (required field)
-        preferred_city_bonus = self.company_config["preferredCityBonus"]
+        # 1. Preferred city office score (required field)
+        preferred_city_score = self.company_config["preferredCityScore"]
         preferred_city = self.company_config.get("preferredCity", "").lower()
-        if preferred_city_bonus and preferred_city:
+        if preferred_city_score and preferred_city:
             has_preferred_city = (
                 any(preferred_city in loc for loc in locations_lower)
                 or preferred_city in headquarters
             )
             if has_preferred_city:
-                points += preferred_city_bonus
+                points += preferred_city_score
                 adjustments.append(
                     ScoreAdjustment(
                         category="company",
                         reason=f"{preferred_city.title()} office",
-                        points=preferred_city_bonus,
+                        points=preferred_city_score,
                     )
                 )
 
-        # 2. Remote-first bonus (required field)
-        remote_first_bonus = self.company_config["remoteFirstBonus"]
-        if remote_first_bonus and is_remote_first:
-            points += remote_first_bonus
+        # 2. Remote-first score (required field)
+        remote_first_score = self.company_config["remoteFirstScore"]
+        if remote_first_score and is_remote_first:
+            points += remote_first_score
             adjustments.append(
                 ScoreAdjustment(
                     category="company",
                     reason="Remote-first company",
-                    points=remote_first_bonus,
+                    points=remote_first_score,
                 )
             )
 
-        # 3. AI/ML focus bonus (required field)
-        ai_ml_bonus = self.company_config["aiMlFocusBonus"]
-        if ai_ml_bonus:
+        # 3. AI/ML focus score (required field)
+        ai_ml_score = self.company_config["aiMlFocusScore"]
+        if ai_ml_score:
             ai_keywords = [
                 "machine learning",
                 "artificial intelligence",
@@ -963,49 +965,49 @@ class ScoringEngine:
                 for t in tech_stack
             )
             if has_ai_focus:
-                points += ai_ml_bonus
+                points += ai_ml_score
                 adjustments.append(
                     ScoreAdjustment(
                         category="company",
                         reason="AI/ML focus",
-                        points=ai_ml_bonus,
+                        points=ai_ml_score,
                     )
                 )
 
         # 4. Company size scoring (all fields required)
-        large_company_bonus = self.company_config["largeCompanyBonus"]
-        small_company_penalty = self.company_config["smallCompanyPenalty"]
+        large_company_score = self.company_config["largeCompanyScore"]
+        small_company_score = self.company_config["smallCompanyScore"]
         large_threshold = self.company_config["largeCompanyThreshold"]
         small_threshold = self.company_config["smallCompanyThreshold"]
-        startup_bonus = self.company_config["startupBonus"]
+        startup_score = self.company_config["startupScore"]
 
         if employee_count and isinstance(employee_count, (int, float)):
-            if employee_count >= large_threshold and large_company_bonus:
-                points += large_company_bonus
+            if employee_count >= large_threshold and large_company_score:
+                points += large_company_score
                 adjustments.append(
                     ScoreAdjustment(
                         category="company",
                         reason="Large company",
-                        points=large_company_bonus,
+                        points=large_company_score,
                     )
                 )
             elif employee_count <= small_threshold:
-                if startup_bonus:
-                    points += startup_bonus
+                if startup_score:
+                    points += startup_score
                     adjustments.append(
                         ScoreAdjustment(
                             category="company",
                             reason="Startup",
-                            points=startup_bonus,
+                            points=startup_score,
                         )
                     )
-                elif small_company_penalty:
-                    points += small_company_penalty
+                elif small_company_score:
+                    points += small_company_score
                     adjustments.append(
                         ScoreAdjustment(
                             category="company",
                             reason="Small company",
-                            points=small_company_penalty,
+                            points=small_company_score,
                         )
                     )
 

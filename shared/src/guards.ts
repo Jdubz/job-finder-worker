@@ -256,9 +256,9 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     !isStringArray(seniority.preferred) ||
     !isStringArray(seniority.acceptable) ||
     !isStringArray(seniority.rejected) ||
-    typeof seniority.preferredBonus !== "number" ||
-    typeof seniority.acceptablePenalty !== "number" ||
-    typeof seniority.rejectedPenalty !== "number"
+    typeof seniority.preferredScore !== "number" ||
+    typeof seniority.acceptableScore !== "number" ||
+    typeof seniority.rejectedScore !== "number"
   ) {
     return false
   }
@@ -272,8 +272,8 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     typeof location.allowOnsite !== "boolean" ||
     typeof location.userTimezone !== "number" ||
     typeof location.maxTimezoneDiffHours !== "number" ||
-    typeof location.perHourPenalty !== "number" ||
-    typeof location.hybridSameCityBonus !== "number"
+    typeof location.perHourScore !== "number" ||
+    typeof location.hybridSameCityScore !== "number"
   ) {
     return false
   }
@@ -286,9 +286,9 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     !isStringArray(technology.preferred) ||
     !isStringArray(technology.disliked) ||
     !isStringArray(technology.rejected) ||
-    typeof technology.requiredBonus !== "number" ||
-    typeof technology.preferredBonus !== "number" ||
-    typeof technology.dislikedPenalty !== "number"
+    typeof technology.requiredScore !== "number" ||
+    typeof technology.preferredScore !== "number" ||
+    typeof technology.dislikedScore !== "number"
   ) {
     return false
   }
@@ -299,7 +299,7 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
   if (
     (salary.minimum !== null && typeof salary.minimum !== "number") ||
     (salary.target !== null && typeof salary.target !== "number") ||
-    typeof salary.belowTargetPenalty !== "number"
+    typeof salary.belowTargetScore !== "number"
   ) {
     return false
   }
@@ -310,7 +310,7 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
   if (
     typeof experience.userYears !== "number" ||
     typeof experience.maxRequired !== "number" ||
-    typeof experience.overqualifiedPenalty !== "number"
+    typeof experience.overqualifiedScore !== "number"
   ) {
     return false
   }
@@ -332,13 +332,13 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
   if (!isObject(v.freshness)) return false
   const freshness = v.freshness as Record<string, unknown>
   if (
-    typeof freshness.freshBonusDays !== "number" ||
-    typeof freshness.freshBonus !== "number" ||
-    typeof freshness.staleThresholdDays !== "number" ||
-    typeof freshness.stalePenalty !== "number" ||
+    typeof freshness.freshDays !== "number" ||
+    typeof freshness.freshScore !== "number" ||
+    typeof freshness.staleDays !== "number" ||
+    typeof freshness.staleScore !== "number" ||
     typeof freshness.veryStaleDays !== "number" ||
-    typeof freshness.veryStalePenalty !== "number" ||
-    typeof freshness.repostPenalty !== "number"
+    typeof freshness.veryStaleScore !== "number" ||
+    typeof freshness.repostScore !== "number"
   ) {
     return false
   }
@@ -351,8 +351,8 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
     !isStringArray(roleFit.acceptable) ||
     !isStringArray(roleFit.penalized) ||
     !isStringArray(roleFit.rejected) ||
-    typeof roleFit.preferredBonus !== "number" ||
-    typeof roleFit.penalizedPenalty !== "number"
+    typeof roleFit.preferredScore !== "number" ||
+    typeof roleFit.penalizedScore !== "number"
   ) {
     return false
   }
@@ -361,15 +361,15 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
   if (!isObject(v.company)) return false
   const company = v.company as Record<string, unknown>
   if (
-    typeof company.preferredCityBonus !== "number" ||
+    typeof company.preferredCityScore !== "number" ||
     (company.preferredCity !== undefined && typeof company.preferredCity !== "string") ||
-    typeof company.remoteFirstBonus !== "number" ||
-    typeof company.aiMlFocusBonus !== "number" ||
-    typeof company.largeCompanyBonus !== "number" ||
-    typeof company.smallCompanyPenalty !== "number" ||
+    typeof company.remoteFirstScore !== "number" ||
+    typeof company.aiMlFocusScore !== "number" ||
+    typeof company.largeCompanyScore !== "number" ||
+    typeof company.smallCompanyScore !== "number" ||
     typeof company.largeCompanyThreshold !== "number" ||
     typeof company.smallCompanyThreshold !== "number" ||
-    typeof company.startupBonus !== "number"
+    typeof company.startupScore !== "number"
   ) {
     return false
   }

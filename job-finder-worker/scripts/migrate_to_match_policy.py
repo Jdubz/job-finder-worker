@@ -94,9 +94,9 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
                 "preferred": ["senior", "staff", "lead", "principal"],
                 "acceptable": ["mid"],
                 "rejected": ["junior", "intern", "entry", "associate"],
-                "preferredBonus": 15,
-                "acceptablePenalty": 0,
-                "rejectedPenalty": -100,
+                "preferredScore": 15,
+                "acceptableScore": 0,
+                "rejectedScore": -100,
             },
         ),
         "location": {
@@ -108,11 +108,11 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
                     "allowOnsite": False,
                     "userTimezone": -8,
                     "maxTimezoneDiffHours": 4,
-                    "perHourPenalty": 3,
-                    "hybridSameCityBonus": 10,
+                    "perHourScore": -3,
+                    "hybridSameCityScore": 10,
                 },
             ),
-            "relocationPenalty": -dealbreakers.get("relocationPenaltyPoints", 80),
+            "relocationScore": -dealbreakers.get("relocationPenaltyPoints", 80),
         },
         "technology": scoring_config.get(
             "technology",
@@ -121,9 +121,9 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
                 "preferred": ["node", "python"],
                 "disliked": ["angular"],
                 "rejected": ["wordpress", "php"],
-                "requiredBonus": 10,
-                "preferredBonus": 5,
-                "dislikedPenalty": -5,
+                "requiredScore": 10,
+                "preferredScore": 5,
+                "dislikedScore": -5,
             },
         ),
         "salary": scoring_config.get(
@@ -131,7 +131,7 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
             {
                 "minimum": 150000,
                 "target": 200000,
-                "belowTargetPenalty": 2,
+                "belowTargetScore": -2,
             },
         ),
         "experience": scoring_config.get(
@@ -139,18 +139,18 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
             {
                 "userYears": 12,
                 "maxRequired": 15,
-                "overqualifiedPenalty": 5,
+                "overqualifiedScore": -5,
             },
         ),
         # NEW: Freshness config (from prefilter-policy.strikeEngine.ageStrike)
         "freshness": {
-            "freshBonusDays": 2,
-            "freshBonus": 10,
-            "staleThresholdDays": age_strike.get("strikeDays", 3),
-            "stalePenalty": -10,
+            "freshDays": 2,
+            "freshScore": 10,
+            "staleDays": age_strike.get("strikeDays", 3),
+            "staleScore": -10,
             "veryStaleDays": age_strike.get("rejectDays", 12),
-            "veryStalePenalty": -20,
-            "repostPenalty": -5,
+            "veryStaleScore": -20,
+            "repostScore": -5,
         },
         # NEW: Role fit config (dynamic lists)
         "roleFit": {
@@ -158,19 +158,19 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
             "acceptable": ["fullstack"],
             "penalized": ["frontend", "consulting"],
             "rejected": ["clearance-required", "management"],
-            "preferredBonus": 5,
-            "penalizedPenalty": -5,
+            "preferredScore": 5,
+            "penalizedScore": -5,
         },
         # From old match-policy.companyWeights + jobMatch
         "company": {
-            "preferredCityBonus": job_match.get("portlandOfficeBonus", 20),
+            "preferredCityScore": job_match.get("portlandOfficeBonus", 20),
             "preferredCity": "Portland",  # Extracted from Portland-specific bonus
-            "remoteFirstBonus": company_weights.get("bonuses", {}).get("remoteFirst", 15),
-            "aiMlFocusBonus": company_weights.get("bonuses", {}).get("aiMlFocus", 10),
-            "largeCompanyBonus": company_weights.get("sizeAdjustments", {}).get(
+            "remoteFirstScore": company_weights.get("bonuses", {}).get("remoteFirst", 15),
+            "aiMlFocusScore": company_weights.get("bonuses", {}).get("aiMlFocus", 10),
+            "largeCompanyScore": company_weights.get("sizeAdjustments", {}).get(
                 "largeCompanyBonus", 10
             ),
-            "smallCompanyPenalty": company_weights.get("sizeAdjustments", {}).get(
+            "smallCompanyScore": company_weights.get("sizeAdjustments", {}).get(
                 "smallCompanyPenalty", -5
             ),
             "largeCompanyThreshold": company_weights.get("sizeAdjustments", {}).get(
@@ -179,7 +179,7 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
             "smallCompanyThreshold": company_weights.get("sizeAdjustments", {}).get(
                 "smallCompanyThreshold", 100
             ),
-            "startupBonus": 0,
+            "startupScore": 0,
         },
     }
 

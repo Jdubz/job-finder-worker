@@ -140,12 +140,12 @@ export interface SeniorityConfig {
   acceptable: string[]
   /** Rejected seniority levels - hard reject (e.g., ["junior", "intern"]) */
   rejected: string[]
-  /** Bonus points for preferred seniority match */
-  preferredBonus: number
-  /** Penalty for acceptable (neutral) seniority */
-  acceptablePenalty: number
-  /** Hard penalty for rejected seniority (usually large negative) */
-  rejectedPenalty: number
+  /** Score adjustment for preferred seniority match (positive) */
+  preferredScore: number
+  /** Score adjustment for acceptable seniority (usually 0) */
+  acceptableScore: number
+  /** Score adjustment for rejected seniority (large negative, triggers hard reject) */
+  rejectedScore: number
 }
 
 /** Location and remote work preferences */
@@ -160,16 +160,18 @@ export interface LocationConfig {
   userTimezone: number
   /** Maximum timezone difference allowed (hours) */
   maxTimezoneDiffHours: number
-  /** Points deducted per hour of timezone difference */
-  perHourPenalty: number
-  /** Bonus for hybrid in same city as user */
-  hybridSameCityBonus: number
+  /** Score adjustment per hour of timezone difference (negative) */
+  perHourScore: number
+  /** Score adjustment for hybrid in same city (positive) */
+  hybridSameCityScore: number
   /** User's city for hybrid matching */
   userCity?: string
-  /** Bonus for remote positions */
-  remoteBonus?: number
-  /** Penalty when relocation is required */
-  relocationPenalty?: number
+  /** Score adjustment for remote positions (positive) */
+  remoteScore?: number
+  /** Score adjustment when relocation required (negative) */
+  relocationScore?: number
+  /** Score adjustment for unknown timezone (negative) */
+  unknownTimezoneScore?: number
 }
 
 /** Technology stack preferences */
@@ -182,12 +184,14 @@ export interface TechnologyConfig {
   disliked: string[]
   /** Rejected technologies - hard reject */
   rejected: string[]
-  /** Bonus per required technology found */
-  requiredBonus: number
-  /** Bonus per preferred technology found */
-  preferredBonus: number
-  /** Penalty per disliked technology found */
-  dislikedPenalty: number
+  /** Score adjustment per required technology found (positive) */
+  requiredScore: number
+  /** Score adjustment per preferred technology found (positive) */
+  preferredScore: number
+  /** Score adjustment per disliked technology found (negative) */
+  dislikedScore: number
+  /** Score adjustment when no required tech found (negative) */
+  missingRequiredScore?: number
 }
 
 /** Salary preferences */
@@ -196,12 +200,12 @@ export interface SalaryConfig {
   minimum: number | null
   /** Target/ideal salary */
   target: number | null
-  /** Penalty per $10k below target */
-  belowTargetPenalty: number
-  /** Bonus for positions that include equity */
-  equityBonus?: number
-  /** Penalty for contract positions */
-  contractPenalty?: number
+  /** Score adjustment per $10k below target (negative) */
+  belowTargetScore: number
+  /** Score adjustment for positions with equity (positive) */
+  equityScore?: number
+  /** Score adjustment for contract positions (negative) */
+  contractScore?: number
 }
 
 /** Experience level preferences */
@@ -210,64 +214,64 @@ export interface ExperienceConfig {
   userYears: number
   /** Maximum years required by job before rejection */
   maxRequired: number
-  /** Penalty per year the user is overqualified */
-  overqualifiedPenalty: number
+  /** Score adjustment per year user is overqualified (negative) */
+  overqualifiedScore: number
 }
 
 /** Freshness/age scoring configuration */
 export interface FreshnessConfig {
-  /** Days old to still be considered "fresh" and get bonus */
-  freshBonusDays: number
-  /** Bonus points for fresh listings */
-  freshBonus: number
+  /** Days old to still be considered "fresh" */
+  freshDays: number
+  /** Score adjustment for fresh listings (positive) */
+  freshScore: number
   /** Days old before considered "stale" */
-  staleThresholdDays: number
-  /** Penalty for stale listings */
-  stalePenalty: number
+  staleDays: number
+  /** Score adjustment for stale listings (negative) */
+  staleScore: number
   /** Days old before considered "very stale" */
   veryStaleDays: number
-  /** Penalty for very stale listings */
-  veryStalePenalty: number
-  /** Penalty for detected reposts */
-  repostPenalty: number
+  /** Score adjustment for very stale listings (negative) */
+  veryStaleScore: number
+  /** Score adjustment for detected reposts (negative) */
+  repostScore: number
 }
 
 /** Role fit scoring configuration (dynamic role categories) */
 export interface RoleFitConfig {
-  /** Preferred role types - bonus points (e.g., ["backend", "ml-ai", "devops"]) */
+  /** Preferred role types (e.g., ["backend", "ml-ai", "devops"]) */
   preferred: string[]
   /** Acceptable role types - neutral (e.g., ["fullstack", "data"]) */
   acceptable: string[]
-  /** Penalized role types - penalty points (e.g., ["frontend-only", "consulting"]) */
+  /** Penalized role types (e.g., ["frontend-only", "consulting"]) */
   penalized: string[]
   /** Rejected role types - hard reject (e.g., ["management", "clearance-required"]) */
   rejected: string[]
-  /** Bonus per preferred role type found */
-  preferredBonus: number
-  /** Penalty per penalized role type found */
-  penalizedPenalty: number
+  /** Score adjustment per preferred role type found (positive) */
+  preferredScore: number
+  /** Score adjustment per penalized role type found (negative) */
+  penalizedScore: number
 }
 
 /** Company signal scoring configuration */
 export interface CompanyConfig {
-  /** Bonus for companies with office in user's preferred city */
-  preferredCityBonus: number
+  /** Score adjustment for companies in user's preferred city (positive) */
+  preferredCityScore: number
   /** User's preferred city for office bonus */
   preferredCity?: string
-  /** Bonus for remote-first companies */
-  remoteFirstBonus: number
-  /** Bonus for companies focused on AI/ML */
-  aiMlFocusBonus: number
-  /** Bonus for large companies (above threshold) */
-  largeCompanyBonus: number
-  /** Penalty for small companies (below threshold) */
-  smallCompanyPenalty: number
+  /** Score adjustment for remote-first companies (positive) */
+  remoteFirstScore: number
+  /** Score adjustment for companies focused on AI/ML (positive) */
+  aiMlFocusScore: number
+  /** Score adjustment for large companies above threshold (positive) */
+  largeCompanyScore: number
+  /** Score adjustment for small companies below threshold (negative) */
+  smallCompanyScore: number
   /** Employee count threshold for "large" company */
   largeCompanyThreshold: number
   /** Employee count threshold for "small" company */
   smallCompanyThreshold: number
-  /** Alternative bonus for startups (overrides small company penalty) */
-  startupBonus: number
+  /** Score adjustment for startups - overrides smallCompanyScore (positive or 0) */
+  startupScore: number
 }
 
 /** Complete match policy configuration (unified scoring config) */

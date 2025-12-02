@@ -32,9 +32,9 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     preferred: cleanList(values.seniority.preferred),
     acceptable: cleanList(values.seniority.acceptable),
     rejected: cleanList(values.seniority.rejected),
-    preferredBonus: values.seniority.preferredBonus,
-    acceptablePenalty: values.seniority.acceptablePenalty,
-    rejectedPenalty: values.seniority.rejectedPenalty,
+    preferredScore: values.seniority.preferredScore,
+    acceptableScore: values.seniority.acceptableScore,
+    rejectedScore: values.seniority.rejectedScore,
   },
   location: {
     allowRemote: values.location.allowRemote,
@@ -42,57 +42,57 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     allowOnsite: values.location.allowOnsite,
     userTimezone: values.location.userTimezone,
     maxTimezoneDiffHours: values.location.maxTimezoneDiffHours,
-    perHourPenalty: values.location.perHourPenalty,
-    hybridSameCityBonus: values.location.hybridSameCityBonus,
+    perHourScore: values.location.perHourScore,
+    hybridSameCityScore: values.location.hybridSameCityScore,
     userCity: values.location.userCity?.trim() || undefined,
-    relocationPenalty: values.location.relocationPenalty,
+    relocationScore: values.location.relocationScore,
   },
   technology: {
     required: cleanList(values.technology.required),
     preferred: cleanList(values.technology.preferred),
     disliked: cleanList(values.technology.disliked),
     rejected: cleanList(values.technology.rejected),
-    requiredBonus: values.technology.requiredBonus,
-    preferredBonus: values.technology.preferredBonus,
-    dislikedPenalty: values.technology.dislikedPenalty,
+    requiredScore: values.technology.requiredScore,
+    preferredScore: values.technology.preferredScore,
+    dislikedScore: values.technology.dislikedScore,
   },
   salary: {
     minimum: values.salary.minimum,
     target: values.salary.target,
-    belowTargetPenalty: values.salary.belowTargetPenalty,
+    belowTargetScore: values.salary.belowTargetScore,
   },
   experience: {
     userYears: values.experience.userYears,
     maxRequired: values.experience.maxRequired,
-    overqualifiedPenalty: values.experience.overqualifiedPenalty,
+    overqualifiedScore: values.experience.overqualifiedScore,
   },
   freshness: {
-    freshBonusDays: values.freshness.freshBonusDays,
-    freshBonus: values.freshness.freshBonus,
-    staleThresholdDays: values.freshness.staleThresholdDays,
-    stalePenalty: values.freshness.stalePenalty,
+    freshDays: values.freshness.freshDays,
+    freshScore: values.freshness.freshScore,
+    staleDays: values.freshness.staleDays,
+    staleScore: values.freshness.staleScore,
     veryStaleDays: values.freshness.veryStaleDays,
-    veryStalePenalty: values.freshness.veryStalePenalty,
-    repostPenalty: values.freshness.repostPenalty,
+    veryStaleScore: values.freshness.veryStaleScore,
+    repostScore: values.freshness.repostScore,
   },
   roleFit: {
     preferred: cleanList(values.roleFit.preferred),
     acceptable: cleanList(values.roleFit.acceptable),
     penalized: cleanList(values.roleFit.penalized),
     rejected: cleanList(values.roleFit.rejected),
-    preferredBonus: values.roleFit.preferredBonus,
-    penalizedPenalty: values.roleFit.penalizedPenalty,
+    preferredScore: values.roleFit.preferredScore,
+    penalizedScore: values.roleFit.penalizedScore,
   },
   company: {
-    preferredCityBonus: values.company.preferredCityBonus,
+    preferredCityScore: values.company.preferredCityScore,
     preferredCity: values.company.preferredCity?.trim() || undefined,
-    remoteFirstBonus: values.company.remoteFirstBonus,
-    aiMlFocusBonus: values.company.aiMlFocusBonus,
-    largeCompanyBonus: values.company.largeCompanyBonus,
-    smallCompanyPenalty: values.company.smallCompanyPenalty,
+    remoteFirstScore: values.company.remoteFirstScore,
+    aiMlFocusScore: values.company.aiMlFocusScore,
+    largeCompanyScore: values.company.largeCompanyScore,
+    smallCompanyScore: values.company.smallCompanyScore,
     largeCompanyThreshold: values.company.largeCompanyThreshold,
     smallCompanyThreshold: values.company.smallCompanyThreshold,
-    startupBonus: values.company.startupBonus,
+    startupScore: values.company.startupScore,
   },
 })
 
@@ -199,24 +199,24 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
               <div className="grid gap-6 md:grid-cols-3">
                 <NumericField
                   control={form.control}
-                  name="seniority.preferredBonus"
-                  label="Preferred Bonus"
-                  description="Points added for preferred match."
-                  info="Score bonus when job seniority matches a preferred level."
+                  name="seniority.preferredScore"
+                  label="Preferred Score"
+                  description="Points added for preferred match (positive)."
+                  info="Score adjustment when job seniority matches a preferred level."
                 />
                 <NumericField
                   control={form.control}
-                  name="seniority.acceptablePenalty"
-                  label="Acceptable Penalty"
+                  name="seniority.acceptableScore"
+                  label="Acceptable Score"
                   description="Points for acceptable match (usually 0)."
                   info="Score adjustment for acceptable seniority levels."
                 />
                 <NumericField
                   control={form.control}
-                  name="seniority.rejectedPenalty"
-                  label="Rejected Penalty"
+                  name="seniority.rejectedScore"
+                  label="Rejected Score"
                   description="Large negative for rejected levels."
-                  info="Score penalty for rejected seniority levels (use large negative like -100)."
+                  info="Score adjustment for rejected seniority levels (use large negative like -100)."
                 />
               </div>
             </section>
@@ -282,24 +282,24 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 />
                 <NumericField
                   control={form.control}
-                  name="location.perHourPenalty"
-                  label="Per-Hour TZ Penalty"
-                  description="Points deducted per hour difference."
-                  info="Score penalty per hour of timezone difference."
+                  name="location.perHourScore"
+                  label="Per-Hour TZ Score"
+                  description="Points per hour difference (negative)."
+                  info="Score adjustment per hour of timezone difference."
                 />
                 <NumericField
                   control={form.control}
-                  name="location.hybridSameCityBonus"
-                  label="Same City Bonus"
-                  description="Bonus for hybrid in your city."
-                  info="Score bonus when hybrid job is in your city."
+                  name="location.hybridSameCityScore"
+                  label="Same City Score"
+                  description="Points for hybrid in your city (positive)."
+                  info="Score adjustment when hybrid job is in your city."
                 />
                 <NumericField
                   control={form.control}
-                  name="location.relocationPenalty"
-                  label="Relocation Penalty"
-                  description="Penalty when relocation required."
-                  info="Score penalty when job requires relocation."
+                  name="location.relocationScore"
+                  label="Relocation Score"
+                  description="Points when relocation required (negative)."
+                  info="Score adjustment when job requires relocation."
                 />
               </div>
               <FormField
@@ -372,24 +372,24 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
               <div className="grid gap-6 md:grid-cols-3">
                 <NumericField
                   control={form.control}
-                  name="technology.requiredBonus"
-                  label="Required Tech Bonus"
-                  description="Per required tech found."
-                  info="Score bonus per required technology found in the job."
+                  name="technology.requiredScore"
+                  label="Required Tech Score"
+                  description="Per required tech found (positive)."
+                  info="Score adjustment per required technology found in the job."
                 />
                 <NumericField
                   control={form.control}
-                  name="technology.preferredBonus"
-                  label="Preferred Tech Bonus"
-                  description="Per preferred tech found."
-                  info="Score bonus per preferred technology found in the job."
+                  name="technology.preferredScore"
+                  label="Preferred Tech Score"
+                  description="Per preferred tech found (positive)."
+                  info="Score adjustment per preferred technology found in the job."
                 />
                 <NumericField
                   control={form.control}
-                  name="technology.dislikedPenalty"
-                  label="Disliked Tech Penalty"
+                  name="technology.dislikedScore"
+                  label="Disliked Tech Score"
                   description="Per disliked tech found (negative)."
-                  info="Score penalty per disliked technology found in the job."
+                  info="Score adjustment per disliked technology found in the job."
                 />
               </div>
             </section>
@@ -449,10 +449,10 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 />
                 <NumericField
                   control={form.control}
-                  name="salary.belowTargetPenalty"
-                  label="Below Target Penalty"
-                  description="Penalty per $10k below target."
-                  info="Score penalty for each $10k the salary is below target."
+                  name="salary.belowTargetScore"
+                  label="Below Target Score"
+                  description="Points per $10k below target (negative)."
+                  info="Score adjustment for each $10k the salary is below target."
                 />
               </div>
             </section>
@@ -480,10 +480,10 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 />
                 <NumericField
                   control={form.control}
-                  name="experience.overqualifiedPenalty"
-                  label="Overqualified Penalty"
-                  description="Per year overqualified."
-                  info="Score penalty per year you exceed the job's max requirement."
+                  name="experience.overqualifiedScore"
+                  label="Overqualified Score"
+                  description="Per year overqualified (negative)."
+                  info="Score adjustment per year you exceed the job's max requirement."
                 />
               </div>
             </section>
@@ -500,31 +500,31 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
               <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-4">
                 <NumericField
                   control={form.control}
-                  name="freshness.freshBonusDays"
+                  name="freshness.freshDays"
                   label="Fresh Threshold (days)"
                   description="Jobs newer than this get bonus."
                   info="Number of days a job is considered 'fresh'."
                 />
                 <NumericField
                   control={form.control}
-                  name="freshness.freshBonus"
-                  label="Fresh Bonus"
-                  description="Points for fresh jobs."
-                  info="Score bonus for jobs within the fresh threshold."
+                  name="freshness.freshScore"
+                  label="Fresh Score"
+                  description="Points for fresh jobs (positive)."
+                  info="Score adjustment for jobs within the fresh threshold."
                 />
                 <NumericField
                   control={form.control}
-                  name="freshness.staleThresholdDays"
+                  name="freshness.staleDays"
                   label="Stale Threshold (days)"
                   description="Jobs older than this get penalty."
                   info="Number of days before a job is considered 'stale'."
                 />
                 <NumericField
                   control={form.control}
-                  name="freshness.stalePenalty"
-                  label="Stale Penalty"
+                  name="freshness.staleScore"
+                  label="Stale Score"
                   description="Points for stale jobs (negative)."
-                  info="Score penalty for jobs past the stale threshold."
+                  info="Score adjustment for jobs past the stale threshold."
                 />
               </div>
               <div className="grid gap-6 md:grid-cols-3">
@@ -537,17 +537,17 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 />
                 <NumericField
                   control={form.control}
-                  name="freshness.veryStalePenalty"
-                  label="Very Stale Penalty"
+                  name="freshness.veryStaleScore"
+                  label="Very Stale Score"
                   description="Points for very stale (negative)."
-                  info="Score penalty for very old job listings."
+                  info="Score adjustment for very old job listings."
                 />
                 <NumericField
                   control={form.control}
-                  name="freshness.repostPenalty"
-                  label="Repost Penalty"
-                  description="Penalty for reposted jobs."
-                  info="Score penalty when a job appears to be reposted."
+                  name="freshness.repostScore"
+                  label="Repost Score"
+                  description="Points for reposted jobs (negative)."
+                  info="Score adjustment when a job appears to be reposted."
                 />
               </div>
             </section>
@@ -598,17 +598,17 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
               <div className="grid gap-6 md:grid-cols-2">
                 <NumericField
                   control={form.control}
-                  name="roleFit.preferredBonus"
-                  label="Preferred Role Bonus"
-                  description="Bonus per preferred role type."
-                  info="Score bonus for each preferred role type found."
+                  name="roleFit.preferredScore"
+                  label="Preferred Role Score"
+                  description="Points per preferred role type (positive)."
+                  info="Score adjustment for each preferred role type found."
                 />
                 <NumericField
                   control={form.control}
-                  name="roleFit.penalizedPenalty"
-                  label="Penalized Role Penalty"
-                  description="Penalty per penalized role type."
-                  info="Score penalty for each penalized role type found."
+                  name="roleFit.penalizedScore"
+                  label="Penalized Role Score"
+                  description="Points per penalized role type (negative)."
+                  info="Score adjustment for each penalized role type found."
                 />
               </div>
             </section>
@@ -647,40 +647,40 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 />
                 <NumericField
                   control={form.control}
-                  name="company.preferredCityBonus"
-                  label="Preferred City Bonus"
-                  description="Bonus for office in preferred city."
-                  info="Score bonus when company has office in your preferred city."
+                  name="company.preferredCityScore"
+                  label="Preferred City Score"
+                  description="Points for office in preferred city (positive)."
+                  info="Score adjustment when company has office in your preferred city."
                 />
                 <NumericField
                   control={form.control}
-                  name="company.remoteFirstBonus"
-                  label="Remote-First Bonus"
-                  description="Bonus for remote-first companies."
-                  info="Score bonus for companies with remote-first culture."
+                  name="company.remoteFirstScore"
+                  label="Remote-First Score"
+                  description="Points for remote-first companies (positive)."
+                  info="Score adjustment for companies with remote-first culture."
                 />
               </div>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 <NumericField
                   control={form.control}
-                  name="company.aiMlFocusBonus"
-                  label="AI/ML Focus Bonus"
-                  description="Bonus for AI/ML companies."
-                  info="Score bonus for companies focused on AI/ML."
+                  name="company.aiMlFocusScore"
+                  label="AI/ML Focus Score"
+                  description="Points for AI/ML companies (positive)."
+                  info="Score adjustment for companies focused on AI/ML."
                 />
                 <NumericField
                   control={form.control}
-                  name="company.largeCompanyBonus"
-                  label="Large Company Bonus"
-                  description="Bonus for large companies."
-                  info="Score bonus for companies above the large threshold."
+                  name="company.largeCompanyScore"
+                  label="Large Company Score"
+                  description="Points for large companies (positive)."
+                  info="Score adjustment for companies above the large threshold."
                 />
                 <NumericField
                   control={form.control}
-                  name="company.smallCompanyPenalty"
-                  label="Small Company Penalty"
-                  description="Penalty for small companies."
-                  info="Score penalty for companies below the small threshold."
+                  name="company.smallCompanyScore"
+                  label="Small Company Score"
+                  description="Points for small companies (negative)."
+                  info="Score adjustment for companies below the small threshold."
                 />
               </div>
               <div className="grid gap-6 md:grid-cols-3">
@@ -700,10 +700,10 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 />
                 <NumericField
                   control={form.control}
-                  name="company.startupBonus"
-                  label="Startup Bonus"
-                  description="Alternative to small penalty."
-                  info="If set, small companies get this bonus instead of penalty."
+                  name="company.startupScore"
+                  label="Startup Score"
+                  description="Override for small company score."
+                  info="If set, startups get this adjustment instead of small company score."
                 />
               </div>
             </section>

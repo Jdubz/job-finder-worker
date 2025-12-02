@@ -315,14 +315,14 @@ describe("Configuration flows", () => {
     const testMatchPolicy = {
       minScore: 65,
       weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
-      seniority: { preferred: ["senior"], acceptable: ["mid"], rejected: ["intern"], preferredBonus: 10, acceptablePenalty: 0, rejectedPenalty: -100 },
-      location: { allowRemote: true, allowHybrid: true, allowOnsite: false, userTimezone: -8, maxTimezoneDiffHours: 4, perHourPenalty: 3, hybridSameCityBonus: 10 },
-      technology: { required: ["typescript"], preferred: ["react"], disliked: [], rejected: [], requiredBonus: 10, preferredBonus: 5, dislikedPenalty: -5 },
-      salary: { minimum: 100000, target: 150000, belowTargetPenalty: 2 },
-      experience: { userYears: 8, maxRequired: 15, overqualifiedPenalty: 5 },
-      freshness: { freshBonusDays: 7, freshBonus: 5, staleThresholdDays: 30, stalePenalty: -5, veryStaleDays: 60, veryStalePenalty: -15, repostPenalty: -10 },
-      roleFit: { preferred: ["backend", "ml-ai", "devops", "data", "security"], acceptable: ["fullstack"], penalized: ["frontend", "consulting"], rejected: ["clearance-required", "management"], preferredBonus: 10, penalizedPenalty: -5 },
-      company: { preferredCityBonus: 5, remoteFirstBonus: 5, aiMlFocusBonus: 5, largeCompanyBonus: 5, smallCompanyPenalty: -5, largeCompanyThreshold: 1000, smallCompanyThreshold: 50, startupBonus: 0 },
+      seniority: { preferred: ["senior"], acceptable: ["mid"], rejected: ["intern"], preferredScore: 10, acceptableScore: 0, rejectedScore: -100 },
+      location: { allowRemote: true, allowHybrid: true, allowOnsite: false, userTimezone: -8, maxTimezoneDiffHours: 4, perHourScore: -3, hybridSameCityScore: 10 },
+      technology: { required: ["typescript"], preferred: ["react"], disliked: [], rejected: [], requiredScore: 10, preferredScore: 5, dislikedScore: -5 },
+      salary: { minimum: 100000, target: 150000, belowTargetScore: -2 },
+      experience: { userYears: 8, maxRequired: 15, overqualifiedScore: -5 },
+      freshness: { freshDays: 7, freshScore: 5, staleDays: 30, staleScore: -5, veryStaleDays: 60, veryStaleScore: -15, repostScore: -10 },
+      roleFit: { preferred: ["backend", "ml-ai", "devops", "data", "security"], acceptable: ["fullstack"], penalized: ["frontend", "consulting"], rejected: ["clearance-required", "management"], preferredScore: 10, penalizedScore: -5 },
+      company: { preferredCityScore: 5, remoteFirstScore: 5, aiMlFocusScore: 5, largeCompanyScore: 5, smallCompanyScore: -5, largeCompanyThreshold: 1000, smallCompanyThreshold: 50, startupScore: 0 },
     }
     await configClient.updateMatchPolicy(testMatchPolicy)
     const matchPolicy = await configClient.getMatchPolicy()
