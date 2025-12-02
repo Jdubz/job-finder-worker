@@ -389,7 +389,7 @@ class ScoringEngine:
             }
 
         # At or above target - bonus
-        if config_target and job_salary >= config_target:
+        if config_target:
             return {"points": 5, "reason": f"Salary ${job_salary:,} meets target (+5)"}
 
         return {"points": 0, "reason": None}

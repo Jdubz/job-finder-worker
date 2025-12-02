@@ -16,13 +16,13 @@ import time
 from typing import Any, Dict, Optional, cast
 from urllib.parse import urlparse, quote_plus
 
-from job_finder.ai.extraction import JobExtractor, JobExtractionResult
+from job_finder.ai.extraction import JobExtractor
 from job_finder.ai.matcher import AIJobMatcher
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
-from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
+from job_finder.scoring.engine import ScoringEngine
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrape_runner import ScrapeRunner
