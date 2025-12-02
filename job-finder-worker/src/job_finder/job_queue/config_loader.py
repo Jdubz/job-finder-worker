@@ -51,80 +51,56 @@ class ConfigLoader:
         return value
 
     def get_title_filter(self) -> Dict[str, Any]:
-        """Get title filter configuration."""
-        try:
-            return self._get_config("title-filter")
-        except InitializationError:
-            # Return defaults if not configured
-            return {
-                "requiredKeywords": [
-                    "software",
-                    "developer",
-                    "engineer",
-                    "frontend",
-                    "backend",
-                    "fullstack",
-                    "full-stack",
-                ],
-                "excludedKeywords": [
-                    "intern",
-                    "internship",
-                    "wordpress",
-                    "php",
-                    "sales",
-                ],
-            }
+        """Get title filter configuration. Fails if not configured."""
+        config = self._get_config("title-filter")
+        # Validate required keys
+        required_keys = ["requiredKeywords", "excludedKeywords"]
+        missing = [k for k in required_keys if k not in config]
+        if missing:
+            raise InitializationError(f"title-filter missing required keys: {missing}")
+        return config
+
+    def get_match_policy(self) -> Dict[str, Any]:
+        """
+        Get match policy configuration for scoring engine.
+
+        Fails loudly if config is missing or incomplete - no defaults to prevent
+        silent gaps between config and implementation.
+        """
+        config = self._get_config("match-policy")
+
+        # Validate all required top-level sections exist
+        required_sections = [
+            "minScore",
+            "weights",
+            "seniority",
+            "location",
+            "technology",
+            "salary",
+            "experience",
+            "freshness",
+            "roleFit",
+            "company",
+            "dealbreakers",
+        ]
+        missing = [s for s in required_sections if s not in config]
+        if missing:
+            raise InitializationError(
+                f"match-policy missing required sections: {missing}. "
+                "Update the match-policy config record to include all required fields."
+            )
+
+        return config
 
     def get_scoring_config(self) -> Dict[str, Any]:
-        """Get scoring engine configuration."""
-        try:
-            return self._get_config("scoring-config")
-        except InitializationError:
-            # Return defaults if not configured
-            return {
-                "minScore": 60,
-                "weights": {
-                    "skillMatch": 40,
-                    "experienceMatch": 30,
-                    "seniorityMatch": 30,
-                },
-                "seniority": {
-                    "preferred": ["senior", "staff", "lead"],
-                    "acceptable": ["mid", ""],
-                    "rejected": ["junior", "intern", "entry"],
-                    "preferredBonus": 15,
-                    "acceptablePenalty": 0,
-                    "rejectedPenalty": -100,
-                },
-                "location": {
-                    "allowRemote": True,
-                    "allowHybrid": True,
-                    "allowOnsite": False,
-                    "userTimezone": -8,
-                    "maxTimezoneDiffHours": 4,
-                    "perHourPenalty": 3,
-                    "hybridSameCityBonus": 10,
-                },
-                "technology": {
-                    "required": ["typescript", "react"],
-                    "preferred": ["node", "python", "aws"],
-                    "disliked": ["angular"],
-                    "rejected": ["wordpress", "php"],
-                    "requiredBonus": 10,
-                    "preferredBonus": 5,
-                    "dislikedPenalty": -5,
-                },
-                "salary": {
-                    "minimum": 150000,
-                    "target": 200000,
-                    "belowTargetPenalty": 2,
-                },
-                "experience": {
-                    "userYears": 12,
-                    "maxRequired": 15,
-                    "overqualifiedPenalty": 5,
-                },
-            }
+        """
+        @deprecated Use get_match_policy() instead.
+
+        Temporary shim that returns match-policy for backwards compatibility
+        during migration. Will be removed once all callers are updated.
+        """
+        logger.warning("get_scoring_config() is deprecated - use get_match_policy() instead")
+        return self.get_match_policy()
 
     def get_queue_settings(self) -> Dict[str, Any]:
         return self._get_config("queue-settings")
@@ -192,20 +168,12 @@ class ConfigLoader:
                 "interfaces": [
                     {
                         "value": "api",
-                        "models": [
-                            "gemini-2.0-flash",
-                            "gemini-1.5-pro",
-                            "gemini-1.5-flash",
-                        ],
+                        "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
                         "enabled": True,
                     },
                     {
                         "value": "cli",
-                        "models": [
-                            "gemini-2.0-flash",
-                            "gemini-1.5-pro",
-                            "gemini-1.5-flash",
-                        ],
+                        "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
                         "enabled": True,
                     },
                 ],

@@ -10,7 +10,7 @@ import {
   SchedulerTab,
   PersonalInfoTab,
   TitleFilterTab,
-  ScoringConfigTab,
+  MatchPolicyTab,
 } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
 import { ScreenshotButton } from "./components/ScreenshotButton"
@@ -118,13 +118,25 @@ export function JobFinderConfigPage() {
             />
           )}
 
-          {activeTab === "scoring" && (
-            <ScoringConfigTab
+          {activeTab === "scoring" && configState.matchPolicy && (
+            <MatchPolicyTab
               isSaving={configState.isSaving}
-              config={configState.scoringConfig}
-              onSave={configState.handleSaveScoringConfig}
-              onReset={configState.resetScoringConfig}
+              config={configState.matchPolicy}
+              onSave={configState.handleSaveMatchPolicy}
+              onReset={configState.resetMatchPolicy}
             />
+          )}
+          {activeTab === "scoring" && !configState.matchPolicy && !configState.isLoading && (
+            <div className="mt-4 p-6 border rounded-lg bg-muted/50">
+              <h3 className="text-lg font-semibold mb-2">Scoring Configuration Required</h3>
+              <p className="text-muted-foreground">
+                The match-policy configuration has not been set up yet. This configuration defines how jobs are scored
+                based on your preferences for seniority, location, technology, salary, and other factors.
+              </p>
+              <p className="text-muted-foreground mt-2">
+                Please run the database migration or manually configure the match-policy in the database.
+              </p>
+            </div>
           )}
 
           {activeTab === "queue" && (

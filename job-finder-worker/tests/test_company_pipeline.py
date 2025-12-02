@@ -13,12 +13,13 @@ class TestCompanyPipeline:
     @pytest.fixture
     def mock_dependencies(self):
         config_loader = Mock()
-        # New config methods for title filter and scoring
+        # New config methods for title filter and match-policy
         config_loader.get_title_filter.return_value = {
             "requiredKeywords": ["engineer", "developer"],
             "excludedKeywords": [],
         }
-        config_loader.get_scoring_config.return_value = {
+        # Complete match-policy (all sections required, no defaults)
+        config_loader.get_match_policy.return_value = {
             "minScore": 60,
             "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
             "seniority": {
@@ -56,6 +57,44 @@ class TestCompanyPipeline:
                 "userYears": 10,
                 "maxRequired": 15,
                 "overqualifiedPenalty": 5,
+            },
+            "freshness": {
+                "freshBonusDays": 2,
+                "freshBonus": 10,
+                "staleThresholdDays": 3,
+                "stalePenalty": -10,
+                "veryStaleDays": 12,
+                "veryStalePenalty": -20,
+                "repostPenalty": -5,
+            },
+            "roleFit": {
+                "backendBonus": 5,
+                "mlAiBonus": 10,
+                "devopsSreBonus": 5,
+                "dataBonus": 5,
+                "securityBonus": 3,
+                "leadBonus": 3,
+                "frontendPenalty": -5,
+                "consultingPenalty": -10,
+                "clearancePenalty": -100,
+                "managementPenalty": -10,
+            },
+            "company": {
+                "preferredCityBonus": 20,
+                "preferredCity": "Portland",
+                "remoteFirstBonus": 15,
+                "aiMlFocusBonus": 10,
+                "largeCompanyBonus": 10,
+                "smallCompanyPenalty": -5,
+                "largeCompanyThreshold": 10000,
+                "smallCompanyThreshold": 100,
+                "startupBonus": 0,
+            },
+            "dealbreakers": {
+                "blockedLocations": [],
+                "locationPenalty": 60,
+                "relocationPenalty": 80,
+                "ambiguousLocationPenalty": 40,
             },
         }
         config_loader.get_ai_settings.return_value = {

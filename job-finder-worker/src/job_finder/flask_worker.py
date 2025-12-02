@@ -162,12 +162,12 @@ def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
     except Exception as exc:  # pragma: no cover - defensive
         slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
 
-    # Load scoring config (min_match_score comes from deterministic scoring)
+    # Load match policy (min_match_score comes from deterministic scoring)
     try:
-        scoring_config = config_loader.get_scoring_config()
-        ai_matcher.min_match_score = scoring_config.get("minScore", ai_matcher.min_match_score)
+        match_policy = config_loader.get_match_policy()
+        ai_matcher.min_match_score = match_policy["minScore"]
     except Exception as exc:  # pragma: no cover - defensive
-        slogger.worker_status("scoring_config_load_failed", {"error": str(exc)})
+        slogger.worker_status("match_policy_load_failed", {"error": str(exc)})
 
 
 def get_processing_timeout(config_loader: ConfigLoader) -> int:
@@ -236,17 +236,13 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         if isinstance(candidate, dict):
             worker_ai_config = candidate
 
-    # Get scoring config (deterministic scoring settings)
-    scoring_config = {"minScore": 60}
-    try:
-        scoring_config = config_loader.get_scoring_config()
-    except Exception as exc:
-        slogger.worker_status("scoring_config_init_failed", {"error": str(exc)})
+    # Get match policy (deterministic scoring settings) - required, fail loud
+    match_policy = config_loader.get_match_policy()
 
     ai_matcher = AIJobMatcher(
         provider=job_match_provider,
         profile=profile,
-        min_match_score=scoring_config.get("minScore", 60),
+        min_match_score=match_policy["minScore"],
         generate_intake=True,
     )
 

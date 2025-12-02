@@ -112,7 +112,7 @@ def processor(mock_managers):
         from job_finder.scoring.engine import ScoreBreakdown
 
         class MockExtractor:
-            def extract(self, title, description, location):
+            def extract(self, title, description, location=None, posted_date=None):
                 return JobExtractionResult(
                     seniority="senior",
                     work_arrangement="remote",
@@ -120,16 +120,23 @@ def processor(mock_managers):
                 )
 
         class MockScoringEngine:
-            def score(self, extraction, title, description):
+            def score(self, extraction, job_title, job_description, company_data=None):
+                from job_finder.scoring.engine import ScoreAdjustment
+
                 return ScoreBreakdown(
                     base_score=50,
                     final_score=85,
-                    adjustments=["Mock scoring"],
+                    adjustments=[
+                        ScoreAdjustment(category="mock", reason="Mock scoring", points=35)
+                    ],
                     passed=True,
                 )
 
         processor_instance.job_processor.extractor = MockExtractor()
         processor_instance.job_processor.scoring_engine = MockScoringEngine()
+
+        # Set min_match_score on ai_matcher to avoid MagicMock comparison issues
+        processor_instance.job_processor.ai_matcher.min_match_score = 60
 
         # Prevent _refresh_runtime_config from overwriting mocks
         processor_instance.job_processor._refresh_runtime_config = lambda: None
@@ -223,54 +230,45 @@ def test_handle_failure_max_retries(processor, mock_managers):
     assert "failed" in call_args[2].lower()
 
 
-def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_job_item):
-    """Job analyze should spawn company enrichment in background but proceed with analysis."""
+def test_single_task_pipeline_spawns_company_enrichment(processor, mock_managers, sample_job_item):
+    """Single-task pipeline should spawn company enrichment in background (fire-and-forget)."""
     # Company exists but has incomplete data (no about/culture)
     incomplete_company = {
         "id": "comp-incomplete",
         "name": "Spawn Co",
-        "about": "",  # Empty - triggers background enrichment
+        "about": "",  # Empty - triggers waiting for enrichment
         "culture": "",
     }
     mock_managers["companies_manager"].get_company.return_value = incomplete_company
     mock_managers["companies_manager"].has_good_company_data.return_value = False
+    mock_managers["companies_manager"].create_company_stub.return_value = incomplete_company
     # No source resolution - fall through to direct company lookup
     mock_managers["sources_manager"].resolve_company_from_source.return_value = None
 
-    sample_job_item.pipeline_state = {
-        "job_data": {
-            "title": "Engineer",
-            "company": "Spawn Co",
-            "company_website": "https://spawn.example",
-            "description": "A" * 200,
-        },
-        "filter_result": {"passed": True},
+    # Provide scraped_data so we skip the scrape stage
+    sample_job_item.scraped_data = {
+        "title": "Senior Engineer",  # Must match title filter (contains "engineer")
+        "company": "Spawn Co",
+        "company_website": "https://spawn.example",
+        "description": "A" * 200,
+        "url": "https://spawn.example/job/123",
     }
 
-    class DummyResult:
-        match_score = 85
-        application_priority = "Medium"
+    mock_managers["job_listing_storage"].get_or_create_listing.return_value = ("listing-123", True)
 
-        def to_dict(self):
-            return {
-                "match_score": self.match_score,
-                "application_priority": self.application_priority,
-            }
+    processor.job_processor.process_job(sample_job_item)
 
-    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
-
-    processor.job_processor._do_job_analyze(sample_job_item)
-
-    # Should spawn company task in background and wait for enrichment
+    # Should spawn company task and requeue to wait for enrichment
     assert mock_managers["queue_manager"].spawn_item_safely.called
-    processor.job_processor.ai_matcher.analyze_job.assert_not_called()
+    # Job should be requeued with waiting_for_company_id in state
     mock_managers["queue_manager"].requeue_with_state.assert_called_once()
-    _, updated_state = mock_managers["queue_manager"].requeue_with_state.call_args[0]
-    assert updated_state.get("awaiting_company") is True
+    requeue_call = mock_managers["queue_manager"].requeue_with_state.call_args
+    assert "waiting_for_company_id" in requeue_call[0][1]  # Second positional arg is state
+    assert requeue_call[0][1]["company_wait_count"] == 1
 
 
-def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sample_job_item):
-    """Job analyze should proceed when company has good data and requeue for save stage."""
+def test_single_task_pipeline_completes_to_match(processor, mock_managers, sample_job_item):
+    """Single-task pipeline should complete all stages and save job match."""
 
     class DummyResult:
         match_score = 95
@@ -292,78 +290,58 @@ def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sampl
     # Mock source resolution to return None (no source match, use company lookup)
     mock_managers["sources_manager"].resolve_company_from_source.return_value = None
 
-    # Data-based check: company has good data, so proceed with analysis
+    # Data-based check: company has good data
     mock_managers["companies_manager"].get_company.return_value = complete_company
     mock_managers["companies_manager"].has_good_company_data.return_value = True
     processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
+    mock_managers["job_storage"].save_job_match.return_value = "match-456"
+    mock_managers["job_listing_storage"].get_or_create_listing.return_value = ("listing-456", True)
 
-    sample_job_item.pipeline_state = {
-        "job_data": {
-            "title": "Engineer",
-            "company": "Ready Co",
-            "company_website": "https://ready.example",
-            "description": "A" * 200,
-        },
-        "filter_result": {"passed": True},
+    # Provide scraped_data so we skip the scrape stage
+    sample_job_item.scraped_data = {
+        "title": "Senior Engineer",  # Must match title filter
+        "company": "Ready Co",
+        "company_website": "https://ready.example",
+        "description": "A" * 200,
+        "url": "https://ready.example/job/456",
     }
 
-    processor.job_processor._do_job_analyze(sample_job_item)
+    processor.job_processor.process_job(sample_job_item)
 
     # AI analysis should be called
     processor.job_processor.ai_matcher.analyze_job.assert_called_once()
-    # Pipeline requeues for save stage (not direct save)
-    mock_managers["queue_manager"].requeue_with_state.assert_called_once()
-    # Verify match_result is in the updated state
-    _, updated_state = mock_managers["queue_manager"].requeue_with_state.call_args[0]
-    assert "match_result" in updated_state
-    assert updated_state["match_result"]["match_score"] == 95
+    # Job match should be saved (single-task completes to save)
+    mock_managers["job_storage"].save_job_match.assert_called_once()
+    # Queue should be updated to SUCCESS
+    success_calls = [
+        call
+        for call in mock_managers["queue_manager"].update_status.call_args_list
+        if call[0][1] == QueueStatus.SUCCESS
+    ]
+    assert len(success_calls) == 1
+    assert "match-456" in success_calls[0][0][2] or "95" in success_calls[0][0][2]
 
 
-@pytest.mark.parametrize(
-    "source_company_id, should_update_listing",
-    [
-        (None, False),
-        ("comp_remoteok", True),
-    ],
-)
-def test_job_analyze_skips_company_when_source_name(
-    processor, mock_managers, sample_job_item, source_company_id, should_update_listing
-):
-    """If company name matches a known source, skip spawning company tasks.
+def test_single_task_pipeline_handles_aggregator_source(processor, mock_managers, sample_job_item):
+    """Single-task pipeline handles job from aggregator source correctly."""
 
-    When source is an aggregator (no company_id), proceed with analysis without enrichment.
-    When source has a linked company, use that company and update the listing.
-    """
-
-    sample_job_item.pipeline_state = {
-        "job_listing_id": "test-listing-123",
-        "job_data": {
-            "title": "Engineer",
-            "company": "RemoteOK API",
-            "company_website": "https://remoteok.com",
-            "description": "A" * 200,
-        },
-        "filter_result": {"passed": True},
+    # Provide scraped_data with job info
+    sample_job_item.scraped_data = {
+        "title": "Senior Engineer",  # Must match title filter
+        "company": "RemoteOK API",
+        "company_website": "https://remoteok.com",
+        "description": "A" * 200,
+        "url": "https://remoteok.com/job/123",
     }
 
-    # Mock resolve_company_from_source (used by _ensure_company_dependency)
+    # Mock resolve_company_from_source for aggregator
     mock_managers["sources_manager"].resolve_company_from_source.return_value = {
-        "company_id": source_company_id,
-        "is_aggregator": source_company_id is None,
-        "aggregator_domain": "remoteok.com" if source_company_id is None else None,
+        "company_id": None,
+        "is_aggregator": True,
+        "aggregator_domain": "remoteok.com",
         "source_id": "src_remoteok",
         "source_name": "RemoteOK API",
     }
-
-    # If source has linked company, mock company lookup
-    if source_company_id:
-        mock_managers["companies_manager"].get_company_by_id.return_value = {
-            "id": source_company_id,
-            "name": "RemoteOK Inc",
-            "about": "Enough content for good data check",
-            "culture": "Remote-first culture",
-        }
-        mock_managers["companies_manager"].has_good_company_data.return_value = True
 
     class DummyResult:
         match_score = 75
@@ -376,20 +354,15 @@ def test_job_analyze_skips_company_when_source_name(
             }
 
     processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
+    mock_managers["job_storage"].save_job_match.return_value = "match-789"
+    mock_managers["job_listing_storage"].get_or_create_listing.return_value = ("listing-789", True)
 
-    processor.job_processor._do_job_analyze(sample_job_item)
+    processor.job_processor.process_job(sample_job_item)
 
-    # Should not spawn new company task (source resolution handles it)
-    mock_managers["queue_manager"].spawn_item_safely.assert_not_called()
-    # AI analysis should proceed
+    # AI analysis should proceed even without company data
     processor.job_processor.ai_matcher.analyze_job.assert_called_once()
-
-    if should_update_listing:
-        mock_managers["job_listing_storage"].update_company_id.assert_called_once_with(
-            "test-listing-123", source_company_id
-        )
-    else:
-        mock_managers["job_listing_storage"].update_company_id.assert_not_called()
+    # Should not try to update company_id on listing (aggregator has no company)
+    mock_managers["job_listing_storage"].update_company_id.assert_not_called()
 
 
 def test_build_company_info_string(processor):

@@ -15,17 +15,178 @@ Based on requirements clarification:
 
 | Decision | Approach |
 |----------|----------|
-| Profile Integration | Extraction MUST use profile for personalization |
+| Profile Integration | ~~Extraction MUST use profile for personalization~~ **CORRECTED: Extraction is profile-agnostic. User prefs only apply during scoring from config.** |
 | Company Data | Company enriched BEFORE job analysis begins |
 | AI Provider | Use `ai-settings` config for ALL AI selections |
-| Pipeline | All stages in SAME task (no respawning) |
+| Pipeline | All stages in SAME task (no respawning) - **CRITICAL** |
 | Failure Handling | Retry once if recoverable, fail with debug data if not |
-| Tech Preferences | Load from database config (not hardcoded) |
+| Tech Preferences | Load from database config (not hardcoded) - **ALL scoring weights from config** |
 | Database | No migration - reuse existing columns |
 | Scoring | AI does NO math - only extracts data for deterministic calculation |
 | Observability | Use filter_result/analysis_result + queue events |
 | Pre-AI Filtering | Title keywords only (required + stop lists) |
 | Semantic Analysis | ALL content analysis (tech, keywords, flags) done by AI |
+| Priority Field | **REMOVE - useless, will be deleted soon** |
+
+---
+
+## Critical Clarifications (December 2025)
+
+These clarifications supersede any conflicting statements in the original plan:
+
+### 1. Extraction Scope - Job & Company Data ONLY
+
+**Extraction is exclusively about job and company data.** The user's `personal-info` and `content-items` do NOT come into play until document generation. The AI extractor should NOT receive user profile data for personalization during extraction.
+
+- ❌ `JobExtractor.__init__(profile: Profile)` - REMOVE profile parameter
+- ❌ `build_extraction_system_prompt(profile)` - REMOVE profile personalization
+- ✅ Extraction produces pure, objective job data
+- ✅ User preferences only apply during deterministic scoring (from config)
+
+### 2. AI Role - Data Extraction ONLY, No Scoring
+
+**AI is NOT responsible for scoring in ANY way.** AI should ONLY extract deterministic scoring data as structured JSON. The scoring engine then calculates the score purely from:
+- Extracted job data (JSON from AI)
+- Scoring configuration (from database config records)
+- Company data (from enrichment)
+
+- ❌ AI providing match scores, priorities, or recommendations during extraction
+- ✅ AI outputs pure structured data (technologies, seniority, timezone, etc.)
+- ✅ All scoring weights/bonuses/penalties come from `scoring-config` record
+
+### 3. ALL Scoring MUST Be Configurable
+
+**ALL extraction and scoring parameters MUST be configurable via the configuration UI and config records.** Nothing should be hardcoded in the scoring engine.
+
+This includes:
+- Technology preferences (desired/undesired with point values)
+- Role fit bonuses/penalties (backend, frontend, ML/AI, etc.)
+- Company signals (portland_office, remote_first, ai_ml_focus, company_size)
+- Freshness thresholds and bonuses/penalties
+- Timezone penalties
+- Seniority preferences
+- Compensation thresholds
+
+### 4. Company Signals - MUST Be Integrated
+
+**Company scoring is highly relevant to job scoring.** The current implementation is MISSING company signal scoring entirely. The scoring engine MUST:
+- Accept `company_data` parameter in `score()` method
+- Score based on: portland_office, remote_first, ai_ml_focus, company_size
+- All company signal weights must be in `scoring-config`
+
+### 5. Timezone Scoring - CRITICAL FIX NEEDED
+
+**Timezone scoring is NOT working.** Example: An India-based job received a score of 95 when it should have been heavily penalized for timezone difference (India = UTC+5.5, user = UTC-8, difference = 13.5 hours).
+
+The scoring engine MUST:
+- Extract timezone from job location (AI extraction)
+- Calculate timezone difference from user's timezone (from config)
+- Apply `timezone_penalty_per_hour` for non-remote positions
+- Hard-reject if timezone exceeds `max_timezone_hours`
+
+### 6. Freshness Scoring - VERY IMPORTANT
+
+**Freshness extraction and scoring is VERY important** and is already defined in the configs but not being used. The extractor must:
+- Extract `posted_date` from job posting
+- Calculate `days_old`
+- Detect `is_repost` if possible
+
+The scoring engine must apply freshness bonuses/penalties per config:
+- Fresh jobs (≤2 days) → bonus
+- Stale jobs (>7 days) → penalty
+- Very stale jobs (>14 days) → larger penalty
+
+### 7. Role Fit Scoring - Config-Driven
+
+**Role fit scoring is appropriate** but MUST be listed and quantified in the configs. The AI extracts boolean signals:
+- `is_backend`, `is_frontend`, `is_fullstack`
+- `is_ml_ai`, `is_devops_sre`, `is_data`
+- `requires_clearance`, `is_consulting`
+
+The scoring engine applies bonuses/penalties from `scoring-config.roleFit`:
+- `backendBonus`, `mlAiBonus`, `devopsSreBonus`
+- `frontendPenalty`, `consultingPenalty`, `clearancePenalty`
+
+### 8. Pipeline - Single-Task Execution REQUIRED
+
+**The pipeline MUST be converted to single-task execution** to reduce database queries and maintain in-memory data through the entire task. The current respawning pipeline:
+- Creates multiple queue items per job
+- Loses in-memory state between stages
+- Causes excessive database writes
+- Is the root cause of job-matches not being created
+
+New pipeline (ALL in single task, in-memory):
+```
+SCRAPE → TITLE_FILTER → COMPANY_LOOKUP → AI_EXTRACTION → SCORING → ANALYSIS → SAVE_MATCH
+```
+
+### 9. Priority Field - REMOVE
+
+**The priority field is useless and will be removed soon.** Do not implement priority calculation or store priority in results.
+
+- ❌ `ScoringResult.priority`
+- ❌ Priority thresholds in config
+- ✅ Only use `passed` boolean and `final_score`
+
+### 10. Job Matches Bug - Final Step Not Executing
+
+**High-scoring jobs are NOT producing job-matches.** This is the final step of job listing analysis when score is above threshold. The bug appears to be in the respawning pipeline where the "save" stage is queued but never processed.
+
+This will be fixed as part of the single-task pipeline conversion (item #8).
+
+---
+
+## Current Implementation Gaps (as of December 2025)
+
+Analysis of current codebase vs. this plan:
+
+### ✅ Completed Items
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| `TitleFilter` | ✅ Created | `filters/title_filter.py` |
+| `ScoringEngine` (basic) | ✅ Created | `scoring/engine.py` |
+| `JobExtractor` (simplified) | ✅ Created | `ai/extraction.py` |
+| `get_title_filter()` | ✅ Working | `config_loader.py` |
+| `get_scoring_config()` | ✅ Working | `config_loader.py` |
+| `strike_filter_engine.py` | ✅ Removed | Only `.removed` backup exists |
+| `timezone_utils.py` | ✅ Removed | File deleted |
+| Deprecated matcher methods | ✅ Removed | `_apply_technology_ranks`, etc. gone |
+| Shared `TitleFilterConfig` type | ✅ Created | `shared/config.types.ts` |
+| Shared `ScoringConfig` type | ✅ Created | `shared/config.types.ts` |
+| Shared `JobExtractionResult` type | ✅ Created | `shared/config.types.ts` |
+| Frontend `TitleFilterTab.tsx` | ✅ Created | FE config pages |
+| Frontend `ScoringConfigTab.tsx` | ✅ Created | FE config pages |
+
+### ❌ Critical Gaps
+
+| Gap | Impact | Fix Required |
+|-----|--------|--------------|
+| **Respawning pipeline** | Job-matches never created | Convert to single-task execution |
+| **Company signals scoring missing** | No company bonuses applied | Add `_score_company_signals()` to engine |
+| **Timezone scoring not working** | India jobs get 95 scores | Fix timezone extraction & penalty calculation |
+| **Freshness scoring missing** | Stale jobs not penalized | Add freshness extraction & scoring |
+| **Role fit scoring missing** | No backend/ML bonuses | Add role fit extraction & scoring |
+
+### ⚠️ Partial Implementations
+
+| Component | Current State | Missing |
+|-----------|---------------|---------|
+| `JobExtractionResult` | Flat structure | Missing: `relocation_required`, `includes_equity`, `is_contract`, `is_management`, `is_lead`, categorized tech stack, role fit signals, freshness |
+| `ScoringEngine` | Basic scoring | Missing: `_score_company_signals()`, `_score_freshness()`, `_score_role_fit()` |
+| `ScoreBreakdown.adjustments` | `List[str]` | Should be `List[{category, reason, points}]` |
+| TypeScript types | `filterResult: Record<string, unknown>` | Should be typed with `TitleFilterResult` + `JobExtractionResult` |
+| Priority field | Still present | Should be removed per clarification #9 |
+
+### 📋 Remaining Work Priority
+
+1. **HIGH: Single-task pipeline** - Fixes job-match creation bug
+2. **HIGH: Timezone scoring** - Fixes India job scoring bug
+3. **HIGH: Company signals** - Major scoring component missing
+4. **MEDIUM: Freshness scoring** - Important for job relevance
+5. **MEDIUM: Role fit scoring** - Enables backend/ML bonuses
+6. **LOW: Structured adjustments** - Better debugging/transparency
+7. **LOW: Remove priority field** - Cleanup
 
 ---
 
@@ -1757,84 +1918,77 @@ Add to `job-finder-BE/server/src/modules/config/`:
 ## Migration Checklist
 
 ### Pre-Migration
-- [ ] Create feature branch from staging
+- [x] Create feature branch from staging
 - [ ] Back up production database
 - [ ] Document current config values (especially prefilter-policy for migration)
 
 ### Phase 1: New Modules
-- [ ] Create `src/job_finder/ai/extraction.py`
-- [ ] Create `src/job_finder/ai/extraction_prompts.py`
-- [ ] Create `src/job_finder/scoring/__init__.py`
-- [ ] Create `src/job_finder/scoring/config.py`
-- [ ] Create `src/job_finder/scoring/engine.py`
-- [ ] Create `src/job_finder/filters/title_filter.py`
-- [ ] Write unit tests for new modules
+- [x] Create `src/job_finder/ai/extraction.py`
+- [x] Create `src/job_finder/ai/extraction_prompts.py`
+- [x] Create `src/job_finder/scoring/__init__.py`
+- [x] Create `src/job_finder/scoring/config.py` (merged into engine.py)
+- [x] Create `src/job_finder/scoring/engine.py`
+- [x] Create `src/job_finder/filters/title_filter.py`
+- [x] Write unit tests for new modules
 
 ### Phase 2: Job Processor
-- [ ] Update `job_processor.py` with new pipeline
-- [ ] Add queue event emissions
-- [ ] Update integration tests
+- [x] Update `job_processor.py` with new pipeline (single-task PipelineContext)
+- [x] Add queue event emissions
+- [x] Update integration tests
 
 ### Phase 3: Config Loader
-- [ ] Add `get_scoring_config()` method
-- [ ] Simplify `get_prefilter_policy()` to title keywords only
-- [ ] Seed default `scoring-config`
+- [x] Add `get_scoring_config()` method
+- [x] Add `get_title_filter()` method
+- [x] Seed default `scoring-config`
 - [ ] Create migration script for existing `prefilter-policy` data
 
 ### Phase 4: Remove Deprecated Code
-- [ ] Delete `src/job_finder/filters/strike_filter_engine.py`
-- [ ] Delete `src/job_finder/utils/timezone_utils.py`
-- [ ] Remove `_apply_technology_ranks()` from `matcher.py`
-- [ ] Remove `_apply_experience_strike()` from `matcher.py`
-- [ ] Remove `_detect_work_arrangement()` from `matcher.py`
-- [ ] Remove `_calculate_location_penalty()` from `matcher.py`
-- [ ] Remove `_calculate_adjusted_score()` from `matcher.py`
-- [ ] Remove `calculate_freshness_adjustment()` from `date_utils.py`
-- [ ] Update imports in remaining files
-- [ ] Delete deprecated tests
-- [ ] Run full test suite
+- [x] Delete `src/job_finder/filters/strike_filter_engine.py` (only .removed backup exists)
+- [x] Delete `src/job_finder/utils/timezone_utils.py`
+- [x] Remove `_apply_technology_ranks()` from `matcher.py` (already removed)
+- [x] Remove `_apply_experience_strike()` from `matcher.py` (already removed)
+- [x] Remove `_detect_work_arrangement()` from `matcher.py` (already removed)
+- [x] Remove `_calculate_location_penalty()` from `matcher.py` (already removed)
+- [x] Remove `_calculate_adjusted_score()` from `matcher.py` (already removed)
+- [x] Remove `calculate_freshness_adjustment()` from `date_utils.py`
+- [x] Update imports in remaining files
+- [x] Delete deprecated tests
+- [x] Run full test suite (502 tests pass)
 
 ### Phase 5: Shared Types
-- [ ] Simplify `PrefilterPolicy` interface (title keywords only)
-- [ ] Add `ScoringConfig` interface
-- [ ] Add `JobExtractionResult` interface
-- [ ] Add `ScoringResult` interface
-- [ ] Update `JobFinderConfigId` type
-- [ ] Rebuild shared package
+- [x] Add `TitleFilterConfig` interface
+- [x] Add `ScoringConfig` interface
+- [x] Add `JobExtractionResult` interface
+- [x] Add `ScoreAdjustment` interface
+- [x] Add `ScoreBreakdown` interface
+- [x] Update `JobFinderConfigId` type
+- [x] Rebuild shared package
 
 ### Phase 6: API
-- [ ] Add `GET /api/config/scoring-config` endpoint
-- [ ] Add `PUT /api/config/scoring-config` endpoint
-- [ ] Simplify `prefilter-policy` endpoints
+- [x] Add `GET /api/config/scoring-config` endpoint
+- [x] Add `PUT /api/config/scoring-config` endpoint
+- [x] Add `title-filter` endpoints
 - [ ] Add config migration endpoint or script
-- [ ] Update config type guards
-- [ ] Test API changes
+- [x] Update config type guards
+- [x] Test API changes
 
 ### Phase 7: Frontend
-- [ ] SIMPLIFY `PrefilterPolicyTab.tsx` to title keywords only
-  - [ ] Remove Stop List section entirely
-  - [ ] Remove Strike Engine settings
-  - [ ] Remove Hard Rejections (except title keywords)
-  - [ ] Remove Remote Policy
-  - [ ] Remove all strike configurations
-  - [ ] Remove Technology Ranks
-  - [ ] Add Required Keywords list UI
-  - [ ] Add Stop Keywords list UI
-- [ ] CREATE `ScoringConfigTab.tsx` with all scoring sections
-- [ ] UPDATE `MatchPolicyTab.tsx` (move scoring to new tab)
-- [ ] UPDATE `JobDetailsDialog.tsx` (show scoring breakdown)
+- [x] CREATE `TitleFilterTab.tsx`
+- [x] CREATE `ScoringConfigTab.tsx` with all scoring sections
+- [x] UPDATE `JobDetailsDialog.tsx` (show scoring breakdown)
+- [x] UPDATE `MatchBreakdown.tsx` (clean implementation, no legacy support)
 - [ ] Test all config pages
 
 ### Testing
-- [ ] All unit tests pass
-- [ ] Integration tests pass
+- [x] All unit tests pass (502 tests)
+- [x] Integration tests pass
 - [ ] Manual test with real jobs
 - [ ] Test Anthropic jobs specifically (previous false negatives)
 - [ ] Verify scores are reasonable
 - [ ] Verify tech detection works without regex confusion
 
 ### Deployment
-- [ ] Merge to staging
+- [x] Merge to staging (multiple commits pushed)
 - [ ] Deploy staging
 - [ ] Run config migration script
 - [ ] Run test batch

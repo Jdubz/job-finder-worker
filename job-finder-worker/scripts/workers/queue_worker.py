@@ -78,9 +78,7 @@ def main() -> None:
         task_delay = 1
     except Exception:
         # Unexpected errors - log full traceback for debugging
-        logger.exception(
-            "Unexpected error loading queue settings, using default task delay of 1s"
-        )
+        logger.exception("Unexpected error loading queue settings, using default task delay of 1s")
         task_delay = 1
 
     logger.info(

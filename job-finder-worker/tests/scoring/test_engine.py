@@ -8,7 +8,7 @@ from job_finder.ai.extraction import JobExtractionResult
 
 @pytest.fixture
 def default_config():
-    """Return a default scoring configuration."""
+    """Return a complete match-policy configuration (all sections required)."""
     return {
         "minScore": 60,
         "weights": {
@@ -52,6 +52,44 @@ def default_config():
             "maxRequired": 15,
             "overqualifiedPenalty": 5,
         },
+        "freshness": {
+            "freshBonusDays": 2,
+            "freshBonus": 10,
+            "staleThresholdDays": 3,
+            "stalePenalty": -10,
+            "veryStaleDays": 12,
+            "veryStalePenalty": -20,
+            "repostPenalty": -5,
+        },
+        "roleFit": {
+            "backendBonus": 5,
+            "mlAiBonus": 10,
+            "devopsSreBonus": 5,
+            "dataBonus": 5,
+            "securityBonus": 3,
+            "leadBonus": 3,
+            "frontendPenalty": -5,
+            "consultingPenalty": -10,
+            "clearancePenalty": -100,
+            "managementPenalty": -10,
+        },
+        "company": {
+            "preferredCityBonus": 20,
+            "preferredCity": "Portland",
+            "remoteFirstBonus": 15,
+            "aiMlFocusBonus": 10,
+            "largeCompanyBonus": 10,
+            "smallCompanyPenalty": -5,
+            "largeCompanyThreshold": 10000,
+            "smallCompanyThreshold": 100,
+            "startupBonus": 0,
+        },
+        "dealbreakers": {
+            "blockedLocations": [],
+            "locationPenalty": 60,
+            "relocationPenalty": 80,
+            "ambiguousLocationPenalty": 40,
+        },
     }
 
 
@@ -73,7 +111,7 @@ class TestScoringEngine:
 
         assert result.passed is True
         assert result.final_score > 50  # Above neutral
-        assert any("senior" in adj.lower() for adj in result.adjustments)
+        assert any("senior" in adj.reason.lower() for adj in result.adjustments)
 
     def test_rejected_seniority_fails(self, default_config, user_skills):
         """Rejected seniority level causes failure."""
@@ -141,7 +179,7 @@ class TestScoringEngine:
 
         result = engine.score(extraction, "Backend Engineer", "Node Python job")
 
-        assert any("preferred" in adj.lower() for adj in result.adjustments)
+        assert any("preferred" in adj.reason.lower() for adj in result.adjustments)
 
     def test_disliked_tech_penalty(self, default_config, user_skills):
         """Disliked technologies deduct points."""
@@ -153,7 +191,7 @@ class TestScoringEngine:
 
         result = engine.score(extraction, "Frontend Engineer", "Angular job")
 
-        assert any("angular" in adj.lower() for adj in result.adjustments)
+        assert any("angular" in adj.reason.lower() for adj in result.adjustments)
 
     def test_below_min_score_fails(self, default_config, user_skills):
         """Score below minScore causes failure."""
@@ -195,6 +233,6 @@ class TestScoringEngine:
         result = engine.score(extraction, "Engineer", "Hybrid position")
 
         # Should have timezone penalty (4h * 3 per hour = -12 points)
-        assert any("timezone" in adj.lower() for adj in result.adjustments)
+        assert any("timezone" in adj.reason.lower() for adj in result.adjustments)
         # Note: job may still fail overall due to other factors (no salary info, etc.)
         # but it should NOT be a hard reject for timezone since within max

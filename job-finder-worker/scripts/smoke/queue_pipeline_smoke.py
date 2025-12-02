@@ -35,17 +35,13 @@ class SmokeTestRunner:
     def __post_init__(self) -> None:
         self.fixtures_path = Path(self.fixtures_dir)
         self.output_path = Path(self.output_dir)
-        self.database_name = (
-            "portfolio" if self.env == "production" else "portfolio-staging"
-        )
+        self.database_name = "portfolio" if self.env == "production" else "portfolio-staging"
 
     # ------------------------------------------------------------------ loading
     def load_fixtures(self) -> List[Dict[str, Any]]:
         """Load all valid JSON fixtures from ``fixtures_dir``."""
         if not self.fixtures_path.exists():
-            raise FileNotFoundError(
-                f"Fixtures directory not found: {self.fixtures_path}"
-            )
+            raise FileNotFoundError(f"Fixtures directory not found: {self.fixtures_path}")
 
         fixtures: List[Dict[str, Any]] = []
 
@@ -138,9 +134,7 @@ class SmokeTestRunner:
         json_path = self.output_path / f"smoke-report-{timestamp}.json"
 
         total_jobs = len(self.submitted_jobs)
-        failed = [
-            r for r in results if r.get("status") not in {"SUCCESS", "COMPLETED", "OK"}
-        ]
+        failed = [r for r in results if r.get("status") not in {"SUCCESS", "COMPLETED", "OK"}]
         overall_passed = validation.get("passed", False) and not failed
         status_label = "✅ PASSED" if overall_passed else "❌ FAILED"
 

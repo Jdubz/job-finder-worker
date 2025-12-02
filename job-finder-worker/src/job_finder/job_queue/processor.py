@@ -16,6 +16,7 @@ from job_finder.exceptions import QueueProcessingError
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
+from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.processors import (
     CompanyProcessor,
     JobProcessor,
@@ -45,6 +46,7 @@ class QueueItemProcessor:
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
         ai_matcher: AIJobMatcher,
+        notifier: Optional[QueueEventNotifier] = None,
     ):
         """
         Initialize processor with specialized processors for each domain.
@@ -60,6 +62,7 @@ class QueueItemProcessor:
             sources_manager: Job sources manager
             company_info_fetcher: Company info scraper
             ai_matcher: AI job matcher
+            notifier: Optional event notifier for WebSocket progress updates
         """
         self.queue_manager = queue_manager
         self.config_loader = config_loader
@@ -69,6 +72,7 @@ class QueueItemProcessor:
         self.sources_manager = sources_manager
         self.company_info_fetcher = company_info_fetcher
         self.ai_matcher = ai_matcher
+        self.notifier = notifier
 
         # Initialize specialized processors with only their needed dependencies
         self.job_processor = JobProcessor(
@@ -80,6 +84,7 @@ class QueueItemProcessor:
             sources_manager=sources_manager,
             company_info_fetcher=company_info_fetcher,
             ai_matcher=ai_matcher,
+            notifier=notifier,
         )
 
         self.company_processor = CompanyProcessor(
