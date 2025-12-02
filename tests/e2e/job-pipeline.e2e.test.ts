@@ -109,29 +109,20 @@ async function initFrontendClients() {
     return originalRequest.call(this, endpoint, { ...options, headers })
   })
 
-  const [
-    { QueueClient },
-    { JobMatchesClient },
-    { ContentItemsClient },
-    { ConfigClient },
-    { PromptsClient },
-    { GeneratorDocumentsClient },
-  ] = await Promise.all([
-    import("../../job-finder-FE/src/api/queue-client"),
-    import("../../job-finder-FE/src/api/job-matches-client"),
-    import("../../job-finder-FE/src/api/content-items-client"),
-    import("../../job-finder-FE/src/api/config-client"),
-    import("../../job-finder-FE/src/api/prompts-client"),
-    import("../../job-finder-FE/src/api/generator-documents-client"),
-  ])
+  const [{ QueueClient }, { JobMatchesClient }, { ContentItemsClient }, { ConfigClient }, { PromptsClient }] =
+    await Promise.all([
+      import("../../job-finder-FE/src/api/queue-client"),
+      import("../../job-finder-FE/src/api/job-matches-client"),
+      import("../../job-finder-FE/src/api/content-items-client"),
+      import("../../job-finder-FE/src/api/config-client"),
+      import("../../job-finder-FE/src/api/prompts-client"),
+    ])
 
   const queueClient = new QueueClient(server.apiBase)
   const jobMatchesClient = new JobMatchesClient(server.apiBase)
   const contentItemsClient = new ContentItemsClient(server.apiBase)
   const configClient = new ConfigClient(server.apiBase)
   const promptsClient = new PromptsClient(server.apiBase)
-  const generatorDocumentsClient = new GeneratorDocumentsClient(server.apiBase)
-
   return {
     server,
     queueClient,
@@ -139,7 +130,6 @@ async function initFrontendClients() {
     contentItemsClient,
     configClient,
     promptsClient,
-    generatorDocumentsClient,
   }
 }
 
@@ -362,9 +352,9 @@ describe("Configuration discovery", () => {
   })
 })
 
-describe("Prompts & generator documents", () => {
-  it("saves custom prompts and generator artifacts", async () => {
-    const { promptsClient, generatorDocumentsClient } = await initFrontendClients()
+describe("Prompts", () => {
+  it("saves custom prompts and resets to defaults", async () => {
+    const { promptsClient } = await initFrontendClients()
     const userEmail = "ai-admin@jobfinder.dev"
 
     const existingPrompts = await promptsClient.getPrompts()
@@ -384,21 +374,5 @@ describe("Prompts & generator documents", () => {
     await promptsClient.resetToDefaults(userEmail)
     const resetPrompts = await promptsClient.getPrompts()
     expect(resetPrompts.resumeGeneration).toBe(DEFAULT_PROMPTS.resumeGeneration)
-
-    const docId = `personal-info-${Date.now()}`
-    await generatorDocumentsClient.upsertDocument(docId, {
-      documentType: "personal-info",
-      data: {
-        summary: "Generated via e2e",
-        headline: "Reliable automation",
-      },
-    })
-
-    const docs = await generatorDocumentsClient.listDocuments("personal-info")
-    expect(docs.map((doc) => doc.id)).toContain(docId)
-
-    await generatorDocumentsClient.deleteDocument(docId)
-    const afterDelete = await generatorDocumentsClient.listDocuments("personal-info")
-    expect(afterDelete.find((doc) => doc.id === docId)).toBeUndefined()
   })
 })

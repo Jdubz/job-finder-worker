@@ -12,7 +12,7 @@ src/__tests__/
 ├── api/
 │   └── generator-client.test.ts # API client tests
 ├── hooks/
-│   └── useGeneratorDocuments.test.ts # Custom hook tests
+│   └── (removed) useGeneratorDocuments.test.ts
 ├── components/
 │   ├── DocumentHistoryList.test.tsx # Component tests
 │   └── GenerationProgress.test.tsx   # Component tests
@@ -28,7 +28,7 @@ src/__tests__/
 ### 1. Unit Tests
 
 - **API Client Tests**: Test generator client API calls, error handling, and request/response validation
-- **Hook Tests**: Test custom React hooks like `useGeneratorDocuments`
+- **Hook Tests**: Test custom React hooks (e.g., `useJobMatches`)
 - **Component Tests**: Test individual components like `DocumentHistoryList` and `GenerationProgress`
 - **Page Tests**: Test the main `DocumentBuilderPage` component
 
@@ -58,7 +58,7 @@ npm run test:integration
 # Run tests for specific components
 npm run test -- DocumentBuilderPage
 npm run test -- generator-client
-npm run test -- useGeneratorDocuments
+npm run test -- useJobMatches
 ```
 
 ### Run Tests with Coverage

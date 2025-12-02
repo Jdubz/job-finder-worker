@@ -141,17 +141,6 @@ CREATE TABLE IF NOT EXISTS job_matches (
 CREATE INDEX IF NOT EXISTS idx_job_matches_company ON job_matches (company_name);
 CREATE INDEX IF NOT EXISTS idx_job_matches_priority ON job_matches (application_priority);
 
--- Generator documents (requests/responses, personal info, etc.)
-CREATE TABLE IF NOT EXISTS generator_documents (
-  id TEXT PRIMARY KEY,
-  document_type TEXT NOT NULL,
-  payload_json TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_generator_type ON generator_documents (document_type);
-
 -- Queue + worker configuration (maps job-finder-config IDs to JSON blobs)
 CREATE TABLE IF NOT EXISTS job_finder_config (
   id TEXT PRIMARY KEY,

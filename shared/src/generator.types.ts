@@ -13,14 +13,6 @@ import type { AIProviderType } from "./config.types"
 // Re-export for backwards compatibility in generator contexts
 export type { AIProviderType } from "./config.types"
 
-export interface GeneratorDocumentRecord {
-  id: string
-  documentType: string
-  payload: Record<string, unknown>
-  createdAt: string
-  updatedAt: string
-}
-
 /**
  * Generation type - what to generate
  */
