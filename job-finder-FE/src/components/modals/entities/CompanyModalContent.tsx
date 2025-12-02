@@ -31,6 +31,34 @@ const sourceStatusColors: Record<JobSourceStatus, string> = {
   error: "bg-red-100 text-red-800",
 }
 
+function formatDate(date: unknown): string {
+  if (!date) return "—"
+
+  let d: Date
+  if (date instanceof Date) {
+    d = date
+  } else if (typeof date === "string" || typeof date === "number") {
+    d = new Date(date)
+  } else if (
+    typeof date === "object" &&
+    date !== null &&
+    "toDate" in date &&
+    typeof (date as { toDate: () => Date }).toDate === "function"
+  ) {
+    d = (date as { toDate: () => Date }).toDate()
+  } else {
+    return "—"
+  }
+
+  if (Number.isNaN(d.getTime())) return "—"
+
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
+}
+
 function getDataStatus(company: Company): { label: string; color: string } {
   const aboutLength = (company.about || "").length
   const cultureLength = (company.culture || "").length
@@ -110,7 +138,7 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
 
   const { listings, loading: listingsLoading } = useJobListings({
     companyId: company?.id ?? companyId ?? undefined,
-    limit: 10,
+    limit: hasCompanyId ? 10 : 0,
     sortBy: "updated",
     sortOrder: "desc",
   })
@@ -321,11 +349,11 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
       <div className="grid grid-cols-2 gap-4 pt-2 border-t">
         <div>
           <Label className="text-muted-foreground text-xs uppercase tracking-wide">Created</Label>
-          <p className="mt-1 text-sm text-muted-foreground">{safeText(company.createdAt)}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{formatDate(company.createdAt)}</p>
         </div>
         <div>
           <Label className="text-muted-foreground text-xs uppercase tracking-wide">Updated</Label>
-          <p className="mt-1 text-sm text-muted-foreground">{safeText(company.updatedAt)}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{formatDate(company.updatedAt)}</p>
         </div>
       </div>
 

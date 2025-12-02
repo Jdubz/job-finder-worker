@@ -130,12 +130,13 @@ export function CompaniesPage() {
       await deleteCompany(id)
     } catch (err) {
       console.error("Failed to delete company:", err)
+      throw err
     }
   }
 
   const handleReanalyze = async (company: Company) => {
     if (!company.id) {
-      return
+      throw new Error("Company ID is missing, cannot re-analyze.")
     }
     try {
       await submitCompany({
