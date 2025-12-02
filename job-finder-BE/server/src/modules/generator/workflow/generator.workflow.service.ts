@@ -255,6 +255,11 @@ export class GeneratorWorkflowService {
     const pdf = await this.pdfService.generateCoverLetterPDF(coverLetter, {
       name: personalInfo.name,
       email: personalInfo.email,
+      location: personalInfo.location,
+      phone: personalInfo.phone,
+      website: personalInfo.website,
+      linkedin: personalInfo.linkedin,
+      github: personalInfo.github,
       accentColor: personalInfo.accentColor,
       date: payload.date,
       logo: personalInfo.logo

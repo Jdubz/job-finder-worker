@@ -11,3 +11,5 @@ coverage
 
 # Docker dev environment (cloned DB, artifacts, logs)
 .dev/
+# Local scratch / generated PDFs
+tmp/
