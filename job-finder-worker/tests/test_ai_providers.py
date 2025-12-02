@@ -148,15 +148,12 @@ class TestCreateProviderFromConfig:
         with pytest.raises(AIProviderError, match="Unsupported provider/interface"):
             create_provider_from_config(ai_settings)
 
-    def test_uses_defaults_when_selected_missing(self):
-        """Should use default values when selected config is missing."""
+    def test_raises_error_when_provider_not_configured(self):
+        """Should raise error when provider is not configured (no silent defaults)."""
         ai_settings = {}  # Empty config
 
-        provider = create_provider_from_config(ai_settings)
-
-        # Defaults to codex/cli/gpt-5-codex
-        assert isinstance(provider, CodexCLIProvider)
-        assert provider.model == "gpt-5-codex"
+        with pytest.raises(AIProviderError, match="AI provider not configured"):
+            create_provider_from_config(ai_settings)
 
     def test_uses_defaults_for_partial_selected(self):
         """Should use defaults for missing fields in selected config."""

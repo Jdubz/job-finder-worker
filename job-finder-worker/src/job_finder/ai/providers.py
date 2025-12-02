@@ -16,6 +16,8 @@ from openai import OpenAI
 
 from job_finder.exceptions import AIProviderError
 
+logger = logging.getLogger(__name__)
+
 
 class AIProvider(ABC):
     """Abstract base class for AI providers."""
@@ -406,12 +408,12 @@ def create_provider_from_config(
     else:
         selected = dict(ai_settings.get("selected") or {})
 
-    # Legacy support: allow top-level provider/model keys
+    # Legacy support: allow top-level provider/model keys (no defaults)
     if not selected and any(k in ai_settings for k in ("provider", "model", "interface")):
         selected = {
-            "provider": ai_settings.get("provider", "codex"),
+            "provider": ai_settings.get("provider"),
             "interface": ai_settings.get("interface"),
-            "model": ai_settings.get("model", "gpt-5-codex"),
+            "model": ai_settings.get("model"),
         }
 
     # Apply per-task overrides if task is specified
@@ -439,13 +441,34 @@ def create_provider_from_config(
             if provider_changed and not interface_explicitly_set:
                 selected.pop("interface", None)
 
-    provider_type = selected.get("provider", "codex")
+    provider_type = selected.get("provider")
     interface_type = selected.get("interface")
-    model = selected.get("model", "gpt-5-codex")
+    model = selected.get("model")
+
+    # Require explicit provider - no silent defaults
+    if not provider_type:
+        raise AIProviderError(
+            f"AI provider not configured. "
+            f"Set ai-settings.{section}.selected.provider in the database. "
+            f"Supported providers: codex, claude, openai, gemini"
+        )
 
     # Infer interface if not set: CLI for codex/gemini, API for others
     if not interface_type:
         interface_type = "cli" if provider_type in ("codex", "gemini") else "api"
+
+    # Default model per provider if not specified
+    if not model:
+        model_defaults = {
+            "codex": "gpt-5-codex",
+            "claude": "claude-sonnet-4-5-20250929",
+            "openai": "gpt-4o",
+            "gemini": "gemini-2.0-flash",
+        }
+        model = model_defaults.get(provider_type, "")
+
+    task_info = f" (task={task})" if task else ""
+    logger.info(f"AI provider selected: {provider_type}/{interface_type} model={model}{task_info}")
 
     # Check if the requested interface has available credentials
     if not _check_api_key_available(provider_type, interface_type):

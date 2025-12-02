@@ -3,15 +3,16 @@
 Pre-filtering behavior:
   Jobs are pre-filtered using TitleFilter BEFORE being added to the queue.
   This uses simple keyword-based title matching to filter out irrelevant jobs
-  (sales roles, wrong job types) from consuming queue resources.
+  (sales roles, wrong job types) from consuming queue and storage resources.
 
-  Only jobs that pass the title filter are queued for AI analysis.
+  Jobs that don't pass the title filter are IGNORED ENTIRELY - they are not
+  stored in the database and not added to the queue.
 
 Job Listings Integration:
-  Jobs that pass pre-filter are stored in the job_listings table for deduplication.
-  This table tracks ALL discovered jobs, not just those that pass AI analysis.
-  The job_matches table only stores jobs that pass AI analysis, referencing
-  job_listings via foreign key.
+  Only jobs that pass pre-filter are stored in the job_listings table.
+  This table tracks jobs that passed initial screening, for deduplication
+  and pipeline tracking. The job_matches table stores jobs that pass AI
+  analysis, referencing job_listings via foreign key.
 """
 
 import logging
@@ -169,9 +170,9 @@ class ScraperIntake:
             - Remote policy violations
 
         Job Listings:
-            Jobs that pass pre-filter are stored in job_listings table with
-            status='pending'. Jobs rejected by pre-filter are stored with
-            status='filtered' and the filter result.
+            Only jobs that pass pre-filter are stored in job_listings table
+            with status='pending'. Jobs rejected by pre-filter are ignored
+            entirely - they are not stored to avoid wasting resources.
 
         Args:
             jobs: List of job dictionaries from scraper
@@ -275,16 +276,7 @@ class ScraperIntake:
                         reason_key = reason.split(":")[0].strip() if ":" in reason else reason
                         prefilter_reasons[reason_key] = prefilter_reasons.get(reason_key, 0) + 1
                         logger.debug(f"Pre-filtered job: {title} - {reason}")
-
-                        # Store filtered job in job_listings with status='filtered'
-                        self._store_job_listing(
-                            job=job_payload,
-                            normalized_url=normalized_url,
-                            source_id=source_id,
-                            company_id=company_id,
-                            filter_result=filter_result.to_dict(),
-                            status="filtered",
-                        )
+                        # Filtered jobs are ignored entirely - no storage, no queue
                         continue
 
                 # Job passed pre-filter - store in job_listings with status='pending'
