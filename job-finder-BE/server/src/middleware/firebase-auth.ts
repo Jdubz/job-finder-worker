@@ -61,7 +61,7 @@ function extractBearerToken(req: Request): string | null {
  */
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
   // Machine key bypass (for internal cron or other trusted automation)
-  const cronKey = req.headers['x-cron-key'] || req.headers['x-api-key'] || extractBearerToken(req)
+  const cronKey = req.headers['x-cron-key'] || req.headers['x-api-key']
   if (CRON_API_KEY && typeof cronKey === 'string' && cronKey === CRON_API_KEY) {
     const user: AuthenticatedUser = {
       uid: 'cron-service',

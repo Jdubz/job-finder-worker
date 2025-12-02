@@ -21,7 +21,7 @@ const EnvSchema = z.object({
   WORKER_WS_TOKEN: z.string().optional(),
 
   // Cron / scheduling
-  CRON_ENABLED: z.coerce.boolean().default(true),
+  CRON_ENABLED: z.coerce.boolean().default(false),
   CRON_SCRAPE_EXPRESSION: z.string().default('0 */6 * * *'),
   CRON_MAINTENANCE_EXPRESSION: z.string().default('0 3 * * *'),
   CRON_LOGROTATE_EXPRESSION: z.string().default('10 3 * * *'),

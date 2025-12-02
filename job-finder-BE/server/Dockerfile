@@ -47,7 +47,8 @@ COPY --from=base /app/dist ./dist
 
 # Copy entrypoint script
 COPY job-finder-BE/server/docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && chown -R node:node /app
 
 # Entrypoint fixes volume permissions then drops to node user
 ENTRYPOINT ["docker-entrypoint.sh"]
