@@ -242,7 +242,7 @@ export function JobApplicationsPage() {
               <CardTitle>Job Matches</CardTitle>
               <CardDescription>Click on a match to view details</CardDescription>
             </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
