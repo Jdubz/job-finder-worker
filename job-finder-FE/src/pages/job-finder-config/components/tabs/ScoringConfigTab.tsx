@@ -41,7 +41,7 @@ const mapConfigToForm = (config?: ScoringConfig): ScoringConfigFormValues => {
   return {
     ...base,
     ...(config ?? {}),
-    minScore: config?.minScore ?? base.minScore ?? 0,
+    minScore: config?.minScore ?? base.minScore,
     weights: { ...base.weights, ...(config?.weights ?? {}) },
     seniority: { ...base.seniority, ...(config?.seniority ?? {}) },
     location: { ...base.location, ...(config?.location ?? {}) },
