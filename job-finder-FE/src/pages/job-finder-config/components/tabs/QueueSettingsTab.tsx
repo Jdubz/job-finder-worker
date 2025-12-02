@@ -87,6 +87,94 @@ export function QueueSettingsTab({
           </p>
         </div>
       </TabCard>
+
+      <TabCard
+        title="Scrape Schedule Settings"
+        description="Values used by the API cron when enqueuing scrape jobs. All fields are required to avoid silent defaults. Use 0 or leave blank for 'no limit'."
+        hasChanges={hasQueueChanges}
+        isSaving={isSaving}
+        onSave={handleSaveQueueSettings}
+        onReset={resetQueue}
+      >
+        <div className="space-y-2">
+          <Label htmlFor="targetMatches">Target Matches</Label>
+          <Input
+            id="targetMatches"
+            type="number"
+            min="0"
+            value={queueSettings.scrapeConfig?.target_matches ?? ""}
+            onChange={(e) =>
+              setQueueSettings({
+                scrapeConfig: {
+                  ...queueSettings.scrapeConfig,
+                  target_matches: Math.max(0, parseInt(e.target.value) || 0),
+                },
+              })
+            }
+          />
+          <p className="text-xs text-muted-foreground">Stop after N matches; 0 means no limit.</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="maxSources">Max Sources</Label>
+          <Input
+            id="maxSources"
+            type="number"
+            min="0"
+            value={queueSettings.scrapeConfig?.max_sources ?? ""}
+            onChange={(e) =>
+              setQueueSettings({
+                scrapeConfig: {
+                  ...queueSettings.scrapeConfig,
+                  max_sources: Math.max(0, parseInt(e.target.value) || 0),
+                },
+              })
+            }
+          />
+          <p className="text-xs text-muted-foreground">Limit number of sources per run; 0 means all.</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="minMatchScore">Minimum Match Score</Label>
+          <Input
+            id="minMatchScore"
+            type="number"
+            min="0"
+            max="100"
+            value={queueSettings.scrapeConfig?.min_match_score ?? ""}
+            onChange={(e) =>
+              setQueueSettings({
+                scrapeConfig: {
+                  ...queueSettings.scrapeConfig,
+                  min_match_score: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)),
+                },
+              })
+            }
+          />
+          <p className="text-xs text-muted-foreground">Filter out matches below this score; 0 means no filter.</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="sourceIds">Source IDs (comma-separated)</Label>
+          <Input
+            id="sourceIds"
+            type="text"
+            value={queueSettings.scrapeConfig?.source_ids?.join(", ") ?? ""}
+            onChange={(e) =>
+              setQueueSettings({
+                scrapeConfig: {
+                  ...queueSettings.scrapeConfig,
+                  source_ids: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                },
+              })
+            }
+          />
+          <p className="text-xs text-muted-foreground">Optional whitelist of source IDs. Leave blank for rotation across all.</p>
+        </div>
+      </TabCard>
     </TabsContent>
   )
 }
