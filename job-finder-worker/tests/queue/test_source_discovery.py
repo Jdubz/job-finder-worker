@@ -283,6 +283,44 @@ class TestSourceDiscoveryFailure:
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    def test_disables_on_bot_protection(
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+    ):
+        """If bot protection blocks discovery, create a disabled source with notes."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = (None, {"error": "bot_protection"})
+        mock_discovery_class.return_value = mock_discovery
+
+        item = make_discovery_item(url="https://blocked.example.com/careers")
+        source_processor.process_source_discovery(item)
+
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["status"] == SourceStatus.DISABLED
+        assert create_kwargs["config"]["disabled_notes"] == "bot_protection"
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        assert status_call[0][1] == QueueStatus.SUCCESS
+
+    @patch("job_finder.ai.providers.create_provider_from_config")
+    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    def test_disables_on_dns_error(
+        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+    ):
+        """If the host cannot be resolved, create a disabled source with notes."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = (None, {"error": "dns_error"})
+        mock_discovery_class.return_value = mock_discovery
+
+        item = make_discovery_item(url="https://no-such-host.invalid/jobs")
+        source_processor.process_source_discovery(item)
+
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["status"] == SourceStatus.DISABLED
+        assert create_kwargs["config"]["disabled_notes"] == "dns_error"
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        assert status_call[0][1] == QueueStatus.SUCCESS
+
+    @patch("job_finder.ai.providers.create_provider_from_config")
+    @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_handles_discovery_exception(
         self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
     ):

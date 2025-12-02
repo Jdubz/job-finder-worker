@@ -70,8 +70,8 @@ class SourceDiscovery:
 
             # Step 1: Detect source type and fetch sample
             source_type, sample = self._detect_and_fetch(url)
-            if source_type == "auth_required" and not sample:
-                fetch_meta = {"success": False, "error": "auth_required"}
+            if source_type in {"auth_required", "bot_protection", "dns_error", "fetch_error"} and not sample:
+                fetch_meta = {"success": False, "error": source_type}
 
             if not sample:
                 logger.warning(f"Could not fetch content from {url}")
@@ -247,8 +247,23 @@ class SourceDiscovery:
             if status in (401, 403):
                 logger.error(f"Auth-required fetching {url}: {e}")
                 return "auth_required", None
+            if status == 429:
+                logger.error(f"Bot protection (429) fetching {url}: {e}")
+                return "bot_protection", None
+            message = str(e).lower()
+            if any(
+                token in message
+                for token in [
+                    "name or service not known",
+                    "temporary failure in name resolution",
+                    "failed to resolve",
+                    "dns",
+                ]
+            ):
+                logger.error(f"DNS resolution failed for {url}: {e}")
+                return "dns_error", None
             logger.error(f"Error fetching {url}: {e}")
-            return "unknown", None
+            return "fetch_error", None
 
     def _generate_config(self, url: str, source_type: str, sample: str) -> Optional[Dict[str, Any]]:
         """
