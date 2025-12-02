@@ -141,6 +141,73 @@ async function fetchImageAsBase64(
 export class PdfMakeService {
   constructor(private readonly log: Logger = rootLogger) {}
 
+  /**
+   * Build a single contact cell (icon + label) with consistent sizing/color across resume/cover letter.
+   */
+  private buildContactCell(
+    iconKey: keyof typeof CONTACT_ICONS,
+    label: string,
+    options?: { link?: string; iconColor?: string; linkColor?: string }
+  ): Content {
+    const iconColor = options?.iconColor ?? '#6B7280'
+    const linkColor = options?.linkColor ?? '#2563EB'
+    return {
+      columns: [
+        {
+          svg: CONTACT_ICONS[iconKey].replace(/stroke="currentColor"/g, `stroke="${iconColor}"`),
+          fit: [12, 12],
+          margin: [0, 0.5, 6, 0],
+          alignment: 'center'
+        },
+        {
+          text: label,
+          link: options?.link,
+          color: options?.link ? linkColor : '#1F2937',
+          fontSize: 9,
+          style: 'contactChip',
+          margin: [0, 0.5, 0, 0]
+        }
+      ],
+      columnGap: 6,
+      alignment: 'center',
+      margin: [2, 1, 2, 1]
+    }
+  }
+
+  /**
+   * Build a contact row with bullet separators.
+   */
+  private buildContactRow(items: Content[], margin: [number, number, number, number] = [0, 8, 0, 2]): Content | null {
+    if (items.length === 0) return null
+
+    const separator: Content = {
+      text: '•',
+      fontSize: 10,
+      color: '#CBD5E1',
+      alignment: 'center',
+      margin: [6, 0.5, 6, 0]
+    }
+
+    const cells: Content[] = items.flatMap((item, index) => (index > 0 ? [separator, item] : [item]))
+
+    return {
+      table: {
+        widths: cells.map(() => 'auto'),
+        body: [cells]
+      },
+      layout: {
+        hLineWidth: () => 0,
+        vLineWidth: () => 0,
+        paddingLeft: () => 0,
+        paddingRight: () => 0,
+        paddingTop: () => 2,
+        paddingBottom: () => 2
+      },
+      alignment: 'center' as const,
+      margin
+    }
+  }
+
   async generateResumePDF(
     content: ResumeContent,
     _style = 'modern',
@@ -260,87 +327,33 @@ export class PdfMakeService {
     const github = personalInfo?.github || content.personalInfo.contact.github
     const phone = (personalInfo as any)?.phone || (content.personalInfo as any)?.contact?.phone
 
-    const buildContactCell = (iconKey: keyof typeof CONTACT_ICONS, label: string, link?: string): Content => ({
-      columns: [
-        {
-          svg: CONTACT_ICONS[iconKey].replace(/stroke="currentColor"/g, `stroke="${iconColor}"`),
-          fit: [12, 12],
-          margin: [0, 0.5, 6, 0],
-          alignment: 'center'
-        },
-        {
-          text: label,
-          link,
-          color: link ? linkColor : '#1F2937',
-          fontSize: 9,
-          style: 'contactChip',
-          margin: [0, 0.5, 0, 0]
-        }
-      ],
-      columnGap: 6,
-      alignment: 'center',
-      margin: [2, 1, 2, 1]
-    })
-
     // Build contact items with generous breathing room and consistent alignment
     const contactItems: Content[] = []
 
     if (email) {
-      contactItems.push(buildContactCell('email', email, `mailto:${email}`))
+      contactItems.push(this.buildContactCell('email', email, { link: `mailto:${email}`, iconColor, linkColor }))
     }
     if (phone) {
-      contactItems.push(buildContactCell('phone', phone))
+      contactItems.push(this.buildContactCell('phone', phone, { iconColor, linkColor }))
     }
     if (location) {
-      contactItems.push(buildContactCell('location', location))
+      contactItems.push(this.buildContactCell('location', location, { iconColor, linkColor }))
     }
     if (website) {
       const websiteUrl = website.startsWith('http') ? website : `https://${website}`
-      contactItems.push(buildContactCell('website', 'Portfolio', websiteUrl))
+      contactItems.push(this.buildContactCell('website', 'Portfolio', { link: websiteUrl, iconColor, linkColor }))
     }
     if (linkedin) {
       const linkedinUrl = linkedin.startsWith('http') ? linkedin : `https://${linkedin}`
-      contactItems.push(buildContactCell('linkedin', 'LinkedIn', linkedinUrl))
+      contactItems.push(this.buildContactCell('linkedin', 'LinkedIn', { link: linkedinUrl, iconColor, linkColor }))
     }
     if (github) {
       const githubUrl = github.startsWith('http') ? github : `https://${github}`
-      contactItems.push(buildContactCell('github', 'GitHub', githubUrl))
+      contactItems.push(this.buildContactCell('github', 'GitHub', { link: githubUrl, iconColor, linkColor }))
     }
 
     // Build contact row with separators and a table layout to keep icons centered
-    const contactRowCells: Content[] = []
-    contactItems.forEach((item, index) => {
-      if (index > 0) {
-        contactRowCells.push({
-          text: '•',
-          fontSize: 10,
-          color: '#CBD5E1',
-          alignment: 'center',
-          margin: [6, 0.5, 6, 0]
-        })
-      }
-      contactRowCells.push(item)
-    })
-
-    const contactRow: Content | null =
-      contactRowCells.length > 0
-        ? {
-            table: {
-              widths: contactRowCells.map(() => 'auto'),
-              body: [contactRowCells]
-            },
-            layout: {
-              hLineWidth: () => 0,
-              vLineWidth: () => 0,
-              paddingLeft: () => 0,
-              paddingRight: () => 0,
-              paddingTop: () => 2,
-              paddingBottom: () => 2
-            },
-            alignment: 'center' as const,
-            margin: [0, 8, 0, 2]
-          }
-        : null
+    const contactRow = this.buildContactRow(contactItems, [0, 8, 0, 2])
 
     // Build header with optional avatar
     const headerContent: Content[] = []
@@ -684,78 +697,25 @@ export class PdfMakeService {
 
     const iconColor = '#6B7280'
     const linkColor = '#2563EB'
-    const buildContactCell = (iconKey: keyof typeof CONTACT_ICONS, label: string, link?: string): Content => ({
-      columns: [
-        {
-          svg: CONTACT_ICONS[iconKey].replace(/stroke="currentColor"/g, `stroke="${iconColor}"`),
-          fit: [12, 12],
-          margin: [0, 0.5, 6, 0],
-          alignment: 'center'
-        },
-        {
-          text: label,
-          link,
-          color: link ? linkColor : '#1F2937',
-          fontSize: 9,
-          style: 'contactChip',
-          margin: [0, 0.5, 0, 0]
-        }
-      ],
-      columnGap: 6,
-      alignment: 'center',
-      margin: [2, 1, 2, 1]
-    })
-
     const contactItems: Content[] = []
-    if (options.email) contactItems.push(buildContactCell('email', options.email, `mailto:${options.email}`))
-    if (options.phone) contactItems.push(buildContactCell('phone', options.phone))
-    if (options.location) contactItems.push(buildContactCell('location', options.location))
+    if (options.email)
+      contactItems.push(this.buildContactCell('email', options.email, { link: `mailto:${options.email}`, iconColor, linkColor }))
+    if (options.phone) contactItems.push(this.buildContactCell('phone', options.phone, { iconColor, linkColor }))
+    if (options.location) contactItems.push(this.buildContactCell('location', options.location, { iconColor, linkColor }))
     if (options.website) {
       const url = options.website.startsWith('http') ? options.website : `https://${options.website}`
-      contactItems.push(buildContactCell('website', 'Portfolio', url))
+      contactItems.push(this.buildContactCell('website', 'Portfolio', { link: url, iconColor, linkColor }))
     }
     if (options.linkedin) {
       const url = options.linkedin.startsWith('http') ? options.linkedin : `https://${options.linkedin}`
-      contactItems.push(buildContactCell('linkedin', 'LinkedIn', url))
+      contactItems.push(this.buildContactCell('linkedin', 'LinkedIn', { link: url, iconColor, linkColor }))
     }
     if (options.github) {
       const url = options.github.startsWith('http') ? options.github : `https://${options.github}`
-      contactItems.push(buildContactCell('github', 'GitHub', url))
+      contactItems.push(this.buildContactCell('github', 'GitHub', { link: url, iconColor, linkColor }))
     }
 
-    let contactRow: Content | null = null
-    if (contactItems.length > 0) {
-      const contactRowCells: Content[] = []
-      contactItems.forEach((item, index) => {
-        if (index > 0) {
-          contactRowCells.push({
-            text: '•',
-            fontSize: 10,
-            color: '#CBD5E1',
-            alignment: 'center',
-            margin: [6, 0.5, 6, 0]
-          })
-        }
-        contactRowCells.push(item)
-      })
-
-      contactRow = {
-        table: {
-          widths: contactRowCells.map(() => 'auto'),
-          body: [contactRowCells]
-        },
-        layout: {
-          hLineWidth: () => 0,
-          vLineWidth: () => 0,
-          paddingLeft: () => 0,
-          paddingRight: () => 0,
-          paddingTop: () => 2,
-          paddingBottom: () => 2
-        },
-        alignment: 'center' as const,
-        margin: [0, 6, 0, 10]
-      }
-    }
+    const contactRow = this.buildContactRow(contactItems, [0, 6, 0, 10])
 
     // Build header with optional logo + contact chips to avoid top dead space
     const headerColumns: any[] = []
