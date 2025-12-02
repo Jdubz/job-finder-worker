@@ -347,16 +347,12 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
   if (!isObject(v.roleFit)) return false
   const roleFit = v.roleFit as Record<string, unknown>
   if (
-    typeof roleFit.backendBonus !== "number" ||
-    typeof roleFit.mlAiBonus !== "number" ||
-    typeof roleFit.devopsSreBonus !== "number" ||
-    typeof roleFit.dataBonus !== "number" ||
-    typeof roleFit.securityBonus !== "number" ||
-    typeof roleFit.leadBonus !== "number" ||
-    typeof roleFit.frontendPenalty !== "number" ||
-    typeof roleFit.consultingPenalty !== "number" ||
-    typeof roleFit.clearancePenalty !== "number" ||
-    typeof roleFit.managementPenalty !== "number"
+    !isStringArray(roleFit.preferred) ||
+    !isStringArray(roleFit.acceptable) ||
+    !isStringArray(roleFit.penalized) ||
+    !isStringArray(roleFit.rejected) ||
+    typeof roleFit.preferredBonus !== "number" ||
+    typeof roleFit.penalizedPenalty !== "number"
   ) {
     return false
   }

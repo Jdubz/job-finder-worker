@@ -152,18 +152,14 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
             "veryStalePenalty": -20,
             "repostPenalty": -5,
         },
-        # NEW: Role fit config
+        # NEW: Role fit config (dynamic lists)
         "roleFit": {
-            "backendBonus": 5,
-            "mlAiBonus": 10,
-            "devopsSreBonus": 5,
-            "dataBonus": 5,
-            "securityBonus": 3,
-            "leadBonus": 3,
-            "frontendPenalty": -5,
-            "consultingPenalty": -10,
-            "clearancePenalty": -100,
-            "managementPenalty": -10,
+            "preferred": ["backend", "ml-ai", "devops", "data", "security"],
+            "acceptable": ["fullstack"],
+            "penalized": ["frontend", "consulting"],
+            "rejected": ["clearance-required", "management"],
+            "preferredBonus": 5,
+            "penalizedPenalty": -5,
         },
         # From old match-policy.companyWeights + jobMatch
         "company": {

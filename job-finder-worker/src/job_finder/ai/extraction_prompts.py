@@ -54,15 +54,7 @@ Extract and return this exact JSON structure (use null for unknown values, false
   "isContract": <true if contract/temporary position, false otherwise>,
   "isManagement": <true if people management responsibilities, false otherwise>,
   "isLead": <true if technical lead role, false otherwise>,
-  "isBackend": <true if backend/server-side focus, false otherwise>,
-  "isFrontend": <true if frontend/UI focus, false otherwise>,
-  "isFullstack": <true if full-stack role, false otherwise>,
-  "isDevopsSre": <true if DevOps/SRE/platform focus, false otherwise>,
-  "isMlAi": <true if ML/AI/data science focus, false otherwise>,
-  "isData": <true if data engineering focus, false otherwise>,
-  "isSecurity": <true if security engineering focus, false otherwise>,
-  "requiresClearance": <true if security clearance required, false otherwise>,
-  "isConsulting": <true if consulting/agency role, false otherwise>
+  "roleTypes": ["<role-type-1>", "<role-type-2>", ...]
 }}
 
 Rules:
@@ -107,16 +99,20 @@ Rules:
    - "Posted December 1, 2025" with today {today_str} -> calculate difference
    - If no posted date or unclear, use null
 
-7. Role fit signals - set true ONLY if clearly indicated:
-   - isBackend: server-side, API, database focus
-   - isFrontend: UI, React, CSS, user interface focus
-   - isFullstack: explicitly "full-stack" or both frontend and backend
-   - isDevopsSre: DevOps, SRE, infrastructure, platform engineering
-   - isMlAi: machine learning, AI, data science, ML engineer
-   - isData: data engineering, ETL, data pipelines
-   - isSecurity: security engineer, appsec, infosec
-   - requiresClearance: mentions security clearance, TS/SCI, secret clearance
-   - isConsulting: consulting firm, agency, client-facing delivery
+7. roleTypes - array of role type strings that describe the position. Include ALL that apply:
+   - "backend": server-side, API, database focus
+   - "frontend": UI, React, CSS, user interface focus
+   - "fullstack": explicitly "full-stack" or both frontend and backend
+   - "devops": DevOps, SRE, infrastructure, platform engineering
+   - "ml-ai": machine learning, AI, data science, ML engineer
+   - "data": data engineering, ETL, data pipelines
+   - "security": security engineer, appsec, infosec
+   - "clearance-required": mentions security clearance, TS/SCI, secret clearance
+   - "consulting": consulting firm, agency, client-facing delivery
+   - "mobile": iOS, Android, React Native, Flutter mobile development
+   - "embedded": embedded systems, firmware, IoT
+   - "qa": quality assurance, test engineering, SDET
+   - Use exact lowercase strings as shown above
 
 8. relocationRequired: ONLY true if explicitly states relocation is required. Generic phrases like "headquartered in SF" are NOT requirements.
 
@@ -144,4 +140,4 @@ Title: {title}
 Description: {desc_truncated}
 
 Return:
-{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"isBackend":false,"isFrontend":false,"isFullstack":false,"isDevopsSre":false,"isMlAi":false,"isData":false,"isSecurity":false,"requiresClearance":false,"isConsulting":false}}"""
+{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"roleTypes":["backend","frontend","devops","ml-ai","data","security","consulting","clearance-required"]}}"""

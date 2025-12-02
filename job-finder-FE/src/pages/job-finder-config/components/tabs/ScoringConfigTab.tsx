@@ -76,16 +76,12 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     repostPenalty: values.freshness.repostPenalty,
   },
   roleFit: {
-    backendBonus: values.roleFit.backendBonus,
-    mlAiBonus: values.roleFit.mlAiBonus,
-    devopsSreBonus: values.roleFit.devopsSreBonus,
-    dataBonus: values.roleFit.dataBonus,
-    securityBonus: values.roleFit.securityBonus,
-    leadBonus: values.roleFit.leadBonus,
-    frontendPenalty: values.roleFit.frontendPenalty,
-    consultingPenalty: values.roleFit.consultingPenalty,
-    clearancePenalty: values.roleFit.clearancePenalty,
-    managementPenalty: values.roleFit.managementPenalty,
+    preferred: cleanList(values.roleFit.preferred),
+    acceptable: cleanList(values.roleFit.acceptable),
+    penalized: cleanList(values.roleFit.penalized),
+    rejected: cleanList(values.roleFit.rejected),
+    preferredBonus: values.roleFit.preferredBonus,
+    penalizedPenalty: values.roleFit.penalizedPenalty,
   },
   company: {
     preferredCityBonus: values.company.preferredCityBonus,
@@ -560,83 +556,59 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
             <section className="space-y-4">
               <div className="flex items-center gap-3">
                 <h3 className="text-lg font-semibold">Role Fit</h3>
-                <ImpactBadge label="Score adjustment" tone="neutral" />
+                <ImpactBadge label="Score or Reject" tone="neutral" />
               </div>
               <p className="text-sm text-muted-foreground">
-                Bonuses and penalties based on role type (backend, ML/AI, consulting, etc.).
+                Configure role type preferences. Common types: backend, frontend, fullstack, ml-ai, devops, data, security, lead, consulting, management, clearance-required.
               </p>
-              <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-5">
-                <NumericField
+              <div className="grid gap-6 md:grid-cols-2">
+                <StringListField
                   control={form.control}
-                  name="roleFit.backendBonus"
-                  label="Backend Bonus"
-                  description="Backend-focused roles."
-                  info="Score bonus for backend/server-side roles."
+                  name="roleFit.preferred"
+                  label="Preferred Role Types"
+                  placeholder="backend"
+                  description="Bonus points for these role types."
+                  info="Jobs matching these role types get bonus points."
                 />
-                <NumericField
+                <StringListField
                   control={form.control}
-                  name="roleFit.mlAiBonus"
-                  label="ML/AI Bonus"
-                  description="ML/AI-focused roles."
-                  info="Score bonus for machine learning and AI roles."
+                  name="roleFit.acceptable"
+                  label="Acceptable Role Types"
+                  placeholder="fullstack"
+                  description="Neutral - no bonus or penalty."
+                  info="Jobs matching these role types are acceptable but get no bonus."
                 />
-                <NumericField
+                <StringListField
                   control={form.control}
-                  name="roleFit.devopsSreBonus"
-                  label="DevOps/SRE Bonus"
-                  description="DevOps/SRE roles."
-                  info="Score bonus for DevOps and SRE roles."
+                  name="roleFit.penalized"
+                  label="Penalized Role Types"
+                  placeholder="frontend-only"
+                  description="Penalty points for these role types."
+                  info="Jobs matching these role types get penalty points."
                 />
-                <NumericField
+                <StringListField
                   control={form.control}
-                  name="roleFit.dataBonus"
-                  label="Data Eng Bonus"
-                  description="Data engineering roles."
-                  info="Score bonus for data engineering roles."
-                />
-                <NumericField
-                  control={form.control}
-                  name="roleFit.securityBonus"
-                  label="Security Bonus"
-                  description="Security engineering."
-                  info="Score bonus for security engineering roles."
+                  name="roleFit.rejected"
+                  label="Rejected Role Types"
+                  placeholder="management"
+                  description="Hard reject for these role types."
+                  info="Jobs matching these role types are automatically rejected."
                 />
               </div>
-              <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-5">
+              <div className="grid gap-6 md:grid-cols-2">
                 <NumericField
                   control={form.control}
-                  name="roleFit.leadBonus"
-                  label="Lead Bonus"
-                  description="Technical lead roles."
-                  info="Score bonus for technical lead positions."
+                  name="roleFit.preferredBonus"
+                  label="Preferred Role Bonus"
+                  description="Bonus per preferred role type."
+                  info="Score bonus for each preferred role type found."
                 />
                 <NumericField
                   control={form.control}
-                  name="roleFit.frontendPenalty"
-                  label="Frontend Penalty"
-                  description="Frontend-only roles."
-                  info="Score penalty for frontend-only positions."
-                />
-                <NumericField
-                  control={form.control}
-                  name="roleFit.consultingPenalty"
-                  label="Consulting Penalty"
-                  description="Consulting/agency roles."
-                  info="Score penalty for consulting or agency positions."
-                />
-                <NumericField
-                  control={form.control}
-                  name="roleFit.managementPenalty"
-                  label="Management Penalty"
-                  description="People management roles."
-                  info="Score penalty for management positions."
-                />
-                <NumericField
-                  control={form.control}
-                  name="roleFit.clearancePenalty"
-                  label="Clearance Penalty"
-                  description="Clearance required (large negative)."
-                  info="Score penalty for roles requiring security clearance."
+                  name="roleFit.penalizedPenalty"
+                  label="Penalized Role Penalty"
+                  description="Penalty per penalized role type."
+                  info="Score penalty for each penalized role type found."
                 />
               </div>
             </section>

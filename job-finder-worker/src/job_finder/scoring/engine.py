@@ -113,6 +113,12 @@ class ScoringEngine:
         self._acceptable_seniority = {s.lower() for s in self.seniority_config["acceptable"]}
         self._rejected_seniority = {s.lower() for s in self.seniority_config["rejected"]}
 
+        # Pre-process role fit lists (required fields)
+        self._preferred_roles = {r.lower() for r in self.role_fit_config["preferred"]}
+        self._acceptable_roles = {r.lower() for r in self.role_fit_config["acceptable"]}
+        self._penalized_roles = {r.lower() for r in self.role_fit_config["penalized"]}
+        self._rejected_roles = {r.lower() for r in self.role_fit_config["rejected"]}
+
     def score(
         self,
         extraction: JobExtractionResult,
@@ -816,150 +822,68 @@ class ScoringEngine:
 
     def _score_role_fit(self, extraction: JobExtractionResult) -> Dict[str, Any]:
         """
-        Score based on role fit signals (backend, ML/AI, DevOps, etc.).
+        Score based on role types (backend, ML/AI, DevOps, etc.).
 
         Uses match-policy.roleFit config (all fields required):
-        - backendBonus: Bonus for backend roles
-        - mlAiBonus: Bonus for ML/AI roles
-        - devopsSreBonus: Bonus for DevOps/SRE roles
-        - dataBonus: Bonus for data engineering roles
-        - securityBonus: Bonus for security roles
-        - frontendPenalty: Penalty for frontend-only roles
-        - consultingPenalty: Penalty for consulting roles
-        - clearancePenalty: Penalty for clearance-required roles
-        - managementPenalty: Penalty for management roles
-        - leadBonus: Bonus for technical lead roles
+        - preferred: List of role types that get preferredBonus
+        - acceptable: List of role types that are neutral
+        - penalized: List of role types that get penalizedPenalty
+        - rejected: List of role types that cause hard rejection
+        - preferredBonus: Points bonus per matched preferred role
+        - penalizedPenalty: Points penalty per matched penalized role
         """
-        # Use pre-loaded config (required fields, no defaults)
-        backend_bonus = self.role_fit_config["backendBonus"]
-        ml_ai_bonus = self.role_fit_config["mlAiBonus"]
-        devops_sre_bonus = self.role_fit_config["devopsSreBonus"]
-        data_bonus = self.role_fit_config["dataBonus"]
-        security_bonus = self.role_fit_config["securityBonus"]
-        frontend_penalty = self.role_fit_config["frontendPenalty"]
-        consulting_penalty = self.role_fit_config["consultingPenalty"]
-        clearance_penalty = self.role_fit_config["clearancePenalty"]
-        management_penalty = self.role_fit_config["managementPenalty"]
-        lead_bonus = self.role_fit_config["leadBonus"]
+        if not extraction.role_types:
+            return {"points": 0, "adjustments": []}
 
+        role_set = {r.lower() for r in extraction.role_types}
         points = 0
         adjustments: List[ScoreAdjustment] = []
 
-        # Check for clearance requirement (potential hard reject)
-        if extraction.requires_clearance:
-            if clearance_penalty <= -100:
-                return {
-                    "points": clearance_penalty,
-                    "adjustments": [
-                        ScoreAdjustment(
-                            category="role_fit",
-                            reason="Security clearance required",
-                            points=clearance_penalty,
-                        )
-                    ],
-                    "hard_reject": True,
-                    "rejection_reason": "Security clearance required",
-                }
-            points += clearance_penalty
+        # Check for rejected roles (hard reject)
+        rejected_found = role_set & self._rejected_roles
+        if rejected_found:
+            return {
+                "points": 0,
+                "adjustments": [
+                    ScoreAdjustment(
+                        category="role_fit",
+                        reason=f"Rejected role type: {', '.join(rejected_found)}",
+                        points=0,
+                    )
+                ],
+                "hard_reject": True,
+                "rejection_reason": f"Rejected role type: {', '.join(rejected_found)}",
+            }
+
+        # Check preferred roles (bonus)
+        preferred_bonus = self.role_fit_config["preferredBonus"]
+        preferred_found = role_set & self._preferred_roles
+        if preferred_found:
+            bonus = len(preferred_found) * preferred_bonus
+            points += bonus
             adjustments.append(
                 ScoreAdjustment(
                     category="role_fit",
-                    reason="Clearance required",
-                    points=clearance_penalty,
+                    reason=f"Preferred role: {', '.join(preferred_found)}",
+                    points=bonus,
                 )
             )
 
-        # Role type bonuses
-        if extraction.is_backend and backend_bonus:
-            points += backend_bonus
+        # Check penalized roles (penalty)
+        penalized_penalty = self.role_fit_config["penalizedPenalty"]
+        penalized_found = role_set & self._penalized_roles
+        if penalized_found:
+            penalty = len(penalized_found) * penalized_penalty
+            points += penalty
             adjustments.append(
                 ScoreAdjustment(
                     category="role_fit",
-                    reason="Backend role",
-                    points=backend_bonus,
+                    reason=f"Penalized role: {', '.join(penalized_found)}",
+                    points=penalty,
                 )
             )
 
-        if extraction.is_ml_ai and ml_ai_bonus:
-            points += ml_ai_bonus
-            adjustments.append(
-                ScoreAdjustment(
-                    category="role_fit",
-                    reason="ML/AI role",
-                    points=ml_ai_bonus,
-                )
-            )
-
-        if extraction.is_devops_sre and devops_sre_bonus:
-            points += devops_sre_bonus
-            adjustments.append(
-                ScoreAdjustment(
-                    category="role_fit",
-                    reason="DevOps/SRE role",
-                    points=devops_sre_bonus,
-                )
-            )
-
-        if extraction.is_data and data_bonus:
-            points += data_bonus
-            adjustments.append(
-                ScoreAdjustment(
-                    category="role_fit",
-                    reason="Data engineering role",
-                    points=data_bonus,
-                )
-            )
-
-        if extraction.is_security and security_bonus:
-            points += security_bonus
-            adjustments.append(
-                ScoreAdjustment(
-                    category="role_fit",
-                    reason="Security role",
-                    points=security_bonus,
-                )
-            )
-
-        if extraction.is_lead and lead_bonus:
-            points += lead_bonus
-            adjustments.append(
-                ScoreAdjustment(
-                    category="role_fit",
-                    reason="Technical lead role",
-                    points=lead_bonus,
-                )
-            )
-
-        # Penalties
-        if extraction.is_frontend and not extraction.is_fullstack and frontend_penalty:
-            points += frontend_penalty
-            adjustments.append(
-                ScoreAdjustment(
-                    category="role_fit",
-                    reason="Frontend-only role",
-                    points=frontend_penalty,
-                )
-            )
-
-        if extraction.is_consulting and consulting_penalty:
-            points += consulting_penalty
-            adjustments.append(
-                ScoreAdjustment(
-                    category="role_fit",
-                    reason="Consulting role",
-                    points=consulting_penalty,
-                )
-            )
-
-        if extraction.is_management and management_penalty:
-            points += management_penalty
-            adjustments.append(
-                ScoreAdjustment(
-                    category="role_fit",
-                    reason="Management role",
-                    points=management_penalty,
-                )
-            )
+        # Acceptable roles are neutral - no adjustment needed
 
         return {"points": points, "adjustments": adjustments}
 

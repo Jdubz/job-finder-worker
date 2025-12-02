@@ -57,16 +57,9 @@ class JobExtractionResult:
     is_management: bool = False
     is_lead: bool = False
 
-    # Role fit signals (for role fit scoring)
-    is_backend: bool = False
-    is_frontend: bool = False
-    is_fullstack: bool = False
-    is_devops_sre: bool = False
-    is_ml_ai: bool = False
-    is_data: bool = False
-    is_security: bool = False
-    requires_clearance: bool = False
-    is_consulting: bool = False
+    # Role types (for role fit scoring)
+    # Dynamic list of role type strings, e.g. ["backend", "ml-ai", "devops"]
+    role_types: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -92,16 +85,8 @@ class JobExtractionResult:
             # Seniority
             "isManagement": self.is_management,
             "isLead": self.is_lead,
-            # Role fit signals
-            "isBackend": self.is_backend,
-            "isFrontend": self.is_frontend,
-            "isFullstack": self.is_fullstack,
-            "isDevopsSre": self.is_devops_sre,
-            "isMlAi": self.is_ml_ai,
-            "isData": self.is_data,
-            "isSecurity": self.is_security,
-            "requiresClearance": self.requires_clearance,
-            "isConsulting": self.is_consulting,
+            # Role types
+            "roleTypes": self.role_types,
         }
 
     @classmethod
@@ -135,19 +120,41 @@ class JobExtractionResult:
             # Seniority
             is_management=bool(data.get("isManagement") or data.get("is_management")),
             is_lead=bool(data.get("isLead") or data.get("is_lead")),
-            # Role fit signals
-            is_backend=bool(data.get("isBackend") or data.get("is_backend")),
-            is_frontend=bool(data.get("isFrontend") or data.get("is_frontend")),
-            is_fullstack=bool(data.get("isFullstack") or data.get("is_fullstack")),
-            is_devops_sre=bool(data.get("isDevopsSre") or data.get("is_devops_sre")),
-            is_ml_ai=bool(data.get("isMlAi") or data.get("is_ml_ai")),
-            is_data=bool(data.get("isData") or data.get("is_data")),
-            is_security=bool(data.get("isSecurity") or data.get("is_security")),
-            requires_clearance=bool(
-                data.get("requiresClearance") or data.get("requires_clearance")
-            ),
-            is_consulting=bool(data.get("isConsulting") or data.get("is_consulting")),
+            # Role types
+            role_types=_parse_role_types(data),
         )
+
+
+def _parse_role_types(data: Dict[str, Any]) -> List[str]:
+    """
+    Parse role types from extraction data.
+
+    Supports:
+    - New format: roleTypes/role_types as array of strings
+    - Legacy format: boolean fields (isBackend, isFrontend, etc.) for backward compatibility
+    """
+    # Check for new array format first
+    role_types = data.get("roleTypes") or data.get("role_types")
+    if role_types and isinstance(role_types, list):
+        return [str(rt).lower().strip() for rt in role_types if rt]
+
+    # Fall back to legacy boolean fields for backward compatibility
+    roles: List[str] = []
+    legacy_mappings = [
+        ("isBackend", "is_backend", "backend"),
+        ("isFrontend", "is_frontend", "frontend"),
+        ("isFullstack", "is_fullstack", "fullstack"),
+        ("isDevopsSre", "is_devops_sre", "devops"),
+        ("isMlAi", "is_ml_ai", "ml-ai"),
+        ("isData", "is_data", "data"),
+        ("isSecurity", "is_security", "security"),
+        ("requiresClearance", "requires_clearance", "clearance-required"),
+        ("isConsulting", "is_consulting", "consulting"),
+    ]
+    for camel, snake, role_name in legacy_mappings:
+        if data.get(camel) or data.get(snake):
+            roles.append(role_name)
+    return roles
 
 
 def _validate_seniority(value: Optional[str]) -> SeniorityLevel:

@@ -232,28 +232,20 @@ export interface FreshnessConfig {
   repostPenalty: number
 }
 
-/** Role fit scoring configuration */
+/** Role fit scoring configuration (dynamic role categories) */
 export interface RoleFitConfig {
-  /** Bonus for backend-focused roles */
-  backendBonus: number
-  /** Bonus for ML/AI-focused roles */
-  mlAiBonus: number
-  /** Bonus for DevOps/SRE-focused roles */
-  devopsSreBonus: number
-  /** Bonus for data engineering roles */
-  dataBonus: number
-  /** Bonus for security engineering roles */
-  securityBonus: number
-  /** Bonus for technical lead roles */
-  leadBonus: number
-  /** Penalty for frontend-focused roles */
-  frontendPenalty: number
-  /** Penalty for consulting/agency roles */
-  consultingPenalty: number
-  /** Penalty for roles requiring security clearance */
-  clearancePenalty: number
-  /** Penalty for management roles */
-  managementPenalty: number
+  /** Preferred role types - bonus points (e.g., ["backend", "ml-ai", "devops"]) */
+  preferred: string[]
+  /** Acceptable role types - neutral (e.g., ["fullstack", "data"]) */
+  acceptable: string[]
+  /** Penalized role types - penalty points (e.g., ["frontend-only", "consulting"]) */
+  penalized: string[]
+  /** Rejected role types - hard reject (e.g., ["management", "clearance-required"]) */
+  rejected: string[]
+  /** Bonus per preferred role type found */
+  preferredBonus: number
+  /** Penalty per penalized role type found */
+  penalizedPenalty: number
 }
 
 /** Company signal scoring configuration */
@@ -391,25 +383,9 @@ export interface JobExtractionResult {
   /** Whether role is a technical lead */
   isLead: boolean
 
-  // Role fit signals
-  /** Backend/server-side focus */
-  isBackend: boolean
-  /** Frontend/UI focus */
-  isFrontend: boolean
-  /** Full-stack role */
-  isFullstack: boolean
-  /** DevOps/SRE/platform focus */
-  isDevopsSre: boolean
-  /** ML/AI/data science focus */
-  isMlAi: boolean
-  /** Data engineering focus */
-  isData: boolean
-  /** Security engineering focus */
-  isSecurity: boolean
-  /** Security clearance required */
-  requiresClearance: boolean
-  /** Consulting/agency role */
-  isConsulting: boolean
+  // Role types (dynamic list for role fit scoring)
+  /** Role types detected for this position (e.g., ["backend", "ml-ai", "devops"]) */
+  roleTypes: string[]
 }
 
 export interface SchedulerSettings {

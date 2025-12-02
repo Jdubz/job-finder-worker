@@ -321,7 +321,7 @@ describe("Configuration flows", () => {
       salary: { minimum: 100000, target: 150000, belowTargetPenalty: 2 },
       experience: { userYears: 8, maxRequired: 15, overqualifiedPenalty: 5 },
       freshness: { freshBonusDays: 7, freshBonus: 5, staleThresholdDays: 30, stalePenalty: -5, veryStaleDays: 60, veryStalePenalty: -15, repostPenalty: -10 },
-      roleFit: { backendBonus: 10, mlAiBonus: 5, devopsSreBonus: 5, dataBonus: 5, securityBonus: 5, leadBonus: 10, frontendPenalty: -5, consultingPenalty: -10, clearancePenalty: -100, managementPenalty: -5 },
+      roleFit: { preferred: ["backend", "ml-ai", "devops", "data", "security"], acceptable: ["fullstack"], penalized: ["frontend", "consulting"], rejected: ["clearance-required", "management"], preferredBonus: 10, penalizedPenalty: -5 },
       company: { preferredCityBonus: 5, remoteFirstBonus: 5, aiMlFocusBonus: 5, largeCompanyBonus: 5, smallCompanyPenalty: -5, largeCompanyThreshold: 1000, smallCompanyThreshold: 50, startupBonus: 0 },
     }
     await configClient.updateMatchPolicy(testMatchPolicy)
