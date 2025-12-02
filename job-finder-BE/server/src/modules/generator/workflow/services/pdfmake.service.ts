@@ -180,19 +180,15 @@ export class PdfMakeService {
   private buildContactRow(items: Content[], margin: [number, number, number, number] = [0, 8, 0, 2]): Content | null {
     if (items.length === 0) return null
 
-    const cells: Content[] = []
-    items.forEach((item, index) => {
-      if (index > 0) {
-        cells.push({
-          text: '•',
-          fontSize: 10,
-          color: '#CBD5E1',
-          alignment: 'center',
-          margin: [6, 0.5, 6, 0]
-        })
-      }
-      cells.push(item)
-    })
+    const separator: Content = {
+      text: '•',
+      fontSize: 10,
+      color: '#CBD5E1',
+      alignment: 'center',
+      margin: [6, 0.5, 6, 0]
+    }
+
+    const cells: Content[] = items.flatMap((item, index) => (index > 0 ? [separator, item] : [item]))
 
     return {
       table: {
