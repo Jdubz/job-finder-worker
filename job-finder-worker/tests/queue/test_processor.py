@@ -478,7 +478,6 @@ def sample_scrape_item():
             target_matches=5,
             max_sources=20,
             source_ids=None,
-            min_match_score=None,
         ),
     )
 
@@ -522,7 +521,6 @@ def test_process_scrape_with_custom_config(processor, mock_managers):
             target_matches=10,
             max_sources=50,
             source_ids=["source-1", "source-2"],
-            min_match_score=70,
         ),
     )
 
@@ -561,7 +559,6 @@ def test_process_scrape_with_none_values(processor, mock_managers):
             target_matches=None,  # Unlimited
             max_sources=None,  # Unlimited
             source_ids=None,
-            min_match_score=None,
         ),
     )
 

@@ -23,6 +23,7 @@ import {
   handleQueueEventsSse,
   sendCommandToWorker
 } from './queue-events'
+import { requireRole } from '../../middleware/firebase-auth'
 
 const queueStatuses = [
   'pending',
@@ -73,10 +74,9 @@ const submitCompanySchema = z.object({
 
 const scrapeConfigSchema = z
   .object({
-    target_matches: z.number().int().positive().nullable().optional(),
-    max_sources: z.number().int().positive().nullable().optional(),
-    source_ids: z.array(z.string()).optional(),
-    min_match_score: z.number().int().min(0).max(100).nullable().optional()
+    target_matches: z.number().int().nonnegative().nullable().optional(),
+    max_sources: z.number().int().nonnegative().nullable().optional(),
+    source_ids: z.array(z.string()).optional()
   })
   .strict()
 
@@ -209,6 +209,7 @@ export function buildJobQueueRouter() {
 
   router.post(
     '/scrape',
+    requireRole('admin'),
     asyncHandler((req, res) => {
       const payload = submitScrapeSchema.parse(req.body)
       const input: SubmitScrapeRequest = {

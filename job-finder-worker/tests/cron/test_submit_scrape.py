@@ -79,8 +79,6 @@ def test_submit_scrape_enqueues_item(tmp_path, capsys):
             "5",
             "--max-sources",
             "3",
-            "--min-match-score",
-            "70",
             "--source-ids",
             "abc,def",
         ]
@@ -101,7 +99,6 @@ def test_submit_scrape_enqueues_item(tmp_path, capsys):
     scrape_config = input_payload["scrape_config"]
     assert scrape_config["target_matches"] == 5
     assert scrape_config["max_sources"] == 3
-    assert scrape_config["min_match_score"] == 70
     assert scrape_config["source_ids"] == ["abc", "def"]
 
     # Cron log line is JSON and includes event name
@@ -127,7 +124,6 @@ def test_submit_scrape_uses_db_config_as_fallback(tmp_path):
         "scrapeConfig": {
             "targetMatches": 10,
             "maxSources": 5,
-            "minMatchScore": 80,
             "sourceIds": ["db_src_1", "db_src_2"],
         }
     }
@@ -142,5 +138,4 @@ def test_submit_scrape_uses_db_config_as_fallback(tmp_path):
     scrape_config = input_payload["scrape_config"]
     assert scrape_config["target_matches"] == 10
     assert scrape_config["max_sources"] == 5
-    assert scrape_config["min_match_score"] == 80
     assert scrape_config["source_ids"] == ["db_src_1", "db_src_2"]

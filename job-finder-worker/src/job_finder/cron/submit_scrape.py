@@ -46,7 +46,6 @@ def _extract_scrape_settings(scheduler_settings: Dict[str, Any]) -> Dict[str, An
     return {
         "target_matches": pick("targetMatches", "target_matches"),
         "max_sources": pick("maxSources", "max_sources"),
-        "min_match_score": pick("minMatchScore", "min_match_score"),
         "source_ids": pick("sourceIds", "source_ids"),
     }
 
@@ -66,13 +65,11 @@ def build_scrape_config(args, scheduler_settings: Dict[str, Any]) -> ScrapeConfi
 
     target_matches = _coalesce(args.target_matches, scrape_settings.get("target_matches"))
     max_sources = _coalesce(args.max_sources, scrape_settings.get("max_sources"))
-    min_match_score = _coalesce(args.min_match_score, scrape_settings.get("min_match_score"))
     source_ids = _coalesce(args.source_ids, scrape_settings.get("source_ids"))
 
     return ScrapeConfig(
         target_matches=target_matches,
         max_sources=max_sources,
-        min_match_score=min_match_score,
         source_ids=_parse_source_ids(source_ids),
     )
 
@@ -102,7 +99,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument(
         "--max-sources", type=int, help="Scrape at most N sources (default: config)"
     )
-    parser.add_argument("--min-match-score", type=int, help="Override minimum match score")
     parser.add_argument(
         "--source-ids",
         help="Comma or newline separated source IDs to scrape (default: all with rotation)",
@@ -132,7 +128,6 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "item_id": item_id,
                 "target_matches": scrape_config.target_matches,
                 "max_sources": scrape_config.max_sources,
-                "min_match_score": scrape_config.min_match_score,
                 "source_ids": scrape_config.source_ids,
                 "db_path": str(resolved_db),
             }

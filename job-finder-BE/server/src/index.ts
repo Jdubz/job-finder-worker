@@ -5,6 +5,7 @@ import { getDb } from './db/sqlite'
 import { initWorkerSocket } from './modules/job-queue/worker-socket'
 import { setLifecyclePhase, broadcastLifecycleEvent, setReady } from './modules/lifecycle/lifecycle.stream'
 import { createDrainManager } from './modules/lifecycle/drain-manager'
+import { startCronScheduler } from './scheduler/cron'
 
 async function main() {
   // Touch DB early to surface migration issues fast
@@ -15,6 +16,7 @@ async function main() {
     logger.info({ port: env.PORT }, 'Job Finder API listening')
     setLifecyclePhase('ready', { port: env.PORT })
     setReady(true, { port: env.PORT })
+    startCronScheduler()
   })
 
   // Attach worker WebSocket for bi-directional commands/events

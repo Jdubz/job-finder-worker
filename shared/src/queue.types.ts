@@ -84,7 +84,6 @@ export interface ScrapeConfig {
   target_matches?: number | null // Stop after finding this many potential matches (null = no limit)
   max_sources?: number | null // Maximum number of sources to scrape (null = unlimited)
   source_ids?: string[] | null // Specific source IDs to scrape (null = all sources with rotation)
-  min_match_score?: number | null // Override minimum match score threshold
 }
 
 /**
