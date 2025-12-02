@@ -246,10 +246,15 @@ def test_job_pipeline_full_path(tmp_path: Path):
 
     class MockScoringEngine:
         def score(self, extraction, job_title, job_description, company_data=None):
+            from job_finder.scoring.engine import ScoreAdjustment
+
             return ScoreBreakdown(
                 base_score=50,
                 final_score=85,
-                adjustments=["Preferred seniority (+15)", "Remote position (+5)"],
+                adjustments=[
+                    ScoreAdjustment(category="seniority", reason="Preferred seniority", points=15),
+                    ScoreAdjustment(category="location", reason="Remote position", points=5),
+                ],
                 passed=True,
             )
 

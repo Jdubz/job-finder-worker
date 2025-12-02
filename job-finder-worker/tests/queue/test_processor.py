@@ -108,10 +108,12 @@ def processor(mock_managers):
 
         class MockScoringEngine:
             def score(self, extraction, job_title, job_description, company_data=None):
+                from job_finder.scoring.engine import ScoreAdjustment
+
                 return ScoreBreakdown(
                     base_score=50,
                     final_score=85,
-                    adjustments=["Mock scoring"],
+                    adjustments=[ScoreAdjustment(category="mock", reason="Mock scoring", points=35)],
                     passed=True,
                 )
 

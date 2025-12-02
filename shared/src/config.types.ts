@@ -233,6 +233,34 @@ export interface ScoringConfig {
 }
 
 // -----------------------------------------------------------
+// Score Breakdown Types (returned by scoring engine)
+// -----------------------------------------------------------
+
+/** A single score adjustment with category, reason, and points */
+export interface ScoreAdjustment {
+  /** Category of the adjustment (e.g., "seniority", "location", "technology") */
+  category: string
+  /** Human-readable reason for the adjustment */
+  reason: string
+  /** Points added or subtracted */
+  points: number
+}
+
+/** Detailed breakdown of score calculation */
+export interface ScoreBreakdown {
+  /** Starting baseline score (usually 50) */
+  baseScore: number
+  /** Final calculated score (0-100) */
+  finalScore: number
+  /** List of score adjustments applied */
+  adjustments: ScoreAdjustment[]
+  /** Whether the job passed the minimum score threshold */
+  passed: boolean
+  /** Reason for rejection if passed is false */
+  rejectionReason: string | null
+}
+
+// -----------------------------------------------------------
 // AI Extraction Result (stored with job listing)
 // -----------------------------------------------------------
 
