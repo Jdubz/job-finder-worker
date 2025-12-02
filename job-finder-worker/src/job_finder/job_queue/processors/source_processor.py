@@ -136,8 +136,13 @@ class SourceProcessor(BaseProcessor):
                 # If auth required, bot protection, or DNS errors detected, create a disabled placeholder source with notes
                 error = validation_meta.get("error")
                 error_details = validation_meta.get("error_details", "") if validation_meta else ""
-                is_dns_probe_failure = error == "api_probe_failed" and "resolve" in error_details.lower()
-                if error in {"auth_required", "bot_protection", "dns_error"} or is_dns_probe_failure:
+                is_dns_probe_failure = (
+                    error == "api_probe_failed" and "resolve" in error_details.lower()
+                )
+                if (
+                    error in {"auth_required", "bot_protection", "dns_error"}
+                    or is_dns_probe_failure
+                ):
                     disabled_reason = error if not is_dns_probe_failure else "dns_error"
                     placeholder_config = {
                         "type": "api",
