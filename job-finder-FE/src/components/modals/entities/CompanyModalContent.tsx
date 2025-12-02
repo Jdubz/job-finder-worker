@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { ExternalLink, Loader2, Database, Building2, Briefcase, RefreshCw, Trash2 } from "lucide-react"
-import type { Company, JobSourceStatus, JobListingRecord } from "@shared/types"
+import { statusBadgeClass } from "@/lib/status-badge"
+import { formatDate } from "@/lib/formatDate"
+import type { Company, JobListingRecord } from "@shared/types"
 
 const safeText = (value: unknown, fallback = "—") => {
   if (value === null || value === undefined || value === "") return fallback
@@ -24,42 +26,13 @@ const DATA_QUALITY_THRESHOLDS = {
   PARTIAL: { ABOUT: 50, CULTURE: 25 },
 } as const
 
-const sourceStatusColors: Record<JobSourceStatus, string> = {
-  active: "bg-green-100 text-green-800",
-  paused: "bg-yellow-100 text-yellow-800",
-  disabled: "bg-gray-100 text-gray-800",
-  error: "bg-red-100 text-red-800",
+const dataQualityTone: Record<string, string> = {
+  Complete: statusBadgeClass("active"),
+  Partial: statusBadgeClass("pending"),
+  Pending: statusBadgeClass("disabled"),
 }
 
-function formatDate(date: unknown): string {
-  if (!date) return "—"
-
-  let d: Date
-  if (date instanceof Date) {
-    d = date
-  } else if (typeof date === "string" || typeof date === "number") {
-    d = new Date(date)
-  } else if (
-    typeof date === "object" &&
-    date !== null &&
-    "toDate" in date &&
-    typeof (date as { toDate: () => Date }).toDate === "function"
-  ) {
-    d = (date as { toDate: () => Date }).toDate()
-  } else {
-    return "—"
-  }
-
-  if (Number.isNaN(d.getTime())) return "—"
-
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  })
-}
-
-function getDataStatus(company: Company): { label: string; color: string } {
+function getDataStatus(company: Company): { label: string; tone: string } {
   const aboutLength = (company.about || "").length
   const cultureLength = (company.culture || "").length
 
@@ -67,15 +40,15 @@ function getDataStatus(company: Company): { label: string; color: string } {
     aboutLength > DATA_QUALITY_THRESHOLDS.COMPLETE.ABOUT &&
     cultureLength > DATA_QUALITY_THRESHOLDS.COMPLETE.CULTURE
   ) {
-    return { label: "Complete", color: "bg-green-100 text-green-800" }
+    return { label: "Complete", tone: dataQualityTone.Complete }
   }
   if (
     aboutLength > DATA_QUALITY_THRESHOLDS.PARTIAL.ABOUT ||
     cultureLength > DATA_QUALITY_THRESHOLDS.PARTIAL.CULTURE
   ) {
-    return { label: "Partial", color: "bg-yellow-100 text-yellow-800" }
+    return { label: "Partial", tone: dataQualityTone.Partial }
   }
-  return { label: "Pending", color: "bg-gray-100 text-gray-800" }
+  return { label: "Pending", tone: dataQualityTone.Pending }
 }
 
 interface CompanyDetailsModalContentProps {
@@ -178,7 +151,7 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
             {safeText(company.industry, "Industry not specified")}
           </p>
         </div>
-        <Badge className={status.color}>{status.label}</Badge>
+        <Badge className={status.tone}>{status.label}</Badge>
       </div>
 
       <div>
@@ -188,7 +161,7 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
             href={company.website}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-start text-blue-600 hover:underline mt-1 break-all text-sm"
+            className="flex items-start text-primary hover:underline mt-1 break-all text-sm"
           >
             <span className="flex-1">{safeText(company.website)}</span>
             <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0 mt-1" />
@@ -279,7 +252,7 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
                 <div className="flex items-center gap-2 min-w-0">
                   <Button
                     variant="link"
-                    className="p-0 h-auto text-blue-600 hover:underline truncate"
+                    className="p-0 h-auto truncate"
                     onClick={() =>
                       openModal({
                         type: "jobSource",
@@ -294,7 +267,7 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
                     {safeText(source.sourceType)}
                   </Badge>
                 </div>
-                <Badge className={sourceStatusColors[source.status]}>{safeText(source.status)}</Badge>
+                <Badge className={statusBadgeClass(source.status)}>{safeText(source.status)}</Badge>
               </div>
             ))}
           </div>
@@ -326,7 +299,7 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
                 <div className="flex items-center gap-2 min-w-0">
                   <Button
                     variant="link"
-                    className="p-0 h-auto text-blue-600 hover:underline truncate text-left"
+                    className="p-0 h-auto truncate text-left"
                     onClick={() => openModal({ type: "jobListing", listing })}
                   >
                     {safeText(listing.title)}

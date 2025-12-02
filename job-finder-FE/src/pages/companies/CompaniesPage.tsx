@@ -11,6 +11,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -79,6 +89,16 @@ export function CompaniesPage() {
   const { companies, loading, deleteCompany, setFilters } = useCompanies({ limit: 100 })
   const { submitCompany } = useQueueItems()
   const { openModal } = useEntityModal()
+  const [deleteRequest, setDeleteRequest] = useState<
+    | {
+        id: string
+        name?: string | null
+        resolve: () => void
+        reject: (reason?: unknown) => void
+      }
+    | null
+  >(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -124,15 +144,11 @@ export function CompaniesPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this company?")) return
-    try {
-      await deleteCompany(id)
-    } catch (err) {
-      console.error("Failed to delete company:", err)
-      throw err
-    }
-  }
+  const handleDelete = async (id: string) =>
+    new Promise<void>((resolve, reject) => {
+      const company = companies.find((c) => c.id === id)
+      setDeleteRequest({ id, name: company?.name, resolve, reject })
+    })
 
   const handleReanalyze = async (company: Company) => {
     if (!company.id) {
@@ -197,6 +213,47 @@ export function CompaniesPage() {
           <Plus className="mr-2 h-4 w-4" />
           Add Company
         </Button>
+        {/* Delete confirmation dialog */}
+        <AlertDialog open={!!deleteRequest} onOpenChange={(open) => !open && deleteRequest?.reject(new Error("Delete canceled"))}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete company?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove
+                {deleteRequest?.name ? ` "${deleteRequest.name}"` : " this company"} and its associated data.
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  deleteRequest?.reject(new Error("Delete canceled"))
+                  setDeleteRequest(null)
+                }}
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={confirmingDelete}
+                onClick={async () => {
+                  if (!deleteRequest) return
+                  setConfirmingDelete(true)
+                  try {
+                    await deleteCompany(deleteRequest.id)
+                    deleteRequest.resolve()
+                  } catch (err) {
+                    deleteRequest.reject(err)
+                  } finally {
+                    setConfirmingDelete(false)
+                    setDeleteRequest(null)
+                  }
+                }}
+              >
+                {confirmingDelete ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <Dialog
           open={isAddModalOpen}
           onOpenChange={(open) => {

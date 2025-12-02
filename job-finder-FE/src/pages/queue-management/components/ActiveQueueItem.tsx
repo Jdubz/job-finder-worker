@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { QueueItem } from "@shared/types"
 import { Activity, AlertCircle, Clock, ExternalLink, Pause, Trash2 } from "lucide-react"
+import { statusBadgeClass } from "@/lib/status-badge"
 import { format, formatDistanceToNow } from "date-fns"
 import {
   getCompanyName,
@@ -65,7 +66,7 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
             </div>
             <div className="space-y-3 min-w-0">
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <Badge className="bg-emerald-600 text-white shadow-sm">Processing</Badge>
+                <Badge className={statusBadgeClass(item.status)}>{item.status}</Badge>
                 <Badge variant="outline" className="border-emerald-200 text-emerald-800 dark:border-emerald-800 dark:text-emerald-100">
                   {taskType}
                 </Badge>

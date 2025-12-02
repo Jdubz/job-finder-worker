@@ -61,7 +61,7 @@ export function QueueItemModalContent({ item, handlers }: QueueItemModalContentP
             href={item.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:underline break-all mt-1 inline-flex items-center gap-1 text-sm"
+            className="text-primary hover:underline break-all mt-1 inline-flex items-center gap-1 text-sm"
           >
             {item.url}
           </a>

@@ -2,6 +2,7 @@ import type { QueueItem } from "@shared/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { statusBadgeClass } from "@/lib/status-badge"
 import { Calendar, Clock, ExternalLink, Trash2 } from "lucide-react"
 import { format, formatDistanceToNow } from "date-fns"
 import {
@@ -75,7 +76,7 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
 
           <div className="flex-1 min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <Badge className="capitalize">{item.status}</Badge>
+              <Badge className={statusBadgeClass(item.status)}>{item.status}</Badge>
               <Badge variant="outline">{taskType}</Badge>
               {distinctStage && (
                 <Badge variant="secondary" className="capitalize">

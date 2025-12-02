@@ -5,14 +5,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { ExternalLink, Pause, Play, Trash2, Building2, AlertCircle, Loader2 } from "lucide-react"
-import type { JobSource, JobSourceStatus } from "@shared/types"
-
-const statusColors: Record<JobSourceStatus, string> = {
-  active: "bg-green-100 text-green-800",
-  paused: "bg-yellow-100 text-yellow-800",
-  disabled: "bg-gray-100 text-gray-800",
-  error: "bg-red-100 text-red-800",
-}
+import { statusBadgeClass } from "@/lib/status-badge"
+import type { JobSource } from "@shared/types"
 
 const sourceTypeLabels: Record<string, string> = {
   api: "API",
@@ -138,7 +132,7 @@ export function JobSourceModalContent({ source: providedSource, sourceId, handle
                 : "No company associated"}
           </p>
         </div>
-        <Badge className={statusColors[source.status]}>{source.status}</Badge>
+        <Badge className={statusBadgeClass(source.status)}>{source.status}</Badge>
       </div>
 
       <div>
@@ -153,7 +147,7 @@ export function JobSourceModalContent({ source: providedSource, sourceId, handle
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-start text-blue-600 hover:underline mt-1 break-all text-sm"
+            className="flex items-start text-primary hover:underline mt-1 break-all text-sm"
           >
             <span className="flex-1">{url}</span>
             <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0 mt-1" />
@@ -177,7 +171,7 @@ export function JobSourceModalContent({ source: providedSource, sourceId, handle
             <div className="mt-1">
               <Button
                 variant="link"
-                className="h-auto p-0 text-blue-600 hover:underline text-sm"
+                className="h-auto p-0 text-sm"
                 onClick={() => openModal({ type: "company", companyId: source.companyId })}
               >
                 View Company Details
