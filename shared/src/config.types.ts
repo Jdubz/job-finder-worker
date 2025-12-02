@@ -278,18 +278,6 @@ export interface CompanyConfig {
   startupBonus: number
 }
 
-/** Dealbreaker configuration for hard rejections */
-export interface DealbreakersConfig {
-  /** Locations that trigger hard rejection (e.g., ["india", "philippines"]) */
-  blockedLocations: string[]
-  /** Penalty points for blocked locations (high = hard reject) */
-  locationPenalty: number
-  /** Penalty points when relocation is required */
-  relocationPenalty: number
-  /** Penalty for ambiguous/unclear location */
-  ambiguousLocationPenalty: number
-}
-
 /** Complete match policy configuration (unified scoring config) */
 export interface MatchPolicy {
   /** Minimum score threshold to pass (0-100) */
@@ -312,12 +300,10 @@ export interface MatchPolicy {
   roleFit: RoleFitConfig
   /** Company signal scoring */
   company: CompanyConfig
-  /** Dealbreaker configuration */
-  dealbreakers: DealbreakersConfig
 }
 
 /** @deprecated Use MatchPolicy instead */
-export type ScoringConfig = Omit<MatchPolicy, "freshness" | "roleFit" | "company" | "dealbreakers">
+export type ScoringConfig = Omit<MatchPolicy, "freshness" | "roleFit" | "company">
 
 // -----------------------------------------------------------
 // Score Breakdown Types (returned by scoring engine)

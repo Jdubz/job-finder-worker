@@ -99,18 +99,21 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
                 "rejectedPenalty": -100,
             },
         ),
-        "location": scoring_config.get(
-            "location",
-            {
-                "allowRemote": True,
-                "allowHybrid": True,
-                "allowOnsite": False,
-                "userTimezone": -8,
-                "maxTimezoneDiffHours": 4,
-                "perHourPenalty": 3,
-                "hybridSameCityBonus": 10,
-            },
-        ),
+        "location": {
+            **scoring_config.get(
+                "location",
+                {
+                    "allowRemote": True,
+                    "allowHybrid": True,
+                    "allowOnsite": False,
+                    "userTimezone": -8,
+                    "maxTimezoneDiffHours": 4,
+                    "perHourPenalty": 3,
+                    "hybridSameCityBonus": 10,
+                },
+            ),
+            "relocationPenalty": dealbreakers.get("relocationPenaltyPoints", -80),
+        },
         "technology": scoring_config.get(
             "technology",
             {
@@ -181,25 +184,6 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
                 "smallCompanyThreshold", 100
             ),
             "startupBonus": 0,
-        },
-        # From old match-policy.dealbreakers
-        "dealbreakers": {
-            "blockedLocations": dealbreakers.get(
-                "blockedLocations",
-                [
-                    "india",
-                    "bangalore",
-                    "bengaluru",
-                    "hyderabad",
-                    "chennai",
-                    "pune",
-                    "philippines",
-                    "manila",
-                ],
-            ),
-            "locationPenalty": dealbreakers.get("locationPenaltyPoints", 60),
-            "relocationPenalty": dealbreakers.get("relocationPenaltyPoints", 80),
-            "ambiguousLocationPenalty": dealbreakers.get("ambiguousLocationPenaltyPoints", 40),
         },
     }
 

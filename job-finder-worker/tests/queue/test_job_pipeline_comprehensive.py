@@ -185,12 +185,6 @@ def test_job_pipeline_full_path(tmp_path: Path):
                             "smallCompanyThreshold": 100,
                             "startupBonus": 0,
                         },
-                        "dealbreakers": {
-                            "blockedLocations": [],
-                            "locationPenalty": 60,
-                            "relocationPenalty": 80,
-                            "ambiguousLocationPenalty": 40,
-                        },
                     }
                 ),
                 now_iso,

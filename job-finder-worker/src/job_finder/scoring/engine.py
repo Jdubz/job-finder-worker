@@ -96,7 +96,6 @@ class ScoringEngine:
         self.freshness_config = config["freshness"]
         self.role_fit_config = config["roleFit"]
         self.company_config = config["company"]
-        self.dealbreakers_config = config["dealbreakers"]
 
         # Normalize user skills to lowercase for matching
         self.user_skills: Set[str] = set()

@@ -90,12 +90,6 @@ class TestCompanyPipeline:
                 "smallCompanyThreshold": 100,
                 "startupBonus": 0,
             },
-            "dealbreakers": {
-                "blockedLocations": [],
-                "locationPenalty": 60,
-                "relocationPenalty": 80,
-                "ambiguousLocationPenalty": 40,
-            },
         }
         config_loader.get_ai_settings.return_value = {
             "worker": {

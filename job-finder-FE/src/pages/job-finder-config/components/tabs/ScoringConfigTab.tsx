@@ -45,6 +45,7 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     perHourPenalty: values.location.perHourPenalty,
     hybridSameCityBonus: values.location.hybridSameCityBonus,
     userCity: values.location.userCity?.trim() || undefined,
+    relocationPenalty: values.location.relocationPenalty,
   },
   technology: {
     required: cleanList(values.technology.required),
@@ -96,12 +97,6 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     largeCompanyThreshold: values.company.largeCompanyThreshold,
     smallCompanyThreshold: values.company.smallCompanyThreshold,
     startupBonus: values.company.startupBonus,
-  },
-  dealbreakers: {
-    blockedLocations: cleanList(values.dealbreakers.blockedLocations),
-    locationPenalty: values.dealbreakers.locationPenalty,
-    relocationPenalty: values.dealbreakers.relocationPenalty,
-    ambiguousLocationPenalty: values.dealbreakers.ambiguousLocationPenalty,
   },
 })
 
@@ -302,6 +297,13 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                   label="Same City Bonus"
                   description="Bonus for hybrid in your city."
                   info="Score bonus when hybrid job is in your city."
+                />
+                <NumericField
+                  control={form.control}
+                  name="location.relocationPenalty"
+                  label="Relocation Penalty"
+                  description="Penalty when relocation required."
+                  info="Score penalty when job requires relocation."
                 />
               </div>
               <FormField
@@ -734,47 +736,6 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
               </div>
             </section>
 
-            {/* Dealbreakers */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-3">
-                <h3 className="text-lg font-semibold">Dealbreakers</h3>
-                <ImpactBadge label="Hard reject" tone="neutral" />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Location-based penalties and blocked regions.
-              </p>
-              <StringListField
-                control={form.control}
-                name="dealbreakers.blockedLocations"
-                label="Blocked Locations"
-                placeholder="india"
-                description="Locations that trigger penalties."
-                info="Jobs mentioning these locations receive heavy penalties."
-              />
-              <div className="grid gap-6 md:grid-cols-3">
-                <NumericField
-                  control={form.control}
-                  name="dealbreakers.locationPenalty"
-                  label="Blocked Location Penalty"
-                  description="Penalty for blocked locations."
-                  info="Score penalty when job mentions a blocked location."
-                />
-                <NumericField
-                  control={form.control}
-                  name="dealbreakers.relocationPenalty"
-                  label="Relocation Penalty"
-                  description="Penalty when relocation required."
-                  info="Score penalty when job requires relocation."
-                />
-                <NumericField
-                  control={form.control}
-                  name="dealbreakers.ambiguousLocationPenalty"
-                  label="Ambiguous Location Penalty"
-                  description="Penalty for unclear location."
-                  info="Score penalty when job location is unclear."
-                />
-              </div>
-            </section>
           </div>
         </TabCard>
       </Form>

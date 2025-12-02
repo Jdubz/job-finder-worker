@@ -109,12 +109,6 @@ const baseMatchPolicy: MatchPolicy = {
     smallCompanyThreshold: 100,
     startupBonus: 0,
   },
-  dealbreakers: {
-    blockedLocations: ["india", "philippines"],
-    locationPenalty: 60,
-    relocationPenalty: 80,
-    ambiguousLocationPenalty: 40,
-  },
 }
 
 beforeEach(() => {

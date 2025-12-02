@@ -378,18 +378,6 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
     return false
   }
 
-  // Check dealbreakers section
-  if (!isObject(v.dealbreakers)) return false
-  const dealbreakers = v.dealbreakers as Record<string, unknown>
-  if (
-    !isStringArray(dealbreakers.blockedLocations) ||
-    typeof dealbreakers.locationPenalty !== "number" ||
-    typeof dealbreakers.relocationPenalty !== "number" ||
-    typeof dealbreakers.ambiguousLocationPenalty !== "number"
-  ) {
-    return false
-  }
-
   return true
 }
 

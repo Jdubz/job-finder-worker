@@ -217,12 +217,6 @@ class TestConfigLoaderIntegration:
                 "smallCompanyThreshold": 100,
                 "startupBonus": 0,
             },
-            "dealbreakers": {
-                "blockedLocations": [],
-                "locationPenalty": 60,
-                "relocationPenalty": 80,
-                "ambiguousLocationPenalty": 40,
-            },
         }
 
         conn.execute(
