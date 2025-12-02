@@ -125,7 +125,9 @@ def test_submit_company_success(scraper_intake, mock_queue_manager):
     mock_queue_manager.add_item.return_value = "doc-id-123"
 
     result = scraper_intake.submit_company(
-        company_name="Test Corp", company_website="https://testcorp.com", source="scraper"
+        company_name="Test Corp",
+        company_website="https://testcorp.com",
+        source="scraper",
     )
 
     assert result == "doc-id-123"
@@ -160,7 +162,9 @@ def test_submit_company_duplicate(scraper_intake, mock_queue_manager):
     mock_queue_manager.url_exists_in_queue.return_value = True
 
     result = scraper_intake.submit_company(
-        company_name="Test Corp", company_website="https://testcorp.com", source="scraper"
+        company_name="Test Corp",
+        company_website="https://testcorp.com",
+        source="scraper",
     )
 
     assert result is None
@@ -173,7 +177,9 @@ def test_submit_company_error(scraper_intake, mock_queue_manager):
     mock_queue_manager.add_item.side_effect = Exception("database error")
 
     result = scraper_intake.submit_company(
-        company_name="Test Corp", company_website="https://testcorp.com", source="scraper"
+        company_name="Test Corp",
+        company_website="https://testcorp.com",
+        source="scraper",
     )
 
     assert result is None
@@ -230,7 +236,9 @@ def test_submit_company_handles_race_condition(scraper_intake, mock_queue_manage
     mock_queue_manager.add_item.side_effect = DuplicateQueueItemError("Duplicate URL")
 
     result = scraper_intake.submit_company(
-        company_name="Test Corp", company_website="https://testcorp.com", source="scraper"
+        company_name="Test Corp",
+        company_website="https://testcorp.com",
+        source="scraper",
     )
 
     # Should return None gracefully (not raise or log as error)

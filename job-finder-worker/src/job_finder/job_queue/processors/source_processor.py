@@ -18,7 +18,12 @@ from job_finder.ai.source_discovery import SourceDiscovery
 from job_finder.exceptions import QueueProcessingError
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
-from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus, SourceStatus
+from job_finder.job_queue.models import (
+    JobQueueItem,
+    QueueItemType,
+    QueueStatus,
+    SourceStatus,
+)
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
@@ -133,10 +138,23 @@ class SourceProcessor(BaseProcessor):
                 source_config, validation_meta = discovery_result, {}
 
             if not source_config:
-                # If auth required or bot protection detected, create a disabled placeholder source with notes
-                if validation_meta.get("error") in {"auth_required", "bot_protection"}:
-                    disabled_reason = validation_meta.get("error")
-                    placeholder_config = {"type": "api", "url": url, "headers": {}}
+                # If auth required, bot protection, or DNS errors detected, create a disabled placeholder source with notes
+                error = validation_meta.get("error")
+                error_details = validation_meta.get("error_details", "")
+                is_dns_probe_failure = (
+                    error == "api_probe_failed" and "resolve" in error_details.lower()
+                )
+                if (
+                    error in {"auth_required", "bot_protection", "dns_error"}
+                    or is_dns_probe_failure
+                ):
+                    disabled_reason = error if not is_dns_probe_failure else "dns_error"
+                    placeholder_config = {
+                        "type": "api",
+                        "url": url,
+                        "headers": {},
+                        "disabled_notes": disabled_reason,
+                    }
                     source_type = placeholder_config.get("type", "unknown")
                     aggregator_domain = self._detect_aggregator_domain(url)
                     source_id = self.sources_manager.create_from_discovery(
@@ -146,7 +164,6 @@ class SourceProcessor(BaseProcessor):
                         company_id=None,
                         aggregator_domain=aggregator_domain,
                         status=SourceStatus.DISABLED,
-                        disabled_notes=disabled_reason,
                     )
                     self.queue_manager.update_status(
                         item.id,
@@ -377,7 +394,9 @@ class SourceProcessor(BaseProcessor):
 
         # Set PROCESSING status at the start
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, f"Scraping source {source_id or source_url}"
+            item.id,
+            QueueStatus.PROCESSING,
+            f"Scraping source {source_id or source_url}",
         )
 
         try:

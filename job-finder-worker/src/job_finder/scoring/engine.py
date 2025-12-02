@@ -308,7 +308,10 @@ class ScoringEngine:
                 }
 
         if penalty != 0:
-            return {"points": penalty, "reason": f"Timezone diff {tz_diff}h ({penalty:+d})"}
+            return {
+                "points": penalty,
+                "reason": f"Timezone diff {tz_diff}h ({penalty:+d})",
+            }
         return {"points": 0, "reason": None}
 
     def _score_technology(self, technologies: List[str]) -> Dict[str, Any]:
@@ -437,7 +440,10 @@ class ScoringEngine:
             }
 
         # Good experience match
-        return {"points": 5, "reason": f"Experience match ({job_min}-{job_max}y required) (+5)"}
+        return {
+            "points": 5,
+            "reason": f"Experience match ({job_min}-{job_max}y required) (+5)",
+        }
 
     def _score_skills(self, description: str) -> Dict[str, Any]:
         """Score based on skill keywords in description."""

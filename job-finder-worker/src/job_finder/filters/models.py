@@ -93,7 +93,12 @@ class FilterResult:
         )
 
     def add_strike(
-        self, filter_category: str, filter_name: str, reason: str, detail: str, points: int
+        self,
+        filter_category: str,
+        filter_name: str,
+        reason: str,
+        detail: str,
+        points: int,
     ) -> None:
         """
         Add a strike (does not immediately fail).

@@ -296,7 +296,10 @@ class TestAnalyzeJob:
         ]
 
         matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=True
+            provider=mock_provider,
+            profile=mock_profile,
+            min_match_score=80,
+            generate_intake=True,
         )
 
         # Provide deterministic score that's above threshold
@@ -317,7 +320,10 @@ class TestAnalyzeJob:
         )
 
         matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=True
+            provider=mock_provider,
+            profile=mock_profile,
+            min_match_score=80,
+            generate_intake=True,
         )
 
         # No deterministic_score provided - should raise ValueError
@@ -355,7 +361,10 @@ class TestAnalyzeJob:
         """
 
         matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=False
+            provider=mock_provider,
+            profile=mock_profile,
+            min_match_score=80,
+            generate_intake=False,
         )
 
         job_with_score = {**sample_job, "deterministic_score": 85}

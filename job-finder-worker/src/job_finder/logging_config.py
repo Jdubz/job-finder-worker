@@ -41,7 +41,10 @@ def _load_logging_config() -> Dict:
             with open(config_path, "r") as f:
                 _logging_config = yaml.safe_load(f) or {}
         except Exception as e:
-            print(f"⚠️  Failed to load logging config from {config_path}: {e}", file=sys.stderr)
+            print(
+                f"⚠️  Failed to load logging config from {config_path}: {e}",
+                file=sys.stderr,
+            )
             _logging_config = {}
     else:
         _logging_config = {}
@@ -366,7 +369,11 @@ class StructuredLogger:
         self._log("info", structured_fields)
 
     def company_activity(
-        self, company_name: str, action: str, details: Optional[Dict] = None, truncate: bool = True
+        self,
+        company_name: str,
+        action: str,
+        details: Optional[Dict] = None,
+        truncate: bool = True,
     ) -> None:
         """
         Log company-related activity.
@@ -409,7 +416,11 @@ class StructuredLogger:
         self._log("info", structured_fields)
 
     def database_activity(
-        self, operation: str, collection: str, status: str, details: Optional[Dict] = None
+        self,
+        operation: str,
+        collection: str,
+        status: str,
+        details: Optional[Dict] = None,
     ) -> None:
         """
         Log database operations.

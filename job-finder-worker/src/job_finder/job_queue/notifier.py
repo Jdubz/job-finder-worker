@@ -130,7 +130,9 @@ class QueueEventNotifier:
             resp = requests.post(url, json=payload, headers=self._headers(), timeout=5)
             if resp.status_code >= 300:
                 logger.debug(
-                    "QueueEventNotifier send_event failed: %s %s", resp.status_code, resp.text
+                    "QueueEventNotifier send_event failed: %s %s",
+                    resp.status_code,
+                    resp.text,
                 )
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug("QueueEventNotifier send_event error: %s", exc)
@@ -140,11 +142,16 @@ class QueueEventNotifier:
         url = f"{self.base}/queue/worker/commands"
         try:
             resp = requests.get(
-                url, params={"workerId": self.worker_id}, headers=self._headers(), timeout=5
+                url,
+                params={"workerId": self.worker_id},
+                headers=self._headers(),
+                timeout=5,
             )
             if resp.status_code >= 300:
                 logger.debug(
-                    "QueueEventNotifier poll_commands failed: %s %s", resp.status_code, resp.text
+                    "QueueEventNotifier poll_commands failed: %s %s",
+                    resp.status_code,
+                    resp.text,
                 )
                 return []
             data = resp.json()

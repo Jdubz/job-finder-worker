@@ -146,17 +146,29 @@ class TestConfigLoaderIntegration:
         # Insert both configs
         ai_payload = {
             "worker": {
-                "selected": {"provider": "claude", "interface": "api", "model": "claude-sonnet"}
+                "selected": {
+                    "provider": "claude",
+                    "interface": "api",
+                    "model": "claude-sonnet",
+                }
             },
             "documentGenerator": {
-                "selected": {"provider": "openai", "interface": "api", "model": "gpt-4o"}
+                "selected": {
+                    "provider": "openai",
+                    "interface": "api",
+                    "model": "gpt-4o",
+                }
             },
             "options": [],
         }
         scoring_config_payload = {
             "minScore": 60,
             "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
-            "seniority": {"preferred": ["senior"], "acceptable": ["mid"], "rejected": ["junior"]},
+            "seniority": {
+                "preferred": ["senior"],
+                "acceptable": ["mid"],
+                "rejected": ["junior"],
+            },
         }
 
         conn.execute(
@@ -165,7 +177,12 @@ class TestConfigLoaderIntegration:
         )
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            ("scoring-config", json.dumps(scoring_config_payload), "2024-01-01", "2024-01-01"),
+            (
+                "scoring-config",
+                json.dumps(scoring_config_payload),
+                "2024-01-01",
+                "2024-01-01",
+            ),
         )
         conn.commit()
         conn.close()
@@ -188,9 +205,19 @@ class TestConfigLoaderIntegration:
         """Should return consistent results across multiple calls."""
         conn = sqlite3.connect(db_path)
         payload = {
-            "worker": {"selected": {"provider": "openai", "interface": "api", "model": "gpt-4o"}},
+            "worker": {
+                "selected": {
+                    "provider": "openai",
+                    "interface": "api",
+                    "model": "gpt-4o",
+                }
+            },
             "documentGenerator": {
-                "selected": {"provider": "claude", "interface": "api", "model": "claude-sonnet"}
+                "selected": {
+                    "provider": "claude",
+                    "interface": "api",
+                    "model": "claude-sonnet",
+                }
             },
         }
         conn.execute(

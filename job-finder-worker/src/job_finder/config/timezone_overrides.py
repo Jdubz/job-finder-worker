@@ -74,7 +74,13 @@ class TimezoneOverrideConfig:
                 company_name = override["company_name"].lower()  # Case-insensitive
                 timezone = override["timezone"]
 
-                if timezone not in ["unknown", "pacific", "eastern", "central", "mountain"]:
+                if timezone not in [
+                    "unknown",
+                    "pacific",
+                    "eastern",
+                    "central",
+                    "mountain",
+                ]:
                     logger.warning(f"Invalid timezone '{timezone}' for {company_name}, skipping")
                     continue
 

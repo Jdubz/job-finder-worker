@@ -1,6 +1,9 @@
 """Tests for company name normalization utilities."""
 
-from job_finder.utils.company_name_utils import clean_company_name, normalize_company_name
+from job_finder.utils.company_name_utils import (
+    clean_company_name,
+    normalize_company_name,
+)
 
 
 class TestNormalizeCompanyName:

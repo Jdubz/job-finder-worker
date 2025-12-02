@@ -83,7 +83,11 @@ class ConfigLoader:
             # Return defaults if not configured
             return {
                 "minScore": 60,
-                "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
+                "weights": {
+                    "skillMatch": 40,
+                    "experienceMatch": 30,
+                    "seniorityMatch": 30,
+                },
                 "seniority": {
                     "preferred": ["senior", "staff", "lead"],
                     "acceptable": ["mid", ""],
@@ -188,12 +192,20 @@ class ConfigLoader:
                 "interfaces": [
                     {
                         "value": "api",
-                        "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+                        "models": [
+                            "gemini-2.0-flash",
+                            "gemini-1.5-pro",
+                            "gemini-1.5-flash",
+                        ],
                         "enabled": True,
                     },
                     {
                         "value": "cli",
-                        "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+                        "models": [
+                            "gemini-2.0-flash",
+                            "gemini-1.5-pro",
+                            "gemini-1.5-flash",
+                        ],
                         "enabled": True,
                     },
                 ],

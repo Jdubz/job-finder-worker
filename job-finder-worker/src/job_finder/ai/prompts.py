@@ -85,7 +85,7 @@ class JobMatchPrompts:
             if other_skills:
                 lines.append("**Other Skills:**")
                 skill_names = [
-                    f"{s.name} ({s.years_experience} years)" if s.years_experience else s.name
+                    (f"{s.name} ({s.years_experience} years)" if s.years_experience else s.name)
                     for s in other_skills
                 ]
                 lines.append("  " + ", ".join(skill_names))

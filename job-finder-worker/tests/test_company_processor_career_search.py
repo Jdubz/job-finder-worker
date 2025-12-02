@@ -81,7 +81,9 @@ class TestFindBestCareerUrl:
         results = [
             SearchResult(url="https://www.indeed.com/jobs/acme", title="Jobs", snippet=""),
             SearchResult(
-                url="https://www.linkedin.com/company/acme/jobs", title="Jobs", snippet=""
+                url="https://www.linkedin.com/company/acme/jobs",
+                title="Jobs",
+                snippet="",
             ),
             SearchResult(url="https://acme.com/careers", title="Careers", snippet=""),
         ]

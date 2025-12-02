@@ -363,9 +363,15 @@ class JobProcessor(BaseProcessor):
             return
 
         # Update status to processing and set pipeline_stage for UI
-        scrape_state: Dict[str, Any] = {**(item.pipeline_state or {}), "pipeline_stage": "scrape"}
+        scrape_state: Dict[str, Any] = {
+            **(item.pipeline_state or {}),
+            "pipeline_stage": "scrape",
+        }
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, "Scraping job data", pipeline_state=scrape_state
+            item.id,
+            QueueStatus.PROCESSING,
+            "Scraping job data",
+            pipeline_state=scrape_state,
         )
 
         try:
@@ -458,7 +464,10 @@ class JobProcessor(BaseProcessor):
         # Update status to processing and set pipeline_stage for UI
         updated_state = {**item.pipeline_state, "pipeline_stage": "filter"}
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, "Filtering job", pipeline_state=updated_state
+            item.id,
+            QueueStatus.PROCESSING,
+            "Filtering job",
+            pipeline_state=updated_state,
         )
 
         # Get or create job_listing for this job
@@ -491,7 +500,10 @@ class JobProcessor(BaseProcessor):
                     item.id,
                     QueueStatus.FILTERED,
                     f"Rejected: {rejection_reason}",
-                    scraped_data={"job_data": job_data, "filter_result": rejection_data},
+                    scraped_data={
+                        "job_data": job_data,
+                        "filter_result": rejection_data,
+                    },
                 )
                 return
 
@@ -597,7 +609,10 @@ class JobProcessor(BaseProcessor):
             # Update status to processing
             updated_state = {**item.pipeline_state, "pipeline_stage": "analyze"}
             self.queue_manager.update_status(
-                item.id, QueueStatus.PROCESSING, "Extracting job data", pipeline_state=updated_state
+                item.id,
+                QueueStatus.PROCESSING,
+                "Extracting job data",
+                pipeline_state=updated_state,
             )
 
             # STAGE 1: AI Extraction - Extract semantic data from job posting
@@ -611,7 +626,10 @@ class JobProcessor(BaseProcessor):
 
             # STAGE 2: Deterministic Scoring - Score based on config
             self.queue_manager.update_status(
-                item.id, QueueStatus.PROCESSING, "Scoring job match", pipeline_state=updated_state
+                item.id,
+                QueueStatus.PROCESSING,
+                "Scoring job match",
+                pipeline_state=updated_state,
             )
             score_result = self.scoring_engine.score(extraction, title, description)
             logger.info(
@@ -816,7 +834,12 @@ class JobProcessor(BaseProcessor):
 
                 job_data["company"] = actual_company_name or company_name_clean
                 return self._finalize_company_dependency(
-                    item, job_data, company, company_website, pipeline_state, state_updates
+                    item,
+                    job_data,
+                    company,
+                    company_website,
+                    pipeline_state,
+                    state_updates,
                 )
             else:
                 # Source has stale company_id reference - company was deleted
@@ -1071,7 +1094,10 @@ class JobProcessor(BaseProcessor):
         # Update status to processing and set pipeline_stage for UI
         updated_state = {**item.pipeline_state, "pipeline_stage": "save"}
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, "Saving job match", pipeline_state=updated_state
+            item.id,
+            QueueStatus.PROCESSING,
+            "Saving job match",
+            pipeline_state=updated_state,
         )
 
         try:

@@ -459,6 +459,8 @@ class CompanyProcessor(BaseProcessor):
             logger.error("Company pipeline error (company_id=%s): %s", item.company_id, exc)
             if item.id:
                 self.queue_manager.update_status(
-                    item.id, QueueStatus.FAILED, f"Error: {type(exc).__name__}: {str(exc)[:200]}"
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Error: {type(exc).__name__}: {str(exc)[:200]}",
                 )
             raise

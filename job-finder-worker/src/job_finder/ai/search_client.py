@@ -149,7 +149,10 @@ class BraveSearchClient(SearchClient):
             response = requests.get(
                 self.base_url,
                 params={"q": query, "count": max_results},
-                headers={"X-Subscription-Token": self.api_key, "Accept": "application/json"},
+                headers={
+                    "X-Subscription-Token": self.api_key,
+                    "Accept": "application/json",
+                },
                 timeout=10,
             )
             response.raise_for_status()

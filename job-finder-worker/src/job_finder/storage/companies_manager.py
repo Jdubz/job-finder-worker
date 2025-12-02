@@ -11,7 +11,10 @@ from uuid import uuid4
 
 from job_finder.exceptions import StorageError
 from job_finder.storage.sqlite_client import sqlite_connection
-from job_finder.utils.company_name_utils import clean_company_name, normalize_company_name
+from job_finder.utils.company_name_utils import (
+    clean_company_name,
+    normalize_company_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +142,8 @@ class CompaniesManager:
                 chunk = company_ids[idx : idx + chunk_size]
                 placeholders = ",".join("?" for _ in chunk)
                 rows = conn.execute(
-                    f"SELECT * FROM companies WHERE id IN ({placeholders})", tuple(chunk)
+                    f"SELECT * FROM companies WHERE id IN ({placeholders})",
+                    tuple(chunk),
                 ).fetchall()
                 for row in rows:
                     company = self._row_to_company(dict(row))

@@ -153,7 +153,8 @@ class JobStorage:
             )
 
             experience_match = self._parse_experience_match(
-                getattr(match_result, "experience_match", 0), fallback=match_result.match_score
+                getattr(match_result, "experience_match", 0),
+                fallback=match_result.match_score,
             )
 
             try:
