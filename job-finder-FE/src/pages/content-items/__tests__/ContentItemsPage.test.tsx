@@ -31,7 +31,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 describe("ContentItemsPage", () => {
   it("renders empty state and hides admin actions for non-admins", () => {
     render(<ContentItemsPage />)
-    expect(screen.getByText(/No content items yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/No experience entries yet/i)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /export/i })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /add experience/i })).not.toBeInTheDocument()
   })

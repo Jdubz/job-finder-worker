@@ -170,7 +170,7 @@ export function ContentItemsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Career Story</h1>
@@ -247,7 +247,7 @@ export function ContentItemsPage() {
 
       {!loading && !sortedContentItems.length && (
         <div className="rounded-lg border border-dashed bg-muted/40 p-6 text-center text-sm text-muted-foreground">
-          No content items yet.
+          No experience entries yet. Add a few accomplishments to reuse across resumes and cover letters.
         </div>
       )}
 

@@ -179,21 +179,21 @@ export function JobApplicationsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Matches</h1>
         <p className="text-muted-foreground mt-2">AI-ranked roles with quick filters and doc generation</p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => navigate(ROUTES.DOCUMENT_BUILDER)}>
-          Build Documents
-        </Button>
-        <Button variant="secondary" onClick={() => navigate(ROUTES.JOB_LISTINGS)}>
-          Add New Job
-        </Button>
-      </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => navigate(ROUTES.DOCUMENT_BUILDER)}>
+            Build Documents
+          </Button>
+          <Button variant="secondary" onClick={() => navigate(ROUTES.JOB_LISTINGS)}>
+            Add New Job
+          </Button>
+        </div>
 
       {/* Stats Overview */}
       {!loading && matches.length > 0 && (
@@ -242,7 +242,7 @@ export function JobApplicationsPage() {
               <CardTitle>Job Matches</CardTitle>
               <CardDescription>Click on a match to view details</CardDescription>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -317,7 +317,7 @@ export function JobApplicationsPage() {
               </Button>
             </div>
           ) : (
-            <Table>
+            <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Job Title</TableHead>
