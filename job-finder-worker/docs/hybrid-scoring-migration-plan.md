@@ -1918,84 +1918,76 @@ Add to `job-finder-BE/server/src/modules/config/`:
 ## Migration Checklist
 
 ### Pre-Migration
-- [ ] Create feature branch from staging
+- [x] Create feature branch from staging
 - [ ] Back up production database
 - [ ] Document current config values (especially prefilter-policy for migration)
 
 ### Phase 1: New Modules
-- [ ] Create `src/job_finder/ai/extraction.py`
-- [ ] Create `src/job_finder/ai/extraction_prompts.py`
-- [ ] Create `src/job_finder/scoring/__init__.py`
-- [ ] Create `src/job_finder/scoring/config.py`
-- [ ] Create `src/job_finder/scoring/engine.py`
-- [ ] Create `src/job_finder/filters/title_filter.py`
-- [ ] Write unit tests for new modules
+- [x] Create `src/job_finder/ai/extraction.py`
+- [x] Create `src/job_finder/ai/extraction_prompts.py`
+- [x] Create `src/job_finder/scoring/__init__.py`
+- [x] Create `src/job_finder/scoring/config.py` (merged into engine.py)
+- [x] Create `src/job_finder/scoring/engine.py`
+- [x] Create `src/job_finder/filters/title_filter.py`
+- [x] Write unit tests for new modules
 
 ### Phase 2: Job Processor
-- [ ] Update `job_processor.py` with new pipeline
+- [x] Update `job_processor.py` with new pipeline (single-task PipelineContext)
 - [ ] Add queue event emissions
-- [ ] Update integration tests
+- [x] Update integration tests
 
 ### Phase 3: Config Loader
-- [ ] Add `get_scoring_config()` method
-- [ ] Simplify `get_prefilter_policy()` to title keywords only
-- [ ] Seed default `scoring-config`
+- [x] Add `get_scoring_config()` method
+- [x] Add `get_title_filter()` method
+- [x] Seed default `scoring-config`
 - [ ] Create migration script for existing `prefilter-policy` data
 
 ### Phase 4: Remove Deprecated Code
-- [ ] Delete `src/job_finder/filters/strike_filter_engine.py`
-- [ ] Delete `src/job_finder/utils/timezone_utils.py`
-- [ ] Remove `_apply_technology_ranks()` from `matcher.py`
-- [ ] Remove `_apply_experience_strike()` from `matcher.py`
-- [ ] Remove `_detect_work_arrangement()` from `matcher.py`
-- [ ] Remove `_calculate_location_penalty()` from `matcher.py`
-- [ ] Remove `_calculate_adjusted_score()` from `matcher.py`
-- [ ] Remove `calculate_freshness_adjustment()` from `date_utils.py`
-- [ ] Update imports in remaining files
-- [ ] Delete deprecated tests
-- [ ] Run full test suite
+- [x] Delete `src/job_finder/filters/strike_filter_engine.py` (only .removed backup exists)
+- [x] Delete `src/job_finder/utils/timezone_utils.py`
+- [x] Remove `_apply_technology_ranks()` from `matcher.py` (already removed)
+- [x] Remove `_apply_experience_strike()` from `matcher.py` (already removed)
+- [x] Remove `_detect_work_arrangement()` from `matcher.py` (already removed)
+- [x] Remove `_calculate_location_penalty()` from `matcher.py` (already removed)
+- [x] Remove `_calculate_adjusted_score()` from `matcher.py` (already removed)
+- [x] Remove `calculate_freshness_adjustment()` from `date_utils.py`
+- [x] Update imports in remaining files
+- [x] Delete deprecated tests
+- [x] Run full test suite (502 tests pass)
 
 ### Phase 5: Shared Types
-- [ ] Simplify `PrefilterPolicy` interface (title keywords only)
-- [ ] Add `ScoringConfig` interface
-- [ ] Add `JobExtractionResult` interface
-- [ ] Add `ScoringResult` interface
-- [ ] Update `JobFinderConfigId` type
-- [ ] Rebuild shared package
+- [x] Add `TitleFilterConfig` interface
+- [x] Add `ScoringConfig` interface
+- [x] Add `JobExtractionResult` interface
+- [x] Add `ScoreAdjustment` interface
+- [x] Add `ScoreBreakdown` interface
+- [x] Update `JobFinderConfigId` type
+- [x] Rebuild shared package
 
 ### Phase 6: API
-- [ ] Add `GET /api/config/scoring-config` endpoint
-- [ ] Add `PUT /api/config/scoring-config` endpoint
-- [ ] Simplify `prefilter-policy` endpoints
+- [x] Add `GET /api/config/scoring-config` endpoint
+- [x] Add `PUT /api/config/scoring-config` endpoint
+- [x] Add `title-filter` endpoints
 - [ ] Add config migration endpoint or script
-- [ ] Update config type guards
-- [ ] Test API changes
+- [x] Update config type guards
+- [x] Test API changes
 
 ### Phase 7: Frontend
-- [ ] SIMPLIFY `PrefilterPolicyTab.tsx` to title keywords only
-  - [ ] Remove Stop List section entirely
-  - [ ] Remove Strike Engine settings
-  - [ ] Remove Hard Rejections (except title keywords)
-  - [ ] Remove Remote Policy
-  - [ ] Remove all strike configurations
-  - [ ] Remove Technology Ranks
-  - [ ] Add Required Keywords list UI
-  - [ ] Add Stop Keywords list UI
-- [ ] CREATE `ScoringConfigTab.tsx` with all scoring sections
-- [ ] UPDATE `MatchPolicyTab.tsx` (move scoring to new tab)
+- [x] CREATE `TitleFilterTab.tsx`
+- [x] CREATE `ScoringConfigTab.tsx` with all scoring sections
 - [ ] UPDATE `JobDetailsDialog.tsx` (show scoring breakdown)
 - [ ] Test all config pages
 
 ### Testing
-- [ ] All unit tests pass
-- [ ] Integration tests pass
+- [x] All unit tests pass (502 tests)
+- [x] Integration tests pass
 - [ ] Manual test with real jobs
 - [ ] Test Anthropic jobs specifically (previous false negatives)
 - [ ] Verify scores are reasonable
 - [ ] Verify tech detection works without regex confusion
 
 ### Deployment
-- [ ] Merge to staging
+- [x] Merge to staging (multiple commits pushed)
 - [ ] Deploy staging
 - [ ] Run config migration script
 - [ ] Run test batch
