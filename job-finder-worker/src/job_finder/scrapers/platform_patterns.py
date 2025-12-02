@@ -48,6 +48,9 @@ class PlatformPattern:
     auth_required: bool = False
     # Config type: api | rss | html
     config_type: str = "api"
+    # Salary field paths (for structured compensation data)
+    salary_min_field: str = ""
+    salary_max_field: str = ""
 
 
 # Platform patterns registry - add new platforms here, not in code
@@ -92,7 +95,13 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
             "description": "descriptionHtml",
             "url": "jobUrl",
             "posted_date": "publishedAt",
+            "employment_type": "employmentType",
+            "is_remote": "isRemote",
+            "department": "department",
+            "team": "team",
         },
+        salary_min_field="compensation.summaryComponents[compensationType=Salary].minValue",
+        salary_max_field="compensation.summaryComponents[compensationType=Salary].maxValue",
         validation_key="jobs",
     ),
     PlatformPattern(
@@ -107,7 +116,13 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
             "description": "descriptionHtml",
             "url": "jobUrl",
             "posted_date": "publishedAt",
+            "employment_type": "employmentType",
+            "is_remote": "isRemote",
+            "department": "department",
+            "team": "team",
         },
+        salary_min_field="compensation.summaryComponents[compensationType=Salary].minValue",
+        salary_max_field="compensation.summaryComponents[compensationType=Salary].maxValue",
         validation_key="jobs",
     ),
     PlatformPattern(
@@ -290,6 +305,12 @@ def build_config_from_pattern(
 
     if pattern.post_body_template and pattern.config_type == "api":
         config["post_body"] = pattern.post_body_template.copy()
+
+    if pattern.salary_min_field:
+        config["salary_min_field"] = pattern.salary_min_field
+
+    if pattern.salary_max_field:
+        config["salary_max_field"] = pattern.salary_max_field
 
     if pattern.base_url_template:
         config["base_url"] = pattern.base_url_template.format(**groups)

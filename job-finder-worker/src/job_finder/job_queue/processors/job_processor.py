@@ -1,7 +1,10 @@
 """Job queue item processor (single-task pipeline).
 
 Processes a JOB item through the complete pipeline in a single task:
-SCRAPE -> TITLE_FILTER -> COMPANY_LOOKUP -> [WAIT_COMPANY] -> AI_EXTRACTION -> SCORING -> ANALYSIS -> SAVE_MATCH
+SCRAPE -> TITLE_FILTER -> [CREATE_LISTING] -> COMPANY_LOOKUP -> [WAIT_COMPANY] -> AI_EXTRACTION -> SCORING -> ANALYSIS -> SAVE_MATCH
+
+Title filter runs BEFORE listing creation to avoid storing jobs that don't pass.
+Jobs that fail the title filter are ignored entirely - no storage, only queue status update.
 
 All stages execute in-memory within a single task (no respawning).
 This reduces database queries and maintains in-memory data throughout.
@@ -349,10 +352,7 @@ class JobProcessor(BaseProcessor):
                 },
             )
 
-            # Get/create job listing
-            ctx.listing_id = self._get_or_create_job_listing(item, ctx.job_data)
-
-            # STAGE 2: TITLE FILTER
+            # STAGE 2: TITLE FILTER (run BEFORE creating listing to avoid wasting storage)
             ctx.stage = "filter"
             logger.info(f"[PIPELINE] {url_preview} -> TITLE_FILTER")
             self._update_status(item, "Filtering by title", ctx.stage)
@@ -366,11 +366,15 @@ class JobProcessor(BaseProcessor):
                         "reason": ctx.title_filter_result.reason,
                     },
                 )
+                # Filtered jobs are NOT stored - just update queue status
                 self._finalize_filtered(ctx)
                 return
 
             # Emit filter passed event
             self._emit_event("job:filtered", item.id, {"passed": True})
+
+            # Get/create job listing (only for jobs that passed title filter)
+            ctx.listing_id = self._get_or_create_job_listing(item, ctx.job_data)
 
             # STAGE 3: COMPANY LOOKUP
             ctx.stage = "company"
@@ -867,7 +871,12 @@ class JobProcessor(BaseProcessor):
         )
 
     def _finalize_filtered(self, ctx: PipelineContext) -> None:
-        """Finalize pipeline with FILTERED status."""
+        """
+        Finalize pipeline with FILTERED status.
+
+        Filtered jobs are NOT stored in job_listings to avoid wasting resources.
+        Only the queue item status is updated.
+        """
         job_data = ctx.job_data or {}
         title = job_data.get("title", "")
         rejection_reason = (
@@ -876,14 +885,16 @@ class JobProcessor(BaseProcessor):
 
         logger.info(f"[PIPELINE] FILTERED: '{title}' - {rejection_reason}")
 
-        # Update listing
-        self._update_listing_status(
-            ctx.listing_id,
-            "filtered",
-            filter_result={
-                "titleFilter": ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
-            },
-        )
+        # Note: No listing created for filtered jobs - title filter runs before listing creation
+        # If listing_id exists (legacy item), update its status
+        if ctx.listing_id:
+            self._update_listing_status(
+                ctx.listing_id,
+                "filtered",
+                filter_result={
+                    "titleFilter": ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
+                },
+            )
 
         # Spawn company/source tasks even for filtered jobs
         self._spawn_company_and_source(ctx.item, job_data)

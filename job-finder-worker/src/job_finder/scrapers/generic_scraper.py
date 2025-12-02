@@ -308,30 +308,67 @@ class GenericScraper:
 
     def _dot_access(self, item: Any, path: str) -> Optional[Any]:
         """
-        Navigate nested dict with dot notation.
+        Navigate nested dict with dot notation and array filtering.
+
+        Supports:
+            - Simple dot notation: "location.name"
+            - Array index: "items.0.name" (access first element)
+            - Array filter: "items[type=Salary].value" (find element where type=Salary)
 
         Examples:
             _dot_access({"a": {"b": 1}}, "a.b") -> 1
             _dot_access({"name": "test"}, "name") -> "test"
+            _dot_access({"items": [{"x": 1}, {"x": 2}]}, "items.0.x") -> 1
+            _dot_access({"items": [{"type": "A"}, {"type": "B", "val": 5}]},
+                        "items[type=B].val") -> 5
 
         Args:
             item: Dictionary to navigate
-            path: Dot-separated path like "location.name"
+            path: Dot-separated path with optional array access
 
         Returns:
             Value at path or None
         """
+        import re
+
         if not path:
             return None
 
         current = item
-        for key in path.split("."):
+        # Split on dots but preserve array filter brackets
+        # e.g., "a.b[x=y].c" -> ["a", "b[x=y]", "c"]
+        parts = re.split(r"\.(?![^\[]*\])", path)
+
+        for part in parts:
             if current is None:
                 return None
-            if isinstance(current, dict):
-                current = current.get(key)
+
+            # Check for array filter syntax: field[key=value]
+            filter_match = re.match(r"^([^\[]+)\[([^=]+)=([^\]]+)\]$", part)
+            if filter_match:
+                field_name, filter_key, filter_value = filter_match.groups()
+                if isinstance(current, dict):
+                    current = current.get(field_name)
+                if isinstance(current, list):
+                    # Find element where filter_key equals filter_value
+                    current = next(
+                        (el for el in current if el.get(filter_key) == filter_value),
+                        None,
+                    )
+                else:
+                    return None
+            elif isinstance(current, dict):
+                current = current.get(part)
+            elif isinstance(current, list):
+                # Support numeric index access
+                try:
+                    idx = int(part)
+                    current = current[idx] if 0 <= idx < len(current) else None
+                except (ValueError, IndexError):
+                    return None
             else:
                 return None
+
         return current
 
     def _rss_access(self, entry: Any, path: str) -> Optional[Any]:

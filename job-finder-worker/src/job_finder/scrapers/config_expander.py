@@ -174,12 +174,20 @@ def _expand_ashby(config: Dict[str, Any]) -> Dict[str, Any]:
     if not board_name:
         raise ValueError("Ashby source missing board_name in config")
 
-    return {
+    expanded = {
         "type": "api",
         "url": f"https://api.ashbyhq.com/posting-api/job-board/{board_name}?includeCompensation=true",
         "response_path": "jobs",
         "fields": ASHBY_FIELDS.copy(),
     }
+
+    # Include salary fields from platform pattern if available
+    if _ASHBY_PATTERN and _ASHBY_PATTERN.salary_min_field:
+        expanded["salary_min_field"] = _ASHBY_PATTERN.salary_min_field
+    if _ASHBY_PATTERN and _ASHBY_PATTERN.salary_max_field:
+        expanded["salary_max_field"] = _ASHBY_PATTERN.salary_max_field
+
+    return expanded
 
 
 def _expand_workday(config: Dict[str, Any]) -> Dict[str, Any]:
