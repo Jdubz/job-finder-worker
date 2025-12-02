@@ -112,7 +112,11 @@ def test_job_pipeline_full_path(tmp_path: Path):
                 json.dumps(
                     {
                         "minScore": 50,
-                        "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
+                        "weights": {
+                            "skillMatch": 40,
+                            "experienceMatch": 30,
+                            "seniorityMatch": 30,
+                        },
                         "seniority": {
                             "preferred": ["senior"],
                             "acceptable": ["mid"],

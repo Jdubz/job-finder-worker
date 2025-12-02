@@ -254,7 +254,10 @@ def check_job_type_filter(title: str, strict: bool = True) -> Tuple[FilterDecisi
     # Block: Data/Analytics (non-engineering)
     for keyword in DATA_ANALYTICS_KEYWORDS:
         if keyword in title_lower:
-            return (FilterDecision.REJECT, f"Data Analytics (non-engineering): '{keyword}'")
+            return (
+                FilterDecision.REJECT,
+                f"Data Analytics (non-engineering): '{keyword}'",
+            )
 
     # Block: Other non-engineering
     for keyword in OTHER_NON_ENGINEERING_KEYWORDS:
@@ -295,7 +298,10 @@ def check_seniority_filter(
             import re
 
             if re.search(keyword, title_lower):
-                return (FilterDecision.REJECT, f"Junior/Entry-level role: '{keyword.rstrip('$')}'")
+                return (
+                    FilterDecision.REJECT,
+                    f"Junior/Entry-level role: '{keyword.rstrip('$')}'",
+                )
         elif keyword in title_lower:
             return (FilterDecision.REJECT, f"Junior/Entry-level role: '{keyword}'")
 

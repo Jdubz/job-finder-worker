@@ -12,6 +12,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -66,6 +76,8 @@ export function SourcesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false)
   const [scrapePrefillSourceId, setScrapePrefillSourceId] = useState<string | null>(null)
+  const [deleteRequest, setDeleteRequest] = useState<{ id: string; name?: string } | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   // Form state
   const [sourceUrl, setSourceUrl] = useState("")
@@ -103,13 +115,8 @@ export function SourcesPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this source?")) return
-    try {
-      await deleteSource(id)
-    } catch (err) {
-      console.error("Failed to delete source:", err)
-    }
+  const handleDelete = (id: string, name?: string) => {
+    setDeleteRequest({ id, name })
   }
 
   const handleToggleStatus = async (source: JobSource) => {
@@ -315,7 +322,7 @@ export function SourcesPage() {
                         type: "jobSource",
                         source,
                         onToggleStatus: handleToggleStatus,
-                        onDelete: (id) => handleDelete(id),
+                        onDelete: (id) => handleDelete(id, source.name),
                       })
                     }
                   >
@@ -420,6 +427,39 @@ export function SourcesPage() {
         onSubmitted={refetch}
         sources={sources}
       />
+
+      <AlertDialog open={!!deleteRequest} onOpenChange={(open) => !open && setDeleteRequest(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete source?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove {deleteRequest?.name ? `"${deleteRequest.name}"` : "this source"} and stop any
+              scraping associated with it. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteRequest(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={confirmingDelete}
+              onClick={async () => {
+                if (!deleteRequest) return
+                setConfirmingDelete(true)
+                try {
+                  await deleteSource(deleteRequest.id)
+                } catch (err) {
+                  console.error("Failed to delete source:", err)
+                  throw err
+                } finally {
+                  setConfirmingDelete(false)
+                  setDeleteRequest(null)
+                }
+              }}
+            >
+              {confirmingDelete ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

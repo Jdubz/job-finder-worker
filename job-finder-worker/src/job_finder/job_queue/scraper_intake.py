@@ -325,7 +325,9 @@ class ScraperIntake:
                         else ({"job_listing_id": listing_id} if listing_id else None)
                     ),
                     input={
-                        "source_url": normalized_url if (is_aggregator or is_board_path) else None,
+                        "source_url": (
+                            normalized_url if (is_aggregator or is_board_path) else None
+                        ),
                     },
                 )
 

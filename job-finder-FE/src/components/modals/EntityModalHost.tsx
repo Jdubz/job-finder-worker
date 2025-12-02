@@ -14,7 +14,13 @@ export function EntityModalHost() {
   const renderContent = () => {
     switch (modal.type) {
       case "company":
-        return <CompanyDetailsModalContent companyId={modal.companyId} company={modal.company} />
+        return (
+          <CompanyDetailsModalContent
+            companyId={modal.companyId}
+            company={modal.company}
+            handlers={modal.handlers}
+          />
+        )
       case "jobListing":
         return (
           <JobListingModalContent

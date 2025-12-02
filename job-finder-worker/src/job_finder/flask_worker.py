@@ -371,7 +371,10 @@ def worker_loop():
                             msg = f"Processing exceeded timeout ({processing_timeout}s)"
                             slogger.worker_status(
                                 "processing_timeout",
-                                {"item_id": item.id, "timeout_seconds": processing_timeout},
+                                {
+                                    "item_id": item.id,
+                                    "timeout_seconds": processing_timeout,
+                                },
                             )
                             queue_manager.update_status(
                                 item.id,
@@ -521,7 +524,10 @@ def reload_config():
 
     apply_db_settings(config_loader, ai_matcher)
     return jsonify(
-        {"message": "Reloaded config", "poll_interval": worker_state.get("poll_interval")}
+        {
+            "message": "Reloaded config",
+            "poll_interval": worker_state.get("poll_interval"),
+        }
     )
 
 

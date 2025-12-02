@@ -8,7 +8,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from job_finder.exceptions import DuplicateSourceError, InvalidStateTransition, StorageError
+from job_finder.exceptions import (
+    DuplicateSourceError,
+    InvalidStateTransition,
+    StorageError,
+)
 from job_finder.job_queue.models import SourceStatus
 from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.utils.company_name_utils import normalize_company_name

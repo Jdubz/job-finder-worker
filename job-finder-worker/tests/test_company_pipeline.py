@@ -99,10 +99,18 @@ class TestCompanyPipeline:
         }
         config_loader.get_ai_settings.return_value = {
             "worker": {
-                "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+                "selected": {
+                    "provider": "gemini",
+                    "interface": "api",
+                    "model": "gemini-2.0-flash",
+                }
             },
             "documentGenerator": {
-                "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+                "selected": {
+                    "provider": "gemini",
+                    "interface": "api",
+                    "model": "gemini-2.0-flash",
+                }
             },
         }
 

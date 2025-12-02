@@ -204,7 +204,10 @@ class TestSmokeTestRunner:
 
         results = [
             {"url": "https://example.com/job/1", "status": "SUCCESS"},
-            {"url": "https://example.com/job/1/", "status": "SUCCESS"},  # Same after normalization
+            {
+                "url": "https://example.com/job/1/",
+                "status": "SUCCESS",
+            },  # Same after normalization
         ]
 
         validation = runner.validate_results(results)
@@ -294,7 +297,10 @@ class TestSmokeTestRunner:
             "issues": ["Missing scoring fields"],
             "checks": {
                 "duplicate_urls": {"passed": True, "details": []},
-                "scoring_fields": {"passed": False, "details": ["Missing matchScore in TestCo"]},
+                "scoring_fields": {
+                    "passed": False,
+                    "details": ["Missing matchScore in TestCo"],
+                },
                 "document_references": {"passed": True, "details": []},
             },
         }

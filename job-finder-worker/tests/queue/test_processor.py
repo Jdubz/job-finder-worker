@@ -4,7 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus, ScrapeConfig
+from job_finder.job_queue.models import (
+    JobQueueItem,
+    QueueItemType,
+    QueueStatus,
+    ScrapeConfig,
+)
 from job_finder.job_queue.processor import QueueItemProcessor
 
 
@@ -52,10 +57,18 @@ def mock_managers():
     }
     config_loader.get_ai_settings.return_value = {
         "worker": {
-            "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+            "selected": {
+                "provider": "gemini",
+                "interface": "api",
+                "model": "gemini-2.0-flash",
+            }
         },
         "documentGenerator": {
-            "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+            "selected": {
+                "provider": "gemini",
+                "interface": "api",
+                "model": "gemini-2.0-flash",
+            }
         },
     }
 

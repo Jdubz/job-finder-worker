@@ -65,7 +65,7 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
                 <div className="text-xs text-muted-foreground">Overall Match</div>
               </div>
               <div className="text-center p-3 bg-secondary rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">{match.experienceMatch}%</div>
+                <div className="text-2xl font-bold text-primary">{match.experienceMatch}%</div>
                 <div className="text-xs text-muted-foreground">Experience Match</div>
               </div>
               <div className="text-center p-3 bg-secondary rounded-lg">

@@ -157,7 +157,10 @@ class QueueItemProcessor:
             self._handle_failure(item, error_msg, error_details)
 
     def _handle_failure(
-        self, item: JobQueueItem, error_message: str, error_details: Optional[str] = None
+        self,
+        item: JobQueueItem,
+        error_message: str,
+        error_details: Optional[str] = None,
     ) -> None:
         """
         Handle item processing failure with retry logic.

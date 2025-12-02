@@ -32,7 +32,9 @@ class QueueManager:
     """Manage queue items stored inside the SQLite database."""
 
     def __init__(
-        self, db_path: Optional[str] = None, notifier: Optional[QueueEventNotifier] = None
+        self,
+        db_path: Optional[str] = None,
+        notifier: Optional[QueueEventNotifier] = None,
     ):
         self.db_path = db_path
         self.notifier = notifier
@@ -54,7 +56,13 @@ class QueueManager:
         if isinstance(obj, dict):
             cleaned: Dict[str, Any] = {}
             for key, val in obj.items():
-                if key in {"description", "raw_html", "full_text", "raw_listing", "html"}:
+                if key in {
+                    "description",
+                    "raw_html",
+                    "full_text",
+                    "raw_listing",
+                    "html",
+                }:
                     continue
                 cleaned[key] = self._sanitize_payload(val)
             return cleaned
@@ -339,7 +347,11 @@ class QueueManager:
 
         terminal_items = self._get_items_by_tracking_id(
             current_item.tracking_id,
-            status_filter=[QueueStatus.FILTERED, QueueStatus.SKIPPED, QueueStatus.FAILED],
+            status_filter=[
+                QueueStatus.FILTERED,
+                QueueStatus.SKIPPED,
+                QueueStatus.FAILED,
+            ],
         )
         for item in terminal_items:
             if item.url == target_url and item.type == target_type:

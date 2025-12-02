@@ -6,41 +6,17 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Trash2, ExternalLink, Database, AlertCircle } from "lucide-react"
 import { MatchBreakdown } from "@/pages/job-listings/components/MatchBreakdown"
+import { statusBadgeClass } from "@/lib/status-badge"
+import { formatDate, formatDateTime } from "@/lib/formatDate"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
-const statusConfig: Record<JobListingStatus, { label: string; color: string }> = {
-  pending: { label: "Pending", color: "bg-gray-100 text-gray-800" },
-  filtered: { label: "Filtered", color: "bg-yellow-100 text-yellow-800" },
-  analyzing: { label: "Analyzing", color: "bg-blue-100 text-blue-800" },
-  analyzed: { label: "Analyzed", color: "bg-green-100 text-green-800" },
-  matched: { label: "Matched", color: "bg-emerald-100 text-emerald-800" },
-  skipped: { label: "Skipped", color: "bg-red-100 text-red-800" },
-}
-
-function formatDate(date: unknown): string {
-  if (!date) return "—"
-  let d: Date
-  if (date instanceof Date) {
-    d = date
-  } else if (typeof date === "string" || typeof date === "number") {
-    d = new Date(date)
-  } else if (
-    typeof date === "object" &&
-    date !== null &&
-    "toDate" in date &&
-    typeof (date as { toDate: () => Date }).toDate === "function"
-  ) {
-    d = (date as { toDate: () => Date }).toDate()
-  } else {
-    return "—"
-  }
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
+const statusLabel: Record<JobListingStatus, string> = {
+  pending: "Pending",
+  filtered: "Filtered",
+  analyzing: "Analyzing",
+  analyzed: "Analyzed",
+  matched: "Matched",
+  skipped: "Skipped",
 }
 
 function extractMatchScore(listing: JobListingRecord): number | null {
@@ -69,7 +45,7 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
   const [error, setError] = useState<string | null>(null)
 
   const matchScore = useMemo(() => extractMatchScore(listing), [listing])
-  const statusBadge = statusConfig[listing.status] ?? statusConfig.pending
+  const statusBadge = statusBadgeClass(listing.status)
 
   const handleDelete = async () => {
     if (!handlers?.onDelete) return
@@ -116,7 +92,7 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
             {listing.salaryRange && <span>• {listing.salaryRange}</span>}
           </div>
         </div>
-        <Badge className={statusBadge.color}>{statusBadge.label}</Badge>
+        <Badge className={statusBadge}>{statusLabel[listing.status] ?? "Pending"}</Badge>
       </div>
 
       {error && (
@@ -140,7 +116,7 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
               <div className="mt-1">
                 <Button
                   variant="link"
-                  className="h-auto p-0 text-blue-600 hover:underline text-sm"
+                  className="h-auto p-0 text-sm"
                   onClick={() => openModal({ type: "jobSource", sourceId: listing.sourceId })}
                 >
                   View Source Details
@@ -164,7 +140,7 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
               href={listing.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center text-blue-600 hover:underline mt-1 text-sm break-all"
+              className="flex items-center text-primary hover:underline mt-1 text-sm break-all"
             >
               {listing.url}
               <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0" />
@@ -219,11 +195,11 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
         <div className="grid grid-cols-2 gap-4 pt-2 border-t">
           <div>
             <Label className="text-muted-foreground text-xs uppercase tracking-wide">Created</Label>
-            <p className="mt-1 text-sm text-muted-foreground">{formatDate(listing.createdAt)}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{formatDateTime(listing.createdAt)}</p>
           </div>
           <div>
             <Label className="text-muted-foreground text-xs uppercase tracking-wide">Updated</Label>
-            <p className="mt-1 text-sm text-muted-foreground">{formatDate(listing.updatedAt)}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{formatDateTime(listing.updatedAt)}</p>
           </div>
         </div>
       </div>

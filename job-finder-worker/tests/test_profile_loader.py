@@ -215,7 +215,12 @@ class TestValidateProfile:
             summary=None,
             years_of_experience=0,
             skills=[
-                Skill(name="Python", level="advanced", years_experience=5.0, category="programming")
+                Skill(
+                    name="Python",
+                    level="advanced",
+                    years_experience=5.0,
+                    category="programming",
+                )
             ],
             experience=[],
             education=[],
@@ -349,7 +354,12 @@ class TestSaveToJson:
             summary="Engineer",
             years_of_experience=5.0,
             skills=[
-                Skill(name="Python", level="advanced", years_experience=5.0, category="programming")
+                Skill(
+                    name="Python",
+                    level="advanced",
+                    years_experience=5.0,
+                    category="programming",
+                )
             ],
             experience=[],
             education=[],

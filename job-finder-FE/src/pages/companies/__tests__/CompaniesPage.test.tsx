@@ -17,6 +17,9 @@ import { CompaniesPage } from "../CompaniesPage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useQueueItems } from "@/hooks/useQueueItems"
+import { useJobSources } from "@/hooks/useJobSources"
+import { useJobListings } from "@/hooks/useJobListings"
+import { EntityModalProvider } from "@/contexts/EntityModalContext"
 
 const mockNavigate = vi.fn()
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -30,6 +33,8 @@ vi.mock("react-router-dom", async (importOriginal) => {
 vi.mock("@/contexts/AuthContext")
 vi.mock("@/hooks/useCompanies")
 vi.mock("@/hooks/useQueueItems")
+vi.mock("@/hooks/useJobSources")
+vi.mock("@/hooks/useJobListings")
 
 describe("CompaniesPage", () => {
   const mockUser = {
@@ -83,6 +88,12 @@ describe("CompaniesPage", () => {
   const mockDeleteCompany = vi.fn()
   const mockRefetch = vi.fn()
   const mockSetFilters = vi.fn()
+  const mockJobSources = [
+    { id: "source-1", name: "Acme RSS", sourceType: "rss", status: "active", companyId: "company-1" },
+  ] as any
+  const mockJobListings = [
+    { id: "listing-1", title: "FE Engineer", status: "matched", location: "Remote", companyId: "company-1" },
+  ] as any
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -117,11 +128,40 @@ describe("CompaniesPage", () => {
       deleteQueueItem: vi.fn(),
       refetch: vi.fn(),
     } as any)
+
+    vi.mocked(useJobSources).mockReturnValue({
+      sources: mockJobSources,
+      loading: false,
+      error: null,
+      pagination: null,
+      stats: null,
+      updateSource: vi.fn(),
+      deleteSource: vi.fn(),
+      refetch: vi.fn(),
+      fetchStats: vi.fn(),
+      setFilters: vi.fn(),
+    } as any)
+
+    vi.mocked(useJobListings).mockReturnValue({
+      listings: mockJobListings,
+      loading: false,
+      error: null,
+      count: mockJobListings.length,
+      refetch: vi.fn(),
+      deleteListing: vi.fn(),
+      setFilters: vi.fn(),
+    } as any)
   })
+
+  const renderWithProviders = () => render(
+    <EntityModalProvider>
+      <CompaniesPage />
+    </EntityModalProvider>
+  )
 
   describe("Initial Rendering", () => {
     it("should render the companies page with title", async () => {
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByRole("heading", { name: /companies/i })).toBeInTheDocument()
@@ -132,7 +172,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should display company names in simplified list", async () => {
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
@@ -142,7 +182,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should display essential columns: Name, Industry, Status", async () => {
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         // Check table headers
@@ -152,7 +192,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should render Add Company button", async () => {
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /add company/i })).toBeInTheDocument()
@@ -160,7 +200,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should show clickable rows instruction", async () => {
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText(/click on a company to view details/i)).toBeInTheDocument()
@@ -171,7 +211,7 @@ describe("CompaniesPage", () => {
   describe("Detail Modal", () => {
     it("should open detail modal when clicking on a row", async () => {
       const user = userEvent.setup()
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
@@ -190,7 +230,7 @@ describe("CompaniesPage", () => {
 
     it("should show detailed information in modal", async () => {
       const user = userEvent.setup()
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
@@ -210,7 +250,7 @@ describe("CompaniesPage", () => {
 
     it("should show description when available", async () => {
       const user = userEvent.setup()
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
@@ -226,7 +266,7 @@ describe("CompaniesPage", () => {
 
     it("should show headquarters when available", async () => {
       const user = userEvent.setup()
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
@@ -242,7 +282,7 @@ describe("CompaniesPage", () => {
 
     it("should show delete button in modal", async () => {
       const user = userEvent.setup()
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
@@ -258,7 +298,7 @@ describe("CompaniesPage", () => {
 
     it("should show placeholder when tech stack is empty", async () => {
       const user = userEvent.setup()
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("StartupXYZ")).toBeInTheDocument()
@@ -289,7 +329,7 @@ describe("CompaniesPage", () => {
         setFilters: mockSetFilters,
       } as any)
 
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       expect(screen.getByRole("heading", { name: /companies/i })).toBeInTheDocument()
     })
@@ -308,7 +348,7 @@ describe("CompaniesPage", () => {
         setFilters: mockSetFilters,
       } as any)
 
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText(/no companies found/i)).toBeInTheDocument()
@@ -326,7 +366,7 @@ describe("CompaniesPage", () => {
         signInWithGoogle: vi.fn(),
       } as any)
 
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       expect(screen.getByText(/sign in to view companies/i)).toBeInTheDocument()
       expect(screen.queryByRole("button", { name: /add company/i })).not.toBeInTheDocument()
@@ -335,7 +375,7 @@ describe("CompaniesPage", () => {
 
   describe("Add Company Button", () => {
     it("should render Add Company button", async () => {
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /add company/i })).toBeInTheDocument()
@@ -345,7 +385,7 @@ describe("CompaniesPage", () => {
 
   describe("Filtering", () => {
     it("should have search input", async () => {
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/search companies/i)).toBeInTheDocument()
@@ -356,7 +396,7 @@ describe("CompaniesPage", () => {
   describe("Re-analyze Feature", () => {
     it("should show Re-analyze button in detail modal", async () => {
       const user = userEvent.setup()
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
@@ -373,7 +413,7 @@ describe("CompaniesPage", () => {
     it("should call submitCompany with companyId when Re-analyze is clicked", async () => {
       const user = userEvent.setup()
       mockSubmitCompany.mockResolvedValueOnce("queue-item-123")
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
@@ -401,7 +441,7 @@ describe("CompaniesPage", () => {
     it("should navigate to queue management after successful re-analyze submission", async () => {
       const user = userEvent.setup()
       mockSubmitCompany.mockResolvedValueOnce("queue-item-123")
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
@@ -431,7 +471,7 @@ describe("CompaniesPage", () => {
     it("should show error message when re-analyze fails", async () => {
       const user = userEvent.setup()
       mockSubmitCompany.mockRejectedValueOnce(new Error("Network error"))
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
@@ -477,7 +517,7 @@ describe("CompaniesPage", () => {
       } as any)
 
       const user = userEvent.setup()
-      render(<CompaniesPage />)
+      renderWithProviders()
 
       await waitFor(() => {
         expect(screen.getByText("No Website Corp")).toBeInTheDocument()

@@ -2,6 +2,7 @@ import type { QueueItem } from "@shared/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { statusBadgeClass } from "@/lib/status-badge"
 import { Calendar, Clock, ExternalLink, Trash2 } from "lucide-react"
 import { format, formatDistanceToNow } from "date-fns"
 import {
@@ -54,6 +55,9 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
   const domain = getDomain(item.url || "")
   const sourceLabel = getSourceLabel(item)
   const taskType = getTaskTypeLabel(item)
+  const distinctStage =
+    stageLabel && stageLabel.toLowerCase() !== taskType.toLowerCase() &&
+    (!sourceLabel || stageLabel.toLowerCase() !== sourceLabel.toLowerCase())
 
   return (
     <Card
@@ -72,9 +76,9 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
 
           <div className="flex-1 min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <Badge className="capitalize">{item.status}</Badge>
+              <Badge className={statusBadgeClass(item.status)}>{item.status}</Badge>
               <Badge variant="outline">{taskType}</Badge>
-              {stageLabel && (
+              {distinctStage && (
                 <Badge variant="secondary" className="capitalize">
                   {stageLabel}
                 </Badge>
@@ -95,10 +99,6 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
                 </span>
               )}
             </div>
-
-            {company && (
-              <div className="text-xs text-muted-foreground">Company: {company}</div>
-            )}
 
             <div className="grid gap-3 text-xs text-muted-foreground md:grid-cols-3">
               <div className="flex items-center gap-2 min-w-0">
