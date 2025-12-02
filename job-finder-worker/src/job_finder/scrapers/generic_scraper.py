@@ -360,7 +360,11 @@ class GenericScraper:
                 if isinstance(current, list):
                     # Find element where filter_key equals filter_value
                     current = next(
-                        (el for el in current if isinstance(el, dict) and el.get(filter_key) == filter_value),
+                        (
+                            el
+                            for el in current
+                            if isinstance(el, dict) and el.get(filter_key) == filter_value
+                        ),
                         None,
                     )
                 else:

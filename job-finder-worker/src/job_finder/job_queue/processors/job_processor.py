@@ -892,7 +892,9 @@ class JobProcessor(BaseProcessor):
                 ctx.listing_id,
                 "filtered",
                 filter_result={
-                    "titleFilter": ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
+                    "titleFilter": (
+                        ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
+                    )
                 },
             )
 
