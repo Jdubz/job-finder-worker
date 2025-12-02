@@ -457,6 +457,16 @@ def create_provider_from_config(
     if not interface_type:
         interface_type = "cli" if provider_type in ("codex", "gemini") else "api"
 
+    # Default model per provider if not specified
+    if not model:
+        model_defaults = {
+            "codex": "gpt-5-codex",
+            "claude": "claude-sonnet-4-5-20250929",
+            "openai": "gpt-4o",
+            "gemini": "gemini-2.0-flash",
+        }
+        model = model_defaults.get(provider_type, "")
+
     task_info = f" (task={task})" if task else ""
     logger.info(f"AI provider selected: {provider_type}/{interface_type} model={model}{task_info}")
 
