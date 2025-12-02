@@ -9,8 +9,8 @@ test.describe("Smoke navigation", () => {
   const paths: Array<[string, RegExp]> = [
     ["/queue-management", /Queue Management/i],
     ["/document-builder", /Document Builder/i],
-    ["/content-items", /Content Items/i],
-    ["/owner/config", /Configuration|Queue Settings|AI/i],
+    ["/content-items", /Career Story|Experience/i],
+    ["/owner/config", /Job Finder Configuration|Configuration|Queue Settings|AI/i],
   ]
 
   for (const [path, headingPattern] of paths) {
