@@ -52,17 +52,20 @@ def main() -> None:
             # Ensure it's within reasonable bounds (0 to 60 seconds)
             if task_delay < 0:
                 logger.warning(
-                    "Invalid taskDelaySeconds=%s (negative), using default of 1s", task_delay_raw
+                    "Invalid taskDelaySeconds=%s (negative), using default of 1s",
+                    task_delay_raw,
                 )
                 task_delay = 1
             elif task_delay > 60:
                 logger.warning(
-                    "taskDelaySeconds=%s exceeds maximum of 60s, capping at 60s", task_delay_raw
+                    "taskDelaySeconds=%s exceeds maximum of 60s, capping at 60s",
+                    task_delay_raw,
                 )
                 task_delay = 60
         except (TypeError, ValueError):
             logger.warning(
-                "Invalid taskDelaySeconds=%s (not a number), using default of 1s", task_delay_raw
+                "Invalid taskDelaySeconds=%s (not a number), using default of 1s",
+                task_delay_raw,
             )
             task_delay = 1
     except (InitializationError, ConfigurationError) as e:
@@ -75,7 +78,9 @@ def main() -> None:
         task_delay = 1
     except Exception:
         # Unexpected errors - log full traceback for debugging
-        logger.exception("Unexpected error loading queue settings, using default task delay of 1s")
+        logger.exception(
+            "Unexpected error loading queue settings, using default task delay of 1s"
+        )
         task_delay = 1
 
     logger.info(

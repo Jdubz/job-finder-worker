@@ -93,7 +93,9 @@ class TestUrlsAreEquivalent:
 
     def test_equivalent_with_trailing_slash(self):
         """Test equivalence with trailing slash."""
-        assert urls_are_equivalent("https://example.com/job/123", "https://example.com/job/123/")
+        assert urls_are_equivalent(
+            "https://example.com/job/123", "https://example.com/job/123/"
+        )
 
     def test_equivalent_with_tracking_params(self):
         """Test equivalence with tracking parameters."""
@@ -104,11 +106,15 @@ class TestUrlsAreEquivalent:
 
     def test_equivalent_case_insensitive(self):
         """Test equivalence is case insensitive."""
-        assert urls_are_equivalent("https://example.com/job/123", "https://EXAMPLE.COM/job/123")
+        assert urls_are_equivalent(
+            "https://example.com/job/123", "https://EXAMPLE.COM/job/123"
+        )
 
     def test_not_equivalent_different_urls(self):
         """Test non-equivalent URLs."""
-        assert not urls_are_equivalent("https://example.com/job/123", "https://example.com/job/456")
+        assert not urls_are_equivalent(
+            "https://example.com/job/123", "https://example.com/job/456"
+        )
 
     def test_complex_equivalence(self):
         """Test complex equivalence with multiple differences."""
@@ -133,8 +139,12 @@ class TestNormalizeJobUrl:
 
     def test_normalize_workday_url(self):
         """Test normalization of Workday job URLs."""
-        url1 = "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123/"
-        url2 = "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123"
+        url1 = (
+            "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123/"
+        )
+        url2 = (
+            "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123"
+        )
         assert normalize_job_url(url1) == normalize_job_url(url2)
 
     def test_normalize_with_ref_param(self):

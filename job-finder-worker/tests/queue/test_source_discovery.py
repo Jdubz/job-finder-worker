@@ -50,7 +50,9 @@ def mock_dependencies() -> Dict[str, Any]:
         "technologyRanks": {"technologies": {}},
     }
     config_loader.get_ai_settings.return_value = {
-        "worker": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
+        "worker": {
+            "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
+        },
         "documentGenerator": {
             "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
         },
@@ -119,7 +121,9 @@ def make_discovery_item(
 
 
 class TestQueueRouting:
-    def test_routes_source_discovery_items(self, processor: QueueItemProcessor, mock_dependencies):
+    def test_routes_source_discovery_items(
+        self, processor: QueueItemProcessor, mock_dependencies
+    ):
         """Test that SOURCE_DISCOVERY items are routed to source_processor."""
         item = make_discovery_item(url="https://boards.greenhouse.io/stripe")
 
@@ -153,7 +157,11 @@ class TestSourceDiscoverySuccess:
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_discovers_api_source(
-        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+        self,
+        mock_discovery_class,
+        _mock_create_provider,
+        source_processor,
+        mock_dependencies,
     ):
         """Test discovering an API source (like Greenhouse)."""
         mock_discovery = Mock()
@@ -171,11 +179,15 @@ class TestSourceDiscoverySuccess:
 
         # Should create source
         mock_dependencies["sources_manager"].create_from_discovery.assert_called_once()
-        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies[
+            "sources_manager"
+        ].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "api"
 
         # Should mark as success
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
+            -1
+        ]
         assert status_call[0][1] == QueueStatus.SUCCESS
         assert status_call[0][2] == "source-123"
 
@@ -188,7 +200,11 @@ class TestSourceDiscoverySuccess:
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_discovers_rss_source(
-        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+        self,
+        mock_discovery_class,
+        _mock_create_provider,
+        source_processor,
+        mock_dependencies,
     ):
         """Test discovering an RSS source."""
         mock_discovery = Mock()
@@ -202,16 +218,24 @@ class TestSourceDiscoverySuccess:
         item = make_discovery_item(url="https://example.com/jobs.rss")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies[
+            "sources_manager"
+        ].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "rss"
 
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
+            -1
+        ]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_discovers_html_source(
-        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+        self,
+        mock_discovery_class,
+        _mock_create_provider,
+        source_processor,
+        mock_dependencies,
     ):
         """Test discovering an HTML source."""
         mock_discovery = Mock()
@@ -226,16 +250,24 @@ class TestSourceDiscoverySuccess:
         item = make_discovery_item(url="https://example.com/careers")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies[
+            "sources_manager"
+        ].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "html"
 
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
+            -1
+        ]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_creates_disabled_when_api_key_needed(
-        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+        self,
+        mock_discovery_class,
+        _mock_create_provider,
+        source_processor,
+        mock_dependencies,
     ):
         """Sources needing API keys should be created disabled with notes and no scrape spawn."""
         mock_discovery = Mock()
@@ -253,7 +285,9 @@ class TestSourceDiscoverySuccess:
         item = make_discovery_item(url="https://api.example.com/jobs")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies[
+            "sources_manager"
+        ].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
         assert create_kwargs["config"]["disabled_notes"] == "needs api key"
 
@@ -267,7 +301,11 @@ class TestSourceDiscoveryFailure:
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_handles_discovery_failure(
-        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+        self,
+        mock_discovery_class,
+        _mock_create_provider,
+        source_processor,
+        mock_dependencies,
     ):
         """Test handling when discovery returns None."""
         mock_discovery = Mock()
@@ -278,13 +316,19 @@ class TestSourceDiscoveryFailure:
         source_processor.process_source_discovery(item)
 
         # Should mark as failed (no config produced)
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
+            -1
+        ]
         assert status_call[0][1] == QueueStatus.FAILED
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_disables_on_bot_protection(
-        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+        self,
+        mock_discovery_class,
+        _mock_create_provider,
+        source_processor,
+        mock_dependencies,
     ):
         """If bot protection blocks discovery, create a disabled source with notes."""
         mock_discovery = Mock()
@@ -294,16 +338,24 @@ class TestSourceDiscoveryFailure:
         item = make_discovery_item(url="https://blocked.example.com/careers")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies[
+            "sources_manager"
+        ].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
         assert create_kwargs["config"]["disabled_notes"] == "bot_protection"
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
+            -1
+        ]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_disables_on_dns_error(
-        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+        self,
+        mock_discovery_class,
+        _mock_create_provider,
+        source_processor,
+        mock_dependencies,
     ):
         """If the host cannot be resolved, create a disabled source with notes."""
         mock_discovery = Mock()
@@ -313,38 +365,57 @@ class TestSourceDiscoveryFailure:
         item = make_discovery_item(url="https://no-such-host.invalid/jobs")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies[
+            "sources_manager"
+        ].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
         assert create_kwargs["config"]["disabled_notes"] == "dns_error"
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
+            -1
+        ]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_disables_on_dns_inside_api_probe(
-        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+        self,
+        mock_discovery_class,
+        _mock_create_provider,
+        source_processor,
+        mock_dependencies,
     ):
         """If API probe fails due to DNS resolution, treat as dns_error and disable."""
         mock_discovery = Mock()
         mock_discovery.discover.return_value = (
             None,
-            {"error": "api_probe_failed", "error_details": "Failed to resolve 'boards-api.consider.com'"},
+            {
+                "error": "api_probe_failed",
+                "error_details": "Failed to resolve 'boards-api.consider.com'",
+            },
         )
         mock_discovery_class.return_value = mock_discovery
 
         item = make_discovery_item(url="https://careers.nea.com/jobs/perplexity-ai")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies[
+            "sources_manager"
+        ].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
         assert create_kwargs["config"]["disabled_notes"] == "dns_error"
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
+            -1
+        ]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")
     def test_handles_discovery_exception(
-        self, mock_discovery_class, _mock_create_provider, source_processor, mock_dependencies
+        self,
+        mock_discovery_class,
+        _mock_create_provider,
+        source_processor,
+        mock_dependencies,
     ):
         """Test handling when discovery raises an exception."""
         mock_discovery = Mock()
@@ -355,7 +426,9 @@ class TestSourceDiscoveryFailure:
         source_processor.process_source_discovery(item)
 
         # Should mark as failed
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
+            -1
+        ]
         assert status_call[0][1] == QueueStatus.FAILED
 
 
@@ -365,15 +438,21 @@ class TestCompanyNameExtraction:
     def test_extract_company_from_url(self, source_processor):
         """Test extracting company name from URL."""
         # Simple domain
-        assert source_processor._extract_company_from_url("https://stripe.com/careers") == "Stripe"
+        assert (
+            source_processor._extract_company_from_url("https://stripe.com/careers")
+            == "Stripe"
+        )
 
         # Hyphenated
-        result = source_processor._extract_company_from_url("https://tech-corp.com/jobs")
+        result = source_processor._extract_company_from_url(
+            "https://tech-corp.com/jobs"
+        )
         assert result in ("TechCorp", "Tech Corp")
 
         # With www
         assert (
-            source_processor._extract_company_from_url("https://www.example.com/jobs") == "Example"
+            source_processor._extract_company_from_url("https://www.example.com/jobs")
+            == "Example"
         )
 
     def test_extract_company_from_invalid_url(self, source_processor):

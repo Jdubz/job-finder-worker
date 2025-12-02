@@ -100,7 +100,9 @@ def main():
     # Create provider from AI settings
     provider = create_provider_from_config(ai_settings)
     worker_ai_config = (
-        (ai_settings.get("worker") or ai_settings) if isinstance(ai_settings, dict) else {}
+        (ai_settings.get("worker") or ai_settings)
+        if isinstance(ai_settings, dict)
+        else {}
     )
     ai_matcher = AIJobMatcher(
         provider=provider,

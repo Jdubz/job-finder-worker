@@ -21,7 +21,9 @@ class AIProvider(ABC):
     """Abstract base class for AI providers."""
 
     @abstractmethod
-    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+    def generate(
+        self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7
+    ) -> str:
         """
         Generate a response from the AI model.
 
@@ -39,7 +41,9 @@ class AIProvider(ABC):
 class ClaudeProvider(AIProvider):
     """Anthropic Claude provider (API interface)."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-5-20250929"):
+    def __init__(
+        self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-5-20250929"
+    ):
         """
         Initialize Claude provider.
 
@@ -56,7 +60,9 @@ class ClaudeProvider(AIProvider):
         self.model = model
         self.client = Anthropic(api_key=self.api_key)
 
-    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+    def generate(
+        self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7
+    ) -> str:
         """Generate a response using Claude."""
         try:
             response = self.client.messages.create(
@@ -90,7 +96,9 @@ class OpenAIProvider(AIProvider):
         self.model = model
         self.client = OpenAI(api_key=self.api_key)
 
-    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+    def generate(
+        self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7
+    ) -> str:
         """Generate a response using GPT."""
         try:
             response = self.client.chat.completions.create(
@@ -115,7 +123,9 @@ class GeminiProvider(AIProvider):
             api_key: Google API key (defaults to GOOGLE_API_KEY or GEMINI_API_KEY env var).
             model: Model identifier.
         """
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        self.api_key = (
+            api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        )
         if not self.api_key:
             raise AIProviderError(
                 "Google API key must be provided or set in GOOGLE_API_KEY/GEMINI_API_KEY environment variable"
@@ -131,7 +141,9 @@ class GeminiProvider(AIProvider):
         except ImportError:
             raise AIProviderError("google-generativeai package not installed")
 
-    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+    def generate(
+        self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7
+    ) -> str:
         """Generate a response using Gemini."""
         try:
             response = self.client.generate_content(
@@ -170,7 +182,9 @@ class GeminiCLIProvider(AIProvider):
         self.model = model  # Reserved for future use when CLI supports model selection
         self.timeout = timeout
 
-    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+    def generate(
+        self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7
+    ) -> str:
         """
         Invoke gemini CLI and return the response text.
 
@@ -229,7 +243,9 @@ class GeminiCLIProvider(AIProvider):
             return response_text
 
         except subprocess.TimeoutExpired as exc:
-            raise AIProviderError(f"Gemini CLI timed out after {self.timeout}s") from exc
+            raise AIProviderError(
+                f"Gemini CLI timed out after {self.timeout}s"
+            ) from exc
 
 
 class CodexCLIProvider(AIProvider):
@@ -249,7 +265,9 @@ class CodexCLIProvider(AIProvider):
         self.model = model
         self.timeout = timeout
 
-    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+    def generate(
+        self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7
+    ) -> str:
         """
         Invoke codex exec and return the final agent message text.
 
@@ -400,14 +418,20 @@ def create_provider_from_config(
     selected = {}
 
     # Prefer sectioned configuration (worker/documentGenerator)
-    section_payload = ai_settings.get(section) if isinstance(ai_settings, dict) else None
-    if isinstance(section_payload, dict) and isinstance(section_payload.get("selected"), dict):
+    section_payload = (
+        ai_settings.get(section) if isinstance(ai_settings, dict) else None
+    )
+    if isinstance(section_payload, dict) and isinstance(
+        section_payload.get("selected"), dict
+    ):
         selected = dict(section_payload.get("selected") or {})
     else:
         selected = dict(ai_settings.get("selected") or {})
 
     # Legacy support: allow top-level provider/model keys
-    if not selected and any(k in ai_settings for k in ("provider", "model", "interface")):
+    if not selected and any(
+        k in ai_settings for k in ("provider", "model", "interface")
+    ):
         selected = {
             "provider": ai_settings.get("provider", "codex"),
             "interface": ai_settings.get("interface"),

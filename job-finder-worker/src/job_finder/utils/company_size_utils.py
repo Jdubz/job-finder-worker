@@ -168,13 +168,19 @@ def detect_company_size(
 
     # Count pattern matches
     large_matches = sum(
-        1 for pattern in LARGE_COMPANY_PATTERNS if re.search(pattern, combined_text, re.IGNORECASE)
+        1
+        for pattern in LARGE_COMPANY_PATTERNS
+        if re.search(pattern, combined_text, re.IGNORECASE)
     )
     small_matches = sum(
-        1 for pattern in SMALL_COMPANY_PATTERNS if re.search(pattern, combined_text, re.IGNORECASE)
+        1
+        for pattern in SMALL_COMPANY_PATTERNS
+        if re.search(pattern, combined_text, re.IGNORECASE)
     )
     medium_matches = sum(
-        1 for pattern in MEDIUM_COMPANY_PATTERNS if re.search(pattern, combined_text, re.IGNORECASE)
+        1
+        for pattern in MEDIUM_COMPANY_PATTERNS
+        if re.search(pattern, combined_text, re.IGNORECASE)
     )
 
     # Determine size based on matches

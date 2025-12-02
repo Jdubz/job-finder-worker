@@ -245,7 +245,9 @@ class TestSeniorityFiltering:
 
     def test_accept_senior_roles_with_no_min_requirement(self):
         """Test that senior roles are accepted when no minimum is set."""
-        decision, _ = check_seniority_filter("Senior Software Engineer", min_seniority=None)
+        decision, _ = check_seniority_filter(
+            "Senior Software Engineer", min_seniority=None
+        )
         assert decision == FilterDecision.ACCEPT
 
         decision, _ = check_seniority_filter("Staff Engineer", min_seniority=None)
@@ -262,47 +264,65 @@ class TestSeniorityFiltering:
     def test_require_senior_level(self):
         """Test that requiring senior level filters out mid-level roles."""
         # Should reject mid-level (no senior indicator)
-        decision, reason = check_seniority_filter("Software Engineer", min_seniority="senior")
+        decision, reason = check_seniority_filter(
+            "Software Engineer", min_seniority="senior"
+        )
         assert decision == FilterDecision.REJECT
         assert "minimum seniority" in reason.lower()
 
         # Should accept senior+
-        decision, _ = check_seniority_filter("Senior Software Engineer", min_seniority="senior")
+        decision, _ = check_seniority_filter(
+            "Senior Software Engineer", min_seniority="senior"
+        )
         assert decision == FilterDecision.ACCEPT
 
         decision, _ = check_seniority_filter("Staff Engineer", min_seniority="senior")
         assert decision == FilterDecision.ACCEPT
 
-        decision, _ = check_seniority_filter("Principal Engineer", min_seniority="senior")
+        decision, _ = check_seniority_filter(
+            "Principal Engineer", min_seniority="senior"
+        )
         assert decision == FilterDecision.ACCEPT
 
     def test_require_staff_level(self):
         """Test that requiring staff level filters out senior roles."""
         # Should reject senior (not staff+)
-        decision, reason = check_seniority_filter("Senior Software Engineer", min_seniority="staff")
+        decision, reason = check_seniority_filter(
+            "Senior Software Engineer", min_seniority="staff"
+        )
         assert decision == FilterDecision.REJECT
 
         # Should accept staff+
         decision, _ = check_seniority_filter("Staff Engineer", min_seniority="staff")
         assert decision == FilterDecision.ACCEPT
 
-        decision, _ = check_seniority_filter("Principal Engineer", min_seniority="staff")
+        decision, _ = check_seniority_filter(
+            "Principal Engineer", min_seniority="staff"
+        )
         assert decision == FilterDecision.ACCEPT
 
-        decision, _ = check_seniority_filter("Distinguished Engineer", min_seniority="staff")
+        decision, _ = check_seniority_filter(
+            "Distinguished Engineer", min_seniority="staff"
+        )
         assert decision == FilterDecision.ACCEPT
 
     def test_require_principal_level(self):
         """Test that requiring principal level filters out staff roles."""
         # Should reject staff
-        decision, reason = check_seniority_filter("Staff Engineer", min_seniority="principal")
+        decision, reason = check_seniority_filter(
+            "Staff Engineer", min_seniority="principal"
+        )
         assert decision == FilterDecision.REJECT
 
         # Should accept principal+
-        decision, _ = check_seniority_filter("Principal Engineer", min_seniority="principal")
+        decision, _ = check_seniority_filter(
+            "Principal Engineer", min_seniority="principal"
+        )
         assert decision == FilterDecision.ACCEPT
 
-        decision, _ = check_seniority_filter("Distinguished Engineer", min_seniority="principal")
+        decision, _ = check_seniority_filter(
+            "Distinguished Engineer", min_seniority="principal"
+        )
         assert decision == FilterDecision.ACCEPT
 
     def test_require_distinguished_level(self):
@@ -417,7 +437,9 @@ class TestRealWorldExamples:
     )
     def test_real_world_titles(self, title, should_accept):
         """Test filtering with real-world job titles."""
-        decision, reason = filter_job(title, strict_role_filter=True, min_seniority="senior")
+        decision, reason = filter_job(
+            title, strict_role_filter=True, min_seniority="senior"
+        )
 
         if should_accept:
             assert (

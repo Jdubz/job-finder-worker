@@ -199,7 +199,9 @@ class TestHardRejections:
     def test_rejects_excluded_keyword(self, prefilter_policy, valid_job):
         """Test rejects jobs with excluded keywords."""
         engine = StrikeFilterEngine(prefilter_policy)
-        valid_job["description"] = "Great opportunity! Clearance required for this role."
+        valid_job["description"] = (
+            "Great opportunity! Clearance required for this role."
+        )
 
         result = engine.evaluate_job(valid_job)
 
@@ -238,7 +240,9 @@ class TestHardRejections:
         )
         engine = StrikeFilterEngine(prefilter_policy)
 
-        valid_job["description"] = "We will go-to-market fast and go to production weekly. " * 5
+        valid_job["description"] = (
+            "We will go-to-market fast and go to production weekly. " * 5
+        )
 
         result = engine.evaluate_job(valid_job)
 
@@ -249,7 +253,9 @@ class TestHardRejections:
         """Test rejects on-site jobs when not allowed."""
         engine = StrikeFilterEngine(prefilter_policy)
         valid_job["location"] = "On-site - San Francisco, CA"
-        valid_job["description"] = "This is an on-site role in our San Francisco office. " * 5
+        valid_job["description"] = (
+            "This is an on-site role in our San Francisco office. " * 5
+        )
 
         result = engine.evaluate_job(valid_job)
 
@@ -278,7 +284,8 @@ class TestHardRejections:
 
         assert result.passed is False
         assert any(
-            "age" in r.reason.lower() or "old" in r.reason.lower() for r in result.rejections
+            "age" in r.reason.lower() or "old" in r.reason.lower()
+            for r in result.rejections
         )
 
 
@@ -296,7 +303,9 @@ class TestStrikeAccumulation:
         strikes = [r for r in result.rejections if r.severity == "strike"]
         assert any("salary" in s.reason.lower() for s in strikes)
 
-    def test_experience_requirements_do_not_cause_strikes(self, prefilter_policy, valid_job):
+    def test_experience_requirements_do_not_cause_strikes(
+        self, prefilter_policy, valid_job
+    ):
         """Experience requirements in job description should NOT cause strikes.
 
         Experience filtering was removed from pre-filter stage. Seniority
@@ -325,7 +334,10 @@ class TestStrikeAccumulation:
 
         assert result.total_strikes >= 1
         strikes = [r for r in result.rejections if r.severity == "strike"]
-        assert any("seniority" in s.reason.lower() or "mid" in s.reason.lower() for s in strikes)
+        assert any(
+            "seniority" in s.reason.lower() or "mid" in s.reason.lower()
+            for s in strikes
+        )
 
     def test_quality_strike_short_description(self, prefilter_policy, valid_job):
         """Test adds strike for short job description."""
@@ -337,7 +349,8 @@ class TestStrikeAccumulation:
         assert result.total_strikes >= 1
         strikes = [r for r in result.rejections if r.severity == "strike"]
         assert any(
-            "description" in s.reason.lower() or "quality" in s.reason.lower() for s in strikes
+            "description" in s.reason.lower() or "quality" in s.reason.lower()
+            for s in strikes
         )
 
     def test_quality_strike_buzzwords(self, prefilter_policy, valid_job):
@@ -363,7 +376,9 @@ class TestStrikeAccumulation:
 
         assert result.total_strikes >= 1
         strikes = [r for r in result.rejections if r.severity == "strike"]
-        assert any("age" in s.reason.lower() or "old" in s.reason.lower() for s in strikes)
+        assert any(
+            "age" in s.reason.lower() or "old" in s.reason.lower() for s in strikes
+        )
 
     def test_multiple_strikes_accumulate(self, prefilter_policy, valid_job):
         """Test multiple strikes accumulate correctly."""
@@ -513,7 +528,9 @@ class TestTechnologyStrikes:
         result = engine.evaluate_job(valid_job)
 
         # Should get strike for undesired tech
-        tech_strikes = [r for r in result.rejections if r.filter_name == "undesired_tech"]
+        tech_strikes = [
+            r for r in result.rejections if r.filter_name == "undesired_tech"
+        ]
         assert len(tech_strikes) >= 1
         assert any("cobol" in s.reason.lower() for s in tech_strikes)
 
@@ -525,7 +542,9 @@ class TestTechnologyStrikes:
         result = engine.evaluate_job(valid_job)
 
         # Should not have undesired tech strikes
-        tech_strikes = [r for r in result.rejections if r.filter_name == "undesired_tech"]
+        tech_strikes = [
+            r for r in result.rejections if r.filter_name == "undesired_tech"
+        ]
         assert len(tech_strikes) == 0
 
     def test_no_strike_for_vague_tech_requirements(self, prefilter_policy, valid_job):
@@ -535,13 +554,19 @@ class TestTechnologyStrikes:
         fine - we only penalize for explicitly bad tech matches.
         """
         engine = StrikeFilterEngine(prefilter_policy)
-        valid_job["description"] = "Looking for a great engineer to join our team! " * 10
+        valid_job["description"] = (
+            "Looking for a great engineer to join our team! " * 10
+        )
 
         result = engine.evaluate_job(valid_job)
 
         # Should NOT have any tech-related strikes
-        tech_strikes = [r for r in result.rejections if "tech" in r.filter_category.lower()]
-        assert len(tech_strikes) == 0, "Should not penalize for vague/unclear tech requirements"
+        tech_strikes = [
+            r for r in result.rejections if "tech" in r.filter_category.lower()
+        ]
+        assert (
+            len(tech_strikes) == 0
+        ), "Should not penalize for vague/unclear tech requirements"
 
 
 class TestFilterResult:

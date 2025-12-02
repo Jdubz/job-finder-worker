@@ -72,7 +72,8 @@ class TestDetectCompanySize:
     def test_detect_multinational_pattern(self):
         """Test multinational pattern."""
         result = detect_company_size(
-            "GlobalTech", company_info="Multinational corporation with offices worldwide"
+            "GlobalTech",
+            company_info="Multinational corporation with offices worldwide",
         )
         assert result == "large"
 
@@ -84,7 +85,9 @@ class TestDetectCompanySize:
     # Small company patterns
     def test_detect_startup_pattern(self):
         """Test startup pattern detection."""
-        result = detect_company_size("NewCo", company_info="Fast-growing startup in Series A")
+        result = detect_company_size(
+            "NewCo", company_info="Fast-growing startup in Series A"
+        )
         assert result == "small"
 
     def test_detect_seed_funding_pattern(self):
@@ -94,22 +97,30 @@ class TestDetectCompanySize:
 
     def test_detect_early_stage_pattern(self):
         """Test early-stage pattern."""
-        result = detect_company_size("EarlyCo", company_info="Early-stage company looking to grow")
+        result = detect_company_size(
+            "EarlyCo", company_info="Early-stage company looking to grow"
+        )
         assert result == "small"
 
     def test_detect_bootstrapped_pattern(self):
         """Test bootstrapped pattern."""
-        result = detect_company_size("IndieComp", company_info="Bootstrapped company, profitable")
+        result = detect_company_size(
+            "IndieComp", company_info="Bootstrapped company, profitable"
+        )
         assert result == "small"
 
     def test_detect_small_team_pattern(self):
         """Test small team pattern."""
-        result = detect_company_size("TinyTech", company_info="Small team of 25 employees")
+        result = detect_company_size(
+            "TinyTech", company_info="Small team of 25 employees"
+        )
         assert result == "small"
 
     def test_detect_series_a_funding(self):
         """Test Series A funding pattern."""
-        result = detect_company_size("FundedCo", company_info="Recently raised Series A funding")
+        result = detect_company_size(
+            "FundedCo", company_info="Recently raised Series A funding"
+        )
         assert result == "small"
 
     def test_detect_series_b_funding(self):
@@ -122,7 +133,9 @@ class TestDetectCompanySize:
     # Medium company patterns
     def test_detect_mid_sized_pattern(self):
         """Test mid-sized pattern."""
-        result = detect_company_size("MidCo", company_info="Mid-sized company with 500 employees")
+        result = detect_company_size(
+            "MidCo", company_info="Mid-sized company with 500 employees"
+        )
         assert result == "medium"
 
     def test_detect_growing_company_pattern(self):
@@ -141,7 +154,9 @@ class TestDetectCompanySize:
 
     def test_detect_hundreds_of_employees(self):
         """Test hundreds of employees pattern."""
-        result = detect_company_size("EstablishedCo", company_info="Hundreds of employees globally")
+        result = detect_company_size(
+            "EstablishedCo", company_info="Hundreds of employees globally"
+        )
         assert result == "medium"
 
     # Multiple pattern matches
@@ -156,7 +171,8 @@ class TestDetectCompanySize:
     def test_multiple_small_patterns(self):
         """Test multiple small company patterns."""
         result = detect_company_size(
-            "NewStartup", company_info="Early-stage startup, seed funded, small team of 15"
+            "NewStartup",
+            company_info="Early-stage startup, seed funded, small team of 15",
         )
         assert result == "small"
 
@@ -168,7 +184,9 @@ class TestDetectCompanySize:
 
     def test_single_small_pattern_wins_over_none(self):
         """Test single small pattern with no large patterns."""
-        result = detect_company_size("UnknownStartup", company_info="Bootstrapped company")
+        result = detect_company_size(
+            "UnknownStartup", company_info="Bootstrapped company"
+        )
         assert result == "small"
 
     def test_large_patterns_win_in_tie(self):
@@ -248,7 +266,9 @@ class TestDetectCompanySize:
 
     def test_pre_seed_startup_detected(self):
         """Test pre-seed startup is detected as small."""
-        result = detect_company_size("PreSeedCo", company_info="Pre-seed stage, 5 employees")
+        result = detect_company_size(
+            "PreSeedCo", company_info="Pre-seed stage, 5 employees"
+        )
         assert result == "small"
 
 
@@ -258,21 +278,27 @@ class TestCalculateCompanySizeAdjustment:
     # Prefer large companies (default)
     def test_large_company_with_prefer_large(self):
         """Test large company gets bonus when preferring large."""
-        adjustment, description = calculate_company_size_adjustment("large", prefer_large=True)
+        adjustment, description = calculate_company_size_adjustment(
+            "large", prefer_large=True
+        )
         assert adjustment == 10
         assert "Large company" in description
         assert "+10" in description
 
     def test_medium_company_with_prefer_large(self):
         """Test medium company is neutral when preferring large."""
-        adjustment, description = calculate_company_size_adjustment("medium", prefer_large=True)
+        adjustment, description = calculate_company_size_adjustment(
+            "medium", prefer_large=True
+        )
         assert adjustment == 0
         assert "Medium company" in description
         assert "neutral" in description
 
     def test_small_company_with_prefer_large(self):
         """Test small company gets penalty when preferring large."""
-        adjustment, description = calculate_company_size_adjustment("small", prefer_large=True)
+        adjustment, description = calculate_company_size_adjustment(
+            "small", prefer_large=True
+        )
         assert adjustment == -5
         assert "Small company" in description or "startup" in description
         assert "-5" in description
@@ -280,21 +306,27 @@ class TestCalculateCompanySizeAdjustment:
     # Prefer small companies (inverse)
     def test_small_company_with_prefer_small(self):
         """Test small company gets bonus when preferring small."""
-        adjustment, description = calculate_company_size_adjustment("small", prefer_large=False)
+        adjustment, description = calculate_company_size_adjustment(
+            "small", prefer_large=False
+        )
         assert adjustment == 10
         assert "Small company" in description or "startup" in description
         assert "+10" in description
 
     def test_medium_company_with_prefer_small(self):
         """Test medium company is neutral when preferring small."""
-        adjustment, description = calculate_company_size_adjustment("medium", prefer_large=False)
+        adjustment, description = calculate_company_size_adjustment(
+            "medium", prefer_large=False
+        )
         assert adjustment == 0
         assert "Medium company" in description
         assert "neutral" in description
 
     def test_large_company_with_prefer_small(self):
         """Test large company gets penalty when preferring small."""
-        adjustment, description = calculate_company_size_adjustment("large", prefer_large=False)
+        adjustment, description = calculate_company_size_adjustment(
+            "large", prefer_large=False
+        )
         assert adjustment == -5
         assert "Large company" in description
         assert "-5" in description
@@ -302,14 +334,18 @@ class TestCalculateCompanySizeAdjustment:
     # Unknown size (None)
     def test_none_size_with_prefer_large(self):
         """Test None size returns no adjustment (prefer large)."""
-        adjustment, description = calculate_company_size_adjustment(None, prefer_large=True)
+        adjustment, description = calculate_company_size_adjustment(
+            None, prefer_large=True
+        )
         assert adjustment == 0
         assert "Unknown" in description
         assert "no adjustment" in description
 
     def test_none_size_with_prefer_small(self):
         """Test None size returns no adjustment (prefer small)."""
-        adjustment, description = calculate_company_size_adjustment(None, prefer_large=False)
+        adjustment, description = calculate_company_size_adjustment(
+            None, prefer_large=False
+        )
         assert adjustment == 0
         assert "Unknown" in description
         assert "no adjustment" in description
@@ -322,7 +358,9 @@ class TestCalculateCompanySizeAdjustment:
 
     def test_invalid_size_returns_neutral(self):
         """Test invalid size string returns neutral adjustment."""
-        adjustment, description = calculate_company_size_adjustment("invalid", prefer_large=True)
+        adjustment, description = calculate_company_size_adjustment(
+            "invalid", prefer_large=True
+        )
         assert adjustment == 0
         assert "Unknown" in description
 

@@ -43,7 +43,9 @@ class JobMatchResult(BaseModel):
     company_info: Optional[str] = None
 
     # Match Analysis
-    match_score: int = Field(..., ge=0, le=100, description="Overall match score (0-100)")
+    match_score: int = Field(
+        ..., ge=0, le=100, description="Overall match score (0-100)"
+    )
     matched_skills: List[str] = Field(default_factory=list)
     missing_skills: List[str] = Field(default_factory=list)
     experience_match: str = ""
@@ -215,7 +217,9 @@ class AIJobMatcher:
             logger.error(f"Error analyzing job {job.get('title', 'unknown')}: {str(e)}")
             raise
 
-    def _detect_work_arrangement(self, description: str, location: str) -> Dict[str, bool]:
+    def _detect_work_arrangement(
+        self, description: str, location: str
+    ) -> Dict[str, bool]:
         """Infer remote/hybrid/onsite and relocation cues from text."""
 
         combined = f"{description} {location}".lower()
@@ -243,7 +247,9 @@ class AIJobMatcher:
             is_hybrid = bool(re.search(hybrid_pattern, combined))
 
             if not is_hybrid:
-                onsite_pattern = r"\bon-site\b|\bonsite\b|\bin-office\b|\boffice-based\b"
+                onsite_pattern = (
+                    r"\bon-site\b|\bonsite\b|\bin-office\b|\boffice-based\b"
+                )
                 is_onsite = bool(re.search(onsite_pattern, combined))
 
             # Concrete location with no explicit remote/hybrid cues -> assume onsite expectation
@@ -271,7 +277,10 @@ class AIJobMatcher:
         }
 
     def _calculate_adjusted_score(
-        self, match_analysis: Dict[str, Any], has_portland_office: bool, job: Dict[str, Any]
+        self,
+        match_analysis: Dict[str, Any],
+        has_portland_office: bool,
+        job: Dict[str, Any],
     ) -> tuple[int, ScoreBreakdown]:
         """
         Calculate adjusted match score with bonuses and adjustments applied.
@@ -333,9 +342,11 @@ class AIJobMatcher:
                 )
 
         # Apply location penalties/bonuses before other adjustments
-        location_penalty, penalty_reason, applied_tz_penalty = self._calculate_location_penalty(
-            job,
-            job_timezone,
+        location_penalty, penalty_reason, applied_tz_penalty = (
+            self._calculate_location_penalty(
+                job,
+                job_timezone,
+            )
         )
         if location_penalty != 0:
             match_score += location_penalty
@@ -428,12 +439,16 @@ class AIJobMatcher:
 
             if require_remote:
                 location_lower = (job_location or "").lower()
-                if "onsite" in location_lower or ("hybrid" in location_lower and not allow_hybrid):
+                if "onsite" in location_lower or (
+                    "hybrid" in location_lower and not allow_hybrid
+                ):
                     mismatch_penalty = -25
                     match_score += mismatch_penalty
                     adjustments.append("🚫 Dealbreaker: onsite requirement")
                     concerns = match_analysis.setdefault("potential_concerns", [])
-                    concerns.append("Role requires onsite/hybrid but policy requires remote-only.")
+                    concerns.append(
+                        "Role requires onsite/hybrid but policy requires remote-only."
+                    )
                     match_analysis["application_priority"] = "Low"
 
             # Apply timezone penalties relative to user timezone
@@ -539,7 +554,10 @@ class AIJobMatcher:
         arrangement = self._detect_work_arrangement(description, location)
 
         from job_finder.utils.timezone_utils import detect_timezone_for_job
-        from job_finder.utils.location_rules import LocationContext, evaluate_location_rules
+        from job_finder.utils.location_rules import (
+            LocationContext,
+            evaluate_location_rules,
+        )
 
         job_tz = detect_timezone_for_job(
             job_location=location_raw,
@@ -562,7 +580,9 @@ class AIJobMatcher:
             relocation_allowed=self.dealbreakers.get("relocationAllowed", False),
             relocation_penalty=self.dealbreakers.get("relocationPenaltyPoints", 80),
             location_penalty=self.dealbreakers.get("locationPenaltyPoints", 60),
-            ambiguous_location_penalty=self.dealbreakers.get("ambiguousLocationPenaltyPoints", 40),
+            ambiguous_location_penalty=self.dealbreakers.get(
+                "ambiguousLocationPenaltyPoints", 40
+            ),
             max_timezone_diff_hours=self.dealbreakers.get("maxTimezoneDiffHours", 8),
             per_hour_penalty=self.dealbreakers.get("perHourTimezonePenalty", 5),
             hard_timezone_penalty=self.dealbreakers.get("hardTimezonePenalty", 60),
@@ -577,17 +597,33 @@ class AIJobMatcher:
         )
 
         if eval_result.hard_reject:
-            return -abs(ctx.location_penalty), eval_result.reason or "location fail", False
+            return (
+                -abs(ctx.location_penalty),
+                eval_result.reason or "location fail",
+                False,
+            )
 
-        return -abs(eval_result.strikes), eval_result.reason or "", eval_result.strikes > 0
+        return (
+            -abs(eval_result.strikes),
+            eval_result.reason or "",
+            eval_result.strikes > 0,
+        )
 
     def _apply_technology_ranks(self, job: Dict[str, Any]) -> tuple[int, str]:
         tech_ranks = (
             job.get("technologyRanks")
             or job.get("technology_ranks")
-            or (self.config.get("technologyRanks") if isinstance(self.config, dict) else {})
+            or (
+                self.config.get("technologyRanks")
+                if isinstance(self.config, dict)
+                else {}
+            )
         )
-        techs_cfg = (tech_ranks or {}).get("technologies") if isinstance(tech_ranks, dict) else {}
+        techs_cfg = (
+            (tech_ranks or {}).get("technologies")
+            if isinstance(tech_ranks, dict)
+            else {}
+        )
         if not isinstance(techs_cfg, dict) or not techs_cfg:
             return 0, ""
 
@@ -616,7 +652,11 @@ class AIJobMatcher:
         return delta, reason
 
     def _apply_experience_strike(self, job: Dict[str, Any]) -> tuple[int, str]:
-        exp_cfg = self.config.get("experienceStrike") if isinstance(self.config, dict) else None
+        exp_cfg = (
+            self.config.get("experienceStrike")
+            if isinstance(self.config, dict)
+            else None
+        )
         if not isinstance(exp_cfg, dict) or not exp_cfg.get("enabled", False):
             return 0, ""
 
@@ -667,7 +707,9 @@ class AIJobMatcher:
             potential_concerns=match_analysis.get("potential_concerns", []),
             application_priority=match_analysis.get("application_priority", "Medium"),
             score_breakdown=score_breakdown,
-            customization_recommendations=match_analysis.get("customization_recommendations", {}),
+            customization_recommendations=match_analysis.get(
+                "customization_recommendations", {}
+            ),
             resume_intake_data=intake_data,
         )
 
@@ -712,8 +754,12 @@ class AIJobMatcher:
             model_settings = models_config.get(model_name, {})
 
             # Use model-specific settings or fallback to top-level config
-            max_tokens = model_settings.get("max_tokens", self.config.get("max_tokens", 4096))
-            temperature = model_settings.get("temperature", self.config.get("temperature", 0.3))
+            max_tokens = model_settings.get(
+                "max_tokens", self.config.get("max_tokens", 4096)
+            )
+            temperature = model_settings.get(
+                "temperature", self.config.get("temperature", 0.3)
+            )
 
             response = self.provider.generate(
                 prompt, max_tokens=max_tokens, temperature=temperature
@@ -741,7 +787,9 @@ class AIJobMatcher:
                 "missing_skills",
                 "application_priority",
             ]
-            missing_fields = [field for field in required_fields if field not in analysis]
+            missing_fields = [
+                field for field in required_fields if field not in analysis
+            ]
             if missing_fields:
                 logger.error(f"AI response missing required fields: {missing_fields}")
                 logger.debug(f"Response was: {response[:500]}...")
@@ -794,7 +842,9 @@ class AIJobMatcher:
             Dictionary with resume intake data, or None if failed.
         """
         try:
-            prompt = self.prompts.generate_resume_intake_data(self.profile, job, match_analysis)
+            prompt = self.prompts.generate_resume_intake_data(
+                self.profile, job, match_analysis
+            )
 
             # Get model-specific settings or use fallback
             model_name = self.config.get("model", "")
@@ -802,10 +852,13 @@ class AIJobMatcher:
             model_settings = models_config.get(model_name, {})
 
             # Use model-specific settings or fallback to top-level config
-            max_tokens = model_settings.get("max_tokens", self.config.get("max_tokens", 4096))
+            max_tokens = model_settings.get(
+                "max_tokens", self.config.get("max_tokens", 4096)
+            )
             # Use slightly higher temperature for creative intake data generation
             temperature = (
-                model_settings.get("temperature", self.config.get("temperature", 0.3)) + 0.1
+                model_settings.get("temperature", self.config.get("temperature", 0.3))
+                + 0.1
             )
 
             response = self.provider.generate(
@@ -833,7 +886,9 @@ class AIJobMatcher:
                 "skills_priority",
                 "ats_keywords",
             ]
-            missing_fields = [field for field in required_fields if field not in intake_data]
+            missing_fields = [
+                field for field in required_fields if field not in intake_data
+            ]
             if missing_fields:
                 logger.warning(f"Intake data missing optional fields: {missing_fields}")
 

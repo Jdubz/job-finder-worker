@@ -120,7 +120,9 @@ class TestResolveCompanyFromSource:
         manager = JobSourcesManager(str(db))
 
         # "Coinbase Careers" should normalize to "coinbase" and match "Coinbase Jobs"
-        result = manager.resolve_company_from_source(company_name_raw="Coinbase Careers")
+        result = manager.resolve_company_from_source(
+            company_name_raw="Coinbase Careers"
+        )
 
         assert result is not None
         assert result["company_id"] == "company-coinbase"
@@ -222,12 +224,16 @@ class TestIsJobBoardUrl:
         from job_finder.job_queue.processors.job_processor import JobProcessor
 
         # Job board URLs (ATS providers)
-        assert JobProcessor._is_job_board_url("https://boards.greenhouse.io/coinbase/jobs/123")
+        assert JobProcessor._is_job_board_url(
+            "https://boards.greenhouse.io/coinbase/jobs/123"
+        )
         assert JobProcessor._is_job_board_url("https://jobs.lever.co/stripe/123")
         assert JobProcessor._is_job_board_url("https://jbicy.io/jobs/123")
 
         # Job aggregators
-        assert JobProcessor._is_job_board_url("https://weworkremotely.com/remote-jobs/123")
+        assert JobProcessor._is_job_board_url(
+            "https://weworkremotely.com/remote-jobs/123"
+        )
         assert JobProcessor._is_job_board_url("https://remotive.com/jobs/123")
 
         # Non-job board URLs (company websites)

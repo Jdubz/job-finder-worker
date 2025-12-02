@@ -65,7 +65,9 @@ class TestRemotePolicy:
 
     def test_remote_in_description_detected(self, base_config):
         engine = StrikeFilterEngine(base_config)
-        job = make_job(location="United States", description="This is a work from home role")
+        job = make_job(
+            location="United States", description="This is a work from home role"
+        )
         result = engine.evaluate_job(job)
         assert result.passed is True
 
@@ -77,7 +79,9 @@ class TestRemotePolicy:
             "allowOnsite": False,
         }
         engine = StrikeFilterEngine(custom)
-        job = make_job(location="New York, NY", description="Office-based role in Manhattan")
+        job = make_job(
+            location="New York, NY", description="Office-based role in Manhattan"
+        )
         result = engine.evaluate_job(job)
         assert result.passed is False
         assert any(
@@ -87,20 +91,29 @@ class TestRemotePolicy:
 
     def test_portland_hybrid_allowed(self, base_config):
         engine = StrikeFilterEngine(base_config)
-        job = make_job(location="Portland, OR", description="Hybrid 2 days in office, 3 remote")
+        job = make_job(
+            location="Portland, OR", description="Hybrid 2 days in office, 3 remote"
+        )
         result = engine.evaluate_job(job)
         assert result.passed is True
 
     def test_non_portland_hybrid_rejected(self, base_config):
         engine = StrikeFilterEngine(base_config)
-        job = make_job(location="Seattle, WA", description="Hybrid schedule with office days")
+        job = make_job(
+            location="Seattle, WA", description="Hybrid schedule with office days"
+        )
         result = engine.evaluate_job(job)
         # Outside user's city -> hard reject for onsite/hybrid
         assert result.passed is False
-        assert any(rejection.filter_name == "location_policy" for rejection in result.rejections)
+        assert any(
+            rejection.filter_name == "location_policy"
+            for rejection in result.rejections
+        )
 
     def test_case_insensitive_matching(self, base_config):
         engine = StrikeFilterEngine(base_config)
-        job = make_job(location="REMOTE - us", description="WFH opportunity for US engineers")
+        job = make_job(
+            location="REMOTE - us", description="WFH opportunity for US engineers"
+        )
         result = engine.evaluate_job(job)
         assert result.passed is True

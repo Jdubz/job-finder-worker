@@ -132,7 +132,9 @@ class TestSmokeTestRunner:
         assert len(fixtures) == 1
         assert fixtures[0]["title"] == "Software Engineer"
 
-    def test_load_fixtures_missing_required_fields(self, temp_fixtures_dir, temp_output_dir):
+    def test_load_fixtures_missing_required_fields(
+        self, temp_fixtures_dir, temp_output_dir
+    ):
         """Test handling of fixtures with missing required fields."""
         # Create fixture missing required fields
         incomplete_fixture = {
@@ -193,7 +195,9 @@ class TestSmokeTestRunner:
         assert validation["passed"] is True
         assert validation["checks"]["duplicate_urls"]["passed"] is True
 
-    def test_validate_results_detects_duplicates(self, temp_fixtures_dir, temp_output_dir):
+    def test_validate_results_detects_duplicates(
+        self, temp_fixtures_dir, temp_output_dir
+    ):
         """Test validation detects duplicate URLs."""
         runner = SmokeTestRunner(
             env="staging",
@@ -204,7 +208,10 @@ class TestSmokeTestRunner:
 
         results = [
             {"url": "https://example.com/job/1", "status": "SUCCESS"},
-            {"url": "https://example.com/job/1/", "status": "SUCCESS"},  # Same after normalization
+            {
+                "url": "https://example.com/job/1/",
+                "status": "SUCCESS",
+            },  # Same after normalization
         ]
 
         validation = runner.validate_results(results)
@@ -294,7 +301,10 @@ class TestSmokeTestRunner:
             "issues": ["Missing scoring fields"],
             "checks": {
                 "duplicate_urls": {"passed": True, "details": []},
-                "scoring_fields": {"passed": False, "details": ["Missing matchScore in TestCo"]},
+                "scoring_fields": {
+                    "passed": False,
+                    "details": ["Missing matchScore in TestCo"],
+                },
                 "document_references": {"passed": True, "details": []},
             },
         }

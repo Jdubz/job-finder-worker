@@ -81,7 +81,9 @@ def normalize_url(url: str) -> str:
         # Sort parameters alphabetically and reconstruct query string
         sorted_params = sorted(filtered_params.items())
         # Flatten the list of lists (parse_qs returns lists for each value)
-        flat_params = [(k, v[0] if isinstance(v, list) and v else v) for k, v in sorted_params]
+        flat_params = [
+            (k, v[0] if isinstance(v, list) and v else v) for k, v in sorted_params
+        ]
         query = urlencode(flat_params) if flat_params else ""
 
         # Reconstruct URL without fragment

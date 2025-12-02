@@ -121,7 +121,9 @@ class GenericScraper:
         # Make request based on method
         if self.config.method.upper() == "POST":
             headers["Content-Type"] = "application/json"
-            response = requests.post(url, headers=headers, json=self.config.post_body, timeout=30)
+            response = requests.post(
+                url, headers=headers, json=self.config.post_body, timeout=30
+            )
         else:
             response = requests.get(url, headers=headers, timeout=30)
 
@@ -379,7 +381,11 @@ class GenericScraper:
                 else:
                     # Handle index like [0], [1]
                     idx = int(slice_str)
-                    item = data[idx] if isinstance(data, list) and len(data) > idx else None
+                    item = (
+                        data[idx]
+                        if isinstance(data, list) and len(data) > idx
+                        else None
+                    )
                     return [item] if item else []
             except (ValueError, IndexError) as e:
                 logger.warning(f"Error parsing array path '{path}': {e}")

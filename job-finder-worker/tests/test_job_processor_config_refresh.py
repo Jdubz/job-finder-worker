@@ -9,10 +9,18 @@ class StubLoader:
     def __init__(self):
         self.ai_settings = {
             "worker": {
-                "selected": {"provider": "codex", "interface": "cli", "model": "gpt-5-codex"}
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                }
             },
             "documentGenerator": {
-                "selected": {"provider": "codex", "interface": "cli", "model": "gpt-5-codex"}
+                "selected": {
+                    "provider": "codex",
+                    "interface": "cli",
+                    "model": "gpt-5-codex",
+                }
             },
             "options": [],
         }

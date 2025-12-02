@@ -103,7 +103,9 @@ class SQLiteProfileLoader:
             skills_json = row.get("skills")
             technologies = _parse_json(skills_json, [])
             if isinstance(technologies, str):
-                technologies = [tech.strip() for tech in technologies.split(",") if tech.strip()]
+                technologies = [
+                    tech.strip() for tech in technologies.split(",") if tech.strip()
+                ]
 
             experiences.append(
                 Experience(

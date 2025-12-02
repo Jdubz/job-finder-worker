@@ -25,7 +25,9 @@ from typing import Any, Dict, Optional, Tuple
 from job_finder.scrapers.platform_patterns import PLATFORM_PATTERNS
 
 # Build field mappings from platform_patterns (single source of truth)
-_GREENHOUSE_PATTERN = next((p for p in PLATFORM_PATTERNS if p.name == "greenhouse_api"), None)
+_GREENHOUSE_PATTERN = next(
+    (p for p in PLATFORM_PATTERNS if p.name == "greenhouse_api"), None
+)
 _ASHBY_PATTERN = next((p for p in PLATFORM_PATTERNS if p.name == "ashby_api"), None)
 _WORKDAY_PATTERN = next((p for p in PLATFORM_PATTERNS if p.name == "workday"), None)
 
@@ -74,7 +76,9 @@ RSS_FIELDS = {
 
 # Regex to parse Workday careers URL
 # Format: https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}
-WORKDAY_URL_PATTERN = re.compile(r"https?://([^.]+)\.(wd\d+)\.myworkdayjobs\.com/([^/?#]+)")
+WORKDAY_URL_PATTERN = re.compile(
+    r"https?://([^.]+)\.(wd\d+)\.myworkdayjobs\.com/([^/?#]+)"
+)
 
 
 def parse_workday_url(url: str) -> Optional[Tuple[str, str, str]]:

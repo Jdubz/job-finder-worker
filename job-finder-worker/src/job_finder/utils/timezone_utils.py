@@ -276,7 +276,9 @@ def detect_timezone_for_job(
 
         except Exception as e:
             # Don't fail job processing if override loading fails
-            logger.warning(f"Failed to check timezone overrides for {company_name}: {e}")
+            logger.warning(
+                f"Failed to check timezone overrides for {company_name}: {e}"
+            )
 
     # For large companies, skip HQ timezone unless specific team location is mentioned
     if company_size == "large":

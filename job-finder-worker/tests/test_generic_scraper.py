@@ -177,7 +177,9 @@ class TestGenericScraperAPI:
     def test_scrape_api_with_auth_bearer(self, mock_get):
         """Test API scraping with bearer auth."""
         mock_response = Mock()
-        mock_response.json.return_value = [{"title": "Job", "url": "https://example.com"}]
+        mock_response.json.return_value = [
+            {"title": "Job", "url": "https://example.com"}
+        ]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
@@ -200,7 +202,9 @@ class TestGenericScraperAPI:
     def test_scrape_api_with_auth_query(self, mock_get):
         """Test API scraping with query param auth."""
         mock_response = Mock()
-        mock_response.json.return_value = [{"title": "Job", "url": "https://example.com"}]
+        mock_response.json.return_value = [
+            {"title": "Job", "url": "https://example.com"}
+        ]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
@@ -533,7 +537,9 @@ class TestGenericScraperEdgeCases:
     def test_defaults_for_missing_fields(self, mock_get):
         """Test default values for missing optional fields."""
         mock_response = Mock()
-        mock_response.json.return_value = [{"title": "Engineer", "url": "https://example.com/1"}]
+        mock_response.json.return_value = [
+            {"title": "Engineer", "url": "https://example.com/1"}
+        ]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 

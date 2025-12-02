@@ -249,7 +249,10 @@ class TestLoggingConfigIntegration:
         # Mock config with custom max length
         mock_load_config.return_value = {
             "console": {"max_company_name_length": 50},
-            "structured": {"include_display_fields": True, "preserve_full_values": True},
+            "structured": {
+                "include_display_fields": True,
+                "preserve_full_values": True,
+            },
         }
 
         # Clear the cached config

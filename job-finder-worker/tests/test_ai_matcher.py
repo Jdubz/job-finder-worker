@@ -247,7 +247,9 @@ class TestBuildMatchResult:
         intake_data = {"job_id": "123", "target_summary": "Test summary"}
 
         matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
-        result = matcher._build_match_result(sample_job, match_analysis, 90, intake_data)
+        result = matcher._build_match_result(
+            sample_job, match_analysis, 90, intake_data
+        )
 
         assert isinstance(result, JobMatchResult)
         assert result.job_title == "Senior Software Engineer"
@@ -300,7 +302,9 @@ class TestAnalyzeMatch:
         with pytest.raises(AIProviderError, match="Codex CLI failed"):
             matcher._analyze_match(sample_job)
 
-    def test_analyze_match_extracts_from_markdown(self, mock_provider, mock_profile, sample_job):
+    def test_analyze_match_extracts_from_markdown(
+        self, mock_provider, mock_profile, sample_job
+    ):
         """Test JSON extraction from markdown code blocks."""
         mock_provider.generate.return_value = """
         Here's the analysis:
@@ -320,7 +324,9 @@ class TestAnalyzeMatch:
         assert analysis is not None
         assert analysis["match_score"] == 80
 
-    def test_analyze_match_handles_invalid_json(self, mock_provider, mock_profile, sample_job):
+    def test_analyze_match_handles_invalid_json(
+        self, mock_provider, mock_profile, sample_job
+    ):
         """Test handling of invalid JSON response."""
         mock_provider.generate.return_value = "This is not valid JSON"
 
@@ -329,7 +335,9 @@ class TestAnalyzeMatch:
 
         assert analysis is None
 
-    def test_analyze_match_validates_required_fields(self, mock_provider, mock_profile, sample_job):
+    def test_analyze_match_validates_required_fields(
+        self, mock_provider, mock_profile, sample_job
+    ):
         """Test validation of required fields in response."""
         mock_provider.generate.return_value = """
         {
@@ -348,7 +356,9 @@ class TestAnalyzeMatch:
 class TestGenerateIntakeData:
     """Test resume intake data generation."""
 
-    def test_generate_intake_data_success(self, mock_provider, mock_profile, sample_job):
+    def test_generate_intake_data_success(
+        self, mock_provider, mock_profile, sample_job
+    ):
         """Test successful intake data generation."""
         match_analysis = {"match_score": 85, "matched_skills": ["Python"]}
         mock_provider.generate.return_value = """
@@ -386,7 +396,9 @@ class TestGenerateIntakeData:
         with pytest.raises(AIProviderError, match="Codex CLI timed out"):
             matcher._generate_intake_data(sample_job, match_analysis)
 
-    def test_generate_intake_data_optimizes_size(self, mock_provider, mock_profile, sample_job):
+    def test_generate_intake_data_optimizes_size(
+        self, mock_provider, mock_profile, sample_job
+    ):
         """Test intake data size optimization is called."""
         match_analysis = {"match_score": 85}
         mock_provider.generate.return_value = """
@@ -492,7 +504,10 @@ class TestAnalyzeJob:
         ]
 
         matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=True
+            provider=mock_provider,
+            profile=mock_profile,
+            min_match_score=80,
+            generate_intake=True,
         )
         result = matcher.analyze_job(sample_job)
 
@@ -512,15 +527,21 @@ class TestAnalyzeJob:
         }
         """
 
-        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile, min_match_score=80)
+        matcher = AIJobMatcher(
+            provider=mock_provider, profile=mock_profile, min_match_score=80
+        )
 
         mock_breakdown = ScoreBreakdown(base_score=50, final_score=50, adjustments=[])
-        with patch.object(matcher, "_calculate_adjusted_score", return_value=(50, mock_breakdown)):
+        with patch.object(
+            matcher, "_calculate_adjusted_score", return_value=(50, mock_breakdown)
+        ):
             result = matcher.analyze_job(sample_job)
 
         assert result is None
 
-    def test_analyze_job_without_intake_generation(self, mock_provider, mock_profile, sample_job):
+    def test_analyze_job_without_intake_generation(
+        self, mock_provider, mock_profile, sample_job
+    ):
         """Test job analysis without intake data generation."""
         mock_provider.generate.return_value = """
         {
@@ -532,17 +553,24 @@ class TestAnalyzeJob:
         """
 
         matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=False
+            provider=mock_provider,
+            profile=mock_profile,
+            min_match_score=80,
+            generate_intake=False,
         )
 
         mock_breakdown = ScoreBreakdown(base_score=85, final_score=85, adjustments=[])
-        with patch.object(matcher, "_calculate_adjusted_score", return_value=(85, mock_breakdown)):
+        with patch.object(
+            matcher, "_calculate_adjusted_score", return_value=(85, mock_breakdown)
+        ):
             result = matcher.analyze_job(sample_job)
 
         assert result is not None
         assert result.resume_intake_data is None
 
-    def test_analyze_job_handles_analysis_failure(self, mock_provider, mock_profile, sample_job):
+    def test_analyze_job_handles_analysis_failure(
+        self, mock_provider, mock_profile, sample_job
+    ):
         """Test handling of analysis failure returns None."""
         mock_provider.generate.return_value = "Invalid JSON"
 
@@ -582,7 +610,10 @@ class TestAnalyzeJob:
         }
 
         matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, min_match_score=80, generate_intake=False
+            provider=mock_provider,
+            profile=mock_profile,
+            min_match_score=80,
+            generate_intake=False,
         )
         # Tighten defaults for deterministic test
         matcher.dealbreakers["locationPenaltyPoints"] = 60
@@ -601,9 +632,13 @@ class TestAnalyzeJob:
         assert result is not None
         # Base mock score 85 minus location penalty 60 = 25
         assert result.match_score == 25
-        assert any("outside user city" in adj for adj in result.score_breakdown.adjustments)
+        assert any(
+            "outside user city" in adj for adj in result.score_breakdown.adjustments
+        )
 
-    def test_analyze_job_allows_portland_hybrid(self, mock_provider, mock_profile, sample_job):
+    def test_analyze_job_allows_portland_hybrid(
+        self, mock_provider, mock_profile, sample_job
+    ):
         """Hybrid roles in Portland should proceed to AI analysis."""
 
         portland_job = {
@@ -613,13 +648,19 @@ class TestAnalyzeJob:
         }
 
         matcher = AIJobMatcher(
-            provider=mock_provider, profile=mock_profile, min_match_score=70, generate_intake=False
+            provider=mock_provider,
+            profile=mock_profile,
+            min_match_score=70,
+            generate_intake=False,
         )
 
         with patch.object(
             matcher,
             "_calculate_adjusted_score",
-            return_value=(85, ScoreBreakdown(base_score=85, final_score=85, adjustments=[])),
+            return_value=(
+                85,
+                ScoreBreakdown(base_score=85, final_score=85, adjustments=[]),
+            ),
         ):
             result = matcher.analyze_job(portland_job)
 
@@ -657,7 +698,9 @@ class TestAnalyzeJob:
             '"missing_skills": [], "application_priority": "High"}'
         )
 
-        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile, min_match_score=70)
+        matcher = AIJobMatcher(
+            provider=mock_provider, profile=mock_profile, min_match_score=70
+        )
         matcher.dealbreakers["maxTimezoneDiffHours"] = 8
         matcher.dealbreakers["timezonePenaltyPoints"] = 50
         matcher.dealbreakers["timezoneHardPenaltyPoints"] = 70
@@ -673,7 +716,9 @@ class TestAnalyzeJob:
 
         # Base 90 minus hard timezone penalty 60 = 30
         assert result.match_score == 30
-        assert any("timezone" in adj.lower() for adj in result.score_breakdown.adjustments)
+        assert any(
+            "timezone" in adj.lower() for adj in result.score_breakdown.adjustments
+        )
 
 
 class TestAnalyzeJobs:
@@ -687,7 +732,9 @@ class TestAnalyzeJobs:
             {"title": "Job 3", "company": "C", "url": "url3", "description": "desc"},
         ]
 
-        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile, min_match_score=80)
+        matcher = AIJobMatcher(
+            provider=mock_provider, profile=mock_profile, min_match_score=80
+        )
 
         # Mock analyze_job to return results for first two jobs only
         with patch.object(matcher, "analyze_job") as mock_analyze:
@@ -737,7 +784,9 @@ class TestDetectWorkArrangement:
 
         assert result["relocation_required"] is True
 
-    def test_no_relocation_for_headquartered_boilerplate(self, mock_provider, mock_profile):
+    def test_no_relocation_for_headquartered_boilerplate(
+        self, mock_provider, mock_profile
+    ):
         """Test that 'headquartered in' boilerplate doesn't trigger relocation."""
         matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
 
@@ -782,7 +831,9 @@ class TestDetectWorkArrangement:
         assert result["remote"] is False
         assert result["hybrid"] is False
 
-    def test_remote_precedence_over_hybrid_and_onsite(self, mock_provider, mock_profile):
+    def test_remote_precedence_over_hybrid_and_onsite(
+        self, mock_provider, mock_profile
+    ):
         """Test that remote takes precedence when multiple arrangements mentioned."""
         matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
 

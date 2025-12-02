@@ -129,10 +129,14 @@ def detect_role_type(job_title: str) -> Optional[str]:
             return "less_desirable"
 
     # Check for preferred keywords
-    preferred_matches = sum(1 for keyword in PREFERRED_ROLE_KEYWORDS if keyword in title_lower)
+    preferred_matches = sum(
+        1 for keyword in PREFERRED_ROLE_KEYWORDS if keyword in title_lower
+    )
 
     # Check for other less desirable keywords
-    less_desirable_matches = sum(1 for keyword in LESS_DESIRABLE_KEYWORDS if keyword in title_lower)
+    less_desirable_matches = sum(
+        1 for keyword in LESS_DESIRABLE_KEYWORDS if keyword in title_lower
+    )
 
     # Determine role type based on matches
     if preferred_matches > less_desirable_matches and preferred_matches > 0:

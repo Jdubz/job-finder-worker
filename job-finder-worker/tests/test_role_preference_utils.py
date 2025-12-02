@@ -242,14 +242,18 @@ class TestCalculateRolePreferenceAdjustment:
     # Preferred roles (+5)
     def test_software_engineer_bonus(self):
         """Test software engineer gets bonus."""
-        adjustment, description = calculate_role_preference_adjustment("Software Engineer")
+        adjustment, description = calculate_role_preference_adjustment(
+            "Software Engineer"
+        )
         assert adjustment == 5
         assert "Engineering" in description or "Developer" in description
         assert "+5" in description
 
     def test_backend_developer_bonus(self):
         """Test backend developer gets bonus."""
-        adjustment, description = calculate_role_preference_adjustment("Backend Developer")
+        adjustment, description = calculate_role_preference_adjustment(
+            "Backend Developer"
+        )
         assert adjustment == 5
         assert "+5" in description
 
@@ -268,20 +272,26 @@ class TestCalculateRolePreferenceAdjustment:
     # Less desirable roles (-25)
     def test_engineering_manager_penalty(self):
         """Test engineering manager gets penalty."""
-        adjustment, description = calculate_role_preference_adjustment("Engineering Manager")
+        adjustment, description = calculate_role_preference_adjustment(
+            "Engineering Manager"
+        )
         assert adjustment == -25
         assert "Management" in description or "Sales" in description
         assert "-25" in description
 
     def test_product_manager_penalty(self):
         """Test product manager gets penalty."""
-        adjustment, description = calculate_role_preference_adjustment("Product Manager")
+        adjustment, description = calculate_role_preference_adjustment(
+            "Product Manager"
+        )
         assert adjustment == -25
         assert "-25" in description
 
     def test_director_penalty(self):
         """Test director gets penalty."""
-        adjustment, description = calculate_role_preference_adjustment("Director of Engineering")
+        adjustment, description = calculate_role_preference_adjustment(
+            "Director of Engineering"
+        )
         assert adjustment == -25
         assert "-25" in description
 
@@ -293,7 +303,9 @@ class TestCalculateRolePreferenceAdjustment:
 
     def test_recruiter_penalty(self):
         """Test recruiter gets penalty."""
-        adjustment, description = calculate_role_preference_adjustment("Technical Recruiter")
+        adjustment, description = calculate_role_preference_adjustment(
+            "Technical Recruiter"
+        )
         assert adjustment == -25
         assert "-25" in description
 
@@ -313,7 +325,9 @@ class TestCalculateRolePreferenceAdjustment:
     # Real-world examples
     def test_senior_staff_engineer(self):
         """Test senior/staff engineer gets bonus."""
-        adjustment, _ = calculate_role_preference_adjustment("Senior Staff Software Engineer")
+        adjustment, _ = calculate_role_preference_adjustment(
+            "Senior Staff Software Engineer"
+        )
         assert adjustment == 5
 
     def test_vp_engineering(self):
@@ -328,5 +342,7 @@ class TestCalculateRolePreferenceAdjustment:
 
     def test_technical_program_manager(self):
         """Test technical program manager gets penalty."""
-        adjustment, _ = calculate_role_preference_adjustment("Technical Program Manager")
+        adjustment, _ = calculate_role_preference_adjustment(
+            "Technical Program Manager"
+        )
         assert adjustment == -25

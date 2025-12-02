@@ -64,9 +64,13 @@ def _parse_source_ids(raw: Optional[Union[str, list[str]]]):
 def build_scrape_config(args, scheduler_settings: Dict[str, Any]) -> ScrapeConfig:
     scrape_settings = _extract_scrape_settings(scheduler_settings)
 
-    target_matches = _coalesce(args.target_matches, scrape_settings.get("target_matches"))
+    target_matches = _coalesce(
+        args.target_matches, scrape_settings.get("target_matches")
+    )
     max_sources = _coalesce(args.max_sources, scrape_settings.get("max_sources"))
-    min_match_score = _coalesce(args.min_match_score, scrape_settings.get("min_match_score"))
+    min_match_score = _coalesce(
+        args.min_match_score, scrape_settings.get("min_match_score")
+    )
     source_ids = _coalesce(args.source_ids, scrape_settings.get("source_ids"))
 
     return ScrapeConfig(
@@ -96,13 +100,19 @@ def enqueue_scrape(db_path: Optional[str], scrape_config: ScrapeConfig) -> str:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Enqueue a SCRAPE job for the worker queue")
+    parser = argparse.ArgumentParser(
+        description="Enqueue a SCRAPE job for the worker queue"
+    )
     parser.add_argument("--db-path", help="Optional override for SQLite db path")
-    parser.add_argument("--target-matches", type=int, help="Stop after N matches (default: config)")
+    parser.add_argument(
+        "--target-matches", type=int, help="Stop after N matches (default: config)"
+    )
     parser.add_argument(
         "--max-sources", type=int, help="Scrape at most N sources (default: config)"
     )
-    parser.add_argument("--min-match-score", type=int, help="Override minimum match score")
+    parser.add_argument(
+        "--min-match-score", type=int, help="Override minimum match score"
+    )
     parser.add_argument(
         "--source-ids",
         help="Comma or newline separated source IDs to scrape (default: all with rotation)",

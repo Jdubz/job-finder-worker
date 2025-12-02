@@ -298,7 +298,10 @@ class TestDetectTimezoneForJob:
     def test_all_empty_inputs_returns_none(self):
         """Test all empty inputs returns None."""
         result = detect_timezone_for_job(
-            job_location="", job_description="", company_size=None, headquarters_location=""
+            job_location="",
+            job_description="",
+            company_size=None,
+            headquarters_location="",
         )
         assert result is None
 
@@ -334,7 +337,10 @@ class TestCalculateTimezoneScoreAdjustment:
             job_timezone=-7, user_timezone=-8  # Mountain time
         )
         assert adjustment == -2
-        assert "1.0h timezone difference" in description or "1h timezone difference" in description
+        assert (
+            "1.0h timezone difference" in description
+            or "1h timezone difference" in description
+        )
         assert "-2" in description
 
     def test_2_hour_difference_minor_penalty(self):
@@ -456,10 +462,14 @@ class TestCalculateTimezoneScoreAdjustment:
     def test_absolute_difference_calculation(self):
         """Test timezone difference is calculated as absolute value."""
         # Pacific job (-8) for Eastern user (-5)
-        adjustment1, _ = calculate_timezone_score_adjustment(job_timezone=-8, user_timezone=-5)
+        adjustment1, _ = calculate_timezone_score_adjustment(
+            job_timezone=-8, user_timezone=-5
+        )
 
         # Eastern job (-5) for Pacific user (-8)
-        adjustment2, _ = calculate_timezone_score_adjustment(job_timezone=-5, user_timezone=-8)
+        adjustment2, _ = calculate_timezone_score_adjustment(
+            job_timezone=-5, user_timezone=-8
+        )
 
         # Both should have same adjustment (3 hour difference)
         assert adjustment1 == adjustment2 == -5

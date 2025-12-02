@@ -58,7 +58,9 @@ def make_matcher(extra_config=None, monkeypatch=None):
                 adjustments.append(tech_reason)
             if exp_delta:
                 adjustments.append(exp_reason)
-            breakdown = ScoreBreakdown(base_score=base, final_score=final, adjustments=adjustments)
+            breakdown = ScoreBreakdown(
+                base_score=base, final_score=final, adjustments=adjustments
+            )
             return final, breakdown
 
         monkeypatch.setattr(matcher, "_calculate_adjusted_score", fake_calc)
@@ -93,7 +95,12 @@ def test_experience_gap_penalty(monkeypatch):
         {"experienceStrike": {"enabled": True, "minPreferred": 8, "points": 4}},
         monkeypatch=monkeypatch,
     )
-    job = {"title": "Senior Engineer", "description": "", "location": "remote", "company": "Acme"}
+    job = {
+        "title": "Senior Engineer",
+        "description": "",
+        "location": "remote",
+        "company": "Acme",
+    }
     result = matcher.analyze_job(job, return_below_threshold=True)
     assert result is not None
     assert result.match_score == 46  # base 50 minus 4

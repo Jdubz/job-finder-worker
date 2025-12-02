@@ -57,7 +57,9 @@ def evaluate_location_rules(
         if user_city and job_city_norm and job_city_norm != user_city:
             if not ctx.relocation_allowed:
                 return LocationEvaluation(True, 0, "onsite/hybrid outside user city")
-            return LocationEvaluation(False, ctx.relocation_penalty, "relocation required")
+            return LocationEvaluation(
+                False, ctx.relocation_penalty, "relocation required"
+            )
         # Same city or unknown city: no strikes
         return LocationEvaluation(False, 0, None)
 

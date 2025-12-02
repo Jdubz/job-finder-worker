@@ -100,7 +100,9 @@ class CompanyProcessor(BaseProcessor):
             existing = self.companies_manager.get_company_by_id(company_id)
             if existing:
                 company_name = existing.get("name")
-                logger.info("Resolved company name from ID: %s -> %s", company_id, company_name)
+                logger.info(
+                    "Resolved company name from ID: %s -> %s", company_id, company_name
+                )
 
         # Fail if we still don't have a company name - this is a data quality issue
         if not company_name:
@@ -150,7 +152,9 @@ class CompanyProcessor(BaseProcessor):
             if extracted_info.get("headquarters") and not extracted_info.get(
                 "headquartersLocation"
             ):
-                company_record["headquartersLocation"] = extracted_info.get("headquarters")
+                company_record["headquartersLocation"] = extracted_info.get(
+                    "headquarters"
+                )
 
             company_id = self.companies_manager.save_company(company_record)
             logger.info(f"Company saved: {company_display} (ID: {company_id})")
@@ -215,7 +219,9 @@ class CompanyProcessor(BaseProcessor):
                             f"Spawned SOURCE_DISCOVERY for {company_display}: {job_board_url}"
                         )
                     else:
-                        logger.info(f"SOURCE_DISCOVERY blocked by spawn rules for {job_board_url}")
+                        logger.info(
+                            f"SOURCE_DISCOVERY blocked by spawn rules for {job_board_url}"
+                        )
                 else:
                     logger.info(
                         "Source already exists for %s (source_id=%s)",
@@ -232,7 +238,9 @@ class CompanyProcessor(BaseProcessor):
                 result_parts.append(f"tech_stack={len(tech_stack)}")
             if job_board_url:
                 if source_spawned:
-                    discovery_method = "search_discovered" if search_discovered else "url_provided"
+                    discovery_method = (
+                        "search_discovered" if search_discovered else "url_provided"
+                    )
                     result_parts.append(f"job_board_spawned ({discovery_method})")
                 else:
                     result_parts.append("job_board_exists")
@@ -246,7 +254,9 @@ class CompanyProcessor(BaseProcessor):
                 "website": extracted_info.get("website") or "",
                 "source_discovered": job_board_url if source_spawned else None,
                 "discovery_method": (
-                    "search" if search_discovered else "provided" if job_board_url else None
+                    "search"
+                    if search_discovered
+                    else "provided" if job_board_url else None
                 ),
             }
             self.queue_manager.update_status(
@@ -456,9 +466,13 @@ class CompanyProcessor(BaseProcessor):
         try:
             yield
         except Exception as exc:
-            logger.error("Company pipeline error (company_id=%s): %s", item.company_id, exc)
+            logger.error(
+                "Company pipeline error (company_id=%s): %s", item.company_id, exc
+            )
             if item.id:
                 self.queue_manager.update_status(
-                    item.id, QueueStatus.FAILED, f"Error: {type(exc).__name__}: {str(exc)[:200]}"
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Error: {type(exc).__name__}: {str(exc)[:200]}",
                 )
             raise

@@ -25,7 +25,9 @@ from job_finder.ai.matcher import JobMatchResult
 
 def _apply_migrations(db_path: Path) -> None:
     """Apply all SQLite migrations to a fresh database."""
-    migrations_dir = Path(__file__).resolve().parents[3] / "infra" / "sqlite" / "migrations"
+    migrations_dir = (
+        Path(__file__).resolve().parents[3] / "infra" / "sqlite" / "migrations"
+    )
     with sqlite3.connect(db_path) as conn:
         for sql_file in sorted(migrations_dir.glob("*.sql")):
             conn.executescript(sql_file.read_text())
@@ -236,7 +238,9 @@ def test_queue_scrape_end_to_end(temp_db):
         url="",
         company_name="",
         source="user_request",
-        scrape_config=ScrapeConfig(target_matches=1, max_sources=1, source_ids=[source_id]),
+        scrape_config=ScrapeConfig(
+            target_matches=1, max_sources=1, source_ids=[source_id]
+        ),
     )
     queue_manager.add_item(scrape_item)
 

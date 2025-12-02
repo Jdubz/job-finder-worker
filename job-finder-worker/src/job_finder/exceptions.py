@@ -113,7 +113,9 @@ class DuplicateSourceError(StorageError):
     def __init__(self, name: str, existing_id: str, message: str = None):
         self.name = name
         self.existing_id = existing_id
-        super().__init__(message or f"Source '{name}' already exists (id: {existing_id})")
+        super().__init__(
+            message or f"Source '{name}' already exists (id: {existing_id})"
+        )
 
 
 class ProfileError(JobFinderError):

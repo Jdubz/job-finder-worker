@@ -40,13 +40,23 @@ class StrikeFilterEngine:
 
         # Hard Rejections
         unified_stop_list = policy.get("stopList", {})
-        self.stop_companies = [c.lower() for c in unified_stop_list.get("excludedCompanies", [])]
-        self.stop_keywords = [k.lower() for k in unified_stop_list.get("excludedKeywords", [])]
-        self.stop_domains = [d.lower() for d in unified_stop_list.get("excludedDomains", [])]
+        self.stop_companies = [
+            c.lower() for c in unified_stop_list.get("excludedCompanies", [])
+        ]
+        self.stop_keywords = [
+            k.lower() for k in unified_stop_list.get("excludedKeywords", [])
+        ]
+        self.stop_domains = [
+            d.lower() for d in unified_stop_list.get("excludedDomains", [])
+        ]
 
         hard_rej = config.get("hardRejections", {})
-        self.excluded_job_types = [t.lower() for t in hard_rej.get("excludedJobTypes", [])]
-        self.excluded_seniority = [s.lower() for s in hard_rej.get("excludedSeniority", [])]
+        self.excluded_job_types = [
+            t.lower() for t in hard_rej.get("excludedJobTypes", [])
+        ]
+        self.excluded_seniority = [
+            s.lower() for s in hard_rej.get("excludedSeniority", [])
+        ]
         self.required_title_keywords = [
             k.lower() for k in hard_rej.get("requiredTitleKeywords", [])
         ]
@@ -68,7 +78,9 @@ class StrikeFilterEngine:
         self.relocation_allowed = policy.get("relocationAllowed", False)
         self.relocation_penalty = policy.get("relocationPenaltyPoints", 80)
         self.location_penalty = policy.get("locationPenaltyPoints", 60)
-        self.ambiguous_location_penalty = policy.get("ambiguousLocationPenaltyPoints", 40)
+        self.ambiguous_location_penalty = policy.get(
+            "ambiguousLocationPenaltyPoints", 40
+        )
 
         # Strike: Salary
         salary_strike = config.get("salaryStrike", {})
@@ -108,7 +120,9 @@ class StrikeFilterEngine:
 
     def empty_pass_result(self) -> FilterResult:
         """Return a pass result with zero strikes (used for bypass scenarios)."""
-        return FilterResult(passed=True, total_strikes=0, strike_threshold=self.strike_threshold)
+        return FilterResult(
+            passed=True, total_strikes=0, strike_threshold=self.strike_threshold
+        )
 
     def evaluate_job(self, job_data: dict) -> FilterResult:
         """
@@ -301,7 +315,9 @@ class StrikeFilterEngine:
             if " " in keyword:
                 hit = keyword in description_lower
             else:
-                hit = bool(re.search(r"\b" + re.escape(keyword) + r"\b", description_lower))
+                hit = bool(
+                    re.search(r"\b" + re.escape(keyword) + r"\b", description_lower)
+                )
             if hit:
                 result.add_strike(
                     filter_category="stop_list",
@@ -388,9 +404,12 @@ class StrikeFilterEngine:
             or "remote" in location_lower
         )
 
-        is_hybrid = any(ind in combined for ind in ["hybrid", "days in office", "days remote"])
+        is_hybrid = any(
+            ind in combined for ind in ["hybrid", "days in office", "days remote"]
+        )
         is_onsite = any(
-            ind in combined for ind in ["on-site", "onsite", "in-office", "office-based"]
+            ind in combined
+            for ind in ["on-site", "onsite", "in-office", "office-based"]
         )
 
         if not is_remote and not is_hybrid and not is_onsite and location_lower.strip():
@@ -514,7 +533,9 @@ class StrikeFilterEngine:
                 )
                 return  # Only count first match
 
-    def _check_technology_strikes(self, title: str, description: str, result: FilterResult) -> None:
+    def _check_technology_strikes(
+        self, title: str, description: str, result: FilterResult
+    ) -> None:
         """Check technology stack and add strikes for undesired technologies.
 
         Only penalizes jobs that explicitly require technologies the user doesn't

@@ -77,7 +77,9 @@ class BaseProcessor:
             message: Status message
             **kwargs: Additional fields to update
         """
-        logger.info(f"Updating queue item {item_id} status to {status.value}: {message}")
+        logger.info(
+            f"Updating queue item {item_id} status to {status.value}: {message}"
+        )
         self.queue_manager.update_status(item_id, status, message, **kwargs)
 
     def _get_pipeline_state(self, item: JobQueueItem) -> Dict[str, Any]:

@@ -75,7 +75,9 @@ class ProfileLoader:
 
         # Check that profile has some useful data
         has_data = (
-            len(profile.skills) > 0 or len(profile.experience) > 0 or profile.summary is not None
+            len(profile.skills) > 0
+            or len(profile.experience) > 0
+            or profile.summary is not None
         )
 
         return has_data
@@ -132,7 +134,10 @@ class ProfileLoader:
                     "end_date": "2023-06",
                     "location": "City, State",
                     "description": "Brief description of the role",
-                    "responsibilities": ["Key responsibility 1", "Key responsibility 2"],
+                    "responsibilities": [
+                        "Key responsibility 1",
+                        "Key responsibility 2",
+                    ],
                     "achievements": ["Notable achievement 1", "Notable achievement 2"],
                     "technologies": ["Python", "Django", "PostgreSQL"],
                     "is_current": False,

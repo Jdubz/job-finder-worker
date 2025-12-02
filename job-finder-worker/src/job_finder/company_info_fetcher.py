@@ -37,7 +37,9 @@ class CompanyInfoFetcher:
         self.db_path = db_path
         self.session = requests.Session()
         self.session.headers.update(
-            {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
         )
         self.search_client = get_search_client()
 
@@ -230,7 +232,9 @@ Return ONLY valid JSON, no other text."""
             model_settings = models_config.get(model_name, {})
             max_tokens = min(model_settings.get("max_tokens", 1000), 1000)
 
-            response = self.ai_provider.generate(prompt, max_tokens=max_tokens, temperature=0.1)
+            response = self.ai_provider.generate(
+                prompt, max_tokens=max_tokens, temperature=0.1
+            )
 
             return self._parse_json_response(response)
 
@@ -251,7 +255,9 @@ employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, pr
 
 Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
 
-            response = self.ai_provider.generate(prompt, max_tokens=800, temperature=0.1)
+            response = self.ai_provider.generate(
+                prompt, max_tokens=800, temperature=0.1
+            )
             return self._parse_json_response(response)
 
         except Exception as e:
@@ -262,7 +268,9 @@ Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
     # WEBSITE SCRAPING (Supplementary)
     # ============================================================
 
-    def _scrape_website(self, website: str, company_name: str) -> Optional[Dict[str, Any]]:
+    def _scrape_website(
+        self, website: str, company_name: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Scrape company website for additional info.
 
@@ -340,7 +348,9 @@ Be factual. Return ONLY valid JSON."""
             model_settings = models_config.get(model_name, {})
             max_tokens = min(model_settings.get("max_tokens", 1000), 1000)
 
-            response = self.ai_provider.generate(prompt, max_tokens=max_tokens, temperature=0.2)
+            response = self.ai_provider.generate(
+                prompt, max_tokens=max_tokens, temperature=0.2
+            )
 
             return self._parse_json_response(response) or {}
 
@@ -390,7 +400,8 @@ Be factual. Return ONLY valid JSON."""
 
         # Boolean detections
         result["isRemoteFirst"] = any(
-            p in content_lower for p in ["remote-first", "fully remote", "distributed team"]
+            p in content_lower
+            for p in ["remote-first", "fully remote", "distributed team"]
         )
         result["aiMlFocus"] = any(
             p in content_lower
@@ -482,7 +493,8 @@ Be factual. Return ONLY valid JSON."""
             if key == "website":
                 # Replace with better website if current is empty or a job board
                 if val and (
-                    not merged.get("website") or self._is_job_board_url(merged.get("website"))
+                    not merged.get("website")
+                    or self._is_job_board_url(merged.get("website"))
                 ):
                     merged["website"] = val
             elif key == "sources":

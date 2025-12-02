@@ -92,9 +92,15 @@ def _normalize_names(names: Iterable[str]) -> Set[str]:
 def test_queue_enums_match_shared_types():
     ts_queue = TS_SHARED_ROOT / "queue.types.ts"
 
-    assert _parse_union_literals(ts_queue, "QueueItemType") == {e.value for e in QueueItemType}
-    assert _parse_union_literals(ts_queue, "QueueStatus") == {e.value for e in QueueStatus}
-    assert _parse_union_literals(ts_queue, "SourceTier") == {e.value for e in SourceTier}
+    assert _parse_union_literals(ts_queue, "QueueItemType") == {
+        e.value for e in QueueItemType
+    }
+    assert _parse_union_literals(ts_queue, "QueueStatus") == {
+        e.value for e in QueueStatus
+    }
+    assert _parse_union_literals(ts_queue, "SourceTier") == {
+        e.value for e in SourceTier
+    }
 
 
 def test_queue_item_fields_cover_shared_contract():

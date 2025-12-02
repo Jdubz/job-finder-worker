@@ -8,7 +8,9 @@ MIN_SPARSE_COMPANY_INFO_LENGTH = 100  # Threshold for "sparse" cached company in
 MAX_INTAKE_TEXT_LENGTH = 500  # Maximum length for intake data text fields
 MAX_INTAKE_DESCRIPTION_LENGTH = 2000  # Maximum length for description in intake data
 MAX_INTAKE_FIELD_LENGTH = 400  # Maximum length for most intake fields
-MAX_DESCRIPTION_PREVIEW_LENGTH = 500  # Max description length to search for remote keywords
+MAX_DESCRIPTION_PREVIEW_LENGTH = (
+    500  # Max description length to search for remote keywords
+)
 MAX_TEXT_OPTIMIZATION_LENGTH = 100  # Only optimize strings longer than this
 MAX_COMPANY_INFO_TEXT_LENGTH = 1000  # Maximum length for company info text
 

@@ -42,7 +42,9 @@ class TestEnsureCompanySourceLink:
 
         assert company_id == "company-456"
         assert source_id == "source-123"
-        sources_manager.update_company_link.assert_called_once_with("source-123", "company-456")
+        sources_manager.update_company_link.assert_called_once_with(
+            "source-123", "company-456"
+        )
 
     def test_skips_link_when_already_linked(self):
         """Test that existing links are not modified."""
@@ -79,8 +81,12 @@ class TestEnsureCompanySourceLink:
 
         assert company_id == "company-456"
         assert source_id == "source-123"
-        sources_manager.get_source_for_url.assert_called_with("https://example.com/jobs")
-        sources_manager.update_company_link.assert_called_once_with("source-123", "company-456")
+        sources_manager.get_source_for_url.assert_called_with(
+            "https://example.com/jobs"
+        )
+        sources_manager.update_company_link.assert_called_once_with(
+            "source-123", "company-456"
+        )
 
     def test_handles_missing_source(self):
         """Test graceful handling when source is not found."""

@@ -87,7 +87,9 @@ class QueueEventNotifier:
                         on_open=lambda *_: self._on_ws_open(),
                         on_message=self._handle_ws_message,
                         on_close=lambda *_: self._on_ws_close(),
-                        on_error=lambda *_ws, err=None: logger.debug("WS error: %s", err),
+                        on_error=lambda *_ws, err=None: logger.debug(
+                            "WS error: %s", err
+                        ),
                     )
                     self._ws_app.run_forever(ping_interval=20, ping_timeout=10)
                 except Exception as exc:
@@ -123,14 +125,18 @@ class QueueEventNotifier:
                 self._ws_app.send(json.dumps(payload))
                 return
             except Exception as exc:  # pragma: no cover
-                logger.debug("QueueEventNotifier WS send failed, falling back to HTTP: %s", exc)
+                logger.debug(
+                    "QueueEventNotifier WS send failed, falling back to HTTP: %s", exc
+                )
 
         url = f"{self.base}/queue/worker/events"
         try:
             resp = requests.post(url, json=payload, headers=self._headers(), timeout=5)
             if resp.status_code >= 300:
                 logger.debug(
-                    "QueueEventNotifier send_event failed: %s %s", resp.status_code, resp.text
+                    "QueueEventNotifier send_event failed: %s %s",
+                    resp.status_code,
+                    resp.text,
                 )
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug("QueueEventNotifier send_event error: %s", exc)
@@ -140,11 +146,16 @@ class QueueEventNotifier:
         url = f"{self.base}/queue/worker/commands"
         try:
             resp = requests.get(
-                url, params={"workerId": self.worker_id}, headers=self._headers(), timeout=5
+                url,
+                params={"workerId": self.worker_id},
+                headers=self._headers(),
+                timeout=5,
             )
             if resp.status_code >= 300:
                 logger.debug(
-                    "QueueEventNotifier poll_commands failed: %s %s", resp.status_code, resp.text
+                    "QueueEventNotifier poll_commands failed: %s %s",
+                    resp.status_code,
+                    resp.text,
                 )
                 return []
             data = resp.json()

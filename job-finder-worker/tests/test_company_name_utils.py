@@ -1,6 +1,9 @@
 """Tests for company name normalization utilities."""
 
-from job_finder.utils.company_name_utils import clean_company_name, normalize_company_name
+from job_finder.utils.company_name_utils import (
+    clean_company_name,
+    normalize_company_name,
+)
 
 
 class TestNormalizeCompanyName:
@@ -66,7 +69,9 @@ class TestNormalizeCompanyName:
             "Cloudflare, Inc.",
         ]
 
-        normalized_values = [normalize_company_name(name) for name in cloudflare_variants]
+        normalized_values = [
+            normalize_company_name(name) for name in cloudflare_variants
+        ]
 
         # All should be the same
         assert len(set(normalized_values)) == 1

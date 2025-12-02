@@ -10,7 +10,9 @@ from job_finder.storage.companies_manager import CompaniesManager
 
 def _apply_migrations(db_path: Path) -> None:
     # Migrations are at monorepo root: job-finder-bot/infra/sqlite/migrations
-    migrations_dir = Path(__file__).resolve().parents[2] / "infra" / "sqlite" / "migrations"
+    migrations_dir = (
+        Path(__file__).resolve().parents[2] / "infra" / "sqlite" / "migrations"
+    )
     with sqlite3.connect(db_path) as conn:
         for sql_file in sorted(migrations_dir.glob("*.sql")):
             conn.executescript(sql_file.read_text())
@@ -22,7 +24,9 @@ def test_save_company_strips_careers_suffix(tmp_path: Path):
 
     manager = CompaniesManager(str(db_path))
 
-    company_id = manager.save_company({"name": "Acme Careers", "website": "https://acme.example"})
+    company_id = manager.save_company(
+        {"name": "Acme Careers", "website": "https://acme.example"}
+    )
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
