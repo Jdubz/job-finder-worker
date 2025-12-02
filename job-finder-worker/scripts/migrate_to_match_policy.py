@@ -112,7 +112,7 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
                     "hybridSameCityBonus": 10,
                 },
             ),
-            "relocationPenalty": dealbreakers.get("relocationPenaltyPoints", -80),
+            "relocationPenalty": -dealbreakers.get("relocationPenaltyPoints", 80),
         },
         "technology": scoring_config.get(
             "technology",
