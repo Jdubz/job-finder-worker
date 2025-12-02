@@ -6,6 +6,7 @@ scraped, analyzed, and saved into job_matches.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +36,12 @@ class DummyMatcher:
 
     def __init__(self, score: int = 88):
         self.min_match_score = score
+        self.generate_intake = False
+        self.portland_office_bonus = 0
+        self.user_timezone = -8
+        self.prefer_large_companies = True
+        self.company_weights = {}
+        self.dealbreakers = {}
 
     def analyze_job(self, job: dict, **_kwargs) -> JobMatchResult:
         return JobMatchResult(
@@ -87,6 +94,11 @@ def test_queue_scrape_end_to_end(temp_db):
     config_loader = ConfigLoader(db_path)
     company_info_fetcher = CompanyInfoFetcher()
     ai_matcher = DummyMatcher(score=88)
+    import job_finder.job_queue.processors.job_processor as jp_module
+    from job_finder.ai import providers as ai_providers
+
+    ai_providers.create_provider_from_config = lambda cfg, task=None: "stub-provider"  # type: ignore
+    jp_module.create_provider_from_config = lambda cfg, task=None: "stub-provider"  # type: ignore
 
     # Pre-populate a company with good data so the job pipeline doesn't spawn a company task
     # Note: name_lower must match normalize_company_name("E2E Co") = "e2e"
@@ -108,6 +120,72 @@ def test_queue_scrape_end_to_end(temp_db):
                 "We build E2E pipelines with extensive testing and monitoring capabilities.",
                 "Remote-first culture with quarterly meetups.",
                 now_iso,
+                now_iso,
+            ),
+        )
+
+        # Seed configs to satisfy fail-loud loader
+        conn.execute(
+            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            (
+                "prefilter-policy",
+                json.dumps(
+                    {
+                        "stopList": {
+                            "excludedCompanies": [],
+                            "excludedKeywords": [],
+                            "excludedDomains": [],
+                        },
+                        "strikeEngine": {
+                            "enabled": True,
+                            "strikeThreshold": 3,
+                            "remotePolicy": {
+                                "allowRemote": True,
+                                "allowOnsite": False,
+                                "allowHybridInTimezone": True,
+                                "maxTimezoneDiffHours": 8,
+                                "perHourTimezonePenalty": 1,
+                                "hardTimezonePenalty": 3,
+                            },
+                            "salaryStrike": {"enabled": False},
+                        },
+                        "userTimezone": -8,
+                    }
+                ),
+                now_iso,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            (
+                "match-policy",
+                json.dumps({"jobMatch": {"minMatchScore": 88}, "dealbreakers": {}}),
+                now_iso,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            (
+                "ai-settings",
+                json.dumps(
+                    {
+                        "worker": {
+                            "selected": {
+                                "provider": "gemini",
+                                "interface": "api",
+                                "model": "gemini-2.0-flash",
+                            }
+                        },
+                        "documentGenerator": {
+                            "selected": {
+                                "provider": "gemini",
+                                "interface": "api",
+                                "model": "gemini-2.0-flash",
+                            }
+                        },
+                        "options": [],
+                    }
+                ),
                 now_iso,
             ),
         )

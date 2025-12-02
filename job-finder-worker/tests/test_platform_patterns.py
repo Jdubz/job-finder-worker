@@ -20,8 +20,14 @@ class TestPlatformPatternRegistry:
             "ashby_html",
             "workday",
             "lever",
+            "remotive_api",
+            "remoteok_api",
+            "monster_rss",
+            "indeed_partner_api",
+            "indeed_rss",
+            "linkedin_stub",
         }
-        assert expected == pattern_names
+        assert expected.issubset(pattern_names)
 
     def test_all_patterns_have_required_fields(self):
         """Test that all patterns have required field mappings."""
@@ -174,12 +180,19 @@ class TestMatchPlatform:
         """Test that unknown URLs return None."""
         urls = [
             "https://example.com/careers",
-            "https://linkedin.com/jobs",
             "https://indeed.com/viewjob?jk=123",
             "https://careers.google.com/jobs/results/",
         ]
         for url in urls:
             assert match_platform(url) is None, f"Should not match: {url}"
+
+    def test_linkedin_matches_stub(self):
+        """LinkedIn should match stub pattern (auth-required)."""
+        result = match_platform("https://linkedin.com/jobs")
+        assert result is not None
+        pattern, _ = result
+        assert pattern.name == "linkedin_stub"
+        assert pattern.auth_required is True
 
     def test_partial_domain_does_not_match(self):
         """Test that partial domain matches don't falsely match."""

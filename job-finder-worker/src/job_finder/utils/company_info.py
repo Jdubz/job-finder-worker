@@ -23,20 +23,22 @@ def build_company_info_string(company_info: Dict[str, Any]) -> str:
 def should_skip_by_stop_list(
     item_url: str, company_name: str, stop_list: Dict[str, List[str]]
 ) -> bool:
-    """Return True if item matches stop list criteria."""
+    """Return True if item matches stop list criteria (single consolidated list)."""
+
     company_name = company_name or ""
     url_lower = (item_url or "").lower()
 
-    for excluded in stop_list.get("excludedCompanies", []):
-        if excluded.lower() in company_name.lower():
-            return True
+    excluded_companies = [c.lower() for c in stop_list.get("excludedCompanies", [])]
+    excluded_domains = [d.lower() for d in stop_list.get("excludedDomains", [])]
+    excluded_keywords = [k.lower() for k in stop_list.get("excludedKeywords", [])]
 
-    for excluded_domain in stop_list.get("excludedDomains", []):
-        if excluded_domain.lower() in url_lower:
-            return True
+    if any(ex in company_name.lower() for ex in excluded_companies):
+        return True
 
-    for keyword in stop_list.get("excludedKeywords", []):
-        if keyword.lower() in url_lower:
-            return True
+    if any(domain in url_lower for domain in excluded_domains):
+        return True
+
+    if any(keyword in url_lower for keyword in excluded_keywords):
+        return True
 
     return False

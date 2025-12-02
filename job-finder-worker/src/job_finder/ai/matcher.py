@@ -131,6 +131,7 @@ class AIJobMatcher:
             "locationPenaltyPoints": 60,
             "relocationPenaltyPoints": 80,
             "ambiguousLocationPenaltyPoints": 40,
+            "relocationAllowed": False,
         }
         self.prompts = JobMatchPrompts()
 
@@ -340,6 +341,18 @@ class AIJobMatcher:
             match_score += location_penalty
             adjustments.append(penalty_reason)
 
+        # Technology rank adjustments
+        tech_delta, tech_reason = self._apply_technology_ranks(job)
+        if tech_delta != 0:
+            match_score += tech_delta
+            adjustments.append(tech_reason)
+
+        # Experience strike adjustments
+        exp_delta, exp_reason = self._apply_experience_strike(job)
+        if exp_delta != 0:
+            match_score += exp_delta
+            adjustments.append(exp_reason)
+
         # Apply Portland office bonus
         if has_portland_office and self.portland_office_bonus > 0:
             match_score += self.portland_office_bonus
@@ -518,101 +531,104 @@ class AIJobMatcher:
     def _calculate_location_penalty(
         self, job: Dict[str, Any], job_timezone: Optional[float] = None
     ) -> tuple[int, str, bool]:
-        """Return (penalty, reason, applied_tz_penalty) for location/onsite preference violations."""
+        """Return (penalty, reason, applied_tz_penalty) using unified location rules."""
 
         description = (job.get("description") or "").lower()
         location_raw = job.get("location") or ""
         location = location_raw.lower()
         arrangement = self._detect_work_arrangement(description, location)
 
-        # Allowed local options for onsite/hybrid work
-        require_remote = bool(self.dealbreakers.get("requireRemote", False))
-        base_penalty = -abs(self.dealbreakers.get("locationPenaltyPoints", 60))
-        relocation_penalty = -abs(self.dealbreakers.get("relocationPenaltyPoints", 80))
-        ambiguous_penalty = -abs(self.dealbreakers.get("ambiguousLocationPenaltyPoints", 40))
-        per_hour_penalty = -abs(
-            self.dealbreakers.get(
-                "perHourTimezonePenalty", self.dealbreakers.get("timezonePenaltyPoints", 5)
-            )
+        from job_finder.utils.timezone_utils import detect_timezone_for_job
+        from job_finder.utils.location_rules import LocationContext, evaluate_location_rules
+
+        job_tz = detect_timezone_for_job(
+            job_location=location_raw,
+            job_description=description,
+            company_size=None,
+            headquarters_location=None,
+            company_name=job.get("company"),
+            company_info=None,
         )
-        max_tz_diff = self.dealbreakers.get("maxTimezoneDiffHours", 8)
-        hard_tz_penalty = -abs(self.dealbreakers.get("hardTimezonePenalty", 60))
-        tz_diff = None
-        if job_timezone is not None:
-            tz_diff = abs(job_timezone - self.user_timezone)
 
-        # Remote and no relocation requirement: no penalty
-        if arrangement["remote"] and not arrangement["relocation_required"]:
-            return 0, "", False
+        user_city = ""
+        if isinstance(self.config, dict):
+            user_city = self.config.get("userCity", "") or self.profile.location or ""
+        else:
+            user_city = self.profile.location or ""
 
-        # Relocation demand without clear allowed city (takes precedence)
-        if arrangement["relocation_required"]:
-            penalty = relocation_penalty
-            if tz_diff is not None and tz_diff > max_tz_diff:
-                penalty = min(penalty, hard_tz_penalty)
-            return (
-                penalty,
-                f"🧳 Relocation required (tz diff {tz_diff or '?'}h): {penalty}",
-                bool(tz_diff),
-            )
+        ctx = LocationContext(
+            user_city=user_city,
+            user_timezone=self.user_timezone,
+            relocation_allowed=self.dealbreakers.get("relocationAllowed", False),
+            relocation_penalty=self.dealbreakers.get("relocationPenaltyPoints", 80),
+            location_penalty=self.dealbreakers.get("locationPenaltyPoints", 60),
+            ambiguous_location_penalty=self.dealbreakers.get("ambiguousLocationPenaltyPoints", 40),
+            max_timezone_diff_hours=self.dealbreakers.get("maxTimezoneDiffHours", 8),
+            per_hour_penalty=self.dealbreakers.get("perHourTimezonePenalty", 5),
+            hard_timezone_penalty=self.dealbreakers.get("hardTimezonePenalty", 60),
+        )
 
-        # Hybrid handling
-        if arrangement["hybrid"]:
-            if require_remote:
-                return base_penalty, "🏠 Remote required; hybrid not allowed", False
+        eval_result = evaluate_location_rules(
+            job_city=location_raw,
+            job_timezone=job_tz,
+            remote=arrangement["remote"],
+            hybrid=arrangement["hybrid"],
+            ctx=ctx,
+        )
 
-            if tz_diff is None:
-                return ambiguous_penalty, "❓ Hybrid location unclear", False
+        if eval_result.hard_reject:
+            return -abs(ctx.location_penalty), eval_result.reason or "location fail", False
 
-            if tz_diff > max_tz_diff:
-                penalty = hard_tz_penalty
-                return (
-                    penalty,
-                    f"🏢 Hybrid too far from user timezone ({tz_diff}h): {penalty}",
-                    True,
-                )
+        return -abs(eval_result.strikes), eval_result.reason or "", eval_result.strikes > 0
 
-            if per_hour_penalty != 0 and tz_diff > 0:
-                penalty = int(round(per_hour_penalty * tz_diff))
-                return (
-                    penalty,
-                    f"🏢 Hybrid timezone gap {tz_diff}h: {penalty}",
-                    True,
-                )
+    def _apply_technology_ranks(self, job: Dict[str, Any]) -> tuple[int, str]:
+        tech_ranks = (
+            job.get("technologyRanks")
+            or job.get("technology_ranks")
+            or (self.config.get("technologyRanks") if isinstance(self.config, dict) else {})
+        )
+        techs_cfg = (tech_ranks or {}).get("technologies") if isinstance(tech_ranks, dict) else {}
+        if not isinstance(techs_cfg, dict) or not techs_cfg:
+            return 0, ""
 
-            return 0, "", bool(tz_diff)
+        text = f"{job.get('title', '')} {job.get('description', '')}".lower()
+        delta = 0
+        reasons = []
 
-        # Onsite handling
-        if arrangement["onsite"]:
-            if require_remote:
-                return base_penalty, "🏠 Remote required; onsite role", False
+        for tech, meta in techs_cfg.items():
+            try:
+                rank = (meta or {}).get("rank")
+                points = int((meta or {}).get("points", 1))
+            except Exception:
+                continue
+            tech_lower = str(tech).lower()
+            present = re.search(rf"\b{re.escape(tech_lower)}\b", text) is not None
+            if rank == "fail" and present:
+                delta -= max(points, 10)
+                reasons.append(f"⛔ fail tech {tech_lower}")
+            elif rank == "strike" and present:
+                delta -= points
+                reasons.append(f"⚠ strike tech {tech_lower} (-{points})")
+            elif rank == "required" and present:
+                reasons.append(f"✅ required tech {tech_lower}")
 
-            if tz_diff is None:
-                return ambiguous_penalty, "❓ Onsite location unclear", False
+        reason = "; ".join(reasons) if reasons else ""
+        return delta, reason
 
-            if tz_diff > max_tz_diff:
-                penalty = hard_tz_penalty
-                return (
-                    penalty,
-                    f"🏢 Onsite too far from user timezone ({tz_diff}h): {penalty}",
-                    True,
-                )
+    def _apply_experience_strike(self, job: Dict[str, Any]) -> tuple[int, str]:
+        exp_cfg = self.config.get("experienceStrike") if isinstance(self.config, dict) else None
+        if not isinstance(exp_cfg, dict) or not exp_cfg.get("enabled", False):
+            return 0, ""
 
-            if per_hour_penalty != 0 and tz_diff > 0:
-                penalty = int(round(per_hour_penalty * tz_diff))
-                return (
-                    penalty,
-                    f"🏢 Onsite timezone gap {tz_diff}h: {penalty}",
-                    True,
-                )
+        min_pref = exp_cfg.get("minPreferred")
+        points = int(exp_cfg.get("points", 1))
+        user_years = getattr(self.profile, "years_of_experience", None)
+        if user_years is None or min_pref is None:
+            return 0, ""
 
-            return 0, "", bool(tz_diff)
-
-        # Ambiguous arrangement: penalize only if remote is mandatory
-        if require_remote:
-            return ambiguous_penalty, f"❓ Ambiguous remote support: {ambiguous_penalty}", False
-
-        return 0, "", False
+        if user_years < min_pref:
+            return -abs(points), f"📉 experience gap ({user_years}y vs {min_pref}y)"
+        return 0, ""
 
     def _build_match_result(
         self,

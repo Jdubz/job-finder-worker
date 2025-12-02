@@ -18,7 +18,7 @@ class QueueItemType(str, Enum):
     Type of queue item.
 
     TypeScript equivalent: QueueItemType in queue.types.ts
-    Values must match exactly: "job" | "company" | "scrape" | "source_discovery" | "scrape_source"
+    Values must match exactly: "job" | "company" | "scrape" | "source_discovery" | "scrape_source" | "agent_review"
     """
 
     JOB = "job"
@@ -26,6 +26,7 @@ class QueueItemType(str, Enum):
     SCRAPE = "scrape"
     SOURCE_DISCOVERY = "source_discovery"
     SCRAPE_SOURCE = "scrape_source"  # For automated source scraping
+    AGENT_REVIEW = "agent_review"
 
 
 class SourceStatus(str, Enum):
@@ -80,6 +81,7 @@ class QueueStatus(str, Enum):
     - PROCESSING: Currently being processed
     - FILTERED: Rejected by filter engine (did not pass intake filters)
     - SKIPPED: Skipped (duplicate or stop list blocked)
+    - NEEDS_REVIEW: Human review required before proceeding
     - SUCCESS: Successfully processed and saved to job-matches
     - FAILED: Processing error occurred (terminal)
     """
@@ -90,6 +92,7 @@ class QueueStatus(str, Enum):
     SKIPPED = "skipped"
     FAILED = "failed"
     SUCCESS = "success"
+    NEEDS_REVIEW = "needs_review"
 
 
 # QueueSource type - matches TypeScript literal type

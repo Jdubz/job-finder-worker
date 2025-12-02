@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -91,9 +92,81 @@ def test_job_pipeline_full_path(tmp_path: Path):
             ),
         )
 
+        # Seed minimal configs (fail-loud environment)
+        conn.execute(
+            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            (
+                "prefilter-policy",
+                json.dumps(
+                    {
+                        "stopList": {
+                            "excludedCompanies": [],
+                            "excludedKeywords": [],
+                            "excludedDomains": [],
+                        },
+                        "strikeEngine": {
+                            "enabled": True,
+                            "strikeThreshold": 3,
+                            "remotePolicy": {
+                                "allowRemote": True,
+                                "allowOnsite": False,
+                                "allowHybridInTimezone": True,
+                                "maxTimezoneDiffHours": 8,
+                                "perHourTimezonePenalty": 1,
+                                "hardTimezonePenalty": 3,
+                            },
+                            "salaryStrike": {"enabled": False},
+                        },
+                        "userTimezone": -8,
+                    }
+                ),
+                now_iso,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            (
+                "match-policy",
+                json.dumps({"jobMatch": {"minMatchScore": 50}, "dealbreakers": {}}),
+                now_iso,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            (
+                "ai-settings",
+                json.dumps(
+                    {
+                        "worker": {
+                            "selected": {
+                                "provider": "gemini",
+                                "interface": "api",
+                                "model": "gemini-2.0-flash",
+                            }
+                        },
+                        "documentGenerator": {
+                            "selected": {
+                                "provider": "gemini",
+                                "interface": "api",
+                                "model": "gemini-2.0-flash",
+                            }
+                        },
+                        "options": [],
+                    }
+                ),
+                now_iso,
+            ),
+        )
+
     # Stub AI matcher and filter to avoid network/LLM
     class DummyMatcher:
         min_match_score = 50
+        generate_intake = False
+        portland_office_bonus = 0
+        user_timezone = -8
+        prefer_large_companies = True
+        company_weights = {}
+        dealbreakers = {}
 
         def analyze_job(self, job: dict, **_kwargs) -> JobMatchResult:
             return JobMatchResult(
@@ -111,6 +184,13 @@ def test_job_pipeline_full_path(tmp_path: Path):
             )
 
     ai_matcher = DummyMatcher()
+
+    # Avoid real provider initialization (no API keys in tests)
+    from job_finder.ai import providers as ai_providers
+    import job_finder.job_queue.processors.job_processor as jp_module
+
+    ai_providers.create_provider_from_config = lambda cfg, task=None: "stub-provider"  # type: ignore
+    jp_module.create_provider_from_config = lambda cfg, task=None: "stub-provider"  # type: ignore
 
     processor = QueueItemProcessor(
         queue_manager=queue_manager,

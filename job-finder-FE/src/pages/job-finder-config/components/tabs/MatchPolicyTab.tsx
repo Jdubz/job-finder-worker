@@ -202,6 +202,27 @@ export function MatchPolicyTab({ isSaving, policy, onSave, onReset }: MatchPolic
                     />
                   )}
                 />
+                <NumericField
+                  control={form.control}
+                  name="dealbreakers.locationPenaltyPoints"
+                  label="Location Penalty"
+                  description="Strike applied when location is outside preferred city."
+                  inputClassName="max-w-[8rem]"
+                />
+                <NumericField
+                  control={form.control}
+                  name="dealbreakers.relocationPenaltyPoints"
+                  label="Relocation Penalty"
+                  description="Strike when relocation is required but allowed."
+                  inputClassName="max-w-[8rem]"
+                />
+                <NumericField
+                  control={form.control}
+                  name="dealbreakers.ambiguousLocationPenaltyPoints"
+                  label="Ambiguous Location Penalty"
+                  description="Strike when location cannot be determined."
+                  inputClassName="max-w-[8rem]"
+                />
               </div>
             </section>
 
