@@ -598,20 +598,21 @@ class JobProcessor(BaseProcessor):
 
         if source_resolution:
             if source_resolution["is_aggregator"]:
-                # Job aggregator with no linked company
-                job_data["company"] = company_name_clean
-                job_data["company_id"] = None
+                # Job aggregator - mark it but continue to company lookup/creation
+                # The source is an aggregator (e.g., Remotive, RemoteOK), but we still
+                # want to discover the actual company from the job listing
                 job_data["is_aggregator_source"] = True
-                return None
+                # Fall through to company lookup/creation below
 
-            # Source has linked company
-            actual_company_id = source_resolution["company_id"]
-            company = self.companies_manager.get_company_by_id(actual_company_id)
-            if company:
-                actual_company_name = company.get("name") or company_name_clean
-                job_data["company"] = actual_company_name
-                job_data["company_id"] = actual_company_id
-                return company
+            elif source_resolution["company_id"]:
+                # Source has linked company
+                actual_company_id = source_resolution["company_id"]
+                company = self.companies_manager.get_company_by_id(actual_company_id)
+                if company:
+                    actual_company_name = company.get("name") or company_name_clean
+                    job_data["company"] = actual_company_name
+                    job_data["company_id"] = actual_company_id
+                    return company
 
         # Check if company name is actually a source name (scraper bug)
         if is_source_name(company_name_clean):

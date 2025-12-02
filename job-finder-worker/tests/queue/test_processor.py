@@ -322,13 +322,15 @@ def test_single_task_pipeline_completes_to_match(processor, mock_managers, sampl
     assert "match-456" in success_calls[0][0][2] or "95" in success_calls[0][0][2]
 
 
-def test_single_task_pipeline_handles_aggregator_source(processor, mock_managers, sample_job_item):
-    """Single-task pipeline handles job from aggregator source correctly."""
+def test_single_task_pipeline_handles_aggregator_source_name(
+    processor, mock_managers, sample_job_item
+):
+    """Aggregator source with source name as company (e.g., 'RemoteOK API') skips company creation."""
 
-    # Provide scraped_data with job info
+    # Provide scraped_data with source name as company (scraper bug scenario)
     sample_job_item.scraped_data = {
         "title": "Senior Engineer",  # Must match title filter
-        "company": "RemoteOK API",
+        "company": "RemoteOK API",  # This IS a source name, should be skipped
         "company_website": "https://remoteok.com",
         "description": "A" * 200,
         "url": "https://remoteok.com/job/123",
@@ -361,8 +363,71 @@ def test_single_task_pipeline_handles_aggregator_source(processor, mock_managers
 
     # AI analysis should proceed even without company data
     processor.job_processor.ai_matcher.analyze_job.assert_called_once()
-    # Should not try to update company_id on listing (aggregator has no company)
+    # Should NOT create company stub for source names
+    mock_managers["companies_manager"].create_company_stub.assert_not_called()
+    # Should not try to update company_id on listing
     mock_managers["job_listing_storage"].update_company_id.assert_not_called()
+
+
+def test_single_task_pipeline_spawns_company_for_real_company_from_aggregator(
+    processor, mock_managers, sample_job_item
+):
+    """Aggregator source with REAL company name should create company stub and spawn COMPANY task."""
+
+    # Provide scraped_data with a REAL company name (not the aggregator name)
+    sample_job_item.scraped_data = {
+        "title": "Senior Engineer",  # Must match title filter
+        "company": "Speechify, Inc.",  # This is a REAL company, should be discovered
+        "company_website": "https://speechify.com",
+        "description": "A" * 200,
+        "url": "https://remotive.com/job/123",
+    }
+
+    # Source is an aggregator (Remotive), but company is real (Speechify)
+    mock_managers["sources_manager"].resolve_company_from_source.return_value = {
+        "company_id": None,
+        "is_aggregator": True,
+        "aggregator_domain": "remotive.com",
+        "source_id": "src_remotive",
+        "source_name": "Remotive - Software Development",
+    }
+
+    # Company doesn't exist yet, will create stub
+    incomplete_company = {
+        "id": "comp-speechify",
+        "name": "Speechify, Inc.",
+        "about": "",
+        "culture": "",
+    }
+    mock_managers["companies_manager"].get_company.return_value = None
+    mock_managers["companies_manager"].create_company_stub.return_value = incomplete_company
+    mock_managers["companies_manager"].has_good_company_data.return_value = False
+
+    mock_managers["job_listing_storage"].get_or_create_listing.return_value = ("listing-agg", True)
+
+    processor.job_processor.process_job(sample_job_item)
+
+    # Should create company stub for real company
+    mock_managers["companies_manager"].create_company_stub.assert_called_once()
+    stub_call_args = mock_managers["companies_manager"].create_company_stub.call_args
+    assert "Speechify" in stub_call_args[0][0]  # First positional arg is company name
+
+    # Should spawn COMPANY task for enrichment
+    assert mock_managers["queue_manager"].spawn_item_safely.called
+    spawn_calls = mock_managers["queue_manager"].spawn_item_safely.call_args_list
+    company_spawn = None
+    for call in spawn_calls:
+        if call.kwargs:
+            new_item_data = call.kwargs.get("new_item_data")
+        else:
+            new_item_data = call.args[1]
+        if new_item_data.get("type") == "company":
+            company_spawn = call
+            break
+    assert company_spawn is not None, "Should spawn COMPANY task for real company from aggregator"
+
+    # Job should be requeued to wait for company enrichment
+    mock_managers["queue_manager"].requeue_with_state.assert_called_once()
 
 
 def test_build_company_info_string(processor):
