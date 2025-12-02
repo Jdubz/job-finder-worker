@@ -275,11 +275,16 @@ export function AISettingsTab({
                     : task === "companyDiscovery"
                     ? "Company Discovery"
                     : "Source Discovery"
-                const base = aiSettings?.worker?.tasks?.[task] ?? getSectionSelection("worker")
-                const providerOption = resolveProvider(base.provider)
+                const sectionDefaults = getSectionSelection("worker")
+                const taskOverride = aiSettings?.worker?.tasks?.[task] ?? {}
+                const provider = taskOverride.provider ?? sectionDefaults.provider
+                const ifaceValue = taskOverride.interface ?? sectionDefaults.interface
+                const modelValue = taskOverride.model ?? sectionDefaults.model ?? ""
+
+                const providerOption = provider ? resolveProvider(provider) : undefined
                 const availableInterfaces: AIInterfaceOption[] = providerOption?.interfaces ?? []
                 const interfaceOption =
-                  availableInterfaces.find((i) => i.value === base.interface) ?? availableInterfaces[0]
+                  availableInterfaces.find((i) => i.value === ifaceValue) ?? availableInterfaces[0]
                 const models = interfaceOption?.models ?? []
 
                 return (
@@ -292,7 +297,7 @@ export function AISettingsTab({
                       <div className="space-y-2">
                         <Label>Provider</Label>
                         <Select
-                          value={base.provider}
+                          value={provider}
                           onValueChange={(value) => {
                             const fallback = chooseFallbackInterface(value as AIProviderType)
                             updateTaskSelection(task, {
@@ -324,12 +329,12 @@ export function AISettingsTab({
                       <div className="space-y-2">
                         <Label>Interface</Label>
                         <Select
-                          value={interfaceOption?.value ?? base.interface}
+                          value={interfaceOption?.value ?? ifaceValue}
                           onValueChange={(value) =>
                             updateTaskSelection(task, {
-                              provider: base.provider,
+                              provider,
                               interface: value as AIInterfaceType,
-                              model: (resolveInterface(base.provider, value as AIInterfaceType)?.models[0] ?? ""),
+                              model: (resolveInterface(provider, value as AIInterfaceType)?.models[0] ?? ""),
                             })
                           }
                         >
@@ -351,11 +356,11 @@ export function AISettingsTab({
                       <div className="space-y-2">
                         <Label>Model</Label>
                         <Select
-                          value={base.model}
+                          value={modelValue}
                           onValueChange={(value) =>
                             updateTaskSelection(task, {
-                              provider: base.provider,
-                              interface: interfaceOption?.value ?? base.interface,
+                              provider,
+                              interface: interfaceOption?.value ?? ifaceValue,
                               model: value,
                             })
                           }
