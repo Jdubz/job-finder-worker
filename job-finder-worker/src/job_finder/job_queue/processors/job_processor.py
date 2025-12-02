@@ -16,11 +16,13 @@ import time
 from typing import Any, Dict, Optional, cast
 from urllib.parse import urlparse, quote_plus
 
+from job_finder.ai.extraction import JobExtractor
 from job_finder.ai.matcher import AIJobMatcher
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import DuplicateQueueItemError
-from job_finder.filters.strike_filter_engine import StrikeFilterEngine
+from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
+from job_finder.scoring.engine import ScoringEngine
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrape_runner import ScrapeRunner
@@ -111,152 +113,71 @@ class JobProcessor(BaseProcessor):
         self.ai_matcher = ai_matcher
         self.company_info_fetcher = company_info_fetcher
 
-        # Initialize strike-based filter engine
-        prefilter_policy = config_loader.get_prefilter_policy()
-        self.filter_engine = StrikeFilterEngine(prefilter_policy)
-        # Keep strike engine timezone aligned with the match policy
-        try:
-            job_match_cfg = config_loader.get_job_match()
-            self.filter_engine.set_user_timezone(job_match_cfg.get("userTimezone"))
-        except Exception:
-            logger.warning(
-                "Unable to sync user timezone into strike filter", exc_info=True
-            )
+        # Initialize new hybrid pipeline components
+        title_filter_config = config_loader.get_title_filter()
+        self.title_filter = TitleFilter(title_filter_config)
 
-        # Initialize scrape runner with shared filter engine for pre-filtering
+        scoring_config = config_loader.get_scoring_config()
+        self.scoring_config = scoring_config
+        self.scoring_engine = ScoringEngine(scoring_config)
+
+        # Initialize AI provider for extraction
+        ai_settings = config_loader.get_ai_settings()
+        extraction_provider = create_provider_from_config(ai_settings, task="jobMatch")
+        self.extractor = JobExtractor(extraction_provider)
+
+        # Initialize scrape runner with title filter for pre-filtering
         self.scrape_runner = ScrapeRunner(
             queue_manager=queue_manager,
             job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             sources_manager=sources_manager,
             company_info_fetcher=company_info_fetcher,
-            filter_engine=self.filter_engine,
+            title_filter=self.title_filter,
         )
 
-        # Initialize scraper intake with job_listing_storage for deduplication
+        # Initialize scraper intake with title filter for deduplication
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
             job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
-            filter_engine=self.filter_engine,
+            title_filter=self.title_filter,
         )
-
-        # Align AI matcher dealbreakers with the prefilter remote policy so scoring respects the same rules.
-        self._sync_matcher_dealbreakers(prefilter_policy)
 
     def _refresh_runtime_config(self) -> None:
         """Reload config-driven components so the next item uses fresh settings."""
         ai_settings = self.config_loader.get_ai_settings()
-        match_policy = self.config_loader.get_match_policy()
-        job_match = (
-            match_policy.get("jobMatch", {}) if isinstance(match_policy, dict) else {}
-        )
-        prefilter_policy = self.config_loader.get_prefilter_policy()
+        title_filter_config = self.config_loader.get_title_filter()
+        scoring_config = self.config_loader.get_scoring_config()
 
-        # Rebuild strike filter engine with latest policy
-        self.filter_engine = StrikeFilterEngine(prefilter_policy)
-        try:
-            self.filter_engine.set_user_timezone(job_match.get("userTimezone"))
-        except Exception:
-            logger.warning(
-                "Unable to sync user timezone into strike filter", exc_info=True
-            )
+        # Rebuild title filter with latest config
+        self.title_filter = TitleFilter(title_filter_config)
 
-        # Propagate new filter engine into downstream helpers
-        if hasattr(self.scrape_runner, "filter_engine"):
-            self.scrape_runner.filter_engine = self.filter_engine
-        if hasattr(self.scraper_intake, "filter_engine"):
-            self.scraper_intake.filter_engine = self.filter_engine
+        # Rebuild scoring engine with latest config
+        self.scoring_config = scoring_config
+        self.scoring_engine = ScoringEngine(scoring_config)
+
+        # Propagate new title filter into downstream helpers
+        if hasattr(self.scrape_runner, "title_filter"):
+            self.scrape_runner.title_filter = self.title_filter
+        if hasattr(self.scraper_intake, "title_filter"):
+            self.scraper_intake.title_filter = self.title_filter
 
         # Refresh AI providers per task
-        self.ai_matcher.provider = create_provider_from_config(
-            ai_settings, task="jobMatch"
-        )
+        extraction_provider = create_provider_from_config(ai_settings, task="jobMatch")
+        self.extractor = JobExtractor(extraction_provider)
+        self.ai_matcher.provider = create_provider_from_config(ai_settings, task="jobMatch")
 
-        company_provider = create_provider_from_config(
-            ai_settings, task="companyDiscovery"
-        )
+        company_provider = create_provider_from_config(ai_settings, task="companyDiscovery")
         if hasattr(self.company_info_fetcher, "ai_provider"):
             self.company_info_fetcher.ai_provider = company_provider
 
-        # Refresh matcher thresholds and weights
-        company_weights = (
-            match_policy.get("companyWeights", {})
-            if isinstance(match_policy, dict)
-            else {}
-        )
-        dealbreakers = (
-            match_policy.get("dealbreakers", {})
-            if isinstance(match_policy, dict)
-            else {}
-        )
-
-        self.ai_matcher.min_match_score = job_match.get(
-            "minMatchScore", self.ai_matcher.min_match_score
-        )
-        self.ai_matcher.generate_intake = job_match.get(
-            "generateIntakeData", self.ai_matcher.generate_intake
-        )
-        self.ai_matcher.portland_office_bonus = job_match.get(
-            "portlandOfficeBonus", self.ai_matcher.portland_office_bonus
-        )
-        self.ai_matcher.user_timezone = job_match.get(
-            "userTimezone", self.ai_matcher.user_timezone
-        )
-        self.ai_matcher.prefer_large_companies = job_match.get(
-            "preferLargeCompanies", self.ai_matcher.prefer_large_companies
-        )
-        self.ai_matcher.company_weights = (
-            company_weights or self.ai_matcher.company_weights
-        )
-        self.ai_matcher.dealbreakers = dealbreakers or self.ai_matcher.dealbreakers
-
-        # Align matcher dealbreakers with prefilter policy for remote/hybrid rules
-        self._sync_matcher_dealbreakers(prefilter_policy)
+        # Update AI matcher min score from scoring config
+        self.ai_matcher.min_match_score = scoring_config.get("minScore", 60)
 
     # ============================================================
     # JOB LISTING HELPERS
     # ============================================================
-
-    def _sync_matcher_dealbreakers(self, prefilter_policy: Dict[str, Any]) -> None:
-        """
-        Merge remote/hybrid allowances from prefilter-policy into the AI matcher dealbreakers.
-
-        This keeps scoring penalties aligned with the same remote rules used by the strike filter.
-        Match-policy can still override any of these values explicitly.
-        """
-
-        remote_policy = (prefilter_policy.get("strikeEngine") or {}).get(
-            "remotePolicy"
-        ) or {}
-        existing_raw = getattr(self.ai_matcher, "dealbreakers", {}) or {}
-        if isinstance(existing_raw, dict):
-            existing = existing_raw
-        else:
-            try:
-                existing = dict(existing_raw)
-            except Exception:
-                existing = {}
-        dealbreakers = {**existing}
-
-        allow_onsite = remote_policy.get("allowOnsite")
-        allow_hybrid = remote_policy.get("allowHybridInTimezone")
-
-        if allow_onsite is False and "requireRemote" not in dealbreakers:
-            dealbreakers["requireRemote"] = True
-        if allow_hybrid is False:
-            dealbreakers["allowHybridInTimezone"] = False
-
-        # Carry over timezone-based penalties so scorer matches prefilter expectations
-        for key in (
-            "maxTimezoneDiffHours",
-            "perHourTimezonePenalty",
-            "hardTimezonePenalty",
-        ):
-            if key in remote_policy and key not in dealbreakers:
-                dealbreakers[key] = remote_policy[key]
-
-        self.ai_matcher.dealbreakers = dealbreakers
 
     def _get_or_create_job_listing(
         self, item: JobQueueItem, job_data: Dict[str, Any]
@@ -442,15 +363,9 @@ class JobProcessor(BaseProcessor):
             return
 
         # Update status to processing and set pipeline_stage for UI
-        scrape_state: Dict[str, Any] = {
-            **(item.pipeline_state or {}),
-            "pipeline_stage": "scrape",
-        }
+        scrape_state: Dict[str, Any] = {**(item.pipeline_state or {}), "pipeline_stage": "scrape"}
         self.queue_manager.update_status(
-            item.id,
-            QueueStatus.PROCESSING,
-            "Scraping job data",
-            pipeline_state=scrape_state,
+            item.id, QueueStatus.PROCESSING, "Scraping job data", pipeline_state=scrape_state
         )
 
         try:
@@ -518,10 +433,10 @@ class JobProcessor(BaseProcessor):
 
     def _do_job_filter(self, item: JobQueueItem) -> None:
         """
-        Filter job and update state.
+        Filter job using title filter and update state.
 
-        Sets pipeline_stage='filter'. Re-spawns if passed, marks FILTERED if rejected.
-        Also updates job_listing status accordingly.
+        Uses simple keyword-based title filtering. Sets pipeline_stage='filter'.
+        Re-spawns if passed, marks FILTERED if rejected.
         """
         if not item.id or not item.pipeline_state:
             logger.error("Cannot process FILTER without ID or pipeline_state")
@@ -537,39 +452,37 @@ class JobProcessor(BaseProcessor):
         )
         start = time.monotonic()
 
-        logger.info(
-            f"JOB_FILTER: Evaluating {job_data.get('title')} at {job_data.get('company')}"
-        )
+        title = job_data.get("title", "")
+        logger.info(f"JOB_FILTER: Evaluating '{title}' at {job_data.get('company')}")
 
         # Update status to processing and set pipeline_stage for UI
         updated_state = {**item.pipeline_state, "pipeline_stage": "filter"}
         self.queue_manager.update_status(
-            item.id,
-            QueueStatus.PROCESSING,
-            "Filtering job",
-            pipeline_state=updated_state,
+            item.id, QueueStatus.PROCESSING, "Filtering job", pipeline_state=updated_state
         )
 
         # Get or create job_listing for this job
         listing_id = self._get_or_create_job_listing(item, job_data)
 
         try:
-            # Run strike-based filter (unless bypass requested)
+            # Run title-based filter (unless bypass requested)
             bypass_filter = bool((item.metadata or {}).get("bypassFilter"))
             if bypass_filter:
-                filter_result = self.filter_engine.empty_pass_result()
+                from job_finder.filters.title_filter import TitleFilterResult
+
+                filter_result = TitleFilterResult(passed=True)
             else:
-                filter_result = self.filter_engine.evaluate_job(job_data)
+                filter_result = self.title_filter.filter(title)
 
             if not filter_result.passed:
-                # Job rejected by filters - TERMINAL STATE
-                rejection_summary = filter_result.get_rejection_summary()
+                # Job rejected by title filter - TERMINAL STATE
+                rejection_reason = filter_result.reason or "Title filter rejected"
                 rejection_data = filter_result.to_dict()
 
                 # Proactively spawn company/source tasks even for filtered jobs
                 self._spawn_company_and_source(item, job_data)
 
-                logger.info(f"JOB_FILTER: Rejected - {rejection_summary}")
+                logger.info(f"JOB_FILTER: Rejected - {rejection_reason}")
 
                 # Update job_listing status to 'filtered'
                 self._update_listing_status(listing_id, "filtered", rejection_data)
@@ -577,11 +490,8 @@ class JobProcessor(BaseProcessor):
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.FILTERED,
-                    f"Rejected by filters: {rejection_summary}",
-                    scraped_data={
-                        "job_data": job_data,
-                        "filter_result": rejection_data,
-                    },
+                    f"Rejected: {rejection_reason}",
+                    scraped_data={"job_data": job_data, "filter_result": rejection_data},
                 )
                 return
 
@@ -599,23 +509,20 @@ class JobProcessor(BaseProcessor):
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.SUCCESS,
-                "Passed filtering",
+                "Passed title filter",
             )
 
             # Re-spawn same URL with filter result
             self._respawn_job_with_state(item, updated_state, next_stage="analyze")
 
-            logger.info(
-                f"JOB_FILTER complete: Passed with {filter_result.total_strikes} strikes"
-            )
+            logger.info(f"JOB_FILTER complete: Title filter passed")
 
             self.slogger.pipeline_stage(
                 item.id,
                 "filter",
                 "completed",
                 {
-                    "job_title": job_data.get("title"),
-                    "strikes": filter_result.total_strikes,
+                    "job_title": title,
                     "duration_ms": round((time.monotonic() - start) * 1000),
                 },
             )
@@ -632,10 +539,14 @@ class JobProcessor(BaseProcessor):
 
     def _do_job_analyze(self, item: JobQueueItem) -> None:
         """
-        Analyze job with AI and update state.
+        Analyze job with AI extraction, deterministic scoring, and match reasoning.
+
+        Pipeline:
+        1. AI Extraction - Extract semantic data (seniority, remote, salary, etc.)
+        2. Deterministic Scoring - Score based on config (no AI)
+        3. AI Match Analysis - Generate detailed reasoning if passed scoring
 
         Sets pipeline_stage='analyze'. Re-spawns if matched, marks SKIPPED if low score.
-        Updates job_listing status to 'analyzed' or 'skipped'.
         """
         if not item.id or not item.pipeline_state:
             logger.error("Cannot process ANALYZE without ID or pipeline_state")
@@ -649,29 +560,28 @@ class JobProcessor(BaseProcessor):
         # Get listing_id from pipeline state
         listing_id = item.pipeline_state.get("job_listing_id")
 
+        title = job_data.get("title", "")
+        description = job_data.get("description", "")
+        location = job_data.get("location", "")
+
         self.slogger.pipeline_stage(
             item.id,
             "analyze",
             "started",
             {
-                "job_title": job_data.get("title"),
+                "job_title": title,
                 "company": job_data.get("company"),
             },
         )
         start = time.monotonic()
 
-        logger.info(
-            f"JOB_ANALYZE: Analyzing {job_data.get('title')} at {job_data.get('company')}"
-        )
+        logger.info(f"JOB_ANALYZE: Analyzing '{title}' at {job_data.get('company')}")
 
         try:
             # Ensure company exists (spawn dependency if needed)
-            company_ready, dependency_state = self._ensure_company_dependency(
-                item, job_data
-            )
+            company_ready, dependency_state = self._ensure_company_dependency(item, job_data)
             if not company_ready:
                 updated_state = {**item.pipeline_state, **dependency_state}
-                # Note: requeue_with_state sets status to PENDING; update a friendly message first
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.PENDING,
@@ -684,17 +594,67 @@ class JobProcessor(BaseProcessor):
                 )
                 return
 
-            # Update status to processing and set pipeline_stage for UI (dependencies are ready)
+            # Update status to processing
             updated_state = {**item.pipeline_state, "pipeline_stage": "analyze"}
+            self.queue_manager.update_status(
+                item.id, QueueStatus.PROCESSING, "Extracting job data", pipeline_state=updated_state
+            )
+
+            # STAGE 1: AI Extraction - Extract semantic data from job posting
+            logger.debug(f"Running AI extraction for '{title}'")
+            extraction = self.extractor.extract(title, description, location)
+            extraction_dict = extraction.to_dict()
+            logger.info(
+                f"Extraction complete: seniority={extraction.seniority}, "
+                f"arrangement={extraction.work_arrangement}, techs={len(extraction.technologies)}"
+            )
+
+            # STAGE 2: Deterministic Scoring - Score based on config
+            self.queue_manager.update_status(
+                item.id, QueueStatus.PROCESSING, "Scoring job match", pipeline_state=updated_state
+            )
+            score_result = self.scoring_engine.score(extraction, title, description)
+            logger.info(
+                f"Scoring complete: score={score_result.final_score}, passed={score_result.passed}"
+            )
+
+            # Check if scoring rejected the job
+            if not score_result.passed:
+                self._update_listing_status(
+                    listing_id,
+                    "skipped",
+                    analysis_result={
+                        "extraction": extraction_dict,
+                        "scoring": score_result.to_dict(),
+                    },
+                )
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.SKIPPED,
+                    f"Scoring rejected: {score_result.rejection_reason}",
+                    scraped_data={
+                        "job_data": job_data,
+                        "extraction": extraction_dict,
+                        "scoring": score_result.to_dict(),
+                    },
+                )
+                return
+
+            # STAGE 3: AI Match Analysis - Generate detailed reasoning
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.PROCESSING,
-                "Analyzing job match",
+                "Generating match analysis",
                 pipeline_state=updated_state,
             )
 
-            # Run AI matching (force returning score even if below threshold)
-            result = self.ai_matcher.analyze_job(job_data, return_below_threshold=True)
+            # Inject extraction data into job_data for matcher
+            job_data_enriched = {
+                **job_data,
+                "extraction": extraction_dict,
+                "deterministic_score": score_result.final_score,
+            }
+            result = self.ai_matcher.analyze_job(job_data_enriched, return_below_threshold=True)
 
             if not result:
                 # AI returned None without exception (e.g., empty response from provider)
@@ -726,9 +686,7 @@ class JobProcessor(BaseProcessor):
                     min_score = 0
 
             if result.match_score < min_score:
-                self._update_listing_status(
-                    listing_id, "skipped", analysis_result=result.to_dict()
-                )
+                self._update_listing_status(listing_id, "skipped", analysis_result=result.to_dict())
 
                 self.queue_manager.update_status(
                     item.id,
@@ -739,9 +697,7 @@ class JobProcessor(BaseProcessor):
 
             # Match passed - update state and continue
             # Update job_listing status to 'analyzed'
-            self._update_listing_status(
-                listing_id, "analyzed", analysis_result=result.to_dict()
-            )
+            self._update_listing_status(listing_id, "analyzed", analysis_result=result.to_dict())
 
             updated_state = {
                 **item.pipeline_state,
@@ -778,9 +734,7 @@ class JobProcessor(BaseProcessor):
             )
         except Exception as e:
             error_msg = str(e)
-            logger.error(
-                f"Error after AI analysis for {job_data.get('title')}: {error_msg}"
-            )
+            logger.error(f"Error after AI analysis for {job_data.get('title')}: {error_msg}")
             self._update_listing_status(listing_id, "skipped")
             self.queue_manager.update_status(
                 item.id,
@@ -804,16 +758,10 @@ class JobProcessor(BaseProcessor):
         until company data becomes available.
         """
         company_name_raw = job_data.get("company", item.company_name)
-        company_website = job_data.get(
-            "company_website"
-        ) or self._extract_company_domain(item.url)
+        company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
 
-        company_name_base = (
-            company_name_raw if isinstance(company_name_raw, str) else ""
-        )
-        company_name_clean = (
-            clean_company_name(company_name_base) or company_name_base.strip()
-        )
+        company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
+        company_name_clean = clean_company_name(company_name_base) or company_name_base.strip()
 
         state_updates: Dict[str, Any] = {}
 
@@ -868,12 +816,7 @@ class JobProcessor(BaseProcessor):
 
                 job_data["company"] = actual_company_name or company_name_clean
                 return self._finalize_company_dependency(
-                    item,
-                    job_data,
-                    company,
-                    company_website,
-                    pipeline_state,
-                    state_updates,
+                    item, job_data, company, company_website, pipeline_state, state_updates
                 )
             else:
                 # Source has stale company_id reference - company was deleted
@@ -906,9 +849,7 @@ class JobProcessor(BaseProcessor):
 
         if not company:
             # Create stub for new company
-            stub = self.companies_manager.create_company_stub(
-                company_name_clean, company_website
-            )
+            stub = self.companies_manager.create_company_stub(company_name_clean, company_website)
             company = stub
 
         return self._finalize_company_dependency(
@@ -931,9 +872,7 @@ class JobProcessor(BaseProcessor):
         Returns (ready, state_updates) tuple.
         """
         company_id = company.get("id")
-        company_name = job_data[
-            "company"
-        ]  # Guaranteed set by _ensure_company_dependency
+        company_name = job_data["company"]  # Guaranteed set by _ensure_company_dependency
 
         # Self-heal FK relationships (company <-> source linkage)
         if company_id:
@@ -1030,9 +969,7 @@ class JobProcessor(BaseProcessor):
                 },
             )
             if task_id:
-                logger.info(
-                    "Spawned company enrichment task %s for %s", task_id, company_name
-                )
+                logger.info("Spawned company enrichment task %s for %s", task_id, company_name)
                 return True
             else:
                 logger.warning(
@@ -1041,36 +978,26 @@ class JobProcessor(BaseProcessor):
                 )
                 return False
         except DuplicateQueueItemError:
-            logger.debug(
-                "Company task for %s already in queue, skipping spawn", company_name
-            )
+            logger.debug("Company task for %s already in queue, skipping spawn", company_name)
             return True  # Task exists, which is fine
         except Exception as e:
             logger.error("Could not spawn company task for %s: %s", company_name, e)
             return False
 
-    def _spawn_company_and_source(
-        self, item: JobQueueItem, job_data: Dict[str, Any]
-    ) -> None:
+    def _spawn_company_and_source(self, item: JobQueueItem, job_data: Dict[str, Any]) -> None:
         """Ensure company stub exists and spawn COMPANY and SOURCE_DISCOVERY tasks even for filtered jobs."""
 
         company_name = job_data.get("company") or item.company_name or "Unknown"
-        company_website = job_data.get(
-            "company_website"
-        ) or self._extract_company_domain(item.url)
+        company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
 
         company = self.companies_manager.get_company(
             company_name
-        ) or self.companies_manager.create_company_stub(
-            company_name, company_website or ""
-        )
+        ) or self.companies_manager.create_company_stub(company_name, company_website or "")
 
         company_id = company.get("id")
         # Spawn company enrichment task
         if company_id:
-            self._try_spawn_company_task(
-                item, company_id, company_name, company_website or ""
-            )
+            self._try_spawn_company_task(item, company_id, company_name, company_website or "")
 
         # Spawn source discovery task to track posting source
         try:
@@ -1078,18 +1005,14 @@ class JobProcessor(BaseProcessor):
                 item,
                 {
                     "type": QueueItemType.SOURCE_DISCOVERY,
-                    "url": job_data.get("company_website")
-                    or job_data.get("url")
-                    or item.url,
+                    "url": job_data.get("company_website") or job_data.get("url") or item.url,
                     "company_name": company_name,
                     "company_id": company_id,
                     "source": item.source,
                 },
             )
         except Exception as e:  # pragma: no cover - defensive
-            logger.warning(
-                "Failed to spawn source discovery for %s: %s", company_name, e
-            )
+            logger.warning("Failed to spawn source discovery for %s: %s", company_name, e)
 
     @staticmethod
     def _is_job_board_url(url: str) -> bool:
@@ -1110,9 +1033,7 @@ class JobProcessor(BaseProcessor):
                 for domain in JobProcessor._JOB_BOARD_DOMAINS
             )
         except Exception as e:
-            logger.warning(
-                "URL parsing failed in _is_job_board_url for '%s': %s", url, e
-            )
+            logger.warning("URL parsing failed in _is_job_board_url for '%s': %s", url, e)
             return False
 
     def _do_job_save(self, item: JobQueueItem) -> None:
@@ -1145,17 +1066,12 @@ class JobProcessor(BaseProcessor):
         )
         start = time.monotonic()
 
-        logger.info(
-            f"JOB_SAVE: Saving {job_data.get('title')} at {job_data.get('company')}"
-        )
+        logger.info(f"JOB_SAVE: Saving {job_data.get('title')} at {job_data.get('company')}")
 
         # Update status to processing and set pipeline_stage for UI
         updated_state = {**item.pipeline_state, "pipeline_stage": "save"}
         self.queue_manager.update_status(
-            item.id,
-            QueueStatus.PROCESSING,
-            "Saving job match",
-            pipeline_state=updated_state,
+            item.id, QueueStatus.PROCESSING, "Saving job match", pipeline_state=updated_state
         )
 
         try:
@@ -1173,9 +1089,7 @@ class JobProcessor(BaseProcessor):
             )
 
             # Mark listing as matched for clearer lifecycle tracking
-            self._update_listing_status(
-                listing_id, "matched", analysis_result=result.to_dict()
-            )
+            self._update_listing_status(listing_id, "matched", analysis_result=result.to_dict())
 
             logger.info(
                 f"Job matched and saved: {job_data.get('title')} at {job_data.get('company')} "
@@ -1241,9 +1155,7 @@ class JobProcessor(BaseProcessor):
 
         # Update the same item with new state and mark as pending for re-processing
         try:
-            self.queue_manager.requeue_with_state(
-                current_item.id, updated_state_with_stage
-            )
+            self.queue_manager.requeue_with_state(current_item.id, updated_state_with_stage)
             logger.info(
                 f"Requeued item {current_item.id} for {next_stage}: {(current_item.url or '')[:50]}"
             )
@@ -1320,9 +1232,7 @@ class JobProcessor(BaseProcessor):
         if job_data:
             # Ensure URL is set
             job_data["url"] = url
-            logger.debug(
-                f"Job scraped: {job_data.get('title')} at {job_data.get('company')}"
-            )
+            logger.debug(f"Job scraped: {job_data.get('title')} at {job_data.get('company')}")
             return job_data
 
         return None
@@ -1341,11 +1251,7 @@ class JobProcessor(BaseProcessor):
 
             # Extract company from URL (boards.greenhouse.io/{company}/jobs/...)
             company_match = re.search(r"boards\.greenhouse\.io/([^/]+)", url)
-            company_name = (
-                company_match.group(1).replace("-", " ").title()
-                if company_match
-                else ""
-            )
+            company_name = company_match.group(1).replace("-", " ").title() if company_match else ""
 
             # Extract job details using updated selectors (Greenhouse HTML structure changed)
             title_elem = soup.find("h1", class_="section-header")
@@ -1463,9 +1369,7 @@ class JobProcessor(BaseProcessor):
                         if schema_text:
                             data = json.loads(schema_text)
                             if isinstance(data, dict):
-                                company_name = data.get("hiringOrganization", {}).get(
-                                    "name", ""
-                                )
+                                company_name = data.get("hiringOrganization", {}).get("name", "")
                                 if not company_name:
                                     company_name = data.get("name", "")
                     except (json.JSONDecodeError, AttributeError, TypeError) as e:
@@ -1479,9 +1383,7 @@ class JobProcessor(BaseProcessor):
                 # Check against known job board base domains from database
                 # This avoids false positives like "greenhouse-tech.com" being excluded
                 domain_parts = domain.split(".")
-                base_domain = (
-                    ".".join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain
-                )
+                base_domain = ".".join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain
                 aggregator_domains = self.sources_manager.get_aggregator_domains()
                 is_job_board = base_domain in aggregator_domains
 
@@ -1496,9 +1398,7 @@ class JobProcessor(BaseProcessor):
                 "company": company_name,
                 "location": "",
                 "description": (
-                    description.get_text(separator="\n", strip=True)
-                    if description
-                    else ""
+                    description.get_text(separator="\n", strip=True) if description else ""
                 ),
                 "company_website": self._extract_company_domain(url),
                 "url": url,
@@ -1529,9 +1429,7 @@ class JobProcessor(BaseProcessor):
 
             if not selectors:
                 # No selectors, fall back to generic
-                logger.debug(
-                    f"No selectors for source {source.get('name')}, using generic scrape"
-                )
+                logger.debug(f"No selectors for source {source.get('name')}, using generic scrape")
                 return None
 
             # Fetch HTML
@@ -1544,25 +1442,17 @@ class JobProcessor(BaseProcessor):
                 "url": url,
                 "title": self._extract_with_selector(soup, selectors.get("title")),
                 "company": self._extract_with_selector(soup, selectors.get("company")),
-                "location": self._extract_with_selector(
-                    soup, selectors.get("location")
-                ),
-                "description": self._extract_with_selector(
-                    soup, selectors.get("description")
-                ),
+                "location": self._extract_with_selector(soup, selectors.get("location")),
+                "description": self._extract_with_selector(soup, selectors.get("description")),
                 "salary": self._extract_with_selector(soup, selectors.get("salary")),
-                "posted_date": self._extract_with_selector(
-                    soup, selectors.get("posted_date")
-                ),
+                "posted_date": self._extract_with_selector(soup, selectors.get("posted_date")),
             }
 
             # Remove None values
             job_data = {k: v for k, v in job_data.items() if v is not None}
 
             if not job_data.get("title") or not job_data.get("description"):
-                logger.warning(
-                    "Missing required fields (title/description) from selector scrape"
-                )
+                logger.warning("Missing required fields (title/description) from selector scrape")
                 return None
 
             return job_data
@@ -1571,9 +1461,7 @@ class JobProcessor(BaseProcessor):
             logger.error(f"Error scraping with source config: {e}")
             return None
 
-    def _extract_with_selector(
-        self, soup: Any, selector: Optional[str]
-    ) -> Optional[str]:
+    def _extract_with_selector(self, soup: Any, selector: Optional[str]) -> Optional[str]:
         """
         Extract text using CSS selector.
 

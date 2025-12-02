@@ -3,12 +3,11 @@
 This base class provides common functionality for all specialized processors:
 - Dependency injection for shared managers
 - Queue item status updates
-- Stop list checking
 - Logging utilities
 - Error handling patterns
 - FK relationship repair helpers
 
-Note: Heavy dependencies like filter_engine, scrape_runner, and scraper_intake
+Note: Heavy dependencies like title_filter, scrape_runner, and scraper_intake
 are initialized only by processors that need them (JobProcessor).
 """
 
@@ -18,7 +17,6 @@ from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueStatus
-from job_finder.utils.company_info import should_skip_by_stop_list
 from job_finder.logging_config import get_structured_logger
 
 if TYPE_CHECKING:
@@ -55,11 +53,6 @@ class BaseProcessor:
     # ============================================================
     # SHARED UTILITY METHODS
     # ============================================================
-
-    def _should_skip_by_stop_list(self, item: JobQueueItem) -> bool:
-        """Check if item should be skipped based on stop list."""
-        stop_list = self.config_loader.get_stop_list()
-        return should_skip_by_stop_list(item.url, item.company_name or "", stop_list)
 
     def _update_item_status(
         self,

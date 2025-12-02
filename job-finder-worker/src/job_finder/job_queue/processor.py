@@ -125,16 +125,6 @@ class QueueItemProcessor:
             # dependency checks pass. This prevents premature "processing" events
             # when items are re-queued due to unmet dependencies.
 
-            # Check stop list (skip for SCRAPE requests)
-            if (
-                item.type != QueueItemType.SCRAPE
-                and self.job_processor._should_skip_by_stop_list(item)
-            ):
-                self.queue_manager.update_status(
-                    item.id, QueueStatus.SKIPPED, "Excluded by stop list"
-                )
-                return
-
             # Delegate to specialized processors
             # Note: Job deduplication is handled in scraper_intake (for scraped jobs) and
             # get_or_create_listing (for direct submissions). No duplicate check needed here.
@@ -162,10 +152,7 @@ class QueueItemProcessor:
             self._handle_failure(item, error_msg, error_details)
 
     def _handle_failure(
-        self,
-        item: JobQueueItem,
-        error_message: str,
-        error_details: Optional[str] = None,
+        self, item: JobQueueItem, error_message: str, error_details: Optional[str] = None
     ) -> None:
         """
         Handle item processing failure with retry logic.

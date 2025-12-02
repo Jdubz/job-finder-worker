@@ -107,139 +107,158 @@ export interface AISettings {
 }
 
 // -----------------------------------------------------------
-// Job Match Configuration (scoring preferences)
+// Title Filter Configuration (simple pre-filter)
 // -----------------------------------------------------------
 
-export interface CompanyMatchWeights {
-  bonuses: {
-    remoteFirst: number
-    aiMlFocus: number
-  }
-  sizeAdjustments: {
-    largeCompanyBonus: number
-    smallCompanyPenalty: number
-    largeCompanyThreshold: number
-    smallCompanyThreshold: number
-  }
-  timezoneAdjustments: {
-    sameTimezone: number
-    diff1to2hr: number
-    diff3to4hr: number
-    diff5to8hr: number
-    diff9plusHr: number
-  }
-  priorityThresholds: {
-    high: number
-    medium: number
-  }
+/** Simple title-based pre-filter configuration */
+export interface TitleFilterConfig {
+  /** Keywords that MUST appear in title (at least one) */
+  requiredKeywords: string[]
+  /** Keywords that immediately reject a job */
+  excludedKeywords: string[]
 }
 
-export interface PrefilterPolicy {
-  stopList: {
-    excludedCompanies: string[]
-    excludedKeywords: string[]
-    excludedDomains: string[]
-  }
-  strikeEngine: {
-    enabled: boolean
-    strikeThreshold: number
-    hardRejections: {
-      excludedJobTypes?: string[]
-      excludedSeniority?: string[]
-      excludedCompanies?: string[]
-      excludedKeywords?: string[]
-      /** Whitelist: Job title MUST contain at least one of these keywords to be considered */
-      requiredTitleKeywords?: string[]
-      minSalaryFloor?: number
-      rejectCommissionOnly?: boolean
-    }
-    remotePolicy: {
-      allowRemote?: boolean
-      allowHybridInTimezone?: boolean
-      allowOnsite?: boolean
-      /** Absolute hour difference allowed for onsite/hybrid vs user timezone. */
-      maxTimezoneDiffHours?: number
-      /** Strike points (prefilter) per hour of timezone gap when onsite/hybrid. */
-      perHourTimezonePenalty?: number
-      /** Strike points when timezone gap exceeds maxTimezoneDiffHours. */
-      hardTimezonePenalty?: number
-    }
-    salaryStrike: {
-      enabled?: boolean
-      threshold?: number
-      points?: number
-    }
-    experienceStrike: {
-      enabled?: boolean
-      minPreferred?: number
-      points?: number
-    }
-    seniorityStrikes?: Record<string, number>
-    qualityStrikes: {
-      minDescriptionLength?: number
-      shortDescriptionPoints?: number
-      buzzwords?: string[]
-      buzzwordPoints?: number
-    }
-    ageStrike: {
-      enabled?: boolean
-      strikeDays?: number
-      rejectDays?: number
-      points?: number
-    }
-  }
-  technologyRanks: {
-    technologies: Record<string, TechnologyRank>
-    strikes?: {
-      missingAllRequired?: number
-      perBadTech?: number
-    }
-    extractedFromJobs?: number
-    version?: string
-  }
-  version?: string
-  updatedBy?: string
+// -----------------------------------------------------------
+// Scoring Configuration (deterministic scoring engine)
+// -----------------------------------------------------------
+
+/** Weight distribution for scoring components */
+export interface ScoringWeights {
+  /** Weight for skill alignment (0-100) */
+  skillMatch: number
+  /** Weight for experience fit (0-100) */
+  experienceMatch: number
+  /** Weight for seniority alignment (0-100) */
+  seniorityMatch: number
 }
 
-export interface MatchDealbreakers {
+/** Seniority level preferences */
+export interface SeniorityConfig {
+  /** Preferred seniority levels (e.g., ["senior", "staff", "lead"]) */
+  preferred: string[]
+  /** Acceptable seniority levels (e.g., ["mid"]) */
+  acceptable: string[]
+  /** Rejected seniority levels - hard reject (e.g., ["junior", "intern"]) */
+  rejected: string[]
+  /** Bonus points for preferred seniority match */
+  preferredBonus: number
+  /** Penalty for acceptable (neutral) seniority */
+  acceptablePenalty: number
+  /** Hard penalty for rejected seniority (usually large negative) */
+  rejectedPenalty: number
+}
+
+/** Location and remote work preferences */
+export interface LocationConfig {
+  /** Allow fully remote positions */
+  allowRemote: boolean
+  /** Allow hybrid positions */
+  allowHybrid: boolean
+  /** Allow onsite-only positions */
+  allowOnsite: boolean
+  /** User's timezone offset from UTC (e.g., -8 for PST) */
+  userTimezone: number
+  /** Maximum timezone difference allowed (hours) */
   maxTimezoneDiffHours: number
-  /** Points subtracted per hour of difference from the configured user timezone. */
-  perHourTimezonePenalty: number
-  /** Hard penalty applied when hour difference exceeds maxTimezoneDiffHours. */
-  hardTimezonePenalty: number
-  requireRemote: boolean
-  allowHybridInTimezone: boolean
-  relocationPenaltyPoints?: number
-  ambiguousLocationPenaltyPoints?: number
-  locationPenaltyPoints?: number
+  /** Points deducted per hour of timezone difference */
+  perHourPenalty: number
+  /** Bonus for hybrid in same city as user */
+  hybridSameCityBonus: number
+  /** User's city for hybrid matching */
+  userCity?: string
 }
 
-export interface MatchPolicy {
-  jobMatch: {
-    /** Minimum match score threshold (0-100) */
-    minMatchScore: number
-    /** Bonus points for Portland office jobs */
-    portlandOfficeBonus: number
-    /** User's timezone offset from UTC (e.g., -8 for PST) */
-    userTimezone: number
-    /** Whether to prefer larger companies in scoring */
-    preferLargeCompanies: boolean
-    /** Whether to generate resume intake data for matches */
-    generateIntakeData: boolean
-    /** Company-influenced score weights */
-    companyWeights?: CompanyMatchWeights
-  }
-  companyWeights: CompanyMatchWeights
-  dealbreakers: MatchDealbreakers
-  techPreferences?: Record<string, number>
-  version?: string
-  updatedBy?: string
+/** Technology stack preferences */
+export interface TechnologyConfig {
+  /** Required technologies - must have at least one */
+  required: string[]
+  /** Preferred technologies - bonus points */
+  preferred: string[]
+  /** Disliked technologies - penalty points */
+  disliked: string[]
+  /** Rejected technologies - hard reject */
+  rejected: string[]
+  /** Bonus per required technology found */
+  requiredBonus: number
+  /** Bonus per preferred technology found */
+  preferredBonus: number
+  /** Penalty per disliked technology found */
+  dislikedPenalty: number
 }
 
-export type TechnologyRank = {
-  rank: "required" | "ok" | "strike" | "fail"
-  points?: number
-  mentions?: number
+/** Salary preferences */
+export interface SalaryConfig {
+  /** Minimum acceptable salary (hard floor) */
+  minimum: number | null
+  /** Target/ideal salary */
+  target: number | null
+  /** Penalty per $10k below target */
+  belowTargetPenalty: number
+}
+
+/** Experience level preferences */
+export interface ExperienceConfig {
+  /** User's years of experience */
+  userYears: number
+  /** Maximum years required by job before rejection */
+  maxRequired: number
+  /** Penalty per year the user is overqualified */
+  overqualifiedPenalty: number
+}
+
+/** Complete scoring configuration */
+export interface ScoringConfig {
+  /** Minimum score threshold to pass (0-100) */
+  minScore: number
+  /** Weight distribution for scoring components */
+  weights: ScoringWeights
+  /** Seniority level preferences */
+  seniority: SeniorityConfig
+  /** Location and remote work preferences */
+  location: LocationConfig
+  /** Technology stack preferences */
+  technology: TechnologyConfig
+  /** Salary preferences */
+  salary: SalaryConfig
+  /** Experience level preferences */
+  experience: ExperienceConfig
+}
+
+// -----------------------------------------------------------
+// AI Extraction Result (stored with job listing)
+// -----------------------------------------------------------
+
+/** Work arrangement classification */
+export type WorkArrangement = "remote" | "hybrid" | "onsite" | "unknown"
+
+/** Employment type classification */
+export type EmploymentType = "full-time" | "part-time" | "contract" | "unknown"
+
+/** Seniority level classification */
+export type SeniorityLevel = "junior" | "mid" | "senior" | "staff" | "lead" | "principal" | "unknown"
+
+/** AI-extracted structured data from job posting */
+export interface JobExtractionResult {
+  /** Detected seniority level */
+  seniority: SeniorityLevel
+  /** Remote/hybrid/onsite classification */
+  workArrangement: WorkArrangement
+  /** Detected timezone (UTC offset) */
+  timezone: number | null
+  /** City if onsite/hybrid */
+  city: string | null
+  /** Parsed minimum salary */
+  salaryMin: number | null
+  /** Parsed maximum salary */
+  salaryMax: number | null
+  /** Minimum years of experience required */
+  experienceMin: number | null
+  /** Maximum years of experience required */
+  experienceMax: number | null
+  /** Detected technologies/skills */
+  technologies: string[]
+  /** Employment type */
+  employmentType: EmploymentType
 }
 
 export interface SchedulerSettings {
@@ -290,8 +309,8 @@ export type JobFinderConfigId =
   | "ai-settings"
   | "ai-prompts"
   | "personal-info"
-  | "prefilter-policy"
-  | "match-policy"
+  | "title-filter"
+  | "scoring-config"
   | "scheduler-settings"
   | "worker-settings"
 
@@ -300,8 +319,8 @@ export type JobFinderConfigPayloadMap = {
   "ai-settings": AISettings
   "ai-prompts": PromptConfig
   "personal-info": PersonalInfo
-  "prefilter-policy": PrefilterPolicy
-  "match-policy": MatchPolicy
+  "title-filter": TitleFilterConfig
+  "scoring-config": ScoringConfig
   "scheduler-settings": SchedulerSettings
   "worker-settings": WorkerSettings
 }
@@ -353,105 +372,70 @@ export const DEFAULT_PERSONAL_INFO: PersonalInfo = {
   relocationAllowed: false,
 }
 
-export const DEFAULT_COMPANY_WEIGHTS: CompanyMatchWeights = {
-    bonuses: {
-      remoteFirst: 15,
-      aiMlFocus: 10,
-    },
-    sizeAdjustments: {
-      largeCompanyBonus: 10,
-      smallCompanyPenalty: -5,
-      largeCompanyThreshold: 10000,
-      smallCompanyThreshold: 100,
-    },
-    timezoneAdjustments: {
-      sameTimezone: 5,
-      diff1to2hr: -2,
-      diff3to4hr: -5,
-      diff5to8hr: -10,
-      diff9plusHr: -15,
-    },
-    priorityThresholds: {
-      high: 85,
-      medium: 70,
-    },
+export const DEFAULT_TITLE_FILTER: TitleFilterConfig = {
+  requiredKeywords: [
+    "software",
+    "developer",
+    "engineer",
+    "frontend",
+    "backend",
+    "fullstack",
+    "full-stack",
+    "full stack",
+  ],
+  excludedKeywords: [
+    "intern",
+    "internship",
+    "wordpress",
+    "php",
+    "sales",
+    "marketing",
+    "recruiter",
+  ],
 }
 
-export const DEFAULT_PREFILTER_POLICY: PrefilterPolicy = {
-  stopList: {
-    excludedCompanies: [],
-    excludedKeywords: [],
-    excludedDomains: [],
+export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
+  minScore: 60,
+  weights: {
+    skillMatch: 40,
+    experienceMatch: 30,
+    seniorityMatch: 30,
   },
-  strikeEngine: {
-    enabled: true,
-    strikeThreshold: 5,
-    hardRejections: {
-      excludedJobTypes: [],
-      excludedSeniority: [],
-      excludedCompanies: [],
-      excludedKeywords: [],
-      requiredTitleKeywords: ["software", "developer", "engineer", "frontend", "full stack", "fullstack"],
-      minSalaryFloor: 100000,
-      rejectCommissionOnly: true,
-    },
-    remotePolicy: {
-      allowRemote: true,
-      allowHybridInTimezone: true,
-      allowOnsite: false,
-      maxTimezoneDiffHours: 8,
-      perHourTimezonePenalty: 1,
-      hardTimezonePenalty: 3,
-    },
-    salaryStrike: {
-      enabled: true,
-      threshold: 150000,
-      points: 2,
-    },
-    experienceStrike: {
-      enabled: true,
-      minPreferred: 6,
-      points: 1,
-    },
-    seniorityStrikes: {},
-    qualityStrikes: {
-      minDescriptionLength: 200,
-      shortDescriptionPoints: 1,
-      buzzwords: [],
-      buzzwordPoints: 1,
-    },
-    ageStrike: {
-      enabled: true,
-      strikeDays: 1,
-      rejectDays: 7,
-      points: 1,
-    },
+  seniority: {
+    preferred: ["senior", "staff", "lead", "principal"],
+    acceptable: ["mid", ""],
+    rejected: ["junior", "intern", "entry", "associate"],
+    preferredBonus: 15,
+    acceptablePenalty: 0,
+    rejectedPenalty: -100,
   },
-  technologyRanks: {
-    technologies: {},
-    strikes: { missingAllRequired: 1, perBadTech: 2 },
-  },
-}
-
-export const DEFAULT_MATCH_POLICY: MatchPolicy = {
-  jobMatch: {
-    minMatchScore: 70,
-    portlandOfficeBonus: 15,
+  location: {
+    allowRemote: true,
+    allowHybrid: true,
+    allowOnsite: false,
     userTimezone: -8,
-    preferLargeCompanies: true,
-    generateIntakeData: true,
-    companyWeights: DEFAULT_COMPANY_WEIGHTS,
+    maxTimezoneDiffHours: 4,
+    perHourPenalty: 3,
+    hybridSameCityBonus: 10,
   },
-  companyWeights: DEFAULT_COMPANY_WEIGHTS!,
-  dealbreakers: {
-    maxTimezoneDiffHours: 8,
-    perHourTimezonePenalty: 5,
-    hardTimezonePenalty: 60,
-    requireRemote: false,
-    allowHybridInTimezone: true,
-    relocationPenaltyPoints: 80,
-    locationPenaltyPoints: 60,
-    ambiguousLocationPenaltyPoints: 40,
+  technology: {
+    required: ["typescript", "react"],
+    preferred: ["node", "python", "aws", "nextjs", "graphql"],
+    disliked: ["angular", "vue"],
+    rejected: ["wordpress", "php", "drupal", ".net", "java"],
+    requiredBonus: 10,
+    preferredBonus: 5,
+    dislikedPenalty: -5,
+  },
+  salary: {
+    minimum: 150000,
+    target: 200000,
+    belowTargetPenalty: 2,
+  },
+  experience: {
+    userYears: 12,
+    maxRequired: 15,
+    overqualifiedPenalty: 5,
   },
 }
 

@@ -18,9 +18,55 @@ def mock_managers():
     """Create mock managers for processor."""
     sources_manager = MagicMock()
     sources_manager.get_source_by_name.return_value = None
+
+    # Config loader needs to return proper dicts for new hybrid pipeline
+    config_loader = MagicMock()
+    config_loader.get_title_filter.return_value = {
+        "requiredKeywords": ["engineer", "developer"],
+        "excludedKeywords": [],
+    }
+    config_loader.get_scoring_config.return_value = {
+        "minScore": 60,
+        "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
+        "seniority": {
+            "preferred": ["senior"],
+            "acceptable": ["mid"],
+            "rejected": ["junior"],
+            "preferredBonus": 15,
+            "acceptablePenalty": 0,
+            "rejectedPenalty": -100,
+        },
+        "location": {
+            "allowRemote": True,
+            "allowHybrid": True,
+            "allowOnsite": False,
+            "userTimezone": -8,
+            "maxTimezoneDiffHours": 4,
+            "perHourPenalty": 3,
+            "hybridSameCityBonus": 10,
+        },
+        "technology": {
+            "required": [],
+            "preferred": [],
+            "disliked": [],
+            "rejected": [],
+            "requiredBonus": 10,
+            "preferredBonus": 5,
+            "dislikedPenalty": -5,
+        },
+    }
+    config_loader.get_ai_settings.return_value = {
+        "worker": {
+            "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+        },
+        "documentGenerator": {
+            "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+        },
+    }
+
     return {
         "queue_manager": MagicMock(),
-        "config_loader": MagicMock(),
+        "config_loader": config_loader,
         "job_storage": MagicMock(),
         "job_listing_storage": MagicMock(),
         "companies_manager": MagicMock(),
@@ -33,12 +79,18 @@ def mock_managers():
 @pytest.fixture
 def processor(mock_managers):
     """Create processor with mocked dependencies."""
-    # Patch ScrapeRunner to avoid creating real instance
-    with patch(
-        "job_finder.job_queue.processors.job_processor.ScrapeRunner"
-    ) as mock_scrape_runner_class:
+    # Patch ScrapeRunner and provider creation to avoid creating real instances
+    with (
+        patch(
+            "job_finder.job_queue.processors.job_processor.ScrapeRunner"
+        ) as mock_scrape_runner_class,
+        patch(
+            "job_finder.job_queue.processors.job_processor.create_provider_from_config"
+        ) as mock_create_provider,
+    ):
         mock_scrape_runner_instance = MagicMock()
         mock_scrape_runner_class.return_value = mock_scrape_runner_instance
+        mock_create_provider.return_value = MagicMock()  # Mock provider
 
         processor_instance = QueueItemProcessor(**mock_managers)
 
@@ -46,6 +98,33 @@ def processor(mock_managers):
         # Note: After refactoring, scrape_runner is on job_processor
         processor_instance.scrape_runner = mock_scrape_runner_instance
         processor_instance.job_processor.scrape_runner = mock_scrape_runner_instance
+
+        # Mock extractor and scoring engine to avoid real AI calls
+        from job_finder.ai.extraction import JobExtractionResult
+        from job_finder.scoring.engine import ScoreBreakdown
+
+        class MockExtractor:
+            def extract(self, title, description, location):
+                return JobExtractionResult(
+                    seniority="senior",
+                    work_arrangement="remote",
+                    technologies=["python"],
+                )
+
+        class MockScoringEngine:
+            def score(self, extraction, title, description):
+                return ScoreBreakdown(
+                    base_score=50,
+                    final_score=85,
+                    adjustments=["Mock scoring"],
+                    passed=True,
+                )
+
+        processor_instance.job_processor.extractor = MockExtractor()
+        processor_instance.job_processor.scoring_engine = MockScoringEngine()
+
+        # Prevent _refresh_runtime_config from overwriting mocks
+        processor_instance.job_processor._refresh_runtime_config = lambda: None
 
         return processor_instance
 
@@ -90,89 +169,8 @@ def test_process_item_without_id(processor, mock_managers):
     mock_managers["queue_manager"].update_status.assert_not_called()
 
 
-def test_should_skip_by_stop_list_excluded_company(processor, mock_managers):
-    """Test stop list filtering for excluded companies."""
-    # Mock stop list
-    mock_managers["config_loader"].get_stop_list.return_value = {
-        "excludedCompanies": ["BadCorp"],
-        "excludedKeywords": [],
-        "excludedDomains": [],
-    }
-
-    item = JobQueueItem(
-        id="test-123",
-        type=QueueItemType.JOB,
-        url="https://example.com/job",
-        company_name="BadCorp Inc",
-        source="scraper",
-    )
-
-    # Should be skipped (stop list logic lives on job_processor)
-    assert processor.job_processor._should_skip_by_stop_list(item) is True
-
-
-def test_should_skip_by_stop_list_excluded_domain(processor, mock_managers):
-    """Test stop list filtering for excluded domains."""
-    # Mock stop list
-    mock_managers["config_loader"].get_stop_list.return_value = {
-        "excludedCompanies": [],
-        "excludedKeywords": [],
-        "excludedDomains": ["spam.com"],
-    }
-
-    item = JobQueueItem(
-        id="test-123",
-        type=QueueItemType.JOB,
-        url="https://spam.com/job/123",
-        company_name="Spam Corp",
-        source="scraper",
-    )
-
-    # Should be skipped (stop list logic lives on job_processor)
-    assert processor.job_processor._should_skip_by_stop_list(item) is True
-
-
-def test_should_skip_by_stop_list_excluded_keyword(processor, mock_managers):
-    """Test stop list filtering for excluded keywords in URL."""
-    # Mock stop list
-    mock_managers["config_loader"].get_stop_list.return_value = {
-        "excludedCompanies": [],
-        "excludedKeywords": ["commission-only"],
-        "excludedDomains": [],
-    }
-
-    item = JobQueueItem(
-        id="test-123",
-        type=QueueItemType.JOB,
-        url="https://example.com/jobs/commission-only-position",
-        company_name="Example Corp",
-        source="scraper",
-    )
-
-    # Should be skipped (stop list logic lives on job_processor)
-    assert processor.job_processor._should_skip_by_stop_list(item) is True
-
-
-def test_should_not_skip_by_stop_list(processor, mock_managers):
-    """Test that valid items pass stop list filtering."""
-    # Mock stop list
-    mock_managers["config_loader"].get_stop_list.return_value = {
-        "excludedCompanies": ["BadCorp"],
-        "excludedKeywords": ["scam"],
-        "excludedDomains": ["spam.com"],
-    }
-
-    item = JobQueueItem(
-        id="test-123",
-        type=QueueItemType.JOB,
-        url="https://goodcompany.com/job/123",
-        company_name="Good Company",
-        source="scraper",
-    )
-
-    # Should not be skipped (stop list logic lives on job_processor)
-    assert processor.job_processor._should_skip_by_stop_list(item) is False
-
+# NOTE: Stop list tests removed - stop lists were intentionally removed
+# during hybrid scoring migration in favor of title filter + scoring engine.
 
 # NOTE: test_process_job_already_exists was removed because job deduplication
 # now happens in scraper_intake.submit_jobs(), not in processor.process_item().

@@ -13,32 +13,58 @@ class TestCompanyPipeline:
     @pytest.fixture
     def mock_dependencies(self):
         config_loader = Mock()
-        config_loader.get_stop_list.return_value = {
-            "excludedCompanies": [],
-            "excludedDomains": [],
+        # New config methods for title filter and scoring
+        config_loader.get_title_filter.return_value = {
+            "requiredKeywords": ["engineer", "developer"],
             "excludedKeywords": [],
         }
-        config_loader.get_prefilter_policy.return_value = {
-            "stopList": {
-                "excludedCompanies": [],
-                "excludedDomains": [],
-                "excludedKeywords": [],
+        config_loader.get_scoring_config.return_value = {
+            "minScore": 60,
+            "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
+            "seniority": {
+                "preferred": ["senior"],
+                "acceptable": ["mid"],
+                "rejected": ["junior"],
+                "preferredBonus": 15,
+                "acceptablePenalty": 0,
+                "rejectedPenalty": -100,
             },
-            "strikeEngine": {
-                "enabled": False,
-                "hardRejections": {
-                    "excludedJobTypes": [],
-                    "excludedSeniority": [],
-                    "excludedCompanies": [],
-                    "excludedKeywords": [],
-                },
-                "remotePolicy": {},
-                "salaryStrike": {},
-                "seniorityStrikes": {},
-                "qualityStrikes": {},
-                "ageStrike": {},
+            "location": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": False,
+                "userTimezone": -8,
+                "maxTimezoneDiffHours": 4,
+                "perHourPenalty": 3,
+                "hybridSameCityBonus": 10,
             },
-            "technologyRanks": {"technologies": {}},
+            "technology": {
+                "required": [],
+                "preferred": [],
+                "disliked": [],
+                "rejected": [],
+                "requiredBonus": 10,
+                "preferredBonus": 5,
+                "dislikedPenalty": -5,
+            },
+            "salary": {
+                "minimum": None,
+                "target": None,
+                "belowTargetPenalty": 2,
+            },
+            "experience": {
+                "userYears": 10,
+                "maxRequired": 15,
+                "overqualifiedPenalty": 5,
+            },
+        }
+        config_loader.get_ai_settings.return_value = {
+            "worker": {
+                "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+            },
+            "documentGenerator": {
+                "selected": {"provider": "gemini", "interface": "api", "model": "gemini-2.0-flash"}
+            },
         }
 
         company_info_fetcher = Mock()
@@ -281,23 +307,17 @@ class TestCompanyPipeline:
             "about": "Great company with lots of information about what they do",
             "culture": "Amazing collaborative culture",
         }
-        mock_dependencies["companies_manager"].save_company.return_value = (
-            "existing-company-id"
-        )
+        mock_dependencies["companies_manager"].save_company.return_value = "existing-company-id"
 
         processor.company_processor.process_company(item)
 
         # Should have looked up company by ID
-        mock_dependencies[
-            "companies_manager"
-        ].get_company_by_id.assert_called_once_with("existing-company-id")
+        mock_dependencies["companies_manager"].get_company_by_id.assert_called_once_with(
+            "existing-company-id"
+        )
         # Should have fetched info using the resolved name
-        mock_dependencies[
-            "company_info_fetcher"
-        ].fetch_company_info.assert_called_once()
-        call_args = mock_dependencies[
-            "company_info_fetcher"
-        ].fetch_company_info.call_args
+        mock_dependencies["company_info_fetcher"].fetch_company_info.assert_called_once()
+        call_args = mock_dependencies["company_info_fetcher"].fetch_company_info.call_args
         assert call_args[1]["company_name"] == "Resolved Company"
         # Should succeed
         final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]

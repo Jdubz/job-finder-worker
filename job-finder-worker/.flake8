@@ -20,5 +20,4 @@ per-file-ignores =
     src/job_finder/job_queue/scraper_intake.py:F841
     src/job_finder/storage/job_sources_manager.py:F401
     tests/conftest.py:F401
-    tests/filters/test_strike_filter_engine.py:F401
     tests/test_ai_model_selection.py:F841

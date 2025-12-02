@@ -11,8 +11,8 @@ import type {
   JobFinderConfigId,
   PromptConfig,
   WorkerSettings,
-  PrefilterPolicy,
-  MatchPolicy,
+  TitleFilterConfig,
+  ScoringConfig,
 } from '@shared/types'
 import {
   ApiErrorCode,
@@ -22,15 +22,15 @@ import {
   DEFAULT_PROMPTS,
   AI_PROVIDER_OPTIONS,
   DEFAULT_WORKER_SETTINGS,
+  DEFAULT_TITLE_FILTER,
+  DEFAULT_SCORING_CONFIG,
   isQueueSettings,
   isAISettings,
   isSchedulerSettings,
   isPersonalInfo,
   isWorkerSettings,
-  DEFAULT_PREFILTER_POLICY,
-  DEFAULT_MATCH_POLICY,
-  isPrefilterPolicy,
-  isMatchPolicy,
+  isTitleFilterConfig,
+  isScoringConfig,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -45,8 +45,8 @@ const updateSchema = z.object({
 type KnownPayload =
   | QueueSettings
   | AISettings
-  | PrefilterPolicy
-  | MatchPolicy
+  | TitleFilterConfig
+  | ScoringConfig
   | SchedulerSettings
   | PromptConfig
   | WorkerSettings
@@ -110,8 +110,8 @@ function seedDefaults(repo: ConfigRepository) {
   const seeds: Array<[JobFinderConfigId, KnownPayload]> = [
     ['queue-settings', DEFAULT_QUEUE_SETTINGS],
     ['ai-settings', DEFAULT_AI_SETTINGS],
-    ['prefilter-policy', DEFAULT_PREFILTER_POLICY],
-    ['match-policy', DEFAULT_MATCH_POLICY],
+    ['title-filter', DEFAULT_TITLE_FILTER],
+    ['scoring-config', DEFAULT_SCORING_CONFIG],
     ['scheduler-settings', DEFAULT_SCHEDULER_SETTINGS],
     ['ai-prompts', DEFAULT_PROMPTS],
     // We deliberately do not seed worker-settings; prod DB already holds them.
@@ -150,17 +150,17 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
         options: AI_PROVIDER_OPTIONS,
       }
     }
-    case 'prefilter-policy': {
-      const normalized = normalizeKeys<PrefilterPolicy>(payload)
+    case 'title-filter': {
+      const normalized = normalizeKeys<TitleFilterConfig>(payload)
       return {
-        ...DEFAULT_PREFILTER_POLICY,
+        ...DEFAULT_TITLE_FILTER,
         ...normalized,
       }
     }
-    case 'match-policy': {
-      const normalized = normalizeKeys<MatchPolicy>(payload)
+    case 'scoring-config': {
+      const normalized = normalizeKeys<ScoringConfig>(payload)
       return {
-        ...DEFAULT_MATCH_POLICY,
+        ...DEFAULT_SCORING_CONFIG,
         ...normalized,
       }
     }
@@ -186,10 +186,10 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
       return isQueueSettings(payload)
     case 'ai-settings':
       return isAISettings(payload)
-    case 'prefilter-policy':
-      return isPrefilterPolicy(payload)
-    case 'match-policy':
-      return isMatchPolicy(payload)
+    case 'title-filter':
+      return isTitleFilterConfig(payload)
+    case 'scoring-config':
+      return isScoringConfig(payload)
     case 'scheduler-settings':
       return isSchedulerSettings(payload)
     case 'ai-prompts':

@@ -1,9 +1,16 @@
-"""AI-powered job matching and intake data generation."""
+"""AI-powered job matching and intake data generation.
+
+This module focuses on AI-powered analysis for:
+- Skill matching and gap analysis
+- Experience matching
+- Resume intake data generation
+
+Scoring is now handled by the deterministic ScoringEngine, not this module.
+"""
 
 import json
 import logging
 import os
-import re
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -13,10 +20,6 @@ from job_finder.ai.providers import AIProvider
 from job_finder.exceptions import AIProviderError
 from job_finder.profile.schema import Profile
 from job_finder.settings import get_text_limits
-from job_finder.utils.company_size_utils import detect_company_size
-from job_finder.utils.date_utils import calculate_freshness_adjustment, parse_job_date
-from job_finder.utils.role_preference_utils import calculate_role_preference_adjustment
-from job_finder.utils.timezone_utils import detect_timezone_for_job
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +46,7 @@ class JobMatchResult(BaseModel):
     company_info: Optional[str] = None
 
     # Match Analysis
-    match_score: int = Field(
-        ..., ge=0, le=100, description="Overall match score (0-100)"
-    )
+    match_score: int = Field(..., ge=0, le=100, description="Overall match score (0-100)")
     matched_skills: List[str] = Field(default_factory=list)
     missing_skills: List[str] = Field(default_factory=list)
     experience_match: str = ""
@@ -95,52 +96,31 @@ class AIJobMatcher:
         profile: Profile,
         min_match_score: int = 50,
         generate_intake: bool = True,
-        portland_office_bonus: int = 15,
-        user_timezone: float = -8,
-        prefer_large_companies: bool = True,
-        config: Optional[Dict[str, Any]] = None,
         company_weights: Optional[Dict[str, Any]] = None,
-        dealbreakers: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize AI job matcher.
 
+        The matcher handles AI-powered analysis for skills, experience, and intake data.
+        Scoring is handled by the deterministic ScoringEngine (see scoring/engine.py).
+
         Args:
-            provider: AI provider instance.
-            profile: User profile for matching.
-            min_match_score: Minimum score threshold for a job to be considered a match.
-            generate_intake: Whether to generate resume intake data for matched jobs.
-            portland_office_bonus: Bonus points to add for Portland, OR offices.
-            user_timezone: User's timezone offset from UTC (default: -8).
-            prefer_large_companies: Prefer large companies (default: True).
-            config: Optional AI configuration dictionary (for model-specific settings).
+            provider: AI provider instance for analysis.
+            profile: User profile for matching context.
+            min_match_score: Minimum score threshold (from deterministic scoring).
+            generate_intake: Whether to generate resume intake data.
+            company_weights: Weights for priority thresholds only.
         """
         self.provider = provider
         self.profile = profile
         self.min_match_score = min_match_score
         self.generate_intake = generate_intake
-        self.portland_office_bonus = portland_office_bonus
-        self.user_timezone = user_timezone
-        self.prefer_large_companies = prefer_large_companies
-        self.config = config or {}
         self.company_weights = company_weights or self.DEFAULT_COMPANY_WEIGHTS
-        self.dealbreakers = dealbreakers or {
-            "maxTimezoneDiffHours": 8,
-            "perHourTimezonePenalty": 5,
-            "hardTimezonePenalty": 60,
-            "requireRemote": False,
-            "allowHybridInTimezone": True,
-            "locationPenaltyPoints": 60,
-            "relocationPenaltyPoints": 80,
-            "ambiguousLocationPenaltyPoints": 40,
-            "relocationAllowed": False,
-        }
         self.prompts = JobMatchPrompts()
 
     def analyze_job(
         self,
         job: Dict[str, Any],
-        has_portland_office: bool = False,
         return_below_threshold: bool = False,
     ) -> Optional[JobMatchResult]:
         """
@@ -148,7 +128,8 @@ class AIJobMatcher:
 
         Args:
             job: Job posting dictionary with keys: title, company, location, description, url.
-            has_portland_office: Whether the company has a Portland, OR office.
+                 Must include 'deterministic_score' from ScoringEngine.
+            return_below_threshold: If True, return results even if below min score.
 
         Returns:
             JobMatchResult if successful, None if analysis fails.
@@ -171,7 +152,7 @@ class AIJobMatcher:
             )
 
         try:
-            # Step 1: Analyze job match
+            # Step 1: Analyze job match with AI (for reasoning, skills, concerns)
             logger.info(f"Analyzing job: {job.get('title')} at {job.get('company')}")
             match_analysis = self._analyze_match(job)
 
@@ -179,12 +160,37 @@ class AIJobMatcher:
                 logger.warning(f"Failed to analyze job: {job.get('title')}")
                 return None
 
-            # Step 2: Apply score adjustments (location policy, Portland bonus, freshness, etc.)
-            match_score, score_breakdown = self._calculate_adjusted_score(
-                match_analysis, has_portland_office, job
+            # Step 2: Get deterministic score (required - no legacy fallback)
+            deterministic_score = job.get("deterministic_score")
+            if deterministic_score is None:
+                raise ValueError(
+                    f"Job '{job.get('title')}' missing required 'deterministic_score'. "
+                    "All jobs must be scored by ScoringEngine before AI analysis."
+                )
+            match_score = int(deterministic_score)
+
+            # Calculate priority based on score thresholds
+            weights = self.company_weights or {}
+            priority_thresholds = weights.get("priorityThresholds", {})
+            high_threshold = priority_thresholds.get("high", 85)
+            med_threshold = priority_thresholds.get("medium", 70)
+
+            if match_score >= high_threshold:
+                priority = "High"
+            elif match_score >= med_threshold:
+                priority = "Medium"
+            else:
+                priority = "Low"
+            match_analysis["application_priority"] = priority
+
+            # Build score breakdown
+            score_breakdown = ScoreBreakdown(
+                base_score=match_score,
+                final_score=match_score,
+                adjustments=["Score from deterministic scoring engine"],
             )
 
-            # Step 3: Check if adjusted score meets minimum threshold
+            # Step 3: Check if score meets minimum threshold
             below_threshold = match_score < self.min_match_score
             if below_threshold and not return_below_threshold:
                 logger.info(
@@ -193,7 +199,7 @@ class AIJobMatcher:
                 )
                 return None
 
-            # Step 4: Generate resume intake data if enabled (and worth keeping)
+            # Step 4: Generate resume intake data if enabled
             intake_data = None
             if self.generate_intake and (not below_threshold or return_below_threshold):
                 intake_data = self._generate_intake_data(job, match_analysis)
@@ -216,459 +222,6 @@ class AIJobMatcher:
         except Exception as e:
             logger.error(f"Error analyzing job {job.get('title', 'unknown')}: {str(e)}")
             raise
-
-    def _detect_work_arrangement(
-        self, description: str, location: str
-    ) -> Dict[str, bool]:
-        """Infer remote/hybrid/onsite and relocation cues from text."""
-
-        combined = f"{description} {location}".lower()
-        location_lower = location.lower()
-
-        # Use word boundary regex to avoid false positives from substring matching
-        # e.g., "unhybridized" matching "hybrid"
-        remote_pattern = (
-            r"\bfully remote\b|\b100% remote\b|\bremote position\b|\bremote role\b|"
-            r"\bremote job\b|\bremote opportunity\b|\bremote work\b|\bremote only\b|"
-            r"\bremote-only\b|\bwork from home\b|\bwork from anywhere\b|\bwfh\b|"
-            r"\bremote-first\b|\bremote friendly\b|\bremote-friendly\b|\bremotely\b|"
-            r"\bhiring remote\b"
-        )
-        is_remote = bool(re.search(remote_pattern, combined)) or bool(
-            re.search(r"\bremote\b", location_lower)
-        )
-
-        # Enforce precedence: remote > hybrid > onsite
-        is_hybrid = False
-        is_onsite = False
-
-        if not is_remote:
-            hybrid_pattern = r"\bhybrid\b|\bdays in office\b|\boffice/remote\b"
-            is_hybrid = bool(re.search(hybrid_pattern, combined))
-
-            if not is_hybrid:
-                onsite_pattern = (
-                    r"\bon-site\b|\bonsite\b|\bin-office\b|\boffice-based\b"
-                )
-                is_onsite = bool(re.search(onsite_pattern, combined))
-
-            # Concrete location with no explicit remote/hybrid cues -> assume onsite expectation
-            if not is_onsite and location.strip():
-                is_onsite = True
-
-        # Use word boundary regex to avoid false positives like
-        # "Circuit-Based Interpretability" matching "based in"
-        # Combined pattern is more efficient than iterating multiple searches
-        relocation_pattern = (
-            r"\brelocat|"  # matches relocate, relocation, relocating
-            r"\bmust be on-?site\b|"
-            r"\boffice in\b|"
-            r"\bbased in\b|"
-            r"\b(?:nyc|sf|la|ny)-based\b"
-        )
-        # No need for re.IGNORECASE since combined is already lowercased
-        relocation_required = bool(re.search(relocation_pattern, combined))
-
-        return {
-            "remote": is_remote,
-            "hybrid": is_hybrid,
-            "onsite": is_onsite,
-            "relocation_required": relocation_required,
-        }
-
-    def _calculate_adjusted_score(
-        self,
-        match_analysis: Dict[str, Any],
-        has_portland_office: bool,
-        job: Dict[str, Any],
-    ) -> tuple[int, ScoreBreakdown]:
-        """
-        Calculate adjusted match score with bonuses and adjustments applied.
-
-        Args:
-            match_analysis: Raw match analysis from AI
-            has_portland_office: Whether company has Portland, OR office
-            job: Job dictionary with posted_date and other fields
-
-        Returns:
-            Tuple of (adjusted_score, ScoreBreakdown)
-        """
-        base_score = match_analysis.get("match_score", 0)
-        match_score = base_score
-        adjustments = []
-
-        company_data = job.get("company_data") or {}
-        weights = self.company_weights or {}
-        bonuses = weights.get("bonuses", {})
-        size_weights = weights.get("sizeAdjustments", {})
-        tz_weights = weights.get("timezoneAdjustments", {})
-        priority_thresholds = weights.get("priorityThresholds", {})
-
-        # Detect company size and timezone up-front so location + scoring share the same data
-        company_name = job.get("company", "")
-        company_info = job.get("company_info", "")
-        job_description = job.get("description", "")
-        employee_count = company_data.get("employeeCount")
-        company_size = detect_company_size(company_name, company_info, job_description)
-
-        # Apply timezone detection once (company override > detected)
-        job_location = job.get("location", "")
-        headquarters_location = company_data.get("headquartersLocation", "")
-        timezone_offset = company_data.get("timezoneOffset")
-        if timezone_offset is None:
-            job_timezone = detect_timezone_for_job(
-                job_location=job_location,
-                job_description=job_description,
-                company_size=company_size,
-                headquarters_location=headquarters_location,
-                company_name=company_name,
-                company_info=company_info,
-            )
-        else:
-            # Ensure timezone_offset is numeric (may be stored as string in DB)
-            try:
-                job_timezone = float(timezone_offset)
-            except (ValueError, TypeError):
-                logger.warning(
-                    f"Invalid timezoneOffset value: {timezone_offset}, falling back to detection"
-                )
-                job_timezone = detect_timezone_for_job(
-                    job_location=job_location,
-                    job_description=job_description,
-                    company_size=company_size,
-                    headquarters_location=headquarters_location,
-                    company_name=company_name,
-                    company_info=company_info,
-                )
-
-        # Apply location penalties/bonuses before other adjustments
-        location_penalty, penalty_reason, applied_tz_penalty = (
-            self._calculate_location_penalty(
-                job,
-                job_timezone,
-            )
-        )
-        if location_penalty != 0:
-            match_score += location_penalty
-            adjustments.append(penalty_reason)
-
-        # Technology rank adjustments
-        tech_delta, tech_reason = self._apply_technology_ranks(job)
-        if tech_delta != 0:
-            match_score += tech_delta
-            adjustments.append(tech_reason)
-
-        # Experience strike adjustments
-        exp_delta, exp_reason = self._apply_experience_strike(job)
-        if exp_delta != 0:
-            match_score += exp_delta
-            adjustments.append(exp_reason)
-
-        # Apply Portland office bonus
-        if has_portland_office and self.portland_office_bonus > 0:
-            match_score += self.portland_office_bonus
-            adjustments.append(f"🏙️ Portland office: +{self.portland_office_bonus}")
-
-        # Remote-first / AI/ML focus bonuses
-        if company_data.get("isRemoteFirst"):
-            bonus = bonuses.get("remoteFirst", 0)
-            match_score += bonus
-            if bonus:
-                adjustments.append(f"🌐 Remote-first company: +{bonus}")
-
-        if company_data.get("aiMlFocus"):
-            bonus = bonuses.get("aiMlFocus", 0)
-            match_score += bonus
-            if bonus:
-                adjustments.append(f"🤖 AI/ML focus: +{bonus}")
-
-        # Apply freshness adjustment
-        posted_date_str = job.get("posted_date", "")
-        if posted_date_str:
-            posted_date = parse_job_date(posted_date_str)
-            freshness_adj = calculate_freshness_adjustment(posted_date)
-            match_score += freshness_adj
-            if freshness_adj > 0:
-                adjustments.append(f"🆕 Fresh job: +{freshness_adj}")
-            elif freshness_adj < 0:
-                adjustments.append(f"📅 Job age: {freshness_adj}")
-        else:
-            # No date info penalty
-            freshness_adj = calculate_freshness_adjustment(None)
-            match_score += freshness_adj
-            adjustments.append(f"❓ No date info: {freshness_adj}")
-
-        if job_timezone is not None:
-            hour_diff = abs(job_timezone - self.user_timezone)
-            if hour_diff == 0:
-                tz_adj = tz_weights.get("sameTimezone", 0)
-                desc = "Same timezone"
-            elif hour_diff <= 2:
-                tz_adj = tz_weights.get("diff1to2hr", 0)
-                desc = f"{hour_diff}h timezone difference"
-            elif hour_diff <= 4:
-                tz_adj = tz_weights.get("diff3to4hr", 0)
-                desc = f"{hour_diff}h timezone difference"
-            elif hour_diff <= 8:
-                tz_adj = tz_weights.get("diff5to8hr", 0)
-                desc = f"{hour_diff}h timezone difference"
-            else:
-                tz_adj = tz_weights.get("diff9plusHr", 0)
-                desc = f"{hour_diff}h timezone difference"
-
-            # Avoid double-penalizing: if per-hour penalty is configured, skip weight-based tz adj
-            db = self.dealbreakers or {}
-            per_hour_penalty = -abs(
-                db.get("perHourTimezonePenalty", db.get("timezonePenaltyPoints", 5))
-            )
-            if (
-                tz_adj != 0
-                and "perHourTimezonePenalty" not in db
-                and "timezonePenaltyPoints" not in db
-            ):
-                match_score += tz_adj
-                adjustments.append(f"⏰ {desc} {tz_adj:+}")
-
-            # Config-driven dealbreakers
-            max_diff = db.get("maxTimezoneDiffHours", 8)
-            tz_hard_penalty = -abs(
-                db.get("hardTimezonePenalty", db.get("timezoneHardPenaltyPoints", 60))
-            )
-            require_remote = bool(db.get("requireRemote", False))
-            allow_hybrid = bool(db.get("allowHybridInTimezone", True))
-
-            if require_remote:
-                location_lower = (job_location or "").lower()
-                if "onsite" in location_lower or (
-                    "hybrid" in location_lower and not allow_hybrid
-                ):
-                    mismatch_penalty = -25
-                    match_score += mismatch_penalty
-                    adjustments.append("🚫 Dealbreaker: onsite requirement")
-                    concerns = match_analysis.setdefault("potential_concerns", [])
-                    concerns.append(
-                        "Role requires onsite/hybrid but policy requires remote-only."
-                    )
-                    match_analysis["application_priority"] = "Low"
-
-            # Apply timezone penalties relative to user timezone
-            tz_diff = abs((job_timezone or 0) - self.user_timezone)
-            if tz_diff > max_diff and not applied_tz_penalty:
-                mismatch_penalty = tz_hard_penalty
-                match_score += mismatch_penalty
-                adjustments.append(
-                    f"🚫 Timezone/relocation dealbreaker ({desc or 'unknown location'}): {mismatch_penalty}"
-                )
-                concerns = match_analysis.setdefault("potential_concerns", [])
-                concerns.append(
-                    "Timezone mismatch: role appears far outside the user's working timezone window and candidate will not relocate."
-                )
-                match_analysis["application_priority"] = "Low"
-                applied_tz_penalty = True
-            elif tz_diff > 0 and per_hour_penalty != 0 and not applied_tz_penalty:
-                penalty = int(round(per_hour_penalty * tz_diff))
-                if penalty != 0:
-                    match_score += penalty
-                    adjustments.append(f"⏰ User TZ offset {tz_diff}h: {penalty}")
-
-        # Apply company size adjustment using weights
-        size_adj = 0
-        size_desc = ""
-        large_bonus = size_weights.get("largeCompanyBonus", 0)
-        small_penalty = size_weights.get("smallCompanyPenalty", 0)
-        large_threshold = size_weights.get("largeCompanyThreshold", 10000)
-        small_threshold = size_weights.get("smallCompanyThreshold", 100)
-
-        if employee_count is not None:
-            if employee_count >= large_threshold:
-                size_adj = large_bonus
-                size_desc = f"Large company (>= {large_threshold})"
-            elif employee_count <= small_threshold:
-                size_adj = small_penalty
-                size_desc = f"Small company (<= {small_threshold})"
-        else:
-            # Fallback to detected size with preference toggle
-            if company_size == "large":
-                size_adj = large_bonus
-                size_desc = "Large company"
-            elif company_size == "small":
-                size_adj = small_penalty
-                size_desc = "Small company"
-            # If prefer_large_companies flag is still relevant, apply neutral otherwise
-            elif self.prefer_large_companies and company_size == "medium":
-                size_adj = 0
-
-        if size_adj != 0 and size_desc:
-            match_score += size_adj
-            adjustments.append(f"🏢 {size_desc} {size_adj:+}")
-
-        # Apply role preference adjustment
-        role_adj, role_desc = calculate_role_preference_adjustment(job.get("title", ""))
-        if role_adj != 0:
-            match_score += role_adj
-            if role_adj > 0:
-                adjustments.append(f"💻 {role_desc}")
-            else:
-                adjustments.append(f"👔 {role_desc}")
-
-        # Clamp score to valid range (0-100)
-        match_score = max(0, min(100, match_score))
-
-        # Log adjustments if any were made
-        if adjustments:
-            logger.info(
-                f"  Score adjustments: {', '.join(adjustments)} "
-                f"(Base: {base_score} → Final: {match_score})"
-            )
-
-        # Recalculate priority tier based on adjusted score
-        high_threshold = priority_thresholds.get("high", 75)
-        med_threshold = priority_thresholds.get("medium", 50)
-        if match_score >= high_threshold:
-            priority = "High"
-        elif match_score >= med_threshold:
-            priority = "Medium"
-        else:
-            priority = "Low"
-
-        # Override AI's priority with our calculated one (if score changed)
-        if base_score != match_score:
-            match_analysis["application_priority"] = priority
-
-        breakdown = ScoreBreakdown(
-            base_score=base_score,
-            final_score=match_score,
-            adjustments=adjustments,
-        )
-
-        return match_score, breakdown
-
-    def _calculate_location_penalty(
-        self, job: Dict[str, Any], job_timezone: Optional[float] = None
-    ) -> tuple[int, str, bool]:
-        """Return (penalty, reason, applied_tz_penalty) using unified location rules."""
-
-        description = (job.get("description") or "").lower()
-        location_raw = job.get("location") or ""
-        location = location_raw.lower()
-        arrangement = self._detect_work_arrangement(description, location)
-
-        from job_finder.utils.timezone_utils import detect_timezone_for_job
-        from job_finder.utils.location_rules import (
-            LocationContext,
-            evaluate_location_rules,
-        )
-
-        job_tz = detect_timezone_for_job(
-            job_location=location_raw,
-            job_description=description,
-            company_size=None,
-            headquarters_location=None,
-            company_name=job.get("company"),
-            company_info=None,
-        )
-
-        user_city = ""
-        if isinstance(self.config, dict):
-            user_city = self.config.get("userCity", "") or self.profile.location or ""
-        else:
-            user_city = self.profile.location or ""
-
-        ctx = LocationContext(
-            user_city=user_city,
-            user_timezone=self.user_timezone,
-            relocation_allowed=self.dealbreakers.get("relocationAllowed", False),
-            relocation_penalty=self.dealbreakers.get("relocationPenaltyPoints", 80),
-            location_penalty=self.dealbreakers.get("locationPenaltyPoints", 60),
-            ambiguous_location_penalty=self.dealbreakers.get(
-                "ambiguousLocationPenaltyPoints", 40
-            ),
-            max_timezone_diff_hours=self.dealbreakers.get("maxTimezoneDiffHours", 8),
-            per_hour_penalty=self.dealbreakers.get("perHourTimezonePenalty", 5),
-            hard_timezone_penalty=self.dealbreakers.get("hardTimezonePenalty", 60),
-        )
-
-        eval_result = evaluate_location_rules(
-            job_city=location_raw,
-            job_timezone=job_tz,
-            remote=arrangement["remote"],
-            hybrid=arrangement["hybrid"],
-            ctx=ctx,
-        )
-
-        if eval_result.hard_reject:
-            return (
-                -abs(ctx.location_penalty),
-                eval_result.reason or "location fail",
-                False,
-            )
-
-        return (
-            -abs(eval_result.strikes),
-            eval_result.reason or "",
-            eval_result.strikes > 0,
-        )
-
-    def _apply_technology_ranks(self, job: Dict[str, Any]) -> tuple[int, str]:
-        tech_ranks = (
-            job.get("technologyRanks")
-            or job.get("technology_ranks")
-            or (
-                self.config.get("technologyRanks")
-                if isinstance(self.config, dict)
-                else {}
-            )
-        )
-        techs_cfg = (
-            (tech_ranks or {}).get("technologies")
-            if isinstance(tech_ranks, dict)
-            else {}
-        )
-        if not isinstance(techs_cfg, dict) or not techs_cfg:
-            return 0, ""
-
-        text = f"{job.get('title', '')} {job.get('description', '')}".lower()
-        delta = 0
-        reasons = []
-
-        for tech, meta in techs_cfg.items():
-            try:
-                rank = (meta or {}).get("rank")
-                points = int((meta or {}).get("points", 1))
-            except Exception:
-                continue
-            tech_lower = str(tech).lower()
-            present = re.search(rf"\b{re.escape(tech_lower)}\b", text) is not None
-            if rank == "fail" and present:
-                delta -= max(points, 10)
-                reasons.append(f"⛔ fail tech {tech_lower}")
-            elif rank == "strike" and present:
-                delta -= points
-                reasons.append(f"⚠ strike tech {tech_lower} (-{points})")
-            elif rank == "required" and present:
-                reasons.append(f"✅ required tech {tech_lower}")
-
-        reason = "; ".join(reasons) if reasons else ""
-        return delta, reason
-
-    def _apply_experience_strike(self, job: Dict[str, Any]) -> tuple[int, str]:
-        exp_cfg = (
-            self.config.get("experienceStrike")
-            if isinstance(self.config, dict)
-            else None
-        )
-        if not isinstance(exp_cfg, dict) or not exp_cfg.get("enabled", False):
-            return 0, ""
-
-        min_pref = exp_cfg.get("minPreferred")
-        points = int(exp_cfg.get("points", 1))
-        user_years = getattr(self.profile, "years_of_experience", None)
-        if user_years is None or min_pref is None:
-            return 0, ""
-
-        if user_years < min_pref:
-            return -abs(points), f"📉 experience gap ({user_years}y vs {min_pref}y)"
-        return 0, ""
 
     def _build_match_result(
         self,
@@ -707,9 +260,7 @@ class AIJobMatcher:
             potential_concerns=match_analysis.get("potential_concerns", []),
             application_priority=match_analysis.get("application_priority", "Medium"),
             score_breakdown=score_breakdown,
-            customization_recommendations=match_analysis.get(
-                "customization_recommendations", {}
-            ),
+            customization_recommendations=match_analysis.get("customization_recommendations", {}),
             resume_intake_data=intake_data,
         )
 
@@ -748,22 +299,8 @@ class AIJobMatcher:
         try:
             prompt = self.prompts.analyze_job_match(self.profile, job)
 
-            # Get model-specific settings or use fallback
-            model_name = self.config.get("model", "")
-            models_config = self.config.get("models", {})
-            model_settings = models_config.get(model_name, {})
-
-            # Use model-specific settings or fallback to top-level config
-            max_tokens = model_settings.get(
-                "max_tokens", self.config.get("max_tokens", 4096)
-            )
-            temperature = model_settings.get(
-                "temperature", self.config.get("temperature", 0.3)
-            )
-
-            response = self.provider.generate(
-                prompt, max_tokens=max_tokens, temperature=temperature
-            )
+            # Use sensible defaults for AI generation
+            response = self.provider.generate(prompt, max_tokens=4096, temperature=0.3)
 
             # Parse JSON response
             # Try to extract JSON from response (in case there's extra text)
@@ -787,9 +324,7 @@ class AIJobMatcher:
                 "missing_skills",
                 "application_priority",
             ]
-            missing_fields = [
-                field for field in required_fields if field not in analysis
-            ]
+            missing_fields = [field for field in required_fields if field not in analysis]
             if missing_fields:
                 logger.error(f"AI response missing required fields: {missing_fields}")
                 logger.debug(f"Response was: {response[:500]}...")
@@ -842,28 +377,10 @@ class AIJobMatcher:
             Dictionary with resume intake data, or None if failed.
         """
         try:
-            prompt = self.prompts.generate_resume_intake_data(
-                self.profile, job, match_analysis
-            )
+            prompt = self.prompts.generate_resume_intake_data(self.profile, job, match_analysis)
 
-            # Get model-specific settings or use fallback
-            model_name = self.config.get("model", "")
-            models_config = self.config.get("models", {})
-            model_settings = models_config.get(model_name, {})
-
-            # Use model-specific settings or fallback to top-level config
-            max_tokens = model_settings.get(
-                "max_tokens", self.config.get("max_tokens", 4096)
-            )
             # Use slightly higher temperature for creative intake data generation
-            temperature = (
-                model_settings.get("temperature", self.config.get("temperature", 0.3))
-                + 0.1
-            )
-
-            response = self.provider.generate(
-                prompt, max_tokens=max_tokens, temperature=temperature
-            )
+            response = self.provider.generate(prompt, max_tokens=4096, temperature=0.4)
 
             # Parse JSON response
             response_clean = response.strip()
@@ -886,9 +403,7 @@ class AIJobMatcher:
                 "skills_priority",
                 "ats_keywords",
             ]
-            missing_fields = [
-                field for field in required_fields if field not in intake_data
-            ]
+            missing_fields = [field for field in required_fields if field not in intake_data]
             if missing_fields:
                 logger.warning(f"Intake data missing optional fields: {missing_fields}")
 

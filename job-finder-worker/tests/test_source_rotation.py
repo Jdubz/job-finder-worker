@@ -31,7 +31,7 @@ def mock_dependencies():
 def scrape_runner(mock_dependencies):
     """Create ScrapeRunner with mocked dependencies."""
     with patch("job_finder.scrape_runner.ConfigLoader"):
-        return ScrapeRunner(**mock_dependencies, filter_engine=None)
+        return ScrapeRunner(**mock_dependencies, title_filter=None)
 
 
 def make_source(

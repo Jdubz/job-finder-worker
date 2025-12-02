@@ -13,11 +13,6 @@ def company_processor():
     """Create a CompanyProcessor with mocked dependencies."""
     queue_manager = Mock()
     config_loader = Mock()
-    config_loader.get_stop_list.return_value = {
-        "excludedCompanies": [],
-        "excludedDomains": [],
-        "excludedKeywords": [],
-    }
     companies_manager = Mock()
     sources_manager = Mock()
     # Mock get_aggregator_domains to return ATS platforms from "database"

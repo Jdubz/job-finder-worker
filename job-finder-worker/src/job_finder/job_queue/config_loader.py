@@ -52,12 +52,77 @@ class ConfigLoader:
             )
         return value
 
-    def get_stop_list(self) -> Dict[str, Any]:
-        policy = self.get_prefilter_policy()
-        stop_list = policy.get("stopList") if isinstance(policy, dict) else None
-        if not isinstance(stop_list, dict):
-            raise InitializationError("stopList missing from prefilter-policy")
-        return stop_list
+    def get_title_filter(self) -> Dict[str, Any]:
+        """Get title filter configuration."""
+        try:
+            return self._get_config("title-filter")
+        except InitializationError:
+            # Return defaults if not configured
+            return {
+                "requiredKeywords": [
+                    "software",
+                    "developer",
+                    "engineer",
+                    "frontend",
+                    "backend",
+                    "fullstack",
+                    "full-stack",
+                ],
+                "excludedKeywords": [
+                    "intern",
+                    "internship",
+                    "wordpress",
+                    "php",
+                    "sales",
+                ],
+            }
+
+    def get_scoring_config(self) -> Dict[str, Any]:
+        """Get scoring engine configuration."""
+        try:
+            return self._get_config("scoring-config")
+        except InitializationError:
+            # Return defaults if not configured
+            return {
+                "minScore": 60,
+                "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
+                "seniority": {
+                    "preferred": ["senior", "staff", "lead"],
+                    "acceptable": ["mid", ""],
+                    "rejected": ["junior", "intern", "entry"],
+                    "preferredBonus": 15,
+                    "acceptablePenalty": 0,
+                    "rejectedPenalty": -100,
+                },
+                "location": {
+                    "allowRemote": True,
+                    "allowHybrid": True,
+                    "allowOnsite": False,
+                    "userTimezone": -8,
+                    "maxTimezoneDiffHours": 4,
+                    "perHourPenalty": 3,
+                    "hybridSameCityBonus": 10,
+                },
+                "technology": {
+                    "required": ["typescript", "react"],
+                    "preferred": ["node", "python", "aws"],
+                    "disliked": ["angular"],
+                    "rejected": ["wordpress", "php"],
+                    "requiredBonus": 10,
+                    "preferredBonus": 5,
+                    "dislikedPenalty": -5,
+                },
+                "salary": {
+                    "minimum": 150000,
+                    "target": 200000,
+                    "belowTargetPenalty": 2,
+                },
+                "experience": {
+                    "userYears": 12,
+                    "maxRequired": 15,
+                    "overqualifiedPenalty": 5,
+                },
+            }
 
     def get_queue_settings(self) -> Dict[str, Any]:
         return self._get_config("queue-settings")
@@ -249,23 +314,6 @@ class ConfigLoader:
             payload["documentGenerator"]["tasks"] = doc_tasks
 
         return payload
-
-    def get_match_policy(self) -> Dict[str, Any]:
-        return self._get_config("match-policy")
-
-    def get_job_match(self) -> Dict[str, Any]:
-        """Get job matching settings from match-policy.jobMatch."""
-        policy = self.get_match_policy()
-        job_match = policy.get("jobMatch") if isinstance(policy, dict) else None
-        if not isinstance(job_match, dict):
-            raise InitializationError("jobMatch missing from match-policy")
-        job_match["companyWeights"] = (
-            policy.get("companyWeights", {}) if isinstance(policy, dict) else {}
-        )
-        return job_match
-
-    def get_prefilter_policy(self) -> Dict[str, Any]:
-        return self._get_config("prefilter-policy")
 
     def get_scheduler_settings(self) -> Dict[str, Any]:
         return self._get_config("scheduler-settings")

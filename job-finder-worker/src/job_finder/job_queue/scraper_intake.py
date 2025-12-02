@@ -1,12 +1,11 @@
 """Helper for scrapers to submit jobs to the queue.
 
 Pre-filtering behavior:
-  Jobs are pre-filtered using StrikeFilterEngine BEFORE being added to the queue.
-  This prevents irrelevant jobs (sales roles, too junior, excluded companies,
-  old jobs, wrong locations) from consuming queue resources.
+  Jobs are pre-filtered using TitleFilter BEFORE being added to the queue.
+  This uses simple keyword-based title matching to filter out irrelevant jobs
+  (sales roles, wrong job types) from consuming queue resources.
 
-  Only jobs that pass hard rejection filters are queued for AI analysis.
-  See docs/worker/architecture/pre-filtering.md for details.
+  Only jobs that pass the title filter are queued for AI analysis.
 
 Job Listings Integration:
   Jobs that pass pre-filter are stored in the job_listings table for deduplication.
@@ -36,8 +35,8 @@ class ScraperIntake:
     worrying about queue implementation details.
 
     Pre-filtering:
-      When a filter_engine is provided, jobs are pre-filtered before queueing.
-      Only jobs that pass hard rejection filters are added to the queue.
+      When a title_filter is provided, jobs are pre-filtered before queueing.
+      Only jobs that pass the title keyword filter are added to the queue.
       This significantly reduces queue size and AI analysis costs.
 
     Job Listings:
@@ -51,7 +50,7 @@ class ScraperIntake:
         job_listing_storage=None,
         companies_manager=None,
         sources_manager=None,
-        filter_engine=None,
+        title_filter=None,
         # Legacy parameter - still accepted but job_listing_storage takes precedence
         job_storage=None,
     ):
@@ -62,14 +61,14 @@ class ScraperIntake:
             queue_manager: Queue manager for adding items
             job_listing_storage: JobListingStorage for checking/storing job listings
             companies_manager: CompaniesManager for checking company existence (optional)
-            filter_engine: StrikeFilterEngine for pre-filtering jobs (optional)
+            title_filter: TitleFilter for pre-filtering jobs by title keywords (optional)
             job_storage: DEPRECATED - use job_listing_storage instead
         """
         self.queue_manager = queue_manager
         self.job_listing_storage = job_listing_storage
         self.companies_manager = companies_manager
         self.sources_manager = sources_manager
-        self.filter_engine = filter_engine
+        self.title_filter = title_filter
         # Legacy fallback - will be removed in future version
         self._legacy_job_storage = job_storage
 
@@ -137,9 +136,7 @@ class ScraperIntake:
                 filter_result=filter_result,
             )
             if created:
-                logger.debug(
-                    "Created job listing %s for %s", listing_id, normalized_url
-                )
+                logger.debug("Created job listing %s for %s", listing_id, normalized_url)
             return listing_id
         except Exception as e:
             logger.warning("Failed to store job listing for %s: %s", normalized_url, e)
@@ -260,33 +257,24 @@ class ScraperIntake:
 
                 # Clean company label scraped from the listing (avoid storing "Acme Careers")
                 company_name_raw = job.get("company", "")
-                company_name_base = (
-                    company_name_raw if isinstance(company_name_raw, str) else ""
-                )
-                company_name = (
-                    clean_company_name(company_name_base) or company_name_base.strip()
-                )
+                company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
+                company_name = clean_company_name(company_name_base) or company_name_base.strip()
 
                 # Update job dict with cleaned company name
                 job_payload = dict(job)
                 job_payload["company"] = company_name
 
-                # Pre-filter job before adding to queue
-                if self.filter_engine:
-                    filter_result = self.filter_engine.evaluate_job(job_payload)
+                # Pre-filter job by title before adding to queue
+                if self.title_filter:
+                    title = job_payload.get("title", "")
+                    filter_result = self.title_filter.filter(title)
                     if not filter_result.passed:
                         prefiltered_count += 1
                         # Track rejection reasons for logging
-                        reason = filter_result.get_rejection_summary() or "unknown"
-                        reason_key = (
-                            reason.split(":")[0].strip() if ":" in reason else reason
-                        )
-                        prefilter_reasons[reason_key] = (
-                            prefilter_reasons.get(reason_key, 0) + 1
-                        )
-                        logger.debug(
-                            f"Pre-filtered job: {job.get('title', 'Unknown')} - {reason}"
-                        )
+                        reason = filter_result.reason or "unknown"
+                        reason_key = reason.split(":")[0].strip() if ":" in reason else reason
+                        prefilter_reasons[reason_key] = prefilter_reasons.get(reason_key, 0) + 1
+                        logger.debug(f"Pre-filtered job: {title} - {reason}")
 
                         # Store filtered job in job_listings with status='filtered'
                         self._store_job_listing(
@@ -337,9 +325,7 @@ class ScraperIntake:
                         else ({"job_listing_id": listing_id} if listing_id else None)
                     ),
                     input={
-                        "source_url": (
-                            normalized_url if (is_aggregator or is_board_path) else None
-                        ),
+                        "source_url": normalized_url if (is_aggregator or is_board_path) else None,
                     },
                 )
 
@@ -376,9 +362,7 @@ class ScraperIntake:
 
         # Log pre-filter breakdown if any were filtered
         if prefilter_reasons:
-            reasons_str = ", ".join(
-                f"{k}: {v}" for k, v in sorted(prefilter_reasons.items())
-            )
+            reasons_str = ", ".join(f"{k}: {v}" for k, v in sorted(prefilter_reasons.items()))
             logger.info(f"  Pre-filter breakdown: {reasons_str}")
 
         return added_count
@@ -409,9 +393,7 @@ class ScraperIntake:
             # Validate URL exists and is non-empty
             url = company_website.strip()
             if not url:
-                logger.debug(
-                    f"Skipping company {cleaned_name} with missing or empty URL"
-                )
+                logger.debug(f"Skipping company {cleaned_name} with missing or empty URL")
                 return None
 
             # Normalize URL for consistent comparison
@@ -438,9 +420,7 @@ class ScraperIntake:
 
             company_id = None
             if self.companies_manager:
-                stub = self.companies_manager.create_company_stub(
-                    cleaned_name, normalized_url
-                )
+                stub = self.companies_manager.create_company_stub(cleaned_name, normalized_url)
                 company_id = stub.get("id")
 
             # Generate tracking_id for this root company (all spawned items will inherit it)

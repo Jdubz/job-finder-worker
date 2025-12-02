@@ -149,9 +149,7 @@ def load_config() -> Dict[str, Any]:
     # No config file found; fall back to empty config. All runtime settings are
     # expected from the SQLite-backed job_finder_config table.
     if search_paths:
-        slogger.worker_status(
-            "config_missing", {"paths_tried": [str(p) for p in search_paths]}
-        )
+        slogger.worker_status("config_missing", {"paths_tried": [str(p) for p in search_paths]})
     return {}
 
 
@@ -164,32 +162,12 @@ def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
     except Exception as exc:  # pragma: no cover - defensive
         slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
 
-    # Load match policy (scoring preferences + dealbreakers)
+    # Load scoring config (min_match_score comes from deterministic scoring)
     try:
-        match_policy = config_loader.get_match_policy()
-        job_match = match_policy.get("jobMatch", {})
-        company_weights = match_policy.get("companyWeights", {})
-        ai_matcher.min_match_score = job_match.get(
-            "minMatchScore", ai_matcher.min_match_score
-        )
-        ai_matcher.generate_intake = job_match.get(
-            "generateIntakeData", ai_matcher.generate_intake
-        )
-        ai_matcher.portland_office_bonus = job_match.get(
-            "portlandOfficeBonus", ai_matcher.portland_office_bonus
-        )
-        ai_matcher.user_timezone = job_match.get(
-            "userTimezone", ai_matcher.user_timezone
-        )
-        ai_matcher.prefer_large_companies = job_match.get(
-            "preferLargeCompanies", ai_matcher.prefer_large_companies
-        )
-        ai_matcher.company_weights = company_weights or ai_matcher.company_weights
-        ai_matcher.dealbreakers = match_policy.get(
-            "dealbreakers", ai_matcher.dealbreakers
-        )
+        scoring_config = config_loader.get_scoring_config()
+        ai_matcher.min_match_score = scoring_config.get("minScore", ai_matcher.min_match_score)
     except Exception as exc:  # pragma: no cover - defensive
-        slogger.worker_status("match_policy_load_failed", {"error": str(exc)})
+        slogger.worker_status("scoring_config_load_failed", {"error": str(exc)})
 
 
 def get_processing_timeout(config_loader: ConfigLoader) -> int:
@@ -236,9 +214,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
 
     # Get AI provider settings (defaults to codex/cli/gpt-4o for both worker and doc gen)
     ai_settings = {
-        "worker": {
-            "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
-        },
+        "worker": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
         "documentGenerator": {
             "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
         },
@@ -251,9 +227,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
 
     # Create task-specific providers (falls back to default if no task override)
     job_match_provider = create_provider_from_config(ai_settings, task="jobMatch")
-    company_discovery_provider = create_provider_from_config(
-        ai_settings, task="companyDiscovery"
-    )
+    company_discovery_provider = create_provider_from_config(ai_settings, task="companyDiscovery")
 
     # Use the same AI settings section for all downstream AI users (matcher + company fetcher)
     worker_ai_config: Dict[str, Any] = {}
@@ -262,36 +236,18 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         if isinstance(candidate, dict):
             worker_ai_config = candidate
 
-    # Get match policy (scoring + weights + dealbreakers)
-    match_policy = {
-        "jobMatch": {
-            "minMatchScore": 70,
-            "portlandOfficeBonus": 15,
-            "userTimezone": -8,
-            "preferLargeCompanies": True,
-            "generateIntakeData": True,
-        },
-        "companyWeights": {},
-        "dealbreakers": {},
-    }
+    # Get scoring config (deterministic scoring settings)
+    scoring_config = {"minScore": 60}
     try:
-        match_policy = config_loader.get_match_policy()
+        scoring_config = config_loader.get_scoring_config()
     except Exception as exc:
-        slogger.worker_status("match_policy_init_failed", {"error": str(exc)})
-
-    job_match_cfg = match_policy.get("jobMatch", {})
+        slogger.worker_status("scoring_config_init_failed", {"error": str(exc)})
 
     ai_matcher = AIJobMatcher(
         provider=job_match_provider,
-        min_match_score=job_match_cfg.get("minMatchScore", 70),
-        generate_intake=job_match_cfg.get("generateIntakeData", True),
-        portland_office_bonus=job_match_cfg.get("portlandOfficeBonus", 15),
         profile=profile,
-        user_timezone=job_match_cfg.get("userTimezone", -8),
-        prefer_large_companies=job_match_cfg.get("preferLargeCompanies", True),
-        config=job_match_cfg,
-        company_weights=match_policy.get("companyWeights"),
-        dealbreakers=match_policy.get("dealbreakers"),
+        min_match_score=scoring_config.get("minScore", 60),
+        generate_intake=True,
     )
 
     # Respect AI settings when fetching/extracting company info
@@ -386,9 +342,7 @@ def worker_loop():
                     try:
                         # Refresh delay once per batch; config changes apply to the next batch.
                         queue_settings = config_loader.get_queue_settings()
-                        task_delay = max(
-                            0, int(queue_settings.get("taskDelaySeconds", 0))
-                        )
+                        task_delay = max(0, int(queue_settings.get("taskDelaySeconds", 0)))
                     except Exception:
                         task_delay = 0
 
@@ -421,10 +375,7 @@ def worker_loop():
                             msg = f"Processing exceeded timeout ({processing_timeout}s)"
                             slogger.worker_status(
                                 "processing_timeout",
-                                {
-                                    "item_id": item.id,
-                                    "timeout_seconds": processing_timeout,
-                                },
+                                {"item_id": item.id, "timeout_seconds": processing_timeout},
                             )
                             queue_manager.update_status(
                                 item.id,
@@ -464,9 +415,7 @@ def worker_loop():
                     )
                 else:
                     stats = queue_manager.get_queue_stats()
-                    slogger.worker_status(
-                        "batch_completed", {"queue_stats": str(stats)}
-                    )
+                    slogger.worker_status("batch_completed", {"queue_stats": str(stats)})
 
                 if worker_state["shutdown_requested"]:
                     break
@@ -478,9 +427,7 @@ def worker_loop():
                 slogger.worker_status("error_recovery")
                 time.sleep(worker_state["poll_interval"])
 
-    slogger.worker_status(
-        "stopped", {"total_processed": worker_state["items_processed_total"]}
-    )
+    slogger.worker_status("stopped", {"total_processed": worker_state["items_processed_total"]})
     worker_state["running"] = False
 
 
@@ -527,16 +474,9 @@ def start_worker():
     if worker_state["running"]:
         return jsonify({"message": "Worker is already running"}), 400
 
-    if (
-        queue_manager is None
-        or processor is None
-        or config_loader is None
-        or ai_matcher is None
-    ):
+    if queue_manager is None or processor is None or config_loader is None or ai_matcher is None:
         config = load_config()
-        queue_manager, processor, config_loader, ai_matcher, _ = initialize_components(
-            config
-        )
+        queue_manager, processor, config_loader, ai_matcher, _ = initialize_components(config)
 
     # Startup recovery: return stuck processing items to pending
     processing_timeout = get_processing_timeout(config_loader)
@@ -585,10 +525,7 @@ def reload_config():
 
     apply_db_settings(config_loader, ai_matcher)
     return jsonify(
-        {
-            "message": "Reloaded config",
-            "poll_interval": worker_state.get("poll_interval"),
-        }
+        {"message": "Reloaded config", "poll_interval": worker_state.get("poll_interval")}
     )
 
 
@@ -605,9 +542,7 @@ def config_endpoint():
     # POST - update config
     data = request.get_json() or {}
     if "poll_interval" in data:
-        worker_state["poll_interval"] = max(
-            10, int(data["poll_interval"])
-        )  # Min 10 seconds
+        worker_state["poll_interval"] = max(10, int(data["poll_interval"]))  # Min 10 seconds
 
     return jsonify({"message": "Configuration updated"})
 
@@ -661,25 +596,17 @@ def main():
         # Load config and initialize components
         config = load_config()
         global queue_manager, processor, config_loader, ai_matcher
-        queue_manager, processor, config_loader, ai_matcher, config = (
-            initialize_components(config)
-        )
+        queue_manager, processor, config_loader, ai_matcher, config = initialize_components(config)
 
         # Set poll interval from DB-backed scheduler settings if available
         if config_loader:
             try:
                 scheduler_settings = config_loader.get_scheduler_settings()
-                worker_state["poll_interval"] = scheduler_settings.get(
-                    "pollIntervalSeconds", 60
-                )
+                worker_state["poll_interval"] = scheduler_settings.get("pollIntervalSeconds", 60)
             except Exception:
-                worker_state["poll_interval"] = config.get("queue", {}).get(
-                    "poll_interval", 60
-                )
+                worker_state["poll_interval"] = config.get("queue", {}).get("poll_interval", 60)
         else:
-            worker_state["poll_interval"] = config.get("queue", {}).get(
-                "poll_interval", 60
-            )
+            worker_state["poll_interval"] = config.get("queue", {}).get("poll_interval", 60)
 
         # Startup recovery: reset stale processing items before taking new work
         processing_timeout = get_processing_timeout(config_loader)

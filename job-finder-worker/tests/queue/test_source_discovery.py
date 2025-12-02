@@ -18,10 +18,6 @@ from job_finder.job_queue.models import (
 from job_finder.job_queue.processor import QueueItemProcessor
 
 
-def _default_stop_list() -> Dict[str, list[str]]:
-    return {"excludedCompanies": [], "excludedDomains": [], "excludedKeywords": []}
-
-
 @pytest.fixture
 def mock_dependencies() -> Dict[str, Any]:
     """Provide fully configured dependencies for the processor graph."""
@@ -30,25 +26,6 @@ def mock_dependencies() -> Dict[str, Any]:
     queue_manager.add_item = MagicMock(return_value="scrape-001")
 
     config_loader = MagicMock()
-    config_loader.get_stop_list.return_value = _default_stop_list()
-    config_loader.get_prefilter_policy.return_value = {
-        "stopList": _default_stop_list(),
-        "strikeEngine": {
-            "enabled": False,
-            "hardRejections": {
-                "excludedJobTypes": [],
-                "excludedSeniority": [],
-                "excludedCompanies": [],
-                "excludedKeywords": [],
-            },
-            "remotePolicy": {},
-            "salaryStrike": {},
-            "seniorityStrikes": {},
-            "qualityStrikes": {},
-            "ageStrike": {},
-        },
-        "technologyRanks": {"technologies": {}},
-    }
     config_loader.get_ai_settings.return_value = {
         "worker": {
             "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
@@ -58,6 +35,11 @@ def mock_dependencies() -> Dict[str, Any]:
         },
         "options": [],
     }
+    config_loader.get_title_filter.return_value = {
+        "requiredKeywords": ["engineer", "developer"],
+        "excludedKeywords": [],
+    }
+    config_loader.get_scoring_config.return_value = {"minScore": 60}
 
     job_storage = MagicMock()
     job_storage.job_exists.return_value = False
