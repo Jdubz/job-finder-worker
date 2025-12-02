@@ -24,12 +24,12 @@ export function HowItWorksPage() {
       <div className="text-center space-y-4">
         <Badge variant="outline" className="mb-2">
           <Sparkles className="h-3 w-3 mr-1" />
-          AI-Powered Job Search
+          Candidate Materials, Done Fast
         </Badge>
-        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">How Job Finder Works</h1>
+        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">How Job Finder Helps Candidates</h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          An intelligent, end-to-end platform that transforms your job search from manual drudgery
-          into a streamlined, AI-assisted process
+          Give us a role link and we return a tailored resume and cover letter in minutes—so you see
+          prepared, informed applicants without extra lift for your team.
         </p>
       </div>
 
@@ -38,9 +38,9 @@ export function HowItWorksPage() {
         <Card>
           <CardHeader>
             <Zap className="h-8 w-8 mb-2 text-primary" />
-            <CardTitle>Automated Discovery</CardTitle>
+            <CardTitle>Easy Intake</CardTitle>
             <CardDescription>
-              Submit job URLs or let our scraper find opportunities for you
+              Drop in a job link (Greenhouse, Workday, Lever, etc.) and we handle the rest
             </CardDescription>
           </CardHeader>
         </Card>
@@ -49,16 +49,16 @@ export function HowItWorksPage() {
             <Sparkles className="h-8 w-8 mb-2 text-primary" />
             <CardTitle>AI-Powered Matching</CardTitle>
             <CardDescription>
-              Advanced AI analyzes requirements and generates custom materials
+              AI reads the role, scores fit, and outlines what to highlight
             </CardDescription>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
             <TrendingUp className="h-8 w-8 mb-2 text-primary" />
-            <CardTitle>Pipeline Management</CardTitle>
+            <CardTitle>Match Review</CardTitle>
             <CardDescription>
-              Track applications, interviews, and follow-ups in one place
+              Ranked results with quick filters and instant PDF generation
             </CardDescription>
           </CardHeader>
         </Card>
@@ -88,8 +88,8 @@ export function HowItWorksPage() {
               </div>
             </div>
             <p className="text-muted-foreground">
-              Start your job search by submitting job postings you're interested in. Our system
-              supports multiple intake methods to fit your workflow.
+              Share the role link you already have. We work with the common ATS links recruiters use,
+              so there’s no new export or format needed.
             </p>
             <div className="space-y-3">
               <div className="flex items-start gap-3">
@@ -125,12 +125,12 @@ export function HowItWorksPage() {
           </div>
           <Card>
             <CardHeader>
-              <CardTitle>Queue Management</CardTitle>
+              <CardTitle>Processing</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Job URLs queued</span>
-                <Badge variant="secondary">Real-time processing</Badge>
+                <span className="text-muted-foreground">Jobs in progress</span>
+                <Badge variant="secondary">Live status</Badge>
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
@@ -147,8 +147,8 @@ export function HowItWorksPage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground pt-2 border-t">
-                Each job moves through our pipeline automatically. Retries are paused until the
-                new recovery flow ships, so failed items surface for review instead of looping.
+                Each role moves through intake → scrape → AI analysis. If something fails, we stop
+                and flag it for review instead of looping.
               </p>
             </CardContent>
           </Card>
@@ -158,29 +158,26 @@ export function HowItWorksPage() {
         <div className="grid md:grid-cols-2 gap-8 items-start">
           <Card className="md:order-2">
             <CardHeader>
-              <CardTitle>Smart Scraping Technology</CardTitle>
+              <CardTitle>What We Pull</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-2">
-                <p className="text-sm font-medium">Supported Platforms:</p>
+                <p className="text-sm font-medium">From the role link:</p>
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">Greenhouse</Badge>
-                  <Badge variant="outline">Workday</Badge>
-                  <Badge variant="outline">Lever</Badge>
-                  <Badge variant="outline">BambooHR</Badge>
-                  <Badge variant="outline">Custom ATS</Badge>
+                  <Badge variant="outline">Title</Badge>
+                  <Badge variant="outline">Company</Badge>
+                  <Badge variant="outline">Location</Badge>
+                  <Badge variant="outline">Requirements</Badge>
+                  <Badge variant="outline">Nice-to-haves</Badge>
                 </div>
               </div>
               <Separator />
               <div className="space-y-2">
-                <p className="text-sm font-medium">Extracted Data:</p>
+                <p className="text-sm font-medium">If available:</p>
                 <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• Job title and description</li>
-                  <li>• Company name and website</li>
-                  <li>• Location and remote policy</li>
-                  <li>• Salary range (when available)</li>
-                  <li>• Required skills and qualifications</li>
-                  <li>• Application deadline</li>
+                  <li>• Salary range</li>
+                  <li>• Remote policy</li>
+                  <li>• Deadlines</li>
                 </ul>
               </div>
             </CardContent>
@@ -196,9 +193,8 @@ export function HowItWorksPage() {
               </div>
             </div>
             <p className="text-muted-foreground">
-              Once a job is queued, our Python-based scraper extracts all relevant information from
-              the job posting. We handle different ATS platforms, parse structured data, and clean
-              up messy formatting.
+              Once a job is queued, we read the posting directly, clean the text, and structure the
+              details so the AI can reason about fit.
             </p>
             <div className="space-y-3">
               <div className="flex items-start gap-3">
@@ -224,10 +220,9 @@ export function HowItWorksPage() {
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 text-primary mt-0.5" />
                 <div>
-                  <p className="font-medium">Company Enrichment</p>
+                  <p className="font-medium">Company Details</p>
                   <p className="text-sm text-muted-foreground">
-                    Fetches additional company information (culture, tech stack, size) to help you
-                    make informed decisions
+                    Pulls basics like website and size category to keep context in one place
                   </p>
                 </div>
               </div>
@@ -339,7 +334,7 @@ export function HowItWorksPage() {
         <div className="grid md:grid-cols-2 gap-8 items-start">
           <Card className="md:order-2">
             <CardHeader>
-              <CardTitle>Resume Customization</CardTitle>
+              <CardTitle>Resume & Cover Letter PDFs</CardTitle>
               <CardDescription>AI-generated guidance for each application</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -386,15 +381,15 @@ export function HowItWorksPage() {
               </div>
             </div>
             <p className="text-muted-foreground">
-              Using the match analysis and resume intake data, generate perfectly tailored
-              application materials for each position. Our AI provides specific, actionable guidance
-              - not generic templates.
+              Using the match analysis and resume intake data, generate tailored resume and cover
+              letter PDFs for each position. Guidance stays specific to the role instead of generic
+              templates.
             </p>
             <div className="space-y-3">
               <div className="flex items-start gap-3">
                 <FileText className="h-5 w-5 text-primary mt-0.5" />
                 <div>
-                  <p className="font-medium">Resume Builder</p>
+                  <p className="font-medium">Resume Builder (PDF)</p>
                   <p className="text-sm text-muted-foreground">
                     Pull content from your profile library, reorder based on relevance, emphasize
                     key achievements, and optimize for ATS scanning
@@ -404,7 +399,7 @@ export function HowItWorksPage() {
               <div className="flex items-start gap-3">
                 <FileText className="h-5 w-5 text-primary mt-0.5" />
                 <div>
-                  <p className="font-medium">Cover Letter Generation</p>
+                  <p className="font-medium">Cover Letter Generation (PDF)</p>
                   <p className="text-sm text-muted-foreground">
                     AI drafts a compelling cover letter highlighting your most relevant experience
                     and explaining your motivation for the role
@@ -425,7 +420,7 @@ export function HowItWorksPage() {
           </div>
         </div>
 
-        {/* Step 5: Application Tracking */}
+        {/* Step 5: Match Review */}
         <div className="grid md:grid-cols-2 gap-8 items-start">
           <div className="space-y-4">
             <div className="flex items-center gap-3">
@@ -434,76 +429,64 @@ export function HowItWorksPage() {
               </div>
               <div>
                 <Badge className="mb-1">Step 5</Badge>
-                <h3 className="text-2xl font-bold">Pipeline Tracking</h3>
+                <h3 className="text-2xl font-bold">Match Review</h3>
               </div>
             </div>
             <p className="text-muted-foreground">
-              Monitor all your applications in a Kanban-style board. Track status changes, schedule
-              interviews, set reminders, and never lose track of an opportunity.
+              Review AI-ranked matches in a sortable table. Filter by company, score, and priority,
+              then jump into document generation for promising roles.
             </p>
             <div className="space-y-3">
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 text-primary mt-0.5" />
                 <div>
-                  <p className="font-medium">Status Tracking</p>
-                  <p className="text-sm text-muted-foreground">
-                    Applied → Screening → Interview → Offer → Rejected (track every application
-                    stage)
-                  </p>
+                  <p className="font-medium">Priority & Score Filters</p>
+                  <p className="text-sm text-muted-foreground">Sort and filter by match score or priority.</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 text-primary mt-0.5" />
                 <div>
-                  <p className="font-medium">Interview Scheduling</p>
-                  <p className="text-sm text-muted-foreground">
-                    Track interview dates, types (phone, technical, behavioral), and add preparation
-                    notes
-                  </p>
+                  <p className="font-medium">Company Drill-down</p>
+                  <p className="text-sm text-muted-foreground">Open company details from any match row.</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 text-primary mt-0.5" />
                 <div>
-                  <p className="font-medium">Follow-up Reminders</p>
-                  <p className="text-sm text-muted-foreground">
-                    Set reminders for thank-you emails, application follow-ups, and offer deadlines
-                  </p>
+                  <p className="font-medium">One-click Docs</p>
+                  <p className="text-sm text-muted-foreground">Send a match to the document builder to draft PDFs.</p>
                 </div>
               </div>
             </div>
           </div>
           <Card>
             <CardHeader>
-              <CardTitle>Application Board View</CardTitle>
-              <CardDescription>Your personal job search CRM</CardDescription>
+              <CardTitle>Matches Table</CardTitle>
+              <CardDescription>Ranked opportunities</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3 text-sm">
                 <div className="p-3 border rounded-lg">
                   <div className="flex items-center justify-between mb-1">
                     <p className="font-medium">Senior Frontend Engineer</p>
-                    <Badge variant="secondary">Applied</Badge>
+                    <Badge className="bg-green-600">88%</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">Company XYZ • Applied 3 days ago</p>
+                  <p className="text-xs text-muted-foreground">Company XYZ • Priority: High</p>
                 </div>
                 <div className="p-3 border rounded-lg border-primary/50">
                   <div className="flex items-center justify-between mb-1">
                     <p className="font-medium">Platform Engineer</p>
-                    <Badge className="bg-blue-600">Interview</Badge>
+                    <Badge className="bg-orange-600">78%</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Company ABC • Tech interview tomorrow
-                  </p>
+                  <p className="text-xs text-muted-foreground">Company ABC • Priority: Medium</p>
                 </div>
                 <div className="p-3 border rounded-lg">
                   <div className="flex items-center justify-between mb-1">
                     <p className="font-medium">Full Stack Developer</p>
-                    <Badge variant="outline">Screening</Badge>
+                    <Badge variant="secondary">71%</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Company 123 • Recruiter call scheduled
-                  </p>
+                  <p className="text-xs text-muted-foreground">Company 123 • Priority: Low</p>
                 </div>
               </div>
             </CardContent>
@@ -513,12 +496,12 @@ export function HowItWorksPage() {
 
       <Separator className="my-12" />
 
-      {/* Technology Stack */}
+      {/* Reliability & Security */}
       <div className="space-y-6">
         <div className="text-center space-y-2">
-          <h2 className="text-3xl font-bold">Built with Modern Technology</h2>
+          <h2 className="text-3xl font-bold">Reliable & Secure by Default</h2>
           <p className="text-muted-foreground">
-            Enterprise-grade architecture for reliability and performance
+            Built to keep candidate data private and outputs consistent.
           </p>
         </div>
 
@@ -526,10 +509,9 @@ export function HowItWorksPage() {
           <Card>
             <CardHeader>
               <Shield className="h-8 w-8 mb-2 text-primary" />
-              <CardTitle>Node + SQLite Backend</CardTitle>
+              <CardTitle>Private Data Path</CardTitle>
               <CardDescription>
-                Express API and Python worker share a single SQLite database on the edge host, fronted by a
-                Cloudflared tunnel for secure ingress.
+                Processing stays inside a locked-down environment with controlled access.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -537,32 +519,9 @@ export function HowItWorksPage() {
           <Card>
             <CardHeader>
               <Sparkles className="h-8 w-8 mb-2 text-primary" />
-              <CardTitle>Advanced AI</CardTitle>
+              <CardTitle>Leading AI Models</CardTitle>
               <CardDescription>
-                Powered by Claude and GPT-4 for intelligent matching, content generation, and
-                personalized recommendations
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <Database className="h-8 w-8 mb-2 text-primary" />
-              <CardTitle>Python Worker</CardTitle>
-              <CardDescription>
-                Dedicated Python microservice for web scraping, data extraction, and queue
-                processing
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <FileText className="h-8 w-8 mb-2 text-primary" />
-              <CardTitle>React Frontend</CardTitle>
-              <CardDescription>
-                Modern TypeScript + React app with Tailwind CSS, shadcn/ui components, and
-                responsive design
+                Uses top-tier AI to score roles and draft writing with clear guardrails.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -570,10 +529,19 @@ export function HowItWorksPage() {
           <Card>
             <CardHeader>
               <Clock className="h-8 w-8 mb-2 text-primary" />
-              <CardTitle>Real-time Updates</CardTitle>
+              <CardTitle>Status You Can See</CardTitle>
               <CardDescription>
-                Live status updates, real-time queue monitoring, and instant notifications when jobs
-                are processed
+                Live processing indicators and frequent refresh keep the matches list current.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <FileText className="h-8 w-8 mb-2 text-primary" />
+              <CardTitle>Fast Web Experience</CardTitle>
+              <CardDescription>
+                Review matches and generate PDFs without waiting on email attachments.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -581,10 +549,9 @@ export function HowItWorksPage() {
           <Card>
             <CardHeader>
               <Shield className="h-8 w-8 mb-2 text-primary" />
-              <CardTitle>Secure & Private</CardTitle>
+              <CardTitle>Access Control</CardTitle>
               <CardDescription>
-                GIS + role-based access control guard the admin tools, while Cloudflare tunnels and on-host
-                encryption keep SQLite data isolated from the public internet.
+                Sign in with Google and role-based permissions keep admin tools restricted.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -642,15 +609,15 @@ export function HowItWorksPage() {
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 mt-1">
-                <FileText className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h4 className="font-semibold mb-1">Multi-format Export</h4>
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 mt-1">
+                  <FileText className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                <h4 className="font-semibold mb-1">PDF Export</h4>
                 <p className="text-sm text-muted-foreground">
-                  Export resumes and cover letters in PDF, DOCX, or Markdown. Customize styling and
-                  formatting to match your personal brand.
+                  Generate resume and cover letter PDFs with role-specific content pulled from your
+                  profile library.
                 </p>
               </div>
             </div>
@@ -660,73 +627,71 @@ export function HowItWorksPage() {
                 <Database className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <h4 className="font-semibold mb-1">Company Intelligence</h4>
+                <h4 className="font-semibold mb-1">Company Snapshots</h4>
                 <p className="text-sm text-muted-foreground">
-                  Automatically enriches company data with tech stack, culture info, size category,
-                  and priority scoring to help you prioritize applications.
+                  Keep company basics handy (site, size category, saved notes) while drafting.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 mt-1">
-                <TrendingUp className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h4 className="font-semibold mb-1">Analytics & Insights</h4>
-                <p className="text-sm text-muted-foreground">
-                  Track success rates, average time-to-interview, most successful application
-                  strategies, and identify patterns in your job search.
-                </p>
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 mt-1">
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-1">Quick Stats</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Counts, priorities, and average match scores keep focus on the best leads.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
       <Separator className="my-12" />
 
-      {/* Technical Architecture */}
+      {/* How It Flows */}
       <div className="space-y-6">
         <div className="text-center space-y-2">
-          <h2 className="text-3xl font-bold">Technical Architecture</h2>
-          <p className="text-muted-foreground">How the system works under the hood</p>
+          <h2 className="text-3xl font-bold">How It Flows</h2>
+          <p className="text-muted-foreground">Simple steps from link to ready-to-send PDFs.</p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>End-to-End Data Flow</CardTitle>
+            <CardTitle>End-to-End Path</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col md:flex-row gap-4 items-center text-sm">
               <div className="text-center p-4 border rounded-lg flex-1">
                 <Briefcase className="h-6 w-6 mx-auto mb-2 text-primary" />
-                <p className="font-medium">Job URL Submitted</p>
-                <p className="text-xs text-muted-foreground mt-1">Frontend → API</p>
+                <p className="font-medium">Role Link Added</p>
+                <p className="text-xs text-muted-foreground mt-1">Candidate pastes the job URL</p>
               </div>
               <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90 md:rotate-0" />
               <div className="text-center p-4 border rounded-lg flex-1">
                 <Database className="h-6 w-6 mx-auto mb-2 text-primary" />
-                <p className="font-medium">Queued in SQLite</p>
-                <p className="text-xs text-muted-foreground mt-1">job-queue collection</p>
+                <p className="font-medium">Processing Starts</p>
+                <p className="text-xs text-muted-foreground mt-1">Job captured and queued</p>
               </div>
               <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90 md:rotate-0" />
               <div className="text-center p-4 border rounded-lg flex-1">
                 <Zap className="h-6 w-6 mx-auto mb-2 text-primary" />
-                <p className="font-medium">Python Worker</p>
-                <p className="text-xs text-muted-foreground mt-1">Scrapes & extracts</p>
+                <p className="font-medium">Details Extracted</p>
+                <p className="text-xs text-muted-foreground mt-1">Role text cleaned and structured</p>
               </div>
               <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90 md:rotate-0" />
               <div className="text-center p-4 border rounded-lg flex-1">
                 <Sparkles className="h-6 w-6 mx-auto mb-2 text-primary" />
-                <p className="font-medium">AI Analysis</p>
-                <p className="text-xs text-muted-foreground mt-1">Claude/GPT-4</p>
+                <p className="font-medium">AI Match</p>
+                <p className="text-xs text-muted-foreground mt-1">Score, strengths, gaps</p>
               </div>
               <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90 md:rotate-0" />
               <div className="text-center p-4 border rounded-lg flex-1">
                 <FileText className="h-6 w-6 mx-auto mb-2 text-primary" />
-                <p className="font-medium">Match Saved</p>
-                <p className="text-xs text-muted-foreground mt-1">job-matches collection</p>
+                <p className="font-medium">PDFs Ready</p>
+                <p className="text-xs text-muted-foreground mt-1">Resume & cover letter download</p>
               </div>
             </div>
           </CardContent>
@@ -735,11 +700,11 @@ export function HowItWorksPage() {
         <div className="grid md:grid-cols-3 gap-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Resilient Queue</CardTitle>
+              <CardTitle className="text-base">Stable Processing</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Generous processing timeouts and clear failure states surface issues for review. Retry
-              logic will return once the recovery path is battle-tested.
+              Generous timeouts and clear failure states surface issues for review. Retries stay
+              paused until a fix is verified.
             </CardContent>
           </Card>
 
@@ -748,17 +713,16 @@ export function HowItWorksPage() {
               <CardTitle className="text-base">Structured Logging</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Cloud Logging integration with request tracing, error tracking, and performance
-              monitoring
+              Every step is logged with context so issues can be traced quickly when needed.
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Type-Safe APIs</CardTitle>
+              <CardTitle className="text-base">Consistent Data</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Shared TypeScript types ensure consistency between frontend, backend, and worker
+              Shared schemas keep the web app, API, and processing in sync on the same fields.
             </CardContent>
           </Card>
         </div>
