@@ -231,7 +231,7 @@ def test_queue_scrape_end_to_end(temp_db):
             )
 
     class MockScoringEngine:
-        def score(self, extraction, title, description):
+        def score(self, extraction, job_title, job_description, company_data=None):
             return ScoreBreakdown(
                 base_score=50,
                 final_score=88,  # Match the DummyMatcher score

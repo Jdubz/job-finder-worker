@@ -166,6 +166,10 @@ export interface LocationConfig {
   hybridSameCityBonus: number
   /** User's city for hybrid matching */
   userCity?: string
+  /** Bonus for remote positions */
+  remoteBonus?: number
+  /** Penalty when relocation is required */
+  relocationPenalty?: number
 }
 
 /** Technology stack preferences */
@@ -194,6 +198,10 @@ export interface SalaryConfig {
   target: number | null
   /** Penalty per $10k below target */
   belowTargetPenalty: number
+  /** Bonus for positions that include equity */
+  equityBonus?: number
+  /** Penalty for contract positions */
+  contractPenalty?: number
 }
 
 /** Experience level preferences */
@@ -259,6 +267,48 @@ export interface JobExtractionResult {
   technologies: string[]
   /** Employment type */
   employmentType: EmploymentType
+
+  // Freshness fields
+  /** Days since job was posted */
+  daysOld: number | null
+  /** Whether the job appears to be a repost */
+  isRepost: boolean
+
+  // Location fields
+  /** Whether relocation is explicitly required */
+  relocationRequired: boolean
+
+  // Compensation fields
+  /** Whether compensation includes equity */
+  includesEquity: boolean
+  /** Whether position is contract */
+  isContract: boolean
+
+  // Seniority fields
+  /** Whether role includes people management */
+  isManagement: boolean
+  /** Whether role is a technical lead */
+  isLead: boolean
+
+  // Role fit signals
+  /** Backend/server-side focus */
+  isBackend: boolean
+  /** Frontend/UI focus */
+  isFrontend: boolean
+  /** Full-stack role */
+  isFullstack: boolean
+  /** DevOps/SRE/platform focus */
+  isDevopsSre: boolean
+  /** ML/AI/data science focus */
+  isMlAi: boolean
+  /** Data engineering focus */
+  isData: boolean
+  /** Security engineering focus */
+  isSecurity: boolean
+  /** Security clearance required */
+  requiresClearance: boolean
+  /** Consulting/agency role */
+  isConsulting: boolean
 }
 
 export interface SchedulerSettings {

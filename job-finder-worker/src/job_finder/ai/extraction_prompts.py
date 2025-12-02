@@ -7,39 +7,60 @@ def build_extraction_prompt(
     title: str,
     description: str,
     location: Optional[str] = None,
+    posted_date: Optional[str] = None,
 ) -> str:
     """
     Build prompt for extracting structured data from a job posting.
+
+    AI extracts DATA ONLY - no scoring or match calculations.
 
     Args:
         title: Job title
         description: Job description text
         location: Optional location string from job posting
+        posted_date: Optional posted date string
 
     Returns:
         Formatted prompt string for AI extraction
     """
     location_section = f"\nLocation: {location}" if location else ""
+    posted_section = f"\nPosted: {posted_date}" if posted_date else ""
 
     return f"""Extract structured information from this job posting. Return ONLY a valid JSON object.
 
-Job Title: {title}{location_section}
+Job Title: {title}{location_section}{posted_section}
 
 Job Description:
 {description[:4000]}
 
-Extract and return this exact JSON structure (use null for unknown values):
+Extract and return this exact JSON structure (use null for unknown values, false for unknown booleans):
 {{
   "seniority": "<junior|mid|senior|staff|lead|principal|unknown>",
   "workArrangement": "<remote|hybrid|onsite|unknown>",
   "timezone": <UTC offset number or null>,
   "city": "<city name or null>",
-  "salaryMin": <minimum salary as integer or null>,
-  "salaryMax": <maximum salary as integer or null>,
+  "salaryMin": <minimum annual salary as integer or null>,
+  "salaryMax": <maximum annual salary as integer or null>,
   "experienceMin": <minimum years required as integer or null>,
   "experienceMax": <maximum years required as integer or null>,
   "technologies": ["<tech1>", "<tech2>", ...],
-  "employmentType": "<full-time|part-time|contract|unknown>"
+  "employmentType": "<full-time|part-time|contract|unknown>",
+  "daysOld": <number of days since posting or null>,
+  "isRepost": <true if this appears to be a reposted job, false otherwise>,
+  "relocationRequired": <true if explicitly requires relocation, false otherwise>,
+  "includesEquity": <true if compensation includes equity/stock, false otherwise>,
+  "isContract": <true if contract/temporary position, false otherwise>,
+  "isManagement": <true if people management responsibilities, false otherwise>,
+  "isLead": <true if technical lead role, false otherwise>,
+  "isBackend": <true if backend/server-side focus, false otherwise>,
+  "isFrontend": <true if frontend/UI focus, false otherwise>,
+  "isFullstack": <true if full-stack role, false otherwise>,
+  "isDevopsSre": <true if DevOps/SRE/platform focus, false otherwise>,
+  "isMlAi": <true if ML/AI/data science focus, false otherwise>,
+  "isData": <true if data engineering focus, false otherwise>,
+  "isSecurity": <true if security engineering focus, false otherwise>,
+  "requiresClearance": <true if security clearance required, false otherwise>,
+  "isConsulting": <true if consulting/agency role, false otherwise>
 }}
 
 Rules:
@@ -68,13 +89,25 @@ Rules:
    - Normalize names (e.g., "React.js" -> "react", "Node" -> "node")
    - Lowercase all entries
 
-5. For timezone:
-   - "PST", "Pacific" -> -8
-   - "EST", "Eastern" -> -5
-   - "CST", "Central" -> -6
-   - "MST", "Mountain" -> -7
-   - "GMT", "UTC" -> 0
-   - If no timezone info, use null
+5. For timezone (based on location):
+   - US cities: "PST/Pacific" -> -8, "MST/Mountain" -> -7, "CST/Central" -> -6, "EST/Eastern" -> -5
+   - India -> +5.5
+   - UK/London -> 0
+   - Europe (Paris, Berlin, etc.) -> +1 or +2
+   - If no location/timezone info, use null
+
+6. Role fit signals - set true ONLY if clearly indicated:
+   - isBackend: server-side, API, database focus
+   - isFrontend: UI, React, CSS, user interface focus
+   - isFullstack: explicitly "full-stack" or both frontend and backend
+   - isDevopsSre: DevOps, SRE, infrastructure, platform engineering
+   - isMlAi: machine learning, AI, data science, ML engineer
+   - isData: data engineering, ETL, data pipelines
+   - isSecurity: security engineer, appsec, infosec
+   - requiresClearance: mentions security clearance, TS/SCI, secret clearance
+   - isConsulting: consulting firm, agency, client-facing delivery
+
+7. relocationRequired: ONLY true if explicitly states relocation is required. Generic phrases like "headquartered in SF" are NOT requirements.
 
 Return ONLY the JSON object, no explanation or markdown."""
 
@@ -99,4 +132,4 @@ Title: {title}
 Description: {desc_truncated}
 
 Return:
-{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<int or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"employmentType":"<full-time|part-time|contract|unknown>"}}"""
+{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"employmentType":"<full-time|part-time|contract|unknown>","daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"isBackend":false,"isFrontend":false,"isFullstack":false,"isDevopsSre":false,"isMlAi":false,"isData":false,"isSecurity":false,"requiresClearance":false,"isConsulting":false}}"""

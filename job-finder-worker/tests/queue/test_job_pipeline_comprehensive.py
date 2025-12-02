@@ -245,7 +245,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
     from job_finder.scoring.engine import ScoreBreakdown
 
     class MockScoringEngine:
-        def score(self, extraction, title, description):
+        def score(self, extraction, job_title, job_description, company_data=None):
             return ScoreBreakdown(
                 base_score=50,
                 final_score=85,
@@ -275,8 +275,10 @@ def test_job_pipeline_full_path(tmp_path: Path):
     final_item = queue_manager.get_item(item_id)
     assert final_item is not None
     assert final_item.status == QueueStatus.SUCCESS
-    assert final_item.pipeline_state
-    assert final_item.pipeline_state["match_result"]["match_score"] == 92
+    # Single-task pipeline stores results in scraped_data, not pipeline_state
+    assert final_item.scraped_data
+    # Per hybrid scoring migration: analysis_result contains { scoringResult, detailedAnalysis }
+    assert final_item.scraped_data["analysis_result"]["detailedAnalysis"]["match_score"] == 92
 
     # Verify job_listing was created
     with sqlite3.connect(db_path) as conn:

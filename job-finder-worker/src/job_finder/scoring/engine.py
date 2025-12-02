@@ -89,6 +89,7 @@ class ScoringEngine:
         extraction: JobExtractionResult,
         job_title: str,
         job_description: str,
+        company_data: Optional[Dict[str, Any]] = None,
     ) -> ScoreBreakdown:
         """
         Calculate match score from extracted data and config.
@@ -97,6 +98,7 @@ class ScoringEngine:
             extraction: AI-extracted job data
             job_title: Original job title
             job_description: Original job description
+            company_data: Optional company data for company signal scoring
 
         Returns:
             ScoreBreakdown with final score and adjustment details
@@ -153,8 +155,13 @@ class ScoringEngine:
                 rejection_reason=f"Rejected technology detected: {tech_result.get('rejected_tech')}",
             )
 
-        # 4. Salary scoring
-        salary_result = self._score_salary(extraction.salary_min, extraction.salary_max)
+        # 4. Salary scoring (including equity and contract status)
+        salary_result = self._score_salary(
+            extraction.salary_min,
+            extraction.salary_max,
+            includes_equity=extraction.includes_equity,
+            is_contract=extraction.is_contract,
+        )
         score += salary_result["points"]
         if salary_result.get("reason"):
             adjustments.append(salary_result["reason"])
@@ -180,6 +187,33 @@ class ScoringEngine:
         score += skill_result["points"]
         if skill_result.get("reason"):
             adjustments.append(skill_result["reason"])
+
+        # 7. Freshness scoring (from extracted days_old)
+        freshness_result = self._score_freshness(extraction)
+        score += freshness_result["points"]
+        if freshness_result.get("reason"):
+            adjustments.append(freshness_result["reason"])
+
+        # 8. Role fit scoring (from extracted role signals)
+        role_fit_result = self._score_role_fit(extraction)
+        score += role_fit_result["points"]
+        adjustments.extend(role_fit_result.get("reasons", []))
+
+        # Hard reject on role fit (clearance required)
+        if role_fit_result.get("hard_reject"):
+            return ScoreBreakdown(
+                base_score=50,
+                final_score=0,
+                adjustments=adjustments,
+                passed=False,
+                rejection_reason=role_fit_result.get("rejection_reason", "Role fit requirements not met"),
+            )
+
+        # 9. Company signals scoring (from company data)
+        if company_data:
+            company_result = self._score_company_signals(company_data)
+            score += company_result["points"]
+            adjustments.extend(company_result.get("reasons", []))
 
         # Clamp to 0-100
         final_score = max(0, min(100, score))
@@ -233,11 +267,31 @@ class ScoringEngine:
         return {"points": 0, "reason": None}
 
     def _score_location(self, extraction: JobExtractionResult) -> Dict[str, Any]:
-        """Score based on location/remote/timezone."""
+        """Score based on location/remote/timezone/relocation."""
         work_arrangement = extraction.work_arrangement
         allow_remote = self.location_config.get("allowRemote", True)
         allow_hybrid = self.location_config.get("allowHybrid", True)
         allow_onsite = self.location_config.get("allowOnsite", False)
+        relocation_penalty = self.location_config.get("relocationPenalty", -50)
+
+        # Check relocation requirement first
+        if extraction.relocation_required:
+            # Relocation required - apply penalty or hard reject
+            if relocation_penalty <= -100:
+                return {
+                    "points": 0,
+                    "hard_reject": True,
+                    "rejection_reason": "Relocation required",
+                }
+            # Apply relocation penalty and continue with timezone scoring
+            base_result = self._score_timezone(extraction, is_hybrid=False)
+            base_result["points"] = base_result.get("points", 0) + relocation_penalty
+            reloc_msg = f"Relocation required ({relocation_penalty:+d})"
+            if base_result.get("reason"):
+                base_result["reason"] = f"{base_result['reason']}, {reloc_msg}"
+            else:
+                base_result["reason"] = reloc_msg
+            return base_result
 
         # Check work arrangement compatibility
         if work_arrangement == "remote":
@@ -248,7 +302,8 @@ class ScoringEngine:
                     "rejection_reason": "Remote work not allowed per config",
                 }
             # Remote is allowed - bonus for remote-friendly
-            return {"points": 5, "reason": "Remote position (+5)"}
+            remote_bonus = self.location_config.get("remoteBonus", 5)
+            return {"points": remote_bonus, "reason": f"Remote position ({remote_bonus:+d})"}
 
         if work_arrangement == "hybrid":
             if not allow_hybrid:
@@ -357,42 +412,66 @@ class ScoringEngine:
 
         return {"points": points, "reasons": reasons}
 
-    def _score_salary(self, min_salary: Optional[int], max_salary: Optional[int]) -> Dict[str, Any]:
-        """Score based on salary range."""
+    def _score_salary(
+        self,
+        min_salary: Optional[int],
+        max_salary: Optional[int],
+        includes_equity: bool = False,
+        is_contract: bool = False,
+    ) -> Dict[str, Any]:
+        """Score based on salary range, equity, and contract status."""
         config_min = self.salary_config.get("minimum")
         config_target = self.salary_config.get("target")
         below_target_penalty = self.salary_config.get("belowTargetPenalty", 2)
+        equity_bonus = self.salary_config.get("equityBonus", 5)
+        contract_penalty = self.salary_config.get("contractPenalty", -15)
+
+        points = 0
+        reasons: List[str] = []
 
         # Use max salary if available, otherwise min
         job_salary = max_salary or min_salary
 
         if job_salary is None:
             # No salary info - small penalty for uncertainty
-            return {"points": -5, "reason": "No salary info (-5)"}
+            points -= 5
+            reasons.append("No salary info (-5)")
+        else:
+            # Check minimum salary floor (hard reject)
+            if config_min and job_salary < config_min:
+                return {
+                    "points": 0,
+                    "hard_reject": True,
+                    "reason": f"Salary ${job_salary:,} below minimum ${config_min:,}",
+                }
 
-        # Check minimum salary floor (hard reject)
-        if config_min and job_salary < config_min:
-            return {
-                "points": 0,
-                "hard_reject": True,
-                "reason": f"Salary ${job_salary:,} below minimum ${config_min:,}",
-            }
+            # Check against target salary
+            if config_target and job_salary < config_target:
+                diff = config_target - job_salary
+                penalty_units = diff // 10000  # Per $10k below target
+                penalty = -int(penalty_units * below_target_penalty)
+                penalty = max(penalty, -20)  # Cap penalty at -20
+                points += penalty
+                reasons.append(f"Salary ${job_salary:,} below target ${config_target:,} ({penalty:+d})")
+            elif config_target:
+                # At or above target - bonus
+                points += 5
+                reasons.append(f"Salary ${job_salary:,} meets target (+5)")
 
-        # Check against target salary
-        if config_target and job_salary < config_target:
-            diff = config_target - job_salary
-            penalty_units = diff // 10000  # Per $10k below target
-            penalty = -int(penalty_units * below_target_penalty)
-            return {
-                "points": max(penalty, -20),  # Cap penalty at -20
-                "reason": f"Salary ${job_salary:,} below target ${config_target:,} ({penalty:+d})",
-            }
+        # Equity bonus
+        if includes_equity and equity_bonus:
+            points += equity_bonus
+            reasons.append(f"Includes equity ({equity_bonus:+d})")
 
-        # At or above target - bonus
-        if config_target:
-            return {"points": 5, "reason": f"Salary ${job_salary:,} meets target (+5)"}
+        # Contract penalty
+        if is_contract and contract_penalty:
+            points += contract_penalty
+            reasons.append(f"Contract position ({contract_penalty:+d})")
 
-        return {"points": 0, "reason": None}
+        return {
+            "points": points,
+            "reason": ", ".join(reasons) if reasons else None,
+        }
 
     def _score_experience(self, min_exp: Optional[int], max_exp: Optional[int]) -> Dict[str, Any]:
         """Score based on experience requirements."""
@@ -458,3 +537,212 @@ class ScoringEngine:
             "points": bonus,
             "reason": f"Matched {match_count} user skills ({bonus:+d})",
         }
+
+    def _score_freshness(self, extraction: JobExtractionResult) -> Dict[str, Any]:
+        """
+        Score based on job freshness (days since posting).
+
+        Configurable thresholds from scoring-config.freshness:
+        - freshBonusDays: Days threshold for fresh bonus (default: 2)
+        - freshBonus: Points bonus for fresh jobs (default: 10)
+        - staleThresholdDays: Days threshold for stale penalty (default: 7)
+        - stalePenalty: Points penalty for stale jobs (default: -10)
+        - veryStaleDays: Days threshold for very stale penalty (default: 14)
+        - veryStalePenalty: Points penalty for very stale jobs (default: -20)
+        """
+        freshness_config = self.config.get("freshness", {})
+
+        # Get thresholds from config with defaults
+        fresh_bonus_days = freshness_config.get("freshBonusDays", 2)
+        fresh_bonus = freshness_config.get("freshBonus", 10)
+        stale_threshold_days = freshness_config.get("staleThresholdDays", 7)
+        stale_penalty = freshness_config.get("stalePenalty", -10)
+        very_stale_days = freshness_config.get("veryStaleDays", 14)
+        very_stale_penalty = freshness_config.get("veryStalePenalty", -20)
+        repost_penalty = freshness_config.get("repostPenalty", -5)
+
+        days_old = extraction.days_old
+        is_repost = extraction.is_repost
+
+        if days_old is None:
+            # No freshness info - neutral
+            return {"points": 0, "reason": None}
+
+        points = 0
+        reason = None
+
+        if days_old <= fresh_bonus_days:
+            points = fresh_bonus
+            reason = f"Fresh job ({days_old}d old) ({points:+d})"
+        elif days_old >= very_stale_days:
+            points = very_stale_penalty
+            reason = f"Very stale job ({days_old}d old) ({points:+d})"
+        elif days_old >= stale_threshold_days:
+            points = stale_penalty
+            reason = f"Stale job ({days_old}d old) ({points:+d})"
+
+        # Additional penalty for reposts
+        if is_repost:
+            points += repost_penalty
+            if reason:
+                reason = f"{reason}, reposted ({repost_penalty:+d})"
+            else:
+                reason = f"Reposted job ({repost_penalty:+d})"
+
+        return {"points": points, "reason": reason}
+
+    def _score_role_fit(self, extraction: JobExtractionResult) -> Dict[str, Any]:
+        """
+        Score based on role fit signals (backend, ML/AI, DevOps, etc.).
+
+        Configurable bonuses/penalties from scoring-config.roleFit:
+        - backendBonus: Bonus for backend roles (default: 5)
+        - mlAiBonus: Bonus for ML/AI roles (default: 10)
+        - devopsSreBonus: Bonus for DevOps/SRE roles (default: 5)
+        - dataBonus: Bonus for data engineering roles (default: 5)
+        - securityBonus: Bonus for security roles (default: 3)
+        - frontendPenalty: Penalty for frontend-only roles (default: -5)
+        - consultingPenalty: Penalty for consulting roles (default: -10)
+        - clearancePenalty: Penalty for clearance-required roles (default: -100)
+        - managementPenalty: Penalty for management roles (default: -10)
+        """
+        role_fit_config = self.config.get("roleFit", {})
+
+        # Get bonuses/penalties from config with defaults
+        backend_bonus = role_fit_config.get("backendBonus", 5)
+        ml_ai_bonus = role_fit_config.get("mlAiBonus", 10)
+        devops_sre_bonus = role_fit_config.get("devopsSreBonus", 5)
+        data_bonus = role_fit_config.get("dataBonus", 5)
+        security_bonus = role_fit_config.get("securityBonus", 3)
+        frontend_penalty = role_fit_config.get("frontendPenalty", -5)
+        consulting_penalty = role_fit_config.get("consultingPenalty", -10)
+        clearance_penalty = role_fit_config.get("clearancePenalty", -100)
+        management_penalty = role_fit_config.get("managementPenalty", -10)
+        lead_bonus = role_fit_config.get("leadBonus", 3)
+
+        points = 0
+        reasons: List[str] = []
+
+        # Check for clearance requirement (potential hard reject)
+        if extraction.requires_clearance:
+            if clearance_penalty <= -100:
+                return {
+                    "points": clearance_penalty,
+                    "reasons": [f"Security clearance required ({clearance_penalty:+d})"],
+                    "hard_reject": True,
+                    "rejection_reason": "Security clearance required",
+                }
+            points += clearance_penalty
+            reasons.append(f"Clearance required ({clearance_penalty:+d})")
+
+        # Role type bonuses
+        if extraction.is_backend and backend_bonus:
+            points += backend_bonus
+            reasons.append(f"Backend role ({backend_bonus:+d})")
+
+        if extraction.is_ml_ai and ml_ai_bonus:
+            points += ml_ai_bonus
+            reasons.append(f"ML/AI role ({ml_ai_bonus:+d})")
+
+        if extraction.is_devops_sre and devops_sre_bonus:
+            points += devops_sre_bonus
+            reasons.append(f"DevOps/SRE role ({devops_sre_bonus:+d})")
+
+        if extraction.is_data and data_bonus:
+            points += data_bonus
+            reasons.append(f"Data engineering role ({data_bonus:+d})")
+
+        if extraction.is_security and security_bonus:
+            points += security_bonus
+            reasons.append(f"Security role ({security_bonus:+d})")
+
+        if extraction.is_lead and lead_bonus:
+            points += lead_bonus
+            reasons.append(f"Technical lead role ({lead_bonus:+d})")
+
+        # Penalties
+        if extraction.is_frontend and not extraction.is_fullstack and frontend_penalty:
+            points += frontend_penalty
+            reasons.append(f"Frontend-only role ({frontend_penalty:+d})")
+
+        if extraction.is_consulting and consulting_penalty:
+            points += consulting_penalty
+            reasons.append(f"Consulting role ({consulting_penalty:+d})")
+
+        if extraction.is_management and management_penalty:
+            points += management_penalty
+            reasons.append(f"Management role ({management_penalty:+d})")
+
+        return {"points": points, "reasons": reasons}
+
+    def _score_company_signals(self, company_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Score based on company signals from enriched company data.
+
+        Company signals include:
+        - Portland office presence
+        - Remote-first culture
+        - AI/ML focus
+        - Company size
+        """
+        company_config = self.config.get("company", {})
+        points = 0
+        reasons: List[str] = []
+
+        # Extract relevant company fields
+        description = (company_data.get("description") or "").lower()
+        headquarters = (company_data.get("headquarters") or "").lower()
+        locations = company_data.get("locations") or []
+        tech_stack = company_data.get("tech_stack") or []
+        employee_count = company_data.get("employee_count")
+        is_remote_first = company_data.get("is_remote_first", False)
+
+        # Normalize locations to lowercase strings
+        locations_lower = [str(loc).lower() for loc in locations if loc]
+
+        # 1. Portland office bonus
+        portland_bonus = company_config.get("portlandOfficeBonus", 15)
+        if portland_bonus:
+            has_portland = any(
+                "portland" in loc for loc in locations_lower
+            ) or "portland" in headquarters
+            if has_portland:
+                points += portland_bonus
+                reasons.append(f"Portland office ({portland_bonus:+d})")
+
+        # 2. Remote-first bonus
+        remote_first_bonus = company_config.get("remoteFirstBonus", 10)
+        if remote_first_bonus and is_remote_first:
+            points += remote_first_bonus
+            reasons.append(f"Remote-first company ({remote_first_bonus:+d})")
+
+        # 3. AI/ML focus bonus
+        ai_ml_bonus = company_config.get("aiMlFocusBonus", 10)
+        if ai_ml_bonus:
+            ai_keywords = ["machine learning", "artificial intelligence", "ai", "ml", "deep learning", "llm", "generative ai"]
+            has_ai_focus = any(kw in description for kw in ai_keywords) or any(
+                any(kw in str(t).lower() for kw in ["pytorch", "tensorflow", "ml", "ai"])
+                for t in tech_stack
+            )
+            if has_ai_focus:
+                points += ai_ml_bonus
+                reasons.append(f"AI/ML focus ({ai_ml_bonus:+d})")
+
+        # 4. Company size scoring
+        if employee_count:
+            large_company_bonus = company_config.get("largeCompanyBonus", 5)
+            small_company_penalty = company_config.get("smallCompanyPenalty", -5)
+            startup_bonus = company_config.get("startupBonus", 0)
+
+            if employee_count >= 1000 and large_company_bonus:
+                points += large_company_bonus
+                reasons.append(f"Large company ({large_company_bonus:+d})")
+            elif employee_count <= 50:
+                if startup_bonus:
+                    points += startup_bonus
+                    reasons.append(f"Startup ({startup_bonus:+d})")
+                elif small_company_penalty:
+                    points += small_company_penalty
+                    reasons.append(f"Small company ({small_company_penalty:+d})")
+
+        return {"points": points, "reasons": reasons}

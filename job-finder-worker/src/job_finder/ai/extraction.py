@@ -27,8 +27,10 @@ class JobExtractionResult:
     Extracted semantic data from a job posting.
 
     Mirrors the TypeScript JobExtractionResult interface in shared/config.types.ts.
+    AI extracts DATA ONLY - no scoring or match calculations.
     """
 
+    # Core fields
     seniority: SeniorityLevel = "unknown"
     work_arrangement: WorkArrangement = "unknown"
     timezone: Optional[float] = None
@@ -39,6 +41,32 @@ class JobExtractionResult:
     experience_max: Optional[int] = None
     technologies: List[str] = field(default_factory=list)
     employment_type: EmploymentType = "unknown"
+
+    # Freshness fields (for freshness scoring)
+    days_old: Optional[int] = None
+    is_repost: bool = False
+
+    # Location fields (for location scoring)
+    relocation_required: bool = False
+
+    # Compensation fields (for compensation scoring)
+    includes_equity: bool = False
+    is_contract: bool = False
+
+    # Seniority fields (for seniority scoring)
+    is_management: bool = False
+    is_lead: bool = False
+
+    # Role fit signals (for role fit scoring)
+    is_backend: bool = False
+    is_frontend: bool = False
+    is_fullstack: bool = False
+    is_devops_sre: bool = False
+    is_ml_ai: bool = False
+    is_data: bool = False
+    is_security: bool = False
+    requires_clearance: bool = False
+    is_consulting: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -53,6 +81,27 @@ class JobExtractionResult:
             "experienceMax": self.experience_max,
             "technologies": self.technologies,
             "employmentType": self.employment_type,
+            # Freshness
+            "daysOld": self.days_old,
+            "isRepost": self.is_repost,
+            # Location
+            "relocationRequired": self.relocation_required,
+            # Compensation
+            "includesEquity": self.includes_equity,
+            "isContract": self.is_contract,
+            # Seniority
+            "isManagement": self.is_management,
+            "isLead": self.is_lead,
+            # Role fit signals
+            "isBackend": self.is_backend,
+            "isFrontend": self.is_frontend,
+            "isFullstack": self.is_fullstack,
+            "isDevopsSre": self.is_devops_sre,
+            "isMlAi": self.is_ml_ai,
+            "isData": self.is_data,
+            "isSecurity": self.is_security,
+            "requiresClearance": self.requires_clearance,
+            "isConsulting": self.is_consulting,
         }
 
     @classmethod
@@ -73,6 +122,27 @@ class JobExtractionResult:
             employment_type=_validate_employment_type(
                 data.get("employmentType") or data.get("employment_type")
             ),
+            # Freshness
+            days_old=_safe_int(data.get("daysOld") or data.get("days_old")),
+            is_repost=bool(data.get("isRepost") or data.get("is_repost")),
+            # Location
+            relocation_required=bool(data.get("relocationRequired") or data.get("relocation_required")),
+            # Compensation
+            includes_equity=bool(data.get("includesEquity") or data.get("includes_equity")),
+            is_contract=bool(data.get("isContract") or data.get("is_contract")),
+            # Seniority
+            is_management=bool(data.get("isManagement") or data.get("is_management")),
+            is_lead=bool(data.get("isLead") or data.get("is_lead")),
+            # Role fit signals
+            is_backend=bool(data.get("isBackend") or data.get("is_backend")),
+            is_frontend=bool(data.get("isFrontend") or data.get("is_frontend")),
+            is_fullstack=bool(data.get("isFullstack") or data.get("is_fullstack")),
+            is_devops_sre=bool(data.get("isDevopsSre") or data.get("is_devops_sre")),
+            is_ml_ai=bool(data.get("isMlAi") or data.get("is_ml_ai")),
+            is_data=bool(data.get("isData") or data.get("is_data")),
+            is_security=bool(data.get("isSecurity") or data.get("is_security")),
+            requires_clearance=bool(data.get("requiresClearance") or data.get("requires_clearance")),
+            is_consulting=bool(data.get("isConsulting") or data.get("is_consulting")),
         )
 
 
