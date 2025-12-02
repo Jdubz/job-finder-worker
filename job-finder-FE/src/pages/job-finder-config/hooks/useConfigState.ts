@@ -65,13 +65,16 @@ export function useConfigState() {
       setTitleFilter(titleFilterData)
       setOriginalTitleFilter(deepClone(titleFilterData))
 
-      // MatchPolicy is required - fail if not found
+      // MatchPolicy may not exist yet - set to null if not found (UI will show setup prompt)
       const matchPolicyData = map["match-policy"] as MatchPolicy | undefined
-      if (!matchPolicyData) {
-        throw new Error("match-policy config not found - please configure it in the database")
+      if (matchPolicyData) {
+        setMatchPolicy(deepClone(matchPolicyData))
+        setOriginalMatchPolicy(deepClone(matchPolicyData))
+      } else {
+        // Keep as null - ScoringConfigTab will show setup instructions
+        setMatchPolicy(null)
+        setOriginalMatchPolicy(null)
       }
-      setMatchPolicy(deepClone(matchPolicyData))
-      setOriginalMatchPolicy(deepClone(matchPolicyData))
 
       const queue = deepClone((map["queue-settings"] as QueueSettings) ?? DEFAULT_QUEUE_SETTINGS)
       setQueueSettingsState(queue)

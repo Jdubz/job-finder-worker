@@ -18,7 +18,7 @@ test.describe("Smoke navigation", () => {
     ["/content-items", async (page) => {
       await expect(page.getByRole("heading", { name: /Career Story/i, level: 1 })).toBeVisible({ timeout: 15000 })
     }],
-    ["/owner/config", async (page) => {
+    ["/job-finder-config", async (page) => {
       await expect(page.getByRole("heading", { name: /Configuration/i })).toBeVisible({ timeout: 15000 })
     }],
   ]

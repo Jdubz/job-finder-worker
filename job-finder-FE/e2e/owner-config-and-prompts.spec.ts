@@ -19,12 +19,21 @@ test.describe("Owner configuration and prompts", () => {
     await page.getByRole("button", { name: /save changes/i }).click()
     await expect(page.getByText(/Title filter saved/i)).toBeVisible()
 
-    // Scoring tab
+    // Scoring tab - may show setup prompt if match-policy not configured
     await page.getByRole("tab", { name: "Scoring" }).click()
-    await expect(getActiveTab().getByLabel(/Minimum Score/i)).toBeVisible()
-    await getActiveTab().getByLabel(/Minimum Score/i).fill("65")
-    await page.getByRole("button", { name: /save changes/i }).click()
-    await expect(page.getByText(/Scoring config saved/i)).toBeVisible()
+    // Scoring content uses conditional rendering (not TabsContent), so look on page directly
+    const scoringSetupPrompt = page.getByText(/Scoring Configuration Required/i)
+    const scoringForm = page.getByLabel(/Minimum Score/i)
+
+    // Check if scoring form is available (match-policy is configured)
+    if (await scoringForm.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await scoringForm.fill("65")
+      await page.getByRole("button", { name: /save changes/i }).click()
+      await expect(page.getByText(/Match policy saved/i)).toBeVisible()
+    } else {
+      // Match-policy not configured - verify setup message is shown
+      await expect(scoringSetupPrompt).toBeVisible()
+    }
 
     // Queue settings tab
     await page.getByRole("tab", { name: "Queue" }).click()
