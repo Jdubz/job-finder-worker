@@ -21,8 +21,8 @@ import type {
   AISettings,
 } from "./queue.types"
 import type {
-  PrefilterPolicy,
-  MatchPolicy,
+  TitleFilterConfig,
+  ScoringConfig,
   SchedulerSettings,
   AIProviderType,
   AIInterfaceType,
@@ -217,71 +217,104 @@ export function isAISettings(value: unknown): value is AISettings {
 
 }
 
-export function isPrefilterPolicy(value: unknown): value is PrefilterPolicy {
-  if (!isObject(value)) return false;
-  const v = value as Partial<PrefilterPolicy>;
+/**
+ * Type guard for TitleFilterConfig
+ */
+export function isTitleFilterConfig(value: unknown): value is TitleFilterConfig {
+  if (!isObject(value)) return false
+  const v = value as Partial<TitleFilterConfig>
 
-  if (!isObject(v.stopList)) return false;
-  const stopList = v.stopList as any;
-  if (!isStringArray(stopList.excludedCompanies) || !isStringArray(stopList.excludedKeywords) || !isStringArray(stopList.excludedDomains)) {
-    return false;
-  }
-
-  if (!isObject(v.strikeEngine)) return false;
-  const strikeEngine = v.strikeEngine as any;
-  if (
-    typeof strikeEngine.enabled !== 'boolean' ||
-    typeof strikeEngine.strikeThreshold !== 'number' ||
-    !isObject(strikeEngine.hardRejections) ||
-    !isObject(strikeEngine.remotePolicy) ||
-    !isObject(strikeEngine.salaryStrike) ||
-    !isObject(strikeEngine.experienceStrike) ||
-    !isObject(strikeEngine.qualityStrikes) ||
-    !isObject(strikeEngine.ageStrike)
-  ) {
-    return false;
-  }
-
-  if (!isObject(v.technologyRanks)) return false;
-  const techRanks = v.technologyRanks as any;
-  if (!isObject(techRanks.technologies)) {
-    return false;
-  }
-  
-  return true;
+  return isStringArray(v.requiredKeywords) && isStringArray(v.excludedKeywords)
 }
 
-export function isMatchPolicy(value: unknown): value is MatchPolicy {
-  if (!isObject(value)) return false;
-  const v = value as Partial<MatchPolicy>;
+/**
+ * Type guard for ScoringConfig
+ */
+export function isScoringConfig(value: unknown): value is ScoringConfig {
+  if (!isObject(value)) return false
+  const v = value as Partial<ScoringConfig>
 
-  if (!isObject(v.jobMatch)) return false;
-  const jobMatch = v.jobMatch as any;
+  // Check minScore
+  if (typeof v.minScore !== "number") return false
+
+  // Check weights
+  if (!isObject(v.weights)) return false
+  const weights = v.weights as any
   if (
-    typeof jobMatch.minMatchScore !== 'number' ||
-    typeof jobMatch.portlandOfficeBonus !== 'number' ||
-    typeof jobMatch.userTimezone !== 'number' ||
-    typeof jobMatch.preferLargeCompanies !== 'boolean' ||
-    typeof jobMatch.generateIntakeData !== 'boolean'
+    typeof weights.skillMatch !== "number" ||
+    typeof weights.experienceMatch !== "number" ||
+    typeof weights.seniorityMatch !== "number"
   ) {
-    return false;
+    return false
   }
 
-  if (!isObject(v.companyWeights)) return false;
-
-  if (!isObject(v.dealbreakers)) return false;
-  const dealbreakers = v.dealbreakers as any;
+  // Check seniority
+  if (!isObject(v.seniority)) return false
+  const seniority = v.seniority as any
   if (
-    typeof dealbreakers.maxTimezoneDiffHours !== 'number' ||
-    typeof dealbreakers.perHourTimezonePenalty !== 'number' ||
-    typeof dealbreakers.hardTimezonePenalty !== 'number' ||
-    typeof dealbreakers.requireRemote !== 'boolean' ||
-    typeof dealbreakers.allowHybridInTimezone !== 'boolean'
+    !isStringArray(seniority.preferred) ||
+    !isStringArray(seniority.acceptable) ||
+    !isStringArray(seniority.rejected) ||
+    typeof seniority.preferredBonus !== "number" ||
+    typeof seniority.acceptablePenalty !== "number" ||
+    typeof seniority.rejectedPenalty !== "number"
   ) {
-    return false;
+    return false
   }
-  
-  return true;
+
+  // Check location
+  if (!isObject(v.location)) return false
+  const location = v.location as any
+  if (
+    typeof location.allowRemote !== "boolean" ||
+    typeof location.allowHybrid !== "boolean" ||
+    typeof location.allowOnsite !== "boolean" ||
+    typeof location.userTimezone !== "number" ||
+    typeof location.maxTimezoneDiffHours !== "number" ||
+    typeof location.perHourPenalty !== "number" ||
+    typeof location.hybridSameCityBonus !== "number"
+  ) {
+    return false
+  }
+
+  // Check technology
+  if (!isObject(v.technology)) return false
+  const technology = v.technology as any
+  if (
+    !isStringArray(technology.required) ||
+    !isStringArray(technology.preferred) ||
+    !isStringArray(technology.disliked) ||
+    !isStringArray(technology.rejected) ||
+    typeof technology.requiredBonus !== "number" ||
+    typeof technology.preferredBonus !== "number" ||
+    typeof technology.dislikedPenalty !== "number"
+  ) {
+    return false
+  }
+
+  // Check salary
+  if (!isObject(v.salary)) return false
+  const salary = v.salary as any
+  if (
+    (salary.minimum !== null && typeof salary.minimum !== "number") ||
+    (salary.target !== null && typeof salary.target !== "number") ||
+    typeof salary.belowTargetPenalty !== "number"
+  ) {
+    return false
+  }
+
+  // Check experience
+  if (!isObject(v.experience)) return false
+  const experience = v.experience as any
+  if (
+    typeof experience.userYears !== "number" ||
+    typeof experience.maxRequired !== "number" ||
+    typeof experience.overqualifiedPenalty !== "number"
+  ) {
+    return false
+  }
+
+  return true
 }
 
 export function isSchedulerSettings(value: unknown): value is SchedulerSettings {

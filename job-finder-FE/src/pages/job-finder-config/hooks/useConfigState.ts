@@ -2,16 +2,16 @@ import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { configClient } from "@/api/config-client"
 import {
-  DEFAULT_PREFILTER_POLICY,
-  DEFAULT_MATCH_POLICY,
+  DEFAULT_TITLE_FILTER,
+  DEFAULT_SCORING_CONFIG,
   DEFAULT_QUEUE_SETTINGS,
   DEFAULT_AI_SETTINGS,
   DEFAULT_SCHEDULER_SETTINGS,
   DEFAULT_PERSONAL_INFO,
 } from "@shared/types"
 import type {
-  PrefilterPolicy,
-  MatchPolicy,
+  TitleFilterConfig,
+  ScoringConfig,
   QueueSettings,
   AISettings,
   SchedulerSettings,
@@ -27,11 +27,11 @@ export function useConfigState() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  const [prefilterPolicy, setPrefilterPolicy] = useState<PrefilterPolicy>(DEFAULT_PREFILTER_POLICY)
-  const [originalPrefilter, setOriginalPrefilter] = useState<PrefilterPolicy>(DEFAULT_PREFILTER_POLICY)
+  const [titleFilter, setTitleFilter] = useState<TitleFilterConfig>(DEFAULT_TITLE_FILTER)
+  const [originalTitleFilter, setOriginalTitleFilter] = useState<TitleFilterConfig>(DEFAULT_TITLE_FILTER)
 
-  const [matchPolicy, setMatchPolicy] = useState<MatchPolicy>(DEFAULT_MATCH_POLICY)
-  const [originalMatch, setOriginalMatch] = useState<MatchPolicy>(DEFAULT_MATCH_POLICY)
+  const [scoringConfig, setScoringConfig] = useState<ScoringConfig>(DEFAULT_SCORING_CONFIG)
+  const [originalScoringConfig, setOriginalScoringConfig] = useState<ScoringConfig>(DEFAULT_SCORING_CONFIG)
 
   const [queueSettings, setQueueSettingsState] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
   const [originalQueue, setOriginalQueue] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
@@ -61,13 +61,13 @@ export function useConfigState() {
         return acc
       }, {})
 
-      const prefilter = deepClone((map["prefilter-policy"] as PrefilterPolicy) ?? DEFAULT_PREFILTER_POLICY)
-      setPrefilterPolicy(prefilter)
-      setOriginalPrefilter(deepClone(prefilter))
+      const titleFilterData = deepClone((map["title-filter"] as TitleFilterConfig) ?? DEFAULT_TITLE_FILTER)
+      setTitleFilter(titleFilterData)
+      setOriginalTitleFilter(deepClone(titleFilterData))
 
-      const match = deepClone((map["match-policy"] as MatchPolicy) ?? DEFAULT_MATCH_POLICY)
-      setMatchPolicy(match)
-      setOriginalMatch(deepClone(match))
+      const scoringConfigData = deepClone((map["scoring-config"] as ScoringConfig) ?? DEFAULT_SCORING_CONFIG)
+      setScoringConfig(scoringConfigData)
+      setOriginalScoringConfig(deepClone(scoringConfigData))
 
       const queue = deepClone((map["queue-settings"] as QueueSettings) ?? DEFAULT_QUEUE_SETTINGS)
       setQueueSettingsState(queue)
@@ -97,33 +97,33 @@ export function useConfigState() {
     loadAll()
   }, [loadAll])
 
-  const handleSavePrefilter = async (policyOverride?: PrefilterPolicy) => {
+  const handleSaveTitleFilter = async (configOverride?: TitleFilterConfig) => {
     setIsSaving(true)
     setError(null)
-    const payload = deepClone(policyOverride ?? prefilterPolicy)
+    const payload = deepClone(configOverride ?? titleFilter)
     try {
-      await configClient.updatePrefilterPolicy(payload)
-      setPrefilterPolicy(payload)
-      setOriginalPrefilter(deepClone(payload))
-      setSuccess("Prefilter policy saved")
+      await configClient.updateTitleFilter(payload)
+      setTitleFilter(payload)
+      setOriginalTitleFilter(deepClone(payload))
+      setSuccess("Title filter saved")
     } catch (_err) {
-      setError("Failed to save prefilter policy")
+      setError("Failed to save title filter")
     } finally {
       setIsSaving(false)
     }
   }
 
-  const handleSaveMatch = async (policyOverride?: MatchPolicy) => {
+  const handleSaveScoringConfig = async (configOverride?: ScoringConfig) => {
     setIsSaving(true)
     setError(null)
-    const payload = deepClone(policyOverride ?? matchPolicy)
+    const payload = deepClone(configOverride ?? scoringConfig)
     try {
-      await configClient.updateMatchPolicy(payload)
-      setMatchPolicy(payload)
-      setOriginalMatch(deepClone(payload))
-      setSuccess("Match policy saved")
+      await configClient.updateScoringConfig(payload)
+      setScoringConfig(payload)
+      setOriginalScoringConfig(deepClone(payload))
+      setSuccess("Scoring config saved")
     } catch (_err) {
-      setError("Failed to save match policy")
+      setError("Failed to save scoring config")
     } finally {
       setIsSaving(false)
     }
@@ -217,16 +217,16 @@ export function useConfigState() {
     }))
   }
 
-  const resetPrefilter = () => {
-    const resetValue = deepClone(originalPrefilter)
-    setPrefilterPolicy(resetValue)
+  const resetTitleFilter = () => {
+    const resetValue = deepClone(originalTitleFilter)
+    setTitleFilter(resetValue)
     setSuccess(null)
     return resetValue
   }
 
-  const resetMatch = () => {
-    const resetValue = deepClone(originalMatch)
-    setMatchPolicy(resetValue)
+  const resetScoringConfig = () => {
+    const resetValue = deepClone(originalScoringConfig)
+    setScoringConfig(resetValue)
     setSuccess(null)
     return resetValue
   }
@@ -257,16 +257,16 @@ export function useConfigState() {
     isSaving,
     error,
     success,
-    prefilterPolicy,
-    setPrefilterPolicy,
-    hasPrefilterChanges: stableStringify(prefilterPolicy) !== stableStringify(originalPrefilter),
-    handleSavePrefilter,
-    resetPrefilter,
-    matchPolicy,
-    setMatchPolicy,
-    hasMatchChanges: stableStringify(matchPolicy) !== stableStringify(originalMatch),
-    handleSaveMatch,
-    resetMatch,
+    titleFilter,
+    setTitleFilter,
+    hasTitleFilterChanges: stableStringify(titleFilter) !== stableStringify(originalTitleFilter),
+    handleSaveTitleFilter,
+    resetTitleFilter,
+    scoringConfig,
+    setScoringConfig,
+    hasScoringConfigChanges: stableStringify(scoringConfig) !== stableStringify(originalScoringConfig),
+    handleSaveScoringConfig,
+    resetScoringConfig,
 
     queueSettings,
     setQueueSettings,

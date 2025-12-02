@@ -16,11 +16,13 @@ import time
 from typing import Any, Dict, Optional, cast
 from urllib.parse import urlparse, quote_plus
 
+from job_finder.ai.extraction import JobExtractor, JobExtractionResult
 from job_finder.ai.matcher import AIJobMatcher
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import DuplicateQueueItemError
-from job_finder.filters.strike_filter_engine import StrikeFilterEngine
+from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
+from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrape_runner import ScrapeRunner
@@ -111,128 +113,71 @@ class JobProcessor(BaseProcessor):
         self.ai_matcher = ai_matcher
         self.company_info_fetcher = company_info_fetcher
 
-        # Initialize strike-based filter engine
-        prefilter_policy = config_loader.get_prefilter_policy()
-        self.filter_engine = StrikeFilterEngine(prefilter_policy)
-        # Keep strike engine timezone aligned with the match policy
-        try:
-            job_match_cfg = config_loader.get_job_match()
-            self.filter_engine.set_user_timezone(job_match_cfg.get("userTimezone"))
-        except Exception:
-            logger.warning("Unable to sync user timezone into strike filter", exc_info=True)
+        # Initialize new hybrid pipeline components
+        title_filter_config = config_loader.get_title_filter()
+        self.title_filter = TitleFilter(title_filter_config)
 
-        # Initialize scrape runner with shared filter engine for pre-filtering
+        scoring_config = config_loader.get_scoring_config()
+        self.scoring_config = scoring_config
+        self.scoring_engine = ScoringEngine(scoring_config)
+
+        # Initialize AI provider for extraction
+        ai_settings = config_loader.get_ai_settings()
+        extraction_provider = create_provider_from_config(ai_settings, task="jobMatch")
+        self.extractor = JobExtractor(extraction_provider)
+
+        # Initialize scrape runner with title filter for pre-filtering
         self.scrape_runner = ScrapeRunner(
             queue_manager=queue_manager,
             job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             sources_manager=sources_manager,
             company_info_fetcher=company_info_fetcher,
-            filter_engine=self.filter_engine,
+            title_filter=self.title_filter,
         )
 
-        # Initialize scraper intake with job_listing_storage for deduplication
+        # Initialize scraper intake with title filter for deduplication
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
             job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
-            filter_engine=self.filter_engine,
+            title_filter=self.title_filter,
         )
-
-        # Align AI matcher dealbreakers with the prefilter remote policy so scoring respects the same rules.
-        self._sync_matcher_dealbreakers(prefilter_policy)
 
     def _refresh_runtime_config(self) -> None:
         """Reload config-driven components so the next item uses fresh settings."""
         ai_settings = self.config_loader.get_ai_settings()
-        match_policy = self.config_loader.get_match_policy()
-        job_match = match_policy.get("jobMatch", {}) if isinstance(match_policy, dict) else {}
-        prefilter_policy = self.config_loader.get_prefilter_policy()
+        title_filter_config = self.config_loader.get_title_filter()
+        scoring_config = self.config_loader.get_scoring_config()
 
-        # Rebuild strike filter engine with latest policy
-        self.filter_engine = StrikeFilterEngine(prefilter_policy)
-        try:
-            self.filter_engine.set_user_timezone(job_match.get("userTimezone"))
-        except Exception:
-            logger.warning("Unable to sync user timezone into strike filter", exc_info=True)
+        # Rebuild title filter with latest config
+        self.title_filter = TitleFilter(title_filter_config)
 
-        # Propagate new filter engine into downstream helpers
-        if hasattr(self.scrape_runner, "filter_engine"):
-            self.scrape_runner.filter_engine = self.filter_engine
-        if hasattr(self.scraper_intake, "filter_engine"):
-            self.scraper_intake.filter_engine = self.filter_engine
+        # Rebuild scoring engine with latest config
+        self.scoring_config = scoring_config
+        self.scoring_engine = ScoringEngine(scoring_config)
+
+        # Propagate new title filter into downstream helpers
+        if hasattr(self.scrape_runner, "title_filter"):
+            self.scrape_runner.title_filter = self.title_filter
+        if hasattr(self.scraper_intake, "title_filter"):
+            self.scraper_intake.title_filter = self.title_filter
 
         # Refresh AI providers per task
+        extraction_provider = create_provider_from_config(ai_settings, task="jobMatch")
+        self.extractor = JobExtractor(extraction_provider)
         self.ai_matcher.provider = create_provider_from_config(ai_settings, task="jobMatch")
 
         company_provider = create_provider_from_config(ai_settings, task="companyDiscovery")
         if hasattr(self.company_info_fetcher, "ai_provider"):
             self.company_info_fetcher.ai_provider = company_provider
 
-        # Refresh matcher thresholds and weights
-        company_weights = (
-            match_policy.get("companyWeights", {}) if isinstance(match_policy, dict) else {}
-        )
-        dealbreakers = (
-            match_policy.get("dealbreakers", {}) if isinstance(match_policy, dict) else {}
-        )
-
-        self.ai_matcher.min_match_score = job_match.get(
-            "minMatchScore", self.ai_matcher.min_match_score
-        )
-        self.ai_matcher.generate_intake = job_match.get(
-            "generateIntakeData", self.ai_matcher.generate_intake
-        )
-        self.ai_matcher.portland_office_bonus = job_match.get(
-            "portlandOfficeBonus", self.ai_matcher.portland_office_bonus
-        )
-        self.ai_matcher.user_timezone = job_match.get("userTimezone", self.ai_matcher.user_timezone)
-        self.ai_matcher.prefer_large_companies = job_match.get(
-            "preferLargeCompanies", self.ai_matcher.prefer_large_companies
-        )
-        self.ai_matcher.company_weights = company_weights or self.ai_matcher.company_weights
-        self.ai_matcher.dealbreakers = dealbreakers or self.ai_matcher.dealbreakers
-
-        # Align matcher dealbreakers with prefilter policy for remote/hybrid rules
-        self._sync_matcher_dealbreakers(prefilter_policy)
+        # Update AI matcher min score from scoring config
+        self.ai_matcher.min_match_score = scoring_config.get("minScore", 60)
 
     # ============================================================
     # JOB LISTING HELPERS
     # ============================================================
-
-    def _sync_matcher_dealbreakers(self, prefilter_policy: Dict[str, Any]) -> None:
-        """
-        Merge remote/hybrid allowances from prefilter-policy into the AI matcher dealbreakers.
-
-        This keeps scoring penalties aligned with the same remote rules used by the strike filter.
-        Match-policy can still override any of these values explicitly.
-        """
-
-        remote_policy = (prefilter_policy.get("strikeEngine") or {}).get("remotePolicy") or {}
-        existing_raw = getattr(self.ai_matcher, "dealbreakers", {}) or {}
-        if isinstance(existing_raw, dict):
-            existing = existing_raw
-        else:
-            try:
-                existing = dict(existing_raw)
-            except Exception:
-                existing = {}
-        dealbreakers = {**existing}
-
-        allow_onsite = remote_policy.get("allowOnsite")
-        allow_hybrid = remote_policy.get("allowHybridInTimezone")
-
-        if allow_onsite is False and "requireRemote" not in dealbreakers:
-            dealbreakers["requireRemote"] = True
-        if allow_hybrid is False:
-            dealbreakers["allowHybridInTimezone"] = False
-
-        # Carry over timezone-based penalties so scorer matches prefilter expectations
-        for key in ("maxTimezoneDiffHours", "perHourTimezonePenalty", "hardTimezonePenalty"):
-            if key in remote_policy and key not in dealbreakers:
-                dealbreakers[key] = remote_policy[key]
-
-        self.ai_matcher.dealbreakers = dealbreakers
 
     def _get_or_create_job_listing(
         self, item: JobQueueItem, job_data: Dict[str, Any]
@@ -488,10 +433,10 @@ class JobProcessor(BaseProcessor):
 
     def _do_job_filter(self, item: JobQueueItem) -> None:
         """
-        Filter job and update state.
+        Filter job using title filter and update state.
 
-        Sets pipeline_stage='filter'. Re-spawns if passed, marks FILTERED if rejected.
-        Also updates job_listing status accordingly.
+        Uses simple keyword-based title filtering. Sets pipeline_stage='filter'.
+        Re-spawns if passed, marks FILTERED if rejected.
         """
         if not item.id or not item.pipeline_state:
             logger.error("Cannot process FILTER without ID or pipeline_state")
@@ -507,7 +452,8 @@ class JobProcessor(BaseProcessor):
         )
         start = time.monotonic()
 
-        logger.info(f"JOB_FILTER: Evaluating {job_data.get('title')} at {job_data.get('company')}")
+        title = job_data.get("title", "")
+        logger.info(f"JOB_FILTER: Evaluating '{title}' at {job_data.get('company')}")
 
         # Update status to processing and set pipeline_stage for UI
         updated_state = {**item.pipeline_state, "pipeline_stage": "filter"}
@@ -519,22 +465,24 @@ class JobProcessor(BaseProcessor):
         listing_id = self._get_or_create_job_listing(item, job_data)
 
         try:
-            # Run strike-based filter (unless bypass requested)
+            # Run title-based filter (unless bypass requested)
             bypass_filter = bool((item.metadata or {}).get("bypassFilter"))
             if bypass_filter:
-                filter_result = self.filter_engine.empty_pass_result()
+                from job_finder.filters.title_filter import TitleFilterResult
+
+                filter_result = TitleFilterResult(passed=True)
             else:
-                filter_result = self.filter_engine.evaluate_job(job_data)
+                filter_result = self.title_filter.filter(title)
 
             if not filter_result.passed:
-                # Job rejected by filters - TERMINAL STATE
-                rejection_summary = filter_result.get_rejection_summary()
+                # Job rejected by title filter - TERMINAL STATE
+                rejection_reason = filter_result.reason or "Title filter rejected"
                 rejection_data = filter_result.to_dict()
 
                 # Proactively spawn company/source tasks even for filtered jobs
                 self._spawn_company_and_source(item, job_data)
 
-                logger.info(f"JOB_FILTER: Rejected - {rejection_summary}")
+                logger.info(f"JOB_FILTER: Rejected - {rejection_reason}")
 
                 # Update job_listing status to 'filtered'
                 self._update_listing_status(listing_id, "filtered", rejection_data)
@@ -542,7 +490,7 @@ class JobProcessor(BaseProcessor):
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.FILTERED,
-                    f"Rejected by filters: {rejection_summary}",
+                    f"Rejected: {rejection_reason}",
                     scraped_data={"job_data": job_data, "filter_result": rejection_data},
                 )
                 return
@@ -561,21 +509,20 @@ class JobProcessor(BaseProcessor):
             self.queue_manager.update_status(
                 item.id,
                 QueueStatus.SUCCESS,
-                "Passed filtering",
+                "Passed title filter",
             )
 
             # Re-spawn same URL with filter result
             self._respawn_job_with_state(item, updated_state, next_stage="analyze")
 
-            logger.info(f"JOB_FILTER complete: Passed with {filter_result.total_strikes} strikes")
+            logger.info(f"JOB_FILTER complete: Title filter passed")
 
             self.slogger.pipeline_stage(
                 item.id,
                 "filter",
                 "completed",
                 {
-                    "job_title": job_data.get("title"),
-                    "strikes": filter_result.total_strikes,
+                    "job_title": title,
                     "duration_ms": round((time.monotonic() - start) * 1000),
                 },
             )
@@ -592,10 +539,14 @@ class JobProcessor(BaseProcessor):
 
     def _do_job_analyze(self, item: JobQueueItem) -> None:
         """
-        Analyze job with AI and update state.
+        Analyze job with AI extraction, deterministic scoring, and match reasoning.
+
+        Pipeline:
+        1. AI Extraction - Extract semantic data (seniority, remote, salary, etc.)
+        2. Deterministic Scoring - Score based on config (no AI)
+        3. AI Match Analysis - Generate detailed reasoning if passed scoring
 
         Sets pipeline_stage='analyze'. Re-spawns if matched, marks SKIPPED if low score.
-        Updates job_listing status to 'analyzed' or 'skipped'.
         """
         if not item.id or not item.pipeline_state:
             logger.error("Cannot process ANALYZE without ID or pipeline_state")
@@ -609,25 +560,28 @@ class JobProcessor(BaseProcessor):
         # Get listing_id from pipeline state
         listing_id = item.pipeline_state.get("job_listing_id")
 
+        title = job_data.get("title", "")
+        description = job_data.get("description", "")
+        location = job_data.get("location", "")
+
         self.slogger.pipeline_stage(
             item.id,
             "analyze",
             "started",
             {
-                "job_title": job_data.get("title"),
+                "job_title": title,
                 "company": job_data.get("company"),
             },
         )
         start = time.monotonic()
 
-        logger.info(f"JOB_ANALYZE: Analyzing {job_data.get('title')} at {job_data.get('company')}")
+        logger.info(f"JOB_ANALYZE: Analyzing '{title}' at {job_data.get('company')}")
 
         try:
             # Ensure company exists (spawn dependency if needed)
             company_ready, dependency_state = self._ensure_company_dependency(item, job_data)
             if not company_ready:
                 updated_state = {**item.pipeline_state, **dependency_state}
-                # Note: requeue_with_state sets status to PENDING; update a friendly message first
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.PENDING,
@@ -640,14 +594,64 @@ class JobProcessor(BaseProcessor):
                 )
                 return
 
-            # Update status to processing and set pipeline_stage for UI (dependencies are ready)
+            # Update status to processing
             updated_state = {**item.pipeline_state, "pipeline_stage": "analyze"}
             self.queue_manager.update_status(
-                item.id, QueueStatus.PROCESSING, "Analyzing job match", pipeline_state=updated_state
+                item.id, QueueStatus.PROCESSING, "Extracting job data", pipeline_state=updated_state
             )
 
-            # Run AI matching (force returning score even if below threshold)
-            result = self.ai_matcher.analyze_job(job_data, return_below_threshold=True)
+            # STAGE 1: AI Extraction - Extract semantic data from job posting
+            logger.debug(f"Running AI extraction for '{title}'")
+            extraction = self.extractor.extract(title, description, location)
+            extraction_dict = extraction.to_dict()
+            logger.info(
+                f"Extraction complete: seniority={extraction.seniority}, "
+                f"arrangement={extraction.work_arrangement}, techs={len(extraction.technologies)}"
+            )
+
+            # STAGE 2: Deterministic Scoring - Score based on config
+            self.queue_manager.update_status(
+                item.id, QueueStatus.PROCESSING, "Scoring job match", pipeline_state=updated_state
+            )
+            score_result = self.scoring_engine.score(extraction, title, description)
+            logger.info(
+                f"Scoring complete: score={score_result.final_score}, passed={score_result.passed}"
+            )
+
+            # Check if scoring rejected the job
+            if not score_result.passed:
+                self._update_listing_status(
+                    listing_id,
+                    "skipped",
+                    analysis_result={
+                        "extraction": extraction_dict,
+                        "scoring": score_result.to_dict(),
+                    },
+                )
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.SKIPPED,
+                    f"Scoring rejected: {score_result.rejection_reason}",
+                    scraped_data={
+                        "job_data": job_data,
+                        "extraction": extraction_dict,
+                        "scoring": score_result.to_dict(),
+                    },
+                )
+                return
+
+            # STAGE 3: AI Match Analysis - Generate detailed reasoning
+            self.queue_manager.update_status(
+                item.id, QueueStatus.PROCESSING, "Generating match analysis", pipeline_state=updated_state
+            )
+
+            # Inject extraction data into job_data for matcher
+            job_data_enriched = {
+                **job_data,
+                "extraction": extraction_dict,
+                "deterministic_score": score_result.final_score,
+            }
+            result = self.ai_matcher.analyze_job(job_data_enriched, return_below_threshold=True)
 
             if not result:
                 # AI returned None without exception (e.g., empty response from provider)

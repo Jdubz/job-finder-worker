@@ -37,11 +37,6 @@ class DummyMatcher:
     def __init__(self, score: int = 88):
         self.min_match_score = score
         self.generate_intake = False
-        self.portland_office_bonus = 0
-        self.user_timezone = -8
-        self.prefer_large_companies = True
-        self.company_weights = {}
-        self.dealbreakers = {}
 
     def analyze_job(self, job: dict, **_kwargs) -> JobMatchResult:
         return JobMatchResult(
@@ -124,32 +119,15 @@ def test_queue_scrape_end_to_end(temp_db):
             ),
         )
 
-        # Seed configs to satisfy fail-loud loader
+        # Seed configs to satisfy fail-loud loader (new hybrid scoring format)
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
-                "prefilter-policy",
+                "title-filter",
                 json.dumps(
                     {
-                        "stopList": {
-                            "excludedCompanies": [],
-                            "excludedKeywords": [],
-                            "excludedDomains": [],
-                        },
-                        "strikeEngine": {
-                            "enabled": True,
-                            "strikeThreshold": 3,
-                            "remotePolicy": {
-                                "allowRemote": True,
-                                "allowOnsite": False,
-                                "allowHybridInTimezone": True,
-                                "maxTimezoneDiffHours": 8,
-                                "perHourTimezonePenalty": 1,
-                                "hardTimezonePenalty": 3,
-                            },
-                            "salaryStrike": {"enabled": False},
-                        },
-                        "userTimezone": -8,
+                        "requiredKeywords": ["engineer", "developer", "pipeline"],
+                        "excludedKeywords": [],
                     }
                 ),
                 now_iso,
@@ -158,8 +136,39 @@ def test_queue_scrape_end_to_end(temp_db):
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
-                "match-policy",
-                json.dumps({"jobMatch": {"minMatchScore": 88}, "dealbreakers": {}}),
+                "scoring-config",
+                json.dumps(
+                    {
+                        "minScore": 60,
+                        "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
+                        "seniority": {
+                            "preferred": ["senior"],
+                            "acceptable": ["mid"],
+                            "rejected": ["junior"],
+                            "preferredBonus": 15,
+                            "acceptablePenalty": 0,
+                            "rejectedPenalty": -100,
+                        },
+                        "location": {
+                            "allowRemote": True,
+                            "allowHybrid": True,
+                            "allowOnsite": False,
+                            "userTimezone": -8,
+                            "maxTimezoneDiffHours": 4,
+                            "perHourPenalty": 3,
+                            "hybridSameCityBonus": 10,
+                        },
+                        "technology": {
+                            "required": [],
+                            "preferred": [],
+                            "disliked": [],
+                            "rejected": [],
+                            "requiredBonus": 10,
+                            "preferredBonus": 5,
+                            "dislikedPenalty": -5,
+                        },
+                    }
+                ),
                 now_iso,
             ),
         )
@@ -208,6 +217,33 @@ def test_queue_scrape_end_to_end(temp_db):
         company_info_fetcher=company_info_fetcher,
         ai_matcher=ai_matcher,
     )
+
+    # Mock extractor and scoring engine to avoid real AI calls
+    from job_finder.ai.extraction import JobExtractionResult
+    from job_finder.scoring.engine import ScoreBreakdown
+
+    class MockExtractor:
+        def extract(self, title, description, location):
+            return JobExtractionResult(
+                seniority="senior",
+                work_arrangement="remote",
+                technologies=["python"],
+            )
+
+    class MockScoringEngine:
+        def score(self, extraction, title, description):
+            return ScoreBreakdown(
+                base_score=50,
+                final_score=88,  # Match the DummyMatcher score
+                adjustments=["Mock scoring"],
+                passed=True,
+            )
+
+    processor.job_processor.extractor = MockExtractor()
+    processor.job_processor.scoring_engine = MockScoringEngine()
+
+    # Prevent _refresh_runtime_config from overwriting mocks
+    processor.job_processor._refresh_runtime_config = lambda: None
 
     scrape_runner = processor.job_processor.scrape_runner
 

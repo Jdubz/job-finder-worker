@@ -4,7 +4,7 @@ Scrape runner - selects sources and submits jobs to the queue.
 Pre-filtering is applied at the intake stage:
 1) chooses which sources to scrape (rotation/filters)
 2) scrapes raw jobs from each source
-3) pre-filters jobs using StrikeFilterEngine (excludes sales, old jobs, etc.)
+3) pre-filters jobs using TitleFilter (simple keyword-based title filtering)
 4) enqueues only relevant jobs via ScraperIntake
 
 This significantly reduces queue size and AI analysis costs by filtering
@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import ConfigurationError
-from job_finder.filters.strike_filter_engine import StrikeFilterEngine
+from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import (
@@ -41,8 +41,8 @@ class ScrapeRunner:
     Runs scraping operations with custom configuration and enqueues jobs.
 
     Pre-filtering:
-        Uses StrikeFilterEngine to pre-filter jobs BEFORE adding to queue.
-        This prevents irrelevant jobs (sales roles, old jobs, wrong locations)
+        Uses TitleFilter to pre-filter jobs BEFORE adding to queue.
+        This prevents irrelevant jobs (sales roles, wrong job types)
         from consuming queue resources and AI analysis costs.
     """
 
@@ -53,7 +53,7 @@ class ScrapeRunner:
         companies_manager: CompaniesManager,
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
-        filter_engine: Optional[StrikeFilterEngine] = None,
+        title_filter: Optional[TitleFilter] = None,
         config_loader: Optional[ConfigLoader] = None,
     ):
         self.queue_manager = queue_manager
@@ -62,32 +62,32 @@ class ScrapeRunner:
         self.sources_manager = sources_manager
         self.company_info_fetcher = company_info_fetcher
 
-        # Use provided filter engine or create one from config
-        self.filter_engine: Optional[StrikeFilterEngine] = None
-        if filter_engine:
-            self.filter_engine = filter_engine
+        # Use provided title filter or create one from config
+        self.title_filter: Optional[TitleFilter] = None
+        if title_filter:
+            self.title_filter = title_filter
         elif config_loader:
-            self.filter_engine = self._create_filter_engine(config_loader)
+            self.title_filter = self._create_title_filter(config_loader)
         else:
             # Try to create config loader from job_listing_storage db_path
             try:
                 loader = ConfigLoader(job_listing_storage.db_path)
-                self.filter_engine = self._create_filter_engine(loader)
+                self.title_filter = self._create_title_filter(loader)
             except Exception as e:
-                logger.warning(f"Could not create filter engine: {e}. Pre-filtering disabled.")
-                self.filter_engine = None
+                logger.warning(f"Could not create title filter: {e}. Pre-filtering disabled.")
+                self.title_filter = None
 
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
             job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
-            filter_engine=self.filter_engine,
+            title_filter=self.title_filter,
         )
 
-    def _create_filter_engine(self, config_loader: ConfigLoader) -> StrikeFilterEngine:
-        """Create StrikeFilterEngine for pre-filtering scraped jobs."""
-        prefilter_policy = config_loader.get_prefilter_policy()
-        return StrikeFilterEngine(prefilter_policy)
+    def _create_title_filter(self, config_loader: ConfigLoader) -> TitleFilter:
+        """Create TitleFilter for pre-filtering scraped jobs."""
+        title_filter_config = config_loader.get_title_filter()
+        return TitleFilter(title_filter_config)
 
     def run_scrape(
         self,

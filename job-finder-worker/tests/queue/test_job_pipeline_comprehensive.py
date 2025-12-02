@@ -9,7 +9,6 @@ from pathlib import Path
 
 from job_finder.ai.matcher import JobMatchResult
 from job_finder.company_info_fetcher import CompanyInfoFetcher
-from job_finder.filters.models import FilterResult
 from job_finder.job_queue import ConfigLoader, QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.job_queue.processor import QueueItemProcessor
@@ -96,28 +95,11 @@ def test_job_pipeline_full_path(tmp_path: Path):
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
-                "prefilter-policy",
+                "title-filter",
                 json.dumps(
                     {
-                        "stopList": {
-                            "excludedCompanies": [],
-                            "excludedKeywords": [],
-                            "excludedDomains": [],
-                        },
-                        "strikeEngine": {
-                            "enabled": True,
-                            "strikeThreshold": 3,
-                            "remotePolicy": {
-                                "allowRemote": True,
-                                "allowOnsite": False,
-                                "allowHybridInTimezone": True,
-                                "maxTimezoneDiffHours": 8,
-                                "perHourTimezonePenalty": 1,
-                                "hardTimezonePenalty": 3,
-                            },
-                            "salaryStrike": {"enabled": False},
-                        },
-                        "userTimezone": -8,
+                        "requiredKeywords": ["engineer", "developer", "pipeline"],
+                        "excludedKeywords": [],
                     }
                 ),
                 now_iso,
@@ -126,8 +108,39 @@ def test_job_pipeline_full_path(tmp_path: Path):
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
-                "match-policy",
-                json.dumps({"jobMatch": {"minMatchScore": 50}, "dealbreakers": {}}),
+                "scoring-config",
+                json.dumps(
+                    {
+                        "minScore": 50,
+                        "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
+                        "seniority": {
+                            "preferred": ["senior"],
+                            "acceptable": ["mid"],
+                            "rejected": ["junior"],
+                            "preferredBonus": 15,
+                            "acceptablePenalty": 0,
+                            "rejectedPenalty": -100,
+                        },
+                        "location": {
+                            "allowRemote": True,
+                            "allowHybrid": True,
+                            "allowOnsite": False,
+                            "userTimezone": -8,
+                            "maxTimezoneDiffHours": 4,
+                            "perHourPenalty": 3,
+                            "hybridSameCityBonus": 10,
+                        },
+                        "technology": {
+                            "required": [],
+                            "preferred": [],
+                            "disliked": [],
+                            "rejected": [],
+                            "requiredBonus": 10,
+                            "preferredBonus": 5,
+                            "dislikedPenalty": -5,
+                        },
+                    }
+                ),
                 now_iso,
             ),
         )
@@ -162,11 +175,6 @@ def test_job_pipeline_full_path(tmp_path: Path):
     class DummyMatcher:
         min_match_score = 50
         generate_intake = False
-        portland_office_bonus = 0
-        user_timezone = -8
-        prefer_large_companies = True
-        company_weights = {}
-        dealbreakers = {}
 
         def analyze_job(self, job: dict, **_kwargs) -> JobMatchResult:
             return JobMatchResult(
@@ -215,9 +223,36 @@ def test_job_pipeline_full_path(tmp_path: Path):
     }
 
     processor.job_processor._scrape_job = lambda item: job_data  # type: ignore[attr-defined,method-assign]
-    processor.job_processor.filter_engine.evaluate_job = lambda _job: FilterResult(  # type: ignore[method-assign,assignment]
-        passed=True, total_strikes=0, strike_threshold=5
-    )
+    # Mock config refresh to prevent it from overwriting our mocks
+    processor.job_processor._refresh_runtime_config = lambda: None  # type: ignore[method-assign]
+    # Mock title filter to always pass
+    from job_finder.filters.title_filter import TitleFilterResult
+    processor.job_processor.title_filter.filter = lambda _title: TitleFilterResult(passed=True)  # type: ignore[method-assign]
+    # Mock extractor to avoid AI call
+    from job_finder.ai.extraction import JobExtractionResult
+
+    class MockExtractor:
+        def extract(self, title, description, location):
+            return JobExtractionResult(
+                seniority="senior",
+                work_arrangement="remote",
+                technologies=["python"],
+            )
+
+    processor.job_processor.extractor = MockExtractor()  # type: ignore[assignment]
+    # Mock scoring engine to always pass
+    from job_finder.scoring.engine import ScoreBreakdown
+
+    class MockScoringEngine:
+        def score(self, extraction, title, description):
+            return ScoreBreakdown(
+                base_score=50,
+                final_score=85,
+                adjustments=["Preferred seniority (+15)", "Remote position (+5)"],
+                passed=True,
+            )
+
+    processor.job_processor.scoring_engine = MockScoringEngine()  # type: ignore[assignment]
     processor.company_info_fetcher.fetch_company_info = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
         "about": "We build pipelines",
         "culture": "Remote-first",
