@@ -30,7 +30,10 @@ const EnvSchema = z.object({
   WORKER_MAINTENANCE_URL: z.string().default('http://worker:5555/maintenance'),
   LOG_DIR: z.string().default('/logs'),
   LOG_ROTATE_MAX_BYTES: z.coerce.number().positive().default(100 * 1024 * 1024),
-  LOG_ROTATE_RETENTION_DAYS: z.coerce.number().positive().int().default(7)
+  LOG_ROTATE_RETENTION_DAYS: z.coerce.number().positive().int().default(7),
+
+  // Machine-to-machine auth
+  CRON_API_KEY: z.string().optional()
 })
 
 export type Env = z.infer<typeof EnvSchema>

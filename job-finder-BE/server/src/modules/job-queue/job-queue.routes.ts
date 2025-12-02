@@ -23,6 +23,7 @@ import {
   handleQueueEventsSse,
   sendCommandToWorker
 } from './queue-events'
+import { requireRole } from '../../middleware/firebase-auth'
 
 const queueStatuses = [
   'pending',
@@ -209,6 +210,7 @@ export function buildJobQueueRouter() {
 
   router.post(
     '/scrape',
+    requireRole('admin'),
     asyncHandler((req, res) => {
       const payload = submitScrapeSchema.parse(req.body)
       const input: SubmitScrapeRequest = {

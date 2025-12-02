@@ -9,6 +9,7 @@ import { SESSION_COOKIE } from '../routes/auth.routes'
 
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
 const IS_TEST = env.NODE_ENV === 'test'
+const CRON_API_KEY = env.CRON_API_KEY
 
 export interface AuthenticatedUser {
   uid: string
@@ -59,6 +60,18 @@ function extractBearerToken(req: Request): string | null {
  * In development/test: Also accepts dev tokens via Bearer header for testing
  */
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
+  // Machine key bypass (for internal cron or other trusted automation)
+  const cronKey = req.headers['x-cron-key'] || req.headers['x-api-key'] || extractBearerToken(req)
+  if (CRON_API_KEY && typeof cronKey === 'string' && cronKey === CRON_API_KEY) {
+    const user: AuthenticatedUser = {
+      uid: 'cron-service',
+      email: 'cron@system.local',
+      roles: ['admin']
+    }
+    ;(req as AuthenticatedRequest).user = user
+    return next()
+  }
+
   // In development/test mode, check for dev tokens first
   if (IS_DEVELOPMENT || IS_TEST) {
     const bearerToken = extractBearerToken(req)
