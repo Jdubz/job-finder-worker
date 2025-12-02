@@ -279,10 +279,10 @@ export function buildConfigRouter() {
         const aiPayload = coerced as AISettings
         logger.info({
           configId: id,
-          workerProvider: `${aiPayload.worker.selected.provider}/${aiPayload.worker.selected.interface}`,
-          workerModel: aiPayload.worker.selected.model,
-          docGenProvider: `${aiPayload.documentGenerator.selected.provider}/${aiPayload.documentGenerator.selected.interface}`,
-          docGenModel: aiPayload.documentGenerator.selected.model,
+          workerProvider: `${aiPayload.worker?.selected?.provider ?? 'unknown'}/${aiPayload.worker?.selected?.interface ?? 'unknown'}`,
+          workerModel: aiPayload.worker?.selected?.model ?? 'unknown',
+          docGenProvider: `${aiPayload.documentGenerator?.selected?.provider ?? 'unknown'}/${aiPayload.documentGenerator?.selected?.interface ?? 'unknown'}`,
+          docGenModel: aiPayload.documentGenerator?.selected?.model ?? 'unknown',
           updatedBy: userEmail,
         }, 'AI settings updated')
       }

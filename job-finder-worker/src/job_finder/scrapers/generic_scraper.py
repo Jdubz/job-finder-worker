@@ -360,7 +360,7 @@ class GenericScraper:
                 if isinstance(current, list):
                     # Find element where filter_key equals filter_value
                     current = next(
-                        (el for el in current if el.get(filter_key) == filter_value),
+                        (el for el in current if isinstance(el, dict) and el.get(filter_key) == filter_value),
                         None,
                     )
                 else:
@@ -578,7 +578,7 @@ class GenericScraper:
                 names.append(item)
         return names
 
-    def _metadata_to_dict(self, metadata: Any) -> Dict[str, str]:
+    def _metadata_to_dict(self, metadata: Any) -> Dict[str, Any]:
         """
         Convert metadata array to a dictionary.
 
