@@ -19,7 +19,7 @@ test.describe("Smoke navigation", () => {
       await expect(page.getByRole("heading", { name: /Career Story/i, level: 1 })).toBeVisible({ timeout: 15000 })
     }],
     ["/owner/config", async (page) => {
-      await expect(page.getByRole("heading", { name: /Job Finder Configuration/i, level: 1 })).toBeVisible({ timeout: 15000 })
+      await expect(page.getByTestId("config-page-root").getByRole("heading", { level: 1 })).toBeVisible({ timeout: 15000 })
     }],
   ]
 
