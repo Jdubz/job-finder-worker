@@ -23,6 +23,12 @@ export interface QueueSettings {
   isProcessingEnabled?: boolean // Controls whether the worker processes queue items (defaults to true)
   taskDelaySeconds?: number // Delay between processing queue items (defaults to 0)
   pollIntervalSeconds?: number // How often the worker polls for new items (defaults to 60)
+  scrapeConfig?: {
+    target_matches?: number | null
+    max_sources?: number | null
+    source_ids?: string[]
+    min_match_score?: number | null
+  }
 }
 
 // -----------------------------------------------------------

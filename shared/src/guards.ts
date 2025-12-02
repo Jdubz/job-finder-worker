@@ -134,7 +134,13 @@ export function isQueueSettings(value: unknown): value is QueueSettings {
   const settings = value as Partial<QueueSettings>
 
   return (
-    typeof settings.processingTimeoutSeconds === "number"
+    typeof settings.processingTimeoutSeconds === "number" &&
+    (settings.scrapeConfig === undefined ||
+      (isObject(settings.scrapeConfig) &&
+        (settings.scrapeConfig.target_matches === undefined || settings.scrapeConfig.target_matches === null || typeof settings.scrapeConfig.target_matches === "number") &&
+        (settings.scrapeConfig.max_sources === undefined || settings.scrapeConfig.max_sources === null || typeof settings.scrapeConfig.max_sources === "number") &&
+        (settings.scrapeConfig.min_match_score === undefined || settings.scrapeConfig.min_match_score === null || typeof settings.scrapeConfig.min_match_score === "number") &&
+        (settings.scrapeConfig.source_ids === undefined || Array.isArray(settings.scrapeConfig.source_ids))))
   )
 }
 

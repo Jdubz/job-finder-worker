@@ -7,16 +7,61 @@ import cron from 'node-cron'
 import { logger } from '../logger'
 import { env } from '../config/env'
 import { JobQueueService } from '../modules/job-queue/job-queue.service'
+import { ConfigRepository } from '../modules/config/config.repository'
+import { isQueueSettings, type QueueSettings } from '@shared/types'
 
 const queueService = new JobQueueService()
+const configRepo = new ConfigRepository()
 
 function utcNowIso() {
   return new Date().toISOString()
 }
 
+function coalesceNumber(...values: Array<number | null | undefined>): number | null | undefined {
+  for (const v of values) {
+    if (v === 0) return null // treat 0 as "all"
+    if (v !== undefined && v !== null) return v
+  }
+  return undefined
+}
+
+function loadScrapeConfig() {
+  const entry = configRepo.get<QueueSettings>('queue-settings')
+  if (!entry || !isQueueSettings(entry.payload)) {
+    throw new Error('queue-settings config missing or invalid')
+  }
+
+  const raw = (entry.payload as any).scrapeConfig || (entry.payload as any).scrape_config
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('queue-settings.scrapeConfig is required for cron scrapes')
+  }
+
+  const targetMatches = coalesceNumber(raw.target_matches, raw.targetMatches)
+  const maxSources = coalesceNumber(raw.max_sources, raw.maxSources)
+  const minMatchScore = coalesceNumber(raw.min_match_score, raw.minMatchScore)
+  const sourceIdsRaw = raw.source_ids ?? raw.sourceIds
+  const sourceIds = Array.isArray(sourceIdsRaw)
+    ? sourceIdsRaw
+    : typeof sourceIdsRaw === 'string'
+      ? sourceIdsRaw.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : undefined
+
+  if (targetMatches === undefined && maxSources === undefined && sourceIds === undefined && minMatchScore === undefined) {
+    throw new Error('queue-settings.scrapeConfig must specify at least one of target_matches, max_sources, min_match_score, or source_ids')
+  }
+
+  return {
+    target_matches: targetMatches ?? null,
+    max_sources: maxSources ?? null,
+    min_match_score: minMatchScore ?? null,
+    source_ids: sourceIds
+  }
+}
+
 async function enqueueScrapeJob() {
   try {
-    const item = queueService.submitScrape({})
+    const scrapeConfig = loadScrapeConfig()
+    const item = queueService.submitScrape({ scrapeConfig })
     logger.info({ queueItemId: item.id, at: utcNowIso() }, 'Cron enqueued scrape job')
   } catch (error) {
     logger.error({ error, at: utcNowIso() }, 'Cron failed to enqueue scrape job')
