@@ -274,6 +274,19 @@ export function buildConfigRouter() {
       const entry = repo.upsert(id, coerced, { updatedBy: userEmail ?? undefined })
       const response: UpsertConfigEntryResponse = { config: entry }
 
+      // Log AI settings changes for visibility
+      if (id === 'ai-settings') {
+        const aiPayload = coerced as AISettings
+        logger.info({
+          configId: id,
+          workerProvider: `${aiPayload.worker.selected.provider}/${aiPayload.worker.selected.interface}`,
+          workerModel: aiPayload.worker.selected.model,
+          docGenProvider: `${aiPayload.documentGenerator.selected.provider}/${aiPayload.documentGenerator.selected.interface}`,
+          docGenModel: aiPayload.documentGenerator.selected.model,
+          updatedBy: userEmail,
+        }, 'AI settings updated')
+      }
+
       // Fire-and-forget reload to the worker so it rehydrates in-memory settings
       await triggerWorkerReload(id).catch(() => undefined)
 
