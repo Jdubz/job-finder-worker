@@ -269,6 +269,11 @@ class ConfigLoader:
         return payload
 
     def get_scheduler_settings(self) -> Dict[str, Any]:
+        """Get scheduler settings for cron job configuration (scrapeConfig).
+
+        Note: pollIntervalSeconds has been moved to queue-settings.
+        This config now only contains scrape-related settings for the cron job.
+        """
         return self._get_config("scheduler-settings")
 
     def get_worker_settings(self) -> Dict[str, Any]:

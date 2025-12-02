@@ -140,3 +140,24 @@ class ScraperError(JobFinderError):
     """
 
     pass
+
+
+class ScrapeBlockedError(ScraperError):
+    """Raised when a scrape is blocked by anti-bot protection.
+
+    This error indicates that the source returned a non-job response,
+    typically an HTML captcha page, access denied page, or rate limit response
+    instead of the expected data (RSS feed, JSON API, etc.).
+
+    When caught, the source should be disabled with appropriate notes
+    to prevent repeated failed scrape attempts.
+
+    Attributes:
+        source_url: The URL that was blocked
+        reason: Description of why the response appears to be blocked
+    """
+
+    def __init__(self, source_url: str, reason: str):
+        self.source_url = source_url
+        self.reason = reason
+        super().__init__(f"Scrape blocked at {source_url}: {reason}")

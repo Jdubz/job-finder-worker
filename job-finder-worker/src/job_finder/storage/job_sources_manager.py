@@ -339,6 +339,47 @@ class JobSourcesManager:
                 (status.value, _utcnow_iso(), source_id),
             )
 
+    def disable_source_with_note(self, source_id: str, reason: str) -> None:
+        """
+        Disable a source and record the reason in config.disabled_notes.
+
+        This method transitions the source to DISABLED status and stores
+        a timestamped note explaining why it was disabled (e.g., anti-bot
+        protection detected, repeated failures, etc.).
+
+        Args:
+            source_id: The source ID to disable
+            reason: Human-readable reason for disabling
+        """
+        now = _utcnow_iso()
+        note = f"[{now}] {reason}"
+
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT status, config_json FROM job_sources WHERE id = ?",
+                (source_id,),
+            ).fetchone()
+            if not row:
+                raise StorageError(f"Source {source_id} not found")
+
+            current_status = SourceStatus(row["status"])
+            self._validate_transition(current_status, SourceStatus.DISABLED)
+
+            # Update config with disabled_notes
+            config = json.loads(row["config_json"]) if row["config_json"] else {}
+            config["disabled_notes"] = note
+
+            conn.execute(
+                """
+                UPDATE job_sources
+                SET status = ?, config_json = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (SourceStatus.DISABLED.value, json.dumps(config), now, source_id),
+            )
+
+        logger.info("Disabled source %s: %s", source_id, reason)
+
     def update_config(self, source_id: str, config: Dict[str, Any]) -> None:
         """Persist a new config for an existing source."""
         with sqlite_connection(self.db_path) as conn:

@@ -14,13 +14,11 @@ vi.mock("@/api/config-client", () => ({
     getMatchPolicy: vi.fn(),
     getQueueSettings: vi.fn(),
     getAISettings: vi.fn(),
-    getSchedulerSettings: vi.fn(),
     getPersonalInfo: vi.fn(),
     updateTitleFilter: vi.fn(),
     updateMatchPolicy: vi.fn(),
     updateQueueSettings: vi.fn(),
     updateAISettings: vi.fn(),
-    updateSchedulerSettings: vi.fn(),
     updatePersonalInfo: vi.fn(),
   },
 }))
@@ -112,16 +110,14 @@ beforeEach(() => {
   vi.mocked(configClient.listEntries).mockResolvedValue([
     { id: "title-filter", payload: baseTitleFilter, updatedAt: "", updatedBy: "" },
     { id: "match-policy", payload: baseMatchPolicy, updatedAt: "", updatedBy: "" },
-    { id: "queue-settings", payload: { processingTimeoutSeconds: 1800 }, updatedAt: "", updatedBy: "" },
+    { id: "queue-settings", payload: { processingTimeoutSeconds: 1800, pollIntervalSeconds: 60, taskDelaySeconds: 1 }, updatedAt: "", updatedBy: "" },
     { id: "ai-settings", payload: { worker: { selected: { provider: "codex", interface: "cli", model: "gpt-4o" } }, documentGenerator: { selected: { provider: "codex", interface: "cli", model: "gpt-4o" } }, options: [] }, updatedAt: "", updatedBy: "" },
-    { id: "scheduler-settings", payload: { pollIntervalSeconds: 60 }, updatedAt: "", updatedBy: "" },
     { id: "personal-info", payload: { name: "Test", email: "test@example.com", accentColor: "#3b82f6" }, updatedAt: "", updatedBy: "" },
   ])
   vi.mocked(configClient.getTitleFilter).mockResolvedValue(baseTitleFilter)
   vi.mocked(configClient.getMatchPolicy).mockResolvedValue(baseMatchPolicy)
-  vi.mocked(configClient.getQueueSettings).mockResolvedValue({ processingTimeoutSeconds: 1800 })
+  vi.mocked(configClient.getQueueSettings).mockResolvedValue({ processingTimeoutSeconds: 1800, pollIntervalSeconds: 60, taskDelaySeconds: 1 })
   vi.mocked(configClient.getAISettings).mockResolvedValue({ worker: { selected: { provider: "codex", interface: "cli", model: "gpt-4o" } }, documentGenerator: { selected: { provider: "codex", interface: "cli", model: "gpt-4o" } }, options: [] })
-  vi.mocked(configClient.getSchedulerSettings).mockResolvedValue({ pollIntervalSeconds: 60 })
   vi.mocked(configClient.getPersonalInfo).mockResolvedValue({ name: "Test", email: "test@example.com", accentColor: "#3b82f6" })
   vi.mocked(configClient.updateTitleFilter).mockResolvedValue(undefined)
   vi.mocked(configClient.updateMatchPolicy).mockResolvedValue(undefined)

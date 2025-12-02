@@ -7,7 +7,6 @@ import type {
   UpsertConfigEntryResponse,
   QueueSettings,
   AISettings,
-  SchedulerSettings,
   JobFinderConfigId,
   PromptConfig,
   WorkerSettings,
@@ -18,14 +17,12 @@ import {
   ApiErrorCode,
   DEFAULT_QUEUE_SETTINGS,
   DEFAULT_AI_SETTINGS,
-  DEFAULT_SCHEDULER_SETTINGS,
   DEFAULT_PROMPTS,
   AI_PROVIDER_OPTIONS,
   DEFAULT_WORKER_SETTINGS,
   DEFAULT_TITLE_FILTER,
   isQueueSettings,
   isAISettings,
-  isSchedulerSettings,
   isPersonalInfo,
   isWorkerSettings,
   isTitleFilterConfig,
@@ -46,7 +43,6 @@ type KnownPayload =
   | AISettings
   | TitleFilterConfig
   | MatchPolicy
-  | SchedulerSettings
   | PromptConfig
   | WorkerSettings
   | Record<string, unknown>
@@ -112,7 +108,6 @@ function seedDefaults(repo: ConfigRepository) {
     ['title-filter', DEFAULT_TITLE_FILTER],
     // NOTE: match-policy is NOT seeded - it must be configured explicitly
     // to prevent silent gaps between config and implementation
-    ['scheduler-settings', DEFAULT_SCHEDULER_SETTINGS],
     ['ai-prompts', DEFAULT_PROMPTS],
     // We deliberately do not seed worker-settings; prod DB already holds them.
   ]
@@ -163,10 +158,6 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
       const normalized = normalizeKeys<MatchPolicy>(payload)
       return normalized
     }
-    case 'scheduler-settings': {
-      const normalized = normalizeKeys<SchedulerSettings>(payload)
-      return { ...DEFAULT_SCHEDULER_SETTINGS, ...normalized }
-    }
     case 'ai-prompts':
       return payload
     case 'worker-settings': {
@@ -189,8 +180,6 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
       return isTitleFilterConfig(payload)
     case 'match-policy':
       return isMatchPolicy(payload)
-    case 'scheduler-settings':
-      return isSchedulerSettings(payload)
     case 'ai-prompts':
       return true
     case 'worker-settings':

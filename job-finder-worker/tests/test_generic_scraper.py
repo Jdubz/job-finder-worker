@@ -354,8 +354,16 @@ class TestGenericScraperRSS:
     """Test GenericScraper with RSS sources."""
 
     @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
-    def test_scrape_rss_success(self, mock_parse):
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_scrape_rss_success(self, mock_get, mock_parse):
         """Test successful RSS scraping."""
+        # Mock requests.get response
+        mock_response = Mock()
+        mock_response.text = "<rss><channel><item/></channel></rss>"
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        # Mock feedparser.parse response
         mock_entry = Mock()
         mock_entry.title = "Software Engineer at TechCorp"
         mock_entry.link = "https://example.com/job/1"
@@ -385,8 +393,16 @@ class TestGenericScraperRSS:
         assert jobs[0]["url"] == "https://example.com/job/1"
 
     @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
-    def test_scrape_rss_empty_feed(self, mock_parse):
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_scrape_rss_empty_feed(self, mock_get, mock_parse):
         """Test RSS scraping with empty feed."""
+        # Mock requests.get response
+        mock_response = Mock()
+        mock_response.text = "<rss><channel></channel></rss>"
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        # Mock feedparser.parse response
         mock_feed = Mock()
         mock_feed.bozo = False
         mock_feed.entries = []
@@ -576,3 +592,150 @@ class TestGenericScraperEdgeCases:
         # Should be ISO format
         assert "2023" in jobs[0]["posted_date"]
         assert "T" in jobs[0]["posted_date"]
+
+
+class TestAntiBlockDetection:
+    """Test anti-bot detection in RSS scraping."""
+
+    @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_detect_captcha_page(self, mock_get, mock_parse):
+        """Test that CAPTCHA page is detected and raises ScrapeBlockedError."""
+        from job_finder.exceptions import ScrapeBlockedError
+
+        # Return HTML with captcha instead of RSS
+        mock_response = Mock()
+        mock_response.text = """
+        <!DOCTYPE html>
+        <html>
+        <head><title>Security Check</title></head>
+        <body>
+            <div class="captcha-container">
+                <p>Please verify you are not a robot</p>
+            </div>
+        </body>
+        </html>
+        """
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        # feedparser will fail to parse HTML as RSS
+        mock_feed = Mock()
+        mock_feed.bozo = True
+        mock_feed.bozo_exception = Exception("not well-formed (invalid token)")
+        mock_feed.entries = []
+        mock_parse.return_value = mock_feed
+
+        config = SourceConfig(
+            type="rss",
+            url="https://example.com/jobs.rss",
+            fields={"title": "title", "url": "link"},
+        )
+        scraper = GenericScraper(config)
+
+        with pytest.raises(ScrapeBlockedError) as exc_info:
+            scraper.scrape()
+
+        assert "CAPTCHA" in exc_info.value.reason
+
+    @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_detect_cloudflare_challenge(self, mock_get, mock_parse):
+        """Test that Cloudflare challenge page is detected."""
+        from job_finder.exceptions import ScrapeBlockedError
+
+        mock_response = Mock()
+        mock_response.text = """
+        <!DOCTYPE html>
+        <html>
+        <head><title>Just a moment...</title></head>
+        <body>
+            <p>Checking your browser before accessing example.com.</p>
+        </body>
+        </html>
+        """
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        mock_feed = Mock()
+        mock_feed.bozo = True
+        mock_feed.bozo_exception = Exception("not well-formed")
+        mock_feed.entries = []
+        mock_parse.return_value = mock_feed
+
+        config = SourceConfig(
+            type="rss",
+            url="https://example.com/jobs.rss",
+            fields={"title": "title", "url": "link"},
+        )
+        scraper = GenericScraper(config)
+
+        with pytest.raises(ScrapeBlockedError) as exc_info:
+            scraper.scrape()
+
+        assert "Cloudflare" in exc_info.value.reason
+
+    @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_detect_generic_html_response(self, mock_get, mock_parse):
+        """Test that generic HTML instead of RSS is detected."""
+        from job_finder.exceptions import ScrapeBlockedError
+
+        mock_response = Mock()
+        mock_response.text = """
+        <!DOCTYPE html>
+        <html>
+        <body><p>Some HTML page</p></body>
+        </html>
+        """
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        mock_feed = Mock()
+        mock_feed.bozo = True
+        mock_feed.bozo_exception = Exception("not well-formed")
+        mock_feed.entries = []
+        mock_parse.return_value = mock_feed
+
+        config = SourceConfig(
+            type="rss",
+            url="https://example.com/jobs.rss",
+            fields={"title": "title", "url": "link"},
+        )
+        scraper = GenericScraper(config)
+
+        with pytest.raises(ScrapeBlockedError) as exc_info:
+            scraper.scrape()
+
+        assert "HTML page received" in exc_info.value.reason
+
+    @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_valid_rss_with_bozo_does_not_raise(self, mock_get, mock_parse):
+        """Test that bozo warnings don't raise if entries are present."""
+        mock_response = Mock()
+        mock_response.text = "<rss><channel><item/></channel></rss>"
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        mock_entry = Mock()
+        mock_entry.title = "Test Job"
+        mock_entry.link = "https://example.com/job/1"
+
+        mock_feed = Mock()
+        mock_feed.bozo = True  # Has issues but still has entries
+        mock_feed.bozo_exception = Exception("minor issue")
+        mock_feed.entries = [mock_entry]
+        mock_parse.return_value = mock_feed
+
+        config = SourceConfig(
+            type="rss",
+            url="https://example.com/jobs.rss",
+            fields={"title": "title", "url": "link"},
+        )
+        scraper = GenericScraper(config)
+
+        # Should NOT raise, should return jobs
+        jobs = scraper.scrape()
+        assert len(jobs) == 1
+        assert jobs[0]["title"] == "Test Job"

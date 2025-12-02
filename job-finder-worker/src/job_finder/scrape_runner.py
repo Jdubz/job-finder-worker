@@ -15,7 +15,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from job_finder.company_info_fetcher import CompanyInfoFetcher
-from job_finder.exceptions import ConfigurationError
+from job_finder.exceptions import ConfigurationError, ScrapeBlockedError
 from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
@@ -155,6 +155,16 @@ class ScrapeRunner:
                 stats["total_jobs_found"] += source_stats["jobs_found"]
                 stats["jobs_submitted"] += source_stats["jobs_submitted"]
                 potential_matches += source_stats["jobs_submitted"]
+
+            except ScrapeBlockedError as e:
+                # Anti-bot protection detected - disable source with note
+                error_msg = f"Source blocked: {source.get('name')} - {e.reason}"
+                logger.warning(error_msg)
+                stats["errors"].append(error_msg)
+                self.sources_manager.disable_source_with_note(
+                    source["id"],
+                    f"Anti-bot protection: {e.reason}",
+                )
 
             except Exception as e:
                 error_msg = f"Error processing {source.get('name')}: {str(e)}"

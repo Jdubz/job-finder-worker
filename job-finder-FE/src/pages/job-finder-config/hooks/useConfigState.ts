@@ -5,7 +5,6 @@ import {
   DEFAULT_TITLE_FILTER,
   DEFAULT_QUEUE_SETTINGS,
   DEFAULT_AI_SETTINGS,
-  DEFAULT_SCHEDULER_SETTINGS,
   DEFAULT_PERSONAL_INFO,
 } from "@shared/types"
 import type {
@@ -13,7 +12,6 @@ import type {
   MatchPolicy,
   QueueSettings,
   AISettings,
-  SchedulerSettings,
 } from "@shared/types"
 import type { PersonalInfo } from "@shared/types"
 import { deepClone, stableStringify } from "../utils/config-helpers"
@@ -38,9 +36,6 @@ export function useConfigState() {
 
   const [aiSettings, setAISettings] = useState<AISettings>(DEFAULT_AI_SETTINGS)
   const [originalAI, setOriginalAI] = useState<AISettings>(DEFAULT_AI_SETTINGS)
-
-  const [schedulerSettings, setSchedulerSettings] = useState<SchedulerSettings>(DEFAULT_SCHEDULER_SETTINGS)
-  const [originalScheduler, setOriginalScheduler] = useState<SchedulerSettings>(DEFAULT_SCHEDULER_SETTINGS)
 
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     ...DEFAULT_PERSONAL_INFO,
@@ -83,10 +78,6 @@ export function useConfigState() {
       const ai = deepClone((map["ai-settings"] as AISettings) ?? DEFAULT_AI_SETTINGS)
       setAISettings(ai)
       setOriginalAI(deepClone(ai))
-
-      const sched = deepClone((map["scheduler-settings"] as SchedulerSettings) ?? DEFAULT_SCHEDULER_SETTINGS)
-      setSchedulerSettings(sched)
-      setOriginalScheduler(deepClone(sched))
 
       const personalFallback = { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
       const personal = deepClone((map["personal-info"] as PersonalInfo) ?? personalFallback)
@@ -186,20 +177,6 @@ export function useConfigState() {
     }
   }
 
-  const handleSaveScheduler = async () => {
-    setIsSaving(true)
-    setError(null)
-    try {
-      await configClient.updateSchedulerSettings(schedulerSettings)
-      setOriginalScheduler(deepClone(schedulerSettings))
-      setSuccess("Scheduler settings saved")
-    } catch (_err) {
-      setError("Failed to save scheduler settings")
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
   const handleSavePersonalInfo = async () => {
     setIsSaving(true)
     setError(null)
@@ -213,13 +190,6 @@ export function useConfigState() {
     } finally {
       setIsSaving(false)
     }
-  }
-
-  const updateSchedulerState = (updates: Partial<SchedulerSettings>) => {
-    setSchedulerSettings((prev) => ({
-      ...(prev ?? DEFAULT_SCHEDULER_SETTINGS),
-      ...updates,
-    }))
   }
 
   const updatePersonalInfoState = (updates: Partial<PersonalInfo>) => {
@@ -256,11 +226,6 @@ export function useConfigState() {
     setSuccess(null)
   }
 
-  const resetScheduler = () => {
-    setSchedulerSettings(deepClone(originalScheduler))
-    setSuccess(null)
-  }
-
   const resetPersonal = () => {
     const fallback = { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
     setPersonalInfo(deepClone(originalPersonalInfo ?? fallback))
@@ -294,13 +259,6 @@ export function useConfigState() {
     hasAIChanges: stableStringify(aiSettings) !== stableStringify(originalAI),
     handleSaveAISettings,
     resetAI,
-
-    schedulerSettings,
-    setSchedulerSettings,
-    hasSchedulerChanges: stableStringify(schedulerSettings) !== stableStringify(originalScheduler),
-    updateSchedulerState,
-    handleSaveScheduler,
-    resetScheduler,
 
     personalInfo,
     setPersonalInfo,

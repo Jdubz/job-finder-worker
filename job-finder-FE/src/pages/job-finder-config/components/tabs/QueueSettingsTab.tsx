@@ -25,28 +25,27 @@ export function QueueSettingsTab({
     <TabsContent value="queue" className="space-y-4 mt-4">
       <TabCard
         title="Queue Processing Settings"
-        description="Configure job queue processing parameters. Retries are paused until recovery tooling ships."
+        description="Configure job queue processing and polling parameters."
         hasChanges={hasQueueChanges}
         isSaving={isSaving}
         onSave={handleSaveQueueSettings}
         onReset={resetQueue}
       >
         <div className="space-y-2">
-          <Label htmlFor="processingTimeout">Processing Timeout (seconds)</Label>
+          <Label htmlFor="pollInterval">Poll Interval (seconds)</Label>
           <Input
-            id="processingTimeout"
+            id="pollInterval"
             type="number"
-            min="60"
-            max="86400"
-            value={queueSettings.processingTimeoutSeconds}
+            min="5"
+            value={queueSettings.pollIntervalSeconds ?? 60}
             onChange={(e) =>
               setQueueSettings({
-                processingTimeoutSeconds: parseInt(e.target.value) || 1800,
+                pollIntervalSeconds: Math.max(5, parseInt(e.target.value) || 60),
               })
             }
           />
-          <p className="text-xs text-gray-500">
-            Maximum time allowed for job processing. Retries are disabled; choose a generous window.
+          <p className="text-xs text-muted-foreground">
+            How often the worker polls for new queue items. Minimum 5 seconds to avoid churn.
           </p>
         </div>
 
@@ -64,8 +63,27 @@ export function QueueSettingsTab({
               })
             }
           />
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Delay between processing items to ease rate limits. 0–60 seconds.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="processingTimeout">Processing Timeout (seconds)</Label>
+          <Input
+            id="processingTimeout"
+            type="number"
+            min="60"
+            max="86400"
+            value={queueSettings.processingTimeoutSeconds}
+            onChange={(e) =>
+              setQueueSettings({
+                processingTimeoutSeconds: parseInt(e.target.value) || 1800,
+              })
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            Maximum time allowed for job processing before timeout.
           </p>
         </div>
       </TabCard>
