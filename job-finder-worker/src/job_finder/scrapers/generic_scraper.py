@@ -8,6 +8,7 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 
+from job_finder.exceptions import ScrapeBlockedError
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.scrapers.text_sanitizer import (
     sanitize_company_name,
@@ -89,6 +90,9 @@ class GenericScraper:
             logger.info(f"Scraped {len(jobs)} jobs from {self.config.url}")
             return jobs
 
+        except ScrapeBlockedError:
+            # Let blocking errors propagate so the caller can disable the source
+            raise
         except requests.RequestException as e:
             logger.error(f"Request error scraping {self.config.url}: {e}")
             return []
@@ -137,13 +141,71 @@ class GenericScraper:
 
         Returns:
             List of feed entries
-        """
-        feed = feedparser.parse(self.config.url)
 
-        if feed.bozo:
+        Raises:
+            ScrapeBlockedError: If the response appears to be an anti-bot page
+        """
+        # Fetch with requests first to get raw content for anti-bot detection
+        headers = {**DEFAULT_HEADERS, **self.config.headers}
+        response = requests.get(self.config.url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        content = response.text
+        feed = feedparser.parse(content)
+
+        # Check for anti-bot blocking when feed parsing fails
+        if feed.bozo and not feed.entries:
+            blocked_reason = self._detect_blocked_response(content, feed.bozo_exception)
+            if blocked_reason:
+                raise ScrapeBlockedError(self.config.url, blocked_reason)
+            # Log warning for non-blocking parse issues
             logger.warning(f"RSS feed has issues: {feed.bozo_exception}")
 
         return feed.entries
+
+    def _detect_blocked_response(self, content: str, bozo_exception: Any) -> Optional[str]:
+        """
+        Detect if a response is an anti-bot/blocked page instead of valid feed.
+
+        Args:
+            content: Raw response content
+            bozo_exception: The feedparser exception that occurred
+
+        Returns:
+            Reason string if blocked, None if not blocked
+        """
+        content_lower = content.lower()
+
+        # Check for HTML response (RSS should be XML, not HTML)
+        html_indicators = ["<!doctype html", "<html", "<head>", "<body>"]
+        is_html = any(ind in content_lower for ind in html_indicators)
+
+        if is_html:
+            # Check for specific anti-bot indicators
+            antibot_indicators = [
+                ("captcha", "CAPTCHA challenge detected"),
+                ("recaptcha", "reCAPTCHA challenge detected"),
+                ("hcaptcha", "hCaptcha challenge detected"),
+                ("challenge-platform", "Cloudflare challenge detected"),
+                ("cf-browser-verification", "Cloudflare verification detected"),
+                ("just a moment", "Cloudflare waiting page detected"),
+                ("robot", "Robot detection page"),
+                ("blocked", "Access blocked"),
+                ("access denied", "Access denied"),
+                ("rate limit", "Rate limited"),
+                ("too many requests", "Too many requests"),
+                ("403 forbidden", "403 Forbidden response"),
+                ("please verify", "Verification required"),
+            ]
+
+            for indicator, reason in antibot_indicators:
+                if indicator in content_lower:
+                    return reason
+
+            # Generic HTML response where RSS was expected
+            return f"HTML page received instead of RSS feed (parse error: {bozo_exception})"
+
+        return None
 
     def _fetch_html(self) -> List[Any]:
         """
