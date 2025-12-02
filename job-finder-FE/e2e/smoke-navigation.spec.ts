@@ -6,17 +6,27 @@ test.describe("Smoke navigation", () => {
     await loginWithDevToken(context, "dev-admin-token")
   })
 
-  const paths: Array<[string, RegExp]> = [
-    ["/queue-management", /Queue Management/i],
-    ["/document-builder", /Document Builder/i],
-    ["/content-items", /Career Story|Experience/i],
-    ["/owner/config", /Job Finder Configuration|Configuration|Queue Settings|AI/i],
+  type Check = [string, (page: typeof test.extend["page"]) => Promise<void>]
+
+  const paths: Check[] = [
+    ["/queue-management", async (page) => {
+      await expect(page.getByRole("heading", { name: /Queue Management/i, level: 1 })).toBeVisible({ timeout: 15000 })
+    }],
+    ["/document-builder", async (page) => {
+      await expect(page.getByRole("heading", { name: /Document Builder/i, level: 1 })).toBeVisible({ timeout: 15000 })
+    }],
+    ["/content-items", async (page) => {
+      await expect(page.getByRole("heading", { name: /Career Story/i, level: 1 })).toBeVisible({ timeout: 15000 })
+    }],
+    ["/owner/config", async (page) => {
+      await expect(page.getByRole("heading", { name: /Job Finder Configuration/i, level: 1 })).toBeVisible({ timeout: 15000 })
+    }],
   ]
 
-  for (const [path, headingPattern] of paths) {
+  for (const [path, check] of paths) {
     test(`renders without runtime errors: ${path}`, async ({ page }) => {
       await page.goto(path)
-      await expect(page.getByRole("heading", { name: headingPattern })).toBeVisible({ timeout: 15000 })
+      await check(page)
       // tiny wait to allow effect hooks to run while error sentry is active
       await page.waitForTimeout(50)
     })
