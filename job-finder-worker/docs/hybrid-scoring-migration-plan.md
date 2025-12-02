@@ -1933,7 +1933,7 @@ Add to `job-finder-BE/server/src/modules/config/`:
 
 ### Phase 2: Job Processor
 - [x] Update `job_processor.py` with new pipeline (single-task PipelineContext)
-- [ ] Add queue event emissions
+- [x] Add queue event emissions
 - [x] Update integration tests
 
 ### Phase 3: Config Loader
@@ -1975,7 +1975,8 @@ Add to `job-finder-BE/server/src/modules/config/`:
 ### Phase 7: Frontend
 - [x] CREATE `TitleFilterTab.tsx`
 - [x] CREATE `ScoringConfigTab.tsx` with all scoring sections
-- [ ] UPDATE `JobDetailsDialog.tsx` (show scoring breakdown)
+- [x] UPDATE `JobDetailsDialog.tsx` (show scoring breakdown)
+- [x] UPDATE `MatchBreakdown.tsx` (clean implementation, no legacy support)
 - [ ] Test all config pages
 
 ### Testing
