@@ -5,6 +5,7 @@ The selected provider/interface/model is used for all AI tasks.
 """
 
 import json
+import logging
 import os
 import subprocess
 from abc import ABC, abstractmethod
@@ -447,25 +448,22 @@ def create_provider_from_config(
         interface_type = "cli" if provider_type in ("codex", "gemini") else "api"
 
     # Check if the requested interface has available credentials
-    original_interface = interface_type
     if not _check_api_key_available(provider_type, interface_type):
         missing_keys = _get_missing_api_key_names(provider_type, interface_type)
         fallback_interface = _INTERFACE_FALLBACKS.get(provider_type)
 
         if fallback_interface and (provider_type, fallback_interface) in _PROVIDER_MAP:
             # Log warning and fall back to CLI interface
-            import logging
-
             logging.warning(
-                f"API key(s) {missing_keys} not found for {provider_type}/{interface_type}. "
+                f"API key not found for {provider_type}/{interface_type}. "
                 f"Falling back to {provider_type}/{fallback_interface}."
             )
             interface_type = fallback_interface
         else:
             # No fallback available - raise descriptive error
             raise AIProviderError(
-                f"Missing API key(s) for {provider_type}/{interface_type}: {missing_keys}. "
-                f"Set one of these environment variables or switch to a CLI-based provider."
+                f"Missing API key for {provider_type}/{interface_type}. "
+                f"Set one of these environment variables: {', '.join(missing_keys)}"
             )
 
     # Enforce supported combinations to avoid invalid invocations

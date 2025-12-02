@@ -647,8 +647,9 @@ class TestAPIKeyFallback:
     """Test graceful fallback when API keys are missing."""
 
     @patch.dict("os.environ", {}, clear=True)
-    def test_gemini_api_falls_back_to_cli_when_no_key(self):
+    def test_gemini_api_falls_back_to_cli_when_no_key(self, caplog):
         """Should fall back to gemini/cli when GOOGLE_API_KEY is missing."""
+        import logging
         import os
 
         os.environ.pop("GOOGLE_API_KEY", None)
@@ -665,8 +666,10 @@ class TestAPIKeyFallback:
         }
 
         # Should not raise, should fall back to CLI
-        provider = create_provider_from_config(ai_settings)
+        with caplog.at_level(logging.WARNING):
+            provider = create_provider_from_config(ai_settings)
         assert isinstance(provider, GeminiCLIProvider)
+        assert "Falling back to gemini/cli" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
     def test_claude_api_raises_when_no_key_and_no_fallback(self):

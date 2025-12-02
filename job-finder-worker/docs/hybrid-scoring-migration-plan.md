@@ -24,6 +24,61 @@ Based on requirements clarification:
 | Database | No migration - reuse existing columns |
 | Scoring | AI does NO math - only extracts data for deterministic calculation |
 | Observability | Use filter_result/analysis_result + queue events |
+| Pre-AI Filtering | Title keywords only (required + stop lists) |
+| Semantic Analysis | ALL content analysis (tech, keywords, flags) done by AI |
+
+---
+
+## Leveraging Recent Improvements
+
+Recent commits made incremental improvements that inform this migration:
+
+### Patterns to Reuse
+
+| Improvement | How to Leverage |
+|-------------|-----------------|
+| `location_rules.py` | Pattern for shared rule modules: `@dataclass` context + pure evaluation function |
+| Strike accumulation | Becomes score adjustment accumulation in ScoringEngine |
+| Unified location/timezone rules | ScoringEngine imports `evaluate_location_rules()` directly |
+| Softer filtering (strikes vs hard rejects) | All "strike" logic becomes configurable score penalties |
+
+### Code to Remove (Temporary Additions)
+
+These were added as incremental steps but will be replaced:
+
+| File | Code to Remove | Replacement |
+|------|----------------|-------------|
+| `matcher.py` | `_apply_technology_ranks()` (line ~584) | ScoringEngine + AI extraction |
+| `matcher.py` | `_apply_experience_strike()` (line ~618) | ScoringEngine + AI extraction |
+| `strike_filter_engine.py` | Entire file | TitleFilter + ScoringEngine |
+
+### Pattern: Shared Rule Modules
+
+The `location_rules.py` pattern should inform new shared modules:
+
+```python
+# Pattern: dataclass context + pure evaluation function
+@dataclass
+class LocationContext:
+    user_city: Optional[str]
+    user_timezone: Optional[float]
+    # ... config values
+
+@dataclass
+class LocationEvaluation:
+    hard_reject: bool
+    strikes: int
+    reason: Optional[str]
+
+def evaluate_location_rules(job_city, job_timezone, remote, hybrid, ctx) -> LocationEvaluation:
+    # Pure function - no side effects, deterministic
+    ...
+```
+
+This pattern enables:
+- Unit testing with simple dataclass inputs
+- Reuse across filter and scorer
+- Clear separation of config from logic
 
 ---
 
@@ -57,6 +112,51 @@ QUEUE ───┘          │    ↓         ↓          ↓            ↓  
 - Scoring is 100% deterministic from DB config + extracted data
 - Missing data = no effect on score (not penalized)
 
+### Responsibility Boundaries
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     TitleFilter (PRE-AI, cheap)                     │
+│                                                                     │
+│   Required Keywords ──► "engineer", "developer", "sre", etc.        │
+│   Stop Keywords ──────► "recruiter", "sales", "marketing", etc.     │
+│                                                                     │
+│   ❌ NO: company checks, domain checks, description keywords        │
+│   Result: Pass/Reject (no listing created if rejected)              │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   AI Extraction (semantic understanding)            │
+│                                                                     │
+│   Technologies ───► ["python", "kubernetes", "react"] (normalized)  │
+│   Seniority ──────► "senior" | "staff" | "principal" | etc.         │
+│   Work Arrangement► "remote" | "hybrid" | "onsite" | "unknown"      │
+│   Compensation ───► { min: 150000, max: 200000, equity: true }      │
+│   Red Flags ──────► ["requires clearance", "extensive travel"]      │
+│   Green Flags ────► ["remote-first", "modern stack"]                │
+│                                                                     │
+│   AI normalizes tech names: "React.js" → "react", "Golang" → "go"   │
+│   AI understands context: "security clearance" vs "code clearance"  │
+│   Result: Structured JobExtraction (DATA ONLY, no scores)           │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   ScoringEngine (deterministic math)                │
+│                                                                     │
+│   Tech Ranks ─────► +5 python, +10 ml, -20 php (from config)        │
+│   Seniority ──────► +0 senior, -10 mid, -100 intern                 │
+│   Location ───────► Uses location_rules.py (reused from recent)     │
+│   Compensation ───► Below target penalty, equity bonus              │
+│   Role Fit ───────► Backend bonus, consulting penalty               │
+│   Red Flags ──────► Clearance penalty, travel penalty               │
+│                                                                     │
+│   All former "strikes" become score adjustments with config weights │
+│   Result: Final score + detailed adjustment breakdown               │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## Codebase Audit Results
@@ -74,12 +174,14 @@ QUEUE ───┘          │    ↓         ↓          ↓            ↓  
 
 | File | Changes Required |
 |------|------------------|
-| `src/job_finder/ai/matcher.py` | Remove `_detect_work_arrangement`, `_calculate_location_penalty`, `_calculate_adjusted_score`; Keep `_analyze_match`, `_generate_intake_data` |
+| `src/job_finder/ai/matcher.py` | Remove `_detect_work_arrangement`, `_calculate_location_penalty`, `_calculate_adjusted_score`, `_apply_technology_ranks`, `_apply_experience_strike`; Keep `_analyze_match`, `_generate_intake_data` |
 | `src/job_finder/job_queue/processors/job_processor.py` | Replace pipeline with new stages; Remove strike filter; Add extraction + scoring |
 | `src/job_finder/scrape_runner.py` | Remove StrikeFilterEngine usage; Use TitleFilter |
-| `src/job_finder/job_queue/config_loader.py` | Add `get_scoring_config()`; Keep `get_prefilter_policy()` for stop list only |
+| `src/job_finder/job_queue/config_loader.py` | Add `get_scoring_config()`; Simplify `get_prefilter_policy()` to title keywords only |
 | `src/job_finder/filters/__init__.py` | Export TitleFilter instead of StrikeFilterEngine |
 | `src/job_finder/utils/date_utils.py` | Keep `parse_job_date()`; Remove `calculate_freshness_adjustment()` |
+
+**Note:** The `_apply_technology_ranks()` and `_apply_experience_strike()` methods in matcher.py were added as incremental steps. Their logic moves to ScoringEngine, which uses AI-extracted data instead of regex matching.
 
 ### Test Files to Update
 
@@ -121,7 +223,19 @@ get_prefilter_policy used by:
 **File:** `shared/src/config.types.ts`
 
 ```typescript
-// NEW: ScoringConfig type (replaces complex PrefilterPolicy scoring)
+// SIMPLIFIED: PrefilterPolicy - title keywords only (no stop lists)
+export interface PrefilterPolicy {
+  titleFilter: {
+    requiredKeywords: string[];  // Job title must contain at least one
+    stopKeywords: string[];      // Job title cannot contain any
+  };
+  // REMOVED: stopList (excludedCompanies, excludedKeywords, excludedDomains)
+  // REMOVED: strikeEngine config
+  // REMOVED: remotePolicy (moved to ScoringConfig)
+  // REMOVED: salaryStrike, seniorityStrikes, etc.
+}
+
+// NEW: ScoringConfig type (absorbs all former strike logic)
 export interface ScoringConfig {
   workArrangement: {
     remoteBonus: number;
@@ -129,27 +243,27 @@ export interface ScoringConfig {
     onsitePenalty: number;
     relocationPenalty: number;
     unknownPenalty: number;
-    timezonesPenaltyPerHour: number;
-    maxTimezoneHours: number; // Hard reject beyond this
+    timezonePenaltyPerHour: number;
+    maxTimezoneHours: number; // Score floor beyond this
   };
   compensation: {
-    minSalaryFloor: number; // Hard reject below
+    minSalaryFloor: number; // Score heavily penalized below
     targetSalary: number;
     belowTargetPenaltyPer10k: number;
     equityBonus: number;
     contractPenalty: number;
   };
   seniority: {
-    preferredLevels: string[];
-    internPenalty: number; // -100 = hard reject
-    juniorPenalty: number; // -100 = hard reject
+    preferredLevels: string[];  // "senior", "staff", "principal"
+    internPenalty: number;      // Large negative = effectively reject
+    juniorPenalty: number;
     midPenalty: number;
     managementPenalty: number;
     directorPlusPenalty: number;
   };
   technology: {
-    desiredTech: Record<string, number>; // tech -> bonus points
-    undesiredTech: Record<string, number>; // tech -> penalty points
+    // Tech name (normalized) -> points (positive = bonus, negative = penalty)
+    ranks: Record<string, number>;
   };
   roleFit: {
     engineeringBonus: number;
@@ -158,7 +272,12 @@ export interface ScoringConfig {
     devopsSreBonus: number;
     frontendPenalty: number;
     consultingPenalty: number;
-    clearancePenalty: number; // -100 = hard reject
+  };
+  redFlags: {
+    // AI-identified flags -> penalty points
+    clearancePenalty: number;
+    extensiveTravelPenalty: number;
+    // Extensible - AI can identify new flags
   };
   freshness: {
     freshBonusDays: number;
@@ -174,11 +293,13 @@ export interface ScoringConfig {
     aiMlFocusBonus: number;
     largeSizeBonus: number;
     smallSizePenalty: number;
+    largeSizeThreshold: number;
+    smallSizeThreshold: number;
   };
   thresholds: {
     minMatchScore: number;
     highPriorityThreshold: number;
-    aiScoreWeight: number; // 0.0-1.0
+    baselineScore: number;  // Starting score before adjustments (default: 50)
   };
 }
 
@@ -237,12 +358,17 @@ export type JobFinderConfigId =
   | "ai-settings"
   | "ai-prompts"
   | "personal-info"
-  | "prefilter-policy"  // Keep for stop list only
+  | "prefilter-policy"  // SIMPLIFIED: title keywords only
   | "match-policy"      // Keep for detailed analysis config
-  | "scoring-config"    // NEW
+  | "scoring-config"    // NEW: all scoring weights
   | "scheduler-settings"
   | "worker-settings";
 ```
+
+**Migration note:** Existing `prefilter-policy` data in the database will need a migration script to:
+1. Extract `requiredTitleKeywords` from `strikeEngine.hardRejections.requiredTitleKeywords`
+2. Create `stopKeywords` from the existing non-engineering title patterns
+3. Drop all other fields (stopList, strikeEngine, remotePolicy, etc.)
 
 **File:** `shared/src/job.types.ts`
 
@@ -268,10 +394,10 @@ export interface JobListingRecord {
 }
 
 // NEW: Scoring result structure
+// Note: No aiBaseScore - AI extracts data only, all scoring is deterministic
 export interface ScoringResult {
   passed: boolean;
   finalScore: number;
-  aiBaseScore: number;
   adjustments: Array<{
     category: string;
     reason: string;
@@ -292,7 +418,29 @@ export interface ScoringResult {
 |----------|---------|
 | `GET /api/config/scoring-config` | NEW endpoint for scoring configuration |
 | `PUT /api/config/scoring-config` | NEW endpoint to update scoring config |
-| `GET /api/config/prefilter-policy` | Keep but simplify (stop list only) |
+| `GET /api/config/prefilter-policy` | SIMPLIFY to title keywords only |
+| `PUT /api/config/prefilter-policy` | SIMPLIFY to title keywords only |
+
+### Prefilter Policy Simplification
+
+**Before (complex):**
+```json
+{
+  "stopList": { "excludedCompanies": [...], "excludedKeywords": [...], "excludedDomains": [...] },
+  "strikeEngine": { "enabled": true, "strikeThreshold": 5, "hardRejections": {...}, "remotePolicy": {...}, ... },
+  "technologyRanks": { "technologies": {...} }
+}
+```
+
+**After (simple):**
+```json
+{
+  "titleFilter": {
+    "requiredKeywords": ["engineer", "developer", "sre", "sde", "software", "backend", "frontend", "fullstack", "devops", "platform", "ml", "machine learning", "data engineer", "ai engineer"],
+    "stopKeywords": ["recruiter", "recruiting", "talent acquisition", "sales", "account executive", "marketing", "hr", "human resources", "finance", "accounting", "legal", "admin", "assistant", "support", "customer success"]
+  }
+}
+```
 
 ### Endpoint Contracts (No Changes Needed)
 
@@ -324,17 +472,41 @@ type QueueEventType =
 ### Pages to Modify
 
 #### 1. PrefilterPolicyTab.tsx
-**Changes:** Simplify to stop list only (remove strike engine config)
+**Changes:** DRASTICALLY SIMPLIFY to title keywords only
 
-Current sections to REMOVE:
+**REMOVE entirely:**
+- Stop List section (excludedCompanies, excludedKeywords, excludedDomains)
 - Strike Engine settings (enabled, threshold)
-- Hard Rejections (all fields)
+- Hard Rejections (all fields except title keywords)
 - Remote Policy (all fields)
 - Salary Strike, Experience Strike, Quality Strikes, Age Strike
 - Technology Ranks
 
-Keep only:
-- Stop List (excludedCompanies, excludedKeywords, excludedDomains)
+**Keep/Create:**
+- Title Filter section with two lists:
+  - Required Keywords (whitelist) - title must contain at least one
+  - Stop Keywords (blacklist) - title cannot contain any
+
+**UI Mockup:**
+```
+┌─────────────────────────────────────────────────────────┐
+│ Title Filter                                            │
+├─────────────────────────────────────────────────────────┤
+│ Required Keywords (job must match at least one)         │
+│ ┌─────────────────────────────────────────────────────┐ │
+│ │ engineer, developer, sre, sde, software, backend,   │ │
+│ │ frontend, fullstack, devops, platform, ml, ...      │ │
+│ │ [+ Add keyword]                                     │ │
+│ └─────────────────────────────────────────────────────┘ │
+│                                                         │
+│ Stop Keywords (job rejected if title matches)           │
+│ ┌─────────────────────────────────────────────────────┐ │
+│ │ recruiter, sales, marketing, hr, finance, legal,    │ │
+│ │ admin, assistant, support, customer success, ...    │ │
+│ │ [+ Add keyword]                                     │ │
+│ └─────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+```
 
 #### 2. MatchPolicyTab.tsx
 **Changes:** Keep for detailed analysis config, but move scoring to new tab
@@ -350,17 +522,18 @@ Remove (move to ScoringConfigTab):
 - Priority thresholds
 
 #### 3. NEW: ScoringConfigTab.tsx
-**Changes:** Create new tab for all scoring configuration
+**Changes:** Create new tab for ALL scoring configuration (absorbs former strike logic)
 
 Sections:
-- Work Arrangement (remote/hybrid/onsite bonuses/penalties, timezone settings)
-- Compensation (salary floor, target, penalties, equity bonus)
-- Seniority (level preferences, penalties)
-- Technology (desired/undesired tech with points)
-- Role Fit (engineering, backend, ML/AI bonuses, consulting penalty)
-- Freshness (fresh bonus, stale penalties, thresholds)
-- Company Signals (Portland, remote-first, AI/ML, size bonuses)
-- Thresholds (min score, high priority, AI weight)
+- **Work Arrangement** (remote/hybrid/onsite bonuses/penalties, timezone settings, relocation penalty)
+- **Compensation** (salary floor, target salary, below-target penalty, equity bonus, contract penalty)
+- **Seniority** (preferred levels, intern/junior/mid/management/director penalties)
+- **Technology Ranks** (tech name → points, positive = bonus, negative = penalty)
+- **Role Fit** (engineering, backend, ML/AI, DevOps bonuses; frontend, consulting penalties)
+- **Red Flags** (clearance penalty, extensive travel penalty - extensible)
+- **Freshness** (fresh bonus, stale penalties, day thresholds)
+- **Company Signals** (Portland office, remote-first, AI/ML focus, company size bonuses/penalties)
+- **Thresholds** (min score, high priority threshold, baseline score)
 
 #### 4. JobListingsPage.tsx
 **Changes:** Minor - ensure extraction result display works
@@ -700,25 +873,21 @@ class JobExtractor:
         return "\n".join(parts) if parts else "Not available"
 
     def _parse_response(self, response: str) -> Optional[JobExtraction]:
-        """Parse AI response into JobExtraction model."""
+        """Parse AI response into JobExtraction model.
+
+        Uses boundary-finding ({...}) instead of markdown parsing to handle
+        variations in LLM output robustly.
+        """
         try:
-            cleaned = response.strip()
+            # Find first '{' and last '}' to extract JSON object
+            # This handles both raw JSON and markdown-wrapped responses
+            start = response.find("{")
+            end = response.rfind("}") + 1
+            if start == -1 or end == 0:
+                logger.error("No JSON object found in AI response")
+                return None
 
-            # Handle markdown code blocks
-            if cleaned.startswith("```"):
-                parts = cleaned.split("```")
-                if len(parts) >= 2:
-                    cleaned = parts[1]
-                    if cleaned.startswith("json"):
-                        cleaned = cleaned[4:]
-                    cleaned = cleaned.strip()
-
-            # Find JSON object boundaries
-            start = cleaned.find("{")
-            end = cleaned.rfind("}") + 1
-            if start >= 0 and end > start:
-                cleaned = cleaned[start:end]
-
+            cleaned = response[start:end]
             data = json.loads(cleaned)
             return JobExtraction(**data)
 
@@ -805,7 +974,7 @@ class CompanySignalsScoring(BaseModel):
 class ThresholdsConfig(BaseModel):
     min_match_score: int = 70
     high_priority_threshold: int = 85
-    ai_score_weight: float = 0.0  # Default 0 = no AI scoring, only extraction
+    baseline_score: int = 50  # Starting score before adjustments
 
 
 class ScoringConfig(BaseModel):
@@ -910,8 +1079,8 @@ class ScoringEngine:
         adjustments.extend(self._score_freshness(extraction))
         adjustments.extend(self._score_company_signals(company_data))
 
-        # Calculate final score (start from 50 baseline)
-        baseline = 50
+        # Calculate final score from configurable baseline
+        baseline = self.config.thresholds.baseline_score
         total_adjustment = sum(a.points for a in adjustments)
         final_score = max(0, min(100, baseline + total_adjustment))
 
@@ -1154,9 +1323,14 @@ class TitleFilter:
     """Fast pre-filter based on job title only.
 
     Performs cheap string matching before expensive AI extraction.
+    This is the ONLY pre-AI check - all content analysis happens via AI.
+
+    Two checks:
+    1. Required keywords (whitelist) - title must contain at least one
+    2. Stop keywords (blacklist) - title cannot contain any
     """
 
-    ENGINEERING_KEYWORDS = [
+    DEFAULT_REQUIRED_KEYWORDS = [
         "software", "engineer", "developer", "swe", "sde",
         "backend", "frontend", "fullstack", "full stack", "full-stack",
         "devops", "sre", "platform", "infrastructure",
@@ -1164,7 +1338,7 @@ class TitleFilter:
         "security engineer", "cloud engineer", "systems engineer",
     ]
 
-    NON_ENGINEERING_KEYWORDS = [
+    DEFAULT_STOP_KEYWORDS = [
         "recruiter", "recruiting", "talent acquisition",
         "sales", "account executive", "account manager", "business development",
         "marketing", "content", "copywriter", "social media",
@@ -1177,50 +1351,55 @@ class TitleFilter:
 
     def __init__(
         self,
-        engineering_keywords: Optional[List[str]] = None,
-        non_engineering_keywords: Optional[List[str]] = None,
-        excluded_companies: Optional[List[str]] = None,
+        required_keywords: Optional[List[str]] = None,
+        stop_keywords: Optional[List[str]] = None,
     ):
-        self.engineering_keywords = [
-            k.lower() for k in (engineering_keywords or self.ENGINEERING_KEYWORDS)
+        """Initialize title filter.
+
+        Args:
+            required_keywords: Title must contain at least one (whitelist)
+            stop_keywords: Title cannot contain any (blacklist)
+
+        NOTE: No company/domain/description checks - those are handled by AI.
+        """
+        self.required_keywords = [
+            k.lower() for k in (required_keywords or self.DEFAULT_REQUIRED_KEYWORDS)
         ]
-        self.non_engineering_keywords = [
-            k.lower() for k in (non_engineering_keywords or self.NON_ENGINEERING_KEYWORDS)
-        ]
-        self.excluded_companies = [
-            c.lower() for c in (excluded_companies or [])
+        self.stop_keywords = [
+            k.lower() for k in (stop_keywords or self.DEFAULT_STOP_KEYWORDS)
         ]
 
-    def filter(self, title: str, company: str = "") -> TitleFilterResult:
-        """Quick filter based on title and company."""
+    def filter(self, title: str) -> TitleFilterResult:
+        """Quick filter based on title only.
+
+        Args:
+            title: Job title string
+
+        Returns:
+            TitleFilterResult with pass/fail and reason
+        """
+        if not title:
+            return TitleFilterResult(passed=True)  # No title = allow through to AI
+
         title_lower = title.lower()
-        company_lower = company.lower()
 
-        # Check excluded companies
-        for excluded in self.excluded_companies:
-            if excluded in company_lower:
-                return TitleFilterResult(
-                    passed=False,
-                    rejection_reason=f"Excluded company: {excluded}"
-                )
-
-        # Check for non-engineering keywords (hard reject)
-        for keyword in self.non_engineering_keywords:
+        # Check for stop keywords (blacklist - hard reject)
+        for keyword in self.stop_keywords:
             if self._word_match(keyword, title_lower):
                 return TitleFilterResult(
                     passed=False,
-                    rejection_reason=f"Non-engineering role: {keyword}"
+                    rejection_reason=f"Stop keyword in title: {keyword}"
                 )
 
-        # Check for engineering keywords (must have at least one)
-        has_engineering_keyword = any(
-            self._word_match(k, title_lower) for k in self.engineering_keywords
+        # Check for required keywords (whitelist - must have at least one)
+        has_required_keyword = any(
+            self._word_match(k, title_lower) for k in self.required_keywords
         )
 
-        if not has_engineering_keyword:
+        if not has_required_keyword:
             return TitleFilterResult(
                 passed=False,
-                rejection_reason="No engineering keywords in title"
+                rejection_reason=f"Title missing required keywords: {title}"
             )
 
         return TitleFilterResult(passed=True)
@@ -1228,7 +1407,9 @@ class TitleFilter:
     def _word_match(self, keyword: str, text: str) -> bool:
         """Match keyword with word boundaries."""
         if " " in keyword:
+            # Multi-word phrase - substring match
             return keyword in text
+        # Single word - use word boundaries to avoid partial matches
         pattern = r"\b" + re.escape(keyword) + r"\b"
         return bool(re.search(pattern, text))
 ```
@@ -1257,11 +1438,20 @@ class JobProcessor(BaseProcessor):
     def __init__(self, ...):
         # Remove: self.strike_filter
         # Add:
-        self.title_filter = TitleFilter(
-            excluded_companies=self._get_excluded_companies()
-        )
+        self.title_filter = None  # Lazy init with config
         self.job_extractor = None  # Lazy init with AI provider
         self.scoring_engine = None  # Lazy init with config
+
+    def _ensure_title_filter(self):
+        """Lazy initialize title filter with current config."""
+        if self.title_filter is None:
+            prefilter = self.config_loader.get_prefilter_policy()
+            title_config = prefilter.get("titleFilter", {})
+            self.title_filter = TitleFilter(
+                required_keywords=title_config.get("requiredKeywords"),
+                stop_keywords=title_config.get("stopKeywords"),
+            )
+        return self.title_filter
 
     def _ensure_extractor(self):
         """Lazy initialize extractor with current AI settings."""
@@ -1301,11 +1491,9 @@ class JobProcessor(BaseProcessor):
             # Create/get listing record for tracking
             listing_id = await self._ensure_listing_record(item, job_data)
 
-            # Stage 2: Title Filter
-            title_result = self.title_filter.filter(
-                title=job_data.get("title", ""),
-                company=job_data.get("company", "")
-            )
+            # Stage 2: Title Filter (title keywords only - no company/domain/description checks)
+            title_filter = self._ensure_title_filter()
+            title_result = title_filter.filter(title=job_data.get("title", ""))
             state["title_filter"] = title_result.to_dict()
 
             if not title_result.passed:
@@ -1428,22 +1616,73 @@ class JobProcessor(BaseProcessor):
 ```python
 # Add to config_loader.py
 
+from job_finder.scoring.config import ScoringConfig
+
 def get_scoring_config(self) -> ScoringConfig:
     """Load scoring configuration from database."""
-    row = self._get_config_row("scoring-config")
-    if row:
-        payload = json.loads(row["payload_json"])
+    try:
+        payload = self._get_config("scoring-config")
         return ScoringConfig(**payload)
-    return ScoringConfig()  # Defaults
+    except InitializationError:
+        # Seed defaults if not found
+        defaults = ScoringConfig()
+        return ScoringConfig(**self._seed_config("scoring-config", defaults.model_dump()))
 
-def get_stop_list(self) -> dict:
-    """Load stop list from prefilter-policy (excludedCompanies, etc.)."""
+def get_title_filter_config(self) -> dict:
+    """Load title filter config from simplified prefilter-policy."""
     policy = self.get_prefilter_policy()
-    return policy.get("stopList", {
-        "excludedCompanies": [],
-        "excludedKeywords": [],
-        "excludedDomains": [],
+    return policy.get("titleFilter", {
+        "requiredKeywords": [],
+        "stopKeywords": [],
     })
+
+# REMOVE: get_stop_list() - no longer needed
+# Stop lists (excludedCompanies, excludedKeywords, excludedDomains) are eliminated
+```
+
+**Migration script for existing prefilter-policy:**
+
+```python
+# scripts/migrate_prefilter_policy.py
+
+def migrate_prefilter_policy(db_path: str):
+    """Migrate existing prefilter-policy to simplified format."""
+    with sqlite_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT payload_json FROM job_finder_config WHERE id = 'prefilter-policy'"
+        ).fetchone()
+
+        if not row:
+            return
+
+        old_policy = json.loads(row["payload_json"])
+
+        # Extract title keywords from old structure
+        hard_rej = old_policy.get("strikeEngine", {}).get("hardRejections", {})
+        required_keywords = hard_rej.get("requiredTitleKeywords", [])
+
+        # Create stop keywords from non-engineering patterns
+        # (These were hardcoded in StrikeFilterEngine, now configurable)
+        stop_keywords = [
+            "recruiter", "recruiting", "talent acquisition",
+            "sales", "account executive", "marketing",
+            "hr", "human resources", "finance", "legal",
+            "admin", "assistant", "support", "customer success"
+        ]
+
+        new_policy = {
+            "titleFilter": {
+                "requiredKeywords": required_keywords,
+                "stopKeywords": stop_keywords,
+            }
+        }
+
+        conn.execute(
+            "UPDATE job_finder_config SET payload_json = ?, updated_at = datetime('now') WHERE id = 'prefilter-policy'",
+            (json.dumps(new_policy),)
+        )
+
+        print(f"Migrated prefilter-policy: {len(required_keywords)} required, {len(stop_keywords)} stop keywords")
 ```
 
 ---
@@ -1520,7 +1759,7 @@ Add to `job-finder-BE/server/src/modules/config/`:
 ### Pre-Migration
 - [ ] Create feature branch from staging
 - [ ] Back up production database
-- [ ] Document current config values
+- [ ] Document current config values (especially prefilter-policy for migration)
 
 ### Phase 1: New Modules
 - [ ] Create `src/job_finder/ai/extraction.py`
@@ -1538,41 +1777,66 @@ Add to `job-finder-BE/server/src/modules/config/`:
 
 ### Phase 3: Config Loader
 - [ ] Add `get_scoring_config()` method
-- [ ] Add `get_stop_list()` method
-- [ ] Seed default scoring-config
+- [ ] Simplify `get_prefilter_policy()` to title keywords only
+- [ ] Seed default `scoring-config`
+- [ ] Create migration script for existing `prefilter-policy` data
 
-### Phase 4: Remove Deprecated
-- [ ] Delete deprecated files
+### Phase 4: Remove Deprecated Code
+- [ ] Delete `src/job_finder/filters/strike_filter_engine.py`
+- [ ] Delete `src/job_finder/utils/timezone_utils.py`
+- [ ] Remove `_apply_technology_ranks()` from `matcher.py`
+- [ ] Remove `_apply_experience_strike()` from `matcher.py`
+- [ ] Remove `_detect_work_arrangement()` from `matcher.py`
+- [ ] Remove `_calculate_location_penalty()` from `matcher.py`
+- [ ] Remove `_calculate_adjusted_score()` from `matcher.py`
+- [ ] Remove `calculate_freshness_adjustment()` from `date_utils.py`
 - [ ] Update imports in remaining files
-- [ ] Remove deprecated tests
+- [ ] Delete deprecated tests
 - [ ] Run full test suite
 
 ### Phase 5: Shared Types
-- [ ] Add TypeScript interfaces
-- [ ] Update existing interfaces
+- [ ] Simplify `PrefilterPolicy` interface (title keywords only)
+- [ ] Add `ScoringConfig` interface
+- [ ] Add `JobExtractionResult` interface
+- [ ] Add `ScoringResult` interface
+- [ ] Update `JobFinderConfigId` type
 - [ ] Rebuild shared package
 
 ### Phase 6: API
-- [ ] Add scoring-config endpoints
+- [ ] Add `GET /api/config/scoring-config` endpoint
+- [ ] Add `PUT /api/config/scoring-config` endpoint
+- [ ] Simplify `prefilter-policy` endpoints
+- [ ] Add config migration endpoint or script
 - [ ] Update config type guards
 - [ ] Test API changes
 
 ### Phase 7: Frontend
-- [ ] Simplify PrefilterPolicyTab
-- [ ] Create ScoringConfigTab
-- [ ] Update JobDetailsDialog
+- [ ] SIMPLIFY `PrefilterPolicyTab.tsx` to title keywords only
+  - [ ] Remove Stop List section entirely
+  - [ ] Remove Strike Engine settings
+  - [ ] Remove Hard Rejections (except title keywords)
+  - [ ] Remove Remote Policy
+  - [ ] Remove all strike configurations
+  - [ ] Remove Technology Ranks
+  - [ ] Add Required Keywords list UI
+  - [ ] Add Stop Keywords list UI
+- [ ] CREATE `ScoringConfigTab.tsx` with all scoring sections
+- [ ] UPDATE `MatchPolicyTab.tsx` (move scoring to new tab)
+- [ ] UPDATE `JobDetailsDialog.tsx` (show scoring breakdown)
 - [ ] Test all config pages
 
 ### Testing
 - [ ] All unit tests pass
 - [ ] Integration tests pass
 - [ ] Manual test with real jobs
-- [ ] Test Anthropic jobs specifically
+- [ ] Test Anthropic jobs specifically (previous false negatives)
 - [ ] Verify scores are reasonable
+- [ ] Verify tech detection works without regex confusion
 
 ### Deployment
 - [ ] Merge to staging
 - [ ] Deploy staging
+- [ ] Run config migration script
 - [ ] Run test batch
 - [ ] Review results
 - [ ] Deploy to production
