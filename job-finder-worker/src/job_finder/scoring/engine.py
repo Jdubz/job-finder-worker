@@ -76,35 +76,42 @@ class ScoringEngine:
         Initialize the scoring engine.
 
         Args:
-            config: ScoringConfig dictionary from config loader
+            config: MatchPolicy dictionary from config loader (required, no defaults)
             user_skills: Optional list of user's skills for matching
+
+        Raises:
+            KeyError: If required config sections are missing
         """
         self.config = config
-        self.min_score = config.get("minScore", 60)
-        self.weights = config.get("weights", {})
-        self.seniority_config = config.get("seniority", {})
-        self.location_config = config.get("location", {})
-        self.tech_config = config.get("technology", {})
-        self.salary_config = config.get("salary", {})
-        self.experience_config = config.get("experience", {})
+
+        # Required top-level config - fail loudly if missing
+        self.min_score = config["minScore"]
+        self.weights = config["weights"]
+        self.seniority_config = config["seniority"]
+        self.location_config = config["location"]
+        self.tech_config = config["technology"]
+        self.salary_config = config["salary"]
+        self.experience_config = config["experience"]
+        self.freshness_config = config["freshness"]
+        self.role_fit_config = config["roleFit"]
+        self.company_config = config["company"]
+        self.dealbreakers_config = config["dealbreakers"]
 
         # Normalize user skills to lowercase for matching
         self.user_skills: Set[str] = set()
         if user_skills:
             self.user_skills = {s.lower().strip() for s in user_skills if s}
 
-        # Pre-process technology lists for efficient lookup
-        self._required_tech = {t.lower() for t in self.tech_config.get("required", [])}
-        self._preferred_tech = {t.lower() for t in self.tech_config.get("preferred", [])}
-        self._disliked_tech = {t.lower() for t in self.tech_config.get("disliked", [])}
-        self._rejected_tech = {t.lower() for t in self.tech_config.get("rejected", [])}
+        # Pre-process technology lists for efficient lookup (required fields)
+        self._required_tech = {t.lower() for t in self.tech_config["required"]}
+        self._preferred_tech = {t.lower() for t in self.tech_config["preferred"]}
+        self._disliked_tech = {t.lower() for t in self.tech_config["disliked"]}
+        self._rejected_tech = {t.lower() for t in self.tech_config["rejected"]}
 
-        # Pre-process seniority lists
-        self._preferred_seniority = {s.lower() for s in self.seniority_config.get("preferred", [])}
-        self._acceptable_seniority = {
-            s.lower() for s in self.seniority_config.get("acceptable", [])
-        }
-        self._rejected_seniority = {s.lower() for s in self.seniority_config.get("rejected", [])}
+        # Pre-process seniority lists (required fields)
+        self._preferred_seniority = {s.lower() for s in self.seniority_config["preferred"]}
+        self._acceptable_seniority = {s.lower() for s in self.seniority_config["acceptable"]}
+        self._rejected_seniority = {s.lower() for s in self.seniority_config["rejected"]}
 
     def score(
         self,
@@ -731,24 +738,23 @@ class ScoringEngine:
         """
         Score based on job freshness (days since posting).
 
-        Configurable thresholds from scoring-config.freshness:
-        - freshBonusDays: Days threshold for fresh bonus (default: 2)
-        - freshBonus: Points bonus for fresh jobs (default: 10)
-        - staleThresholdDays: Days threshold for stale penalty (default: 7)
-        - stalePenalty: Points penalty for stale jobs (default: -10)
-        - veryStaleDays: Days threshold for very stale penalty (default: 14)
-        - veryStalePenalty: Points penalty for very stale jobs (default: -20)
+        Uses match-policy.freshness config (all fields required):
+        - freshBonusDays: Days threshold for fresh bonus
+        - freshBonus: Points bonus for fresh jobs
+        - staleThresholdDays: Days threshold for stale penalty
+        - stalePenalty: Points penalty for stale jobs
+        - veryStaleDays: Days threshold for very stale penalty
+        - veryStalePenalty: Points penalty for very stale jobs
+        - repostPenalty: Points penalty for reposts
         """
-        freshness_config = self.config.get("freshness", {})
-
-        # Get thresholds from config with defaults
-        fresh_bonus_days = freshness_config.get("freshBonusDays", 2)
-        fresh_bonus = freshness_config.get("freshBonus", 10)
-        stale_threshold_days = freshness_config.get("staleThresholdDays", 7)
-        stale_penalty = freshness_config.get("stalePenalty", -10)
-        very_stale_days = freshness_config.get("veryStaleDays", 14)
-        very_stale_penalty = freshness_config.get("veryStalePenalty", -20)
-        repost_penalty = freshness_config.get("repostPenalty", -5)
+        # Use pre-loaded config (required fields, no defaults)
+        fresh_bonus_days = self.freshness_config["freshBonusDays"]
+        fresh_bonus = self.freshness_config["freshBonus"]
+        stale_threshold_days = self.freshness_config["staleThresholdDays"]
+        stale_penalty = self.freshness_config["stalePenalty"]
+        very_stale_days = self.freshness_config["veryStaleDays"]
+        very_stale_penalty = self.freshness_config["veryStalePenalty"]
+        repost_penalty = self.freshness_config["repostPenalty"]
 
         days_old = extraction.days_old
         is_repost = extraction.is_repost
@@ -805,30 +811,29 @@ class ScoringEngine:
         """
         Score based on role fit signals (backend, ML/AI, DevOps, etc.).
 
-        Configurable bonuses/penalties from scoring-config.roleFit:
-        - backendBonus: Bonus for backend roles (default: 5)
-        - mlAiBonus: Bonus for ML/AI roles (default: 10)
-        - devopsSreBonus: Bonus for DevOps/SRE roles (default: 5)
-        - dataBonus: Bonus for data engineering roles (default: 5)
-        - securityBonus: Bonus for security roles (default: 3)
-        - frontendPenalty: Penalty for frontend-only roles (default: -5)
-        - consultingPenalty: Penalty for consulting roles (default: -10)
-        - clearancePenalty: Penalty for clearance-required roles (default: -100)
-        - managementPenalty: Penalty for management roles (default: -10)
+        Uses match-policy.roleFit config (all fields required):
+        - backendBonus: Bonus for backend roles
+        - mlAiBonus: Bonus for ML/AI roles
+        - devopsSreBonus: Bonus for DevOps/SRE roles
+        - dataBonus: Bonus for data engineering roles
+        - securityBonus: Bonus for security roles
+        - frontendPenalty: Penalty for frontend-only roles
+        - consultingPenalty: Penalty for consulting roles
+        - clearancePenalty: Penalty for clearance-required roles
+        - managementPenalty: Penalty for management roles
+        - leadBonus: Bonus for technical lead roles
         """
-        role_fit_config = self.config.get("roleFit", {})
-
-        # Get bonuses/penalties from config with defaults
-        backend_bonus = role_fit_config.get("backendBonus", 5)
-        ml_ai_bonus = role_fit_config.get("mlAiBonus", 10)
-        devops_sre_bonus = role_fit_config.get("devopsSreBonus", 5)
-        data_bonus = role_fit_config.get("dataBonus", 5)
-        security_bonus = role_fit_config.get("securityBonus", 3)
-        frontend_penalty = role_fit_config.get("frontendPenalty", -5)
-        consulting_penalty = role_fit_config.get("consultingPenalty", -10)
-        clearance_penalty = role_fit_config.get("clearancePenalty", -100)
-        management_penalty = role_fit_config.get("managementPenalty", -10)
-        lead_bonus = role_fit_config.get("leadBonus", 3)
+        # Use pre-loaded config (required fields, no defaults)
+        backend_bonus = self.role_fit_config["backendBonus"]
+        ml_ai_bonus = self.role_fit_config["mlAiBonus"]
+        devops_sre_bonus = self.role_fit_config["devopsSreBonus"]
+        data_bonus = self.role_fit_config["dataBonus"]
+        security_bonus = self.role_fit_config["securityBonus"]
+        frontend_penalty = self.role_fit_config["frontendPenalty"]
+        consulting_penalty = self.role_fit_config["consultingPenalty"]
+        clearance_penalty = self.role_fit_config["clearancePenalty"]
+        management_penalty = self.role_fit_config["managementPenalty"]
+        lead_bonus = self.role_fit_config["leadBonus"]
 
         points = 0
         adjustments: List[ScoreAdjustment] = []
@@ -955,13 +960,17 @@ class ScoringEngine:
         """
         Score based on company signals from enriched company data.
 
-        Company signals include:
-        - Portland office presence
-        - Remote-first culture
-        - AI/ML focus
-        - Company size
+        Uses match-policy.company config (all fields required):
+        - preferredCityBonus: Bonus for companies with office in preferred city
+        - preferredCity: User's preferred city for office bonus
+        - remoteFirstBonus: Bonus for remote-first companies
+        - aiMlFocusBonus: Bonus for AI/ML focused companies
+        - largeCompanyBonus: Bonus for large companies
+        - smallCompanyPenalty: Penalty for small companies
+        - largeCompanyThreshold: Employee count for "large"
+        - smallCompanyThreshold: Employee count for "small"
+        - startupBonus: Alternative bonus for startups
         """
-        company_config = self.config.get("company", {})
         points = 0
         adjustments: List[ScoreAdjustment] = []
 
@@ -976,24 +985,25 @@ class ScoringEngine:
         # Normalize locations to lowercase strings
         locations_lower = [str(loc).lower() for loc in locations if loc]
 
-        # 1. Portland office bonus
-        portland_bonus = company_config.get("portlandOfficeBonus", 15)
-        if portland_bonus:
-            has_portland = any(
-                "portland" in loc for loc in locations_lower
-            ) or "portland" in headquarters
-            if has_portland:
-                points += portland_bonus
+        # 1. Preferred city office bonus (required field)
+        preferred_city_bonus = self.company_config["preferredCityBonus"]
+        preferred_city = self.company_config.get("preferredCity", "").lower()
+        if preferred_city_bonus and preferred_city:
+            has_preferred_city = any(
+                preferred_city in loc for loc in locations_lower
+            ) or preferred_city in headquarters
+            if has_preferred_city:
+                points += preferred_city_bonus
                 adjustments.append(
                     ScoreAdjustment(
                         category="company",
-                        reason="Portland office",
-                        points=portland_bonus,
+                        reason=f"{preferred_city.title()} office",
+                        points=preferred_city_bonus,
                     )
                 )
 
-        # 2. Remote-first bonus
-        remote_first_bonus = company_config.get("remoteFirstBonus", 10)
+        # 2. Remote-first bonus (required field)
+        remote_first_bonus = self.company_config["remoteFirstBonus"]
         if remote_first_bonus and is_remote_first:
             points += remote_first_bonus
             adjustments.append(
@@ -1004,8 +1014,8 @@ class ScoringEngine:
                 )
             )
 
-        # 3. AI/ML focus bonus
-        ai_ml_bonus = company_config.get("aiMlFocusBonus", 10)
+        # 3. AI/ML focus bonus (required field)
+        ai_ml_bonus = self.company_config["aiMlFocusBonus"]
         if ai_ml_bonus:
             ai_keywords = ["machine learning", "artificial intelligence", "ai", "ml", "deep learning", "llm", "generative ai"]
             has_ai_focus = any(kw in description for kw in ai_keywords) or any(
@@ -1022,13 +1032,15 @@ class ScoringEngine:
                     )
                 )
 
-        # 4. Company size scoring (with type safety for employee_count)
-        if employee_count and isinstance(employee_count, (int, float)):
-            large_company_bonus = company_config.get("largeCompanyBonus", 5)
-            small_company_penalty = company_config.get("smallCompanyPenalty", -5)
-            startup_bonus = company_config.get("startupBonus", 0)
+        # 4. Company size scoring (all fields required)
+        large_company_bonus = self.company_config["largeCompanyBonus"]
+        small_company_penalty = self.company_config["smallCompanyPenalty"]
+        large_threshold = self.company_config["largeCompanyThreshold"]
+        small_threshold = self.company_config["smallCompanyThreshold"]
+        startup_bonus = self.company_config["startupBonus"]
 
-            if employee_count >= 1000 and large_company_bonus:
+        if employee_count and isinstance(employee_count, (int, float)):
+            if employee_count >= large_threshold and large_company_bonus:
                 points += large_company_bonus
                 adjustments.append(
                     ScoreAdjustment(
@@ -1037,7 +1049,7 @@ class ScoringEngine:
                         points=large_company_bonus,
                     )
                 )
-            elif employee_count <= 50:
+            elif employee_count <= small_threshold:
                 if startup_bonus:
                     points += startup_bonus
                     adjustments.append(

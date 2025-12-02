@@ -1,10 +1,15 @@
 """Job queue item processor (single-task pipeline).
 
 Processes a JOB item through the complete pipeline in a single task:
-SCRAPE -> TITLE_FILTER -> COMPANY_LOOKUP -> AI_EXTRACTION -> SCORING -> ANALYSIS -> SAVE_MATCH
+SCRAPE -> TITLE_FILTER -> COMPANY_LOOKUP -> [WAIT_COMPANY] -> AI_EXTRACTION -> SCORING -> ANALYSIS -> SAVE_MATCH
 
 All stages execute in-memory within a single task (no respawning).
 This reduces database queries and maintains in-memory data throughout.
+
+Company Dependency:
+- Before AI extraction, checks if company has good data (has_good_company_data)
+- If company data is sparse, spawns COMPANY task and requeues job to wait
+- Job resumes when company data becomes available (or after max retries)
 
 Job Listings Integration:
 - Jobs are stored in job_listings table when they pass pre-filter (in scraper_intake)
@@ -47,6 +52,9 @@ from job_finder.utils.url_utils import normalize_url
 from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
+
+# Maximum number of times a job can wait for company data before proceeding anyway
+MAX_COMPANY_WAIT_RETRIES = 3
 
 
 @dataclass
@@ -140,9 +148,9 @@ class JobProcessor(BaseProcessor):
         title_filter_config = config_loader.get_title_filter()
         self.title_filter = TitleFilter(title_filter_config)
 
-        scoring_config = config_loader.get_scoring_config()
-        self.scoring_config = scoring_config
-        self.scoring_engine = ScoringEngine(scoring_config)
+        match_policy = config_loader.get_match_policy()
+        self.match_policy = match_policy
+        self.scoring_engine = ScoringEngine(match_policy)
 
         # Initialize AI provider for extraction
         ai_settings = config_loader.get_ai_settings()
@@ -171,14 +179,14 @@ class JobProcessor(BaseProcessor):
         """Reload config-driven components so the next item uses fresh settings."""
         ai_settings = self.config_loader.get_ai_settings()
         title_filter_config = self.config_loader.get_title_filter()
-        scoring_config = self.config_loader.get_scoring_config()
+        match_policy = self.config_loader.get_match_policy()
 
         # Rebuild title filter with latest config
         self.title_filter = TitleFilter(title_filter_config)
 
         # Rebuild scoring engine with latest config
-        self.scoring_config = scoring_config
-        self.scoring_engine = ScoringEngine(scoring_config)
+        self.match_policy = match_policy
+        self.scoring_engine = ScoringEngine(match_policy)
 
         # Propagate new title filter into downstream helpers
         if hasattr(self.scrape_runner, "title_filter"):
@@ -195,8 +203,8 @@ class JobProcessor(BaseProcessor):
         if hasattr(self.company_info_fetcher, "ai_provider"):
             self.company_info_fetcher.ai_provider = company_provider
 
-        # Update AI matcher min score from scoring config
-        self.ai_matcher.min_match_score = scoring_config.get("minScore", 60)
+        # Update AI matcher min score from match policy (required, no default)
+        self.ai_matcher.min_match_score = match_policy["minScore"]
 
     def _emit_event(self, event: str, item_id: str, data: Dict[str, Any]) -> None:
         """Emit a pipeline progress event via WebSocket (if notifier is available)."""
@@ -361,14 +369,19 @@ class JobProcessor(BaseProcessor):
             logger.info(f"[PIPELINE] {url_preview} -> COMPANY_LOOKUP")
             self._update_status(item, "Looking up company", ctx.stage)
             ctx.company_data = self._execute_company_lookup(ctx)
-            # Spawn company enrichment task (fire-and-forget)
-            self._spawn_company_enrichment(ctx)
 
             # Emit company lookup event
             self._emit_event("job:company_lookup", item.id, {
                 "company": ctx.job_data.get("company", ""),
                 "hasData": ctx.company_data is not None,
             })
+
+            # STAGE 3.5: COMPANY DEPENDENCY CHECK
+            # Before AI extraction, ensure company has good data (not just a stub)
+            company_ready = self._check_company_dependency(ctx, state)
+            if not company_ready:
+                # Job was requeued to wait for company enrichment
+                return
 
             # STAGE 4: AI EXTRACTION
             ctx.stage = "extraction"
@@ -590,6 +603,77 @@ class JobProcessor(BaseProcessor):
                 self.job_listing_storage.update_company_id(ctx.listing_id, company_id)
 
         return company
+
+    def _check_company_dependency(
+        self, ctx: PipelineContext, state: Dict[str, Any]
+    ) -> bool:
+        """
+        Check if company data is ready before proceeding to AI extraction.
+
+        If company data is sparse (just a stub), spawns a COMPANY task and requeues
+        this job to wait. Returns True when company is ready, False if requeued.
+
+        This prevents wasting AI extraction calls on jobs where we don't have
+        good company context (remote-first, AI/ML focus, size, etc.).
+        """
+        company = ctx.company_data
+        item = ctx.item
+        job_data = ctx.job_data
+
+        # No company data - proceed anyway (can't wait for nothing)
+        if not company:
+            return True
+
+        company_id = company.get("id")
+        company_name = job_data.get("company", "")
+
+        # Company has good data - ready to proceed
+        if self.companies_manager.has_good_company_data(company):
+            logger.debug(
+                "Company %s has good data, proceeding to extraction", company_name
+            )
+            return True
+
+        # Check wait retry count
+        wait_count = state.get("company_wait_count", 0)
+
+        if wait_count >= MAX_COMPANY_WAIT_RETRIES:
+            # Exceeded max retries - proceed anyway with sparse data
+            logger.warning(
+                "Company %s still sparse after %d waits, proceeding with extraction",
+                company_name,
+                wait_count,
+            )
+            return True
+
+        # Spawn company enrichment task (fire-and-forget)
+        self._spawn_company_enrichment(ctx)
+
+        # Requeue this job to wait for company data
+        updated_state = {
+            **state,
+            "job_data": job_data,
+            "waiting_for_company_id": company_id,
+            "company_wait_count": wait_count + 1,
+        }
+
+        self.queue_manager.requeue_with_state(item.id, updated_state)
+        logger.info(
+            "[PIPELINE] %s -> WAIT_COMPANY (attempt %d/%d for %s)",
+            (item.url or "")[:50],
+            wait_count + 1,
+            MAX_COMPANY_WAIT_RETRIES,
+            company_name,
+        )
+
+        # Emit wait event
+        self._emit_event("job:waiting_company", item.id, {
+            "company": company_name,
+            "companyId": company_id,
+            "waitCount": wait_count + 1,
+        })
+
+        return False
 
     def _spawn_company_enrichment(self, ctx: PipelineContext) -> None:
         """Spawn company enrichment task (fire-and-forget, non-blocking)."""

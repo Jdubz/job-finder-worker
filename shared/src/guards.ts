@@ -23,6 +23,7 @@ import type {
 import type {
   TitleFilterConfig,
   ScoringConfig,
+  MatchPolicy,
   SchedulerSettings,
   AIProviderType,
   AIInterfaceType,
@@ -310,6 +311,81 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     typeof experience.userYears !== "number" ||
     typeof experience.maxRequired !== "number" ||
     typeof experience.overqualifiedPenalty !== "number"
+  ) {
+    return false
+  }
+
+  return true
+}
+
+/**
+ * Type guard for MatchPolicy (complete match policy with all sections)
+ * Validates all required sections: freshness, roleFit, company, dealbreakers
+ */
+export function isMatchPolicy(value: unknown): value is MatchPolicy {
+  // First check base ScoringConfig fields
+  if (!isScoringConfig(value)) return false
+
+  const v = value as Partial<MatchPolicy>
+
+  // Check freshness section
+  if (!isObject(v.freshness)) return false
+  const freshness = v.freshness as Record<string, unknown>
+  if (
+    typeof freshness.freshBonusDays !== "number" ||
+    typeof freshness.freshBonus !== "number" ||
+    typeof freshness.staleThresholdDays !== "number" ||
+    typeof freshness.stalePenalty !== "number" ||
+    typeof freshness.veryStaleDays !== "number" ||
+    typeof freshness.veryStalePenalty !== "number" ||
+    typeof freshness.repostPenalty !== "number"
+  ) {
+    return false
+  }
+
+  // Check roleFit section
+  if (!isObject(v.roleFit)) return false
+  const roleFit = v.roleFit as Record<string, unknown>
+  if (
+    typeof roleFit.backendBonus !== "number" ||
+    typeof roleFit.mlAiBonus !== "number" ||
+    typeof roleFit.devopsSreBonus !== "number" ||
+    typeof roleFit.dataBonus !== "number" ||
+    typeof roleFit.securityBonus !== "number" ||
+    typeof roleFit.leadBonus !== "number" ||
+    typeof roleFit.frontendPenalty !== "number" ||
+    typeof roleFit.consultingPenalty !== "number" ||
+    typeof roleFit.clearancePenalty !== "number" ||
+    typeof roleFit.managementPenalty !== "number"
+  ) {
+    return false
+  }
+
+  // Check company section
+  if (!isObject(v.company)) return false
+  const company = v.company as Record<string, unknown>
+  if (
+    typeof company.preferredCityBonus !== "number" ||
+    (company.preferredCity !== undefined && typeof company.preferredCity !== "string") ||
+    typeof company.remoteFirstBonus !== "number" ||
+    typeof company.aiMlFocusBonus !== "number" ||
+    typeof company.largeCompanyBonus !== "number" ||
+    typeof company.smallCompanyPenalty !== "number" ||
+    typeof company.largeCompanyThreshold !== "number" ||
+    typeof company.smallCompanyThreshold !== "number" ||
+    typeof company.startupBonus !== "number"
+  ) {
+    return false
+  }
+
+  // Check dealbreakers section
+  if (!isObject(v.dealbreakers)) return false
+  const dealbreakers = v.dealbreakers as Record<string, unknown>
+  if (
+    !isStringArray(dealbreakers.blockedLocations) ||
+    typeof dealbreakers.locationPenalty !== "number" ||
+    typeof dealbreakers.relocationPenalty !== "number" ||
+    typeof dealbreakers.ambiguousLocationPenalty !== "number"
   ) {
     return false
   }

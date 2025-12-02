@@ -5,32 +5,23 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription, For
 import { Input } from "@/components/ui/input"
 import { TabCard } from "../shared"
 import { StringListField, NumericField, CheckboxRow, ImpactBadge, InfoTooltip } from "../shared/form-fields"
-import type { ScoringConfig } from "@shared/types"
-import { DEFAULT_SCORING_CONFIG } from "@shared/types"
+import type { MatchPolicy } from "@shared/types"
 
-type ScoringConfigFormValues = ScoringConfig
+type MatchPolicyFormValues = MatchPolicy
 
-type ScoringConfigTabProps = {
+type MatchPolicyTabProps = {
   isSaving: boolean
-  config: ScoringConfig
-  onSave: (config: ScoringConfig) => Promise<void> | void
-  onReset: () => ScoringConfig
+  config: MatchPolicy
+  onSave: (config: MatchPolicy) => Promise<void> | void
+  onReset: () => MatchPolicy
 }
 
 const cleanList = (items: string[]) => items.map((item) => item.trim().toLowerCase()).filter(Boolean)
 
-const mapConfigToForm = (config: ScoringConfig): ScoringConfigFormValues => ({
-  ...DEFAULT_SCORING_CONFIG,
-  ...config,
-  weights: { ...DEFAULT_SCORING_CONFIG.weights, ...config.weights },
-  seniority: { ...DEFAULT_SCORING_CONFIG.seniority, ...config.seniority },
-  location: { ...DEFAULT_SCORING_CONFIG.location, ...config.location },
-  technology: { ...DEFAULT_SCORING_CONFIG.technology, ...config.technology },
-  salary: { ...DEFAULT_SCORING_CONFIG.salary, ...config.salary },
-  experience: { ...DEFAULT_SCORING_CONFIG.experience, ...config.experience },
-})
+// No defaults - config is required and validated by backend
+const mapConfigToForm = (config: MatchPolicy): MatchPolicyFormValues => config
 
-const mapFormToConfig = (values: ScoringConfigFormValues): ScoringConfig => ({
+const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
   minScore: values.minScore,
   weights: {
     skillMatch: values.weights.skillMatch,
@@ -74,19 +65,60 @@ const mapFormToConfig = (values: ScoringConfigFormValues): ScoringConfig => ({
     maxRequired: values.experience.maxRequired,
     overqualifiedPenalty: values.experience.overqualifiedPenalty,
   },
+  freshness: {
+    freshBonusDays: values.freshness.freshBonusDays,
+    freshBonus: values.freshness.freshBonus,
+    staleThresholdDays: values.freshness.staleThresholdDays,
+    stalePenalty: values.freshness.stalePenalty,
+    veryStaleDays: values.freshness.veryStaleDays,
+    veryStalePenalty: values.freshness.veryStalePenalty,
+    repostPenalty: values.freshness.repostPenalty,
+  },
+  roleFit: {
+    backendBonus: values.roleFit.backendBonus,
+    mlAiBonus: values.roleFit.mlAiBonus,
+    devopsSreBonus: values.roleFit.devopsSreBonus,
+    dataBonus: values.roleFit.dataBonus,
+    securityBonus: values.roleFit.securityBonus,
+    leadBonus: values.roleFit.leadBonus,
+    frontendPenalty: values.roleFit.frontendPenalty,
+    consultingPenalty: values.roleFit.consultingPenalty,
+    clearancePenalty: values.roleFit.clearancePenalty,
+    managementPenalty: values.roleFit.managementPenalty,
+  },
+  company: {
+    preferredCityBonus: values.company.preferredCityBonus,
+    preferredCity: values.company.preferredCity?.trim() || undefined,
+    remoteFirstBonus: values.company.remoteFirstBonus,
+    aiMlFocusBonus: values.company.aiMlFocusBonus,
+    largeCompanyBonus: values.company.largeCompanyBonus,
+    smallCompanyPenalty: values.company.smallCompanyPenalty,
+    largeCompanyThreshold: values.company.largeCompanyThreshold,
+    smallCompanyThreshold: values.company.smallCompanyThreshold,
+    startupBonus: values.company.startupBonus,
+  },
+  dealbreakers: {
+    blockedLocations: cleanList(values.dealbreakers.blockedLocations),
+    locationPenalty: values.dealbreakers.locationPenalty,
+    relocationPenalty: values.dealbreakers.relocationPenalty,
+    ambiguousLocationPenalty: values.dealbreakers.ambiguousLocationPenalty,
+  },
 })
 
-export function ScoringConfigTab({ isSaving, config, onSave, onReset }: ScoringConfigTabProps) {
-  const form = useForm<ScoringConfigFormValues>({
-    defaultValues: mapConfigToForm(config ?? DEFAULT_SCORING_CONFIG),
+/** @deprecated Use MatchPolicyTab instead */
+export const ScoringConfigTab = MatchPolicyTab
+
+export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolicyTabProps) {
+  const form = useForm<MatchPolicyFormValues>({
+    defaultValues: mapConfigToForm(config),
     mode: "onChange",
   })
 
   useEffect(() => {
-    form.reset(mapConfigToForm(config ?? DEFAULT_SCORING_CONFIG))
+    form.reset(mapConfigToForm(config))
   }, [config, form])
 
-  const handleSubmit = async (values: ScoringConfigFormValues) => {
+  const handleSubmit = async (values: MatchPolicyFormValues) => {
     const payload = mapFormToConfig(values)
     await onSave(payload)
     form.reset(mapConfigToForm(payload))
@@ -94,7 +126,7 @@ export function ScoringConfigTab({ isSaving, config, onSave, onReset }: ScoringC
 
   const handleReset = () => {
     const resetValue = onReset()
-    form.reset(mapConfigToForm(resetValue ?? config ?? DEFAULT_SCORING_CONFIG))
+    form.reset(mapConfigToForm(resetValue))
   }
 
   return (
@@ -454,6 +486,292 @@ export function ScoringConfigTab({ isSaving, config, onSave, onReset }: ScoringC
                   label="Overqualified Penalty"
                   description="Per year overqualified."
                   info="Score penalty per year you exceed the job's max requirement."
+                />
+              </div>
+            </section>
+
+            {/* Freshness/Age Scoring */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold">Listing Freshness</h3>
+                <ImpactBadge label="Score adjustment" tone="neutral" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Score adjustments based on how recently the job was posted.
+              </p>
+              <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-4">
+                <NumericField
+                  control={form.control}
+                  name="freshness.freshBonusDays"
+                  label="Fresh Threshold (days)"
+                  description="Jobs newer than this get bonus."
+                  info="Number of days a job is considered 'fresh'."
+                />
+                <NumericField
+                  control={form.control}
+                  name="freshness.freshBonus"
+                  label="Fresh Bonus"
+                  description="Points for fresh jobs."
+                  info="Score bonus for jobs within the fresh threshold."
+                />
+                <NumericField
+                  control={form.control}
+                  name="freshness.staleThresholdDays"
+                  label="Stale Threshold (days)"
+                  description="Jobs older than this get penalty."
+                  info="Number of days before a job is considered 'stale'."
+                />
+                <NumericField
+                  control={form.control}
+                  name="freshness.stalePenalty"
+                  label="Stale Penalty"
+                  description="Points for stale jobs (negative)."
+                  info="Score penalty for jobs past the stale threshold."
+                />
+              </div>
+              <div className="grid gap-6 md:grid-cols-3">
+                <NumericField
+                  control={form.control}
+                  name="freshness.veryStaleDays"
+                  label="Very Stale (days)"
+                  description="Severe penalty threshold."
+                  info="Number of days before a job is considered 'very stale'."
+                />
+                <NumericField
+                  control={form.control}
+                  name="freshness.veryStalePenalty"
+                  label="Very Stale Penalty"
+                  description="Points for very stale (negative)."
+                  info="Score penalty for very old job listings."
+                />
+                <NumericField
+                  control={form.control}
+                  name="freshness.repostPenalty"
+                  label="Repost Penalty"
+                  description="Penalty for reposted jobs."
+                  info="Score penalty when a job appears to be reposted."
+                />
+              </div>
+            </section>
+
+            {/* Role Fit Scoring */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold">Role Fit</h3>
+                <ImpactBadge label="Score adjustment" tone="neutral" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Bonuses and penalties based on role type (backend, ML/AI, consulting, etc.).
+              </p>
+              <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-5">
+                <NumericField
+                  control={form.control}
+                  name="roleFit.backendBonus"
+                  label="Backend Bonus"
+                  description="Backend-focused roles."
+                  info="Score bonus for backend/server-side roles."
+                />
+                <NumericField
+                  control={form.control}
+                  name="roleFit.mlAiBonus"
+                  label="ML/AI Bonus"
+                  description="ML/AI-focused roles."
+                  info="Score bonus for machine learning and AI roles."
+                />
+                <NumericField
+                  control={form.control}
+                  name="roleFit.devopsSreBonus"
+                  label="DevOps/SRE Bonus"
+                  description="DevOps/SRE roles."
+                  info="Score bonus for DevOps and SRE roles."
+                />
+                <NumericField
+                  control={form.control}
+                  name="roleFit.dataBonus"
+                  label="Data Eng Bonus"
+                  description="Data engineering roles."
+                  info="Score bonus for data engineering roles."
+                />
+                <NumericField
+                  control={form.control}
+                  name="roleFit.securityBonus"
+                  label="Security Bonus"
+                  description="Security engineering."
+                  info="Score bonus for security engineering roles."
+                />
+              </div>
+              <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-5">
+                <NumericField
+                  control={form.control}
+                  name="roleFit.leadBonus"
+                  label="Lead Bonus"
+                  description="Technical lead roles."
+                  info="Score bonus for technical lead positions."
+                />
+                <NumericField
+                  control={form.control}
+                  name="roleFit.frontendPenalty"
+                  label="Frontend Penalty"
+                  description="Frontend-only roles."
+                  info="Score penalty for frontend-only positions."
+                />
+                <NumericField
+                  control={form.control}
+                  name="roleFit.consultingPenalty"
+                  label="Consulting Penalty"
+                  description="Consulting/agency roles."
+                  info="Score penalty for consulting or agency positions."
+                />
+                <NumericField
+                  control={form.control}
+                  name="roleFit.managementPenalty"
+                  label="Management Penalty"
+                  description="People management roles."
+                  info="Score penalty for management positions."
+                />
+                <NumericField
+                  control={form.control}
+                  name="roleFit.clearancePenalty"
+                  label="Clearance Penalty"
+                  description="Clearance required (large negative)."
+                  info="Score penalty for roles requiring security clearance."
+                />
+              </div>
+            </section>
+
+            {/* Company Signals */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold">Company Signals</h3>
+                <ImpactBadge label="Score adjustment" tone="neutral" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Bonuses and penalties based on company characteristics.
+              </p>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <FormField
+                  control={form.control}
+                  name="company.preferredCity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className="flex items-center gap-1">
+                        <FormLabel>Preferred City</FormLabel>
+                        <InfoTooltip content="City where you'd like the company to have an office." />
+                      </div>
+                      <FormControl>
+                        <Input
+                          value={field.value ?? ""}
+                          onChange={(e) => field.onChange(e.target.value)}
+                          placeholder="Portland"
+                          className="max-w-[15rem]"
+                        />
+                      </FormControl>
+                      <FormDescription>Bonus if company has office here.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <NumericField
+                  control={form.control}
+                  name="company.preferredCityBonus"
+                  label="Preferred City Bonus"
+                  description="Bonus for office in preferred city."
+                  info="Score bonus when company has office in your preferred city."
+                />
+                <NumericField
+                  control={form.control}
+                  name="company.remoteFirstBonus"
+                  label="Remote-First Bonus"
+                  description="Bonus for remote-first companies."
+                  info="Score bonus for companies with remote-first culture."
+                />
+              </div>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <NumericField
+                  control={form.control}
+                  name="company.aiMlFocusBonus"
+                  label="AI/ML Focus Bonus"
+                  description="Bonus for AI/ML companies."
+                  info="Score bonus for companies focused on AI/ML."
+                />
+                <NumericField
+                  control={form.control}
+                  name="company.largeCompanyBonus"
+                  label="Large Company Bonus"
+                  description="Bonus for large companies."
+                  info="Score bonus for companies above the large threshold."
+                />
+                <NumericField
+                  control={form.control}
+                  name="company.smallCompanyPenalty"
+                  label="Small Company Penalty"
+                  description="Penalty for small companies."
+                  info="Score penalty for companies below the small threshold."
+                />
+              </div>
+              <div className="grid gap-6 md:grid-cols-3">
+                <NumericField
+                  control={form.control}
+                  name="company.largeCompanyThreshold"
+                  label="Large Threshold"
+                  description="Employee count for 'large'."
+                  info="Companies with more employees than this are considered large."
+                />
+                <NumericField
+                  control={form.control}
+                  name="company.smallCompanyThreshold"
+                  label="Small Threshold"
+                  description="Employee count for 'small'."
+                  info="Companies with fewer employees than this are considered small."
+                />
+                <NumericField
+                  control={form.control}
+                  name="company.startupBonus"
+                  label="Startup Bonus"
+                  description="Alternative to small penalty."
+                  info="If set, small companies get this bonus instead of penalty."
+                />
+              </div>
+            </section>
+
+            {/* Dealbreakers */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold">Dealbreakers</h3>
+                <ImpactBadge label="Hard reject" tone="neutral" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Location-based penalties and blocked regions.
+              </p>
+              <StringListField
+                control={form.control}
+                name="dealbreakers.blockedLocations"
+                label="Blocked Locations"
+                placeholder="india"
+                description="Locations that trigger penalties."
+                info="Jobs mentioning these locations receive heavy penalties."
+              />
+              <div className="grid gap-6 md:grid-cols-3">
+                <NumericField
+                  control={form.control}
+                  name="dealbreakers.locationPenalty"
+                  label="Blocked Location Penalty"
+                  description="Penalty for blocked locations."
+                  info="Score penalty when job mentions a blocked location."
+                />
+                <NumericField
+                  control={form.control}
+                  name="dealbreakers.relocationPenalty"
+                  label="Relocation Penalty"
+                  description="Penalty when relocation required."
+                  info="Score penalty when job requires relocation."
+                />
+                <NumericField
+                  control={form.control}
+                  name="dealbreakers.ambiguousLocationPenalty"
+                  label="Ambiguous Location Penalty"
+                  description="Penalty for unclear location."
+                  info="Score penalty when job location is unclear."
                 />
               </div>
             </section>

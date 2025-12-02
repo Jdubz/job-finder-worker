@@ -280,7 +280,7 @@ vi.mock("@shared/types", async (importOriginal) => {
     DEFAULT_PERSONAL_INFO: actual.DEFAULT_PERSONAL_INFO,
     DEFAULT_AI_SETTINGS: actual.DEFAULT_AI_SETTINGS,
     DEFAULT_TITLE_FILTER: actual.DEFAULT_TITLE_FILTER,
-    DEFAULT_SCORING_CONFIG: actual.DEFAULT_SCORING_CONFIG,
+    // Note: No DEFAULT_MATCH_POLICY - fail loud on missing config
   }
 })
 

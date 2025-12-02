@@ -10,7 +10,7 @@ import {
   SchedulerTab,
   PersonalInfoTab,
   TitleFilterTab,
-  ScoringConfigTab,
+  MatchPolicyTab,
 } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
 import { ScreenshotButton } from "./components/ScreenshotButton"
@@ -118,12 +118,12 @@ export function JobFinderConfigPage() {
             />
           )}
 
-          {activeTab === "scoring" && (
-            <ScoringConfigTab
+          {activeTab === "scoring" && configState.matchPolicy && (
+            <MatchPolicyTab
               isSaving={configState.isSaving}
-              config={configState.scoringConfig}
-              onSave={configState.handleSaveScoringConfig}
-              onReset={configState.resetScoringConfig}
+              config={configState.matchPolicy}
+              onSave={configState.handleSaveMatchPolicy}
+              onReset={configState.resetMatchPolicy}
             />
           )}
 

@@ -214,8 +214,84 @@ export interface ExperienceConfig {
   overqualifiedPenalty: number
 }
 
-/** Complete scoring configuration */
-export interface ScoringConfig {
+/** Freshness/age scoring configuration */
+export interface FreshnessConfig {
+  /** Days old to still be considered "fresh" and get bonus */
+  freshBonusDays: number
+  /** Bonus points for fresh listings */
+  freshBonus: number
+  /** Days old before considered "stale" */
+  staleThresholdDays: number
+  /** Penalty for stale listings */
+  stalePenalty: number
+  /** Days old before considered "very stale" */
+  veryStaleDays: number
+  /** Penalty for very stale listings */
+  veryStalePenalty: number
+  /** Penalty for detected reposts */
+  repostPenalty: number
+}
+
+/** Role fit scoring configuration */
+export interface RoleFitConfig {
+  /** Bonus for backend-focused roles */
+  backendBonus: number
+  /** Bonus for ML/AI-focused roles */
+  mlAiBonus: number
+  /** Bonus for DevOps/SRE-focused roles */
+  devopsSreBonus: number
+  /** Bonus for data engineering roles */
+  dataBonus: number
+  /** Bonus for security engineering roles */
+  securityBonus: number
+  /** Bonus for technical lead roles */
+  leadBonus: number
+  /** Penalty for frontend-focused roles */
+  frontendPenalty: number
+  /** Penalty for consulting/agency roles */
+  consultingPenalty: number
+  /** Penalty for roles requiring security clearance */
+  clearancePenalty: number
+  /** Penalty for management roles */
+  managementPenalty: number
+}
+
+/** Company signal scoring configuration */
+export interface CompanyConfig {
+  /** Bonus for companies with office in user's preferred city */
+  preferredCityBonus: number
+  /** User's preferred city for office bonus */
+  preferredCity?: string
+  /** Bonus for remote-first companies */
+  remoteFirstBonus: number
+  /** Bonus for companies focused on AI/ML */
+  aiMlFocusBonus: number
+  /** Bonus for large companies (above threshold) */
+  largeCompanyBonus: number
+  /** Penalty for small companies (below threshold) */
+  smallCompanyPenalty: number
+  /** Employee count threshold for "large" company */
+  largeCompanyThreshold: number
+  /** Employee count threshold for "small" company */
+  smallCompanyThreshold: number
+  /** Alternative bonus for startups (overrides small company penalty) */
+  startupBonus: number
+}
+
+/** Dealbreaker configuration for hard rejections */
+export interface DealbreakersConfig {
+  /** Locations that trigger hard rejection (e.g., ["india", "philippines"]) */
+  blockedLocations: string[]
+  /** Penalty points for blocked locations (high = hard reject) */
+  locationPenalty: number
+  /** Penalty points when relocation is required */
+  relocationPenalty: number
+  /** Penalty for ambiguous/unclear location */
+  ambiguousLocationPenalty: number
+}
+
+/** Complete match policy configuration (unified scoring config) */
+export interface MatchPolicy {
   /** Minimum score threshold to pass (0-100) */
   minScore: number
   /** Weight distribution for scoring components */
@@ -230,7 +306,18 @@ export interface ScoringConfig {
   salary: SalaryConfig
   /** Experience level preferences */
   experience: ExperienceConfig
+  /** Freshness/listing age scoring */
+  freshness: FreshnessConfig
+  /** Role fit scoring (backend, ML, etc.) */
+  roleFit: RoleFitConfig
+  /** Company signal scoring */
+  company: CompanyConfig
+  /** Dealbreaker configuration */
+  dealbreakers: DealbreakersConfig
 }
+
+/** @deprecated Use MatchPolicy instead */
+export type ScoringConfig = Omit<MatchPolicy, "freshness" | "roleFit" | "company" | "dealbreakers">
 
 // -----------------------------------------------------------
 // Score Breakdown Types (returned by scoring engine)
@@ -388,7 +475,7 @@ export type JobFinderConfigId =
   | "ai-prompts"
   | "personal-info"
   | "title-filter"
-  | "scoring-config"
+  | "match-policy"
   | "scheduler-settings"
   | "worker-settings"
 
@@ -398,7 +485,7 @@ export type JobFinderConfigPayloadMap = {
   "ai-prompts": PromptConfig
   "personal-info": PersonalInfo
   "title-filter": TitleFilterConfig
-  "scoring-config": ScoringConfig
+  "match-policy": MatchPolicy
   "scheduler-settings": SchedulerSettings
   "worker-settings": WorkerSettings
 }
@@ -472,50 +559,7 @@ export const DEFAULT_TITLE_FILTER: TitleFilterConfig = {
   ],
 }
 
-export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
-  minScore: 60,
-  weights: {
-    skillMatch: 40,
-    experienceMatch: 30,
-    seniorityMatch: 30,
-  },
-  seniority: {
-    preferred: ["senior", "staff", "lead", "principal"],
-    acceptable: ["mid", ""],
-    rejected: ["junior", "intern", "entry", "associate"],
-    preferredBonus: 15,
-    acceptablePenalty: 0,
-    rejectedPenalty: -100,
-  },
-  location: {
-    allowRemote: true,
-    allowHybrid: true,
-    allowOnsite: false,
-    userTimezone: -8,
-    maxTimezoneDiffHours: 4,
-    perHourPenalty: 3,
-    hybridSameCityBonus: 10,
-  },
-  technology: {
-    required: ["typescript", "react"],
-    preferred: ["node", "python", "aws", "nextjs", "graphql"],
-    disliked: ["angular", "vue"],
-    rejected: ["wordpress", "php", "drupal", ".net", "java"],
-    requiredBonus: 10,
-    preferredBonus: 5,
-    dislikedPenalty: -5,
-  },
-  salary: {
-    minimum: 150000,
-    target: 200000,
-    belowTargetPenalty: 2,
-  },
-  experience: {
-    userYears: 12,
-    maxRequired: 15,
-    overqualifiedPenalty: 5,
-  },
-}
+// No DEFAULT_MATCH_POLICY - fail loud on missing config to prevent silent gaps
 
 export const DEFAULT_SCHEDULER_SETTINGS: SchedulerSettings = {
   pollIntervalSeconds: 60,

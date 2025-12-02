@@ -3,7 +3,6 @@ import { useAuth } from "@/contexts/AuthContext"
 import { configClient } from "@/api/config-client"
 import {
   DEFAULT_TITLE_FILTER,
-  DEFAULT_SCORING_CONFIG,
   DEFAULT_QUEUE_SETTINGS,
   DEFAULT_AI_SETTINGS,
   DEFAULT_SCHEDULER_SETTINGS,
@@ -11,7 +10,7 @@ import {
 } from "@shared/types"
 import type {
   TitleFilterConfig,
-  ScoringConfig,
+  MatchPolicy,
   QueueSettings,
   AISettings,
   SchedulerSettings,
@@ -30,8 +29,9 @@ export function useConfigState() {
   const [titleFilter, setTitleFilter] = useState<TitleFilterConfig>(DEFAULT_TITLE_FILTER)
   const [originalTitleFilter, setOriginalTitleFilter] = useState<TitleFilterConfig>(DEFAULT_TITLE_FILTER)
 
-  const [scoringConfig, setScoringConfig] = useState<ScoringConfig>(DEFAULT_SCORING_CONFIG)
-  const [originalScoringConfig, setOriginalScoringConfig] = useState<ScoringConfig>(DEFAULT_SCORING_CONFIG)
+  // MatchPolicy is required - will throw if not found in DB
+  const [matchPolicy, setMatchPolicy] = useState<MatchPolicy | null>(null)
+  const [originalMatchPolicy, setOriginalMatchPolicy] = useState<MatchPolicy | null>(null)
 
   const [queueSettings, setQueueSettingsState] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
   const [originalQueue, setOriginalQueue] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
@@ -65,9 +65,13 @@ export function useConfigState() {
       setTitleFilter(titleFilterData)
       setOriginalTitleFilter(deepClone(titleFilterData))
 
-      const scoringConfigData = deepClone((map["scoring-config"] as ScoringConfig) ?? DEFAULT_SCORING_CONFIG)
-      setScoringConfig(scoringConfigData)
-      setOriginalScoringConfig(deepClone(scoringConfigData))
+      // MatchPolicy is required - fail if not found
+      const matchPolicyData = map["match-policy"] as MatchPolicy | undefined
+      if (!matchPolicyData) {
+        throw new Error("match-policy config not found - please configure it in the database")
+      }
+      setMatchPolicy(deepClone(matchPolicyData))
+      setOriginalMatchPolicy(deepClone(matchPolicyData))
 
       const queue = deepClone((map["queue-settings"] as QueueSettings) ?? DEFAULT_QUEUE_SETTINGS)
       setQueueSettingsState(queue)
@@ -113,17 +117,22 @@ export function useConfigState() {
     }
   }
 
-  const handleSaveScoringConfig = async (configOverride?: ScoringConfig) => {
+  const handleSaveMatchPolicy = async (configOverride?: MatchPolicy) => {
     setIsSaving(true)
     setError(null)
-    const payload = deepClone(configOverride ?? scoringConfig)
+    const payload = deepClone(configOverride ?? matchPolicy)
+    if (!payload) {
+      setError("No match policy to save")
+      setIsSaving(false)
+      return
+    }
     try {
-      await configClient.updateScoringConfig(payload)
-      setScoringConfig(payload)
-      setOriginalScoringConfig(deepClone(payload))
-      setSuccess("Scoring config saved")
+      await configClient.updateMatchPolicy(payload)
+      setMatchPolicy(payload)
+      setOriginalMatchPolicy(deepClone(payload))
+      setSuccess("Match policy saved")
     } catch (_err) {
-      setError("Failed to save scoring config")
+      setError("Failed to save match policy")
     } finally {
       setIsSaving(false)
     }
@@ -224,9 +233,12 @@ export function useConfigState() {
     return resetValue
   }
 
-  const resetScoringConfig = () => {
-    const resetValue = deepClone(originalScoringConfig)
-    setScoringConfig(resetValue)
+  const resetMatchPolicy = (): MatchPolicy => {
+    if (!originalMatchPolicy) {
+      throw new Error("Cannot reset match-policy: original config not loaded")
+    }
+    const resetValue = deepClone(originalMatchPolicy)
+    setMatchPolicy(resetValue)
     setSuccess(null)
     return resetValue
   }
@@ -262,11 +274,11 @@ export function useConfigState() {
     hasTitleFilterChanges: stableStringify(titleFilter) !== stableStringify(originalTitleFilter),
     handleSaveTitleFilter,
     resetTitleFilter,
-    scoringConfig,
-    setScoringConfig,
-    hasScoringConfigChanges: stableStringify(scoringConfig) !== stableStringify(originalScoringConfig),
-    handleSaveScoringConfig,
-    resetScoringConfig,
+    matchPolicy,
+    setMatchPolicy,
+    hasMatchPolicyChanges: stableStringify(matchPolicy) !== stableStringify(originalMatchPolicy),
+    handleSaveMatchPolicy,
+    resetMatchPolicy,
 
     queueSettings,
     setQueueSettings,

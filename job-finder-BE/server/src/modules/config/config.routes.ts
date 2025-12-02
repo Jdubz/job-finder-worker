@@ -12,7 +12,7 @@ import type {
   PromptConfig,
   WorkerSettings,
   TitleFilterConfig,
-  ScoringConfig,
+  MatchPolicy,
 } from '@shared/types'
 import {
   ApiErrorCode,
@@ -23,14 +23,13 @@ import {
   AI_PROVIDER_OPTIONS,
   DEFAULT_WORKER_SETTINGS,
   DEFAULT_TITLE_FILTER,
-  DEFAULT_SCORING_CONFIG,
   isQueueSettings,
   isAISettings,
   isSchedulerSettings,
   isPersonalInfo,
   isWorkerSettings,
   isTitleFilterConfig,
-  isScoringConfig,
+  isMatchPolicy,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -46,7 +45,7 @@ type KnownPayload =
   | QueueSettings
   | AISettings
   | TitleFilterConfig
-  | ScoringConfig
+  | MatchPolicy
   | SchedulerSettings
   | PromptConfig
   | WorkerSettings
@@ -111,7 +110,8 @@ function seedDefaults(repo: ConfigRepository) {
     ['queue-settings', DEFAULT_QUEUE_SETTINGS],
     ['ai-settings', DEFAULT_AI_SETTINGS],
     ['title-filter', DEFAULT_TITLE_FILTER],
-    ['scoring-config', DEFAULT_SCORING_CONFIG],
+    // NOTE: match-policy is NOT seeded - it must be configured explicitly
+    // to prevent silent gaps between config and implementation
     ['scheduler-settings', DEFAULT_SCHEDULER_SETTINGS],
     ['ai-prompts', DEFAULT_PROMPTS],
     // We deliberately do not seed worker-settings; prod DB already holds them.
@@ -157,12 +157,11 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
         ...normalized,
       }
     }
-    case 'scoring-config': {
-      const normalized = normalizeKeys<ScoringConfig>(payload)
-      return {
-        ...DEFAULT_SCORING_CONFIG,
-        ...normalized,
-      }
+    case 'match-policy': {
+      // No defaults for match-policy - it must be complete
+      // Validation happens in validatePayload
+      const normalized = normalizeKeys<MatchPolicy>(payload)
+      return normalized
     }
     case 'scheduler-settings': {
       const normalized = normalizeKeys<SchedulerSettings>(payload)
@@ -188,8 +187,8 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
       return isAISettings(payload)
     case 'title-filter':
       return isTitleFilterConfig(payload)
-    case 'scoring-config':
-      return isScoringConfig(payload)
+    case 'match-policy':
+      return isMatchPolicy(payload)
     case 'scheduler-settings':
       return isSchedulerSettings(payload)
     case 'ai-prompts':

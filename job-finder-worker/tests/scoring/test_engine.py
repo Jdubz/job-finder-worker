@@ -8,7 +8,7 @@ from job_finder.ai.extraction import JobExtractionResult
 
 @pytest.fixture
 def default_config():
-    """Return a default scoring configuration."""
+    """Return a complete match-policy configuration (all sections required)."""
     return {
         "minScore": 60,
         "weights": {
@@ -51,6 +51,44 @@ def default_config():
             "userYears": 12,
             "maxRequired": 15,
             "overqualifiedPenalty": 5,
+        },
+        "freshness": {
+            "freshBonusDays": 2,
+            "freshBonus": 10,
+            "staleThresholdDays": 3,
+            "stalePenalty": -10,
+            "veryStaleDays": 12,
+            "veryStalePenalty": -20,
+            "repostPenalty": -5,
+        },
+        "roleFit": {
+            "backendBonus": 5,
+            "mlAiBonus": 10,
+            "devopsSreBonus": 5,
+            "dataBonus": 5,
+            "securityBonus": 3,
+            "leadBonus": 3,
+            "frontendPenalty": -5,
+            "consultingPenalty": -10,
+            "clearancePenalty": -100,
+            "managementPenalty": -10,
+        },
+        "company": {
+            "preferredCityBonus": 20,
+            "preferredCity": "Portland",
+            "remoteFirstBonus": 15,
+            "aiMlFocusBonus": 10,
+            "largeCompanyBonus": 10,
+            "smallCompanyPenalty": -5,
+            "largeCompanyThreshold": 10000,
+            "smallCompanyThreshold": 100,
+            "startupBonus": 0,
+        },
+        "dealbreakers": {
+            "blockedLocations": [],
+            "locationPenalty": 60,
+            "relocationPenalty": 80,
+            "ambiguousLocationPenalty": 40,
         },
     }
 

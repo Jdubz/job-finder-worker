@@ -11,9 +11,9 @@ import type {
   SchedulerSettings,
   WorkerSettings,
   TitleFilterConfig,
-  ScoringConfig,
+  MatchPolicy,
 } from "@shared/types"
-import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO, DEFAULT_TITLE_FILTER, DEFAULT_SCORING_CONFIG } from "@shared/types"
+import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO, DEFAULT_TITLE_FILTER } from "@shared/types"
 
 export class ConfigClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
@@ -93,16 +93,13 @@ export class ConfigClient extends BaseApiClient {
     await this.updateConfigEntry("title-filter", config)
   }
 
-  async getScoringConfig(): Promise<ScoringConfig> {
-    try {
-      return await this.getConfigEntry<ScoringConfig>("scoring-config")
-    } catch {
-      return DEFAULT_SCORING_CONFIG
-    }
+  async getMatchPolicy(): Promise<MatchPolicy> {
+    // No fallback - match-policy is required
+    return this.getConfigEntry<MatchPolicy>("match-policy")
   }
 
-  async updateScoringConfig(config: ScoringConfig): Promise<void> {
-    await this.updateConfigEntry("scoring-config", config)
+  async updateMatchPolicy(config: MatchPolicy): Promise<void> {
+    await this.updateConfigEntry("match-policy", config)
   }
 
   async getSchedulerSettings(): Promise<SchedulerSettings> {

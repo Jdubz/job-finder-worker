@@ -221,7 +221,7 @@ def test_single_task_pipeline_spawns_company_enrichment(processor, mock_managers
     incomplete_company = {
         "id": "comp-incomplete",
         "name": "Spawn Co",
-        "about": "",  # Empty - triggers background enrichment
+        "about": "",  # Empty - triggers waiting for enrichment
         "culture": "",
     }
     mock_managers["companies_manager"].get_company.return_value = incomplete_company
@@ -239,26 +239,17 @@ def test_single_task_pipeline_spawns_company_enrichment(processor, mock_managers
         "url": "https://spawn.example/job/123",
     }
 
-    class DummyResult:
-        match_score = 85
-        application_priority = "Medium"
-
-        def to_dict(self):
-            return {
-                "match_score": self.match_score,
-                "application_priority": self.application_priority,
-            }
-
-    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
-    mock_managers["job_storage"].save_job_match.return_value = "match-123"
     mock_managers["job_listing_storage"].get_or_create_listing.return_value = ("listing-123", True)
 
     processor.job_processor.process_job(sample_job_item)
 
-    # Should spawn company task in background (fire-and-forget)
+    # Should spawn company task and requeue to wait for enrichment
     assert mock_managers["queue_manager"].spawn_item_safely.called
-    # AI analysis should be called (single-task doesn't wait for enrichment)
-    processor.job_processor.ai_matcher.analyze_job.assert_called_once()
+    # Job should be requeued with waiting_for_company_id in state
+    mock_managers["queue_manager"].requeue_with_state.assert_called_once()
+    requeue_call = mock_managers["queue_manager"].requeue_with_state.call_args
+    assert "waiting_for_company_id" in requeue_call[0][1]  # Second positional arg is state
+    assert requeue_call[0][1]["company_wait_count"] == 1
 
 
 def test_single_task_pipeline_completes_to_match(processor, mock_managers, sample_job_item):

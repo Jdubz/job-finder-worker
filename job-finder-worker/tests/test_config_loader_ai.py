@@ -4,7 +4,7 @@ Tests the get_ai_settings method of ConfigLoader which retrieves
 AI provider configuration.
 
 Note: get_job_match was removed during hybrid scoring migration.
-Job matching now uses scoring-config and title-filter instead.
+Job matching now uses match-policy and title-filter instead.
 """
 
 import sqlite3
@@ -113,7 +113,7 @@ class TestConfigLoaderAISettings:
 
 
 # NOTE: TestConfigLoaderJobMatch was removed during hybrid scoring migration.
-# Job matching now uses scoring-config and title-filter instead of match-policy.
+# Job matching now uses match-policy and title-filter instead.
 
 
 class TestConfigLoaderIntegration:
@@ -139,8 +139,8 @@ class TestConfigLoaderIntegration:
         conn.close()
         return str(db_file)
 
-    def test_ai_settings_and_scoring_config_are_separate(self, db_path):
-        """Should store and retrieve AI settings and scoring-config independently."""
+    def test_ai_settings_and_match_policy_are_separate(self, db_path):
+        """Should store and retrieve AI settings and match-policy independently."""
         conn = sqlite3.connect(db_path)
 
         # Insert both configs
@@ -153,10 +153,76 @@ class TestConfigLoaderIntegration:
             },
             "options": [],
         }
-        scoring_config_payload = {
+        # Complete match-policy (all sections required, no defaults)
+        match_policy_payload = {
             "minScore": 60,
             "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
-            "seniority": {"preferred": ["senior"], "acceptable": ["mid"], "rejected": ["junior"]},
+            "seniority": {
+                "preferred": ["senior"],
+                "acceptable": ["mid"],
+                "rejected": ["junior"],
+                "preferredBonus": 15,
+                "acceptablePenalty": 0,
+                "rejectedPenalty": -100,
+            },
+            "location": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": False,
+                "userTimezone": -8,
+                "maxTimezoneDiffHours": 4,
+                "perHourPenalty": 3,
+                "hybridSameCityBonus": 10,
+            },
+            "technology": {
+                "required": [],
+                "preferred": [],
+                "disliked": [],
+                "rejected": [],
+                "requiredBonus": 10,
+                "preferredBonus": 5,
+                "dislikedPenalty": -5,
+            },
+            "salary": {"minimum": None, "target": None, "belowTargetPenalty": 2},
+            "experience": {"userYears": 12, "maxRequired": 15, "overqualifiedPenalty": 5},
+            "freshness": {
+                "freshBonusDays": 2,
+                "freshBonus": 10,
+                "staleThresholdDays": 3,
+                "stalePenalty": -10,
+                "veryStaleDays": 12,
+                "veryStalePenalty": -20,
+                "repostPenalty": -5,
+            },
+            "roleFit": {
+                "backendBonus": 5,
+                "mlAiBonus": 10,
+                "devopsSreBonus": 5,
+                "dataBonus": 5,
+                "securityBonus": 3,
+                "leadBonus": 3,
+                "frontendPenalty": -5,
+                "consultingPenalty": -10,
+                "clearancePenalty": -100,
+                "managementPenalty": -10,
+            },
+            "company": {
+                "preferredCityBonus": 20,
+                "preferredCity": "Portland",
+                "remoteFirstBonus": 15,
+                "aiMlFocusBonus": 10,
+                "largeCompanyBonus": 10,
+                "smallCompanyPenalty": -5,
+                "largeCompanyThreshold": 10000,
+                "smallCompanyThreshold": 100,
+                "startupBonus": 0,
+            },
+            "dealbreakers": {
+                "blockedLocations": [],
+                "locationPenalty": 60,
+                "relocationPenalty": 80,
+                "ambiguousLocationPenalty": 40,
+            },
         }
 
         conn.execute(
@@ -165,7 +231,7 @@ class TestConfigLoaderIntegration:
         )
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            ("scoring-config", json.dumps(scoring_config_payload), "2024-01-01", "2024-01-01"),
+            ("match-policy", json.dumps(match_policy_payload), "2024-01-01", "2024-01-01"),
         )
         conn.commit()
         conn.close()
@@ -173,16 +239,16 @@ class TestConfigLoaderIntegration:
         loader = ConfigLoader(db_path)
 
         ai_settings = loader.get_ai_settings()
-        scoring_config = loader.get_scoring_config()
+        match_policy = loader.get_match_policy()
 
         # Verify they are separate
         assert ai_settings["worker"]["selected"]["provider"] == "claude"
-        assert scoring_config["minScore"] == 60
+        assert match_policy["minScore"] == 60
 
-        # AI settings should not have scoring fields
+        # AI settings should not have match-policy fields
         assert "minScore" not in ai_settings
-        # Scoring config should not have AI settings fields
-        assert "worker" not in scoring_config
+        # Match-policy should not have AI settings fields
+        assert "worker" not in match_policy
 
     def test_loading_ai_settings_multiple_times_is_consistent(self, db_path):
         """Should return consistent results across multiple calls."""
