@@ -320,7 +320,7 @@ export function CompaniesPage() {
                         type: "company",
                         company,
                         handlers: {
-                          onDelete: company.id ? () => handleDelete(company.id!) : undefined,
+                          onDelete: company.id ? () => handleDelete(company.id as string) : undefined,
                           onReanalyze: handleReanalyze,
                         },
                       })
