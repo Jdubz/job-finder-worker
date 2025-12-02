@@ -54,6 +54,9 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
   const domain = getDomain(item.url || "")
   const sourceLabel = getSourceLabel(item)
   const taskType = getTaskTypeLabel(item)
+  const distinctStage =
+    stageLabel && stageLabel.toLowerCase() !== taskType.toLowerCase() &&
+    (!sourceLabel || stageLabel.toLowerCase() !== sourceLabel.toLowerCase())
 
   return (
     <Card
@@ -74,7 +77,7 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Badge className="capitalize">{item.status}</Badge>
               <Badge variant="outline">{taskType}</Badge>
-              {stageLabel && (
+              {distinctStage && (
                 <Badge variant="secondary" className="capitalize">
                   {stageLabel}
                 </Badge>
@@ -95,10 +98,6 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
                 </span>
               )}
             </div>
-
-            {company && (
-              <div className="text-xs text-muted-foreground">Company: {company}</div>
-            )}
 
             <div className="grid gap-3 text-xs text-muted-foreground md:grid-cols-3">
               <div className="flex items-center gap-2 min-w-0">

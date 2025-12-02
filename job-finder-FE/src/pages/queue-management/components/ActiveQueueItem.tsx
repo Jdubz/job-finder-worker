@@ -53,6 +53,7 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
   const domain = getDomain(item.url || "")
   const source = getSourceLabel(item)
   const taskType = getTaskTypeLabel(item)
+  const distinctStage = stage && stage.toLowerCase() !== taskType.toLowerCase() && (!source || stage.toLowerCase() !== source.toLowerCase())
 
   return (
     <Card className={containerClasses}>
@@ -68,7 +69,7 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
                 <Badge variant="outline" className="border-emerald-200 text-emerald-800 dark:border-emerald-800 dark:text-emerald-100">
                   {taskType}
                 </Badge>
-                {stage && <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">{stage}</Badge>}
+                {distinctStage && <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">{stage}</Badge>}
                 {source && <Badge variant="outline" className="border-slate-200 text-slate-700 dark:border-slate-800 dark:text-slate-100">{source}</Badge>}
               </div>
 
@@ -84,10 +85,6 @@ export function ActiveQueueItem({ item, loading, onCancel }: ActiveQueueItemProp
                   </span>
                 )}
               </div>
-
-              {company && (
-                <div className="text-xs text-emerald-700 dark:text-emerald-200">Company: {company}</div>
-              )}
 
               <div className="grid gap-3 text-xs text-emerald-700 dark:text-emerald-200 sm:grid-cols-2">
                 <div className="flex items-center gap-2 min-w-0">

@@ -63,6 +63,9 @@ export function QueueTable({ items, onRowClick, onCancel, formatRelativeTime }: 
           const source = getSourceLabel(item)
           const typeLabel = getTaskTypeLabel(item)
           const stageLabel = getStageLabel(item)
+          const distinctStage =
+            stageLabel && stageLabel.toLowerCase() !== typeLabel.toLowerCase() &&
+            (!source || stageLabel.toLowerCase() !== source.toLowerCase())
           const canCancel = item.status === "pending" || item.status === "processing"
 
           return (
@@ -83,7 +86,7 @@ export function QueueTable({ items, onRowClick, onCancel, formatRelativeTime }: 
               <TableCell className="hidden md:table-cell">
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <Badge variant="outline">{typeLabel}</Badge>
-                  {stageLabel && <Badge variant="secondary">{stageLabel}</Badge>}
+                  {distinctStage && <Badge variant="secondary">{stageLabel}</Badge>}
                   {source && <Badge variant="outline">{source}</Badge>}
                 </div>
               </TableCell>
