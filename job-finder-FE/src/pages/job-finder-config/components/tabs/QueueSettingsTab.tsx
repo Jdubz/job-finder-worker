@@ -90,7 +90,7 @@ export function QueueSettingsTab({
 
       <TabCard
         title="Scrape Schedule Settings"
-        description="Values used by the API cron when enqueuing scrape jobs. All fields are required to avoid silent defaults. Use 0 or leave blank for 'no limit'."
+        description="Values used by the API cron when enqueuing scrape jobs. At least one field is required; use 0 or leave blank for 'no limit'."
         hasChanges={hasQueueChanges}
         isSaving={isSaving}
         onSave={handleSaveQueueSettings}
@@ -102,7 +102,7 @@ export function QueueSettingsTab({
             id="targetMatches"
             type="number"
             min="0"
-            value={queueSettings.scrapeConfig?.target_matches ?? ""}
+            value={queueSettings.scrapeConfig?.target_matches ?? 0}
             onChange={(e) =>
               setQueueSettings({
                 scrapeConfig: {
@@ -121,7 +121,7 @@ export function QueueSettingsTab({
             id="maxSources"
             type="number"
             min="0"
-            value={queueSettings.scrapeConfig?.max_sources ?? ""}
+            value={queueSettings.scrapeConfig?.max_sources ?? 0}
             onChange={(e) =>
               setQueueSettings({
                 scrapeConfig: {

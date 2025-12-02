@@ -42,7 +42,6 @@ function coalesceNumber(...values: Array<number | null | undefined>): number | n
 function loadScrapeConfig() {
   const configRepo = getConfigRepo()
   const entry = configRepo.get<QueueSettings>('queue-settings')
-  const configRepo = getConfigRepo()
   if (!entry || !isQueueSettings(entry.payload)) {
     throw new Error('queue-settings config missing or invalid')
   }
