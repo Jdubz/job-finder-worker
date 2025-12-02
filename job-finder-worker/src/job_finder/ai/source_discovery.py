@@ -21,6 +21,13 @@ from job_finder.settings import get_scraping_settings
 
 logger = logging.getLogger(__name__)
 
+_DNS_ERROR_TOKENS = {
+    "name or service not known",
+    "temporary failure in name resolution",
+    "failed to resolve",
+    "dns",
+}
+
 
 class SourceDiscovery:
     """
@@ -257,15 +264,7 @@ class SourceDiscovery:
                 logger.error(f"Bot protection (429) fetching {url}: {e}")
                 return "bot_protection", None
             message = str(e).lower()
-            if any(
-                token in message
-                for token in [
-                    "name or service not known",
-                    "temporary failure in name resolution",
-                    "failed to resolve",
-                    "dns",
-                ]
-            ):
+            if any(token in message for token in _DNS_ERROR_TOKENS):
                 logger.error(f"DNS resolution failed for {url}: {e}")
                 return "dns_error", None
             logger.error(f"Error fetching {url}: {e}")
