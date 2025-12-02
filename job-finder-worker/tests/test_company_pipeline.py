@@ -40,13 +40,17 @@ class TestCompanyPipeline:
         company_info_fetcher = Mock()
         company_info_fetcher._is_job_board_url.return_value = False
 
+        sources_manager = Mock()
+        sources_manager.get_source_for_url.return_value = None
+        sources_manager.get_active_sources.return_value = []
+
         return {
             "queue_manager": Mock(),
             "config_loader": config_loader,
             "job_storage": Mock(),
             "job_listing_storage": Mock(),
             "companies_manager": Mock(),
-            "sources_manager": Mock(),
+            "sources_manager": sources_manager,
             "company_info_fetcher": company_info_fetcher,
             "ai_matcher": Mock(),
         }
@@ -82,10 +86,11 @@ class TestCompanyPipeline:
 
         # Company saved
         mock_dependencies["companies_manager"].save_company.assert_called_once()
-        # Source discovery enqueued (since URL is a job board)
-        mock_dependencies["queue_manager"].add_item.assert_called_once()
-        source_item = mock_dependencies["queue_manager"].add_item.call_args[0][0]
-        assert source_item.type == QueueItemType.SOURCE_DISCOVERY
+        # Source discovery enqueued (since URL is a job board) via spawn_item_safely
+        mock_dependencies["queue_manager"].spawn_item_safely.assert_called_once()
+        spawn_call = mock_dependencies["queue_manager"].spawn_item_safely.call_args
+        new_item_data = spawn_call.kwargs.get("new_item_data", {})
+        assert new_item_data.get("type") == QueueItemType.SOURCE_DISCOVERY
         # Status set to success
         mock_dependencies["queue_manager"].update_status.assert_called()
         final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
@@ -250,3 +255,82 @@ class TestCompanyPipeline:
         final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         result_message = final_call[0][2]
         assert "job_board_exists" in result_message
+
+    def test_reanalysis_with_company_id_only(self, processor, mock_dependencies):
+        """Test that re-analysis works when company_id is provided but name is missing."""
+        item = JobQueueItem(
+            id="c8",
+            type=QueueItemType.COMPANY,
+            url="https://example.com",
+            company_name=None,  # Missing company name
+            company_id="existing-company-id",  # But has ID
+            status=QueueStatus.PROCESSING,
+        )
+
+        # Simulate looking up existing company by ID
+        mock_dependencies["companies_manager"].get_company_by_id.return_value = {
+            "id": "existing-company-id",
+            "name": "Resolved Company",
+        }
+        mock_dependencies["company_info_fetcher"].fetch_company_info.return_value = {
+            "name": "Resolved Company",
+            "about": "Great company with lots of information about what they do",
+            "culture": "Amazing collaborative culture",
+        }
+        mock_dependencies["companies_manager"].save_company.return_value = "existing-company-id"
+
+        processor.company_processor.process_company(item)
+
+        # Should have looked up company by ID
+        mock_dependencies["companies_manager"].get_company_by_id.assert_called_once_with(
+            "existing-company-id"
+        )
+        # Should have fetched info using the resolved name
+        mock_dependencies["company_info_fetcher"].fetch_company_info.assert_called_once()
+        call_args = mock_dependencies["company_info_fetcher"].fetch_company_info.call_args
+        assert call_args[1]["company_name"] == "Resolved Company"
+        # Should succeed
+        final_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        assert final_call[0][1] == QueueStatus.SUCCESS
+
+    def test_fails_without_company_name_or_id(self, processor, mock_dependencies):
+        """Test that processing fails when neither company_name nor company_id is provided."""
+        item = JobQueueItem(
+            id="c9",
+            type=QueueItemType.COMPANY,
+            url="https://example.com",
+            company_name=None,  # Missing
+            company_id=None,  # Missing
+            status=QueueStatus.PROCESSING,
+        )
+
+        processor.company_processor.process_company(item)
+
+        # Should fail with appropriate error message
+        mock_dependencies["queue_manager"].update_status.assert_called_once()
+        call_args = mock_dependencies["queue_manager"].update_status.call_args[0]
+        assert call_args[0] == "c9"
+        assert call_args[1] == QueueStatus.FAILED
+        assert "requires company_name" in call_args[2]
+
+    def test_fails_when_company_id_not_found(self, processor, mock_dependencies):
+        """Test that processing fails when company_id doesn't exist in database."""
+        item = JobQueueItem(
+            id="c10",
+            type=QueueItemType.COMPANY,
+            url="https://example.com",
+            company_name=None,  # Missing
+            company_id="nonexistent-id",  # ID doesn't exist
+            status=QueueStatus.PROCESSING,
+        )
+
+        # Company not found
+        mock_dependencies["companies_manager"].get_company_by_id.return_value = None
+
+        processor.company_processor.process_company(item)
+
+        # Should fail
+        mock_dependencies["queue_manager"].update_status.assert_called_once()
+        call_args = mock_dependencies["queue_manager"].update_status.call_args[0]
+        assert call_args[1] == QueueStatus.FAILED
+        assert "requires company_name" in call_args[2]

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Trash2, ExternalLink } from "lucide-react"
+import { Loader2, Trash2, ExternalLink, Database, AlertCircle } from "lucide-react"
 import { MatchBreakdown } from "@/pages/job-listings/components/MatchBreakdown"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
@@ -132,10 +132,27 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
             <p className="mt-1 text-sm font-mono text-muted-foreground break-all">{listing.id}</p>
           </div>
           <div>
-            <Label className="text-muted-foreground text-xs uppercase tracking-wide">Source ID</Label>
-            <p className="mt-1 text-sm font-mono text-muted-foreground break-all">
-              {listing.sourceId || "—"}
-            </p>
+            <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
+              <Database className="h-3 w-3" />
+              Source
+            </Label>
+            {listing.sourceId ? (
+              <div className="mt-1">
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-blue-600 hover:underline text-sm"
+                  onClick={() => openModal({ type: "jobSource", sourceId: listing.sourceId })}
+                >
+                  View Source Details
+                </Button>
+                <p className="text-xs font-mono text-muted-foreground mt-1 break-all">{listing.sourceId}</p>
+              </div>
+            ) : (
+              <p className="mt-1 text-muted-foreground flex items-center gap-1 text-sm">
+                <AlertCircle className="h-3 w-3" />
+                No source linked
+              </p>
+            )}
           </div>
           <div>
             <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company ID</Label>

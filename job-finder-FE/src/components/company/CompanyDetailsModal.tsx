@@ -1,4 +1,5 @@
 import { useCompany } from "@/hooks/useCompany"
+import { useJobSources } from "@/hooks/useJobSources"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -10,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ExternalLink, Loader2 } from "lucide-react"
+import { ExternalLink, Loader2, Database, AlertCircle } from "lucide-react"
 import type { Company } from "@shared/types"
 
 function formatDate(date: unknown): string {
@@ -95,6 +96,13 @@ export function CompanyDetailsModal({
   )
 
   const company = providedCompany || fetchedCompany
+
+  // Fetch linked job sources for this company
+  const { sources: linkedSources, loading: sourcesLoading } = useJobSources({
+    companyId: company?.id ?? undefined,
+    limit: 10,
+    autoFetch: open && !!company?.id,
+  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -203,6 +211,52 @@ export function CompanyDetailsModal({
                   </div>
                 ) : (
                   <p className="mt-1 text-muted-foreground">—</p>
+                )}
+              </div>
+
+              {/* Linked Sources */}
+              <div className="pt-2 border-t">
+                <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
+                  <Database className="h-3 w-3" />
+                  Job Sources
+                </Label>
+                {sourcesLoading ? (
+                  <div className="flex items-center gap-2 mt-2 text-muted-foreground text-sm">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading sources...
+                  </div>
+                ) : linkedSources.length > 0 ? (
+                  <div className="mt-2 space-y-2">
+                    {linkedSources.map((source) => (
+                      <div
+                        key={source.id}
+                        className="flex items-center justify-between p-2 bg-muted rounded text-sm"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-medium truncate">{safeText(source.name)}</span>
+                          <Badge variant="outline" className="text-xs flex-shrink-0">
+                            {safeText(source.sourceType)}
+                          </Badge>
+                        </div>
+                        <Badge
+                          className={`flex-shrink-0 ${
+                            source.status === "active"
+                              ? "bg-green-100 text-green-800"
+                              : source.status === "error"
+                                ? "bg-red-100 text-red-800"
+                                : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {safeText(source.status)}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 mt-2 text-muted-foreground text-sm">
+                    <AlertCircle className="h-3 w-3" />
+                    No job sources linked to this company
+                  </div>
                 )}
               </div>
 

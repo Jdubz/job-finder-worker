@@ -10,7 +10,6 @@ All sources use the GenericScraper with unified SourceConfig format.
 import logging
 import re
 import traceback
-import uuid
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -226,16 +225,25 @@ class SourceProcessor(BaseProcessor):
 
             if initial_status == SourceStatus.ACTIVE:
                 # Spawn SCRAPE_SOURCE to immediately scrape the new source
-                scrape_item = JobQueueItem(
-                    type=QueueItemType.SCRAPE_SOURCE,
-                    url="",
-                    company_name=company_name or "Unknown",
-                    source="automated_scan",
-                    scraped_data={"source_id": source_id},
-                    tracking_id=str(uuid.uuid4()),
+                # Use spawn_item_safely for proper lineage tracking and dedup
+                scrape_item_id = self.queue_manager.spawn_item_safely(
+                    current_item=item,
+                    new_item_data={
+                        "type": QueueItemType.SCRAPE_SOURCE,
+                        "url": "",
+                        "company_name": company_name or "",
+                        "company_id": company_id,
+                        "source": "automated_scan",
+                        "source_id": source_id,
+                        "scraped_data": {"source_id": source_id},
+                    },
                 )
-                scrape_item_id = self.queue_manager.add_item(scrape_item)
-                logger.info(f"Spawned SCRAPE_SOURCE item {scrape_item_id} for source {source_id}")
+                if scrape_item_id:
+                    logger.info(
+                        f"Spawned SCRAPE_SOURCE item {scrape_item_id} for source {source_id}"
+                    )
+                else:
+                    logger.info(f"SCRAPE_SOURCE blocked by spawn rules for source {source_id}")
             else:
                 logger.info(
                     "Created source %s disabled (%s); skipping immediate scrape",
@@ -246,21 +254,28 @@ class SourceProcessor(BaseProcessor):
             # If we created a new company stub, spawn COMPANY task to enrich it
             if company_created and company_id:
                 company_website = self._extract_base_url(url)
-                company_item = JobQueueItem(
-                    type=QueueItemType.COMPANY,
-                    url=company_website,
-                    company_name=company_name,
-                    company_id=company_id,
-                    source="automated_scan",
-                    tracking_id=item.tracking_id,
-                    parent_item_id=item.id,
+                # Use spawn_item_safely for proper lineage tracking and dedup
+                company_item_id = self.queue_manager.spawn_item_safely(
+                    current_item=item,
+                    new_item_data={
+                        "type": QueueItemType.COMPANY,
+                        "url": company_website,
+                        "company_name": company_name,
+                        "company_id": company_id,
+                        "source": "automated_scan",
+                    },
                 )
-                company_item_id = self.queue_manager.add_item(company_item)
-                logger.info(
-                    "Spawned COMPANY item %s to enrich stub for %s",
-                    company_item_id,
-                    company_name,
-                )
+                if company_item_id:
+                    logger.info(
+                        "Spawned COMPANY item %s to enrich stub for %s",
+                        company_item_id,
+                        company_name,
+                    )
+                else:
+                    logger.info(
+                        "COMPANY task blocked by spawn rules for %s",
+                        company_name,
+                    )
 
             # Update queue item with success
             self.queue_manager.update_status(
@@ -383,9 +398,21 @@ class SourceProcessor(BaseProcessor):
                 )
                 return
 
-            source_name = source.get("name", "Unknown")
+            source_name = source.get("name") or ""
             source_type = source.get("sourceType", "api")
             config = source.get("config", {})
+
+            # Self-heal FK relationships (company <-> source linkage)
+            company_id_from_source = source.get("companyId") or source.get("company_id")
+            company_id_from_item = item.company_id
+            source_id = source.get("id")
+
+            # Repair links if we have company_id from item but source isn't linked
+            healed_company_id, _ = self.ensure_company_source_link(
+                self.sources_manager,
+                company_id=company_id_from_item or company_id_from_source,
+                source_id=source_id,
+            )
 
             logger.info(f"Scraping source: {source_name} (type={source_type})")
 
@@ -395,7 +422,8 @@ class SourceProcessor(BaseProcessor):
                 is_aggregator = bool(
                     source.get("aggregator_domain") or source.get("aggregatorDomain")
                 )
-                company_id = source.get("companyId") or source.get("company_id")
+                # Use healed company_id (may have been repaired via FK self-healing)
+                company_id = healed_company_id
 
                 # Get company name ONLY from linked company - never fall back to source name
                 company_name = None

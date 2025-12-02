@@ -7,10 +7,12 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { ExternalLink, FileText } from "lucide-react"
+import { ExternalLink, FileText, Building2, Database, AlertCircle } from "lucide-react"
+import { useEntityModal } from "@/contexts/EntityModalContext"
 import type { JobMatchWithListing } from "@shared/types"
 
 interface JobDetailsDialogProps {
@@ -26,6 +28,8 @@ export function JobDetailsDialog({
   onOpenChange,
   onGenerateResume,
 }: JobDetailsDialogProps) {
+  const { openModal } = useEntityModal()
+
   if (!match) return null
 
   const companyInfo = match.company?.about || match.company?.culture || match.company?.mission
@@ -119,6 +123,62 @@ export function JobDetailsDialog({
                   </ul>
                 </div>
               )}
+
+              <Separator className="my-4" />
+
+              {/* Linked Records */}
+              <div>
+                <h3 className="font-semibold mb-3">Linked Records</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Company */}
+                  <div className="bg-secondary p-3 rounded-lg">
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
+                      <Building2 className="h-3 w-3" />
+                      Company
+                    </Label>
+                    {match.listing.companyId ? (
+                      <div className="mt-1">
+                        <Button
+                          variant="link"
+                          className="h-auto p-0 text-blue-600 hover:underline text-sm"
+                          onClick={() => openModal({ type: "company", companyId: match.listing.companyId })}
+                        >
+                          {match.listing.companyName}
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-muted-foreground flex items-center gap-1 text-sm">
+                        <AlertCircle className="h-3 w-3" />
+                        No company linked
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Source */}
+                  <div className="bg-secondary p-3 rounded-lg">
+                    <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
+                      <Database className="h-3 w-3" />
+                      Source
+                    </Label>
+                    {match.listing.sourceId ? (
+                      <div className="mt-1">
+                        <Button
+                          variant="link"
+                          className="h-auto p-0 text-blue-600 hover:underline text-sm"
+                          onClick={() => openModal({ type: "jobSource", sourceId: match.listing.sourceId })}
+                        >
+                          View Source Details
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-muted-foreground flex items-center gap-1 text-sm">
+                        <AlertCircle className="h-3 w-3" />
+                        No source linked
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </ScrollArea>
           </TabsContent>
 

@@ -179,10 +179,11 @@ class TestSourceDiscoverySuccess:
         assert status_call[0][1] == QueueStatus.SUCCESS
         assert status_call[0][2] == "source-123"
 
-        # Should spawn SCRAPE_SOURCE
-        mock_dependencies["queue_manager"].add_item.assert_called_once()
-        queue_item_arg = mock_dependencies["queue_manager"].add_item.call_args.args[0]
-        assert queue_item_arg.type == QueueItemType.SCRAPE_SOURCE
+        # Should spawn SCRAPE_SOURCE via spawn_item_safely
+        mock_dependencies["queue_manager"].spawn_item_safely.assert_called_once()
+        spawn_call = mock_dependencies["queue_manager"].spawn_item_safely.call_args
+        new_item_data = spawn_call.kwargs.get("new_item_data", {})
+        assert new_item_data.get("type") == QueueItemType.SCRAPE_SOURCE
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")

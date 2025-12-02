@@ -703,6 +703,100 @@ class TestAnalyzeJobs:
         assert mock_analyze.call_count == 3
 
 
+class TestDetectWorkArrangement:
+    """Test work arrangement detection to prevent false positives."""
+
+    def test_no_relocation_for_research_terminology(self, mock_provider, mock_profile):
+        """Test that research terms like 'Circuit-Based Interpretability' don't trigger relocation.
+
+        This is a regression test for a bug where 'Based In' in 'Circuit-Based Interpretability'
+        was incorrectly matching the 'based in' relocation pattern due to substring matching.
+        """
+        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
+
+        # Description contains research terminology that previously caused false positives
+        result = matcher._detect_work_arrangement(
+            description="Our research includes GPT-3, Circuit-Based Interpretability, "
+            "Multimodal Neurons, and Scaling Laws. This is a remote position.",
+            location="Remote",
+        )
+
+        assert result["remote"] is True
+        assert result["relocation_required"] is False
+
+    def test_relocation_detected_for_actual_relocation_requirement(
+        self, mock_provider, mock_profile
+    ):
+        """Test that actual relocation requirements are still detected."""
+        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
+
+        result = matcher._detect_work_arrangement(
+            description="This role is based in San Francisco. Relocation assistance provided.",
+            location="San Francisco, CA",
+        )
+
+        assert result["relocation_required"] is True
+
+    def test_no_relocation_for_headquartered_boilerplate(self, mock_provider, mock_profile):
+        """Test that 'headquartered in' boilerplate doesn't trigger relocation."""
+        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
+
+        result = matcher._detect_work_arrangement(
+            description="Anthropic is headquartered in San Francisco. This is a remote role.",
+            location="Remote",
+        )
+
+        assert result["remote"] is True
+        assert result["relocation_required"] is False
+
+    def test_hybrid_detection_with_word_boundary(self, mock_provider, mock_profile):
+        """Test that hybrid is detected correctly with word boundaries."""
+        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
+
+        # Should detect hybrid
+        result = matcher._detect_work_arrangement(
+            description="This is a hybrid position with 2 days in office.",
+            location="New York, NY",
+        )
+        assert result["hybrid"] is True
+        assert result["remote"] is False
+
+        # Should NOT match 'hybrid' in unrelated words (if any existed)
+        result2 = matcher._detect_work_arrangement(
+            description="This is a remote position.",
+            location="Remote",
+        )
+        assert result2["hybrid"] is False
+        assert result2["remote"] is True
+
+    def test_onsite_detection_with_word_boundary(self, mock_provider, mock_profile):
+        """Test that onsite is detected correctly with word boundaries."""
+        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
+
+        result = matcher._detect_work_arrangement(
+            description="This is an on-site position in our NYC office.",
+            location="New York, NY",
+        )
+
+        assert result["onsite"] is True
+        assert result["remote"] is False
+        assert result["hybrid"] is False
+
+    def test_remote_precedence_over_hybrid_and_onsite(self, mock_provider, mock_profile):
+        """Test that remote takes precedence when multiple arrangements mentioned."""
+        matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
+
+        # Description mentions both remote and office, but explicitly says remote
+        result = matcher._detect_work_arrangement(
+            description="Fully remote position. We have offices in SF and NYC for optional visits.",
+            location="Remote",
+        )
+
+        assert result["remote"] is True
+        assert result["hybrid"] is False
+        assert result["onsite"] is False
+
+
 class TestJobMatchResultModel:
     """Test JobMatchResult Pydantic model."""
 

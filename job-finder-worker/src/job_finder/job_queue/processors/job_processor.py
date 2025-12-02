@@ -10,6 +10,7 @@ Job Listings Integration:
 - Job matches reference job_listings via foreign key (job_listing_id)
 """
 
+import json
 import logging
 import time
 from typing import Any, Dict, Optional, cast
@@ -879,6 +880,18 @@ class JobProcessor(BaseProcessor):
         company_id = company.get("id")
         company_name = job_data["company"]  # Guaranteed set by _ensure_company_dependency
 
+        # Self-heal FK relationships (company <-> source linkage)
+        if company_id:
+            company_id, source_id = self.ensure_company_source_link(
+                self.sources_manager,
+                company_id=company_id,
+                source_id=item.source_id,
+                source_url=item.url,
+            )
+            # Update item's source_id if we resolved one
+            if source_id and not item.source_id:
+                state_updates["source_id"] = source_id
+
         # Update job_listing with company_id if we have a listing
         listing_id = pipeline_state.get("job_listing_id")
         if listing_id and company_id:
@@ -1244,9 +1257,7 @@ class JobProcessor(BaseProcessor):
 
             # Extract company from URL (boards.greenhouse.io/{company}/jobs/...)
             company_match = re.search(r"boards\.greenhouse\.io/([^/]+)", url)
-            company_name = (
-                company_match.group(1).replace("-", " ").title() if company_match else "Unknown"
-            )
+            company_name = company_match.group(1).replace("-", " ").title() if company_match else ""
 
             # Extract job details using updated selectors (Greenhouse HTML structure changed)
             title_elem = soup.find("h1", class_="section-header")
@@ -1254,9 +1265,9 @@ class JobProcessor(BaseProcessor):
             description_elem = soup.find("div", class_="job__description")
 
             return {
-                "title": title_elem.text.strip() if title_elem else "Unknown",
+                "title": title_elem.text.strip() if title_elem else "",
                 "company": company_name,
-                "location": location_elem.text.strip() if location_elem else "Unknown",
+                "location": location_elem.text.strip() if location_elem else "",
                 "description": (
                     description_elem.get_text(separator="\n", strip=True)
                     if description_elem
@@ -1285,8 +1296,8 @@ class JobProcessor(BaseProcessor):
             description_elem = soup.find("div", class_="listing-container")
 
             return {
-                "title": title_elem.text.strip() if title_elem else "Unknown",
-                "company": company_elem.text.strip() if company_elem else "Unknown",
+                "title": title_elem.text.strip() if title_elem else "",
+                "company": company_elem.text.strip() if company_elem else "",
                 "location": "Remote",
                 "description": (
                     description_elem.get_text(separator="\n", strip=True)
@@ -1316,8 +1327,8 @@ class JobProcessor(BaseProcessor):
             description_elem = soup.find("div", class_="job-description")
 
             return {
-                "title": title_elem.text.strip() if title_elem else "Unknown",
-                "company": company_elem.text.strip() if company_elem else "Unknown",
+                "title": title_elem.text.strip() if title_elem else "",
+                "company": company_elem.text.strip() if company_elem else "",
                 "location": "Remote",
                 "description": (
                     description_elem.get_text(separator="\n", strip=True)
@@ -1345,10 +1356,53 @@ class JobProcessor(BaseProcessor):
             title = soup.find("h1")
             description = soup.find("body")
 
+            # Try to extract company name from various sources
+            company_name = ""
+
+            # 1. Try meta tags (og:site_name is common for company sites)
+            og_site = soup.find("meta", property="og:site_name")
+            if og_site and og_site.get("content"):
+                company_name = og_site["content"].strip()
+
+            # 2. Try schema.org structured data
+            if not company_name:
+                schema = soup.find("script", type="application/ld+json")
+                if schema:
+                    try:
+                        # Use get_text() instead of .string to handle elements with
+                        # multiple children or None values safely
+                        schema_text = schema.get_text()
+                        if schema_text:
+                            data = json.loads(schema_text)
+                            if isinstance(data, dict):
+                                company_name = data.get("hiringOrganization", {}).get("name", "")
+                                if not company_name:
+                                    company_name = data.get("name", "")
+                    except (json.JSONDecodeError, AttributeError, TypeError) as e:
+                        # Failed to parse schema.org data; fallback extraction continues
+                        logger.debug("Failed to extract company from schema.org: %s", e)
+
+            # 3. Try to extract from domain name (last resort)
+            if not company_name:
+                parsed = urlparse(url)
+                domain = parsed.netloc.replace("www.", "")
+                # Check against known job board base domains from database
+                # This avoids false positives like "greenhouse-tech.com" being excluded
+                domain_parts = domain.split(".")
+                base_domain = ".".join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain
+                aggregator_domains = self.sources_manager.get_aggregator_domains()
+                is_job_board = base_domain in aggregator_domains
+
+                if not is_job_board:
+                    # Extract company name from subdomain or domain
+                    parts = domain.split(".")
+                    if len(parts) >= 2:
+                        company_name = parts[0].replace("-", " ").title()
+
             return {
-                "title": title.text.strip() if title else "Unknown",
-                "company": "Unknown",
-                "location": "Unknown",
+                "title": title.text.strip() if title else "",
+                "company": company_name,
+                "location": "",
                 "description": (
                     description.get_text(separator="\n", strip=True) if description else ""
                 ),

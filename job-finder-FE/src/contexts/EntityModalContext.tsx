@@ -18,7 +18,8 @@ export type EntityModalDescriptor =
     }
   | {
       type: "jobSource"
-      source: JobSource
+      source?: JobSource | null
+      sourceId?: string | null
       onToggleStatus?: (source: JobSource) => void | Promise<void>
       onDelete?: (id: string) => void | Promise<void>
     }

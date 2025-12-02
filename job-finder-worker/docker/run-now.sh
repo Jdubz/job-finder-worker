@@ -8,7 +8,7 @@ echo "========================================"
 echo "Started at: $(date)"
 echo ""
 
-# Run the scheduler (same entrypoint cron uses)
+# Run the scheduler - cron-submit-scrape.sh handles environment loading internally
 cd /app
 /usr/sbin/gosu node /app/docker/cron-submit-scrape.sh
 
