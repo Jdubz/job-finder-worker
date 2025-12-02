@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useQueueItems } from "@/hooks/useQueueItems"
+import { useEntityModal } from "@/contexts/EntityModalContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,29 +26,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AlertCircle, Loader2, Plus, Building2, ExternalLink, Trash2, Search, RefreshCw } from "lucide-react"
+import { AlertCircle, Loader2, Plus, Building2, Search } from "lucide-react"
 import type { Company } from "@shared/types"
-
-function formatDate(date: unknown): string {
-  if (!date) return "—"
-  let d: Date
-  if (date instanceof Date) {
-    d = date
-  } else if (typeof date === "string" || typeof date === "number") {
-    d = new Date(date)
-  } else if (typeof date === "object" && date !== null && "toDate" in date && typeof (date as { toDate: () => Date }).toDate === "function") {
-    d = (date as { toDate: () => Date }).toDate()
-  } else {
-    return "—"
-  }
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
 
 // Defensive helper: never let arbitrary objects reach React text nodes
 const safeText = (value: unknown, fallback = "—") => {
@@ -98,12 +78,10 @@ export function CompaniesPage() {
   const navigate = useNavigate()
   const { companies, loading, deleteCompany, setFilters } = useCompanies({ limit: 100 })
   const { submitCompany } = useQueueItems()
+  const { openModal } = useEntityModal()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isReanalyzing, setIsReanalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [reanalyzeError, setReanalyzeError] = useState<string | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
 
   // Form state
@@ -150,7 +128,6 @@ export function CompaniesPage() {
     if (!confirm("Are you sure you want to delete this company?")) return
     try {
       await deleteCompany(id)
-      setSelectedCompany(null)
     } catch (err) {
       console.error("Failed to delete company:", err)
     }
@@ -158,24 +135,18 @@ export function CompaniesPage() {
 
   const handleReanalyze = async (company: Company) => {
     if (!company.id) {
-      setReanalyzeError("Cannot re-analyze company without ID")
       return
     }
-    setReanalyzeError(null)
     try {
-      setIsReanalyzing(true)
       await submitCompany({
         companyName: company.name,
         websiteUrl: company.website || undefined,
         companyId: company.id,
       })
-      setSelectedCompany(null)
       navigate("/queue-management")
     } catch (err) {
       console.error("Failed to submit re-analysis:", err)
-      setReanalyzeError(err instanceof Error ? err.message : "Failed to queue re-analysis. Please try again.")
-    } finally {
-      setIsReanalyzing(false)
+      throw err
     }
   }
 
@@ -344,7 +315,16 @@ export function CompaniesPage() {
                   <TableRow
                     key={company.id}
                     className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
-                    onClick={() => setSelectedCompany(company)}
+                    onClick={() =>
+                      openModal({
+                        type: "company",
+                        company,
+                        handlers: {
+                          onDelete: company.id ? () => handleDelete(company.id!) : undefined,
+                          onReanalyze: handleReanalyze,
+                        },
+                      })
+                    }
                   >
                     <TableCell>
                       <div className="font-medium">{safeText(company.name)}</div>
@@ -366,176 +346,6 @@ export function CompaniesPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Detail Modal */}
-      <Dialog open={!!selectedCompany} onOpenChange={(open) => {
-        if (!open) {
-          setSelectedCompany(null)
-          setReanalyzeError(null)
-        }
-      }}>
-        <DialogContent className="w-[95vw] sm:max-w-[600px] max-h-[90vh] overflow-hidden flex flex-col">
-          {selectedCompany && (
-            <>
-              <DialogHeader>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <DialogTitle className="text-xl">{safeText(selectedCompany.name)}</DialogTitle>
-                    <DialogDescription className="mt-1">
-                      {safeText(selectedCompany.industry, "Industry not specified")}
-                    </DialogDescription>
-                  </div>
-                  <CompanyStatusBadge company={selectedCompany} />
-                </div>
-              </DialogHeader>
-
-              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-                {/* ID */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">ID</Label>
-                  <p className="mt-1 text-sm font-mono text-muted-foreground break-all">{safeText(selectedCompany.id)}</p>
-                </div>
-
-                {/* Website */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Website</Label>
-                  {selectedCompany.website ? (
-                    <a
-                      href={selectedCompany.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-start text-blue-600 hover:underline mt-1 break-all text-sm"
-                    >
-                      <span className="flex-1">{safeText(selectedCompany.website)}</span>
-                      <ExternalLink className="ml-1 h-3 w-3 flex-shrink-0 mt-1" />
-                    </a>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">—</p>
-                  )}
-                </div>
-
-                {/* Industry */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Industry</Label>
-                  <p className="mt-1">{safeText(selectedCompany.industry)}</p>
-                </div>
-
-                {/* Headquarters */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Headquarters</Label>
-                  <p className="mt-1">{safeText(selectedCompany.headquartersLocation)}</p>
-                </div>
-
-                {/* Company Size */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Company Size</Label>
-                  <p className="mt-1 capitalize">{safeText(selectedCompany.companySizeCategory)}</p>
-                </div>
-
-                {/* Tech Stack */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Tech Stack</Label>
-                  {selectedCompany.techStack && selectedCompany.techStack.length > 0 ? (
-                    <div className="flex flex-wrap gap-1 mt-1 max-h-[100px] overflow-y-auto">
-                      {selectedCompany.techStack.map((tech, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {safeText(tech)}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">—</p>
-                  )}
-                </div>
-
-                {/* About */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">About</Label>
-                  {selectedCompany.about ? (
-                    <div className="mt-1 text-sm bg-muted p-2 rounded max-h-[100px] overflow-y-auto">
-                      {safeText(selectedCompany.about)}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">—</p>
-                  )}
-                </div>
-
-                {/* Culture */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Culture</Label>
-                  {selectedCompany.culture ? (
-                    <div className="mt-1 text-sm bg-muted p-2 rounded max-h-[100px] overflow-y-auto">
-                      {safeText(selectedCompany.culture)}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">—</p>
-                  )}
-                </div>
-
-                {/* Mission */}
-                <div>
-                  <Label className="text-muted-foreground text-xs uppercase tracking-wide">Mission</Label>
-                  {selectedCompany.mission ? (
-                    <div className="mt-1 text-sm bg-muted p-2 rounded max-h-[100px] overflow-y-auto">
-                      {safeText(selectedCompany.mission)}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-muted-foreground">—</p>
-                  )}
-                </div>
-
-                {/* Timestamps */}
-                <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Created</Label>
-                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedCompany.createdAt)}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground text-xs uppercase tracking-wide">Updated</Label>
-                    <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedCompany.updatedAt)}</p>
-                  </div>
-                </div>
-
-                {reanalyzeError && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{reanalyzeError}</AlertDescription>
-                  </Alert>
-                )}
-              </div>
-
-              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between pt-4 border-t flex-shrink-0 mt-4">
-                <Button
-                  variant="destructive"
-                  onClick={() => selectedCompany.id && handleDelete(selectedCompany.id)}
-                  className="w-full sm:w-auto"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </Button>
-                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleReanalyze(selectedCompany)}
-                    disabled={isReanalyzing}
-                    className="w-full sm:w-auto"
-                  >
-                    {isReanalyzing ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                    )}
-                    Re-analyze
-                  </Button>
-                  <Button variant="ghost" onClick={() => setSelectedCompany(null)} className="w-full sm:w-auto">
-                    Close
-                  </Button>
-                </div>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
