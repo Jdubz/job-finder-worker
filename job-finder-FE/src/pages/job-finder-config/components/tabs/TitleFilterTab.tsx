@@ -21,9 +21,9 @@ type TitleFilterTabProps = {
 
 const cleanList = (items: string[]) => items.map((item) => item.trim()).filter(Boolean)
 
-const mapConfigToForm = (config: TitleFilterConfig): TitleFilterFormValues => ({
-  requiredKeywords: config.requiredKeywords ?? DEFAULT_TITLE_FILTER.requiredKeywords,
-  excludedKeywords: config.excludedKeywords ?? DEFAULT_TITLE_FILTER.excludedKeywords,
+const mapConfigToForm = (config?: TitleFilterConfig): TitleFilterFormValues => ({
+  requiredKeywords: config?.requiredKeywords ?? DEFAULT_TITLE_FILTER?.requiredKeywords ?? [],
+  excludedKeywords: config?.excludedKeywords ?? DEFAULT_TITLE_FILTER?.excludedKeywords ?? [],
 })
 
 const mapFormToConfig = (values: TitleFilterFormValues): TitleFilterConfig => ({

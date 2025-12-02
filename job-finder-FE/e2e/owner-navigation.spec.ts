@@ -9,7 +9,7 @@ test("owner sees management links in navigation", async ({ page, context }) => {
   await page.getByRole("button", { name: /toggle navigation menu/i }).click()
 
   // Check for expected navigation links (note: "Job Finder" may not be a link in the nav)
-  for (const link of ["Job Applications", "Queue Management", "Configuration"]) {
+  for (const link of ["Matches", "Queue Management", "Configuration"]) {
     await expect(page.getByRole("link", { name: link })).toBeVisible()
   }
 })
