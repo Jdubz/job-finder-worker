@@ -145,6 +145,9 @@ export function PersonalInfoTab({
                 updatePersonalInfoState({ timezone: clamped })
               }}
             />
+            <p className="text-sm text-muted-foreground">
+              UTC offset in hours (e.g., -8 for PST, -5 for EST)
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="relocationAllowed">Relocation Allowed</Label>

@@ -370,6 +370,7 @@ def worker_loop():
 
                 while items and not worker_state["shutdown_requested"]:
                     try:
+                        # Refresh delay once per batch; config changes apply to the next batch.
                         queue_settings = config_loader.get_queue_settings()
                         task_delay = max(0, int(queue_settings.get("taskDelaySeconds", 0)))
                     except Exception:

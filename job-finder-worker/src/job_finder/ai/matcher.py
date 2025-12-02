@@ -602,7 +602,7 @@ class AIJobMatcher:
             except Exception:
                 continue
             tech_lower = str(tech).lower()
-            present = f" {tech_lower} " in f" {text} "
+            present = re.search(rf"\b{re.escape(tech_lower)}\b", text) is not None
             if rank == "fail" and present:
                 delta -= max(points, 10)
                 reasons.append(f"⛔ fail tech {tech_lower}")

@@ -264,7 +264,7 @@ class StrikeFilterEngine:
                     detail=f"Title contains '{seniority}' which is below required level",
                     points=3,
                 )
-                return False
+                return True
         return False
 
     def _check_stop_list(
