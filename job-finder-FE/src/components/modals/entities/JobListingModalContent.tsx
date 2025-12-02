@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Trash2, ExternalLink, Database, AlertCircle } from "lucide-react"
 import { MatchBreakdown } from "@/pages/job-listings/components/MatchBreakdown"
 import { statusBadgeClass } from "@/lib/status-badge"
-import { formatDateTime } from "@/lib/formatDate"
+import { formatDate, formatDateTime } from "@/lib/formatDate"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
 const statusLabel: Record<JobListingStatus, string> = {
