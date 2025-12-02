@@ -550,8 +550,14 @@ class AIJobMatcher:
             company_info=None,
         )
 
+        user_city = ""
+        if isinstance(self.config, dict):
+            user_city = self.config.get("userCity", "") or self.profile.location or ""
+        else:
+            user_city = self.profile.location or ""
+
         ctx = LocationContext(
-            user_city=self.profile.location or "",
+            user_city=user_city,
             user_timezone=self.user_timezone,
             relocation_allowed=self.dealbreakers.get("relocationAllowed", False),
             relocation_penalty=self.dealbreakers.get("relocationPenaltyPoints", 80),

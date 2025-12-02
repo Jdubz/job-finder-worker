@@ -51,7 +51,7 @@ def evaluate_location_rules(
     job_city_norm = normalize_city(job_city)
 
     # Onsite/Hybrid rules first
-    if not remote and (hybrid or True):
+    if not remote:
         if user_city and job_city_norm and job_city_norm != user_city:
             if not ctx.relocation_allowed:
                 return LocationEvaluation(True, 0, "onsite/hybrid outside user city")

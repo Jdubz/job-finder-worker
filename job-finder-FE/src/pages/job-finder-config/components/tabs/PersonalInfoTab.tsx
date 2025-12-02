@@ -131,8 +131,19 @@ export function PersonalInfoTab({
               type="number"
               step="0.5"
               placeholder="e.g. -8"
+              min={-12}
+              max={14}
               value={currentPersonalInfo.timezone ?? ""}
-              onChange={(e) => updatePersonalInfoState({ timezone: Number(e.target.value) })}
+              onChange={(e) => {
+                const raw = e.target.value
+                if (raw === "") {
+                  updatePersonalInfoState({ timezone: undefined })
+                  return
+                }
+                const val = Number(raw)
+                const clamped = Math.max(-12, Math.min(14, val))
+                updatePersonalInfoState({ timezone: clamped })
+              }}
             />
           </div>
           <div className="space-y-2">

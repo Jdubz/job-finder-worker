@@ -30,7 +30,6 @@ from job_finder.storage.job_storage import JobStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name, is_source_name
-from job_finder.utils.location_rules import LocationContext, evaluate_location_rules
 from job_finder.utils.url_utils import normalize_url
 from job_finder.job_queue.models import (
     JobQueueItem,
@@ -110,6 +109,7 @@ class JobProcessor(BaseProcessor):
         self.companies_manager = companies_manager
         self.sources_manager = sources_manager
         self.ai_matcher = ai_matcher
+        self.company_info_fetcher = company_info_fetcher
 
         # Initialize strike-based filter engine
         prefilter_policy = config_loader.get_prefilter_policy()
@@ -144,22 +144,10 @@ class JobProcessor(BaseProcessor):
 
     def _refresh_runtime_config(self) -> None:
         """Reload config-driven components so the next item uses fresh settings."""
-        try:
-            ai_settings = self.config_loader.get_ai_settings()
-        except Exception:
-            ai_settings = {}
-
-        try:
-            match_policy = self.config_loader.get_match_policy()
-        except Exception:
-            match_policy = {}
-
+        ai_settings = self.config_loader.get_ai_settings()
+        match_policy = self.config_loader.get_match_policy()
         job_match = match_policy.get("jobMatch", {}) if isinstance(match_policy, dict) else {}
-
-        try:
-            prefilter_policy = self.config_loader.get_prefilter_policy()
-        except Exception:
-            prefilter_policy = {}
+        prefilter_policy = self.config_loader.get_prefilter_policy()
 
         # Rebuild strike filter engine with latest policy
         self.filter_engine = StrikeFilterEngine(prefilter_policy)
@@ -175,36 +163,27 @@ class JobProcessor(BaseProcessor):
             self.scraper_intake.filter_engine = self.filter_engine
 
         # Refresh AI providers per task
-        try:
-            self.ai_matcher.provider = create_provider_from_config(ai_settings, task="jobMatch")
-        except Exception:
-            logger.warning("Failed to refresh jobMatch provider; keeping previous", exc_info=True)
+        self.ai_matcher.provider = create_provider_from_config(ai_settings, task="jobMatch")
 
-        try:
-            company_provider = create_provider_from_config(ai_settings, task="companyDiscovery")
-            if hasattr(self.company_info_fetcher, "ai_provider"):
-                self.company_info_fetcher.ai_provider = company_provider
-        except Exception:
-            logger.warning("Failed to refresh companyDiscovery provider; keeping previous", exc_info=True)
+        company_provider = create_provider_from_config(ai_settings, task="companyDiscovery")
+        if hasattr(self.company_info_fetcher, "ai_provider"):
+            self.company_info_fetcher.ai_provider = company_provider
 
         # Refresh matcher thresholds and weights
-        try:
-            company_weights = match_policy.get("companyWeights", {}) if isinstance(match_policy, dict) else {}
-            dealbreakers = match_policy.get("dealbreakers", {}) if isinstance(match_policy, dict) else {}
+        company_weights = match_policy.get("companyWeights", {}) if isinstance(match_policy, dict) else {}
+        dealbreakers = match_policy.get("dealbreakers", {}) if isinstance(match_policy, dict) else {}
 
-            self.ai_matcher.min_match_score = job_match.get("minMatchScore", self.ai_matcher.min_match_score)
-            self.ai_matcher.generate_intake = job_match.get("generateIntakeData", self.ai_matcher.generate_intake)
-            self.ai_matcher.portland_office_bonus = job_match.get(
-                "portlandOfficeBonus", self.ai_matcher.portland_office_bonus
-            )
-            self.ai_matcher.user_timezone = job_match.get("userTimezone", self.ai_matcher.user_timezone)
-            self.ai_matcher.prefer_large_companies = job_match.get(
-                "preferLargeCompanies", self.ai_matcher.prefer_large_companies
-            )
-            self.ai_matcher.company_weights = company_weights or self.ai_matcher.company_weights
-            self.ai_matcher.dealbreakers = dealbreakers or self.ai_matcher.dealbreakers
-        except Exception:
-            logger.warning("Failed to refresh match policy settings", exc_info=True)
+        self.ai_matcher.min_match_score = job_match.get("minMatchScore", self.ai_matcher.min_match_score)
+        self.ai_matcher.generate_intake = job_match.get("generateIntakeData", self.ai_matcher.generate_intake)
+        self.ai_matcher.portland_office_bonus = job_match.get(
+            "portlandOfficeBonus", self.ai_matcher.portland_office_bonus
+        )
+        self.ai_matcher.user_timezone = job_match.get("userTimezone", self.ai_matcher.user_timezone)
+        self.ai_matcher.prefer_large_companies = job_match.get(
+            "preferLargeCompanies", self.ai_matcher.prefer_large_companies
+        )
+        self.ai_matcher.company_weights = company_weights or self.ai_matcher.company_weights
+        self.ai_matcher.dealbreakers = dealbreakers or self.ai_matcher.dealbreakers
 
         # Align matcher dealbreakers with prefilter policy for remote/hybrid rules
         self._sync_matcher_dealbreakers(prefilter_policy)

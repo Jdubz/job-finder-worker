@@ -348,7 +348,7 @@ export const DEFAULT_PERSONAL_INFO: PersonalInfo = {
   email: "",
   accentColor: "#3b82f6",
   city: "",
-  timezone: undefined,
+  timezone: null,
   relocationAllowed: false,
 }
 

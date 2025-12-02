@@ -339,13 +339,6 @@ def worker_loop():
 
                 # Refresh timeout from DB each loop (allows runtime changes)
                 processing_timeout = get_processing_timeout(config_loader)
-                # Apply task-level delay between items if configured
-                try:
-                    queue_settings = config_loader.get_queue_settings()
-                    task_delay = max(0, int(queue_settings.get("taskDelaySeconds", 0)))
-                except Exception:
-                    task_delay = 0
-
                 # Check if processing is enabled (allows pausing via config)
                 if not config_loader.is_processing_enabled():
                     slogger.worker_status(
@@ -376,6 +369,12 @@ def worker_loop():
                 batch_paused = False
 
                 while items and not worker_state["shutdown_requested"]:
+                    try:
+                        queue_settings = config_loader.get_queue_settings()
+                        task_delay = max(0, int(queue_settings.get("taskDelaySeconds", 0)))
+                    except Exception:
+                        task_delay = 0
+
                     pause_requested = False
                     for item in items:
                         if worker_state["shutdown_requested"]:

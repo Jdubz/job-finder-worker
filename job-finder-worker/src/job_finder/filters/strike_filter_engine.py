@@ -33,10 +33,6 @@ class StrikeFilterEngine:
         """
 
         self.policy = policy
-        self.stop_list = policy.get("stopList", {})
-        self.stop_companies = [c.lower() for c in self.stop_list.get("excludedCompanies", [])]
-        self.stop_keywords = [k.lower() for k in self.stop_list.get("excludedKeywords", [])]
-        self.stop_domains = [d.lower() for d in self.stop_list.get("excludedDomains", [])]
         config = policy.get("strikeEngine", {})
         self.tech_ranks = tech_ranks or policy.get("technologyRanks", {})
         self.enabled = config.get("enabled", True)
@@ -149,11 +145,10 @@ class StrikeFilterEngine:
             return result
 
         # Stop-list checks (companies/domains/keywords) as strikes first, not auto-fail
-        self._check_stop_list(company, description, result)
+        self._check_stop_list(company, description, job_data.get("url", ""), result)
 
-        # Check salary floor
-        if self._below_salary_floor(salary, result):
-            return result
+        # Check salary floor (strike-based)
+        self._check_salary_floor(salary, result)
 
         # Check commission only
         if self._is_commission_only(description, result):
@@ -272,57 +267,52 @@ class StrikeFilterEngine:
                 return False
         return False
 
-    def _is_excluded_company(self, company: str, result: FilterResult) -> bool:
-        """Check if company is in exclusion list."""
-        company_lower = company.lower()
+    def _check_stop_list(self, company: str, description: str, url: str, result: FilterResult) -> None:
+        """Apply stop-list as strikes (no hard reject)."""
+        company_lower = (company or "").lower()
+        description_lower = (description or "").lower()
+        url_lower = (url or "").lower()
 
-        for excluded in self.excluded_companies:
-            if excluded in company_lower:
-                result.add_rejection(
-                    filter_category="hard_reject",
-                    filter_name="excluded_company",
-                    reason=f"Excluded company: {excluded}",
-                    detail=f"Company '{company}' is in exclusion list",
-                    severity="hard_reject",
-                    points=0,
+        for stop in self.stop_companies:
+            if stop and stop in company_lower:
+                result.add_strike(
+                    filter_category="stop_list",
+                    filter_name="company",
+                    reason=f"Stop company match: {stop}",
+                    detail=f"Company '{company}' matches stop list",
+                    points=5,
                 )
-                return True
-        return False
 
-    def _has_excluded_keywords(self, description: str, result: FilterResult) -> bool:
-        """Check for deal-breaker keywords (hard reject only from hardRejections)."""
-        description_lower = description.lower()
+        for domain in self.stop_domains:
+            if domain and domain in url_lower:
+                result.add_strike(
+                    filter_category="stop_list",
+                    filter_name="domain",
+                    reason=f"Stop domain match: {domain}",
+                    detail=f"URL '{url}' matches stop list domain",
+                    points=5,
+                )
 
-        for keyword in self.excluded_keywords:
+        for keyword in self.stop_keywords:
+            if not keyword:
+                continue
             if " " in keyword:
-                if keyword in description_lower:
-                    result.add_rejection(
-                        filter_category="hard_reject",
-                        filter_name="excluded_keyword",
-                        reason=f"Deal-breaker keyword: {keyword}",
-                        detail=f"Description contains '{keyword}'",
-                        severity="hard_reject",
-                        points=0,
-                    )
-                    return True
+                hit = keyword in description_lower
             else:
-                pattern = r"\b" + re.escape(keyword) + r"\b"
-                if re.search(pattern, description_lower):
-                    result.add_rejection(
-                        filter_category="hard_reject",
-                        filter_name="excluded_keyword",
-                        reason=f"Deal-breaker keyword: {keyword}",
-                        detail=f"Description contains '{keyword}'",
-                        severity="hard_reject",
-                        points=0,
-                    )
-                    return True
-        return False
+                hit = re.search(r"\b" + re.escape(keyword) + r"\b", description_lower)
+            if hit:
+                result.add_strike(
+                    filter_category="stop_list",
+                    filter_name="keyword",
+                    reason=f"Stop keyword: {keyword}",
+                    detail="Description contains stop keyword",
+                    points=3,
+                )
 
-    def _below_salary_floor(self, salary: str, result: FilterResult) -> bool:
-        """Check if salary is below hard floor and add strikes (no hard reject)."""
+    def _check_salary_floor(self, salary: str, result: FilterResult) -> None:
+        """Add strikes when salary is below the configured floor (no hard reject)."""
         if not salary:
-            return False
+            return
 
         max_salary = self._parse_salary(salary)
         if max_salary and max_salary < self.min_salary_floor:
@@ -333,8 +323,6 @@ class StrikeFilterEngine:
                 detail=f"Max salary ${max_salary:,} is below minimum ${self.min_salary_floor:,}",
                 points=3,
             )
-            return False
-        return False
 
     def _is_commission_only(self, description: str, result: FilterResult) -> bool:
         """Check for commission-only/MLM indicators."""

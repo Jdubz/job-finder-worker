@@ -4,8 +4,6 @@
 > Owner: Codex (pairing with jdubz)
 > Last Updated: 2025-12-01
 
-Date: 2025-12-01
-Owner: Codex (pairing with jdubz)
 Scope: Align backend/worker behavior, configs, and UI so every config key is live, visible, and applied per task; remove legacy data; improve match/location logic; modernize AI defaults; and refresh the configuration UI/preview experience.
 
 ## Objectives
@@ -46,30 +44,30 @@ Scope: Align backend/worker behavior, configs, and UI so every config key is liv
    - Hybrid/onsite within same city bypass relocation fail; timezone penalties apply only to remote roles.
 4. Prefilter shares the same city/relocation gates and uses the shared TZ helper to avoid duplicate logic.
 
-### 2b) Strike vs Hard-Reject Simplification
+### 3) Strike vs Hard-Reject Simplification
 1. Adopt **strike-first** filtering: prefer strike accumulation with explicit thresholds; reserve hard rejects only for absolute dealbreakers (e.g., city mismatch when relocation disallowed, forbidden tech `fail`).
 2. Consolidate stop lists (companies/keywords/domains) into one source of truth used by both prefilter and matcher; remove duplicate lists (`stopList` vs `hardRejections.*`).
 3. Normalize salary logic: one path that (a) hard-rejects commission-only if configured, (b) applies strike for low max salary, (c) enforces `minSalaryFloor` once.
 4. Normalize timezone logic: one helper that computes penalties/fails based on user city/timezone and relocation flag; reuse in prefilter and matcher.
 5. Document the scoring order: stop-list → hard-fail rules (minimal) → strike accumulation (all dimensions) → final threshold decision.
 
-### 3) Tech & Experience Scoring
+### 4) Tech & Experience Scoring
 1. Apply `experienceStrike` in match scoring (not prefilter). Configurable points for YOE gaps or seniority mismatch.
 2. Use `technologyRanks` in matcher scoring: strikes subtract points; `fail` triggers hard reject; small bonuses for required/preferred presence.
 3. Prefilter tech checks only handle `fail` tech and obvious mismatches.
 
-### 4) AI Configuration
+### 5) AI Configuration
 1. Default provider selection to **Gemini** across tasks when DB is missing.
 2. Per-task agent selection (match, company discovery, document generator, scraping assist, prompt analysis). `ai-settings` schema: `{ taskName: { selected, options? } }` with fallbacks.
 3. Normalize legacy `selected` to task-specific entries during load; persist upgraded shape.
 
-### 5) UI / UX Improvements
+### 6) UI / UX Improvements
 1. Render every config key in canonical schemas; no hidden fields. Sections: stop list, salary, relocation flag/penalty, TZ penalties, taskDelaySeconds, tech strike weights, experience strike weights, per-task AI agents.
 2. Layout: responsive scrollable tabs, tighter grids, sticky Save/Reset per card, show “Last updated/by” per card.
 3. Screenshot generator to capture current page with real data (Playwright/html-to-image) for QA.
 4. Validation helptext for city/timezone and relocation semantics.
 
-### 6) Testing & Verification
+### 7) Testing & Verification
 1. Unit: config loader per-task refresh; legacy migration; stop-list consolidation.
 2. Integration: worker reload applies to next item; taskDelaySeconds honored.
 3. Matcher: timezone/relocation rules (remote vs hybrid/onsite), relocation penalty, tech strike/fail, experience strike, remote-only TZ penalty rule.
@@ -77,7 +75,7 @@ Scope: Align backend/worker behavior, configs, and UI so every config key is liv
 5. FE: form round-trip includes all keys; screenshot generator smoke test.
 6. Optional visual regression via screenshot generator in CI.
 
-### 7) Migration & Rollout
+### 8) Migration & Rollout
 1. DB migration: back up existing config rows to JSON, drop legacy rows, add new keys (city, timezone, relocationAllowed, relocationPenaltyPoints, taskDelaySeconds), normalize ai-settings shape.
 2. Feature flag (env) for per-task reload; default ON in prod.
 3. Deploy BE first (routes + worker), then FE; validate by saving configs and confirming immediate effect on next queue item.

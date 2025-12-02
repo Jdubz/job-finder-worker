@@ -134,18 +134,6 @@ class ConfigLoader:
                 ],
             },
         ]
-        default = {
-            "worker": {
-                "selected": dict(default_selection),
-                "tasks": {
-                    "jobMatch": dict(default_selection),
-                    "companyDiscovery": dict(default_selection),
-                    "sourceDiscovery": dict(default_selection),
-                },
-            },
-            "documentGenerator": {"selected": dict(default_selection)},
-            "options": default_options,
-        }
         raw = self._get_config("ai-settings")
         return self._normalize_ai_settings(raw, default_selection, default_options)
 
@@ -224,58 +212,19 @@ class ConfigLoader:
         if isinstance(settings.get("documentGenerator"), dict):
             doc_tasks = settings.get("documentGenerator", {}).get("tasks")
 
-        return {
-            "worker": {"selected": worker_selected, **({"tasks": worker_tasks} if worker_tasks else {})},
-            "documentGenerator": {
-                "selected": doc_selected,
-                **({"tasks": doc_tasks} if doc_tasks else {}),
-            },
+        payload: Dict[str, Any] = {
+            "worker": {"selected": worker_selected},
+            "documentGenerator": {"selected": doc_selected},
             "options": options,
         }
+        if worker_tasks:
+            payload["worker"]["tasks"] = worker_tasks
+        if doc_tasks:
+            payload["documentGenerator"]["tasks"] = doc_tasks
+
+        return payload
 
     def get_match_policy(self) -> Dict[str, Any]:
-        default = {
-            "jobMatch": {
-                "minMatchScore": 70,
-                "portlandOfficeBonus": 15,
-                "userTimezone": -8,
-                "preferLargeCompanies": True,
-                "generateIntakeData": True,
-            },
-            "companyWeights": {
-                "bonuses": {
-                    "remoteFirst": 15,
-                    "aiMlFocus": 10,
-                },
-                "sizeAdjustments": {
-                    "largeCompanyBonus": 10,
-                    "smallCompanyPenalty": -5,
-                    "largeCompanyThreshold": 10000,
-                    "smallCompanyThreshold": 100,
-                },
-                "timezoneAdjustments": {
-                    "sameTimezone": 5,
-                    "diff1to2hr": -2,
-                    "diff3to4hr": -5,
-                    "diff5to8hr": -10,
-                    "diff9plusHr": -15,
-                },
-                "priorityThresholds": {
-                    "high": 85,
-                    "medium": 70,
-                },
-            },
-            "dealbreakers": {
-                "maxTimezoneDiffHours": 8,
-                "perHourTimezonePenalty": 5,
-                "hardTimezonePenalty": 60,
-                "requireRemote": False,
-                "allowHybridInTimezone": True,
-                "locationPenaltyPoints": 60,
-                "relocationPenaltyPoints": 80,
-                "ambiguousLocationPenaltyPoints": 40,
-            },
-        }
         return self._get_config("match-policy")
 
     def get_job_match(self) -> Dict[str, Any]:
