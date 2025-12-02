@@ -322,7 +322,9 @@ def test_single_task_pipeline_completes_to_match(processor, mock_managers, sampl
     assert "match-456" in success_calls[0][0][2] or "95" in success_calls[0][0][2]
 
 
-def test_single_task_pipeline_handles_aggregator_source_name(processor, mock_managers, sample_job_item):
+def test_single_task_pipeline_handles_aggregator_source_name(
+    processor, mock_managers, sample_job_item
+):
     """Aggregator source with source name as company (e.g., 'RemoteOK API') skips company creation."""
 
     # Provide scraped_data with source name as company (scraper bug scenario)
