@@ -5,6 +5,7 @@ preferences. All scoring logic is deterministic and transparent.
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
@@ -31,7 +32,7 @@ class ScoreAdjustment:
 
     def __str__(self) -> str:
         """String representation for logging/debugging."""
-        return f"{self.reason} ({self.points:+d})"
+        return f"[{self.category}] {self.reason} ({self.points:+d})"
 
 
 @dataclass
@@ -130,8 +131,7 @@ class ScoringEngine:
         # 1. Seniority scoring
         seniority_result = self._score_seniority(extraction.seniority)
         score += seniority_result["points"]
-        if seniority_result.get("adjustment"):
-            adjustments.append(seniority_result["adjustment"])
+        adjustments.extend(seniority_result.get("adjustments", []))
 
         # Hard reject on seniority
         if seniority_result.get("hard_reject"):
@@ -198,14 +198,12 @@ class ScoringEngine:
         # 5. Experience scoring
         exp_result = self._score_experience(extraction.experience_min, extraction.experience_max)
         score += exp_result["points"]
-        if exp_result.get("adjustment"):
-            adjustments.append(exp_result["adjustment"])
+        adjustments.extend(exp_result.get("adjustments", []))
 
         # 6. Skill match scoring (from description text matching)
         skill_result = self._score_skills(job_description)
         score += skill_result["points"]
-        if skill_result.get("adjustment"):
-            adjustments.append(skill_result["adjustment"])
+        adjustments.extend(skill_result.get("adjustments", []))
 
         # 7. Freshness scoring (from extracted days_old)
         freshness_result = self._score_freshness(extraction)
@@ -250,7 +248,7 @@ class ScoringEngine:
     def _score_seniority(self, seniority: Optional[str]) -> Dict[str, Any]:
         """Score based on seniority match."""
         if not seniority or seniority == "unknown":
-            return {"points": 0, "adjustment": None}
+            return {"points": 0, "adjustments": []}
 
         seniority_lower = seniority.lower()
 
@@ -259,11 +257,13 @@ class ScoringEngine:
             penalty = self.seniority_config.get("rejectedPenalty", -100)
             return {
                 "points": penalty,
-                "adjustment": ScoreAdjustment(
-                    category="seniority",
-                    reason=f"Rejected seniority '{seniority}'",
-                    points=penalty,
-                ),
+                "adjustments": [
+                    ScoreAdjustment(
+                        category="seniority",
+                        reason=f"Rejected seniority '{seniority}'",
+                        points=penalty,
+                    )
+                ],
                 "hard_reject": True,
             }
 
@@ -272,11 +272,13 @@ class ScoringEngine:
             bonus = self.seniority_config.get("preferredBonus", 15)
             return {
                 "points": bonus,
-                "adjustment": ScoreAdjustment(
-                    category="seniority",
-                    reason=f"Preferred seniority '{seniority}'",
-                    points=bonus,
-                ),
+                "adjustments": [
+                    ScoreAdjustment(
+                        category="seniority",
+                        reason=f"Preferred seniority '{seniority}'",
+                        points=bonus,
+                    )
+                ],
             }
 
         # Check acceptable seniority (neutral or small penalty)
@@ -285,16 +287,18 @@ class ScoringEngine:
             if penalty != 0:
                 return {
                     "points": penalty,
-                    "adjustment": ScoreAdjustment(
-                        category="seniority",
-                        reason=f"Acceptable seniority '{seniority}'",
-                        points=penalty,
-                    ),
+                    "adjustments": [
+                        ScoreAdjustment(
+                            category="seniority",
+                            reason=f"Acceptable seniority '{seniority}'",
+                            points=penalty,
+                        )
+                    ],
                 }
-            return {"points": 0, "adjustment": None}
+            return {"points": 0, "adjustments": []}
 
         # Unknown seniority - no adjustment
-        return {"points": 0, "adjustment": None}
+        return {"points": 0, "adjustments": []}
 
     def _score_location(self, extraction: JobExtractionResult) -> Dict[str, Any]:
         """Score based on location/remote/timezone/relocation."""
@@ -379,8 +383,9 @@ class ScoringEngine:
         max_diff = self.location_config.get("maxTimezoneDiffHours", 4)
         per_hour_penalty = self.location_config.get("perHourPenalty", 3)
 
-        if job_tz is None:
-            # Unknown timezone - small penalty for uncertainty
+        # Handle None or invalid timezone types
+        if job_tz is None or not isinstance(job_tz, (int, float)):
+            # Unknown/invalid timezone - small penalty for uncertainty
             return {
                 "points": -5,
                 "adjustments": [
@@ -618,10 +623,10 @@ class ScoringEngine:
         overqualified_penalty = self.experience_config.get("overqualifiedPenalty", 5)
 
         if min_exp is None and max_exp is None:
-            return {"points": 0, "adjustment": None}
+            return {"points": 0, "adjustments": []}
 
-        job_min = min_exp or 0
-        job_max = max_exp or job_min
+        job_min = min_exp if min_exp is not None else 0
+        job_max = max_exp if max_exp is not None else job_min
 
         # Check if user is underqualified
         if job_min > user_years:
@@ -630,31 +635,37 @@ class ScoringEngine:
                 # Significantly underqualified - hard reject
                 return {
                     "points": -30,
-                    "adjustment": ScoreAdjustment(
-                        category="experience",
-                        reason=f"Requires {job_min}+ years, user has {user_years}",
-                        points=-30,
-                    ),
+                    "adjustments": [
+                        ScoreAdjustment(
+                            category="experience",
+                            reason=f"Requires {job_min}+ years, user has {user_years}",
+                            points=-30,
+                        )
+                    ],
                 }
             penalty = -diff * 5
             return {
                 "points": penalty,
-                "adjustment": ScoreAdjustment(
-                    category="experience",
-                    reason=f"Requires {job_min}+ years, user has {user_years}",
-                    points=penalty,
-                ),
+                "adjustments": [
+                    ScoreAdjustment(
+                        category="experience",
+                        reason=f"Requires {job_min}+ years, user has {user_years}",
+                        points=penalty,
+                    )
+                ],
             }
 
         # Check if job requires too much experience (unrealistic)
         if job_min > max_required:
             return {
                 "points": -10,
-                "adjustment": ScoreAdjustment(
-                    category="experience",
-                    reason=f"Requires {job_min}+ years (exceeds {max_required} threshold)",
-                    points=-10,
-                ),
+                "adjustments": [
+                    ScoreAdjustment(
+                        category="experience",
+                        reason=f"Requires {job_min}+ years (exceeds {max_required} threshold)",
+                        points=-10,
+                    )
+                ],
             }
 
         # Check if user is overqualified
@@ -663,33 +674,43 @@ class ScoringEngine:
             penalty = -min(over_years * overqualified_penalty, 15)
             return {
                 "points": penalty,
-                "adjustment": ScoreAdjustment(
-                    category="experience",
-                    reason=f"User overqualified ({user_years}y vs {job_max}y max)",
-                    points=penalty,
-                ),
+                "adjustments": [
+                    ScoreAdjustment(
+                        category="experience",
+                        reason=f"User overqualified ({user_years}y vs {job_max}y max)",
+                        points=penalty,
+                    )
+                ],
             }
 
         # Good experience match
         return {
             "points": 5,
-            "adjustment": ScoreAdjustment(
-                category="experience",
-                reason=f"Experience match ({job_min}-{job_max}y required)",
-                points=5,
-            ),
+            "adjustments": [
+                ScoreAdjustment(
+                    category="experience",
+                    reason=f"Experience match ({job_min}-{job_max}y required)",
+                    points=5,
+                )
+            ],
         }
 
     def _score_skills(self, description: str) -> Dict[str, Any]:
-        """Score based on skill keywords in description."""
+        """Score based on skill keywords in description using word-boundary matching."""
         if not self.user_skills or not description:
-            return {"points": 0, "adjustment": None}
+            return {"points": 0, "adjustments": []}
 
         desc_lower = description.lower()
-        matched_skills = [skill for skill in self.user_skills if skill in desc_lower]
+        # Use word boundary matching to avoid false positives
+        # e.g., "go" shouldn't match "going", "good", etc.
+        matched_skills = [
+            skill
+            for skill in self.user_skills
+            if re.search(rf"\b{re.escape(skill)}\b", desc_lower)
+        ]
 
         if not matched_skills:
-            return {"points": 0, "adjustment": None}
+            return {"points": 0, "adjustments": []}
 
         # Bonus based on number of matched skills
         match_count = len(matched_skills)
@@ -697,11 +718,13 @@ class ScoringEngine:
 
         return {
             "points": bonus,
-            "adjustment": ScoreAdjustment(
-                category="skills",
-                reason=f"Matched {match_count} user skills",
-                points=bonus,
-            ),
+            "adjustments": [
+                ScoreAdjustment(
+                    category="skills",
+                    reason=f"Matched {match_count} user skills",
+                    points=bonus,
+                )
+            ],
         }
 
     def _score_freshness(self, extraction: JobExtractionResult) -> Dict[str, Any]:
@@ -999,8 +1022,8 @@ class ScoringEngine:
                     )
                 )
 
-        # 4. Company size scoring
-        if employee_count:
+        # 4. Company size scoring (with type safety for employee_count)
+        if employee_count and isinstance(employee_count, (int, float)):
             large_company_bonus = company_config.get("largeCompanyBonus", 5)
             small_company_penalty = company_config.get("smallCompanyPenalty", -5)
             startup_bonus = company_config.get("startupBonus", 0)
