@@ -1,5 +1,6 @@
 """Prompt templates for job data extraction."""
 
+from datetime import date
 from typing import Optional
 
 
@@ -25,9 +26,11 @@ def build_extraction_prompt(
     """
     location_section = f"\nLocation: {location}" if location else ""
     posted_section = f"\nPosted: {posted_date}" if posted_date else ""
+    today_str = date.today().isoformat()
 
     return f"""Extract structured information from this job posting. Return ONLY a valid JSON object.
 
+Today's date: {today_str}
 Job Title: {title}{location_section}{posted_section}
 
 Job Description:
@@ -37,15 +40,14 @@ Extract and return this exact JSON structure (use null for unknown values, false
 {{
   "seniority": "<junior|mid|senior|staff|lead|principal|unknown>",
   "workArrangement": "<remote|hybrid|onsite|unknown>",
-  "timezone": <UTC offset number or null>,
+  "timezone": <UTC offset as float, e.g. -8 for PST, +5.5 for India, or null>,
   "city": "<city name or null>",
   "salaryMin": <minimum annual salary as integer or null>,
   "salaryMax": <maximum annual salary as integer or null>,
   "experienceMin": <minimum years required as integer or null>,
   "experienceMax": <maximum years required as integer or null>,
   "technologies": ["<tech1>", "<tech2>", ...],
-  "employmentType": "<full-time|part-time|contract|unknown>",
-  "daysOld": <number of days since posting or null>,
+  "daysOld": <number of days between posted date and today, or null if unknown>,
   "isRepost": <true if this appears to be a reposted job, false otherwise>,
   "relocationRequired": <true if explicitly requires relocation, false otherwise>,
   "includesEquity": <true if compensation includes equity/stock, false otherwise>,
@@ -78,7 +80,7 @@ Rules:
    - "on-site", "in-office", "must be local" -> "onsite"
    - If ambiguous, use "unknown"
 
-3. Parse salary as annual USD amounts (convert hourly/monthly if needed)
+3. Parse salary as annual USD amounts (convert hourly/monthly if needed):
    - "$150,000 - $200,000" -> salaryMin: 150000, salaryMax: 200000
    - "$75/hour" -> convert to annual (~156000)
    - If range not specified, set both to the same value
@@ -89,14 +91,23 @@ Rules:
    - Normalize names (e.g., "React.js" -> "react", "Node" -> "node")
    - Lowercase all entries
 
-5. For timezone (based on location):
-   - US cities: "PST/Pacific" -> -8, "MST/Mountain" -> -7, "CST/Central" -> -6, "EST/Eastern" -> -5
-   - India -> +5.5
+5. For timezone (based on location), return UTC offset as float:
+   - US Pacific (SF, LA, Seattle) -> -8
+   - US Mountain (Denver) -> -7
+   - US Central (Chicago, Austin) -> -6
+   - US Eastern (NYC, Boston) -> -5
    - UK/London -> 0
-   - Europe (Paris, Berlin, etc.) -> +1 or +2
+   - Central Europe (Paris, Berlin) -> +1
+   - Eastern Europe -> +2
+   - India -> +5.5
    - If no location/timezone info, use null
 
-6. Role fit signals - set true ONLY if clearly indicated:
+6. For daysOld, calculate days between posted date and today ({today_str}):
+   - "Posted 3 days ago" -> 3
+   - "Posted December 1, 2025" with today {today_str} -> calculate difference
+   - If no posted date or unclear, use null
+
+7. Role fit signals - set true ONLY if clearly indicated:
    - isBackend: server-side, API, database focus
    - isFrontend: UI, React, CSS, user interface focus
    - isFullstack: explicitly "full-stack" or both frontend and backend
@@ -107,7 +118,7 @@ Rules:
    - requiresClearance: mentions security clearance, TS/SCI, secret clearance
    - isConsulting: consulting firm, agency, client-facing delivery
 
-7. relocationRequired: ONLY true if explicitly states relocation is required. Generic phrases like "headquartered in SF" are NOT requirements.
+8. relocationRequired: ONLY true if explicitly states relocation is required. Generic phrases like "headquartered in SF" are NOT requirements.
 
 Return ONLY the JSON object, no explanation or markdown."""
 
@@ -125,11 +136,12 @@ def build_simple_extraction_prompt(title: str, description: str) -> str:
     """
     # Truncate description more aggressively for simple extraction
     desc_truncated = description[:2000] if len(description) > 2000 else description
+    today_str = date.today().isoformat()
 
-    return f"""Extract from this job posting. Return JSON only.
+    return f"""Extract from this job posting. Today is {today_str}. Return JSON only.
 
 Title: {title}
 Description: {desc_truncated}
 
 Return:
-{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"employmentType":"<full-time|part-time|contract|unknown>","daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"isBackend":false,"isFrontend":false,"isFullstack":false,"isDevopsSre":false,"isMlAi":false,"isData":false,"isSecurity":false,"requiresClearance":false,"isConsulting":false}}"""
+{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"isBackend":false,"isFrontend":false,"isFullstack":false,"isDevopsSre":false,"isMlAi":false,"isData":false,"isSecurity":false,"requiresClearance":false,"isConsulting":false}}"""
