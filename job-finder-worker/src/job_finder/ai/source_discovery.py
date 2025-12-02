@@ -602,6 +602,9 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
     def _probe_api(self, source_config: SourceConfig) -> Tuple[bool, list, bool, str]:
         """
         Make a single API call to detect auth needs and return parsed jobs or errors.
+
+        Returns:
+            Tuple of (success, jobs, needs_auth, error_message)
         """
         headers = {**source_config.headers}
         url = source_config.url
