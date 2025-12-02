@@ -136,9 +136,7 @@ class ScraperIntake:
                 filter_result=filter_result,
             )
             if created:
-                logger.debug(
-                    "Created job listing %s for %s", listing_id, normalized_url
-                )
+                logger.debug("Created job listing %s for %s", listing_id, normalized_url)
             return listing_id
         except Exception as e:
             logger.warning("Failed to store job listing for %s: %s", normalized_url, e)
@@ -259,12 +257,8 @@ class ScraperIntake:
 
                 # Clean company label scraped from the listing (avoid storing "Acme Careers")
                 company_name_raw = job.get("company", "")
-                company_name_base = (
-                    company_name_raw if isinstance(company_name_raw, str) else ""
-                )
-                company_name = (
-                    clean_company_name(company_name_base) or company_name_base.strip()
-                )
+                company_name_base = company_name_raw if isinstance(company_name_raw, str) else ""
+                company_name = clean_company_name(company_name_base) or company_name_base.strip()
 
                 # Update job dict with cleaned company name
                 job_payload = dict(job)
@@ -278,12 +272,8 @@ class ScraperIntake:
                         prefiltered_count += 1
                         # Track rejection reasons for logging
                         reason = filter_result.reason or "unknown"
-                        reason_key = (
-                            reason.split(":")[0].strip() if ":" in reason else reason
-                        )
-                        prefilter_reasons[reason_key] = (
-                            prefilter_reasons.get(reason_key, 0) + 1
-                        )
+                        reason_key = reason.split(":")[0].strip() if ":" in reason else reason
+                        prefilter_reasons[reason_key] = prefilter_reasons.get(reason_key, 0) + 1
                         logger.debug(f"Pre-filtered job: {title} - {reason}")
 
                         # Store filtered job in job_listings with status='filtered'
@@ -374,9 +364,7 @@ class ScraperIntake:
 
         # Log pre-filter breakdown if any were filtered
         if prefilter_reasons:
-            reasons_str = ", ".join(
-                f"{k}: {v}" for k, v in sorted(prefilter_reasons.items())
-            )
+            reasons_str = ", ".join(f"{k}: {v}" for k, v in sorted(prefilter_reasons.items()))
             logger.info(f"  Pre-filter breakdown: {reasons_str}")
 
         return added_count
@@ -407,9 +395,7 @@ class ScraperIntake:
             # Validate URL exists and is non-empty
             url = company_website.strip()
             if not url:
-                logger.debug(
-                    f"Skipping company {cleaned_name} with missing or empty URL"
-                )
+                logger.debug(f"Skipping company {cleaned_name} with missing or empty URL")
                 return None
 
             # Normalize URL for consistent comparison
@@ -436,9 +422,7 @@ class ScraperIntake:
 
             company_id = None
             if self.companies_manager:
-                stub = self.companies_manager.create_company_stub(
-                    cleaned_name, normalized_url
-                )
+                stub = self.companies_manager.create_company_stub(cleaned_name, normalized_url)
                 company_id = stub.get("id")
 
             # Generate tracking_id for this root company (all spawned items will inherit it)

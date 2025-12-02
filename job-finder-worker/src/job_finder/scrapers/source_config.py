@@ -61,9 +61,7 @@ class SourceConfig:
     disabled_notes: str = ""
 
     @classmethod
-    def from_dict(
-        cls, data: Dict[str, Any], company_name: Optional[str] = None
-    ) -> "SourceConfig":
+    def from_dict(cls, data: Dict[str, Any], company_name: Optional[str] = None) -> "SourceConfig":
         """
         Create SourceConfig from dictionary.
 
@@ -142,9 +140,7 @@ class SourceConfig:
             ValueError: If configuration is invalid
         """
         if self.type not in ("api", "rss", "html"):
-            raise ValueError(
-                f"Invalid source type: {self.type}. Must be 'api', 'rss', or 'html'"
-            )
+            raise ValueError(f"Invalid source type: {self.type}. Must be 'api', 'rss', or 'html'")
 
         if not self.url:
             raise ValueError("URL is required")

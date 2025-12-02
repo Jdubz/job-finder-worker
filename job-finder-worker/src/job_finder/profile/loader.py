@@ -75,9 +75,7 @@ class ProfileLoader:
 
         # Check that profile has some useful data
         has_data = (
-            len(profile.skills) > 0
-            or len(profile.experience) > 0
-            or profile.summary is not None
+            len(profile.skills) > 0 or len(profile.experience) > 0 or profile.summary is not None
         )
 
         return has_data

@@ -69,9 +69,7 @@ class TestNormalizeCompanyName:
             "Cloudflare, Inc.",
         ]
 
-        normalized_values = [
-            normalize_company_name(name) for name in cloudflare_variants
-        ]
+        normalized_values = [normalize_company_name(name) for name in cloudflare_variants]
 
         # All should be the same
         assert len(set(normalized_values)) == 1

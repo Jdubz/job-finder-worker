@@ -47,9 +47,7 @@ class QueueManager:
 
         if isinstance(obj, str):
             return (
-                obj[: self._max_string_length] + "…"
-                if len(obj) > self._max_string_length
-                else obj
+                obj[: self._max_string_length] + "…" if len(obj) > self._max_string_length else obj
             )
 
         if isinstance(obj, list):
@@ -129,9 +127,7 @@ class QueueManager:
                 )
         except sqlite3.IntegrityError as exc:
             if "UNIQUE constraint failed" in str(exc):
-                raise DuplicateQueueItemError(
-                    f"Duplicate URL in queue: {item.url}"
-                ) from exc
+                raise DuplicateQueueItemError(f"Duplicate URL in queue: {item.url}") from exc
             raise StorageError(f"Failed to insert queue item: {exc}") from exc
         except Exception as exc:
             raise StorageError(f"Failed to insert queue item: {exc}") from exc
@@ -231,9 +227,7 @@ class QueueManager:
 
     def get_item(self, item_id: str) -> Optional[JobQueueItem]:
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT * FROM job_queue WHERE id = ?", (item_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM job_queue WHERE id = ?", (item_id,)).fetchone()
         return JobQueueItem.from_record(dict(row)) if row else None
 
     def _notify_item_updated(self, item_id: str) -> None:
@@ -241,16 +235,12 @@ class QueueManager:
         if self.notifier:
             updated_item = self.get_item(item_id)
             if updated_item:
-                payload = self._sanitize_queue_item_dict(
-                    updated_item.model_dump(mode="json")
-                )
+                payload = self._sanitize_queue_item_dict(updated_item.model_dump(mode="json"))
                 self.notifier.send_event("item.updated", {"queueItem": payload})
 
     def url_exists_in_queue(self, url: str) -> bool:
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT 1 FROM job_queue WHERE url = ? LIMIT 1", (url,)
-            ).fetchone()
+            row = conn.execute("SELECT 1 FROM job_queue WHERE url = ? LIMIT 1", (url,)).fetchone()
         return row is not None
 
     def get_queue_stats(self) -> Dict[str, int]:
@@ -277,9 +267,7 @@ class QueueManager:
         """
         if command.get("event") == "command.cancel" and command.get("itemId"):
             item_id = command["itemId"]
-            self.update_status(
-                item_id, QueueStatus.SKIPPED, "Cancelled by user (command)"
-            )
+            self.update_status(item_id, QueueStatus.SKIPPED, "Cancelled by user (command)")
 
     def retry_item(self, item_id: str) -> bool:
         now = _iso(_utcnow())
@@ -354,9 +342,7 @@ class QueueManager:
         self, current_item: JobQueueItem, target_url: str, target_type: QueueItemType
     ) -> Tuple[bool, str]:
         """Check if spawning a new item is allowed (prevents duplicates within same lineage)."""
-        if self.has_pending_work_for_url(
-            target_url, target_type, current_item.tracking_id
-        ):
+        if self.has_pending_work_for_url(target_url, target_type, current_item.tracking_id):
             return False, f"Duplicate work already queued for {target_url}"
 
         terminal_items = self._get_items_by_tracking_id(

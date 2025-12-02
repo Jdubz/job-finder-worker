@@ -261,9 +261,7 @@ class TestRecalculateMatchPriorities:
                 "SELECT updated_at FROM job_matches WHERE id = ?",
                 ("test-1",),
             ).fetchone()
-            updated_at = datetime.fromisoformat(
-                row["updated_at"].replace("Z", "+00:00")
-            )
+            updated_at = datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
             # Should be within last few seconds
             assert (datetime.now(timezone.utc) - updated_at).total_seconds() < 10
 
@@ -274,18 +272,14 @@ class TestRecalculateMatchPriorities:
 
         now = datetime.now(timezone.utc)
         with sqlite3.connect(db) as conn:
-            _insert_match(
-                conn, "m1", "Company A", 90, "Low", now
-            )  # Should be High - needs update
+            _insert_match(conn, "m1", "Company A", 90, "Low", now)  # Should be High - needs update
             _insert_match(
                 conn, "m2", "Company B", 65, "High", now
             )  # Should be Medium - needs update
             _insert_match(
                 conn, "m3", "Company C", 30, "Medium", now
             )  # Should be Low - needs update
-            _insert_match(
-                conn, "m4", "Company D", 75, "High", now
-            )  # Already correct - no update
+            _insert_match(conn, "m4", "Company D", 75, "High", now)  # Already correct - no update
 
         updated = recalculate_match_priorities(str(db))
 
@@ -342,9 +336,7 @@ class TestRunMaintenance:
         # Verify final state
         with sqlite3.connect(db) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT id, application_priority FROM job_matches"
-            ).fetchall()
+            rows = conn.execute("SELECT id, application_priority FROM job_matches").fetchall()
             assert len(rows) == 1
             assert rows[0]["id"] == "recent-1"
             assert rows[0]["application_priority"] == "Medium"

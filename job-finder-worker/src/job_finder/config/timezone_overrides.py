@@ -32,9 +32,7 @@ class TimezoneOverrideConfig:
         if config_path is None:
             # Default to config/company/timezone_overrides.json relative to project root
             project_root = Path(__file__).parent.parent.parent.parent
-            config_path = (
-                project_root / "config" / "company" / "timezone_overrides.json"
-            )
+            config_path = project_root / "config" / "company" / "timezone_overrides.json"
 
         self.config_path = config_path
         self.overrides: Dict[str, str] = {}  # company_name -> timezone
@@ -58,9 +56,7 @@ class TimezoneOverrideConfig:
 
             # Validate required fields
             if "overrides" not in config:
-                raise ConfigurationError(
-                    "Missing 'overrides' field in timezone_overrides.json"
-                )
+                raise ConfigurationError("Missing 'overrides' field in timezone_overrides.json")
 
             # Store metadata
             self.metadata = {
@@ -85,9 +81,7 @@ class TimezoneOverrideConfig:
                     "central",
                     "mountain",
                 ]:
-                    logger.warning(
-                        f"Invalid timezone '{timezone}' for {company_name}, skipping"
-                    )
+                    logger.warning(f"Invalid timezone '{timezone}' for {company_name}, skipping")
                     continue
 
                 self.overrides[company_name] = timezone
@@ -104,9 +98,7 @@ class TimezoneOverrideConfig:
                         re.compile(pattern["regex"])
                         self.patterns.append(pattern)
                     except re.error as e:
-                        logger.warning(
-                            f"Invalid regex pattern '{pattern['regex']}': {e}, skipping"
-                        )
+                        logger.warning(f"Invalid regex pattern '{pattern['regex']}': {e}, skipping")
                         continue
 
             logger.info(
@@ -133,9 +125,7 @@ class TimezoneOverrideConfig:
         # Check exact company name match (case-insensitive)
         company_lower = company_name.lower()
         if company_lower in self.overrides:
-            logger.debug(
-                f"Timezone override for {company_name}: {self.overrides[company_lower]}"
-            )
+            logger.debug(f"Timezone override for {company_name}: {self.overrides[company_lower]}")
             return self.overrides[company_lower]
 
         # Check pattern-based matches

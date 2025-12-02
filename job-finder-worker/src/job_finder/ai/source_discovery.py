@@ -78,8 +78,7 @@ class SourceDiscovery:
             # Step 1: Detect source type and fetch sample
             source_type, sample = self._detect_and_fetch(url)
             if (
-                source_type
-                in {"auth_required", "bot_protection", "dns_error", "fetch_error"}
+                source_type in {"auth_required", "bot_protection", "dns_error", "fetch_error"}
                 and not sample
             ):
                 fetch_meta = {"success": False, "error": source_type}
@@ -167,9 +166,7 @@ class SourceDiscovery:
 
         return config
 
-    def _validate_api_endpoint(
-        self, config: Dict[str, Any], pattern: PlatformPattern
-    ) -> bool:
+    def _validate_api_endpoint(self, config: Dict[str, Any], pattern: PlatformPattern) -> bool:
         """
         Validate that an API endpoint works by making a test request.
 
@@ -273,9 +270,7 @@ class SourceDiscovery:
             logger.error(f"Error fetching {url}: {e}")
             return "fetch_error", None
 
-    def _generate_config(
-        self, url: str, source_type: str, sample: str
-    ) -> Optional[Dict[str, Any]]:
+    def _generate_config(self, url: str, source_type: str, sample: str) -> Optional[Dict[str, Any]]:
         """
         Generate source config using pattern matching first, then AI if available.
 
@@ -307,9 +302,7 @@ class SourceDiscovery:
 
         # Fall back to AI for unknown sources
         if not self.provider:
-            logger.warning(
-                "AI provider unavailable; cannot generate config for %s", url
-            )
+            logger.warning("AI provider unavailable; cannot generate config for %s", url)
             return None
 
         prompt = self._build_prompt(url, source_type, sample)
@@ -321,9 +314,7 @@ class SourceDiscovery:
             logger.error(f"Error generating config: {e}")
             return None
 
-    def _discover_via_search(
-        self, url: str
-    ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+    def _discover_via_search(self, url: str) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
         """
         Use a search API + AI to infer a config when direct fetch/patterns fail.
 
@@ -336,9 +327,7 @@ class SourceDiscovery:
         meta: Dict[str, Any] = {"success": False, "source": "search"}
 
         if not self.provider:
-            logger.warning(
-                "AI provider unavailable; cannot run search-assisted discovery"
-            )
+            logger.warning("AI provider unavailable; cannot run search-assisted discovery")
             meta["error"] = "ai_provider_unavailable"
             return None, meta
 
@@ -556,9 +545,7 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
                         "User-Agent": "Mozilla/5.0",
                         "Accept": "application/rss+xml, application/xml",
                     }
-                    resp = requests.get(
-                        config.get("url", ""), headers=headers, timeout=15
-                    )
+                    resp = requests.get(config.get("url", ""), headers=headers, timeout=15)
                     content_type = resp.headers.get("Content-Type", "").lower()
                     if "html" in content_type or "cloudflare" in resp.text.lower():
                         meta["error"] = "bot_protection"
@@ -593,9 +580,7 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
 
             # Structural check: ensure mapping yields title/url if jobs exist
             if jobs:
-                valid_sample = any(
-                    job.get("title") and job.get("url") for job in jobs[:3]
-                )
+                valid_sample = any(job.get("title") and job.get("url") for job in jobs[:3])
                 if not valid_sample:
                     meta["error"] = "missing_required_fields"
                     return meta
@@ -648,9 +633,7 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
                 return False, [], True, ""
             resp.raise_for_status()
             data = resp.json()
-            jobs = GenericScraper(source_config)._navigate_path(
-                data, source_config.response_path
-            )
+            jobs = GenericScraper(source_config)._navigate_path(data, source_config.response_path)
             return True, jobs, False, ""
         except (requests.RequestException, json.JSONDecodeError) as exc:
             logger.warning("API probe failed for %s: %s", source_config.url, exc)

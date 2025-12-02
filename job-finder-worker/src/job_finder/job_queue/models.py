@@ -178,12 +178,8 @@ class SourceDiscoveryConfig(BaseModel):
     type_hint: Optional[SourceTypeHint] = Field(
         default=SourceTypeHint.AUTO, description="Optional hint about source type"
     )
-    company_id: Optional[str] = Field(
-        default=None, description="Optional company reference"
-    )
-    company_name: Optional[str] = Field(
-        default=None, description="Optional company name"
-    )
+    company_id: Optional[str] = Field(default=None, description="Optional company reference")
+    company_name: Optional[str] = Field(default=None, description="Optional company name")
 
     model_config = ConfigDict(use_enum_values=True)
 
@@ -209,12 +205,8 @@ class JobQueueItem(BaseModel):
     parent_item_id: Optional[str] = None
 
     # Payloads
-    input: Dict[str, Any] = Field(
-        default_factory=dict, description="Task-specific inputs"
-    )
-    output: Dict[str, Any] = Field(
-        default_factory=dict, description="Task results/telemetry"
-    )
+    input: Dict[str, Any] = Field(default_factory=dict, description="Task-specific inputs")
+    output: Dict[str, Any] = Field(default_factory=dict, description="Task results/telemetry")
 
     # Legacy convenience fields (kept in-memory, persisted inside input/output)
     company_name: Optional[str] = None
@@ -352,9 +344,7 @@ class JobQueueItem(BaseModel):
             source_type=input_data.get("source_type"),
             source_config=input_data.get("source_config"),
             source_tier=(
-                SourceTier(input_data["source_tier"])
-                if input_data.get("source_tier")
-                else None
+                SourceTier(input_data["source_tier"]) if input_data.get("source_tier") else None
             ),
             pipeline_state=output_data.get("pipeline_state"),
             parent_item_id=record.get("parent_item_id"),

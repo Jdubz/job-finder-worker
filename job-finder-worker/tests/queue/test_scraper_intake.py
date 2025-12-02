@@ -24,9 +24,7 @@ def mock_sources_manager():
 @pytest.fixture
 def scraper_intake(mock_queue_manager, mock_sources_manager):
     """Create scraper intake with mock manager."""
-    return ScraperIntake(
-        queue_manager=mock_queue_manager, sources_manager=mock_sources_manager
-    )
+    return ScraperIntake(queue_manager=mock_queue_manager, sources_manager=mock_sources_manager)
 
 
 def test_submit_jobs_success(scraper_intake, mock_queue_manager):
@@ -142,9 +140,7 @@ def test_submit_company_success(scraper_intake, mock_queue_manager):
     assert call_args.url == "https://testcorp.com"
 
 
-def test_submit_company_aggregator_url_moves_to_input(
-    scraper_intake, mock_queue_manager
-):
+def test_submit_company_aggregator_url_moves_to_input(scraper_intake, mock_queue_manager):
     mock_queue_manager.url_exists_in_queue.return_value = False
     mock_queue_manager.add_item.return_value = "doc-id-456"
 

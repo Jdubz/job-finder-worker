@@ -19,9 +19,7 @@ from job_finder.storage.job_sources_manager import JobSourcesManager
 
 def _apply_migrations(db_path: Path) -> None:
     """Replay all SQLite migrations into a fresh database."""
-    migrations_dir = (
-        Path(__file__).resolve().parents[3] / "infra" / "sqlite" / "migrations"
-    )
+    migrations_dir = Path(__file__).resolve().parents[3] / "infra" / "sqlite" / "migrations"
     with sqlite3.connect(db_path) as conn:
         for sql_file in sorted(migrations_dir.glob("*.sql")):
             conn.executescript(sql_file.read_text())

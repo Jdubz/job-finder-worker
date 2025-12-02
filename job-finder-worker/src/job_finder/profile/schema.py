@@ -31,15 +31,9 @@ class Experience(BaseModel):
     )
     location: Optional[str] = Field(None, description="Job location")
     description: Optional[str] = Field(None, description="Role description")
-    responsibilities: List[str] = Field(
-        default_factory=list, description="Key responsibilities"
-    )
-    achievements: List[str] = Field(
-        default_factory=list, description="Notable achievements"
-    )
-    technologies: List[str] = Field(
-        default_factory=list, description="Technologies used"
-    )
+    responsibilities: List[str] = Field(default_factory=list, description="Key responsibilities")
+    achievements: List[str] = Field(default_factory=list, description="Notable achievements")
+    technologies: List[str] = Field(default_factory=list, description="Technologies used")
     is_current: bool = Field(False, description="Whether this is current employment")
 
 
@@ -60,9 +54,7 @@ class Project(BaseModel):
 
     name: str = Field(..., description="Project name")
     description: str = Field(..., description="Project description")
-    technologies: List[str] = Field(
-        default_factory=list, description="Technologies used"
-    )
+    technologies: List[str] = Field(default_factory=list, description="Technologies used")
     url: Optional[HttpUrl] = Field(None, description="Project URL")
     github_url: Optional[HttpUrl] = Field(None, description="GitHub repository URL")
     start_date: Optional[str] = Field(None, description="Start date")
@@ -75,9 +67,7 @@ class Project(BaseModel):
 class Preferences(BaseModel):
     """Job search preferences."""
 
-    desired_roles: List[str] = Field(
-        default_factory=list, description="Desired job titles/roles"
-    )
+    desired_roles: List[str] = Field(default_factory=list, description="Desired job titles/roles")
     preferred_locations: List[str] = Field(
         default_factory=list, description="Preferred work locations"
     )
@@ -94,9 +84,7 @@ class Preferences(BaseModel):
         default_factory=list,
         description="Preferred company sizes (startup, small, medium, large, enterprise)",
     )
-    industries: List[str] = Field(
-        default_factory=list, description="Preferred industries"
-    )
+    industries: List[str] = Field(default_factory=list, description="Preferred industries")
 
 
 class Profile(BaseModel):
@@ -109,9 +97,7 @@ class Profile(BaseModel):
     location: Optional[str] = Field(None, description="Current location")
     linkedin_url: Optional[HttpUrl] = Field(None, description="LinkedIn profile URL")
     github_url: Optional[HttpUrl] = Field(None, description="GitHub profile URL")
-    portfolio_url: Optional[HttpUrl] = Field(
-        None, description="job-finder-FE website URL"
-    )
+    portfolio_url: Optional[HttpUrl] = Field(None, description="job-finder-FE website URL")
 
     # Professional Summary
     summary: Optional[str] = Field(None, description="Professional summary/bio")
@@ -120,21 +106,13 @@ class Profile(BaseModel):
     )
 
     # Experience and Skills
-    skills: List[Skill] = Field(
-        default_factory=list, description="Skills and technologies"
-    )
-    experience: List[Experience] = Field(
-        default_factory=list, description="Work experience"
-    )
-    education: List[Education] = Field(
-        default_factory=list, description="Educational background"
-    )
+    skills: List[Skill] = Field(default_factory=list, description="Skills and technologies")
+    experience: List[Experience] = Field(default_factory=list, description="Work experience")
+    education: List[Education] = Field(default_factory=list, description="Educational background")
     projects: List[Project] = Field(default_factory=list, description="Projects")
 
     # Preferences
-    preferences: Optional[Preferences] = Field(
-        None, description="Job search preferences"
-    )
+    preferences: Optional[Preferences] = Field(None, description="Job search preferences")
 
     # Certifications and Additional Info
     certifications: List[str] = Field(
@@ -163,6 +141,4 @@ class Profile(BaseModel):
 
     def get_experience_by_company(self, company: str) -> List[Experience]:
         """Get all experience entries for a specific company."""
-        return [
-            exp for exp in self.experience if exp.company.lower() == company.lower()
-        ]
+        return [exp for exp in self.experience if exp.company.lower() == company.lower()]

@@ -36,9 +36,7 @@ def filter_remote_only(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         )
 
         # Check if Portland, OR location
-        is_portland = "portland" in location and (
-            "or" in location or "oregon" in location
-        )
+        is_portland = "portland" in location and ("or" in location or "oregon" in location)
 
         # Include if remote OR Portland location (on-site/hybrid in Portland is OK)
         if is_remote or is_portland:

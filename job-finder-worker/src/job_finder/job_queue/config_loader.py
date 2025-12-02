@@ -30,9 +30,7 @@ class ConfigLoader:
         try:
             return json.loads(row["payload_json"])
         except json.JSONDecodeError as exc:
-            raise InitializationError(
-                f"Invalid JSON for config '{key}': {exc}"
-            ) from exc
+            raise InitializationError(f"Invalid JSON for config '{key}': {exc}") from exc
 
     def _seed_config(self, key: str, value: Dict[str, Any]) -> Dict[str, Any]:
         """Persist default config to SQLite and return it."""
@@ -229,47 +227,31 @@ class ConfigLoader:
         if not isinstance(settings.get("worker"), dict):
             raise InitializationError("ai-settings.worker missing or invalid")
         if not isinstance(settings.get("documentGenerator"), dict):
-            raise InitializationError(
-                "ai-settings.documentGenerator missing or invalid"
-            )
+            raise InitializationError("ai-settings.documentGenerator missing or invalid")
 
         legacy_selected = (
-            settings.get("selected")
-            if isinstance(settings.get("selected"), dict)
-            else None
+            settings.get("selected") if isinstance(settings.get("selected"), dict) else None
         )
 
         def pick_interface(provider: str, requested: Optional[str]) -> str:
-            provider_opt = next(
-                (p for p in default_options if p.get("value") == provider), None
-            )
+            provider_opt = next((p for p in default_options if p.get("value") == provider), None)
             interfaces = provider_opt.get("interfaces", []) if provider_opt else []
             if requested and any(i.get("value") == requested for i in interfaces):
                 return requested
             if interfaces:
-                return cast(
-                    str, interfaces[0].get("value") or default_selection["interface"]
-                )
+                return cast(str, interfaces[0].get("value") or default_selection["interface"])
             return cast(str, default_selection["interface"])
 
         def pick_model(provider: str, interface: str, requested: Optional[str]) -> str:
-            provider_opt = next(
-                (p for p in default_options if p.get("value") == provider), None
-            )
+            provider_opt = next((p for p in default_options if p.get("value") == provider), None)
             iface_opt = None
             if provider_opt:
                 iface_opt = next(
-                    (
-                        i
-                        for i in provider_opt.get("interfaces", [])
-                        if i.get("value") == interface
-                    ),
+                    (i for i in provider_opt.get("interfaces", []) if i.get("value") == interface),
                     None,
                 )
             raw_models = iface_opt.get("models", []) if iface_opt else []
-            models = (
-                [str(m) for m in raw_models] if isinstance(raw_models, list) else []
-            )
+            models = [str(m) for m in raw_models] if isinstance(raw_models, list) else []
             if requested in models:
                 return requested
             if models:

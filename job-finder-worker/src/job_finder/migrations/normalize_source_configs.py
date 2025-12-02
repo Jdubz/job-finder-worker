@@ -180,9 +180,7 @@ def normalize_company_page_config(config: Dict[str, Any]) -> Tuple[str, Dict[str
     return "company-page", result
 
 
-def normalize_source(
-    source_type: str, config: Dict[str, Any]
-) -> Tuple[str, Dict[str, Any]]:
+def normalize_source(source_type: str, config: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     """
     Normalize a source's type and config.
 

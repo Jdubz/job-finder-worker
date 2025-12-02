@@ -223,9 +223,7 @@ def test_handle_failure_max_retries(processor, mock_managers):
     assert "failed" in call_args[2].lower()
 
 
-def test_job_analyze_spawns_company_dependency(
-    processor, mock_managers, sample_job_item
-):
+def test_job_analyze_spawns_company_dependency(processor, mock_managers, sample_job_item):
     """Job analyze should spawn company enrichment in background but proceed with analysis."""
     # Company exists but has incomplete data (no about/culture)
     incomplete_company = {
@@ -259,9 +257,7 @@ def test_job_analyze_spawns_company_dependency(
                 "application_priority": self.application_priority,
             }
 
-    processor.job_processor.ai_matcher.analyze_job = MagicMock(
-        return_value=DummyResult()
-    )
+    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
 
     processor.job_processor._do_job_analyze(sample_job_item)
 
@@ -273,9 +269,7 @@ def test_job_analyze_spawns_company_dependency(
     assert updated_state.get("awaiting_company") is True
 
 
-def test_job_analyze_resumes_after_company_ready(
-    processor, mock_managers, sample_job_item
-):
+def test_job_analyze_resumes_after_company_ready(processor, mock_managers, sample_job_item):
     """Job analyze should proceed when company has good data and requeue for save stage."""
 
     class DummyResult:
@@ -301,9 +295,7 @@ def test_job_analyze_resumes_after_company_ready(
     # Data-based check: company has good data, so proceed with analysis
     mock_managers["companies_manager"].get_company.return_value = complete_company
     mock_managers["companies_manager"].has_good_company_data.return_value = True
-    processor.job_processor.ai_matcher.analyze_job = MagicMock(
-        return_value=DummyResult()
-    )
+    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
 
     sample_job_item.pipeline_state = {
         "job_data": {
@@ -383,9 +375,7 @@ def test_job_analyze_skips_company_when_source_name(
                 "application_priority": self.application_priority,
             }
 
-    processor.job_processor.ai_matcher.analyze_job = MagicMock(
-        return_value=DummyResult()
-    )
+    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
 
     processor.job_processor._do_job_analyze(sample_job_item)
 
@@ -455,9 +445,7 @@ def sample_scrape_item():
     )
 
 
-def test_process_scrape_with_default_config(
-    processor, mock_managers, sample_scrape_item
-):
+def test_process_scrape_with_default_config(processor, mock_managers, sample_scrape_item):
     """Test processing SCRAPE item with default configuration."""
     # Mock scrape runner
     processor.scrape_runner.run_scrape.return_value = {

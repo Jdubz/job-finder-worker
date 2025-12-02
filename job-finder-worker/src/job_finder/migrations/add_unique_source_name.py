@@ -64,9 +64,7 @@ def run_migration(db_path: str, dry_run: bool = False) -> bool:
         """
         )
         if cursor.fetchone():
-            logger.info(
-                "Unique index idx_job_sources_name_unique already exists. Nothing to do."
-            )
+            logger.info("Unique index idx_job_sources_name_unique already exists. Nothing to do.")
             return True
 
         # Check for existing duplicates
@@ -87,9 +85,7 @@ def run_migration(db_path: str, dry_run: bool = False) -> bool:
             return True
 
         # Create unique index
-        logger.info(
-            "Creating unique index idx_job_sources_name_unique on job_sources(name)..."
-        )
+        logger.info("Creating unique index idx_job_sources_name_unique on job_sources(name)...")
         cursor.execute(
             """
             CREATE UNIQUE INDEX idx_job_sources_name_unique ON job_sources(name)
@@ -115,9 +111,7 @@ def run_migration(db_path: str, dry_run: bool = False) -> bool:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Add unique constraint on job_sources.name."
-    )
+    parser = argparse.ArgumentParser(description="Add unique constraint on job_sources.name.")
     parser.add_argument("db_path", help="Path to the SQLite database")
     parser.add_argument(
         "--dry-run", action="store_true", help="If set, only report what would be done"

@@ -44,9 +44,7 @@ def delete_stale_matches(db_path: Optional[str] = None) -> int:
                 "DELETE FROM job_matches WHERE created_at < ?",
                 (cutoff_iso,),
             )
-            logger.info(
-                f"Deleted {count} stale job matches older than {STALE_THRESHOLD_DAYS} days"
-            )
+            logger.info(f"Deleted {count} stale job matches older than {STALE_THRESHOLD_DAYS} days")
         else:
             logger.info("No stale job matches to delete")
 

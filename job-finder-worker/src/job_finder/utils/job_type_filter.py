@@ -208,9 +208,7 @@ def has_engineering_role_keyword(title: str) -> bool:
     return any(keyword in title_lower for keyword in ENGINEERING_ROLE_KEYWORDS)
 
 
-def check_job_type_filter(
-    title: str, strict: bool = True
-) -> Tuple[FilterDecision, str]:
+def check_job_type_filter(title: str, strict: bool = True) -> Tuple[FilterDecision, str]:
     """
     Check if job title passes job type filter.
 
@@ -312,9 +310,7 @@ def check_seniority_filter(
         min_level_lower = min_seniority.lower()
 
         # Check if title has any senior-level indicators
-        has_senior_indicator = any(
-            keyword in title_lower for keyword in SENIOR_KEYWORDS
-        )
+        has_senior_indicator = any(keyword in title_lower for keyword in SENIOR_KEYWORDS)
 
         if not has_senior_indicator:
             return (
@@ -326,8 +322,7 @@ def check_seniority_filter(
         if min_level_lower == "staff":
             # Require staff, principal, distinguished, or fellow
             if not any(
-                level in title_lower
-                for level in ["staff", "principal", "distinguished", "fellow"]
+                level in title_lower for level in ["staff", "principal", "distinguished", "fellow"]
             ):
                 return (
                     FilterDecision.REJECT,
@@ -335,10 +330,7 @@ def check_seniority_filter(
                 )
         elif min_level_lower == "principal":
             # Require principal, distinguished, or fellow (not staff)
-            if not any(
-                level in title_lower
-                for level in ["principal", "distinguished", "fellow"]
-            ):
+            if not any(level in title_lower for level in ["principal", "distinguished", "fellow"]):
                 return (
                     FilterDecision.REJECT,
                     f"Does not meet minimum seniority level: {min_seniority}",

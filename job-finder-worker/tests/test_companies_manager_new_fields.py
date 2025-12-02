@@ -9,9 +9,7 @@ from job_finder.storage.companies_manager import CompaniesManager
 
 
 def _apply_migrations(db_path: Path) -> None:
-    migrations_dir = (
-        Path(__file__).resolve().parents[2] / "infra" / "sqlite" / "migrations"
-    )
+    migrations_dir = Path(__file__).resolve().parents[2] / "infra" / "sqlite" / "migrations"
     with sqlite3.connect(db_path) as conn:
         conn.executescript(
             """

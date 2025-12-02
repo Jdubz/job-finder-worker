@@ -181,9 +181,7 @@ class JobSourcesManager:
 
     def get_source_by_id(self, source_id: str) -> Optional[Dict[str, Any]]:
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT * FROM job_sources WHERE id = ?", (source_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM job_sources WHERE id = ?", (source_id,)).fetchone()
         return self._row_to_source(dict(row)) if row else None
 
     def get_source_by_name(self, name: str) -> Optional[Dict[str, Any]]:
@@ -196,9 +194,7 @@ class JobSourcesManager:
             Source dict if found, None otherwise
         """
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT * FROM job_sources WHERE name = ?", (name,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM job_sources WHERE name = ?", (name,)).fetchone()
         return self._row_to_source(dict(row)) if row else None
 
     def get_source_for_url(self, url: str) -> Optional[Dict[str, Any]]:
@@ -515,9 +511,7 @@ class JobSourcesManager:
                 return len(target)
         return 0
 
-    def _match_source_by_company_name(
-        self, company_name: str
-    ) -> Optional[Dict[str, Any]]:
+    def _match_source_by_company_name(self, company_name: str) -> Optional[Dict[str, Any]]:
         """
         Fuzzy match a company name against known source names.
 

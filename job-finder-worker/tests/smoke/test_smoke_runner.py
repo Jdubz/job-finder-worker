@@ -132,9 +132,7 @@ class TestSmokeTestRunner:
         assert len(fixtures) == 1
         assert fixtures[0]["title"] == "Software Engineer"
 
-    def test_load_fixtures_missing_required_fields(
-        self, temp_fixtures_dir, temp_output_dir
-    ):
+    def test_load_fixtures_missing_required_fields(self, temp_fixtures_dir, temp_output_dir):
         """Test handling of fixtures with missing required fields."""
         # Create fixture missing required fields
         incomplete_fixture = {
@@ -195,9 +193,7 @@ class TestSmokeTestRunner:
         assert validation["passed"] is True
         assert validation["checks"]["duplicate_urls"]["passed"] is True
 
-    def test_validate_results_detects_duplicates(
-        self, temp_fixtures_dir, temp_output_dir
-    ):
+    def test_validate_results_detects_duplicates(self, temp_fixtures_dir, temp_output_dir):
         """Test validation detects duplicate URLs."""
         runner = SmokeTestRunner(
             env="staging",

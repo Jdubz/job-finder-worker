@@ -17,9 +17,7 @@ class TestSearchResult:
     """Tests for SearchResult class."""
 
     def test_to_dict(self):
-        result = SearchResult(
-            title="Test", url="https://example.com", snippet="Test snippet"
-        )
+        result = SearchResult(title="Test", url="https://example.com", snippet="Test snippet")
         assert result.to_dict() == {
             "title": "Test",
             "url": "https://example.com",
@@ -27,9 +25,7 @@ class TestSearchResult:
         }
 
     def test_repr(self):
-        result = SearchResult(
-            title="Test", url="https://example.com", snippet="Test snippet"
-        )
+        result = SearchResult(title="Test", url="https://example.com", snippet="Test snippet")
         assert "Test" in repr(result)
         assert "https://example.com" in repr(result)
 
@@ -143,8 +139,6 @@ class TestGetSearchClient:
             assert client is None
 
     def test_prefers_tavily_over_brave(self):
-        with patch.dict(
-            os.environ, {"TAVILY_API_KEY": "tavily-key", "BRAVE_API_KEY": "brave-key"}
-        ):
+        with patch.dict(os.environ, {"TAVILY_API_KEY": "tavily-key", "BRAVE_API_KEY": "brave-key"}):
             client = get_search_client()
             assert isinstance(client, TavilySearchClient)

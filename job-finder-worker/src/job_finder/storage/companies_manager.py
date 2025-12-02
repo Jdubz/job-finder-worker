@@ -33,9 +33,7 @@ class CompaniesManager:
     # Helpers
     # ------------------------------------------------------------------ #
 
-    def _row_to_company(
-        self, row: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+    def _row_to_company(self, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if not row:
             return None
 
@@ -130,9 +128,7 @@ class CompaniesManager:
 
     def get_company_by_id(self, company_id: str) -> Optional[Dict[str, Any]]:
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT * FROM companies WHERE id = ?", (company_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM companies WHERE id = ?", (company_id,)).fetchone()
         return self._row_to_company(dict(row)) if row else None
 
     def batch_get_companies(self, company_ids: list[str]) -> Dict[str, Dict[str, Any]]:
@@ -174,13 +170,10 @@ class CompaniesManager:
 
         now = _utcnow_iso()
         has_portland_office = bool(
-            company_data.get("hasPortlandOffice")
-            or company_data.get("has_portland_office")
+            company_data.get("hasPortlandOffice") or company_data.get("has_portland_office")
         )
 
-        tech_stack = (
-            company_data.get("techStack") or company_data.get("tech_stack") or []
-        )
+        tech_stack = company_data.get("techStack") or company_data.get("tech_stack") or []
         if isinstance(tech_stack, str):
             tech_stack = [tech_stack]
 
@@ -201,15 +194,10 @@ class CompaniesManager:
             or company_data.get("headquarters_location"),
             "has_portland_office": 1 if has_portland_office else 0,
             "is_remote_first": (
-                1
-                if company_data.get("isRemoteFirst")
-                or company_data.get("is_remote_first")
-                else 0
+                1 if company_data.get("isRemoteFirst") or company_data.get("is_remote_first") else 0
             ),
             "ai_ml_focus": (
-                1
-                if company_data.get("aiMlFocus") or company_data.get("ai_ml_focus")
-                else 0
+                1 if company_data.get("aiMlFocus") or company_data.get("ai_ml_focus") else 0
             ),
             "employee_count": company_data.get("employeeCount")
             or company_data.get("employee_count"),
@@ -276,9 +264,7 @@ class CompaniesManager:
         has_minimal_quality = about_length > 50 or culture_length > 25
         return has_good_quality or has_minimal_quality
 
-    def create_company_stub(
-        self, company_name: str, company_website: str = ""
-    ) -> Dict[str, Any]:
+    def create_company_stub(self, company_name: str, company_website: str = "") -> Dict[str, Any]:
         cleaned_name = clean_company_name(company_name) or company_name.strip()
         stub_data = {
             "name": cleaned_name,
@@ -332,8 +318,6 @@ class CompaniesManager:
                 self.save_company(fetched)
                 return self.get_company(company_name) or stub
             except Exception as exc:
-                logger.warning(
-                    "Failed to fetch company info for %s: %s", company_name, exc
-                )
+                logger.warning("Failed to fetch company info for %s: %s", company_name, exc)
 
         return stub

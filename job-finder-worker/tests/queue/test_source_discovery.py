@@ -27,9 +27,7 @@ def mock_dependencies() -> Dict[str, Any]:
 
     config_loader = MagicMock()
     config_loader.get_ai_settings.return_value = {
-        "worker": {
-            "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
-        },
+        "worker": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
         "documentGenerator": {
             "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
         },
@@ -103,9 +101,7 @@ def make_discovery_item(
 
 
 class TestQueueRouting:
-    def test_routes_source_discovery_items(
-        self, processor: QueueItemProcessor, mock_dependencies
-    ):
+    def test_routes_source_discovery_items(self, processor: QueueItemProcessor, mock_dependencies):
         """Test that SOURCE_DISCOVERY items are routed to source_processor."""
         item = make_discovery_item(url="https://boards.greenhouse.io/stripe")
 
@@ -161,15 +157,11 @@ class TestSourceDiscoverySuccess:
 
         # Should create source
         mock_dependencies["sources_manager"].create_from_discovery.assert_called_once()
-        create_kwargs = mock_dependencies[
-            "sources_manager"
-        ].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "api"
 
         # Should mark as success
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
-            -1
-        ]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
         assert status_call[0][2] == "source-123"
 
@@ -200,14 +192,10 @@ class TestSourceDiscoverySuccess:
         item = make_discovery_item(url="https://example.com/jobs.rss")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies[
-            "sources_manager"
-        ].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "rss"
 
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
-            -1
-        ]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
@@ -232,14 +220,10 @@ class TestSourceDiscoverySuccess:
         item = make_discovery_item(url="https://example.com/careers")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies[
-            "sources_manager"
-        ].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["source_type"] == "html"
 
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
-            -1
-        ]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
@@ -267,9 +251,7 @@ class TestSourceDiscoverySuccess:
         item = make_discovery_item(url="https://api.example.com/jobs")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies[
-            "sources_manager"
-        ].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
         assert create_kwargs["config"]["disabled_notes"] == "needs api key"
 
@@ -298,9 +280,7 @@ class TestSourceDiscoveryFailure:
         source_processor.process_source_discovery(item)
 
         # Should mark as failed (no config produced)
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
-            -1
-        ]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.FAILED
 
     @patch("job_finder.ai.providers.create_provider_from_config")
@@ -320,14 +300,10 @@ class TestSourceDiscoveryFailure:
         item = make_discovery_item(url="https://blocked.example.com/careers")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies[
-            "sources_manager"
-        ].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
         assert create_kwargs["config"]["disabled_notes"] == "bot_protection"
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
-            -1
-        ]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
@@ -347,14 +323,10 @@ class TestSourceDiscoveryFailure:
         item = make_discovery_item(url="https://no-such-host.invalid/jobs")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies[
-            "sources_manager"
-        ].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
         assert create_kwargs["config"]["disabled_notes"] == "dns_error"
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
-            -1
-        ]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
@@ -380,14 +352,10 @@ class TestSourceDiscoveryFailure:
         item = make_discovery_item(url="https://careers.nea.com/jobs/perplexity-ai")
         source_processor.process_source_discovery(item)
 
-        create_kwargs = mock_dependencies[
-            "sources_manager"
-        ].create_from_discovery.call_args.kwargs
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
         assert create_kwargs["config"]["disabled_notes"] == "dns_error"
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
-            -1
-        ]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
@@ -408,9 +376,7 @@ class TestSourceDiscoveryFailure:
         source_processor.process_source_discovery(item)
 
         # Should mark as failed
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[
-            -1
-        ]
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.FAILED
 
 
@@ -420,21 +386,15 @@ class TestCompanyNameExtraction:
     def test_extract_company_from_url(self, source_processor):
         """Test extracting company name from URL."""
         # Simple domain
-        assert (
-            source_processor._extract_company_from_url("https://stripe.com/careers")
-            == "Stripe"
-        )
+        assert source_processor._extract_company_from_url("https://stripe.com/careers") == "Stripe"
 
         # Hyphenated
-        result = source_processor._extract_company_from_url(
-            "https://tech-corp.com/jobs"
-        )
+        result = source_processor._extract_company_from_url("https://tech-corp.com/jobs")
         assert result in ("TechCorp", "Tech Corp")
 
         # With www
         assert (
-            source_processor._extract_company_from_url("https://www.example.com/jobs")
-            == "Example"
+            source_processor._extract_company_from_url("https://www.example.com/jobs") == "Example"
         )
 
     def test_extract_company_from_invalid_url(self, source_processor):

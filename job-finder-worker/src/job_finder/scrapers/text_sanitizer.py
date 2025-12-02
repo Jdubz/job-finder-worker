@@ -69,9 +69,7 @@ def sanitize_text(text: Optional[str], max_length: Optional[int] = None) -> str:
         text = text.replace(old, new)
 
     # 5. Remove any remaining control characters except newlines and tabs
-    text = "".join(
-        char for char in text if unicodedata.category(char)[0] != "C" or char in "\n\t"
-    )
+    text = "".join(char for char in text if unicodedata.category(char)[0] != "C" or char in "\n\t")
 
     # 6. Normalize whitespace
     # Replace multiple spaces with single space

@@ -51,62 +51,41 @@ class JobMatchPrompts:
             lines.append("## Technical Skills")
 
             # Group by level if available
-            expert_skills = [
-                s for s in profile.skills if s.level and "expert" in s.level.lower()
-            ]
+            expert_skills = [s for s in profile.skills if s.level and "expert" in s.level.lower()]
             advanced_skills = [
                 s for s in profile.skills if s.level and "advanced" in s.level.lower()
             ]
             intermediate_skills = [
-                s
-                for s in profile.skills
-                if s.level and "intermediate" in s.level.lower()
+                s for s in profile.skills if s.level and "intermediate" in s.level.lower()
             ]
             other_skills = [
                 s
                 for s in profile.skills
-                if not s.level
-                or s.level.lower() not in ["expert", "advanced", "intermediate"]
+                if not s.level or s.level.lower() not in ["expert", "advanced", "intermediate"]
             ]
 
             if expert_skills:
                 lines.append("**Expert:**")
                 for skill in expert_skills:
-                    exp_str = (
-                        f" ({skill.years_experience} years)"
-                        if skill.years_experience
-                        else ""
-                    )
+                    exp_str = f" ({skill.years_experience} years)" if skill.years_experience else ""
                     lines.append(f"  - {skill.name}{exp_str}")
 
             if advanced_skills:
                 lines.append("**Advanced:**")
                 for skill in advanced_skills:
-                    exp_str = (
-                        f" ({skill.years_experience} years)"
-                        if skill.years_experience
-                        else ""
-                    )
+                    exp_str = f" ({skill.years_experience} years)" if skill.years_experience else ""
                     lines.append(f"  - {skill.name}{exp_str}")
 
             if intermediate_skills:
                 lines.append("**Intermediate:**")
                 for skill in intermediate_skills:
-                    exp_str = (
-                        f" ({skill.years_experience} years)"
-                        if skill.years_experience
-                        else ""
-                    )
+                    exp_str = f" ({skill.years_experience} years)" if skill.years_experience else ""
                     lines.append(f"  - {skill.name}{exp_str}")
 
             if other_skills:
                 lines.append("**Other Skills:**")
                 skill_names = [
-                    (
-                        f"{s.name} ({s.years_experience} years)"
-                        if s.years_experience
-                        else s.name
-                    )
+                    (f"{s.name} ({s.years_experience} years)" if s.years_experience else s.name)
                     for s in other_skills
                 ]
                 lines.append("  " + ", ".join(skill_names))
@@ -157,9 +136,7 @@ class JobMatchPrompts:
             lines.append("## Education")
             for edu in profile.education:
                 degree_str = (
-                    f"{edu.degree} in {edu.field_of_study}"
-                    if edu.field_of_study
-                    else edu.degree
+                    f"{edu.degree} in {edu.field_of_study}" if edu.field_of_study else edu.degree
                 )
                 lines.append(f"- {degree_str} from {edu.institution}")
                 if edu.honors:
@@ -178,9 +155,7 @@ class JobMatchPrompts:
             lines.append("## Job Search Preferences")
 
             # Add Portland location preference (always include for visibility)
-            lines.append(
-                f"**Location:** Portland, OR (prefers local or remote positions)"
-            )
+            lines.append(f"**Location:** Portland, OR (prefers local or remote positions)")
 
             if prefs.desired_roles:
                 lines.append(f"**Desired Roles:** {', '.join(prefs.desired_roles)}")
@@ -196,9 +171,7 @@ class JobMatchPrompts:
                     salary_range = f"Up to ${prefs.max_salary:,}"
                 lines.append(f"**Salary Range:** {salary_range}")
             if prefs.employment_types:
-                lines.append(
-                    f"**Employment Types:** {', '.join(prefs.employment_types)}"
-                )
+                lines.append(f"**Employment Types:** {', '.join(prefs.employment_types)}")
             if prefs.industries:
                 lines.append(f"**Preferred Industries:** {', '.join(prefs.industries)}")
             lines.append("")

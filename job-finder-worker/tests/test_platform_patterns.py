@@ -212,8 +212,7 @@ class TestBuildConfigFromPattern:
 
         assert config["type"] == "api"
         assert (
-            config["url"]
-            == "https://boards-api.greenhouse.io/v1/boards/discord/jobs?content=true"
+            config["url"] == "https://boards-api.greenhouse.io/v1/boards/discord/jobs?content=true"
         )
         assert config["response_path"] == "jobs"
         assert "title" in config["fields"]
@@ -253,8 +252,7 @@ class TestBuildConfigFromPattern:
 
         assert "base_url" in config
         assert (
-            config["base_url"]
-            == "https://salesforce.wd12.myworkdayjobs.com/External_Career_Site"
+            config["base_url"] == "https://salesforce.wd12.myworkdayjobs.com/External_Career_Site"
         )
 
     def test_lever_config_has_empty_response_path(self):

@@ -57,9 +57,7 @@ REMOTEOK_CONFIG = {
 }
 
 
-def migrate_greenhouse_config(
-    old_config: Dict[str, Any], source_name: str
-) -> Dict[str, Any]:
+def migrate_greenhouse_config(old_config: Dict[str, Any], source_name: str) -> Dict[str, Any]:
     """Convert legacy Greenhouse config to new format."""
     board_token = old_config.get("board_token", "")
     if not board_token:
@@ -124,9 +122,7 @@ def migrate_api_config(old_config: Dict[str, Any], source_name: str) -> Dict[str
     }
 
 
-def migrate_company_page_config(
-    old_config: Dict[str, Any], source_name: str
-) -> Dict[str, Any]:
+def migrate_company_page_config(old_config: Dict[str, Any], source_name: str) -> Dict[str, Any]:
     """Convert legacy company-page config to new format."""
     # company-page configs are typically custom HTML scrapers
     api_endpoint = old_config.get("api_endpoint", "")
@@ -245,9 +241,7 @@ def run_migration(db_path: str, dry_run: bool = False) -> None:
                 continue
 
             # Check if needs manual review
-            if new_config.get("_needs_field_mapping") or new_config.get(
-                "_needs_validation"
-            ):
+            if new_config.get("_needs_field_mapping") or new_config.get("_needs_validation"):
                 needs_review.append((source["name"], new_config))
                 # Remove flags before saving
                 new_config.pop("_needs_field_mapping", None)
@@ -289,9 +283,7 @@ def run_migration(db_path: str, dry_run: bool = False) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(
-            "Usage: python -m job_finder.migrations.migrate_source_configs <db_path> [--dry-run]"
-        )
+        print("Usage: python -m job_finder.migrations.migrate_source_configs <db_path> [--dry-run]")
         sys.exit(1)
 
     db_path = sys.argv[1]

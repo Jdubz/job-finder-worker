@@ -46,12 +46,8 @@ class TitleFilter:
             config: TitleFilterConfig dictionary with requiredKeywords and excludedKeywords
         """
         # Normalize keywords to lowercase for case-insensitive matching
-        self.required = [
-            k.lower().strip() for k in config.get("requiredKeywords", []) if k
-        ]
-        self.excluded = [
-            k.lower().strip() for k in config.get("excludedKeywords", []) if k
-        ]
+        self.required = [k.lower().strip() for k in config.get("requiredKeywords", []) if k]
+        self.excluded = [k.lower().strip() for k in config.get("excludedKeywords", []) if k]
 
         logger.debug(
             f"TitleFilter initialized with {len(self.required)} required, "

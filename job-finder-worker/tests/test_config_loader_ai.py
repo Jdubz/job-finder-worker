@@ -69,9 +69,7 @@ class TestConfigLoaderAISettings:
 
         assert ai_settings["worker"]["selected"]["provider"] == "claude"
         assert ai_settings["worker"]["selected"]["interface"] == "api"
-        assert (
-            ai_settings["worker"]["selected"]["model"] == "claude-sonnet-4-5-20250929"
-        )
+        assert ai_settings["worker"]["selected"]["model"] == "claude-sonnet-4-5-20250929"
         assert ai_settings["documentGenerator"]["selected"]["provider"] == "openai"
 
     def test_get_ai_settings_missing_raises(self, db_path):

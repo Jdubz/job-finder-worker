@@ -44,12 +44,8 @@ class TestFindBestCareerUrl:
     def test_prioritizes_ats_platforms(self, company_processor):
         """Test that ATS platforms get highest priority."""
         results = [
-            SearchResult(
-                url="https://example.com/careers", title="Careers", snippet=""
-            ),
-            SearchResult(
-                url="https://boards.greenhouse.io/acme", title="Jobs", snippet=""
-            ),
+            SearchResult(url="https://example.com/careers", title="Careers", snippet=""),
+            SearchResult(url="https://boards.greenhouse.io/acme", title="Jobs", snippet=""),
             SearchResult(url="https://jobs.lever.co/acme", title="Jobs", snippet=""),
         ]
 
@@ -83,9 +79,7 @@ class TestFindBestCareerUrl:
     def test_filters_aggregators(self, company_processor):
         """Test that job aggregator sites are filtered out."""
         results = [
-            SearchResult(
-                url="https://www.indeed.com/jobs/acme", title="Jobs", snippet=""
-            ),
+            SearchResult(url="https://www.indeed.com/jobs/acme", title="Jobs", snippet=""),
             SearchResult(
                 url="https://www.linkedin.com/company/acme/jobs",
                 title="Jobs",
@@ -110,12 +104,8 @@ class TestFindBestCareerUrl:
     def test_returns_none_when_all_filtered(self, company_processor):
         """Test that None is returned when all results are aggregators."""
         results = [
-            SearchResult(
-                url="https://www.indeed.com/jobs/acme", title="Jobs", snippet=""
-            ),
-            SearchResult(
-                url="https://www.glassdoor.com/acme", title="Jobs", snippet=""
-            ),
+            SearchResult(url="https://www.indeed.com/jobs/acme", title="Jobs", snippet=""),
+            SearchResult(url="https://www.glassdoor.com/acme", title="Jobs", snippet=""),
         ]
 
         url = company_processor._find_best_career_url(results, "Acme Corp")
@@ -125,9 +115,7 @@ class TestFindBestCareerUrl:
     def test_bonus_for_company_name_in_domain(self, company_processor):
         """Test that company name in domain adds bonus score."""
         results = [
-            SearchResult(
-                url="https://example.com/careers", title="Careers", snippet=""
-            ),
+            SearchResult(url="https://example.com/careers", title="Careers", snippet=""),
             SearchResult(url="https://acme.com/careers", title="Careers", snippet=""),
         ]
 
@@ -141,9 +129,7 @@ class TestSearchForCareerPage:
     """Tests for _search_for_career_page method."""
 
     @patch("job_finder.job_queue.processors.company_processor.get_search_client")
-    def test_returns_none_when_no_search_client(
-        self, mock_get_client, company_processor
-    ):
+    def test_returns_none_when_no_search_client(self, mock_get_client, company_processor):
         """Test graceful handling when no search client available."""
         mock_get_client.return_value = None
 
@@ -167,9 +153,7 @@ class TestSearchForCareerPage:
         """Test successful career page discovery."""
         mock_client = Mock()
         mock_client.search.return_value = [
-            SearchResult(
-                url="https://boards.greenhouse.io/acme", title="Jobs", snippet=""
-            ),
+            SearchResult(url="https://boards.greenhouse.io/acme", title="Jobs", snippet=""),
         ]
         mock_get_client.return_value = mock_client
 

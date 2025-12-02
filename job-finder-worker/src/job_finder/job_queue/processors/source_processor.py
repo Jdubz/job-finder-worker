@@ -120,9 +120,7 @@ class SourceProcessor(BaseProcessor):
             # Get AI settings and create provider (tolerate missing/invalid config)
             try:
                 ai_settings = self.config_loader.get_ai_settings()
-                provider = create_provider_from_config(
-                    ai_settings, task="sourceDiscovery"
-                )
+                provider = create_provider_from_config(ai_settings, task="sourceDiscovery")
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning(
                     "AI provider unavailable (%s); falling back to heuristic discovery for %s",
@@ -196,9 +194,7 @@ class SourceProcessor(BaseProcessor):
 
             if not aggregator_domain:
                 # This is a company-specific source, resolve company
-                company_name = config.company_name or source_config.get(
-                    "company_name", ""
-                )
+                company_name = config.company_name or source_config.get("company_name", "")
                 if not company_name:
                     company_name = self._extract_company_from_url(url)
 
@@ -229,13 +225,9 @@ class SourceProcessor(BaseProcessor):
 
             needs_api_key = bool(validation_meta.get("needs_api_key"))
             disabled_notes = (
-                "needs api key"
-                if needs_api_key
-                else source_config.get("disabled_notes", "")
+                "needs api key" if needs_api_key else source_config.get("disabled_notes", "")
             )
-            initial_status = (
-                SourceStatus.DISABLED if needs_api_key else SourceStatus.ACTIVE
-            )
+            initial_status = SourceStatus.DISABLED if needs_api_key else SourceStatus.ACTIVE
             if disabled_notes:
                 source_config["disabled_notes"] = disabled_notes
 
@@ -268,9 +260,7 @@ class SourceProcessor(BaseProcessor):
                         f"Spawned SCRAPE_SOURCE item {scrape_item_id} for source {source_id}"
                     )
                 else:
-                    logger.info(
-                        f"SCRAPE_SOURCE blocked by spawn rules for source {source_id}"
-                    )
+                    logger.info(f"SCRAPE_SOURCE blocked by spawn rules for source {source_id}")
             else:
                 logger.info(
                     "Created source %s disabled (%s); skipping immediate scrape",
@@ -348,9 +338,7 @@ class SourceProcessor(BaseProcessor):
             parts = re.split(r"[-_]", name)
             capitalized = [part.capitalize() for part in parts if part]
 
-            return (
-                " ".join(capitalized) if len(capitalized) > 2 else "".join(capitalized)
-            )
+            return " ".join(capitalized) if len(capitalized) > 2 else "".join(capitalized)
         except Exception:
             return ""
 
@@ -418,9 +406,7 @@ class SourceProcessor(BaseProcessor):
             elif source_url:
                 source = self.sources_manager.get_source_for_url(source_url)
             else:
-                raise QueueProcessingError(
-                    "SCRAPE_SOURCE item must have source_id or url"
-                )
+                raise QueueProcessingError("SCRAPE_SOURCE item must have source_id or url")
 
             if not source:
                 self.queue_manager.update_status(
@@ -461,9 +447,7 @@ class SourceProcessor(BaseProcessor):
                 # Get company name ONLY from linked company - never fall back to source name
                 company_name = None
                 if not is_aggregator and company_id:
-                    company_record = self.companies_manager.get_company_by_id(
-                        company_id
-                    )
+                    company_record = self.companies_manager.get_company_by_id(company_id)
                     if company_record:
                         company_name = company_record.get("name")
 
@@ -479,9 +463,7 @@ class SourceProcessor(BaseProcessor):
                     )
                     return
 
-                source_config = SourceConfig.from_dict(
-                    expanded_config, company_name=company_name
-                )
+                source_config = SourceConfig.from_dict(expanded_config, company_name=company_name)
                 scraper = GenericScraper(source_config)
                 jobs = scraper.scrape()
 
@@ -502,9 +484,7 @@ class SourceProcessor(BaseProcessor):
 
                         # Persist healed config only if it produces usable jobs
                         if healed_jobs and not self._is_sparse_jobs(healed_jobs):
-                            self.sources_manager.update_config(
-                                source.get("id"), healed_config
-                            )
+                            self.sources_manager.update_config(source.get("id"), healed_config)
                             jobs = healed_jobs
 
                 logger.info(f"Found {len(jobs)} jobs from {source_name}")
@@ -518,9 +498,7 @@ class SourceProcessor(BaseProcessor):
                         source=source_label,
                         company_id=company_id,
                     )
-                    logger.info(
-                        f"Submitted {jobs_added} jobs to queue from {source_name}"
-                    )
+                    logger.info(f"Submitted {jobs_added} jobs to queue from {source_name}")
 
                 # Record success - the scrape completed (even if 0 jobs found)
                 # Having no jobs is a valid state (company may have no openings)
@@ -530,13 +508,9 @@ class SourceProcessor(BaseProcessor):
 
                 jobs_found = len(jobs) if jobs else 0
                 if jobs_found > 0:
-                    result_msg = (
-                        f"Scraped {jobs_found} jobs, submitted {jobs_added} to queue"
-                    )
+                    result_msg = f"Scraped {jobs_found} jobs, submitted {jobs_added} to queue"
                 else:
-                    result_msg = (
-                        f"Scrape completed, no jobs currently listed for {source_name}"
-                    )
+                    result_msg = f"Scrape completed, no jobs currently listed for {source_name}"
                     logger.info(result_msg)
 
                 self.queue_manager.update_status(
@@ -581,9 +555,7 @@ class SourceProcessor(BaseProcessor):
         missing = [f for f in required_fields if not sample.get(f)]
         return bool(missing)
 
-    def _self_heal_source_config(
-        self, source: dict, url: str, company_name: str
-    ) -> Optional[dict]:
+    def _self_heal_source_config(self, source: dict, url: str, company_name: str) -> Optional[dict]:
         """
         Use AI discovery to repair/improve a weak source config.
 

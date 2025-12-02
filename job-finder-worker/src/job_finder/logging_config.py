@@ -64,9 +64,7 @@ def _load_logging_config() -> Dict:
     return _logging_config
 
 
-def format_company_name(
-    company_name: str, max_length: Optional[int] = None
-) -> Tuple[str, str]:
+def format_company_name(company_name: str, max_length: Optional[int] = None) -> Tuple[str, str]:
     """
     Format a company name for logging with both full and display versions.
 
@@ -194,9 +192,7 @@ def setup_logging(
             log_file = "/srv/job-finder/logs/worker.log"
         else:
             # Development/staging logs go to local logs directory
-            centralized_logs = (
-                Path(__file__).parent.parent.parent / "logs" / "worker.log"
-            )
+            centralized_logs = Path(__file__).parent.parent.parent / "logs" / "worker.log"
             log_file = str(centralized_logs)
     else:
         log_file = os.getenv("LOG_FILE", log_file)
@@ -355,9 +351,7 @@ class StructuredLogger:
 
         self._log(level, structured_fields)
 
-    def scrape_activity(
-        self, source: str, action: str, details: Optional[Dict] = None
-    ) -> None:
+    def scrape_activity(self, source: str, action: str, details: Optional[Dict] = None) -> None:
         """
         Log scraping activity.
 
@@ -404,9 +398,7 @@ class StructuredLogger:
         }
         self._log("info", structured_fields)
 
-    def ai_activity(
-        self, operation: str, status: str, details: Optional[Dict] = None
-    ) -> None:
+    def ai_activity(self, operation: str, status: str, details: Optional[Dict] = None) -> None:
         """
         Log AI operations.
 
