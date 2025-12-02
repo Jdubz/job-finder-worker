@@ -1,10 +1,13 @@
 """Job queue item processor (single-task pipeline).
 
 Processes a JOB item through the complete pipeline in a single task:
-SCRAPE -> TITLE_FILTER -> [CREATE_LISTING] -> COMPANY_LOOKUP -> [WAIT_COMPANY] -> AI_EXTRACTION -> SCORING -> ANALYSIS -> SAVE_MATCH
+SCRAPE -> TITLE_FILTER -> PREFILTER -> [CREATE_LISTING] -> COMPANY_LOOKUP -> [WAIT_COMPANY] -> AI_EXTRACTION -> SCORING -> ANALYSIS -> SAVE_MATCH
 
-Title filter runs BEFORE listing creation to avoid storing jobs that don't pass.
-Jobs that fail the title filter are ignored entirely - no storage, only queue status update.
+Title filter and prefilter run BEFORE listing creation to avoid storing jobs that don't pass.
+Jobs that fail the title filter or prefilter are ignored entirely - no storage, only queue status update.
+
+PreFilter uses structured data from scraping (salary, work arrangement, employment type, etc.)
+to reject obvious non-matches before wasting an AI extraction call. Missing data always PASSES.
 
 All stages execute in-memory within a single task (no respawning).
 This reduces database queries and maintains in-memory data throughout.
@@ -33,6 +36,7 @@ from job_finder.ai.providers import create_provider_from_config
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.filters.title_filter import TitleFilter, TitleFilterResult
+from job_finder.filters.prefilter import PreFilter, PreFilterResult
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import (
@@ -68,6 +72,7 @@ class PipelineContext:
     job_data: Optional[Dict[str, Any]] = None
     listing_id: Optional[str] = None
     title_filter_result: Optional[TitleFilterResult] = None
+    prefilter_result: Optional[PreFilterResult] = None
     company_data: Optional[Dict[str, Any]] = None
     extraction: Optional[JobExtractionResult] = None
     score_result: Optional[ScoreBreakdown] = None
@@ -151,6 +156,10 @@ class JobProcessor(BaseProcessor):
         title_filter_config = config_loader.get_title_filter()
         self.title_filter = TitleFilter(title_filter_config)
 
+        # Initialize prefilter - fails loud if not configured
+        prefilter_policy = config_loader.get_prefilter_policy()
+        self.prefilter = PreFilter(prefilter_policy)
+
         match_policy = config_loader.get_match_policy()
         self.match_policy = match_policy
         self.scoring_engine = ScoringEngine(match_policy)
@@ -182,10 +191,14 @@ class JobProcessor(BaseProcessor):
         """Reload config-driven components so the next item uses fresh settings."""
         ai_settings = self.config_loader.get_ai_settings()
         title_filter_config = self.config_loader.get_title_filter()
+        prefilter_policy = self.config_loader.get_prefilter_policy()
         match_policy = self.config_loader.get_match_policy()
 
         # Rebuild title filter with latest config
         self.title_filter = TitleFilter(title_filter_config)
+
+        # Rebuild prefilter with latest config
+        self.prefilter = PreFilter(prefilter_policy)
 
         # Rebuild scoring engine with latest config
         self.match_policy = match_policy
@@ -373,7 +386,38 @@ class JobProcessor(BaseProcessor):
             # Emit filter passed event
             self._emit_event("job:filtered", item.id, {"passed": True})
 
-            # Get/create job listing (only for jobs that passed title filter)
+            # STAGE 2.5: PREFILTER (structured data pre-filter before AI extraction)
+            ctx.stage = "prefilter"
+            logger.info(f"[PIPELINE] {url_preview} -> PREFILTER")
+            self._update_status(item, "Pre-filtering structured data", ctx.stage)
+            ctx.prefilter_result = self._execute_prefilter(ctx)
+            if not ctx.prefilter_result.passed:
+                self._emit_event(
+                    "job:prefiltered",
+                    item.id,
+                    {
+                        "passed": False,
+                        "reason": ctx.prefilter_result.reason,
+                        "checksPerformed": ctx.prefilter_result.checks_performed,
+                        "checksSkipped": ctx.prefilter_result.checks_skipped,
+                    },
+                )
+                # Prefiltered jobs are NOT stored - just update queue status
+                self._finalize_prefiltered(ctx)
+                return
+
+            # Emit prefilter passed event
+            self._emit_event(
+                "job:prefiltered",
+                item.id,
+                {
+                    "passed": True,
+                    "checksPerformed": ctx.prefilter_result.checks_performed,
+                    "checksSkipped": ctx.prefilter_result.checks_skipped,
+                },
+            )
+
+            # Get/create job listing (only for jobs that passed title filter AND prefilter)
             ctx.listing_id = self._get_or_create_job_listing(item, ctx.job_data)
 
             # STAGE 3: COMPANY LOOKUP
@@ -571,6 +615,21 @@ class JobProcessor(BaseProcessor):
 
         title = (ctx.job_data or {}).get("title", "")
         return self.title_filter.filter(title)
+
+    def _execute_prefilter(self, ctx: PipelineContext) -> PreFilterResult:
+        """
+        Execute structured data pre-filter stage.
+
+        Uses available structured data from scraping to filter before AI extraction.
+        Missing data always PASSES - we only reject when we have explicit data
+        that violates the filter configuration.
+        """
+        # Check for bypass
+        if (ctx.item.metadata or {}).get("bypassFilter"):
+            return PreFilterResult(passed=True, checks_performed=[], checks_skipped=["all"])
+
+        job_data = ctx.job_data or {}
+        return self.prefilter.filter(job_data)
 
     def _execute_company_lookup(self, ctx: PipelineContext) -> Optional[Dict[str, Any]]:
         """
@@ -908,6 +967,48 @@ class JobProcessor(BaseProcessor):
             scraped_data=self._build_final_scraped_data(ctx),
         )
 
+    def _finalize_prefiltered(self, ctx: PipelineContext) -> None:
+        """
+        Finalize pipeline with FILTERED status due to prefilter rejection.
+
+        Like title-filtered jobs, prefiltered jobs are NOT stored in job_listings.
+        Uses the same FILTERED status since both are early filtering stages.
+        """
+        job_data = ctx.job_data or {}
+        title = job_data.get("title", "")
+        rejection_reason = (
+            ctx.prefilter_result.reason if ctx.prefilter_result else "Prefilter rejected"
+        )
+
+        logger.info(
+            f"[PIPELINE] PREFILTERED: '{title}' - {rejection_reason} "
+            f"(checks: {ctx.prefilter_result.checks_performed if ctx.prefilter_result else []})"
+        )
+
+        # Note: No listing created for prefiltered jobs - prefilter runs before listing creation
+        # If listing_id exists (legacy item), update its status
+        if ctx.listing_id:
+            self._update_listing_status(
+                ctx.listing_id,
+                "filtered",
+                filter_result={
+                    "titleFilter": (
+                        ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
+                    ),
+                    "prefilter": (ctx.prefilter_result.to_dict() if ctx.prefilter_result else {}),
+                },
+            )
+
+        # Spawn company/source tasks even for prefiltered jobs (same as title filter)
+        self._spawn_company_and_source(ctx.item, job_data)
+
+        self.queue_manager.update_status(
+            ctx.item.id,
+            QueueStatus.FILTERED,
+            f"Prefilter rejected: {rejection_reason}",
+            scraped_data=self._build_final_scraped_data(ctx),
+        )
+
     def _finalize_skipped(self, ctx: PipelineContext, reason: str) -> None:
         """Finalize pipeline with SKIPPED status."""
         job_data = ctx.job_data or {}
@@ -975,10 +1076,12 @@ class JobProcessor(BaseProcessor):
         data: Dict[str, Any] = {}
         if ctx.job_data:
             data["job_data"] = ctx.job_data
-        if ctx.title_filter_result:
-            data["filter_result"] = {
-                "titleFilter": ctx.title_filter_result.to_dict(),
-            }
+        if ctx.title_filter_result or ctx.prefilter_result:
+            data["filter_result"] = {}
+            if ctx.title_filter_result:
+                data["filter_result"]["titleFilter"] = ctx.title_filter_result.to_dict()
+            if ctx.prefilter_result:
+                data["filter_result"]["prefilter"] = ctx.prefilter_result.to_dict()
             if ctx.extraction:
                 data["filter_result"]["extraction"] = ctx.extraction.to_dict()
         if ctx.score_result:

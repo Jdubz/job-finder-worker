@@ -37,7 +37,74 @@ def mock_dependencies() -> Dict[str, Any]:
         "requiredKeywords": ["engineer", "developer"],
         "excludedKeywords": [],
     }
-    config_loader.get_scoring_config.return_value = {"minScore": 60}
+    config_loader.get_prefilter_policy.return_value = {
+        "title": {"requiredKeywords": [], "excludedKeywords": []},
+        "freshness": {"maxAgeDays": 60},
+        "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+        "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+        "salary": {"minimum": None},
+        "technology": {"rejected": []},
+    }
+    config_loader.get_match_policy.return_value = {
+        "minScore": 60,
+        "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
+        "seniority": {
+            "preferred": ["senior"],
+            "acceptable": ["mid"],
+            "rejected": ["junior"],
+            "preferredScore": 15,
+            "acceptableScore": 0,
+            "rejectedScore": -100,
+        },
+        "location": {
+            "allowRemote": True,
+            "allowHybrid": True,
+            "allowOnsite": False,
+            "userTimezone": -8,
+            "maxTimezoneDiffHours": 4,
+            "perHourScore": -3,
+            "hybridSameCityScore": 10,
+        },
+        "technology": {
+            "required": [],
+            "preferred": [],
+            "disliked": [],
+            "rejected": [],
+            "requiredScore": 10,
+            "preferredScore": 5,
+            "dislikedScore": -5,
+        },
+        "salary": {"minimum": None, "target": None, "belowTargetScore": -2},
+        "experience": {"userYears": 10, "maxRequired": 15, "overqualifiedScore": -5},
+        "freshness": {
+            "freshDays": 2,
+            "freshScore": 10,
+            "staleDays": 3,
+            "staleScore": -10,
+            "veryStaleDays": 12,
+            "veryStaleScore": -20,
+            "repostScore": -5,
+        },
+        "roleFit": {
+            "preferred": ["backend"],
+            "acceptable": ["fullstack"],
+            "penalized": ["frontend"],
+            "rejected": [],
+            "preferredScore": 5,
+            "penalizedScore": -5,
+        },
+        "company": {
+            "preferredCityScore": 20,
+            "preferredCity": "Portland",
+            "remoteFirstScore": 15,
+            "aiMlFocusScore": 10,
+            "largeCompanyScore": 10,
+            "smallCompanyScore": -5,
+            "largeCompanyThreshold": 10000,
+            "smallCompanyThreshold": 100,
+            "startupScore": 0,
+        },
+    }
 
     job_storage = MagicMock()
     job_storage.job_exists.return_value = False

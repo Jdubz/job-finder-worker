@@ -25,36 +25,6 @@ def mock_managers():
         "requiredKeywords": ["engineer", "developer"],
         "excludedKeywords": [],
     }
-    config_loader.get_scoring_config.return_value = {
-        "minScore": 60,
-        "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
-        "seniority": {
-            "preferred": ["senior"],
-            "acceptable": ["mid"],
-            "rejected": ["junior"],
-            "preferredBonus": 15,
-            "acceptablePenalty": 0,
-            "rejectedPenalty": -100,
-        },
-        "location": {
-            "allowRemote": True,
-            "allowHybrid": True,
-            "allowOnsite": False,
-            "userTimezone": -8,
-            "maxTimezoneDiffHours": 4,
-            "perHourPenalty": 3,
-            "hybridSameCityBonus": 10,
-        },
-        "technology": {
-            "required": [],
-            "preferred": [],
-            "disliked": [],
-            "rejected": [],
-            "requiredBonus": 10,
-            "preferredBonus": 5,
-            "dislikedPenalty": -5,
-        },
-    }
     config_loader.get_ai_settings.return_value = {
         "worker": {
             "selected": {
@@ -70,6 +40,14 @@ def mock_managers():
                 "model": "gemini-2.0-flash",
             }
         },
+    }
+    config_loader.get_prefilter_policy.return_value = {
+        "title": {"requiredKeywords": [], "excludedKeywords": []},
+        "freshness": {"maxAgeDays": 0},
+        "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+        "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+        "salary": {"minimum": None},
+        "technology": {"rejected": []},
     }
 
     return {

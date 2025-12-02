@@ -108,6 +108,31 @@ def test_job_pipeline_full_path(tmp_path: Path):
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
+                "prefilter-policy",
+                json.dumps(
+                    {
+                        "title": {"requiredKeywords": [], "excludedKeywords": []},
+                        "freshness": {"maxAgeDays": 60},
+                        "workArrangement": {
+                            "allowRemote": True,
+                            "allowHybrid": True,
+                            "allowOnsite": True,
+                        },
+                        "employmentType": {
+                            "allowFullTime": True,
+                            "allowPartTime": True,
+                            "allowContract": True,
+                        },
+                        "salary": {"minimum": None},
+                        "technology": {"rejected": []},
+                    }
+                ),
+                now_iso,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            (
                 "match-policy",
                 json.dumps(
                     {

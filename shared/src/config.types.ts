@@ -125,6 +125,113 @@ export interface TitleFilterConfig {
 }
 
 // -----------------------------------------------------------
+// PreFilter Policy Configuration (structured data pre-filter)
+// -----------------------------------------------------------
+/**
+ * Pre-filter policy for rejecting obviously unsuitable jobs BEFORE AI extraction.
+ *
+ * IMPORTANT: PreFilter settings should be MORE PERMISSIVE than match-policy settings.
+ * The goal is to catch obvious non-matches early while avoiding false positives.
+ *
+ * Example relationship:
+ * - prefilter-policy.salary.minimum: $80,000 (absolute floor - definitely not a match)
+ * - match-policy.salary.minimum: $100,000 (nuanced floor - rejected in scoring)
+ *
+ * If a field's data is not available from the API, the job PASSES that check.
+ * Missing data is never a reason to reject - it just means we need AI extraction.
+ */
+
+/** Title keyword filtering (same as TitleFilterConfig for consistency) */
+export interface PreFilterTitleConfig {
+  /** Keywords that MUST appear in title (at least one). Empty = no requirement. */
+  requiredKeywords: string[]
+  /** Keywords that immediately reject a job */
+  excludedKeywords: string[]
+}
+
+/** Job freshness/age filtering */
+export interface PreFilterFreshnessConfig {
+  /**
+   * Maximum age in days before rejection. Should be HIGHER than match-policy.freshness.veryStaleDays.
+   * Jobs older than this are definitely stale. Set to 0 to disable.
+   * Example: 60 days (prefilter) vs 30 days (match-policy veryStaleDays)
+   */
+  maxAgeDays: number
+}
+
+/** Work arrangement filtering */
+export interface PreFilterWorkArrangementConfig {
+  /**
+   * Allow remote positions. Should match or be MORE permissive than match-policy.
+   * If false, jobs with explicit is_remote=true or "Remote" location are rejected.
+   */
+  allowRemote: boolean
+  /**
+   * Allow hybrid positions. Should match or be MORE permissive than match-policy.
+   * If false, jobs with explicit "Hybrid" work arrangement are rejected.
+   */
+  allowHybrid: boolean
+  /**
+   * Allow onsite positions. Should match or be MORE permissive than match-policy.
+   * If false, jobs with explicit "Onsite" work arrangement are rejected.
+   * NOTE: Consider setting true here even if match-policy is false, to let AI
+   * extract nuances like timezone compatibility or "onsite with remote option".
+   */
+  allowOnsite: boolean
+}
+
+/** Employment type filtering */
+export interface PreFilterEmploymentTypeConfig {
+  /** Allow full-time positions */
+  allowFullTime: boolean
+  /** Allow part-time positions */
+  allowPartTime: boolean
+  /**
+   * Allow contract positions. Consider setting true even if you prefer full-time,
+   * as "contract-to-hire" might be acceptable after AI review.
+   */
+  allowContract: boolean
+}
+
+/** Salary floor filtering */
+export interface PreFilterSalaryConfig {
+  /**
+   * Absolute minimum salary floor. Should be LOWER than match-policy.salary.minimum.
+   * Jobs with salary data below this are definitely not a match.
+   * Example: $80,000 (prefilter) vs $100,000 (match-policy minimum)
+   * Set to null to disable salary pre-filtering.
+   */
+  minimum: number | null
+}
+
+/** Technology rejection filtering */
+export interface PreFilterTechnologyConfig {
+  /**
+   * Technologies that cause immediate rejection if found in structured tags.
+   * Should be SUBSET of match-policy.technology.rejected (most egregious only).
+   * Only applies when source provides structured tags (e.g., Remotive).
+   * Example: ["php", "wordpress"] (prefilter) vs ["php", "wordpress", "drupal", "magento"] (match-policy)
+   */
+  rejected: string[]
+}
+
+/** Complete pre-filter policy configuration */
+export interface PreFilterPolicy {
+  /** Title keyword filtering */
+  title: PreFilterTitleConfig
+  /** Job freshness/age filtering */
+  freshness: PreFilterFreshnessConfig
+  /** Work arrangement filtering */
+  workArrangement: PreFilterWorkArrangementConfig
+  /** Employment type filtering */
+  employmentType: PreFilterEmploymentTypeConfig
+  /** Salary floor filtering */
+  salary: PreFilterSalaryConfig
+  /** Technology rejection filtering */
+  technology: PreFilterTechnologyConfig
+}
+
+// -----------------------------------------------------------
 // Scoring Configuration (deterministic scoring engine)
 // -----------------------------------------------------------
 
@@ -443,6 +550,7 @@ export type JobFinderConfigId =
   | "ai-prompts"
   | "personal-info"
   | "title-filter"
+  | "prefilter-policy"
   | "match-policy"
   | "worker-settings"
 
@@ -452,6 +560,7 @@ export type JobFinderConfigPayloadMap = {
   "ai-prompts": PromptConfig
   "personal-info": PersonalInfo
   "title-filter": TitleFilterConfig
+  "prefilter-policy": PreFilterPolicy
   "match-policy": MatchPolicy
   "worker-settings": WorkerSettings
 }
@@ -526,6 +635,7 @@ export const DEFAULT_TITLE_FILTER: TitleFilterConfig = {
   ],
 }
 
+// No DEFAULT_PREFILTER_POLICY - fail loud on missing config to prevent silent gaps
 // No DEFAULT_MATCH_POLICY - fail loud on missing config to prevent silent gaps
 
 export const DEFAULT_PROMPTS: PromptConfig = {
