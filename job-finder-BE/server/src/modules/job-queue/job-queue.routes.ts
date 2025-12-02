@@ -74,10 +74,9 @@ const submitCompanySchema = z.object({
 
 const scrapeConfigSchema = z
   .object({
-    target_matches: z.number().int().positive().nullable().optional(),
-    max_sources: z.number().int().positive().nullable().optional(),
-    source_ids: z.array(z.string()).optional(),
-    min_match_score: z.number().int().min(0).max(100).nullable().optional()
+    target_matches: z.number().int().nonnegative().nullable().optional(),
+    max_sources: z.number().int().nonnegative().nullable().optional(),
+    source_ids: z.array(z.string()).optional()
   })
   .strict()
 

@@ -101,6 +101,13 @@ export class JobQueueService {
 
   submitScrape(input: SubmitScrapeInput): QueueItem {
     const now = new Date()
+    const normalize = (value?: number | null) => (value === 0 ? null : value ?? null)
+    const cfg = input.scrapeConfig ?? {}
+    const scrapeConfig = {
+      target_matches: normalize(cfg.target_matches),
+      max_sources: normalize(cfg.max_sources),
+      source_ids: cfg.source_ids
+    }
     const item: NewQueueItem = {
       type: 'scrape',
       status: 'pending',
@@ -111,10 +118,7 @@ export class JobQueueService {
       submitted_by: null,
       created_at: now,
       updated_at: now,
-      scrape_config: input.scrapeConfig ?? {
-        target_matches: null,
-        max_sources: null
-      }
+      scrape_config: scrapeConfig
     }
 
     return this.repo.enqueue(item)

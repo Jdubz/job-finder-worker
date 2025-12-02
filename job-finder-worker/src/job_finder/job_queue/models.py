@@ -135,9 +135,6 @@ class ScrapeConfig(BaseModel):
         default=None,
         description="Specific source IDs to scrape (None = all sources with rotation)",
     )
-    min_match_score: Optional[int] = Field(
-        default=None, description="Override minimum match score threshold"
-    )
 
     model_config = ConfigDict(use_enum_values=True)
 
