@@ -130,7 +130,7 @@ class ConfigLoader:
                         "value": "cli",
                         "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
                         "enabled": True,
-                    }
+                    },
                 ],
             },
         ]
@@ -233,7 +233,9 @@ class ConfigLoader:
         job_match = policy.get("jobMatch") if isinstance(policy, dict) else None
         if not isinstance(job_match, dict):
             raise InitializationError("jobMatch missing from match-policy")
-        job_match["companyWeights"] = policy.get("companyWeights", {}) if isinstance(policy, dict) else {}
+        job_match["companyWeights"] = (
+            policy.get("companyWeights", {}) if isinstance(policy, dict) else {}
+        )
         return job_match
 
     def get_prefilter_policy(self) -> Dict[str, Any]:

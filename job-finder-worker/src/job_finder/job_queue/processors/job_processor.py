@@ -170,11 +170,19 @@ class JobProcessor(BaseProcessor):
             self.company_info_fetcher.ai_provider = company_provider
 
         # Refresh matcher thresholds and weights
-        company_weights = match_policy.get("companyWeights", {}) if isinstance(match_policy, dict) else {}
-        dealbreakers = match_policy.get("dealbreakers", {}) if isinstance(match_policy, dict) else {}
+        company_weights = (
+            match_policy.get("companyWeights", {}) if isinstance(match_policy, dict) else {}
+        )
+        dealbreakers = (
+            match_policy.get("dealbreakers", {}) if isinstance(match_policy, dict) else {}
+        )
 
-        self.ai_matcher.min_match_score = job_match.get("minMatchScore", self.ai_matcher.min_match_score)
-        self.ai_matcher.generate_intake = job_match.get("generateIntakeData", self.ai_matcher.generate_intake)
+        self.ai_matcher.min_match_score = job_match.get(
+            "minMatchScore", self.ai_matcher.min_match_score
+        )
+        self.ai_matcher.generate_intake = job_match.get(
+            "generateIntakeData", self.ai_matcher.generate_intake
+        )
         self.ai_matcher.portland_office_bonus = job_match.get(
             "portlandOfficeBonus", self.ai_matcher.portland_office_bonus
         )

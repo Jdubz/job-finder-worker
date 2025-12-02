@@ -267,7 +267,9 @@ class StrikeFilterEngine:
                 return False
         return False
 
-    def _check_stop_list(self, company: str, description: str, url: str, result: FilterResult) -> None:
+    def _check_stop_list(
+        self, company: str, description: str, url: str, result: FilterResult
+    ) -> None:
         """Apply stop-list as strikes (no hard reject)."""
         company_lower = (company or "").lower()
         description_lower = (description or "").lower()
@@ -299,7 +301,7 @@ class StrikeFilterEngine:
             if " " in keyword:
                 hit = keyword in description_lower
             else:
-                hit = re.search(r"\b" + re.escape(keyword) + r"\b", description_lower)
+                hit = bool(re.search(r"\b" + re.escape(keyword) + r"\b", description_lower))
             if hit:
                 result.add_strike(
                     filter_category="stop_list",

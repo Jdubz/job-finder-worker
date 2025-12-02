@@ -14,6 +14,7 @@ def base_config():
     """Return a minimal strike-filter configuration that focuses on remote policy."""
     return {
         "userTimezone": -8,
+        "userCity": "Portland",
         "strikeEngine": {
             "enabled": True,
             "strikeThreshold": 3,
@@ -79,7 +80,10 @@ class TestRemotePolicy:
         job = make_job(location="New York, NY", description="Office-based role in Manhattan")
         result = engine.evaluate_job(job)
         assert result.passed is False
-        assert any("on-site" in rejection.reason.lower() for rejection in result.rejections)
+        assert any(
+            "outside user city" in (rejection.reason or "").lower()
+            for rejection in result.rejections
+        )
 
     def test_portland_hybrid_allowed(self, base_config):
         engine = StrikeFilterEngine(base_config)
@@ -91,9 +95,9 @@ class TestRemotePolicy:
         engine = StrikeFilterEngine(base_config)
         job = make_job(location="Seattle, WA", description="Hybrid schedule with office days")
         result = engine.evaluate_job(job)
-        # Seattle shares the user's timezone, so hybrid should pass under timezone-based rules
-        assert result.passed is True
-        assert all(rejection.filter_name != "remote_policy" for rejection in result.rejections)
+        # Outside user's city -> hard reject for onsite/hybrid
+        assert result.passed is False
+        assert any(rejection.filter_name == "location_policy" for rejection in result.rejections)
 
     def test_case_insensitive_matching(self, base_config):
         engine = StrikeFilterEngine(base_config)

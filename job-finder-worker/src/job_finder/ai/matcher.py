@@ -591,7 +591,7 @@ class AIJobMatcher:
         if not isinstance(techs_cfg, dict) or not techs_cfg:
             return 0, ""
 
-        text = f"{job.get('title','')} {job.get('description','')}".lower()
+        text = f"{job.get('title', '')} {job.get('description', '')}".lower()
         delta = 0
         reasons = []
 

@@ -29,7 +29,9 @@ class LocationEvaluation:
 def normalize_city(name: Optional[str]) -> Optional[str]:
     if not name:
         return None
-    return name.strip().lower()
+    normalized = name.strip().lower()
+    # Accept values like "Portland, OR" by matching just the city token
+    return normalized.split(",")[0].strip()
 
 
 def evaluate_location_rules(

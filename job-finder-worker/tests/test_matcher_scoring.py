@@ -1,5 +1,3 @@
-import pytest
-
 from job_finder.ai.matcher import AIJobMatcher, ScoreBreakdown
 from job_finder.ai.providers import CodexCLIProvider
 from job_finder.profile.schema import Profile
@@ -78,7 +76,12 @@ def test_tech_strike_applied(monkeypatch):
         },
         monkeypatch=monkeypatch,
     )
-    job = {"title": "Java Engineer", "description": "We use Java", "location": "remote", "company": "Acme"}
+    job = {
+        "title": "Java Engineer",
+        "description": "We use Java",
+        "location": "remote",
+        "company": "Acme",
+    }
     result = matcher.analyze_job(job, return_below_threshold=True)
     assert result is not None
     assert result.match_score == 45  # base 50 minus strike
@@ -87,7 +90,8 @@ def test_tech_strike_applied(monkeypatch):
 
 def test_experience_gap_penalty(monkeypatch):
     matcher = make_matcher(
-        {"experienceStrike": {"enabled": True, "minPreferred": 8, "points": 4}}, monkeypatch=monkeypatch
+        {"experienceStrike": {"enabled": True, "minPreferred": 8, "points": 4}},
+        monkeypatch=monkeypatch,
     )
     job = {"title": "Senior Engineer", "description": "", "location": "remote", "company": "Acme"}
     result = matcher.analyze_job(job, return_below_threshold=True)
