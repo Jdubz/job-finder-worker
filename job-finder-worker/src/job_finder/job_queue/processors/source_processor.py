@@ -154,7 +154,6 @@ class SourceProcessor(BaseProcessor):
                         company_id=None,
                         aggregator_domain=aggregator_domain,
                         status=SourceStatus.DISABLED,
-                        disabled_notes=disabled_reason,
                     )
                     self.queue_manager.update_status(
                         item.id,
