@@ -577,6 +577,9 @@ class JobProcessor(BaseProcessor):
         job_data = ctx.job_data
         item = ctx.item
 
+        if job_data is None:
+            return None
+
         company_name_raw = job_data.get("company", item.company_name)
         company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
 
@@ -790,6 +793,9 @@ class JobProcessor(BaseProcessor):
     def _execute_match_analysis(self, ctx: PipelineContext) -> Optional[JobMatchResult]:
         """Execute AI match analysis stage."""
         job_data = ctx.job_data
+
+        if job_data is None:
+            return None
 
         # Enrich job_data with extraction and scoring info
         job_data_enriched = {
