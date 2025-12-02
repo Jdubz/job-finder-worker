@@ -21,13 +21,20 @@ from urllib.parse import urlparse, quote_plus
 
 from job_finder.ai.extraction import JobExtractor, JobExtractionResult
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
+from job_finder.ai.providers import create_provider_from_config
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.filters.title_filter import TitleFilter, TitleFilterResult
 from job_finder.job_queue.config_loader import ConfigLoader
-from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
 from job_finder.job_queue.manager import QueueManager
+from job_finder.job_queue.models import (
+    JobQueueItem,
+    QueueItemType,
+    QueueStatus,
+)
+from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.scraper_intake import ScraperIntake
+from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
 from job_finder.scrape_runner import ScrapeRunner
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_listing_storage import JobListingStorage
@@ -36,12 +43,6 @@ from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name, is_source_name
 from job_finder.utils.url_utils import normalize_url
-from job_finder.job_queue.models import (
-    JobQueueItem,
-    QueueItemType,
-    QueueStatus,
-)
-from job_finder.ai.providers import create_provider_from_config
 
 from .base_processor import BaseProcessor
 
@@ -109,6 +110,7 @@ class JobProcessor(BaseProcessor):
         sources_manager: JobSourcesManager,
         company_info_fetcher: CompanyInfoFetcher,
         ai_matcher: AIJobMatcher,
+        notifier: Optional[QueueEventNotifier] = None,
     ):
         """
         Initialize job processor with its specific dependencies.
@@ -122,6 +124,7 @@ class JobProcessor(BaseProcessor):
             sources_manager: Job sources manager
             company_info_fetcher: Company info fetcher (for ScrapeRunner)
             ai_matcher: AI job matcher
+            notifier: Optional event notifier for WebSocket progress updates
         """
         super().__init__(queue_manager, config_loader)
 
@@ -131,6 +134,7 @@ class JobProcessor(BaseProcessor):
         self.sources_manager = sources_manager
         self.ai_matcher = ai_matcher
         self.company_info_fetcher = company_info_fetcher
+        self.notifier = notifier
 
         # Initialize new hybrid pipeline components
         title_filter_config = config_loader.get_title_filter()
@@ -193,6 +197,14 @@ class JobProcessor(BaseProcessor):
 
         # Update AI matcher min score from scoring config
         self.ai_matcher.min_match_score = scoring_config.get("minScore", 60)
+
+    def _emit_event(self, event: str, item_id: str, data: Dict[str, Any]) -> None:
+        """Emit a pipeline progress event via WebSocket (if notifier is available)."""
+        if self.notifier:
+            try:
+                self.notifier.send_event(event, {"itemId": item_id, **data})
+            except Exception as e:
+                logger.debug(f"Failed to emit event {event}: {e}")
 
     # ============================================================
     # JOB LISTING HELPERS
@@ -319,6 +331,12 @@ class JobProcessor(BaseProcessor):
                     self._finalize_failed(ctx, "Could not scrape job details from URL")
                     return
 
+            # Emit scrape complete event
+            self._emit_event("job:scraped", item.id, {
+                "title": ctx.job_data.get("title", ""),
+                "company": ctx.job_data.get("company", ""),
+            })
+
             # Get/create job listing
             ctx.listing_id = self._get_or_create_job_listing(item, ctx.job_data)
 
@@ -328,8 +346,15 @@ class JobProcessor(BaseProcessor):
             self._update_status(item, "Filtering by title", ctx.stage)
             ctx.title_filter_result = self._execute_title_filter(ctx)
             if not ctx.title_filter_result.passed:
+                self._emit_event("job:filtered", item.id, {
+                    "passed": False,
+                    "reason": ctx.title_filter_result.reason,
+                })
                 self._finalize_filtered(ctx)
                 return
+
+            # Emit filter passed event
+            self._emit_event("job:filtered", item.id, {"passed": True})
 
             # STAGE 3: COMPANY LOOKUP
             ctx.stage = "company"
@@ -339,6 +364,12 @@ class JobProcessor(BaseProcessor):
             # Spawn company enrichment task (fire-and-forget)
             self._spawn_company_enrichment(ctx)
 
+            # Emit company lookup event
+            self._emit_event("job:company_lookup", item.id, {
+                "company": ctx.job_data.get("company", ""),
+                "hasData": ctx.company_data is not None,
+            })
+
             # STAGE 4: AI EXTRACTION
             ctx.stage = "extraction"
             logger.info(f"[PIPELINE] {url_preview} -> AI_EXTRACTION")
@@ -347,6 +378,13 @@ class JobProcessor(BaseProcessor):
             if not ctx.extraction:
                 self._finalize_failed(ctx, "AI extraction returned no result")
                 return
+
+            # Emit extraction event
+            self._emit_event("job:extraction", item.id, {
+                "seniority": ctx.extraction.seniority,
+                "workArrangement": ctx.extraction.work_arrangement,
+                "technologies": ctx.extraction.technologies[:5] if ctx.extraction.technologies else [],
+            })
 
             # Update listing with extraction data
             self._update_listing_status(
@@ -363,6 +401,14 @@ class JobProcessor(BaseProcessor):
             logger.info(f"[PIPELINE] {url_preview} -> SCORING")
             self._update_status(item, "Scoring job match", ctx.stage)
             ctx.score_result = self._execute_scoring(ctx)
+
+            # Emit scoring event
+            self._emit_event("job:scoring", item.id, {
+                "score": ctx.score_result.final_score,
+                "passed": ctx.score_result.passed,
+                "adjustmentCount": len(ctx.score_result.adjustments),
+            })
+
             if not ctx.score_result.passed:
                 self._finalize_skipped(ctx, f"Scoring rejected: {ctx.score_result.rejection_reason}")
                 return
@@ -375,6 +421,12 @@ class JobProcessor(BaseProcessor):
             if not ctx.match_result:
                 self._finalize_skipped(ctx, "AI analysis returned no result")
                 return
+
+            # Emit analysis event
+            self._emit_event("job:analysis", item.id, {
+                "matchScore": ctx.match_result.match_score,
+                "priority": ctx.match_result.application_priority,
+            })
 
             # Check score threshold
             min_score = getattr(self.ai_matcher, "min_match_score", 0)
@@ -389,6 +441,13 @@ class JobProcessor(BaseProcessor):
             logger.info(f"[PIPELINE] {url_preview} -> SAVE_MATCH")
             self._update_status(item, "Saving job match", ctx.stage)
             doc_id = self._execute_save_match(ctx)
+
+            # Emit saved event
+            self._emit_event("job:saved", item.id, {
+                "docId": doc_id,
+                "listingId": ctx.listing_id,
+                "matchScore": ctx.match_result.match_score,
+            })
 
             # SUCCESS!
             duration_ms = round((time.monotonic() - start_time) * 1000)

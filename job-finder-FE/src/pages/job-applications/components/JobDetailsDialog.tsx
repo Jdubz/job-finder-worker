@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { ExternalLink, FileText, Building2, Database, AlertCircle } from "lucide-react"
+import { ExternalLink, FileText, Building2, Database, AlertCircle, Calculator } from "lucide-react"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 import type { JobMatchWithListing } from "@shared/types"
 
@@ -75,6 +75,63 @@ export function JobDetailsDialog({
                   </div>
                 </div>
               </div>
+
+              {/* Scoring Breakdown */}
+              {match.listing.analysisResult?.scoringResult && (
+                <>
+                  <Separator className="my-4" />
+                  <div>
+                    <h3 className="font-semibold mb-2 flex items-center gap-2">
+                      <Calculator className="h-4 w-4" />
+                      Score Breakdown
+                    </h3>
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div className="text-center p-2 bg-secondary/50 rounded">
+                        <div className="text-lg font-medium">
+                          {match.listing.analysisResult.scoringResult.baseScore}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Base Score</div>
+                      </div>
+                      <div className="text-center p-2 bg-secondary/50 rounded">
+                        <div className="text-lg font-medium">
+                          {match.listing.analysisResult.scoringResult.finalScore}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Final Score</div>
+                      </div>
+                    </div>
+                    {match.listing.analysisResult.scoringResult.adjustments.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-muted-foreground mb-2">Adjustments Applied:</p>
+                        {match.listing.analysisResult.scoringResult.adjustments.map((adj, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between text-sm bg-secondary/30 px-2 py-1.5 rounded"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs font-normal">
+                                {adj.category}
+                              </Badge>
+                              <span className="text-muted-foreground">{adj.reason}</span>
+                            </div>
+                            <span
+                              className={`font-mono font-medium ${
+                                adj.points > 0
+                                  ? "text-green-600"
+                                  : adj.points < 0
+                                    ? "text-red-600"
+                                    : "text-muted-foreground"
+                              }`}
+                            >
+                              {adj.points > 0 ? "+" : ""}
+                              {adj.points}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
               <Separator />
 

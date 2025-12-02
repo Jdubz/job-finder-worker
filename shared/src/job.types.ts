@@ -10,25 +10,7 @@
  */
 
 import type { TimestampLike } from "./time.types"
-
-/**
- * Breakdown of how the match score was calculated.
- *
- * This provides transparency into the scoring algorithm, showing:
- * - The base score from AI analysis
- * - All adjustments applied (timezone, company size, freshness, etc.)
- * - The final score after adjustments
- */
-export interface ScoreBreakdown {
-  /** Initial score from AI analysis (0-100) */
-  baseScore: number
-
-  /** Final score after all adjustments (0-100) */
-  finalScore: number
-
-  /** List of adjustments applied, e.g. "🏢 Large company +10", "⏰ 3h timezone difference -5" */
-  adjustments: string[]
-}
+import type { ScoreBreakdown } from "./config.types"
 
 /**
  * Full analysis result from AI job matching.
@@ -76,8 +58,8 @@ export interface JobAnalysisResult {
   /** Application priority level */
   applicationPriority: "High" | "Medium" | "Low"
 
-  /** Breakdown of score calculation showing the math */
-  scoreBreakdown?: ScoreBreakdown | null
+  /** Deterministic scoring result with detailed breakdown */
+  scoringResult?: ScoreBreakdown | null
 
   /** Specific recommendations for customizing application */
   customizationRecommendations?: Record<string, unknown>
