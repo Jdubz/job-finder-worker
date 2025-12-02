@@ -41,6 +41,15 @@ export interface TokenUsage {
 export interface PersonalInfo {
   name: string
   email: string
+  /**
+   * City name only (e.g., "Portland"); used for onsite/hybrid checks.
+   */
+  city?: string
+  /**
+   * Timezone offset from UTC in hours (e.g., -8 for PST).
+   */
+  timezone?: number | null
+  relocationAllowed?: boolean
   phone?: string
   location?: string
   website?: string

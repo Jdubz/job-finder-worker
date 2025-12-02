@@ -84,6 +84,16 @@ class CompanyProcessor(BaseProcessor):
         company_id = item.company_id
         company_name = item.company_name
 
+        # Refresh configs so each company task uses latest settings and fails loudly if missing.
+        try:
+            self.config_loader.get_queue_settings()
+        except Exception as exc:
+            logger.error(f"Missing queue-settings for company processing: {exc}")
+            self.queue_manager.update_status(
+                item.id, QueueStatus.FAILED, f"Missing queue-settings: {exc}"
+            )
+            return
+
         # For re-analysis: if company_id is provided but name is missing,
         # look up the existing company to get the correct name
         if company_id and not company_name:

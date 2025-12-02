@@ -98,10 +98,12 @@ def prefilter_policy(base_config, base_tech_ranks):
     return {
         "userTimezone": -8,
         "stopList": {
-            "excludedCompanies": [],
-            "excludedKeywords": [],
-            "excludedDomains": [],
+            "excludedCompanies": ["bad-company-inc"],
+            "excludedKeywords": ["clearance"],
+            "excludedDomains": ["forbidden.com"],
         },
+        "userCity": "portland",
+        "relocationAllowed": False,
         "strikeEngine": dict(base_config),
         "technologyRanks": dict(base_tech_ranks),
     }
@@ -231,6 +233,9 @@ class TestHardRejections:
         prefilter_policy["technologyRanks"] = {
             "technologies": {"go": {"rank": "strike", "points": 2}}
         }
+        prefilter_policy["userTimezone"] = (
+            None  # avoid location strikes interfering with tech check
+        )
         engine = StrikeFilterEngine(prefilter_policy)
 
         valid_job["description"] = "We will go-to-market fast and go to production weekly. " * 5

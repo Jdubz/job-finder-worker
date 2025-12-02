@@ -1,6 +1,8 @@
 import json
 import sqlite3
 
+import pytest
+
 from job_finder.cron import submit_scrape
 
 
@@ -67,6 +69,7 @@ def _set_scheduler_settings(db_path, settings):
 
 def test_submit_scrape_enqueues_item(tmp_path, capsys):
     db_path = _create_db(tmp_path)
+    _set_scheduler_settings(db_path, {"scrapeConfig": {}})
 
     exit_code = submit_scrape.main(
         [
@@ -112,19 +115,9 @@ def test_submit_scrape_enqueues_item(tmp_path, capsys):
 def test_submit_scrape_seeds_defaults_when_config_missing(tmp_path):
     db_path = _create_db(tmp_path)
 
-    # No scheduler-settings row; should seed defaults and still enqueue
-    submit_scrape.main(["--db-path", db_path])
-
-    rows = _fetch_queue_rows(db_path)
-    assert len(rows) == 1
-
-    input_payload = json.loads(rows[0]["input"])
-    scrape_config = input_payload["scrape_config"]
-    # Defaults are all None when not set
-    assert scrape_config["target_matches"] is None
-    assert scrape_config["max_sources"] is None
-    assert scrape_config["min_match_score"] is None
-    assert scrape_config["source_ids"] is None
+    # No scheduler-settings row should now fail loudly
+    with pytest.raises(Exception):
+        submit_scrape.main(["--db-path", db_path])
 
 
 def test_submit_scrape_uses_db_config_as_fallback(tmp_path):

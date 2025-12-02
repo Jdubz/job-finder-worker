@@ -49,6 +49,25 @@ export function QueueSettingsTab({
             Maximum time allowed for job processing. Retries are disabled; choose a generous window.
           </p>
         </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="taskDelay">Task Delay (seconds)</Label>
+          <Input
+            id="taskDelay"
+            type="number"
+            min="0"
+            max="60"
+            value={queueSettings.taskDelaySeconds ?? 0}
+            onChange={(e) =>
+              setQueueSettings({
+                taskDelaySeconds: Math.max(0, parseInt(e.target.value) || 0),
+              })
+            }
+          />
+          <p className="text-xs text-gray-500">
+            Delay between processing items to ease rate limits. 0–60 seconds.
+          </p>
+        </div>
       </TabCard>
     </TabsContent>
   )

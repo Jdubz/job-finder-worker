@@ -69,15 +69,11 @@ class TestConfigLoaderAISettings:
         assert ai_settings["worker"]["selected"]["model"] == "claude-sonnet-4-5-20250929"
         assert ai_settings["documentGenerator"]["selected"]["provider"] == "openai"
 
-    def test_get_ai_settings_returns_defaults_when_missing(self, db_path):
-        """Should return default AI settings when not configured."""
+    def test_get_ai_settings_missing_raises(self, db_path):
+        """Should fail loudly when ai-settings is missing."""
         loader = ConfigLoader(db_path)
-        ai_settings = loader.get_ai_settings()
-
-        # Default is codex/cli
-        assert ai_settings["worker"]["selected"]["provider"] == "codex"
-        assert ai_settings["worker"]["selected"]["interface"] == "cli"
-        assert ai_settings["worker"]["selected"]["model"] == "gpt-5-codex"
+        with pytest.raises(Exception):
+            loader.get_ai_settings()
 
     def test_get_ai_settings_with_full_config(self, db_path):
         """Should handle full AI settings with providers array."""
@@ -167,17 +163,11 @@ class TestConfigLoaderJobMatch:
         assert job_match["preferLargeCompanies"] is False
         assert job_match["generateIntakeData"] is False
 
-    def test_get_job_match_returns_defaults_when_missing(self, db_path):
-        """Should return default job match config when not configured."""
+    def test_get_job_match_missing_raises(self, db_path):
+        """Should fail loudly when match-policy is missing."""
         loader = ConfigLoader(db_path)
-        job_match = loader.get_job_match()
-
-        # Check defaults
-        assert job_match["minMatchScore"] == 70
-        assert job_match["portlandOfficeBonus"] == 15
-        assert job_match["userTimezone"] == -8
-        assert job_match["preferLargeCompanies"] is True
-        assert job_match["generateIntakeData"] is True
+        with pytest.raises(Exception):
+            loader.get_job_match()
 
     def test_get_job_match_returns_partial_config(self, db_path):
         """Should merge partial jobMatch with defaults."""
@@ -202,15 +192,14 @@ class TestConfigLoaderJobMatch:
         loader = ConfigLoader(db_path)
         job_match = loader.get_job_match()
 
-        # Stored values should be returned
+        # Stored values should be returned without backfilling defaults
         assert job_match["minMatchScore"] == 85
         assert job_match["generateIntakeData"] is False
-        # Missing fields are backfilled with defaults when reading
-        assert job_match.get("portlandOfficeBonus") == 15
+        assert "portlandOfficeBonus" not in job_match
         assert job_match["companyWeights"]["priorityThresholds"]["high"] == 85
 
     def test_get_job_match_handles_invalid_json(self, db_path):
-        """Should return defaults when stored JSON is invalid."""
+        """Invalid JSON should raise InitializationError."""
         conn = sqlite3.connect(db_path)
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
@@ -220,10 +209,8 @@ class TestConfigLoaderJobMatch:
         conn.close()
 
         loader = ConfigLoader(db_path)
-        job_match = loader.get_job_match()
-
-        # Should fall back to defaults
-        assert job_match["minMatchScore"] == 70
+        with pytest.raises(Exception):
+            loader.get_job_match()
 
     def test_get_job_match_score_range(self, db_path):
         """Should accept various valid match scores."""
@@ -289,8 +276,13 @@ class TestConfigLoaderIntegration:
 
         # Insert both configs
         ai_payload = {
-            "selected": {"provider": "claude", "interface": "api", "model": "claude-sonnet"},
-            "providers": [],
+            "worker": {
+                "selected": {"provider": "claude", "interface": "api", "model": "claude-sonnet"}
+            },
+            "documentGenerator": {
+                "selected": {"provider": "openai", "interface": "api", "model": "gpt-4o"}
+            },
+            "options": [],
         }
         match_policy_payload = {
             "jobMatch": {

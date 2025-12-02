@@ -13,6 +13,7 @@ import {
   MatchPolicyTab,
 } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
+import { ScreenshotButton } from "./components/ScreenshotButton"
 
 type TabType =
   | "prefilter"
@@ -76,12 +77,13 @@ export function JobFinderConfigPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6" id="config-page-root">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Job Finder Configuration</h1>
           <p className="text-muted-foreground">Manage filtering rules, queues, scheduling, and profile defaults.</p>
         </div>
+        <ScreenshotButton targetId="config-page-root" />
       </div>
 
       {configState.error && (
