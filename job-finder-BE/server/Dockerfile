@@ -45,10 +45,9 @@ COPY infra/sqlite ./infra/sqlite
 RUN rm package-lock.json && npm install --omit=dev --no-package-lock && npm rebuild better-sqlite3
 COPY --from=base /app/dist ./dist
 
-# Copy entrypoint script and set ownership
+# Copy entrypoint script
 COPY job-finder-BE/server/docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
-    && chown -R node:node /app
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Entrypoint fixes volume permissions then drops to node user
 ENTRYPOINT ["docker-entrypoint.sh"]

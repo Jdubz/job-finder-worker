@@ -30,6 +30,10 @@ services:
       DATABASE_PATH: /data/sqlite/jobfinder.db
       JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
       WORKER_WS_TOKEN: ${WORKER_WS_TOKEN}
+      # Cron + log rotation (runs inside API container)
+      CRON_ENABLED: "true"
+      LOG_DIR: /logs
+      WORKER_MAINTENANCE_URL: http://worker:5555/maintenance
       # CORS_ALLOWED_ORIGINS: "https://your-frontend-domain.com,https://another-domain.com"
     volumes:
       # Update these paths to match your production server
@@ -39,6 +43,9 @@ services:
       - type: bind
         source: ./artifacts  # Change to your artifacts directory
         target: /data/artifacts
+      - type: bind
+        source: ./logs  # Shared logs directory for rotation
+        target: /logs
       - type: bind
         source: ./codex  # Codex CLI OAuth tokens (ChatGPT Pro) - must be read-write for token refresh
         target: /home/node/.codex
@@ -65,7 +72,7 @@ services:
     environment:
       ENVIRONMENT: production
       ENABLE_QUEUE_MODE: "true"
-      ENABLE_CRON: "true"
+      ENABLE_CRON: "false"  # Cron now runs in API container
       ENABLE_CLOUD_LOGGING: "false"
       SQLITE_DB_PATH: /data/sqlite/jobfinder.db
       CONFIG_PATH: /app/config/config.production.yaml

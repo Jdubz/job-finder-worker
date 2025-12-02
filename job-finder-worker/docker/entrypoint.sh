@@ -82,46 +82,8 @@ else
 fi
 echo "=== End Gemini Setup ==="
 
-# Check if cron should be enabled (default: true for backward compatibility)
-ENABLE_CRON=${ENABLE_CRON:-true}
-
-if [ "${ENABLE_CRON}" = "true" ]; then
-    # Save environment variables for cron
-    echo "Saving environment variables for cron..."
-    printenv > /etc/environment
-
-    # Show cron schedule
-    echo "Cron schedule:"
-    cat /etc/cron.d/job-finder-cron | grep -v '^#' | grep -v '^$'
-    echo ""
-
-    # Calculate next run time
-    CURRENT_HOUR=$((10#$(date +%H)))
-    CURRENT_MIN=$((10#$(date +%M)))
-    NEXT_RUN_HOUR=$(( (CURRENT_HOUR / 6 + 1) * 6 ))
-    if [ $NEXT_RUN_HOUR -ge 24 ]; then
-        NEXT_RUN_HOUR=0
-    fi
-
-    echo "Next scheduled run: $(printf "%02d:00" $NEXT_RUN_HOUR)"
-    echo ""
-
-    # Start cron
-    echo "Starting cron daemon..."
-    cron
-
-    # Check if cron is running
-    if pgrep cron > /dev/null; then
-        echo "✓ Cron daemon started successfully"
-    else
-        echo "✗ ERROR: Cron daemon failed to start!"
-        exit 1
-    fi
-else
-    echo "Cron disabled (ENABLE_CRON=false)"
-    echo "Job scraping will only run via manual queue submissions"
-    echo ""
-fi
+# Cron removed from worker; scheduling now lives in the API container.
+ENABLE_CRON=false
 
 # Start Flask worker if enabled (default mode)
 if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then
@@ -215,9 +177,6 @@ fi
 
 echo ""
 echo "Monitor logs:"
-if [ "${ENABLE_CRON}" = "true" ]; then
-    echo "  - Cron output: tail -f /var/log/cron.log"
-fi
 if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then
     echo "  - Flask worker: tail -f /app/logs/flask_worker.log"
     echo "  - Health check: curl http://localhost:5555/health"
@@ -229,21 +188,12 @@ echo "========================================="
 echo ""
 
 # Tail logs (this keeps container running and shows output)
-if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ] && [ "${ENABLE_CRON}" = "true" ]; then
-    # Tail both cron and Flask worker logs
-    exec tail -f /var/log/cron.log /app/logs/flask_worker.log
-elif [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then
+if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then
     # Tail just Flask worker log
     exec tail -f /app/logs/flask_worker.log
-elif [ "${ENABLE_QUEUE_MODE}" = "true" ] && [ "${ENABLE_CRON}" = "true" ]; then
-    # Tail both cron and queue worker logs
-    exec tail -f /var/log/cron.log /app/logs/queue_worker.log
 elif [ "${ENABLE_QUEUE_MODE}" = "true" ]; then
     # Tail just queue worker log
     exec tail -f /app/logs/queue_worker.log
-elif [ "${ENABLE_CRON}" = "true" ]; then
-    # Tail just cron log
-    exec tail -f /var/log/cron.log
 else
     # Neither enabled - just keep container alive
     echo "No active processes to monitor. Container will sleep indefinitely."

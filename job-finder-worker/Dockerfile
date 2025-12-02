@@ -25,9 +25,8 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies (cron for scheduling, procps for pgrep, curl for healthcheck, gosu for privilege dropping, sqlite3 for agent review)
+# Install runtime dependencies (procps for pgrep, curl for healthcheck, gosu for privilege dropping, sqlite3 for agent review)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cron \
     procps \
     curl \
     ca-certificates \
@@ -66,19 +65,13 @@ COPY src/ ./src/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
 
-# Copy cron configuration, entrypoint, and helper scripts
-COPY docker/crontab /etc/cron.d/job-finder-cron
+# Copy entrypoint and helper scripts (no cron)
 COPY docker/entrypoint.sh /app/entrypoint.sh
 COPY docker/run-now.sh /app/docker/run-now.sh
-COPY docker/cron-submit-scrape.sh /app/docker/cron-submit-scrape.sh
 
-# Set proper permissions for cron and scripts
-RUN chmod 0644 /etc/cron.d/job-finder-cron && \
-    crontab /etc/cron.d/job-finder-cron && \
-    touch /var/log/cron.log && \
-    chmod +x /app/entrypoint.sh && \
-    chmod +x /app/docker/run-now.sh && \
-    chmod +x /app/docker/cron-submit-scrape.sh
+# Set proper permissions for scripts
+RUN chmod +x /app/entrypoint.sh && \
+    chmod +x /app/docker/run-now.sh
 
 # Make PATH include user-installed packages (node user)
 ENV PATH=/home/node/.local/bin:$PATH
