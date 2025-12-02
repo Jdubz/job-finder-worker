@@ -112,7 +112,7 @@ def processor(mock_managers):
         from job_finder.scoring.engine import ScoreBreakdown
 
         class MockExtractor:
-            def extract(self, title, description, location):
+            def extract(self, title, description, location=None, posted_date=None):
                 return JobExtractionResult(
                     seniority="senior",
                     work_arrangement="remote",

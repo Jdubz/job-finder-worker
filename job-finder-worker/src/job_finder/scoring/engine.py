@@ -20,7 +20,7 @@ class ScoreAdjustment:
 
     category: str
     reason: str
-    points: int
+    points: float
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -32,7 +32,8 @@ class ScoreAdjustment:
 
     def __str__(self) -> str:
         """String representation for logging/debugging."""
-        return f"[{self.category}] {self.reason} ({self.points:+d})"
+        sign = "+" if self.points >= 0 else ""
+        return f"[{self.category}] {self.reason} ({sign}{self.points:.1f})"
 
 
 @dataclass
@@ -322,12 +323,13 @@ class ScoringEngine:
             # Relocation required - apply penalty or hard reject
             if relocation_penalty <= -100:
                 return {
-                    "points": 0,
+                    "points": relocation_penalty,
                     "hard_reject": True,
                     "rejection_reason": "Relocation required",
                 }
             # Apply relocation penalty and continue with timezone scoring
-            base_result = self._score_timezone(extraction, is_hybrid=False)
+            is_hybrid = work_arrangement == "hybrid"
+            base_result = self._score_timezone(extraction, is_hybrid=is_hybrid)
             adjustments = list(base_result.get("adjustments", []))
             adjustments.append(
                 ScoreAdjustment(
@@ -391,17 +393,18 @@ class ScoringEngine:
         user_tz = self.location_config.get("userTimezone", -8)
         max_diff = self.location_config.get("maxTimezoneDiffHours", 4)
         per_hour_penalty = self.location_config.get("perHourPenalty", 3)
+        unknown_tz_penalty = self.location_config.get("unknownTimezonePenalty", -5)
 
         # Handle None or invalid timezone types
         if job_tz is None or not isinstance(job_tz, (int, float)):
-            # Unknown/invalid timezone - small penalty for uncertainty
+            # Unknown/invalid timezone - configurable penalty for uncertainty
             return {
-                "points": -5,
+                "points": unknown_tz_penalty,
                 "adjustments": [
                     ScoreAdjustment(
                         category="location",
                         reason="Unknown timezone",
-                        points=-5,
+                        points=unknown_tz_penalty,
                     )
                 ],
             }
@@ -493,13 +496,14 @@ class ScoringEngine:
                 )
             )
         elif self._required_tech:
-            # None of the required tech found - significant penalty
-            points -= 15
+            # None of the required tech found - configurable penalty
+            missing_penalty = self.tech_config.get("missingRequiredPenalty", -15)
+            points += missing_penalty
             adjustments.append(
                 ScoreAdjustment(
                     category="technology",
                     reason=f"Missing required tech: {', '.join(self._required_tech)}",
-                    points=-15,
+                    points=missing_penalty,
                 )
             )
 
@@ -544,6 +548,8 @@ class ScoringEngine:
         below_target_penalty = self.salary_config.get("belowTargetPenalty", 2)
         equity_bonus = self.salary_config.get("equityBonus", 5)
         contract_penalty = self.salary_config.get("contractPenalty", -15)
+        missing_salary_penalty = self.salary_config.get("missingSalaryPenalty", -5)
+        meets_target_bonus = self.salary_config.get("meetsTargetBonus", 5)
 
         points = 0
         adjustments: List[ScoreAdjustment] = []
@@ -552,13 +558,13 @@ class ScoringEngine:
         job_salary = max_salary or min_salary
 
         if job_salary is None:
-            # No salary info - small penalty for uncertainty
-            points -= 5
+            # No salary info - configurable penalty for uncertainty
+            points += missing_salary_penalty
             adjustments.append(
                 ScoreAdjustment(
                     category="salary",
                     reason="No salary info",
-                    points=-5,
+                    points=missing_salary_penalty,
                 )
             )
         else:
@@ -591,13 +597,13 @@ class ScoringEngine:
                     )
                 )
             elif config_target:
-                # At or above target - bonus
-                points += 5
+                # At or above target - configurable bonus
+                points += meets_target_bonus
                 adjustments.append(
                     ScoreAdjustment(
                         category="salary",
                         reason=f"Salary ${job_salary:,} meets target",
-                        points=5,
+                        points=meets_target_bonus,
                     )
                 )
 
@@ -719,9 +725,11 @@ class ScoringEngine:
         if not matched_skills:
             return {"points": 0, "adjustments": []}
 
-        # Bonus based on number of matched skills
+        # Bonus based on number of matched skills (configurable)
+        bonus_per_skill = self.config.get("skills", {}).get("bonusPerSkill", 2)
+        max_skill_bonus = self.config.get("skills", {}).get("maxSkillBonus", 15)
         match_count = len(matched_skills)
-        bonus = min(match_count * 2, 15)  # Cap at +15
+        bonus = min(match_count * bonus_per_skill, max_skill_bonus)
 
         return {
             "points": bonus,

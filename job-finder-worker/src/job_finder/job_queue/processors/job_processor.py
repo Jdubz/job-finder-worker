@@ -469,11 +469,11 @@ class JobProcessor(BaseProcessor):
                 },
             )
 
-            # Check score threshold
+            # Check score threshold using deterministic score (not AI score)
             min_score = getattr(self.ai_matcher, "min_match_score", 0)
-            if ctx.match_result.match_score < min_score:
+            if ctx.score_result.final_score < min_score:
                 self._finalize_skipped(
-                    ctx, f"Score {ctx.match_result.match_score} below threshold {min_score}"
+                    ctx, f"Score {ctx.score_result.final_score} below threshold {min_score}"
                 )
                 return
 
@@ -565,7 +565,7 @@ class JobProcessor(BaseProcessor):
         if (ctx.item.metadata or {}).get("bypassFilter"):
             return TitleFilterResult(passed=True)
 
-        title = ctx.job_data.get("title", "")
+        title = (ctx.job_data or {}).get("title", "")
         return self.title_filter.filter(title)
 
     def _execute_company_lookup(self, ctx: PipelineContext) -> Optional[Dict[str, Any]]:
@@ -755,13 +755,14 @@ class JobProcessor(BaseProcessor):
 
     def _execute_ai_extraction(self, ctx: PipelineContext) -> Optional[JobExtractionResult]:
         """Execute AI extraction stage."""
-        job_data = ctx.job_data
+        job_data = ctx.job_data or {}
         title = job_data.get("title", "")
         description = job_data.get("description", "")
         location = job_data.get("location", "")
+        posted_date = job_data.get("posted_date")
 
         try:
-            extraction = self.extractor.extract(title, description, location)
+            extraction = self.extractor.extract(title, description, location, posted_date)
             logger.info(
                 f"Extraction complete: seniority={extraction.seniority}, "
                 f"arrangement={extraction.work_arrangement}, techs={len(extraction.technologies)}"
@@ -773,7 +774,15 @@ class JobProcessor(BaseProcessor):
 
     def _execute_scoring(self, ctx: PipelineContext) -> ScoreBreakdown:
         """Execute deterministic scoring stage."""
-        job_data = ctx.job_data
+        if not ctx.extraction:
+            return ScoreBreakdown(
+                base_score=0,
+                final_score=0,
+                passed=False,
+                rejection_reason="No extraction data available",
+            )
+
+        job_data = ctx.job_data or {}
         title = job_data.get("title", "")
         description = job_data.get("description", "")
 
@@ -1178,6 +1187,7 @@ class JobProcessor(BaseProcessor):
                                 if not company_name:
                                     company_name = data.get("name", "")
                     except (json.JSONDecodeError, AttributeError, TypeError):
+                        # Schema.org JSON-LD may be missing or malformed; fall back to other methods
                         pass
 
             # Try domain name

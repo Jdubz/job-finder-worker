@@ -231,6 +231,7 @@ class JobExtractor:
         title: str,
         description: str,
         location: Optional[str] = None,
+        posted_date: Optional[str] = None,
     ) -> JobExtractionResult:
         """
         Extract structured data from a job posting.
@@ -239,6 +240,7 @@ class JobExtractor:
             title: Job title
             description: Full job description
             location: Optional location string from posting
+            posted_date: Optional posted date string from posting
 
         Returns:
             JobExtractionResult with extracted data
@@ -248,7 +250,7 @@ class JobExtractor:
             return JobExtractionResult()
 
         try:
-            prompt = build_extraction_prompt(title, description, location)
+            prompt = build_extraction_prompt(title, description, location, posted_date)
             response = self.provider.generate(
                 prompt=prompt,
                 max_tokens=500,
