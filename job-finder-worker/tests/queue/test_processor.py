@@ -417,7 +417,10 @@ def test_single_task_pipeline_spawns_company_for_real_company_from_aggregator(
     spawn_calls = mock_managers["queue_manager"].spawn_item_safely.call_args_list
     company_spawn = None
     for call in spawn_calls:
-        new_item_data = call[1].get("new_item_data") or call[0][1]
+        if call.kwargs:
+            new_item_data = call.kwargs.get("new_item_data")
+        else:
+            new_item_data = call.args[1]
         if new_item_data.get("type") == "company":
             company_spawn = call
             break
