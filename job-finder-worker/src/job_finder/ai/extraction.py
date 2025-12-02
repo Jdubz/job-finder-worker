@@ -126,7 +126,9 @@ class JobExtractionResult:
             days_old=_safe_int(data.get("daysOld") or data.get("days_old")),
             is_repost=bool(data.get("isRepost") or data.get("is_repost")),
             # Location
-            relocation_required=bool(data.get("relocationRequired") or data.get("relocation_required")),
+            relocation_required=bool(
+                data.get("relocationRequired") or data.get("relocation_required")
+            ),
             # Compensation
             includes_equity=bool(data.get("includesEquity") or data.get("includes_equity")),
             is_contract=bool(data.get("isContract") or data.get("is_contract")),
@@ -141,7 +143,9 @@ class JobExtractionResult:
             is_ml_ai=bool(data.get("isMlAi") or data.get("is_ml_ai")),
             is_data=bool(data.get("isData") or data.get("is_data")),
             is_security=bool(data.get("isSecurity") or data.get("is_security")),
-            requires_clearance=bool(data.get("requiresClearance") or data.get("requires_clearance")),
+            requires_clearance=bool(
+                data.get("requiresClearance") or data.get("requires_clearance")
+            ),
             is_consulting=bool(data.get("isConsulting") or data.get("is_consulting")),
         )
 

@@ -99,9 +99,7 @@ class ConfigLoader:
         Temporary shim that returns match-policy for backwards compatibility
         during migration. Will be removed once all callers are updated.
         """
-        logger.warning(
-            "get_scoring_config() is deprecated - use get_match_policy() instead"
-        )
+        logger.warning("get_scoring_config() is deprecated - use get_match_policy() instead")
         return self.get_match_policy()
 
     def get_queue_settings(self) -> Dict[str, Any]:

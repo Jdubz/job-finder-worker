@@ -116,9 +116,7 @@ class SafeTestRunner:
                     # Check execution time
                     execution_time = time.time() - self.start_time
                     if execution_time > MAX_EXECUTION_TIME:
-                        print(
-                            f"\n⚠️  CRITICAL: Test execution exceeded {MAX_EXECUTION_TIME}s"
-                        )
+                        print(f"\n⚠️  CRITICAL: Test execution exceeded {MAX_EXECUTION_TIME}s")
                         self.terminate_tests()
                         sys.exit(1)
 

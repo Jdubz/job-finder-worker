@@ -340,10 +340,14 @@ class JobProcessor(BaseProcessor):
                     return
 
             # Emit scrape complete event
-            self._emit_event("job:scraped", item.id, {
-                "title": ctx.job_data.get("title", ""),
-                "company": ctx.job_data.get("company", ""),
-            })
+            self._emit_event(
+                "job:scraped",
+                item.id,
+                {
+                    "title": ctx.job_data.get("title", ""),
+                    "company": ctx.job_data.get("company", ""),
+                },
+            )
 
             # Get/create job listing
             ctx.listing_id = self._get_or_create_job_listing(item, ctx.job_data)
@@ -354,10 +358,14 @@ class JobProcessor(BaseProcessor):
             self._update_status(item, "Filtering by title", ctx.stage)
             ctx.title_filter_result = self._execute_title_filter(ctx)
             if not ctx.title_filter_result.passed:
-                self._emit_event("job:filtered", item.id, {
-                    "passed": False,
-                    "reason": ctx.title_filter_result.reason,
-                })
+                self._emit_event(
+                    "job:filtered",
+                    item.id,
+                    {
+                        "passed": False,
+                        "reason": ctx.title_filter_result.reason,
+                    },
+                )
                 self._finalize_filtered(ctx)
                 return
 
@@ -371,10 +379,14 @@ class JobProcessor(BaseProcessor):
             ctx.company_data = self._execute_company_lookup(ctx)
 
             # Emit company lookup event
-            self._emit_event("job:company_lookup", item.id, {
-                "company": ctx.job_data.get("company", ""),
-                "hasData": ctx.company_data is not None,
-            })
+            self._emit_event(
+                "job:company_lookup",
+                item.id,
+                {
+                    "company": ctx.job_data.get("company", ""),
+                    "hasData": ctx.company_data is not None,
+                },
+            )
 
             # STAGE 3.5: COMPANY DEPENDENCY CHECK
             # Before AI extraction, ensure company has good data (not just a stub)
@@ -393,11 +405,17 @@ class JobProcessor(BaseProcessor):
                 return
 
             # Emit extraction event
-            self._emit_event("job:extraction", item.id, {
-                "seniority": ctx.extraction.seniority,
-                "workArrangement": ctx.extraction.work_arrangement,
-                "technologies": ctx.extraction.technologies[:5] if ctx.extraction.technologies else [],
-            })
+            self._emit_event(
+                "job:extraction",
+                item.id,
+                {
+                    "seniority": ctx.extraction.seniority,
+                    "workArrangement": ctx.extraction.work_arrangement,
+                    "technologies": (
+                        ctx.extraction.technologies[:5] if ctx.extraction.technologies else []
+                    ),
+                },
+            )
 
             # Update listing with extraction data
             self._update_listing_status(
@@ -416,14 +434,20 @@ class JobProcessor(BaseProcessor):
             ctx.score_result = self._execute_scoring(ctx)
 
             # Emit scoring event
-            self._emit_event("job:scoring", item.id, {
-                "score": ctx.score_result.final_score,
-                "passed": ctx.score_result.passed,
-                "adjustmentCount": len(ctx.score_result.adjustments),
-            })
+            self._emit_event(
+                "job:scoring",
+                item.id,
+                {
+                    "score": ctx.score_result.final_score,
+                    "passed": ctx.score_result.passed,
+                    "adjustmentCount": len(ctx.score_result.adjustments),
+                },
+            )
 
             if not ctx.score_result.passed:
-                self._finalize_skipped(ctx, f"Scoring rejected: {ctx.score_result.rejection_reason}")
+                self._finalize_skipped(
+                    ctx, f"Scoring rejected: {ctx.score_result.rejection_reason}"
+                )
                 return
 
             # STAGE 6: AI MATCH ANALYSIS
@@ -436,10 +460,14 @@ class JobProcessor(BaseProcessor):
                 return
 
             # Emit analysis event
-            self._emit_event("job:analysis", item.id, {
-                "matchScore": ctx.match_result.match_score,
-                "priority": ctx.match_result.application_priority,
-            })
+            self._emit_event(
+                "job:analysis",
+                item.id,
+                {
+                    "matchScore": ctx.match_result.match_score,
+                    "priority": ctx.match_result.application_priority,
+                },
+            )
 
             # Check score threshold
             min_score = getattr(self.ai_matcher, "min_match_score", 0)
@@ -456,11 +484,15 @@ class JobProcessor(BaseProcessor):
             doc_id = self._execute_save_match(ctx)
 
             # Emit saved event
-            self._emit_event("job:saved", item.id, {
-                "docId": doc_id,
-                "listingId": ctx.listing_id,
-                "matchScore": ctx.match_result.match_score,
-            })
+            self._emit_event(
+                "job:saved",
+                item.id,
+                {
+                    "docId": doc_id,
+                    "listingId": ctx.listing_id,
+                    "matchScore": ctx.match_result.match_score,
+                },
+            )
 
             # SUCCESS!
             duration_ms = round((time.monotonic() - start_time) * 1000)
@@ -508,7 +540,9 @@ class JobProcessor(BaseProcessor):
             return {
                 "title": manual_title or "",
                 "description": manual_desc or "",
-                "company": (item.metadata or {}).get("manualCompanyName") or item.company_name or "Unknown",
+                "company": (item.metadata or {}).get("manualCompanyName")
+                or item.company_name
+                or "Unknown",
                 "location": (item.metadata or {}).get("manualLocation") or "",
                 "tech_stack": (item.metadata or {}).get("manualTechStack"),
                 "url": item.url,
@@ -591,7 +625,9 @@ class JobProcessor(BaseProcessor):
         company = self.companies_manager.get_company(company_name_clean)
 
         if not company:
-            company = self.companies_manager.create_company_stub(company_name_clean, company_website)
+            company = self.companies_manager.create_company_stub(
+                company_name_clean, company_website
+            )
 
         if company:
             company_id = company.get("id")
@@ -604,9 +640,7 @@ class JobProcessor(BaseProcessor):
 
         return company
 
-    def _check_company_dependency(
-        self, ctx: PipelineContext, state: Dict[str, Any]
-    ) -> bool:
+    def _check_company_dependency(self, ctx: PipelineContext, state: Dict[str, Any]) -> bool:
         """
         Check if company data is ready before proceeding to AI extraction.
 
@@ -629,9 +663,7 @@ class JobProcessor(BaseProcessor):
 
         # Company has good data - ready to proceed
         if self.companies_manager.has_good_company_data(company):
-            logger.debug(
-                "Company %s has good data, proceeding to extraction", company_name
-            )
+            logger.debug("Company %s has good data, proceeding to extraction", company_name)
             return True
 
         # Check wait retry count
@@ -667,11 +699,15 @@ class JobProcessor(BaseProcessor):
         )
 
         # Emit wait event
-        self._emit_event("job:waiting_company", item.id, {
-            "company": company_name,
-            "companyId": company_id,
-            "waitCount": wait_count + 1,
-        })
+        self._emit_event(
+            "job:waiting_company",
+            item.id,
+            {
+                "company": company_name,
+                "companyId": company_id,
+                "waitCount": wait_count + 1,
+            },
+        )
 
         return False
 
@@ -683,7 +719,9 @@ class JobProcessor(BaseProcessor):
 
         company_id = company.get("id")
         company_name = ctx.job_data.get("company", "")
-        company_website = ctx.job_data.get("company_website") or self._extract_company_domain(ctx.item.url)
+        company_website = ctx.job_data.get("company_website") or self._extract_company_domain(
+            ctx.item.url
+        )
 
         if not company_id or not company_name:
             return
@@ -693,7 +731,9 @@ class JobProcessor(BaseProcessor):
             return
 
         try:
-            company_url = company_website or f"https://www.google.com/search?q={quote_plus(company_name)}"
+            company_url = (
+                company_website or f"https://www.google.com/search?q={quote_plus(company_name)}"
+            )
             self.queue_manager.spawn_item_safely(
                 current_item=ctx.item,
                 new_item_data={
@@ -814,7 +854,9 @@ class JobProcessor(BaseProcessor):
         """Finalize pipeline with FILTERED status."""
         job_data = ctx.job_data or {}
         title = job_data.get("title", "")
-        rejection_reason = ctx.title_filter_result.reason if ctx.title_filter_result else "Title filter rejected"
+        rejection_reason = (
+            ctx.title_filter_result.reason if ctx.title_filter_result else "Title filter rejected"
+        )
 
         logger.info(f"[PIPELINE] FILTERED: '{title}' - {rejection_reason}")
 
@@ -822,7 +864,9 @@ class JobProcessor(BaseProcessor):
         self._update_listing_status(
             ctx.listing_id,
             "filtered",
-            filter_result={"titleFilter": ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}},
+            filter_result={
+                "titleFilter": ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
+            },
         )
 
         # Spawn company/source tasks even for filtered jobs
@@ -928,7 +972,9 @@ class JobProcessor(BaseProcessor):
         # Spawn company enrichment task
         if company_id:
             try:
-                company_url = company_website or f"https://www.google.com/search?q={quote_plus(company_name)}"
+                company_url = (
+                    company_website or f"https://www.google.com/search?q={quote_plus(company_name)}"
+                )
                 self.queue_manager.spawn_item_safely(
                     item,
                     {
@@ -1248,6 +1294,7 @@ class JobProcessor(BaseProcessor):
         scrape_config = item.scrape_config
         if not scrape_config:
             from job_finder.job_queue.models import ScrapeConfig
+
             scrape_config = ScrapeConfig()
 
         logger.info(f"Starting scrape with config: {scrape_config.model_dump()}")

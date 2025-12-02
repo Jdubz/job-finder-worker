@@ -80,48 +80,65 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
     new_match_policy = {
         # From scoring-config
         "minScore": scoring_config.get("minScore", 60),
-        "weights": scoring_config.get("weights", {
-            "skillMatch": 40,
-            "experienceMatch": 30,
-            "seniorityMatch": 30,
-        }),
-        "seniority": scoring_config.get("seniority", {
-            "preferred": ["senior", "staff", "lead", "principal"],
-            "acceptable": ["mid"],
-            "rejected": ["junior", "intern", "entry", "associate"],
-            "preferredBonus": 15,
-            "acceptablePenalty": 0,
-            "rejectedPenalty": -100,
-        }),
-        "location": scoring_config.get("location", {
-            "allowRemote": True,
-            "allowHybrid": True,
-            "allowOnsite": False,
-            "userTimezone": -8,
-            "maxTimezoneDiffHours": 4,
-            "perHourPenalty": 3,
-            "hybridSameCityBonus": 10,
-        }),
-        "technology": scoring_config.get("technology", {
-            "required": ["typescript", "react"],
-            "preferred": ["node", "python"],
-            "disliked": ["angular"],
-            "rejected": ["wordpress", "php"],
-            "requiredBonus": 10,
-            "preferredBonus": 5,
-            "dislikedPenalty": -5,
-        }),
-        "salary": scoring_config.get("salary", {
-            "minimum": 150000,
-            "target": 200000,
-            "belowTargetPenalty": 2,
-        }),
-        "experience": scoring_config.get("experience", {
-            "userYears": 12,
-            "maxRequired": 15,
-            "overqualifiedPenalty": 5,
-        }),
-
+        "weights": scoring_config.get(
+            "weights",
+            {
+                "skillMatch": 40,
+                "experienceMatch": 30,
+                "seniorityMatch": 30,
+            },
+        ),
+        "seniority": scoring_config.get(
+            "seniority",
+            {
+                "preferred": ["senior", "staff", "lead", "principal"],
+                "acceptable": ["mid"],
+                "rejected": ["junior", "intern", "entry", "associate"],
+                "preferredBonus": 15,
+                "acceptablePenalty": 0,
+                "rejectedPenalty": -100,
+            },
+        ),
+        "location": scoring_config.get(
+            "location",
+            {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": False,
+                "userTimezone": -8,
+                "maxTimezoneDiffHours": 4,
+                "perHourPenalty": 3,
+                "hybridSameCityBonus": 10,
+            },
+        ),
+        "technology": scoring_config.get(
+            "technology",
+            {
+                "required": ["typescript", "react"],
+                "preferred": ["node", "python"],
+                "disliked": ["angular"],
+                "rejected": ["wordpress", "php"],
+                "requiredBonus": 10,
+                "preferredBonus": 5,
+                "dislikedPenalty": -5,
+            },
+        ),
+        "salary": scoring_config.get(
+            "salary",
+            {
+                "minimum": 150000,
+                "target": 200000,
+                "belowTargetPenalty": 2,
+            },
+        ),
+        "experience": scoring_config.get(
+            "experience",
+            {
+                "userYears": 12,
+                "maxRequired": 15,
+                "overqualifiedPenalty": 5,
+            },
+        ),
         # NEW: Freshness config (from prefilter-policy.strikeEngine.ageStrike)
         "freshness": {
             "freshBonusDays": 2,
@@ -132,7 +149,6 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
             "veryStalePenalty": -20,
             "repostPenalty": -5,
         },
-
         # NEW: Role fit config
         "roleFit": {
             "backendBonus": 5,
@@ -146,26 +162,41 @@ def migrate(db_path: str, dry_run: bool = True) -> dict:
             "clearancePenalty": -100,
             "managementPenalty": -10,
         },
-
         # From old match-policy.companyWeights + jobMatch
         "company": {
             "preferredCityBonus": job_match.get("portlandOfficeBonus", 20),
             "preferredCity": "Portland",  # Extracted from Portland-specific bonus
             "remoteFirstBonus": company_weights.get("bonuses", {}).get("remoteFirst", 15),
             "aiMlFocusBonus": company_weights.get("bonuses", {}).get("aiMlFocus", 10),
-            "largeCompanyBonus": company_weights.get("sizeAdjustments", {}).get("largeCompanyBonus", 10),
-            "smallCompanyPenalty": company_weights.get("sizeAdjustments", {}).get("smallCompanyPenalty", -5),
-            "largeCompanyThreshold": company_weights.get("sizeAdjustments", {}).get("largeCompanyThreshold", 10000),
-            "smallCompanyThreshold": company_weights.get("sizeAdjustments", {}).get("smallCompanyThreshold", 100),
+            "largeCompanyBonus": company_weights.get("sizeAdjustments", {}).get(
+                "largeCompanyBonus", 10
+            ),
+            "smallCompanyPenalty": company_weights.get("sizeAdjustments", {}).get(
+                "smallCompanyPenalty", -5
+            ),
+            "largeCompanyThreshold": company_weights.get("sizeAdjustments", {}).get(
+                "largeCompanyThreshold", 10000
+            ),
+            "smallCompanyThreshold": company_weights.get("sizeAdjustments", {}).get(
+                "smallCompanyThreshold", 100
+            ),
             "startupBonus": 0,
         },
-
         # From old match-policy.dealbreakers
         "dealbreakers": {
-            "blockedLocations": dealbreakers.get("blockedLocations", [
-                "india", "bangalore", "bengaluru", "hyderabad", "chennai", "pune",
-                "philippines", "manila"
-            ]),
+            "blockedLocations": dealbreakers.get(
+                "blockedLocations",
+                [
+                    "india",
+                    "bangalore",
+                    "bengaluru",
+                    "hyderabad",
+                    "chennai",
+                    "pune",
+                    "philippines",
+                    "manila",
+                ],
+            ),
             "locationPenalty": dealbreakers.get("locationPenaltyPoints", 60),
             "relocationPenalty": dealbreakers.get("relocationPenaltyPoints", 80),
             "ambiguousLocationPenalty": dealbreakers.get("ambiguousLocationPenaltyPoints", 40),

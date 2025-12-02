@@ -126,7 +126,9 @@ def processor(mock_managers):
                 return ScoreBreakdown(
                     base_score=50,
                     final_score=85,
-                    adjustments=[ScoreAdjustment(category="mock", reason="Mock scoring", points=35)],
+                    adjustments=[
+                        ScoreAdjustment(category="mock", reason="Mock scoring", points=35)
+                    ],
                     passed=True,
                 )
 
@@ -312,7 +314,8 @@ def test_single_task_pipeline_completes_to_match(processor, mock_managers, sampl
     mock_managers["job_storage"].save_job_match.assert_called_once()
     # Queue should be updated to SUCCESS
     success_calls = [
-        call for call in mock_managers["queue_manager"].update_status.call_args_list
+        call
+        for call in mock_managers["queue_manager"].update_status.call_args_list
         if call[0][1] == QueueStatus.SUCCESS
     ]
     assert len(success_calls) == 1

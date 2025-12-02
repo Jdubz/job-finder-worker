@@ -229,7 +229,9 @@ class ScoringEngine:
                 final_score=0,
                 adjustments=adjustments,
                 passed=False,
-                rejection_reason=role_fit_result.get("rejection_reason", "Role fit requirements not met"),
+                rejection_reason=role_fit_result.get(
+                    "rejection_reason", "Role fit requirements not met"
+                ),
             )
 
         # 9. Company signals scoring (from company data)
@@ -711,9 +713,7 @@ class ScoringEngine:
         # Use word boundary matching to avoid false positives
         # e.g., "go" shouldn't match "going", "good", etc.
         matched_skills = [
-            skill
-            for skill in self.user_skills
-            if re.search(rf"\b{re.escape(skill)}\b", desc_lower)
+            skill for skill in self.user_skills if re.search(rf"\b{re.escape(skill)}\b", desc_lower)
         ]
 
         if not matched_skills:
@@ -989,9 +989,10 @@ class ScoringEngine:
         preferred_city_bonus = self.company_config["preferredCityBonus"]
         preferred_city = self.company_config.get("preferredCity", "").lower()
         if preferred_city_bonus and preferred_city:
-            has_preferred_city = any(
-                preferred_city in loc for loc in locations_lower
-            ) or preferred_city in headquarters
+            has_preferred_city = (
+                any(preferred_city in loc for loc in locations_lower)
+                or preferred_city in headquarters
+            )
             if has_preferred_city:
                 points += preferred_city_bonus
                 adjustments.append(
@@ -1017,7 +1018,15 @@ class ScoringEngine:
         # 3. AI/ML focus bonus (required field)
         ai_ml_bonus = self.company_config["aiMlFocusBonus"]
         if ai_ml_bonus:
-            ai_keywords = ["machine learning", "artificial intelligence", "ai", "ml", "deep learning", "llm", "generative ai"]
+            ai_keywords = [
+                "machine learning",
+                "artificial intelligence",
+                "ai",
+                "ml",
+                "deep learning",
+                "llm",
+                "generative ai",
+            ]
             has_ai_focus = any(kw in description for kw in ai_keywords) or any(
                 any(kw in str(t).lower() for kw in ["pytorch", "tensorflow", "ml", "ai"])
                 for t in tech_stack

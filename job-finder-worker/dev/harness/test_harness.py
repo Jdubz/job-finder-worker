@@ -69,9 +69,7 @@ def get_db_connection() -> sqlite3.Connection:
     db_path = get_db_path()
     if not Path(db_path).exists():
         print(f"{Colors.RED}Database not found: {db_path}{Colors.RESET}")
-        print(
-            "Run: make dev-setup or ./dev/setup/setup-dev-env.sh --prod-db-path /path/to/db"
-        )
+        print("Run: make dev-setup or ./dev/setup/setup-dev-env.sh --prod-db-path /path/to/db")
         sys.exit(1)
 
     conn = sqlite3.connect(db_path)
@@ -97,9 +95,7 @@ def submit_job_item(
     tracking_id = tracking_id or generate_tracking_id()
     now = datetime.now(timezone.utc).isoformat()
 
-    unique_url = (
-        f"{url}?t={tracking_id}" if url else f"https://example.com/job/{tracking_id}"
-    )
+    unique_url = f"{url}?t={tracking_id}" if url else f"https://example.com/job/{tracking_id}"
 
     item_id = generate_tracking_id()
 
@@ -445,9 +441,7 @@ def watch_item(tracking_id: str, timeout: int = 300, poll_interval: int = 2):
                     print(f"       Result: {item['result_message']}")
 
                 if item["error_details"]:
-                    print(
-                        f"       {Colors.RED}Error: {item['error_details']}{Colors.RESET}"
-                    )
+                    print(f"       {Colors.RED}Error: {item['error_details']}{Colors.RESET}")
 
                 last_status = item["status"]
 
@@ -526,9 +520,7 @@ def watch_queue(poll_interval: int = 5):
                         diff = new - old
                         diff_str = f"+{diff}" if diff > 0 else str(diff)
                         color = Colors.GREEN if diff > 0 else Colors.RED
-                        print(
-                            f"  {status}: {old} -> {new} ({color}{diff_str}{Colors.RESET})"
-                        )
+                        print(f"  {status}: {old} -> {new} ({color}{diff_str}{Colors.RESET})")
 
                 last_counts = current_counts.copy()
 
@@ -569,9 +561,7 @@ def run_test_scenarios():
     print(f"\n{Colors.BOLD}Test 3: Source Discovery{Colors.RESET}")
     print("Submitting source discovery request...")
     tracking_ids.append(
-        submit_source_discovery_item(
-            company_name="Example Corp", website="https://example.com"
-        )
+        submit_source_discovery_item(company_name="Example Corp", website="https://example.com")
     )
 
     print(f"\n{Colors.GREEN}{'=' * 60}{Colors.RESET}")
@@ -620,56 +610,38 @@ def main():
     job_parser = subparsers.add_parser("job", help="Submit a job URL for processing")
     job_parser.add_argument("url", help="Job posting URL")
     job_parser.add_argument("--company", help="Company name")
-    job_parser.add_argument(
-        "--watch", action="store_true", help="Watch item after submission"
-    )
+    job_parser.add_argument("--watch", action="store_true", help="Watch item after submission")
 
     # Company command
-    company_parser = subparsers.add_parser(
-        "company", help="Submit a company for analysis"
-    )
+    company_parser = subparsers.add_parser("company", help="Submit a company for analysis")
     company_parser.add_argument("name", help="Company name")
     company_parser.add_argument("--url", help="Company website URL")
-    company_parser.add_argument(
-        "--watch", action="store_true", help="Watch item after submission"
-    )
+    company_parser.add_argument("--watch", action="store_true", help="Watch item after submission")
 
     # Scrape command
     scrape_parser = subparsers.add_parser("scrape", help="Submit a scrape request")
     scrape_parser.add_argument("--source", default="greenhouse", help="Source type")
     scrape_parser.add_argument("--company", help="Company name")
     scrape_parser.add_argument("--token", help="Board token")
-    scrape_parser.add_argument(
-        "--watch", action="store_true", help="Watch item after submission"
-    )
+    scrape_parser.add_argument("--watch", action="store_true", help="Watch item after submission")
 
     # Source discovery command
-    discover_parser = subparsers.add_parser(
-        "discover", help="Submit source discovery request"
-    )
+    discover_parser = subparsers.add_parser("discover", help="Submit source discovery request")
     discover_parser.add_argument("company", help="Company name")
     discover_parser.add_argument("--url", help="Company website URL")
-    discover_parser.add_argument(
-        "--watch", action="store_true", help="Watch item after submission"
-    )
+    discover_parser.add_argument("--watch", action="store_true", help="Watch item after submission")
 
     # Status command
     subparsers.add_parser("status", help="Show queue status")
 
     # Watch command
     watch_parser = subparsers.add_parser("watch", help="Watch queue for changes")
-    watch_parser.add_argument(
-        "--interval", type=int, default=5, help="Poll interval in seconds"
-    )
+    watch_parser.add_argument("--interval", type=int, default=5, help="Poll interval in seconds")
 
     # Watch item command
-    watch_item_parser = subparsers.add_parser(
-        "watch-item", help="Watch a specific item"
-    )
+    watch_item_parser = subparsers.add_parser("watch-item", help="Watch a specific item")
     watch_item_parser.add_argument("tracking_id", help="Tracking ID to watch")
-    watch_item_parser.add_argument(
-        "--timeout", type=int, default=300, help="Timeout in seconds"
-    )
+    watch_item_parser.add_argument("--timeout", type=int, default=300, help="Timeout in seconds")
 
     # Test all command
     subparsers.add_parser("test-all", help="Run all test scenarios")
