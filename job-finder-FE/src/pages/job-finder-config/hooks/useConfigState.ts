@@ -1,18 +1,15 @@
 import { useState, useEffect, useCallback } from "react"
-import { useAuth } from "@/contexts/AuthContext"
 import { configClient } from "@/api/config-client"
-import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO } from "@shared/types"
-import type { MatchPolicy, AISettings, PreFilterPolicy, WorkerSettings } from "@shared/types"
-import type { PersonalInfo } from "@shared/types"
+import type { MatchPolicy, AISettings, PreFilterPolicy, WorkerSettings, PersonalInfo } from "@shared/types"
 import { deepClone, stableStringify } from "../utils/config-helpers"
 
 export function useConfigState() {
-  const { user } = useAuth()
 
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [missingConfigs, setMissingConfigs] = useState<string[]>([])
 
   const [prefilterPolicy, setPrefilterPolicy] = useState<PreFilterPolicy | null>(null)
   const [originalPrefilterPolicy, setOriginalPrefilterPolicy] = useState<PreFilterPolicy | null>(null)
@@ -23,21 +20,18 @@ export function useConfigState() {
   const [workerSettings, setWorkerSettings] = useState<WorkerSettings | null>(null)
   const [originalWorkerSettings, setOriginalWorkerSettings] = useState<WorkerSettings | null>(null)
 
-  const [aiSettings, setAISettings] = useState<AISettings>(DEFAULT_AI_SETTINGS)
-  const [originalAI, setOriginalAI] = useState<AISettings>(DEFAULT_AI_SETTINGS)
+  const [aiSettings, setAISettings] = useState<AISettings | null>(null)
+  const [originalAI, setOriginalAI] = useState<AISettings | null>(null)
 
-  const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
-    ...DEFAULT_PERSONAL_INFO,
-    email: user?.email ?? DEFAULT_PERSONAL_INFO.email,
-  })
-  const [originalPersonalInfo, setOriginalPersonalInfo] = useState<PersonalInfo>({
-    ...DEFAULT_PERSONAL_INFO,
-    email: user?.email ?? DEFAULT_PERSONAL_INFO.email,
-  })
+  const [personalInfo, setPersonalInfo] = useState<PersonalInfo | null>(null)
+  const [originalPersonalInfo, setOriginalPersonalInfo] = useState<PersonalInfo | null>(null)
 
   const loadAll = useCallback(async () => {
     setIsLoading(true)
     setError(null)
+    setMissingConfigs([])
+    const missing: string[] = []
+
     try {
       const entries = await configClient.listEntries()
       const map = entries.reduce<Record<string, unknown>>((acc, cur) => {
@@ -45,40 +39,72 @@ export function useConfigState() {
         return acc
       }, {})
 
+      // Pre-filter policy - required
       const prefilter = map["prefilter-policy"] as PreFilterPolicy | undefined
-      if (!prefilter) throw new Error("prefilter-policy config is missing")
-      setPrefilterPolicy(deepClone(prefilter))
-      setOriginalPrefilterPolicy(deepClone(prefilter))
+      if (prefilter) {
+        setPrefilterPolicy(deepClone(prefilter))
+        setOriginalPrefilterPolicy(deepClone(prefilter))
+      } else {
+        missing.push("prefilter-policy")
+        setPrefilterPolicy(null)
+        setOriginalPrefilterPolicy(null)
+      }
 
+      // Match policy - required
       const matchPolicyData = map["match-policy"] as MatchPolicy | undefined
       if (matchPolicyData) {
         setMatchPolicy(deepClone(matchPolicyData))
         setOriginalMatchPolicy(deepClone(matchPolicyData))
       } else {
+        missing.push("match-policy")
         setMatchPolicy(null)
         setOriginalMatchPolicy(null)
       }
 
+      // Worker settings - required
       const worker = map["worker-settings"] as WorkerSettings | undefined
-      if (!worker) throw new Error("worker-settings config is missing")
-      setWorkerSettings(deepClone(worker))
-      setOriginalWorkerSettings(deepClone(worker))
+      if (worker) {
+        setWorkerSettings(deepClone(worker))
+        setOriginalWorkerSettings(deepClone(worker))
+      } else {
+        missing.push("worker-settings")
+        setWorkerSettings(null)
+        setOriginalWorkerSettings(null)
+      }
 
-      const ai = deepClone((map["ai-settings"] as AISettings) ?? DEFAULT_AI_SETTINGS)
-      setAISettings(ai)
-      setOriginalAI(deepClone(ai))
+      // AI settings - required
+      const aiData = map["ai-settings"] as AISettings | undefined
+      if (aiData) {
+        setAISettings(deepClone(aiData))
+        setOriginalAI(deepClone(aiData))
+      } else {
+        missing.push("ai-settings")
+        setAISettings(null)
+        setOriginalAI(null)
+      }
 
-      const personalFallback = { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
-      const personal = deepClone((map["personal-info"] as PersonalInfo) ?? personalFallback)
-      setPersonalInfo(personal)
-      setOriginalPersonalInfo(deepClone(personal))
+      // Personal info - required
+      const personalData = map["personal-info"] as PersonalInfo | undefined
+      if (personalData) {
+        setPersonalInfo(deepClone(personalData))
+        setOriginalPersonalInfo(deepClone(personalData))
+      } else {
+        missing.push("personal-info")
+        setPersonalInfo(null)
+        setOriginalPersonalInfo(null)
+      }
+
+      if (missing.length > 0) {
+        setMissingConfigs(missing)
+        setError(`Missing required configuration(s): ${missing.join(", ")}. Please configure them in the database.`)
+      }
     } catch (err) {
       console.error(err)
       setError("Failed to load configuration settings")
     } finally {
       setIsLoading(false)
     }
-  }, [user?.email])
+  }, [])
 
   useEffect(() => {
     loadAll()
@@ -101,26 +127,21 @@ export function useConfigState() {
     } catch (_err) {
       setError("Failed to save pre-filter policy")
     } finally {
-    setIsSaving(false)
+      setIsSaving(false)
     }
-  }
-
-  const updatePersonalInfoState = (updates: Partial<PersonalInfo>) => {
-    setPersonalInfo((prev) => ({ ...(prev ?? DEFAULT_PERSONAL_INFO), ...updates }))
   }
 
   const handleSaveMatchPolicy = async (configOverride?: MatchPolicy) => {
-    setIsSaving(true)
-    setError(null)
-    const payload = deepClone(configOverride ?? matchPolicy)
+    const payload = configOverride ?? matchPolicy
     if (!payload) {
       setError("No match policy to save")
-      setIsSaving(false)
       return
     }
+    setIsSaving(true)
+    setError(null)
     try {
-      await configClient.updateMatchPolicy(payload)
-      setMatchPolicy(payload)
+      await configClient.updateMatchPolicy(deepClone(payload))
+      setMatchPolicy(deepClone(payload))
       setOriginalMatchPolicy(deepClone(payload))
       setSuccess("Match policy saved")
     } catch (_err) {
@@ -153,18 +174,23 @@ export function useConfigState() {
   }
 
   const handleSaveAISettings = async () => {
+    if (!aiSettings) {
+      setError("No AI settings to save")
+      return
+    }
     setIsSaving(true)
     setError(null)
     try {
-      const merged = {
+      // Preserve any existing per-task settings even if UI doesn't edit them yet
+      const merged: AISettings = {
         ...aiSettings,
         worker: {
           ...(aiSettings.worker ?? {}),
-          tasks: aiSettings.worker?.tasks ?? originalAI.worker?.tasks,
+          tasks: aiSettings.worker?.tasks ?? originalAI?.worker?.tasks,
         },
         documentGenerator: {
           ...(aiSettings.documentGenerator ?? {}),
-          tasks: aiSettings.documentGenerator?.tasks ?? originalAI.documentGenerator?.tasks,
+          tasks: aiSettings.documentGenerator?.tasks ?? originalAI?.documentGenerator?.tasks,
         },
       }
 
@@ -178,12 +204,24 @@ export function useConfigState() {
     }
   }
 
+  const updatePersonalInfoState = (updates: Partial<PersonalInfo>) => {
+    setPersonalInfo((prev) => {
+      if (!prev) return null
+      return { ...prev, ...updates }
+    })
+  }
+
   const handleSavePersonalInfo = async () => {
+    if (!personalInfo) {
+      setError("No personal info to save")
+      return
+    }
     setIsSaving(true)
     setError(null)
     try {
-      await configClient.updatePersonalInfo(personalInfo, user?.email ?? "")
-      setOriginalPersonalInfo(deepClone(personalInfo))
+      const saved = await configClient.updatePersonalInfo(personalInfo)
+      setPersonalInfo(saved)
+      setOriginalPersonalInfo(deepClone(saved))
       setSuccess("Personal info saved")
     } catch (_err) {
       setError("Failed to save personal info")
@@ -197,6 +235,7 @@ export function useConfigState() {
     isSaving,
     error,
     success,
+    missingConfigs,
 
     prefilterPolicy,
     originalPrefilterPolicy,

@@ -1,8 +1,25 @@
 import { beforeAll, afterAll, describe, expect, it, vi } from "vitest"
-import { DEFAULT_PROMPTS, DEFAULT_PERSONAL_INFO } from "@shared/types"
+import type { PersonalInfo, PromptConfig } from "@shared/types"
 import { setupTestServer } from "./helpers/test-server"
 import { runMockWorker } from "./helpers/mock-worker"
 import { TEST_AUTH_TOKEN_KEY } from "../../job-finder-FE/src/config/testing"
+
+// Test fixtures (no defaults - explicit test data)
+const TEST_PERSONAL_INFO: PersonalInfo = {
+  name: "",
+  email: "",
+  accentColor: "#3b82f6",
+  city: "",
+  timezone: null,
+  relocationAllowed: false,
+}
+
+const TEST_PROMPTS: PromptConfig = {
+  resumeGeneration: "Test resume prompt",
+  coverLetterGeneration: "Test cover letter prompt",
+  jobScraping: "Test scraping prompt",
+  jobMatching: "Test matching prompt",
+}
 
 interface ApiSuccess<T> {
   success: true
@@ -234,7 +251,7 @@ async function initFrontendClients() {
 async function ensureBaseConfigs(configClient: any, userEmail: string) {
   const server = requireCtx()
   const upsert = async (id: string, payload: any) => {
-    await fetch(`${server.apiBase}/config/${id}`, {
+    const res = await fetch(`${server.apiBase}/config/${id}`, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${server.authToken}`,
@@ -242,6 +259,10 @@ async function ensureBaseConfigs(configClient: any, userEmail: string) {
       },
       body: JSON.stringify({ payload }),
     })
+    if (!res.ok) {
+      const body = await res.text()
+      throw new Error(`Failed to upsert config '${id}': ${res.status} - ${body}`)
+    }
   }
 
   await upsert("prefilter-policy", minimalPrefilterPolicy)
@@ -250,9 +271,37 @@ async function ensureBaseConfigs(configClient: any, userEmail: string) {
   await upsert("ai-settings", {
     worker: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
     documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
-    options: [],
+    options: [
+      {
+        value: "gemini",
+        interfaces: [
+          { value: "api", enabled: true, models: ["gemini-2.0-flash", "gemini-1.5-pro"] },
+        ],
+      },
+      {
+        value: "openai",
+        interfaces: [
+          { value: "api", enabled: true, models: ["gpt-4o", "gpt-4o-mini"] },
+        ],
+      },
+    ],
   })
-  await upsert("personal-info", { ...DEFAULT_PERSONAL_INFO, email: userEmail })
+  await upsert("personal-info", { ...TEST_PERSONAL_INFO, email: userEmail })
+}
+
+async function ensurePrompts() {
+  const server = requireCtx()
+  await fetch(`${server.apiBase}/prompts`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${server.authToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      prompts: TEST_PROMPTS,
+      userEmail: "e2e-test@jobfinder.dev",
+    }),
+  })
 }
 
 async function authorizedRequest<T>(path: string, init: RequestInit = {}) {
@@ -452,7 +501,8 @@ describe("Configuration flows", () => {
     expect(queueSettings?.processingTimeoutSeconds).toBe(1200)
 
     await configClient.updateAISettings({
-      selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" },
+      worker: { selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" } },
+      documentGenerator: { selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" } },
     })
     const aiSettings = await configClient.getAISettings()
     expect(aiSettings?.worker.selected.provider).toBe("openai")
@@ -483,9 +533,12 @@ describe("Configuration discovery", () => {
 })
 
 describe("Prompts", () => {
-  it("saves custom prompts and resets to defaults", async () => {
+  it("saves and retrieves custom prompts", async () => {
     const { promptsClient } = await initFrontendClients()
     const userEmail = "ai-admin@jobfinder.dev"
+
+    // Ensure prompts are seeded before test
+    await ensurePrompts()
 
     const existingPrompts = await promptsClient.getPrompts()
     await promptsClient.savePrompts(
@@ -500,9 +553,13 @@ describe("Prompts", () => {
 
     const updatedPrompts = await promptsClient.getPrompts()
     expect(updatedPrompts.resumeGeneration).toContain("e2e customization")
+  })
 
-    await promptsClient.resetToDefaults(userEmail)
-    const resetPrompts = await promptsClient.getPrompts()
-    expect(resetPrompts.resumeGeneration).toBe(DEFAULT_PROMPTS.resumeGeneration)
+  it("rejects reset to defaults (no longer supported)", async () => {
+    const { promptsClient } = await initFrontendClients()
+    const userEmail = "ai-admin@jobfinder.dev"
+
+    // Reset is no longer supported - should throw
+    await expect(promptsClient.resetToDefaults(userEmail)).rejects.toThrow()
   })
 })

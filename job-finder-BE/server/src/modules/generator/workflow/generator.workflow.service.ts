@@ -15,7 +15,6 @@ import { runCliProvider } from './services/cli-runner'
 import type { CliProvider } from './services/cli-runner'
 import { ConfigRepository } from '../../config/config.repository'
 import type { AISettings } from '@shared/types'
-import { DEFAULT_AI_SETTINGS } from '@shared/types'
 
 export class UserFacingError extends Error {}
 
@@ -502,8 +501,10 @@ export class GeneratorWorkflowService {
   }
   private getDocumentGeneratorCliProvider(): CliProvider {
     const config = this.configRepo.get<AISettings>('ai-settings')
-    const selection =
-      config?.payload?.documentGenerator?.selected ?? DEFAULT_AI_SETTINGS.documentGenerator.selected
+    if (!config?.payload?.documentGenerator?.selected) {
+      throw new UserFacingError('AI settings not configured. Please configure ai-settings in the database.')
+    }
+    const selection = config.payload.documentGenerator.selected
 
     const provider = selection.provider
     const interfaceType = selection.interface

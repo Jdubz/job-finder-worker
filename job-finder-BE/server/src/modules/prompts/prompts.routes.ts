@@ -3,11 +3,10 @@ import { z } from "zod"
 import type {
   GetPromptsResponse,
   UpdatePromptsResponse,
-  ResetPromptsResponse,
 } from "@shared/types"
-import { DEFAULT_PROMPTS } from "@shared/types"
+import { ApiErrorCode } from "@shared/types"
 import { asyncHandler } from "../../utils/async-handler"
-import { success } from "../../utils/api-response"
+import { success, failure } from "../../utils/api-response"
 import { PromptsRepository } from "./prompts.repository"
 import { publicReadPrivateWrite } from "../../middleware/optional-auth"
 
@@ -37,9 +36,16 @@ export function buildPromptsRouter() {
   router.get(
     "/",
     asyncHandler((_req, res) => {
-      const prompts = repository.getPrompts()
-      const response: GetPromptsResponse = { prompts }
-      res.json(success(response))
+      try {
+        const prompts = repository.getPrompts()
+        const response: GetPromptsResponse = { prompts }
+        res.json(success(response))
+      } catch {
+        res.status(404).json(failure(
+          ApiErrorCode.NOT_FOUND,
+          "Prompts configuration 'ai-prompts' not found - must be configured in database"
+        ))
+      }
     })
   )
 
@@ -56,10 +62,13 @@ export function buildPromptsRouter() {
   router.post(
     "/reset",
     asyncHandler((req, res) => {
-      const { userEmail } = resetSchema.parse(req.body)
-      const saved = repository.savePrompts(DEFAULT_PROMPTS, userEmail)
-      const response: ResetPromptsResponse = { prompts: saved }
-      res.json(success(response))
+      // Reset is no longer supported - no hardcoded defaults
+      // Users must configure prompts manually or restore from a backup
+      resetSchema.parse(req.body) // Validate request format
+      res.status(400).json(failure(
+        ApiErrorCode.INVALID_REQUEST,
+        "Reset to defaults is not supported. Prompts must be configured manually in the database."
+      ))
     })
   )
 

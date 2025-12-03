@@ -18,13 +18,12 @@ export function AIPromptsPage() {
     error: loadError,
     saving: isSaving,
     savePrompts,
-    resetToDefaults: resetToDefaultsServer,
   } = useAIPrompts()
 
   const canEdit = isOwner
 
   // Local state for editing
-  const [editedPrompts, setEditedPrompts] = useState<PromptConfig>(serverPrompts)
+  const [editedPrompts, setEditedPrompts] = useState<PromptConfig | null>(serverPrompts)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<keyof PromptConfig>("resumeGeneration")
@@ -32,19 +31,26 @@ export function AIPromptsPage() {
 
   // Sync server prompts to local editable state when they change
   useEffect(() => {
-    setEditedPrompts(serverPrompts)
+    if (serverPrompts) {
+      setEditedPrompts(serverPrompts)
+    }
   }, [serverPrompts])
 
   // Show load error if present
   useEffect(() => {
     if (loadError) {
-      setError("Unable to load prompts. Using defaults.")
+      setError("Unable to load prompts. Configuration may be missing from database.")
     }
   }, [loadError])
 
   const handleSave = async () => {
     if (!canEdit) {
       setError("Admin access required to edit prompts")
+      return
+    }
+
+    if (!editedPrompts) {
+      setError("No prompts to save")
       return
     }
 
@@ -64,41 +70,23 @@ export function AIPromptsPage() {
   }
 
   const handleReset = () => {
-    if (!canEdit) return
+    if (!canEdit || !serverPrompts) return
 
     setEditedPrompts(serverPrompts)
     setSuccess(null)
     setError(null)
   }
 
-  const handleResetToDefaults = async () => {
-    if (!canEdit) {
-      setError("Admin access required to edit prompts")
-      return
-    }
-
-    setError(null)
-    setSuccess(null)
-
-    try {
-      await resetToDefaultsServer()
-      setSuccess("AI prompts reset to defaults!")
-
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError("Failed to reset prompts")
-      console.error("Error resetting prompts:", err)
-    }
-  }
-
   const handlePromptChange = (key: keyof PromptConfig, value: string) => {
-    if (!canEdit) return
+    if (!canEdit || !editedPrompts) return
 
-    setEditedPrompts((prev) => ({
-      ...prev,
-      [key]: value,
-    }))
+    setEditedPrompts((prev) => {
+      if (!prev) return null
+      return {
+        ...prev,
+        [key]: value,
+      }
+    })
   }
 
   const extractVariables = (prompt: string): string[] => {
@@ -155,6 +143,21 @@ export function AIPromptsPage() {
     )
   }
 
+  if (!editedPrompts) {
+    return (
+      <div className="container mx-auto p-6 max-w-6xl">
+        <div className="mb-6 space-y-2">
+          <h1 className="text-3xl font-bold">AI Prompts Configuration</h1>
+        </div>
+        <Alert variant="destructive">
+          <AlertDescription>
+            AI prompts configuration is not set in the database. Please configure ai-prompts before using this feature.
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
   return (
     <div className="container mx-auto p-6 max-w-6xl">
       <div className="mb-6 space-y-2">
@@ -195,15 +198,6 @@ export function AIPromptsPage() {
               </Button>
               {canEdit && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetToDefaults}
-                    disabled={isSaving}
-                  >
-                    <RotateCcw className="h-4 w-4 mr-2" />
-                    Reset to Defaults
-                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
