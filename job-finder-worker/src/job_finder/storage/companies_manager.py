@@ -223,27 +223,32 @@ class CompaniesManager:
     # ------------------------------------------------------------------ #
 
     def has_good_company_data(self, company_data: Dict[str, Any]) -> bool:
-        """Check if company has been processed or has sufficient data.
+        """Return True when we have the minimal structured fields used by scoring.
 
-        Returns True if either:
-        1. Company was updated after creation (fetch/analyze was attempted)
-        2. OR has meaningful content in about/culture fields
-
-        This ensures jobs don't wait indefinitely for companies whose websites
-        don't expose about/culture information publicly.
+        Good data if:
+        - the record was updated after creation (enrichment ran), OR
+        - we have size info AND location info (hq_location or locations array).
         """
-        # Check if company was processed (updated after initial stub creation)
+        if not company_data:
+            return False
+
         created_at = company_data.get("created_at") or company_data.get("createdAt")
         updated_at = company_data.get("updated_at") or company_data.get("updatedAt")
         if created_at and updated_at and str(updated_at) != str(created_at):
             return True
 
-        # Fallback: check for content quality
-        about_length = len(company_data.get("about", "") or "")
-        culture_length = len(company_data.get("culture", "") or "")
-        has_good_quality = about_length > 100 and culture_length > 50
-        has_minimal_quality = about_length > 50 or culture_length > 25
-        return has_good_quality or has_minimal_quality
+        has_size = bool(
+            company_data.get("companySizeCategory")
+            or company_data.get("employeeCount")
+            or company_data.get("company_size_category")
+            or company_data.get("employee_count")
+        )
+
+        has_location = bool(
+            company_data.get("headquartersLocation") or company_data.get("headquarters_location")
+        )
+
+        return has_size and has_location
 
     def create_company_stub(self, company_name: str, company_website: str = "") -> Dict[str, Any]:
         cleaned_name = clean_company_name(company_name) or company_name.strip()

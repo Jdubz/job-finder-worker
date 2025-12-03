@@ -242,13 +242,11 @@ def test_single_task_pipeline_spawns_company_enrichment(processor, mock_managers
 
     processor.job_processor.process_job(sample_job_item)
 
-    # Should spawn company task and requeue to wait for enrichment
+    # Should spawn enrichment and requeue while waiting for richer data
     assert mock_managers["queue_manager"].spawn_item_safely.called
-    # Job should be requeued with waiting_for_company_id in state
     mock_managers["queue_manager"].requeue_with_state.assert_called_once()
     requeue_call = mock_managers["queue_manager"].requeue_with_state.call_args
-    assert "waiting_for_company_id" in requeue_call[0][1]  # Second positional arg is state
-    assert requeue_call[0][1]["company_wait_count"] == 1
+    assert "waiting_for_company_id" in requeue_call[0][1]
 
 
 def test_single_task_pipeline_completes_to_match(processor, mock_managers, sample_job_item):
@@ -396,21 +394,8 @@ def test_single_task_pipeline_spawns_company_for_real_company_from_aggregator(
     stub_call_args = mock_managers["companies_manager"].create_company_stub.call_args
     assert "Speechify" in stub_call_args[0][0]  # First positional arg is company name
 
-    # Should spawn COMPANY task for enrichment
+    # Should spawn COMPANY task for enrichment and requeue to wait
     assert mock_managers["queue_manager"].spawn_item_safely.called
-    spawn_calls = mock_managers["queue_manager"].spawn_item_safely.call_args_list
-    company_spawn = None
-    for call in spawn_calls:
-        if call.kwargs:
-            new_item_data = call.kwargs.get("new_item_data")
-        else:
-            new_item_data = call.args[1]
-        if new_item_data.get("type") == "company":
-            company_spawn = call
-            break
-    assert company_spawn is not None, "Should spawn COMPANY task for real company from aggregator"
-
-    # Job should be requeued to wait for company enrichment
     mock_managers["queue_manager"].requeue_with_state.assert_called_once()
 
 

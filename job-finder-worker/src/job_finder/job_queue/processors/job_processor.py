@@ -690,33 +690,31 @@ class JobProcessor(BaseProcessor):
         """
         Check if company data is ready before proceeding to AI extraction.
 
-        If company data is sparse (just a stub), spawns a COMPANY task and requeues
-        this job to wait. Returns True when company is ready, False if requeued.
-
-        This prevents wasting AI extraction calls on jobs where we don't have
-        good company context (remote-first, AI/ML focus, size, etc.).
+        If company data is sparse (just a stub), spawn enrichment and requeue so the
+        pipeline waits for richer company data instead of racing ahead with a stub.
         """
         company = ctx.company_data
         item = ctx.item
         job_data = ctx.job_data
 
-        # No company data - proceed anyway (can't wait for nothing)
+        # No company data - nothing to enrich yet; continue
         if not company:
             return True
 
         company_id = company.get("id")
         company_name = job_data.get("company", "")
 
-        # Company has good data - ready to proceed
+        # If company is good, proceed immediately
         if self.companies_manager.has_good_company_data(company):
             logger.debug("Company %s has good data, proceeding to extraction", company_name)
             return True
 
-        # Check wait retry count
+        # Otherwise spawn enrichment and wait (up to MAX_COMPANY_WAIT_RETRIES)
+        self._spawn_company_enrichment(ctx)
+
         wait_count = state.get("company_wait_count", 0)
 
         if wait_count >= MAX_COMPANY_WAIT_RETRIES:
-            # Exceeded max retries - proceed anyway with sparse data
             logger.warning(
                 "Company %s still sparse after %d waits, proceeding with extraction",
                 company_name,
@@ -724,10 +722,6 @@ class JobProcessor(BaseProcessor):
             )
             return True
 
-        # Spawn company enrichment task (fire-and-forget)
-        self._spawn_company_enrichment(ctx)
-
-        # Requeue this job to wait for company data
         updated_state = {
             **state,
             "job_data": job_data,
@@ -745,7 +739,6 @@ class JobProcessor(BaseProcessor):
             company_name,
         )
 
-        # Emit wait event
         self._emit_event(
             "job:waiting_company",
             item.id,
@@ -767,7 +760,15 @@ class JobProcessor(BaseProcessor):
         company_id = company.get("id")
         company_name = ctx.job_data.get("company", "")
 
-        if not company_id or not company_name:
+        # Resolve existing company by name when id is missing
+        if not company_id and company_name:
+            existing = self.companies_manager.get_company(company_name)
+            if existing:
+                ctx.company_data = existing
+                company = existing
+                company_id = existing.get("id")
+
+        if not company_name:
             return
 
         # Only spawn if company data is sparse
