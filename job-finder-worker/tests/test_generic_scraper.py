@@ -597,6 +597,62 @@ class TestGenericScraperEdgeCases:
 class TestAntiBlockDetection:
     """Test anti-bot detection in RSS scraping."""
 
+    @pytest.mark.parametrize(
+        "source_type,request_attr,config_kwargs",
+        [
+            (
+                "api",
+                "json",
+                {
+                    "type": "api",
+                    "url": "https://api.example.com/jobs",
+                    "fields": {"title": "title", "url": "url", "description": "desc"},
+                },
+            ),
+            (
+                "rss",
+                "text",
+                {
+                    "type": "rss",
+                    "url": "https://www.example.com/jobs.rss",
+                    "fields": {"title": "title", "url": "link", "description": "summary"},
+                },
+            ),
+            (
+                "html",
+                "text",
+                {
+                    "type": "html",
+                    "url": "https://www.example.com/jobs",
+                    "job_selector": "div.job",
+                    "fields": {"title": "text", "url": "a.@href", "description": "text"},
+                },
+            ),
+        ],
+    )
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_http_errors_raise_scrape_blocked(self, mock_get, source_type, request_attr, config_kwargs):
+        """Any HTTP error should bubble up as ScrapeBlockedError so callers can disable sources."""
+        from requests import HTTPError, Response
+        from job_finder.exceptions import ScrapeBlockedError
+
+        mock_resp = Mock()
+        mock_resp.status_code = 403
+        mock_resp.reason = "Forbidden"
+        error = HTTPError(response=mock_resp)
+        mock_resp.raise_for_status.side_effect = error
+        # Provide minimal attribute accessed by code path
+        setattr(mock_resp, request_attr, Mock())
+        mock_get.return_value = mock_resp
+
+        config = SourceConfig(**config_kwargs)
+        scraper = GenericScraper(config)
+
+        with pytest.raises(ScrapeBlockedError) as exc:
+            scraper.scrape()
+
+        assert "HTTP 403" in exc.value.reason
+
     @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
     @patch("job_finder.scrapers.generic_scraper.requests.get")
     def test_detect_captcha_page(self, mock_get, mock_parse):
