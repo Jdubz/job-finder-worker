@@ -12,7 +12,7 @@ services:
     container_name: job-finder-api
     restart: unless-stopped
     env_file:
-      - /home/jdubz/Development/job-finder/.env.production
+      - /srv/job-finder/.env.production
     environment:
       NODE_ENV: production
       PORT: 8080
@@ -39,8 +39,8 @@ services:
         read_only: true
       - codex-home-api:/home/node/.codex
     extra_hosts:
-      - "chatgpt.com:104.18.32.47"
-      - "www.chatgpt.com:104.18.32.47"
+      - "chatgpt.com:${CHATGPT_IPV4:-104.18.32.47}"
+      - "www.chatgpt.com:${CHATGPT_IPV4:-104.18.32.47}"
     networks:
       - jobfinder
     labels:
@@ -51,7 +51,7 @@ services:
     container_name: job-finder-worker
     restart: unless-stopped
     env_file:
-      - /home/jdubz/Development/job-finder/.env.production
+      - /srv/job-finder/.env.production
     environment:
       ENVIRONMENT: production
       ENABLE_QUEUE_MODE: "true"
@@ -103,7 +103,7 @@ services:
     restart: unless-stopped
     command: tunnel --config /etc/cloudflared/config.yml run
     env_file:
-      - /home/jdubz/Development/job-finder/.env.production
+      - /srv/job-finder/.env.production
     environment:
       TUNNEL_ORIGIN_CERT: /etc/cloudflared/cert.pem
     depends_on:
@@ -119,7 +119,7 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
 
   watchtower:
-    image: containrrr/watchtower:latest
+    image: containrrr/watchtower:1.7.1
     container_name: job-finder-watchtower
     restart: unless-stopped
     command: --label-enable --interval 300 --cleanup
