@@ -77,6 +77,20 @@ describe("isPreFilterPolicy", () => {
     expect(isPreFilterPolicy(bad)).toBe(false)
   })
 
+  it("rejects empty userLocation when relocation disallowed", () => {
+    const bad = {
+      ...valid,
+      workArrangement: {
+        allowRemote: true,
+        allowHybrid: true,
+        allowOnsite: true,
+        willRelocate: false,
+        userLocation: "",
+      },
+    } as any
+    expect(isPreFilterPolicy(bad)).toBe(false)
+  })
+
   it("rejects invalid employment type", () => {
     const bad = { ...valid, employmentType: { allowFullTime: true, allowPartTime: "maybe" } } as any
     expect(isPreFilterPolicy(bad)).toBe(false)

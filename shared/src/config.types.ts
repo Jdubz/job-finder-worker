@@ -157,9 +157,9 @@ export interface PreFilterWorkArrangementConfig {
    */
   allowOnsite: boolean
   /** Whether the user is willing to relocate for onsite/hybrid roles */
-  willRelocate?: boolean
+  willRelocate: boolean
   /** User's preferred location for onsite/hybrid roles (e.g., "Portland, OR") */
-  userLocation?: string
+  userLocation: string
 }
 
 /** Employment type filtering */

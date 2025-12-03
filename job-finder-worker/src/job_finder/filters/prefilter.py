@@ -114,8 +114,12 @@ class PreFilter:
             raise InitializationError(
                 "allowRemote, allowHybrid, allowOnsite, and willRelocate must be booleans in workArrangement"
             )
-        if not isinstance(self.user_location, str) or not self.user_location.strip():
-            raise InitializationError("userLocation must be a non-empty string in workArrangement")
+        if not isinstance(self.user_location, str):
+            raise InitializationError("userLocation must be a string in workArrangement")
+        if not self.will_relocate and not self.user_location.strip():
+            raise InitializationError(
+                "userLocation must be a non-empty string in workArrangement when willRelocate is False"
+            )
 
         # Employment type config
         emp_config = config.get("employmentType", {})

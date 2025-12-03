@@ -372,9 +372,9 @@ export function isPreFilterPolicy(value: unknown): value is PreFilterPolicy {
   ) {
     return false
   }
-  if (wa.willRelocate !== undefined && typeof wa.willRelocate !== "boolean") return false
-  if (wa.userLocation !== undefined && (typeof wa.userLocation !== "string" || wa.userLocation.trim() === ""))
-    return false
+  if (typeof wa.willRelocate !== "boolean") return false
+  if (typeof wa.userLocation !== "string") return false
+  if (wa.willRelocate === false && wa.userLocation.trim() === "") return false
 
   if (!isObject(v.employmentType)) return false
   const et = v.employmentType as Record<string, unknown>
