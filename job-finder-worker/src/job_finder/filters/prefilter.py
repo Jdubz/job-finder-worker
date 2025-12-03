@@ -85,7 +85,13 @@ class PreFilter:
 
         # Work arrangement config
         work_config = config.get("workArrangement", {})
-        required_work_keys = ["allowRemote", "allowHybrid", "allowOnsite", "willRelocate", "userLocation"]
+        required_work_keys = [
+            "allowRemote",
+            "allowHybrid",
+            "allowOnsite",
+            "willRelocate",
+            "userLocation",
+        ]
         missing_work = [k for k in required_work_keys if k not in work_config]
         if missing_work:
             raise InitializationError(
@@ -349,7 +355,9 @@ class PreFilter:
         # Can't determine - return None (will be skipped)
         return None
 
-    def _check_work_arrangement(self, arrangement: str, job_data: Dict[str, Any]) -> PreFilterResult:
+    def _check_work_arrangement(
+        self, arrangement: str, job_data: Dict[str, Any]
+    ) -> PreFilterResult:
         """Check if work arrangement is allowed, honoring user location/relocation preferences."""
         if arrangement == "remote" and not self.allow_remote:
             return PreFilterResult(
