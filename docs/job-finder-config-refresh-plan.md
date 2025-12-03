@@ -2,13 +2,13 @@
 
 > Status: Draft
 > Owner: Codex (pairing with jdubz)
-> Last Updated: 2025-12-01
+> Last Updated: 2025-12-03
 
 Scope: Align backend/worker behavior, configs, and UI so every config key is live, visible, and applied per task; remove legacy data; improve match/location logic; modernize AI defaults; and refresh the configuration UI/preview experience.
 
 ## Objectives
 - **Config immediacy:** Every task (scrape, prefilter, match) reloads fresh configs before processing the next item.
-- **Single source of truth:** No legacy/dead config rows; one consolidated stop list; every stored key is rendered in UI and consumed in worker logic.
+- **Single source of truth:** No legacy/dead config rows; two live configs per phase (prefilter-policy, match-policy) plus worker-settings (includes runtime); every stored key is rendered in UI and consumed in worker logic.
 - **Correct location handling:** Use user city & timezone; timezone penalties apply only to remote roles; onsite/hybrid outside user city hard-reject unless relocation is allowed (then apply relocation penalty).
 - **Tech & experience scoring:** Apply experience strikes and tech-rank weights in the match score (prefilter only enforces absolute fail-tech and minimal gates).
 - **AI defaults & per-task agents:** Default provider Gemini; per-task provider/interface/model selection (match, company discovery, doc gen, scraping assist, etc.).
@@ -19,6 +19,7 @@ Scope: Align backend/worker behavior, configs, and UI so every config key is liv
 ### Progress log
 - 2025-12-01: Updated shared types (personal-info city/timezone/relocationAllowed; match dealbreaker penalty fields), default AI provider to Gemini; started backend runtime reload path (JobProcessor refreshes configs/providers per item) and queue/task delay defaults. Further steps pending: unified stop list, strike-first refactor, relocation/TZ helper, FE/full UI changes, migrations, and tests.
 - 2025-12-01: Consolidation work in progress: stop-list now treated as single source; strike engine updated to apply stop-list as strikes, reserved hard rejects remain for explicit hardRejections. Defaults seeded for relocation penalties in shared types. Gemini defaults wired in config loader and per-item refresh scaffolded. Next: relocate TZ/city helper, migration to drop legacy rows, matcher tech/experience scoring shift, FE coverage, screenshot tool.
+- 2025-12-03: Core config consolidation landed: runtime settings live in worker-settings.runtime; title keywords live under prefilter-policy.title; seeding removed (fail-fast on missing configs); FE/worker/BE now load prefilter/match/worker-runtime only. Remaining work: data migration script, doc cleanup, legacy Firestore removal.
 - 2025-12-01: Direct DB patches applied (ai-settings → Gemini per-task, queue taskDelaySeconds, match location penalties, personal city/timezone/relocationAllowed); location/relocation helper added; taskDelaySeconds applied in worker loop; matcher now applies tech ranks + experience strikes; salary floor moved to strike; FE surfaces new fields and preserves AI tasks on save. Pending: per-task AI UI, screenshot generator, tests for new logic, final strike clean-up.
 - 2025-12-02: Matcher scoring tests now mock AI providers and isolate tech/experience strike math (no real LLM calls); ensures regression coverage without costly provider traffic.
 
@@ -27,10 +28,10 @@ Scope: Align backend/worker behavior, configs, and UI so every config key is liv
 - Remove all implicit defaults at runtime: missing configs must fail loudly to surface schema/key mismatches. The only defaults that remain are for type definitions, not runtime fallbacks.
 
 ### 1) Backend/Worker Config Hygiene
-1. Reload configs **per item** (or batch item) for: prefilter-policy, match-policy, queue-settings, scheduler-settings, ai-settings, worker-settings, personal-info. Avoid stale in-memory copies.
-2. Remove legacy rows (`job-match`, `job-filters`, `stop-list`, `technology-ranks`) and migrate data into canonical keys; add one-time migrator that deletes old rows after backup.
-3. `/config/reload` must rebuild: StrikeFilterEngine, matcher inputs, QueueManager timeout, scheduler poll interval, AI providers, `taskDelaySeconds`.
-4. Apply `taskDelaySeconds` from queue-settings in worker loop.
+1. Reload configs **per item** (or batch item) for: prefilter-policy, match-policy, worker-settings (runtime), ai-settings, personal-info. Avoid stale in-memory copies.
+2. Remove any lingering legacy config rows and migrate data into canonical keys; add one-time migrator that deletes obsolete rows after backup.
+3. `/config/reload` must rebuild: PreFilter (structured gates), matcher inputs, worker runtime (timeout/poll/taskDelay/scrapeConfig), AI providers.
+4. Apply `taskDelaySeconds` from worker-settings.runtime in worker loop.
 
 ### 2) Location & Timezone Rules (Match & Prefilter Alignment)
 1. Store user city and timezone in `personal-info`; ensure FE collects both.
@@ -68,10 +69,10 @@ Scope: Align backend/worker behavior, configs, and UI so every config key is liv
 4. Validation helptext for city/timezone and relocation semantics.
 
 ### 7) Testing & Verification
-1. Unit: config loader per-task refresh; legacy migration; stop-list consolidation.
+1. Unit: config loader per-task refresh; legacy migration; (remove legacy stop-list if present).
 2. Integration: worker reload applies to next item; taskDelaySeconds honored.
 3. Matcher: timezone/relocation rules (remote vs hybrid/onsite), relocation penalty, tech strike/fail, experience strike, remote-only TZ penalty rule.
-4. Prefilter: unified stop-list, strike-first salary/keywords (no duplicate hard rejects).
+4. Prefilter: enforce prefilter-policy gates (title/freshness/work arrangement/employment type/salary/tech rejects) with strike-first salary/keywords (no duplicate hard rejects); no separate stop-list config.
 5. FE: form round-trip includes all keys; screenshot generator smoke test.
 6. Optional visual regression via screenshot generator in CI.
 

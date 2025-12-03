@@ -4,7 +4,7 @@ Tests the get_ai_settings method of ConfigLoader which retrieves
 AI provider configuration.
 
 Note: get_job_match was removed during hybrid scoring migration.
-Job matching now uses match-policy and title-filter instead.
+Job matching now uses match-policy and prefilter-policy.title instead.
 """
 
 import sqlite3
@@ -113,7 +113,7 @@ class TestConfigLoaderAISettings:
 
 
 # NOTE: TestConfigLoaderJobMatch was removed during hybrid scoring migration.
-# Job matching now uses match-policy and title-filter instead.
+# Job matching now uses match-policy and prefilter-policy.title instead.
 
 
 class TestConfigLoaderIntegration:

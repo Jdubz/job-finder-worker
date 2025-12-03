@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, describe, expect, it, vi } from "vitest"
-import { DEFAULT_PROMPTS } from "@shared/types"
+import { DEFAULT_PROMPTS, DEFAULT_PERSONAL_INFO } from "@shared/types"
 import { setupTestServer } from "./helpers/test-server"
 import { runMockWorker } from "./helpers/mock-worker"
 import { TEST_AUTH_TOKEN_KEY } from "../../job-finder-FE/src/config/testing"
@@ -59,6 +59,98 @@ function ensureWindowAuth(token: string) {
 
   globalThis.window!.localStorage!.setItem(TEST_AUTH_TOKEN_KEY, token)
 }
+
+const minimalPrefilterPolicy = {
+  title: { requiredKeywords: [], excludedKeywords: [] },
+  freshness: { maxAgeDays: 90 },
+  workArrangement: { allowRemote: true, allowHybrid: true, allowOnsite: true },
+  employmentType: { allowFullTime: true, allowPartTime: true, allowContract: true },
+  salary: { minimum: null },
+  technology: { rejected: [] },
+}
+
+const minimalMatchPolicy = {
+  minScore: 50,
+  weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
+  seniority: {
+    preferred: ["senior"],
+    acceptable: ["mid"],
+    rejected: ["junior"],
+    preferredScore: 10,
+    acceptableScore: 0,
+    rejectedScore: -100,
+  },
+  location: {
+    allowRemote: true,
+    allowHybrid: true,
+    allowOnsite: true,
+    userTimezone: -8,
+    maxTimezoneDiffHours: 8,
+    perHourScore: -1,
+    hybridSameCityScore: 0,
+  },
+  technology: {
+    required: [],
+    preferred: [],
+    disliked: [],
+    rejected: [],
+    requiredScore: 1,
+    preferredScore: 1,
+    dislikedScore: -1,
+  },
+  salary: { minimum: null, target: null, belowTargetScore: 0 },
+  experience: { userYears: 5, maxRequired: 20, overqualifiedScore: 0 },
+  freshness: {
+    freshDays: 30,
+    freshScore: 0,
+    staleDays: 60,
+    staleScore: -5,
+    veryStaleDays: 90,
+    veryStaleScore: -10,
+    repostScore: -2,
+  },
+  roleFit: {
+    preferred: [],
+    acceptable: [],
+    penalized: [],
+    rejected: [],
+    preferredScore: 0,
+    penalizedScore: -1,
+  },
+  company: {
+    preferredCityScore: 0,
+    preferredCity: undefined,
+    remoteFirstScore: 0,
+    aiMlFocusScore: 0,
+    largeCompanyScore: 0,
+    smallCompanyScore: 0,
+    largeCompanyThreshold: 1000,
+    smallCompanyThreshold: 50,
+    startupScore: 0,
+  },
+}
+
+const minimalWorkerSettings = {
+  scraping: { requestTimeoutSeconds: 30, maxHtmlSampleLength: 20000 },
+  textLimits: {
+    minCompanyPageLength: 10,
+    minSparseCompanyInfoLength: 10,
+    maxIntakeTextLength: 500,
+    maxIntakeDescriptionLength: 2000,
+    maxIntakeFieldLength: 400,
+    maxDescriptionPreviewLength: 500,
+    maxCompanyInfoTextLength: 1000,
+  },
+  runtime: {
+    processingTimeoutSeconds: 1800,
+    isProcessingEnabled: true,
+    taskDelaySeconds: 1,
+    pollIntervalSeconds: 60,
+    scrapeConfig: {},
+  },
+}
+
+const ownerEmail = "owner@jobfinder.dev"
 
 function requireCtx(): TestContext {
   if (!ctx) {
@@ -131,6 +223,30 @@ async function initFrontendClients() {
     configClient,
     promptsClient,
   }
+}
+
+async function ensureBaseConfigs(configClient: any, userEmail: string) {
+  const server = requireCtx()
+  const upsert = async (id: string, payload: any) => {
+    await fetch(`${server.apiBase}/config/${id}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${server.authToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ payload }),
+    })
+  }
+
+  await upsert("prefilter-policy", minimalPrefilterPolicy)
+  await upsert("match-policy", minimalMatchPolicy)
+  await upsert("worker-settings", minimalWorkerSettings)
+  await upsert("ai-settings", {
+    worker: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
+    documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
+    options: [],
+  })
+  await upsert("personal-info", { ...DEFAULT_PERSONAL_INFO, email: userEmail })
 }
 
 async function authorizedRequest<T>(path: string, init: RequestInit = {}) {
@@ -286,20 +402,27 @@ describe("Content items", () => {
 })
 
 describe("Configuration flows", () => {
-  it("updates title filter, scoring config, queue settings, AI settings, and personal info", async () => {
+  it("updates prefilter policy, match policy, worker runtime, AI settings, and personal info", async () => {
     const { configClient } = await initFrontendClients()
     const userEmail = "ops@jobfinder.dev"
 
-    // Title filter replaces prefilter-policy
-    const existingTitleFilter = await configClient.getTitleFilter()
-    await configClient.updateTitleFilter({
-      ...existingTitleFilter,
-      requiredKeywords: [...(existingTitleFilter?.requiredKeywords ?? []), "engineer"],
-      excludedKeywords: [...(existingTitleFilter?.excludedKeywords ?? []), "intern"],
+    await ensureBaseConfigs(configClient, userEmail)
+
+    const existingPrefilter = await configClient.getPrefilterPolicy().catch(async () => {
+      await configClient.updatePrefilterPolicy(minimalPrefilterPolicy)
+      return minimalPrefilterPolicy
     })
-    const titleFilter = await configClient.getTitleFilter()
-    expect(titleFilter?.requiredKeywords).toContain("engineer")
-    expect(titleFilter?.excludedKeywords).toContain("intern")
+    await configClient.updatePrefilterPolicy({
+      ...existingPrefilter,
+      title: {
+        ...(existingPrefilter?.title ?? { requiredKeywords: [], excludedKeywords: [] }),
+        requiredKeywords: [...(existingPrefilter?.title.requiredKeywords ?? []), "engineer"],
+        excludedKeywords: [...(existingPrefilter?.title.excludedKeywords ?? []), "intern"],
+      },
+    })
+    const prefilter = await configClient.getPrefilterPolicy()
+    expect(prefilter.title.requiredKeywords).toContain("engineer")
+    expect(prefilter.title.excludedKeywords).toContain("intern")
 
     // Match policy (not seeded by default - must create a complete config)
     const testMatchPolicy = {
@@ -344,6 +467,7 @@ describe("Configuration flows", () => {
 describe("Configuration discovery", () => {
   it("lists all config entries and fetches individual records", async () => {
     const { configClient } = await initFrontendClients()
+    await ensureBaseConfigs(configClient, ownerEmail)
     const configs = await configClient.listEntries()
     expect(configs.length).toBeGreaterThan(0)
 

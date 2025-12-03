@@ -117,68 +117,18 @@ export interface JobExtractionResult {
 }
 ```
 
-**Update `JobFinderConfigId`:**
+**Current config IDs (post-refresh):**
 ```typescript
 export type JobFinderConfigId =
-  | "queue-settings"
   | "ai-settings"
   | "ai-prompts"
   | "personal-info"
-  | "title-filter"      // NEW - replaces prefilter-policy
-  | "scoring-config"    // NEW - replaces match-policy scoring logic
-  | "scheduler-settings"
-  | "worker-settings"
-  // REMOVED: "prefilter-policy", "match-policy"
+  | "prefilter-policy"   // title keywords now live here: prefilter-policy.title
+  | "match-policy"
+  | "worker-settings"    // includes runtime/queue loop settings
 ```
 
-**Add defaults:**
-```typescript
-export const DEFAULT_TITLE_FILTER: TitleFilterConfig = {
-  requiredKeywords: ["software", "developer", "engineer", "frontend", "backend", "fullstack", "full-stack"],
-  excludedKeywords: ["intern", "internship", "wordpress", "php", "sales"],
-}
-
-export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
-  minScore: 60,
-  weights: { skillMatch: 40, experienceMatch: 30, seniorityMatch: 30 },
-  seniority: {
-    preferred: ["senior", "staff", "lead"],
-    acceptable: ["mid", ""],
-    rejected: ["junior", "intern", "entry"],
-    preferredBonus: 15,
-    acceptablePenalty: 0,
-    rejectedPenalty: -100,
-  },
-  location: {
-    allowRemote: true,
-    allowHybrid: true,
-    allowOnsite: false,
-    userTimezone: -8,
-    maxTimezoneDiffHours: 4,
-    perHourPenalty: 3,
-    hybridSameCityBonus: 10,
-  },
-  technology: {
-    required: ["typescript", "react"],
-    preferred: ["node", "python", "aws"],
-    disliked: ["angular", "vue"],
-    rejected: ["wordpress", "php", "drupal"],
-    requiredBonus: 10,
-    preferredBonus: 5,
-    dislikedPenalty: -5,
-  },
-  salary: {
-    minimum: 150000,
-    target: 200000,
-    belowTargetPenalty: 2,
-  },
-  experience: {
-    userYears: 12,
-    maxRequired: 15,
-    overqualifiedPenalty: 5,
-  },
-}
-```
+Defaults: only AI and personal-info ship defaults. Prefilter, match, and worker configs must exist; missing configs should fail loud (no seeding or silent defaults).
 
 **Add type guards:**
 ```typescript
@@ -468,24 +418,16 @@ class JobProcessor:
 
 ### 2.2 Update `job-finder-worker/src/job_finder/job_queue/config_loader.py`
 
-**Add methods:**
+**Ensure ConfigLoader exposes only current configs:**
 ```python
-def get_title_filter(self) -> Dict[str, Any]:
-    """Get title filter config."""
-    return self._get_config("title-filter")
+def get_prefilter_policy(self) -> Dict[str, Any]:
+    return self._get_config("prefilter-policy")
 
-def get_scoring_config(self) -> Dict[str, Any]:
-    """Get scoring config."""
-    return self._get_config("scoring-config")
-```
+def get_match_policy(self) -> Dict[str, Any]:
+    return self._get_config("match-policy")
 
-**Remove methods:**
-```python
-# DELETE these methods:
-def get_stop_list(self) -> Dict[str, Any]: ...
-def get_prefilter_policy(self) -> Dict[str, Any]: ...
-def get_match_policy(self) -> Dict[str, Any]: ...
-def get_job_match(self) -> Dict[str, Any]: ...
+def get_worker_settings(self) -> Dict[str, Any]:
+    return self._get_config("worker-settings")
 ```
 
 ---
@@ -494,67 +436,23 @@ def get_job_match(self) -> Dict[str, Any]: ...
 
 ### 3.1 Modify `job-finder-BE/server/src/modules/config/config.routes.ts`
 
-**Update `seedDefaults()`:**
-```typescript
-const seeds: Array<[JobFinderConfigId, KnownPayload]> = [
-  ['queue-settings', DEFAULT_QUEUE_SETTINGS],
-  ['ai-settings', DEFAULT_AI_SETTINGS],
-  ['title-filter', DEFAULT_TITLE_FILTER],        // NEW
-  ['scoring-config', DEFAULT_SCORING_CONFIG],    // NEW
-  ['scheduler-settings', DEFAULT_SCHEDULER_SETTINGS],
-  ['ai-prompts', DEFAULT_PROMPTS],
-  // REMOVED: 'prefilter-policy', 'match-policy'
-]
-```
+**Config router should:**
+- Fail loud on missing configs (no seedDefaults); only allow IDs: `ai-settings`, `ai-prompts`, `personal-info`, `prefilter-policy`, `match-policy`, `worker-settings`.
+- Validate with guards `isAISettings`, `isPreFilterPolicy`, `isMatchPolicy`, `isWorkerSettings`, `isPersonalInfo`.
+- Coerce only current IDs; no legacy fallbacks or merges for queue/title/scoring/scheduler.
 
-**Update `coercePayload()`:**
-```typescript
-case 'title-filter': {
-  const normalized = normalizeKeys<TitleFilterConfig>(payload)
-  return { ...DEFAULT_TITLE_FILTER, ...normalized }
-}
-case 'scoring-config': {
-  const normalized = normalizeKeys<ScoringConfig>(payload)
-  return { ...DEFAULT_SCORING_CONFIG, ...normalized }
-}
-// REMOVE cases for 'prefilter-policy' and 'match-policy'
-```
-
-**Update `validatePayload()`:**
-```typescript
-case 'title-filter':
-  return isTitleFilterConfig(payload)
-case 'scoring-config':
-  return isScoringConfig(payload)
-// REMOVE cases for 'prefilter-policy' and 'match-policy'
-```
+**Validate payloads:** ensure only current IDs are accepted; legacy IDs should return 400/404.
 
 ---
 
 ## Phase 4: Frontend Updates
 
-### 4.1 Create `job-finder-FE/src/pages/job-finder-config/components/tabs/TitleFilterTab.tsx`
+### 4.x Frontend Config UI (current state)
 
-Simple UI with two string list fields:
-- Required Keywords (comma-separated or tag input)
-- Excluded Keywords
-
-### 4.2 Create `job-finder-FE/src/pages/job-finder-config/components/tabs/ScoringConfigTab.tsx`
-
-Organized sections:
-1. **Score Threshold** - Single numeric input
-2. **Weights** - Three sliders (skill/experience/seniority) that sum to 100
-3. **Seniority** - Three multi-selects (preferred/acceptable/rejected) + point inputs
-4. **Location** - Checkboxes + timezone inputs
-5. **Technology** - Four multi-selects (required/preferred/disliked/rejected) + point inputs
-6. **Salary** - Minimum/target inputs + penalty
-7. **Experience** - User years + max required + penalty
-
-### 4.3 Update `job-finder-FE/src/pages/job-finder-config/JobFinderConfigPage.tsx`
-
-- Replace `PrefilterPolicyTab` with `TitleFilterTab` and `ScoringConfigTab`
-- Remove `MatchPolicyTab` if it exists
-- Update tab navigation
+- Single **PrefilterPolicyTab** surfaces title keywords + other prefilter gates from `prefilter-policy` (the only prefilter config).
+- **MatchPolicyTab** continues to edit `match-policy` (full scoring config).
+- Worker runtime settings live under `worker-settings.runtime` (Queue tab).
+- Tabs: prefilter | scoring | queue | ai | personal.
 
 ---
 
@@ -651,56 +549,19 @@ def migrate_configs(db_path: str):
     prefilter = load_config(db_path, "prefilter-policy")
     match = load_config(db_path, "match-policy")
 
-    # Build title-filter from legacy
-    title_filter = {
-        "requiredKeywords": prefilter.get("strikeEngine", {})
-            .get("hardRejections", {})
-            .get("requiredTitleKeywords", []),
-        "excludedKeywords": prefilter.get("strikeEngine", {})
-            .get("hardRejections", {})
-            .get("excludedKeywords", []),
-    }
+    # Build canonical prefilter-policy (including title keywords) from legacy
+    prefilter_policy = migrate_prefilter(prefilter)
 
-    # Build scoring-config from legacy
-    scoring_config = {
-        "minScore": match.get("jobMatch", {}).get("minMatchScore", 60),
-        "weights": { ... },  # Map from legacy weights
-        "seniority": {
-            "preferred": ["senior", "staff", "lead"],
-            "acceptable": ["mid"],
-            "rejected": prefilter.get("strikeEngine", {})
-                .get("hardRejections", {})
-                .get("excludedSeniority", []),
-            ...
-        },
-        "location": {
-            "allowRemote": prefilter.get("strikeEngine", {})
-                .get("remotePolicy", {})
-                .get("allowRemote", True),
-            "userTimezone": match.get("jobMatch", {}).get("userTimezone", -8),
-            ...
-        },
-        "technology": {
-            "required": [k for k, v in prefilter.get("technologyRanks", {})
-                .get("technologies", {}).items() if v.get("rank") == "required"],
-            ...
-        },
-        "salary": {
-            "minimum": prefilter.get("strikeEngine", {})
-                .get("hardRejections", {})
-                .get("minSalaryFloor"),
-            ...
-        },
-        ...
-    }
+    # Build canonical match-policy from legacy
+    match_policy = migrate_match_policy(match)
 
     # Save new configs
-    save_config(db_path, "title-filter", title_filter)
-    save_config(db_path, "scoring-config", scoring_config)
+    save_config(db_path, "prefilter-policy", prefilter_policy)
+    save_config(db_path, "match-policy", match_policy)
 
-    # DELETE legacy configs
-    delete_config(db_path, "prefilter-policy")
-    delete_config(db_path, "match-policy")
+    # DELETE any legacy configs after migration
+    for legacy_id in legacy_ids_to_delete:
+        delete_config(db_path, legacy_id)
 ```
 
 ---

@@ -4,6 +4,96 @@ const API_BASE = process.env.JF_E2E_API_BASE || "http://127.0.0.1:5080/api"
 // Use dev-admin-token which is recognized by the backend in test mode
 const AUTH_TOKEN = process.env.JF_E2E_AUTH_TOKEN || "dev-admin-token"
 
+const MIN_PREFILTER = {
+  title: { requiredKeywords: [], excludedKeywords: [] },
+  freshness: { maxAgeDays: 90 },
+  workArrangement: { allowRemote: true, allowHybrid: true, allowOnsite: true },
+  employmentType: { allowFullTime: true, allowPartTime: true, allowContract: true },
+  salary: { minimum: null },
+  technology: { rejected: [] },
+}
+
+const MIN_MATCH = {
+  minScore: 50,
+  weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
+  seniority: {
+    preferred: ["senior"],
+    acceptable: ["mid"],
+    rejected: ["junior"],
+    preferredScore: 10,
+    acceptableScore: 0,
+    rejectedScore: -100,
+  },
+  location: {
+    allowRemote: true,
+    allowHybrid: true,
+    allowOnsite: true,
+    userTimezone: -8,
+    maxTimezoneDiffHours: 8,
+    perHourScore: -1,
+    hybridSameCityScore: 0,
+  },
+  technology: {
+    required: [],
+    preferred: [],
+    disliked: [],
+    rejected: [],
+    requiredScore: 1,
+    preferredScore: 1,
+    dislikedScore: -1,
+  },
+  salary: { minimum: null, target: null, belowTargetScore: 0 },
+  experience: { userYears: 5, maxRequired: 20, overqualifiedScore: 0 },
+  freshness: {
+    freshDays: 30,
+    freshScore: 0,
+    staleDays: 60,
+    staleScore: -5,
+    veryStaleDays: 90,
+    veryStaleScore: -10,
+    repostScore: -2,
+  },
+  roleFit: {
+    preferred: [],
+    acceptable: [],
+    penalized: [],
+    rejected: [],
+    preferredScore: 0,
+    penalizedScore: -1,
+  },
+  company: {
+    preferredCityScore: 0,
+    preferredCity: undefined,
+    remoteFirstScore: 0,
+    aiMlFocusScore: 0,
+    largeCompanyScore: 0,
+    smallCompanyScore: 0,
+    largeCompanyThreshold: 1000,
+    smallCompanyThreshold: 50,
+    startupScore: 0,
+  },
+}
+
+const MIN_WORKER = {
+  scraping: { requestTimeoutSeconds: 30, maxHtmlSampleLength: 20000 },
+  textLimits: {
+    minCompanyPageLength: 10,
+    minSparseCompanyInfoLength: 10,
+    maxIntakeTextLength: 500,
+    maxIntakeDescriptionLength: 2000,
+    maxIntakeFieldLength: 400,
+    maxDescriptionPreviewLength: 500,
+    maxCompanyInfoTextLength: 1000,
+  },
+  runtime: {
+    processingTimeoutSeconds: 1800,
+    isProcessingEnabled: true,
+    taskDelaySeconds: 1,
+    pollIntervalSeconds: 60,
+    scrapeConfig: {},
+  },
+}
+
 interface ApiSuccess<T> {
   success: true
   data: T
@@ -165,6 +255,39 @@ export async function deleteContentItem(request: APIRequestContext, itemId: stri
   if (!response.ok()) {
     throw new Error(`Failed to delete content item ${itemId}: ${response.status()} ${await response.text()}`)
   }
+}
+
+export async function seedBaseConfigs(request: APIRequestContext) {
+  const upsert = async (id: string, payload: Record<string, unknown>) => {
+    const res = await request.put(`${API_BASE}/config/${id}`, {
+      data: { payload },
+      headers: {
+        Authorization: `Bearer ${AUTH_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    })
+    if (!res.ok()) {
+      const body = await res.text()
+      throw new Error(`Failed to upsert config ${id}: ${res.status()} ${body}`)
+    }
+  }
+
+  await upsert("prefilter-policy", MIN_PREFILTER)
+  await upsert("match-policy", MIN_MATCH)
+  await upsert("worker-settings", MIN_WORKER)
+  await upsert("ai-settings", {
+    worker: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
+    documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
+    options: [],
+  })
+  await upsert("personal-info", {
+    email: "owner@jobfinder.dev",
+    name: "E2E Owner",
+    accentColor: "#3b82f6",
+    city: "",
+    timezone: null,
+    relocationAllowed: false,
+  })
 }
 
 export async function listContentItems(

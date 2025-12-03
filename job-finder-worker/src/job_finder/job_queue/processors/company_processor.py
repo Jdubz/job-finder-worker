@@ -8,6 +8,8 @@ URL is a hint, not a requirement. AI extracts from search results.
 """
 
 import logging
+
+from job_finder.exceptions import InitializationError
 from contextlib import contextmanager
 from typing import List, Optional
 from urllib.parse import urlparse
@@ -87,11 +89,13 @@ class CompanyProcessor(BaseProcessor):
 
         # Refresh configs so each company task uses latest settings and fails loudly if missing.
         try:
-            self.config_loader.get_queue_settings()
+            worker_settings = self.config_loader.get_worker_settings()
+            if not isinstance(worker_settings.get("runtime"), dict):
+                raise InitializationError("worker-settings.runtime missing or invalid")
         except Exception as exc:
-            logger.error(f"Missing queue-settings for company processing: {exc}")
+            logger.error(f"Missing worker-settings/runtime for company processing: {exc}")
             self.queue_manager.update_status(
-                item.id, QueueStatus.FAILED, f"Missing queue-settings: {exc}"
+                item.id, QueueStatus.FAILED, f"Missing worker-settings: {exc}"
             )
             return
 

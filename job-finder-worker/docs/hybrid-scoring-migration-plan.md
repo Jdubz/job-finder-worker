@@ -2,7 +2,7 @@
 
 ## Overview
 
-Replace the fragile programmatic filtering system with a hybrid approach that uses AI for semantic data extraction and deterministic scoring from database configuration.
+Replace the fragile programmatic filtering system with a hybrid approach that uses AI for semantic data extraction and deterministic scoring from database configuration. **Current state (Dec 2025):** title keywords live under `prefilter-policy.title`, and runtime settings live under `worker-settings.runtime`.
 
 **Migration Type:** Hard cutover (no backwards compatibility)
 **Estimated Effort:** 5-7 days of implementation
@@ -24,7 +24,7 @@ Based on requirements clarification:
 | Database | No migration - reuse existing columns |
 | Scoring | AI does NO math - only extracts data for deterministic calculation |
 | Observability | Use filter_result/analysis_result + queue events |
-| Pre-AI Filtering | Title keywords only (required + stop lists) |
+| Pre-AI Filtering | Prefilter-policy (title keywords + freshness/work arrangement/employment type/salary/tech rejects) |
 | Semantic Analysis | ALL content analysis (tech, keywords, flags) done by AI |
 | Priority Field | **REMOVE - useless, will be deleted soon** |
 
@@ -52,7 +52,7 @@ These clarifications supersede any conflicting statements in the original plan:
 
 - ❌ AI providing match scores, priorities, or recommendations during extraction
 - ✅ AI outputs pure structured data (technologies, seniority, timezone, etc.)
-- ✅ All scoring weights/bonuses/penalties come from `scoring-config` record
+- ✅ All scoring weights/bonuses/penalties come from `match-policy`
 
 ### 3. ALL Scoring MUST Be Configurable
 
@@ -72,7 +72,7 @@ This includes:
 **Company scoring is highly relevant to job scoring.** The current implementation is MISSING company signal scoring entirely. The scoring engine MUST:
 - Accept `company_data` parameter in `score()` method
 - Score based on: portland_office, remote_first, ai_ml_focus, company_size
-- All company signal weights must be in `scoring-config`
+- All company signal weights must be in `match-policy.company`
 
 ### 5. Timezone Scoring - CRITICAL FIX NEEDED
 
@@ -103,7 +103,7 @@ The scoring engine must apply freshness bonuses/penalties per config:
 - `is_ml_ai`, `is_devops_sre`, `is_data`
 - `requires_clearance`, `is_consulting`
 
-The scoring engine applies bonuses/penalties from `scoring-config.roleFit`:
+The scoring engine applies bonuses/penalties from `match-policy.roleFit`:
 - `backendBonus`, `mlAiBonus`, `devopsSreBonus`
 - `frontendPenalty`, `consultingPenalty`, `clearancePenalty`
 
@@ -515,21 +515,17 @@ export interface JobExtractionResult {
 
 // Update JobFinderConfigId
 export type JobFinderConfigId =
-  | "queue-settings"
   | "ai-settings"
   | "ai-prompts"
   | "personal-info"
-  | "prefilter-policy"  // SIMPLIFIED: title keywords only
-  | "match-policy"      // Keep for detailed analysis config
-  | "scoring-config"    // NEW: all scoring weights
-  | "scheduler-settings"
+  | "prefilter-policy"
+  | "match-policy"
   | "worker-settings";
 ```
 
-**Migration note:** Existing `prefilter-policy` data in the database will need a migration script to:
-1. Extract `requiredTitleKeywords` from `strikeEngine.hardRejections.requiredTitleKeywords`
-2. Create `stopKeywords` from the existing non-engineering title patterns
-3. Drop all other fields (stopList, strikeEngine, remotePolicy, etc.)
+**Migration note:** Existing configs should be normalized to the canonical shapes:
+1. Move any legacy title keywords into `prefilter-policy.title`.
+2. Drop any legacy fields (stopList, strikeEngine, remotePolicy, queue/scheduler/scoring configs) after migration.
 
 **File:** `shared/src/job.types.ts`
 
@@ -577,10 +573,10 @@ export interface ScoringResult {
 
 | Endpoint | Changes |
 |----------|---------|
-| `GET /api/config/scoring-config` | NEW endpoint for scoring configuration |
-| `PUT /api/config/scoring-config` | NEW endpoint to update scoring config |
-| `GET /api/config/prefilter-policy` | SIMPLIFY to title keywords only |
-| `PUT /api/config/prefilter-policy` | SIMPLIFY to title keywords only |
+| `GET /api/config/match-policy` | Match policy configuration |
+| `PUT /api/config/match-policy` | Update match policy |
+| `GET /api/config/prefilter-policy` | Structured prefilter (title/freshness/work arrangement/employment type/salary/tech rejects) |
+| `PUT /api/config/prefilter-policy` | Update prefilter policy |
 
 ### Prefilter Policy Simplification
 
@@ -1781,23 +1777,13 @@ from job_finder.scoring.config import ScoringConfig
 
 def get_scoring_config(self) -> ScoringConfig:
     """Load scoring configuration from database."""
-    try:
-        payload = self._get_config("scoring-config")
-        return ScoringConfig(**payload)
-    except InitializationError:
-        # Seed defaults if not found
-        defaults = ScoringConfig()
-        return ScoringConfig(**self._seed_config("scoring-config", defaults.model_dump()))
+    payload = self._get_config("match-policy")
+    return MatchPolicy(**payload)
 
-def get_title_filter_config(self) -> dict:
-    """Load title filter config from simplified prefilter-policy."""
+def get_prefilter_title(self) -> dict:
+    """Load title keywords from prefilter-policy."""
     policy = self.get_prefilter_policy()
-    return policy.get("titleFilter", {
-        "requiredKeywords": [],
-        "stopKeywords": [],
-    })
-
-# REMOVE: get_stop_list() - no longer needed
+    return policy.get("title", {"requiredKeywords": [], "excludedKeywords": []})
 # Stop lists (excludedCompanies, excludedKeywords, excludedDomains) are eliminated
 ```
 
@@ -1864,113 +1850,6 @@ Update these files:
 
 ---
 
-### Phase 5: Update Shared Types
-
-Update `shared/src/config.types.ts`:
-- Add `ScoringConfig` interface
-- Add `JobExtractionResult` interface
-- Add `"scoring-config"` to `JobFinderConfigId`
-
-Update `shared/src/job.types.ts`:
-- Add `ScoringResult` interface
-- Update `JobListingRecord.filterResult` type
-- Update `JobListingRecord.analysisResult` type
-
----
-
-### Phase 6: Update API
-
-Add to `job-finder-BE/server/src/modules/config/`:
-- New route handler for `scoring-config`
-- Type guards for `ScoringConfig`
-- Default config seeding
-
----
-
-### Phase 7: Update Frontend
-
-#### Remove from PrefilterPolicyTab.tsx:
-- All strike engine configuration
-- Hard rejections
-- Remote policy
-- Salary/experience/quality/age strikes
-- Technology ranks
-
-#### Keep in PrefilterPolicyTab.tsx:
-- Stop list (excludedCompanies, excludedKeywords, excludedDomains)
-
-#### Create ScoringConfigTab.tsx:
-- Work arrangement settings
-- Compensation settings
-- Seniority settings
-- Technology preferences
-- Role fit settings
-- Freshness settings
-- Company signals settings
-- Threshold settings
-
-#### Update JobDetailsDialog.tsx:
-- Show scoring breakdown from `analysisResult.scoringResult`
-- Display each adjustment with category, reason, points
-
----
-
-## Migration Checklist
-
-### Pre-Migration
-- [x] Create feature branch from staging
-- [ ] Back up production database
-- [ ] Document current config values (especially prefilter-policy for migration)
-
-### Phase 1: New Modules
-- [x] Create `src/job_finder/ai/extraction.py`
-- [x] Create `src/job_finder/ai/extraction_prompts.py`
-- [x] Create `src/job_finder/scoring/__init__.py`
-- [x] Create `src/job_finder/scoring/config.py` (merged into engine.py)
-- [x] Create `src/job_finder/scoring/engine.py`
-- [x] Create `src/job_finder/filters/title_filter.py`
-- [x] Write unit tests for new modules
-
-### Phase 2: Job Processor
-- [x] Update `job_processor.py` with new pipeline (single-task PipelineContext)
-- [x] Add queue event emissions
-- [x] Update integration tests
-
-### Phase 3: Config Loader
-- [x] Add `get_scoring_config()` method
-- [x] Add `get_title_filter()` method
-- [x] Seed default `scoring-config`
-- [ ] Create migration script for existing `prefilter-policy` data
-
-### Phase 4: Remove Deprecated Code
-- [x] Delete `src/job_finder/filters/strike_filter_engine.py` (only .removed backup exists)
-- [x] Delete `src/job_finder/utils/timezone_utils.py`
-- [x] Remove `_apply_technology_ranks()` from `matcher.py` (already removed)
-- [x] Remove `_apply_experience_strike()` from `matcher.py` (already removed)
-- [x] Remove `_detect_work_arrangement()` from `matcher.py` (already removed)
-- [x] Remove `_calculate_location_penalty()` from `matcher.py` (already removed)
-- [x] Remove `_calculate_adjusted_score()` from `matcher.py` (already removed)
-- [x] Remove `calculate_freshness_adjustment()` from `date_utils.py`
-- [x] Update imports in remaining files
-- [x] Delete deprecated tests
-- [x] Run full test suite (502 tests pass)
-
-### Phase 5: Shared Types
-- [x] Add `TitleFilterConfig` interface
-- [x] Add `ScoringConfig` interface
-- [x] Add `JobExtractionResult` interface
-- [x] Add `ScoreAdjustment` interface
-- [x] Add `ScoreBreakdown` interface
-- [x] Update `JobFinderConfigId` type
-- [x] Rebuild shared package
-
-### Phase 6: API
-- [x] Add `GET /api/config/scoring-config` endpoint
-- [x] Add `PUT /api/config/scoring-config` endpoint
-- [x] Add `title-filter` endpoints
-- [ ] Add config migration endpoint or script
-- [x] Update config type guards
-- [x] Test API changes
 
 ### Phase 7: Frontend
 - [x] CREATE `TitleFilterTab.tsx`

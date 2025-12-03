@@ -1,18 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { configClient } from "@/api/config-client"
-import {
-  DEFAULT_TITLE_FILTER,
-  DEFAULT_QUEUE_SETTINGS,
-  DEFAULT_AI_SETTINGS,
-  DEFAULT_PERSONAL_INFO,
-} from "@shared/types"
-import type {
-  TitleFilterConfig,
-  MatchPolicy,
-  QueueSettings,
-  AISettings,
-} from "@shared/types"
+import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO } from "@shared/types"
+import type { MatchPolicy, AISettings, PreFilterPolicy, WorkerSettings } from "@shared/types"
 import type { PersonalInfo } from "@shared/types"
 import { deepClone, stableStringify } from "../utils/config-helpers"
 
@@ -24,15 +14,14 @@ export function useConfigState() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  const [titleFilter, setTitleFilter] = useState<TitleFilterConfig>(DEFAULT_TITLE_FILTER)
-  const [originalTitleFilter, setOriginalTitleFilter] = useState<TitleFilterConfig>(DEFAULT_TITLE_FILTER)
+  const [prefilterPolicy, setPrefilterPolicy] = useState<PreFilterPolicy | null>(null)
+  const [originalPrefilterPolicy, setOriginalPrefilterPolicy] = useState<PreFilterPolicy | null>(null)
 
-  // MatchPolicy is required - will throw if not found in DB
   const [matchPolicy, setMatchPolicy] = useState<MatchPolicy | null>(null)
   const [originalMatchPolicy, setOriginalMatchPolicy] = useState<MatchPolicy | null>(null)
 
-  const [queueSettings, setQueueSettingsState] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
-  const [originalQueue, setOriginalQueue] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
+  const [workerSettings, setWorkerSettings] = useState<WorkerSettings | null>(null)
+  const [originalWorkerSettings, setOriginalWorkerSettings] = useState<WorkerSettings | null>(null)
 
   const [aiSettings, setAISettings] = useState<AISettings>(DEFAULT_AI_SETTINGS)
   const [originalAI, setOriginalAI] = useState<AISettings>(DEFAULT_AI_SETTINGS)
@@ -56,24 +45,24 @@ export function useConfigState() {
         return acc
       }, {})
 
-      const titleFilterData = deepClone((map["title-filter"] as TitleFilterConfig) ?? DEFAULT_TITLE_FILTER)
-      setTitleFilter(titleFilterData)
-      setOriginalTitleFilter(deepClone(titleFilterData))
+      const prefilter = map["prefilter-policy"] as PreFilterPolicy | undefined
+      if (!prefilter) throw new Error("prefilter-policy config is missing")
+      setPrefilterPolicy(deepClone(prefilter))
+      setOriginalPrefilterPolicy(deepClone(prefilter))
 
-      // MatchPolicy may not exist yet - set to null if not found (UI will show setup prompt)
       const matchPolicyData = map["match-policy"] as MatchPolicy | undefined
       if (matchPolicyData) {
         setMatchPolicy(deepClone(matchPolicyData))
         setOriginalMatchPolicy(deepClone(matchPolicyData))
       } else {
-        // Keep as null - ScoringConfigTab will show setup instructions
         setMatchPolicy(null)
         setOriginalMatchPolicy(null)
       }
 
-      const queue = deepClone((map["queue-settings"] as QueueSettings) ?? DEFAULT_QUEUE_SETTINGS)
-      setQueueSettingsState(queue)
-      setOriginalQueue(deepClone(queue))
+      const worker = map["worker-settings"] as WorkerSettings | undefined
+      if (!worker) throw new Error("worker-settings config is missing")
+      setWorkerSettings(deepClone(worker))
+      setOriginalWorkerSettings(deepClone(worker))
 
       const ai = deepClone((map["ai-settings"] as AISettings) ?? DEFAULT_AI_SETTINGS)
       setAISettings(ai)
@@ -95,20 +84,29 @@ export function useConfigState() {
     loadAll()
   }, [loadAll])
 
-  const handleSaveTitleFilter = async (configOverride?: TitleFilterConfig) => {
+  const handleSavePrefilter = async (configOverride?: PreFilterPolicy) => {
     setIsSaving(true)
     setError(null)
-    const payload = deepClone(configOverride ?? titleFilter)
-    try {
-      await configClient.updateTitleFilter(payload)
-      setTitleFilter(payload)
-      setOriginalTitleFilter(deepClone(payload))
-      setSuccess("Title filter saved")
-    } catch (_err) {
-      setError("Failed to save title filter")
-    } finally {
+    const payload = deepClone(configOverride ?? prefilterPolicy)
+    if (!payload) {
+      setError("No pre-filter policy to save")
       setIsSaving(false)
+      return
     }
+    try {
+      await configClient.updatePrefilterPolicy(payload)
+      setPrefilterPolicy(payload)
+      setOriginalPrefilterPolicy(deepClone(payload))
+      setSuccess("Pre-filter policy saved")
+    } catch (_err) {
+      setError("Failed to save pre-filter policy")
+    } finally {
+    setIsSaving(false)
+    }
+  }
+
+  const updatePersonalInfoState = (updates: Partial<PersonalInfo>) => {
+    setPersonalInfo((prev) => ({ ...(prev ?? DEFAULT_PERSONAL_INFO), ...updates }))
   }
 
   const handleSaveMatchPolicy = async (configOverride?: MatchPolicy) => {
@@ -132,19 +130,23 @@ export function useConfigState() {
     }
   }
 
-  const setQueueSettings = (updates: Partial<QueueSettings>) => {
-    setQueueSettingsState((prev) => ({ ...prev, ...updates }))
+  const setRuntimeSettings = (updates: Partial<WorkerSettings["runtime"]>) => {
+    setWorkerSettings((prev) => (prev ? { ...prev, runtime: { ...prev.runtime, ...updates } } : prev))
   }
 
-  const handleSaveQueueSettings = async () => {
+  const handleSaveWorkerSettings = async () => {
+    if (!workerSettings) {
+      setError("Worker settings not loaded")
+      return
+    }
     setIsSaving(true)
     setError(null)
     try {
-      await configClient.updateQueueSettings(queueSettings)
-      setOriginalQueue(deepClone(queueSettings))
-      setSuccess("Queue settings saved")
+      await configClient.updateWorkerSettings(workerSettings)
+      setOriginalWorkerSettings(deepClone(workerSettings))
+      setSuccess("Worker settings saved")
     } catch (_err) {
-      setError("Failed to save queue settings")
+      setError("Failed to save worker settings")
     } finally {
       setIsSaving(false)
     }
@@ -154,7 +156,6 @@ export function useConfigState() {
     setIsSaving(true)
     setError(null)
     try {
-      // Preserve any existing per-task settings even if UI doesn't edit them yet
       const merged = {
         ...aiSettings,
         worker: {
@@ -181,9 +182,8 @@ export function useConfigState() {
     setIsSaving(true)
     setError(null)
     try {
-      const saved = await configClient.updatePersonalInfo(personalInfo, user?.email ?? "")
-      setPersonalInfo(saved)
-      setOriginalPersonalInfo(deepClone(saved))
+      await configClient.updatePersonalInfo(personalInfo, user?.email ?? "")
+      setOriginalPersonalInfo(deepClone(personalInfo))
       setSuccess("Personal info saved")
     } catch (_err) {
       setError("Failed to save personal info")
@@ -192,81 +192,38 @@ export function useConfigState() {
     }
   }
 
-  const updatePersonalInfoState = (updates: Partial<PersonalInfo>) => {
-    setPersonalInfo((prev) => ({
-      ...(prev ?? { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }),
-      ...updates,
-    }))
-  }
-
-  const resetTitleFilter = () => {
-    const resetValue = deepClone(originalTitleFilter)
-    setTitleFilter(resetValue)
-    setSuccess(null)
-    return resetValue
-  }
-
-  const resetMatchPolicy = (): MatchPolicy => {
-    if (!originalMatchPolicy) {
-      throw new Error("Cannot reset match-policy: original config not loaded")
-    }
-    const resetValue = deepClone(originalMatchPolicy)
-    setMatchPolicy(resetValue)
-    setSuccess(null)
-    return resetValue
-  }
-
-  const resetQueue = () => {
-    setQueueSettingsState(deepClone(originalQueue))
-    setSuccess(null)
-  }
-
-  const resetAI = () => {
-    setAISettings(deepClone(originalAI))
-    setSuccess(null)
-  }
-
-  const resetPersonal = () => {
-    const fallback = { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
-    setPersonalInfo(deepClone(originalPersonalInfo ?? fallback))
-    setSuccess(null)
-  }
-
   return {
     isLoading,
     isSaving,
     error,
     success,
-    titleFilter,
-    setTitleFilter,
-    hasTitleFilterChanges: stableStringify(titleFilter) !== stableStringify(originalTitleFilter),
-    handleSaveTitleFilter,
-    resetTitleFilter,
-    matchPolicy,
-    setMatchPolicy,
-    hasMatchPolicyChanges: stableStringify(matchPolicy) !== stableStringify(originalMatchPolicy),
-    handleSaveMatchPolicy,
-    resetMatchPolicy,
 
-    queueSettings,
-    setQueueSettings,
-    hasQueueChanges: stableStringify(queueSettings) !== stableStringify(originalQueue),
-    handleSaveQueueSettings,
-    resetQueue,
+    prefilterPolicy,
+    originalPrefilterPolicy,
+    handleSavePrefilter,
+    resetPrefilter: () => setPrefilterPolicy(deepClone(originalPrefilterPolicy)),
+
+    matchPolicy,
+    originalMatchPolicy,
+    handleSaveMatchPolicy,
+    resetMatchPolicy: () => setMatchPolicy(deepClone(originalMatchPolicy)),
 
     aiSettings,
     setAISettings,
-    hasAIChanges: stableStringify(aiSettings) !== stableStringify(originalAI),
     handleSaveAISettings,
-    resetAI,
+    hasAIChanges: stableStringify(aiSettings) !== stableStringify(originalAI),
+    resetAI: () => setAISettings(deepClone(originalAI)),
+
+    workerSettings,
+    setRuntimeSettings,
+    handleSaveWorkerSettings,
+    hasWorkerChanges: stableStringify(workerSettings) !== stableStringify(originalWorkerSettings),
+    resetWorker: () => setWorkerSettings(deepClone(originalWorkerSettings)),
 
     personalInfo,
-    setPersonalInfo,
-    hasPersonalInfoChanges: stableStringify(personalInfo) !== stableStringify(originalPersonalInfo),
     updatePersonalInfoState,
     handleSavePersonalInfo,
-    resetPersonal,
+    hasPersonalInfoChanges: stableStringify(personalInfo) !== stableStringify(originalPersonalInfo),
+    resetPersonal: () => setPersonalInfo(deepClone(originalPersonalInfo)),
   }
 }
-
-export type ConfigState = ReturnType<typeof useConfigState>

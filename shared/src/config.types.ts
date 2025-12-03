@@ -18,17 +18,7 @@ export interface PromptConfig {
 // Core app configuration payloads
 // -----------------------------------------------------------
 
-export interface QueueSettings {
-  processingTimeoutSeconds: number
-  isProcessingEnabled?: boolean // Controls whether the worker processes queue items (defaults to true)
-  taskDelaySeconds?: number // Delay between processing queue items (defaults to 0)
-  pollIntervalSeconds?: number // How often the worker polls for new items (defaults to 60)
-  scrapeConfig?: {
-    target_matches?: number | null
-    max_sources?: number | null
-    source_ids?: string[]
-  }
-}
+// (deprecated) QueueSettings have been merged into WorkerSettings.runtime
 
 // -----------------------------------------------------------
 // AI Provider Configuration
@@ -110,18 +100,6 @@ export interface AISettings {
   documentGenerator: AISettingsSection
   /** Tiered provider/interface/model options validated against CLI/API */
   options: AIProviderOption[]
-}
-
-// -----------------------------------------------------------
-// Title Filter Configuration (simple pre-filter)
-// -----------------------------------------------------------
-
-/** Simple title-based pre-filter configuration */
-export interface TitleFilterConfig {
-  /** Keywords that MUST appear in title (at least one) */
-  requiredKeywords: string[]
-  /** Keywords that immediately reject a job */
-  excludedKeywords: string[]
 }
 
 // -----------------------------------------------------------
@@ -513,20 +491,17 @@ export interface WorkerSettings {
   /** HTTP/Scraping settings */
   scraping: {
     requestTimeoutSeconds: number // HTTP request timeout (default: 30)
-    rateLimitDelaySeconds: number // Delay between requests (default: 2)
-    maxRetries: number // Maximum retries for failed requests (default: 3)
     maxHtmlSampleLength: number // Max HTML length for AI selector discovery (default: 20000)
-    maxHtmlSampleLengthSmall: number // Smaller HTML sample for faster processing (default: 15000)
   }
-  /** Source health tracking */
-  health: {
-    maxConsecutiveFailures: number // Failures before auto-disabling source (default: 5)
-    healthCheckIntervalSeconds: number // Seconds between health checks (default: 3600)
+  /** Source health tracking (optional) */
+  health?: {
+    maxConsecutiveFailures: number
+    healthCheckIntervalSeconds: number
   }
-  /** Cache TTLs */
-  cache: {
-    companyInfoTtlSeconds: number // Company info cache TTL (default: 86400 = 24h)
-    sourceConfigTtlSeconds: number // Source config cache TTL (default: 3600 = 1h)
+  /** Cache TTLs (optional) */
+  cache?: {
+    companyInfoTtlSeconds: number
+    sourceConfigTtlSeconds: number
   }
   /** Text processing limits */
   textLimits: {
@@ -538,6 +513,18 @@ export interface WorkerSettings {
     maxDescriptionPreviewLength: number // Max description length for remote keyword search (default: 500)
     maxCompanyInfoTextLength: number // Max length for company info text (default: 1000)
   }
+  /** Runtime/queue loop settings */
+  runtime: {
+    processingTimeoutSeconds: number
+    isProcessingEnabled: boolean
+    taskDelaySeconds: number
+    pollIntervalSeconds: number
+    scrapeConfig?: {
+      target_matches?: number | null
+      max_sources?: number | null
+      source_ids?: string[]
+    }
+  }
 }
 
 // -----------------------------------------------------------
@@ -545,21 +532,17 @@ export interface WorkerSettings {
 // -----------------------------------------------------------
 
 export type JobFinderConfigId =
-  | "queue-settings"
   | "ai-settings"
   | "ai-prompts"
   | "personal-info"
-  | "title-filter"
   | "prefilter-policy"
   | "match-policy"
   | "worker-settings"
 
 export type JobFinderConfigPayloadMap = {
-  "queue-settings": QueueSettings
   "ai-settings": AISettings
   "ai-prompts": PromptConfig
   "personal-info": PersonalInfo
-  "title-filter": TitleFilterConfig
   "prefilter-policy": PreFilterPolicy
   "match-policy": MatchPolicy
   "worker-settings": WorkerSettings
@@ -568,13 +551,6 @@ export type JobFinderConfigPayloadMap = {
 // -----------------------------------------------------------
 // Defaults (single source of truth)
 // -----------------------------------------------------------
-
-export const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
-  processingTimeoutSeconds: 1800,
-  isProcessingEnabled: true,
-  taskDelaySeconds: 1, // 1 second delay between tasks to avoid rate limits
-  pollIntervalSeconds: 60, // Poll for new items every 60 seconds
-}
 
 /** Canonical provider options built from AI_PROVIDER_MODELS */
 export const AI_PROVIDER_OPTIONS: AIProviderOption[] = Object.entries(AI_PROVIDER_MODELS).map(
@@ -611,28 +587,6 @@ export const DEFAULT_PERSONAL_INFO: PersonalInfo = {
   city: "",
   timezone: null,
   relocationAllowed: false,
-}
-
-export const DEFAULT_TITLE_FILTER: TitleFilterConfig = {
-  requiredKeywords: [
-    "software",
-    "developer",
-    "engineer",
-    "frontend",
-    "backend",
-    "fullstack",
-    "full-stack",
-    "full stack",
-  ],
-  excludedKeywords: [
-    "intern",
-    "internship",
-    "wordpress",
-    "php",
-    "sales",
-    "marketing",
-    "recruiter",
-  ],
 }
 
 // No DEFAULT_PREFILTER_POLICY - fail loud on missing config to prevent silent gaps
@@ -775,19 +729,9 @@ Provide:
 export const DEFAULT_WORKER_SETTINGS: WorkerSettings = {
   scraping: {
     requestTimeoutSeconds: 30,
-    rateLimitDelaySeconds: 2,
-    maxRetries: 3,
     maxHtmlSampleLength: 20000,
-    maxHtmlSampleLengthSmall: 15000,
   },
-  health: {
-    maxConsecutiveFailures: 5,
-    healthCheckIntervalSeconds: 3600,
-  },
-  cache: {
-    companyInfoTtlSeconds: 86400,
-    sourceConfigTtlSeconds: 3600,
-  },
+  // Optional sections below remain for backward compatibility
   textLimits: {
     minCompanyPageLength: 200,
     minSparseCompanyInfoLength: 100,
@@ -796,5 +740,12 @@ export const DEFAULT_WORKER_SETTINGS: WorkerSettings = {
     maxIntakeFieldLength: 400,
     maxDescriptionPreviewLength: 500,
     maxCompanyInfoTextLength: 1000,
+  },
+  runtime: {
+    processingTimeoutSeconds: 1800,
+    isProcessingEnabled: true,
+    taskDelaySeconds: 1,
+    pollIntervalSeconds: 60,
+    scrapeConfig: {},
   },
 }
