@@ -204,7 +204,13 @@ class TestPreFilterWorkArrangement:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {
                 "allowFullTime": True,
                 "allowPartTime": True,
@@ -228,7 +234,13 @@ class TestPreFilterWorkArrangement:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {
                 "allowFullTime": True,
                 "allowPartTime": True,
@@ -252,7 +264,13 @@ class TestPreFilterWorkArrangement:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {
                 "allowFullTime": True,
                 "allowPartTime": True,

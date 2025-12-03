@@ -87,6 +87,9 @@ class PreFilter:
         self.allow_remote = work_config.get("allowRemote", True)
         self.allow_hybrid = work_config.get("allowHybrid", True)
         self.allow_onsite = work_config.get("allowOnsite", True)
+        self.will_relocate = work_config.get("willRelocate", True)
+        # Support both camelCase and snake_case for user location config
+        self.user_location = work_config.get("userLocation") or work_config.get("user_location")
 
         # Employment type config
         emp_config = config.get("employmentType", {})
@@ -107,6 +110,7 @@ class PreFilter:
             f"title={len(self.required_keywords)}req/{len(self.excluded_keywords)}excl, "
             f"maxAge={self.max_age_days}d, "
             f"work=R{self.allow_remote}/H{self.allow_hybrid}/O{self.allow_onsite}, "
+            f"relocate={self.will_relocate}, userLocation={self.user_location}, "
             f"emp=FT{self.allow_full_time}/PT{self.allow_part_time}/C{self.allow_contract}, "
             f"minSalary={self.min_salary}, "
             f"rejectedTech={len(self.rejected_tech)}"
@@ -326,7 +330,7 @@ class PreFilter:
         return None
 
     def _check_work_arrangement(self, arrangement: str, job_data: Dict[str, Any]) -> PreFilterResult:
-        """Check if work arrangement is allowed."""
+        """Check if work arrangement is allowed, honoring user location/relocation preferences."""
         if arrangement == "remote" and not self.allow_remote:
             return PreFilterResult(
                 passed=False,
@@ -340,12 +344,13 @@ class PreFilter:
                     reason="Hybrid positions not allowed",
                 )
 
-            is_portland = self._is_portland_location(job_data)
-            if is_portland is False:
-                return PreFilterResult(
-                    passed=False,
-                    reason="Hybrid roles outside Portland, OR are not allowed",
-                )
+            if not self.will_relocate and self.user_location:
+                in_user_city = self._is_in_user_location(job_data, self.user_location)
+                if in_user_city is False:
+                    return PreFilterResult(
+                        passed=False,
+                        reason=f"Hybrid roles must be in {self.user_location}",
+                    )
 
         if arrangement == "onsite":
             if not self.allow_onsite:
@@ -354,22 +359,25 @@ class PreFilter:
                     reason="Onsite positions not allowed",
                 )
 
-            is_portland = self._is_portland_location(job_data)
-            if is_portland is False:
-                return PreFilterResult(
-                    passed=False,
-                    reason="Onsite roles must be in Portland, OR",
-                )
+            if not self.will_relocate and self.user_location:
+                in_user_city = self._is_in_user_location(job_data, self.user_location)
+                if in_user_city is False:
+                    return PreFilterResult(
+                        passed=False,
+                        reason=f"Onsite roles must be in {self.user_location}",
+                    )
 
         return PreFilterResult(passed=True)
 
-    def _is_portland_location(self, job_data: Dict[str, Any]) -> Optional[bool]:
-        """Check whether the job location is explicitly Portland, OR.
+    def _is_in_user_location(self, job_data: Dict[str, Any], user_location: str) -> Optional[bool]:
+        """Determine whether job location matches the configured user location.
 
-        Returns True if a location string clearly indicates Portland, OR;
-        False if a location string is present and clearly not Portland, OR;
-        None if location cannot be determined (missing/empty fields).
+        Returns True if a location string clearly matches; False if data exists and clearly differs;
+        None if insufficient data to decide (missing/empty fields).
         """
+
+        if not user_location:
+            return None
 
         location_candidates: List[str] = []
 
@@ -393,15 +401,35 @@ class PreFilter:
             if combined:
                 location_candidates.append(combined)
 
+        city_token, state_token = self._split_user_location(user_location)
+
         for loc in location_candidates:
             loc_lower = loc.lower()
-            if re.search(r"\bportland\b", loc_lower) and re.search(r"\b(or|oregon)\b", loc_lower):
-                return True
+            if city_token and city_token in loc_lower:
+                if not state_token or state_token in loc_lower:
+                    return True
 
         if location_candidates:
             return False
 
         return None
+
+    @staticmethod
+    def _split_user_location(user_location: str) -> tuple[Optional[str], Optional[str]]:
+        """Split a user location string into lowercase city/state tokens for loose matching."""
+        if not user_location:
+            return None, None
+
+        lower = user_location.lower()
+        if "," in lower:
+            city, state = [part.strip() for part in lower.split(",", 1)]
+            return city or None, state or None
+
+        parts = lower.split()
+        if len(parts) >= 2:
+            return " ".join(parts[:-1]), parts[-1]
+
+        return lower.strip() or None, None
 
     def _normalize_employment_type(self, job_data: Dict[str, Any]) -> Optional[str]:
         """
