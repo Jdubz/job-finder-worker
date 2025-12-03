@@ -370,9 +370,24 @@ describe("QueueManagementPage", () => {
     })
 
     it("shows Paused badge when processing is disabled", async () => {
-      vi.mocked(configClient.getQueueSettings).mockResolvedValue({
-        processingTimeoutSeconds: 1800,
-        isProcessingEnabled: false,
+      vi.mocked(configClient.getWorkerSettings).mockResolvedValue({
+        scraping: { requestTimeoutSeconds: 30, maxHtmlSampleLength: 20000 },
+        textLimits: {
+          minCompanyPageLength: 200,
+          minSparseCompanyInfoLength: 100,
+          maxIntakeTextLength: 500,
+          maxIntakeDescriptionLength: 2000,
+          maxIntakeFieldLength: 400,
+          maxDescriptionPreviewLength: 500,
+          maxCompanyInfoTextLength: 1000,
+        },
+        runtime: {
+          processingTimeoutSeconds: 1800,
+          pollIntervalSeconds: 60,
+          taskDelaySeconds: 1,
+          isProcessingEnabled: false,
+          scrapeConfig: {},
+        },
       })
 
       renderWithProvider()
@@ -393,9 +408,24 @@ describe("QueueManagementPage", () => {
     })
 
     it("shows Start Queue button when processing is disabled", async () => {
-      vi.mocked(configClient.getQueueSettings).mockResolvedValue({
-        processingTimeoutSeconds: 1800,
-        isProcessingEnabled: false,
+      vi.mocked(configClient.getWorkerSettings).mockResolvedValue({
+        scraping: { requestTimeoutSeconds: 30, maxHtmlSampleLength: 20000 },
+        textLimits: {
+          minCompanyPageLength: 200,
+          minSparseCompanyInfoLength: 100,
+          maxIntakeTextLength: 500,
+          maxIntakeDescriptionLength: 2000,
+          maxIntakeFieldLength: 400,
+          maxDescriptionPreviewLength: 500,
+          maxCompanyInfoTextLength: 1000,
+        },
+        runtime: {
+          processingTimeoutSeconds: 1800,
+          pollIntervalSeconds: 60,
+          taskDelaySeconds: 1,
+          isProcessingEnabled: false,
+          scrapeConfig: {},
+        },
       })
 
       renderWithProvider()
@@ -422,9 +452,24 @@ describe("QueueManagementPage", () => {
     })
 
     it("opens confirmation modal when Start Queue is clicked", async () => {
-      vi.mocked(configClient.getQueueSettings).mockResolvedValue({
-        processingTimeoutSeconds: 1800,
-        isProcessingEnabled: false,
+      vi.mocked(configClient.getWorkerSettings).mockResolvedValue({
+        scraping: { requestTimeoutSeconds: 30, maxHtmlSampleLength: 20000 },
+        textLimits: {
+          minCompanyPageLength: 200,
+          minSparseCompanyInfoLength: 100,
+          maxIntakeTextLength: 500,
+          maxIntakeDescriptionLength: 2000,
+          maxIntakeFieldLength: 400,
+          maxDescriptionPreviewLength: 500,
+          maxCompanyInfoTextLength: 1000,
+        },
+        runtime: {
+          processingTimeoutSeconds: 1800,
+          pollIntervalSeconds: 60,
+          taskDelaySeconds: 1,
+          isProcessingEnabled: false,
+          scrapeConfig: {},
+        },
       })
 
       const user = userEvent.setup()
@@ -480,9 +525,9 @@ describe("QueueManagementPage", () => {
       await user.click(screen.getByRole("button", { name: /pause processing/i }))
 
       await waitFor(() => {
-        expect(configClient.updateQueueSettings).toHaveBeenCalledWith({
-          isProcessingEnabled: false,
-        })
+        expect(configClient.updateWorkerSettings).toHaveBeenCalledWith(
+          expect.objectContaining({ runtime: expect.objectContaining({ isProcessingEnabled: false }) })
+        )
       })
 
       await waitFor(() => {
@@ -491,9 +536,24 @@ describe("QueueManagementPage", () => {
     })
 
     it("starts processing when confirmed", async () => {
-      vi.mocked(configClient.getQueueSettings).mockResolvedValue({
-        processingTimeoutSeconds: 1800,
-        isProcessingEnabled: false,
+      vi.mocked(configClient.getWorkerSettings).mockResolvedValue({
+        scraping: { requestTimeoutSeconds: 30, maxHtmlSampleLength: 20000 },
+        textLimits: {
+          minCompanyPageLength: 200,
+          minSparseCompanyInfoLength: 100,
+          maxIntakeTextLength: 500,
+          maxIntakeDescriptionLength: 2000,
+          maxIntakeFieldLength: 400,
+          maxDescriptionPreviewLength: 500,
+          maxCompanyInfoTextLength: 1000,
+        },
+        runtime: {
+          processingTimeoutSeconds: 1800,
+          pollIntervalSeconds: 60,
+          taskDelaySeconds: 1,
+          isProcessingEnabled: false,
+          scrapeConfig: {},
+        },
       })
 
       const user = userEvent.setup()
@@ -512,9 +572,9 @@ describe("QueueManagementPage", () => {
       await user.click(screen.getByRole("button", { name: /start processing/i }))
 
       await waitFor(() => {
-        expect(configClient.updateQueueSettings).toHaveBeenCalledWith({
-          isProcessingEnabled: true,
-        })
+        expect(configClient.updateWorkerSettings).toHaveBeenCalledWith(
+          expect.objectContaining({ runtime: expect.objectContaining({ isProcessingEnabled: true }) })
+        )
       })
 
       await waitFor(() => {
@@ -523,7 +583,7 @@ describe("QueueManagementPage", () => {
     })
 
     it("shows error message when toggle fails", async () => {
-      vi.mocked(configClient.updateQueueSettings).mockRejectedValue(new Error("Network error"))
+      vi.mocked(configClient.updateWorkerSettings).mockRejectedValue(new Error("Network error"))
 
       const user = userEvent.setup()
       renderWithProvider()
@@ -545,8 +605,8 @@ describe("QueueManagementPage", () => {
       })
     })
 
-    it("defaults to enabled when getQueueSettings fails", async () => {
-      vi.mocked(configClient.getQueueSettings).mockRejectedValue(new Error("Failed to load"))
+    it("defaults to enabled when getWorkerSettings fails", async () => {
+      vi.mocked(configClient.getWorkerSettings).mockRejectedValue(new Error("Failed to load"))
 
       renderWithProvider()
 
@@ -557,8 +617,22 @@ describe("QueueManagementPage", () => {
     })
 
     it("defaults to enabled when isProcessingEnabled is not set", async () => {
-      vi.mocked(configClient.getQueueSettings).mockResolvedValue({
-        processingTimeoutSeconds: 1800,
+      vi.mocked(configClient.getWorkerSettings).mockResolvedValue({
+        scraping: { requestTimeoutSeconds: 30, maxHtmlSampleLength: 20000 },
+        textLimits: {
+          minCompanyPageLength: 200,
+          minSparseCompanyInfoLength: 100,
+          maxIntakeTextLength: 500,
+          maxIntakeDescriptionLength: 2000,
+          maxIntakeFieldLength: 400,
+          maxDescriptionPreviewLength: 500,
+          maxCompanyInfoTextLength: 1000,
+        },
+        runtime: {
+          processingTimeoutSeconds: 1800,
+          pollIntervalSeconds: 60,
+          taskDelaySeconds: 1,
+        },
       } as any)
 
       renderWithProvider()
