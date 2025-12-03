@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -15,14 +14,10 @@ from job_finder.exceptions import (
     StorageError,
 )
 from job_finder.job_queue.models import SourceStatus
-from job_finder.storage.sqlite_client import sqlite_connection
+from job_finder.storage.sqlite_client import sqlite_connection, utcnow_iso
 from job_finder.utils.company_name_utils import normalize_company_name
 
 logger = logging.getLogger(__name__)
-
-
-def _utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 VALID_SOURCE_TRANSITIONS = {
@@ -125,7 +120,7 @@ class JobSourcesManager:
             raise DuplicateSourceError(name=name, existing_id=existing["id"])
 
         source_id = str(uuid4())
-        now = _utcnow_iso()
+        now = utcnow_iso()
 
         # Persist disabled_notes in config for visibility (no dedicated column yet)
         disabled_notes = config.get("disabled_notes")
@@ -236,7 +231,7 @@ class JobSourcesManager:
         error: Optional[str] = None,
     ) -> None:
         """Update scrape status after a scrape attempt."""
-        now = _utcnow_iso()
+        now = utcnow_iso()
 
         # Normalize status into SourceStatus
         status_lower = status.lower()
@@ -343,7 +338,7 @@ class JobSourcesManager:
                 SET status = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (status.value, _utcnow_iso(), source_id),
+                (status.value, utcnow_iso(), source_id),
             )
 
     def disable_source_with_note(self, source_id: str, reason: str) -> None:
@@ -358,7 +353,7 @@ class JobSourcesManager:
             source_id: The source ID to disable
             reason: Human-readable reason for disabling
         """
-        now = _utcnow_iso()
+        now = utcnow_iso()
         note = f"[{now}] {reason}"
 
         with sqlite_connection(self.db_path) as conn:
@@ -396,7 +391,7 @@ class JobSourcesManager:
                 SET config_json = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (json.dumps(config), _utcnow_iso(), source_id),
+                (json.dumps(config), utcnow_iso(), source_id),
             )
             if updated.rowcount == 0:
                 raise StorageError(f"Source {source_id} not found")
@@ -432,7 +427,7 @@ class JobSourcesManager:
                 SET company_id = ?, updated_at = ?
                 WHERE id = ? AND company_id IS NULL
                 """,
-                (company_id, _utcnow_iso(), source_id),
+                (company_id, utcnow_iso(), source_id),
             )
         updated = result.rowcount > 0
         if updated:

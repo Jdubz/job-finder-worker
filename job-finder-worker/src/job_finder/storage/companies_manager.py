@@ -4,22 +4,17 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from job_finder.exceptions import StorageError
-from job_finder.storage.sqlite_client import sqlite_connection
+from job_finder.storage.sqlite_client import sqlite_connection, utcnow_iso
 from job_finder.utils.company_name_utils import (
     clean_company_name,
     normalize_company_name,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 class CompaniesManager:
@@ -148,7 +143,7 @@ class CompaniesManager:
         if existing and not company_id:
             company_id = existing["id"]
 
-        now = _utcnow_iso()
+        now = utcnow_iso()
         has_portland_office = bool(
             company_data.get("hasPortlandOffice") or company_data.get("has_portland_office")
         )

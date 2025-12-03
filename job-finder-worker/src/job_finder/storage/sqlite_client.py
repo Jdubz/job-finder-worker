@@ -5,10 +5,19 @@ from __future__ import annotations
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Optional
 
 from job_finder.exceptions import ConfigurationError
+
+
+def utcnow_iso() -> str:
+    """Return current UTC time as ISO 8601 string.
+
+    Consolidated utility used by all storage modules for timestamp fields.
+    """
+    return datetime.now(timezone.utc).isoformat()
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
