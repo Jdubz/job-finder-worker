@@ -19,7 +19,8 @@ const listQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   status: z.enum(['active', 'paused', 'disabled', 'error']).optional(),
   sourceType: z.string().min(1).optional(),
-  companyId: z.string().uuid().optional(),
+  // SQLite company IDs are short strings (not UUIDs); accept any non-empty string
+  companyId: z.string().min(1).max(64).optional(),
   search: z.string().min(1).optional(),
   sortBy: z.enum(['name', 'created_at', 'updated_at', 'last_scraped_at']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional()
