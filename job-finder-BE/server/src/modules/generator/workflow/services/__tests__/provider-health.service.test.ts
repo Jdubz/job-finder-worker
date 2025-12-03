@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ensureCliProviderHealthy } from '../provider-health.service'
-import { execFile } from 'node:child_process'
 
 vi.mock('node:child_process', () => ({ execFile: vi.fn() }))
+import { ensureCliProviderHealthy } from '../provider-health.service'
+import { execFile } from 'node:child_process'
 
 const execFileMock = execFile as unknown as ReturnType<typeof vi.fn>
 
