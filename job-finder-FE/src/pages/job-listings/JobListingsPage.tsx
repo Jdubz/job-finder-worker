@@ -94,14 +94,20 @@ function getStatusBadge(status: JobListingStatus) {
 }
 
 function extractMatchScore(listing: JobListingRecord): number | null {
+  // Use direct matchScore column first (populated by worker from deterministic scoring)
+  if (typeof listing.matchScore === "number") return listing.matchScore
+
+  // Fallback: extract from analysisResult.scoringResult.finalScore
   const analysis = listing.analysisResult as Record<string, unknown> | undefined
   if (!analysis) return null
-  const raw = analysis["match_score"] ?? analysis["matchScore"]
-  if (typeof raw === "number") return raw
-  if (typeof raw === "string") {
-    const parsed = Number(raw)
-    return Number.isFinite(parsed) ? parsed : null
+
+  // Only use scoringResult.finalScore - the deterministic score
+  const scoring = analysis["scoringResult"] as Record<string, unknown> | undefined
+  if (scoring) {
+    const score = scoring["finalScore"]
+    if (typeof score === "number") return score
   }
+
   return null
 }
 

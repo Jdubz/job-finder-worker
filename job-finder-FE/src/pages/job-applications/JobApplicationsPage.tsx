@@ -4,7 +4,6 @@ import { useAuth } from "@/contexts/AuthContext"
 import { jobMatchesClient } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select,
@@ -29,19 +28,6 @@ import { logger } from "@/services/logging"
 import { toDate } from "@/utils/dateFormat"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 
-function getPriorityBadge(priority: string) {
-  switch (priority) {
-    case "High":
-      return <Badge className="bg-red-500 hover:bg-red-600">High</Badge>
-    case "Medium":
-      return <Badge className="bg-yellow-500 hover:bg-yellow-600">Medium</Badge>
-    case "Low":
-      return <Badge className="bg-green-500 hover:bg-green-600">Low</Badge>
-    default:
-      return <Badge variant="secondary">{priority}</Badge>
-  }
-}
-
 function getScoreColor(score: number) {
   if (score >= 85) return "text-green-600 font-bold"
   if (score >= 70) return "text-yellow-600 font-semibold"
@@ -59,7 +45,6 @@ export function JobApplicationsPage() {
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("")
-  const [priorityFilter, setPriorityFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState<string>("score")
 
   // Subscribe to real-time job matches
@@ -138,11 +123,6 @@ export function JobApplicationsPage() {
       )
     }
 
-    // Priority filter
-    if (priorityFilter !== "all") {
-      filtered = filtered.filter((match) => match.applicationPriority === priorityFilter)
-    }
-
     // Sorting
     filtered.sort((a, b) => {
       switch (sortBy) {
@@ -158,7 +138,7 @@ export function JobApplicationsPage() {
     })
 
     setFilteredMatches(filtered)
-  }, [matches, searchQuery, priorityFilter, sortBy])
+  }, [matches, searchQuery, sortBy])
 
   const handleRowClick = (match: JobMatchWithListing) => {
     openModal({
@@ -202,26 +182,26 @@ export function JobApplicationsPage() {
             <div className="text-2xl font-bold">{matches.length}</div>
             <div className="text-sm text-muted-foreground">Total Matches</div>
           </div>
-          <div className="bg-red-100 dark:bg-red-950 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-red-600">
-              {matches.filter((m) => m.applicationPriority === "High").length}
+          <div className="bg-green-100 dark:bg-green-950 p-4 rounded-lg">
+            <div className="text-2xl font-bold text-green-600">
+              {matches.filter((m) => m.matchScore >= 85).length}
             </div>
-            <div className="text-sm text-red-700 dark:text-red-400">High Priority</div>
+            <div className="text-sm text-green-700 dark:text-green-400">Score 85+</div>
           </div>
           <div className="bg-yellow-100 dark:bg-yellow-950 p-4 rounded-lg">
             <div className="text-2xl font-bold text-yellow-600">
-              {matches.filter((m) => m.applicationPriority === "Medium").length}
+              {matches.filter((m) => m.matchScore >= 70 && m.matchScore < 85).length}
             </div>
-            <div className="text-sm text-yellow-700 dark:text-yellow-400">Medium Priority</div>
+            <div className="text-sm text-yellow-700 dark:text-yellow-400">Score 70-84</div>
           </div>
-          <div className="bg-green-100 dark:bg-green-950 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-green-600">
+          <div className="bg-blue-100 dark:bg-blue-950 p-4 rounded-lg">
+            <div className="text-2xl font-bold text-blue-600">
               {matches.length > 0
                 ? Math.round(matches.reduce((sum, m) => sum + m.matchScore, 0) / matches.length)
                 : 0}
               %
             </div>
-            <div className="text-sm text-green-700 dark:text-green-400">Avg Match Score</div>
+            <div className="text-sm text-blue-700 dark:text-blue-400">Avg Match Score</div>
           </div>
         </div>
       )}
@@ -252,17 +232,6 @@ export function JobApplicationsPage() {
                   className="pl-10 w-full sm:w-[200px]"
                 />
               </div>
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                <SelectTrigger className="w-full sm:w-[140px]">
-                  <SelectValue placeholder="Priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="High">High</SelectItem>
-                  <SelectItem value="Medium">Medium</SelectItem>
-                  <SelectItem value="Low">Low</SelectItem>
-                </SelectContent>
-              </Select>
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-full sm:w-[140px]">
                   <SelectValue placeholder="Sort by" />
@@ -273,12 +242,11 @@ export function JobApplicationsPage() {
                   <SelectItem value="company">Company</SelectItem>
                 </SelectContent>
               </Select>
-              {(searchQuery.trim() || priorityFilter !== "all" || sortBy !== "score") && (
+              {(searchQuery.trim() || sortBy !== "score") && (
                 <Button
                   variant="ghost"
                   onClick={() => {
                     setSearchQuery("")
-                    setPriorityFilter("all")
                     setSortBy("score")
                   }}
                 >
@@ -324,7 +292,6 @@ export function JobApplicationsPage() {
                   <TableHead>Company</TableHead>
                   <TableHead className="hidden md:table-cell">Location</TableHead>
                   <TableHead className="text-center">Score</TableHead>
-                  <TableHead>Priority</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -362,7 +329,6 @@ export function JobApplicationsPage() {
                     <TableCell className="text-center">
                       <span className={getScoreColor(match.matchScore)}>{match.matchScore}%</span>
                     </TableCell>
-                    <TableCell>{getPriorityBadge(match.applicationPriority)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

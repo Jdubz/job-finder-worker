@@ -16,7 +16,7 @@
   - Portland office bonus.
   - Company weights (remoteFirst, aiMlFocus, size, timezone buckets, priority thresholds).
   - Freshness adjustments and role preference adjustments.
-  - Builds an `adjustments` array of human-readable strings; clamps 0–100; sets `application_priority`.
+  - Builds an `adjustments` array of human-readable strings; clamps 0–100.
 - FE (`JobListingsPage`) currently renders `analysisResult` as raw JSON in a small `<pre>` with a cramped description area.
 - Config forms now expose per-hour/hard TZ penalties and still rely on user timezone for diff calculations.
 
@@ -28,18 +28,18 @@
 ## Plan
 ### 1) Data & contracts
 - Ensure `JobMatchResult` returned by worker/API includes:
-  - `match_score` (final), `base_match_score` (from agent), `application_priority`.
+  - `match_score` (final), `base_match_score` (from agent).
   - `adjustments` (list of strings), `potential_concerns` (list of strings).
   - Optional `score_breakdown` for future numeric visualization.
 - Update shared types to reflect the above shape (FE typings + BE contracts).
 
 ### 2) Worker updates
-- If not already returned, add `adjustments`, `base_match_score`, `application_priority` to the match result payload.
+- If not already returned, add `adjustments`, `base_match_score` to the match result payload.
 - Keep penalties tied to the user’s timezone (no Pacific hardcode); ensure per-hour and hard penalties are logged in adjustments.
 
 ### 3) FE UI updates (Job Listings detail)
 - Replace JSON blob with a `MatchBreakdown` component:
-  - Base vs. Final score pill, priority tag.
+  - Base vs. Final score pill.
   - List of adjustments with icons (dealbreakers highlighted).
   - “Concerns” list from `potential_concerns`.
   - Collapsible “View raw JSON” for debugging.

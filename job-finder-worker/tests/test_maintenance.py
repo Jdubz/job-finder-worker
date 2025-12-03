@@ -1,4 +1,4 @@
-"""Tests for maintenance module - staleness management and score recalculation."""
+"""Tests for maintenance module - staleness management."""
 
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -7,7 +7,6 @@ from pathlib import Path
 from job_finder.maintenance import (
     STALE_THRESHOLD_DAYS,
     delete_stale_matches,
-    recalculate_match_priorities,
     run_maintenance,
 )
 
@@ -34,7 +33,6 @@ def _bootstrap_db(path: Path):
                 key_strengths TEXT,
                 potential_concerns TEXT,
                 experience_match REAL,
-                application_priority TEXT NOT NULL,
                 customization_recommendations TEXT,
                 resume_intake_json TEXT,
                 analyzed_at TEXT,
@@ -52,7 +50,6 @@ def _insert_match(
     match_id: str,
     company_name: str,
     match_score: float,
-    priority: str,
     created_at: datetime,
     analyzed_at: datetime = None,
 ):
@@ -65,9 +62,9 @@ def _insert_match(
         """
         INSERT INTO job_matches (
             id, url, company_name, job_title, job_description,
-            match_score, application_priority, analyzed_at,
+            match_score, analyzed_at,
             created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             match_id,
@@ -76,7 +73,6 @@ def _insert_match(
             "Software Engineer",
             "Test job description",
             match_score,
-            priority,
             analyzed_iso,
             created_iso,
             now_iso,
@@ -97,9 +93,9 @@ class TestDeleteStaleMatches:
         recent_date = now - timedelta(days=1)
 
         with sqlite3.connect(db) as conn:
-            _insert_match(conn, "old-1", "Old Company", 75, "High", old_date)
-            _insert_match(conn, "old-2", "Old Company 2", 60, "Medium", old_date)
-            _insert_match(conn, "recent-1", "Recent Company", 80, "High", recent_date)
+            _insert_match(conn, "old-1", "Old Company", 75, old_date)
+            _insert_match(conn, "old-2", "Old Company 2", 60, old_date)
+            _insert_match(conn, "recent-1", "Recent Company", 80, recent_date)
 
         deleted = delete_stale_matches(str(db))
 
@@ -121,8 +117,8 @@ class TestDeleteStaleMatches:
         recent_date = now - timedelta(days=1)
 
         with sqlite3.connect(db) as conn:
-            _insert_match(conn, "recent-1", "Company A", 75, "High", recent_date)
-            _insert_match(conn, "recent-2", "Company B", 60, "Medium", recent_date)
+            _insert_match(conn, "recent-1", "Company A", 75, recent_date)
+            _insert_match(conn, "recent-2", "Company B", 60, recent_date)
 
         deleted = delete_stale_matches(str(db))
 
@@ -154,8 +150,8 @@ class TestDeleteStaleMatches:
         over_threshold = now - timedelta(days=STALE_THRESHOLD_DAYS, hours=1)
 
         with sqlite3.connect(db) as conn:
-            _insert_match(conn, "under", "Under Co", 70, "Medium", under_threshold)
-            _insert_match(conn, "over", "Over Co", 70, "Medium", over_threshold)
+            _insert_match(conn, "under", "Under Co", 70, under_threshold)
+            _insert_match(conn, "over", "Over Co", 70, over_threshold)
 
         deleted = delete_stale_matches(str(db))
 
@@ -169,150 +165,11 @@ class TestDeleteStaleMatches:
             assert "over" not in ids
 
 
-class TestRecalculateMatchPriorities:
-    """Tests for recalculate_match_priorities function."""
-
-    def test_recalculates_priority_high(self, tmp_path):
-        """Score >= 75 should have High priority."""
-        db = tmp_path / "test.db"
-        _bootstrap_db(db)
-
-        now = datetime.now(timezone.utc)
-        with sqlite3.connect(db) as conn:
-            # Score 80 but wrong priority
-            _insert_match(conn, "high-1", "Company A", 80, "Low", now)
-
-        updated = recalculate_match_priorities(str(db))
-
-        assert updated == 1
-
-        with sqlite3.connect(db) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT application_priority FROM job_matches WHERE id = ?",
-                ("high-1",),
-            ).fetchone()
-            assert row["application_priority"] == "High"
-
-    def test_recalculates_priority_medium(self, tmp_path):
-        """Score >= 50 and < 75 should have Medium priority."""
-        db = tmp_path / "test.db"
-        _bootstrap_db(db)
-
-        now = datetime.now(timezone.utc)
-        with sqlite3.connect(db) as conn:
-            # Score 60 but wrong priority
-            _insert_match(conn, "med-1", "Company B", 60, "High", now)
-
-        updated = recalculate_match_priorities(str(db))
-
-        assert updated == 1
-
-        with sqlite3.connect(db) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT application_priority FROM job_matches WHERE id = ?",
-                ("med-1",),
-            ).fetchone()
-            assert row["application_priority"] == "Medium"
-
-    def test_recalculates_priority_low(self, tmp_path):
-        """Score < 50 should have Low priority."""
-        db = tmp_path / "test.db"
-        _bootstrap_db(db)
-
-        now = datetime.now(timezone.utc)
-        with sqlite3.connect(db) as conn:
-            # Score 40 but wrong priority
-            _insert_match(conn, "low-1", "Company C", 40, "High", now)
-
-        updated = recalculate_match_priorities(str(db))
-
-        assert updated == 1
-
-        with sqlite3.connect(db) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT application_priority FROM job_matches WHERE id = ?",
-                ("low-1",),
-            ).fetchone()
-            assert row["application_priority"] == "Low"
-
-    def test_updates_timestamp(self, tmp_path):
-        """Should update the updated_at timestamp when priority changes."""
-        db = tmp_path / "test.db"
-        _bootstrap_db(db)
-
-        old_time = datetime.now(timezone.utc) - timedelta(days=1)
-        with sqlite3.connect(db) as conn:
-            # Score 75 should be High, but we set it to Low so it will be updated
-            _insert_match(conn, "test-1", "Company", 75, "Low", old_time)
-            # Set updated_at to old time
-            conn.execute(
-                "UPDATE job_matches SET updated_at = ? WHERE id = ?",
-                (old_time.isoformat(), "test-1"),
-            )
-
-        recalculate_match_priorities(str(db))
-
-        with sqlite3.connect(db) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT updated_at FROM job_matches WHERE id = ?",
-                ("test-1",),
-            ).fetchone()
-            updated_at = datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
-            # Should be within last few seconds
-            assert (datetime.now(timezone.utc) - updated_at).total_seconds() < 10
-
-    def test_handles_multiple_matches(self, tmp_path):
-        """Should only update matches where priority needs to change."""
-        db = tmp_path / "test.db"
-        _bootstrap_db(db)
-
-        now = datetime.now(timezone.utc)
-        with sqlite3.connect(db) as conn:
-            _insert_match(conn, "m1", "Company A", 90, "Low", now)  # Should be High - needs update
-            _insert_match(
-                conn, "m2", "Company B", 65, "High", now
-            )  # Should be Medium - needs update
-            _insert_match(
-                conn, "m3", "Company C", 30, "Medium", now
-            )  # Should be Low - needs update
-            _insert_match(conn, "m4", "Company D", 75, "High", now)  # Already correct - no update
-
-        updated = recalculate_match_priorities(str(db))
-
-        # Only 3 rows need updating (m4 already has correct priority)
-        assert updated == 3
-
-        with sqlite3.connect(db) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT id, application_priority FROM job_matches ORDER BY id"
-            ).fetchall()
-            priorities = {r["id"]: r["application_priority"] for r in rows}
-
-            assert priorities["m1"] == "High"
-            assert priorities["m2"] == "Medium"
-            assert priorities["m3"] == "Low"
-            assert priorities["m4"] == "High"
-
-    def test_empty_table(self, tmp_path):
-        """Should handle empty table gracefully."""
-        db = tmp_path / "test.db"
-        _bootstrap_db(db)
-
-        updated = recalculate_match_priorities(str(db))
-
-        assert updated == 0
-
-
 class TestRunMaintenance:
     """Tests for run_maintenance orchestration function."""
 
-    def test_runs_both_operations(self, tmp_path):
-        """Should delete stale and recalculate scores."""
+    def test_deletes_stale_matches(self, tmp_path):
+        """Should delete stale matches."""
         db = tmp_path / "test.db"
         _bootstrap_db(db)
 
@@ -322,24 +179,22 @@ class TestRunMaintenance:
 
         with sqlite3.connect(db) as conn:
             # Stale match - should be deleted
-            _insert_match(conn, "stale-1", "Old Co", 80, "High", old_date)
-            # Recent match with wrong priority - should be updated
-            _insert_match(conn, "recent-1", "New Co", 60, "High", recent_date)
+            _insert_match(conn, "stale-1", "Old Co", 80, old_date)
+            # Recent match - should remain
+            _insert_match(conn, "recent-1", "New Co", 60, recent_date)
 
         results = run_maintenance(str(db))
 
         assert results["success"] is True
         assert results["deleted_count"] == 1
-        assert results["updated_count"] == 1
         assert results["error"] is None
 
         # Verify final state
         with sqlite3.connect(db) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT id, application_priority FROM job_matches").fetchall()
+            rows = conn.execute("SELECT id FROM job_matches").fetchall()
             assert len(rows) == 1
             assert rows[0]["id"] == "recent-1"
-            assert rows[0]["application_priority"] == "Medium"
 
     def test_returns_error_on_failure(self, tmp_path):
         """Should capture errors and return them in results."""
@@ -360,7 +215,6 @@ class TestRunMaintenance:
 
         assert results["success"] is True
         assert results["deleted_count"] == 0
-        assert results["updated_count"] == 0
 
 
 class TestStaleThreshold:

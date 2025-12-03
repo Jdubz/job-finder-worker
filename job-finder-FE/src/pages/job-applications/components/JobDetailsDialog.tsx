@@ -69,10 +69,6 @@ export function JobDetailsDialog({
                     <div className="text-2xl font-bold text-blue-600">{match.experienceMatch}%</div>
                     <div className="text-xs text-muted-foreground">Experience Match</div>
                   </div>
-                  <div className="text-center p-3 bg-secondary rounded-lg">
-                    <Badge className="text-base">{match.applicationPriority}</Badge>
-                    <div className="text-xs text-muted-foreground mt-1">Priority</div>
-                  </div>
                 </div>
               </div>
 

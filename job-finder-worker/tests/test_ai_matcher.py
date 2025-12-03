@@ -21,8 +21,8 @@ def mock_provider():
     """Create a mock AI provider."""
     provider = Mock()
     provider.generate.return_value = (
-        '{"match_score": 85, "matched_skills": ["Python"], '
-        '"missing_skills": ["Go"], "application_priority": "High"}'
+        '{"matched_skills": ["Python"], '
+        '"missing_skills": ["Go"]}'
     )
     return provider
 
@@ -66,13 +66,11 @@ class TestBuildMatchResult:
     def test_build_match_result(self, mock_provider, mock_profile, sample_job):
         """Test building match result from analysis."""
         match_analysis = {
-            "match_score": 85,
             "matched_skills": ["Python", "AWS"],
             "missing_skills": ["Go"],
             "experience_match": "Good fit",
             "key_strengths": ["Backend experience"],
             "potential_concerns": ["No Go experience"],
-            "application_priority": "High",
             "customization_recommendations": {"focus": "backend"},
         }
         intake_data = {"job_id": "123", "target_summary": "Test summary"}
@@ -87,7 +85,6 @@ class TestBuildMatchResult:
         assert result.match_score == 90
         assert result.matched_skills == ["Python", "AWS"]
         assert result.missing_skills == ["Go"]
-        assert result.application_priority == "High"
         assert result.resume_intake_data == intake_data
 
 
@@ -98,10 +95,8 @@ class TestAnalyzeMatch:
         """Test successful match analysis."""
         mock_provider.generate.return_value = """
         {
-            "match_score": 85,
             "matched_skills": ["Python", "AWS"],
-            "missing_skills": ["Go"],
-            "application_priority": "High"
+            "missing_skills": ["Go"]
         }
         """
 
@@ -109,7 +104,6 @@ class TestAnalyzeMatch:
         analysis = matcher._analyze_match(sample_job)
 
         assert analysis is not None
-        assert analysis["match_score"] == 85
         assert "Python" in analysis["matched_skills"]
         mock_provider.generate.assert_called_once()
 
@@ -137,10 +131,8 @@ class TestAnalyzeMatch:
         Here's the analysis:
         ```json
         {
-            "match_score": 80,
             "matched_skills": ["Python"],
-            "missing_skills": [],
-            "application_priority": "High"
+            "missing_skills": []
         }
         ```
         """
@@ -149,7 +141,7 @@ class TestAnalyzeMatch:
         analysis = matcher._analyze_match(sample_job)
 
         assert analysis is not None
-        assert analysis["match_score"] == 80
+        assert "Python" in analysis["matched_skills"]
 
     def test_analyze_match_handles_invalid_json(self, mock_provider, mock_profile, sample_job):
         """Test handling of invalid JSON response."""
@@ -172,7 +164,7 @@ class TestAnalyzeMatch:
         matcher = AIJobMatcher(provider=mock_provider, profile=mock_profile)
         analysis = matcher._analyze_match(sample_job)
 
-        # Missing required fields (missing_skills, application_priority)
+        # Missing required field (missing_skills)
         assert analysis is None
 
 
@@ -294,7 +286,7 @@ class TestAnalyzeJob:
             # First call: match analysis
             (
                 '{"match_score": 60, "matched_skills": ["Python"], '
-                '"missing_skills": [], "application_priority": "Medium"}'
+                '"missing_skills": []}'
             ),
             # Second call: intake data
             (
@@ -325,7 +317,7 @@ class TestAnalyzeJob:
         """Test that analyze_job raises ValueError when deterministic_score is missing."""
         mock_provider.generate.return_value = (
             '{"match_score": 85, "matched_skills": ["Python"], '
-            '"missing_skills": [], "application_priority": "High"}'
+            '"missing_skills": []}'
         )
 
         matcher = AIJobMatcher(
@@ -345,8 +337,7 @@ class TestAnalyzeJob:
         {
             "match_score": 50,
             "matched_skills": ["Python"],
-            "missing_skills": ["Go"],
-            "application_priority": "Low"
+            "missing_skills": ["Go"]
         }
         """
 
@@ -364,8 +355,7 @@ class TestAnalyzeJob:
         {
             "match_score": 85,
             "matched_skills": ["Python"],
-            "missing_skills": [],
-            "application_priority": "High"
+            "missing_skills": []
         }
         """
 
@@ -440,7 +430,6 @@ class TestJobMatchResultModel:
         assert result.job_title == "Engineer"
         assert result.match_score == 85
         assert result.matched_skills == []
-        assert result.application_priority == "Medium"
 
     def test_validates_score_range(self):
         """Test score validation (0-100)."""

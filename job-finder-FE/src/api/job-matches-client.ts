@@ -10,7 +10,6 @@ import type {
 export interface JobMatchFilters {
   minScore?: number
   maxScore?: number
-  priority?: JobMatchWithListing["applicationPriority"]
   jobListingId?: string
   limit?: number
   offset?: number
@@ -101,17 +100,17 @@ export class JobMatchesClient extends BaseApiClient {
 
   async getMatchStats(): Promise<{
     total: number
-    highPriority: number
-    mediumPriority: number
-    lowPriority: number
+    highScore: number
+    mediumScore: number
+    lowScore: number
     averageScore: number
   }> {
     const matches = await this.listMatches()
     const stats = {
       total: matches.length,
-      highPriority: matches.filter((m) => m.applicationPriority === "High").length,
-      mediumPriority: matches.filter((m) => m.applicationPriority === "Medium").length,
-      lowPriority: matches.filter((m) => m.applicationPriority === "Low").length,
+      highScore: matches.filter((m) => m.matchScore >= 85).length,
+      mediumScore: matches.filter((m) => m.matchScore >= 70 && m.matchScore < 85).length,
+      lowScore: matches.filter((m) => m.matchScore < 70).length,
       averageScore: 0,
     }
 

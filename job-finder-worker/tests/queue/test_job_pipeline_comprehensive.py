@@ -246,7 +246,6 @@ def test_job_pipeline_full_path(tmp_path: Path):
                 experience_match="5+",
                 key_strengths=["relevance"],
                 potential_concerns=[],
-                application_priority="High",
                 customization_recommendations={},
             )
 

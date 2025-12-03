@@ -413,7 +413,6 @@ export async function seedJobMatch(
     keyStrengths: ["Test leadership"],
     potentialConcerns: [],
     experienceMatch: 88,
-    applicationPriority: "High",
     customizationRecommendations: ["Mention SQLite expertise"],
     analyzedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),

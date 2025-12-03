@@ -3,7 +3,6 @@ Maintenance scheduler for job matches staleness management.
 
 This module handles:
 - Deleting job matches older than 2 weeks
-- Recalculating application priorities based on match scores
 """
 
 import logging
@@ -51,56 +50,11 @@ def delete_stale_matches(db_path: Optional[str] = None) -> int:
         return count
 
 
-def recalculate_match_priorities(db_path: Optional[str] = None) -> int:
-    """
-    Recalculate application priorities based on current match scores.
-
-    This updates the application_priority for all job matches where the
-    priority doesn't match the score tier:
-    - Score >= 75: High
-    - Score >= 50: Medium
-    - Score < 50: Low
-
-    Args:
-        db_path: Optional path to SQLite database
-
-    Returns:
-        Number of updated matches
-    """
-    now_iso = datetime.now(timezone.utc).isoformat()
-
-    with sqlite_connection(db_path) as conn:
-        cursor = conn.execute(
-            """
-            UPDATE job_matches
-            SET
-                application_priority = CASE
-                    WHEN match_score >= 75 THEN 'High'
-                    WHEN match_score >= 50 THEN 'Medium'
-                    ELSE 'Low'
-                END,
-                updated_at = ?
-            WHERE
-                application_priority <> CASE
-                    WHEN match_score >= 75 THEN 'High'
-                    WHEN match_score >= 50 THEN 'Medium'
-                    ELSE 'Low'
-                END
-            """,
-            (now_iso,),
-        )
-        updated_count = cursor.rowcount
-
-    logger.info(f"Recalculated priorities for {updated_count} job matches")
-    return updated_count
-
-
 def run_maintenance(db_path: Optional[str] = None) -> Dict[str, Any]:
     """
     Run full maintenance cycle.
 
     1. Delete stale matches (older than 2 weeks)
-    2. Recalculate scores for remaining matches
 
     Args:
         db_path: Optional path to SQLite database
@@ -112,23 +66,16 @@ def run_maintenance(db_path: Optional[str] = None) -> Dict[str, Any]:
 
     results: Dict[str, Any] = {
         "deleted_count": 0,
-        "updated_count": 0,
         "success": False,
         "error": None,
     }
 
     try:
-        # Step 1: Delete stale matches
+        # Delete stale matches
         results["deleted_count"] = delete_stale_matches(db_path)
 
-        # Step 2: Recalculate priorities for remaining matches
-        results["updated_count"] = recalculate_match_priorities(db_path)
-
         results["success"] = True
-        logger.info(
-            f"Maintenance completed: deleted={results['deleted_count']}, "
-            f"updated={results['updated_count']}"
-        )
+        logger.info(f"Maintenance completed: deleted={results['deleted_count']}")
 
     except Exception as e:
         logger.error(f"Maintenance failed: {e}", exc_info=True)

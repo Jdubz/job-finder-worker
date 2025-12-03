@@ -15,7 +15,6 @@ const createMockMatch = (overrides: Partial<JobMatchWithListing> = {}): JobMatch
   keyStrengths: [],
   potentialConcerns: [],
   experienceMatch: 80,
-  applicationPriority: "High",
   customizationRecommendations: [],
   resumeIntakeData: undefined,
   analyzedAt: new Date(),
@@ -77,7 +76,6 @@ describe("JobMatchesClient", () => {
       createMockMatch({
         id: "match-2",
         matchScore: 75,
-        applicationPriority: "Medium",
         listing: {
           id: "listing-2",
           url: "https://example.com/job-2",
@@ -128,18 +126,19 @@ describe("JobMatchesClient", () => {
 
   it("calculates match stats", async () => {
     const matches: JobMatchWithListing[] = [
-      createMockMatch({ applicationPriority: "High", matchScore: 90 }),
-      createMockMatch({ applicationPriority: "Medium", matchScore: 80 }),
-      createMockMatch({ applicationPriority: "Low", matchScore: 70 }),
+      createMockMatch({ matchScore: 90 }),
+      createMockMatch({ matchScore: 80 }),
+      createMockMatch({ matchScore: 65 }),
     ]
     vi.spyOn(client, "listMatches").mockResolvedValue(matches)
 
     const stats = await client.getMatchStats()
 
     expect(stats.total).toBe(3)
-    expect(stats.highPriority).toBe(1)
-    expect(stats.mediumPriority).toBe(1)
-    expect(stats.lowPriority).toBe(1)
+    expect(stats.highScore).toBe(1)
+    expect(stats.mediumScore).toBe(1)
+    expect(stats.lowScore).toBe(1)
+    expect(stats.averageScore).toBeCloseTo(78.33, 1)
   })
 
   it("unwraps legacy responses without data when fetching a single match", async () => {

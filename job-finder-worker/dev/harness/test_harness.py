@@ -453,8 +453,7 @@ def watch_item(tracking_id: str, timeout: int = 300, poll_interval: int = 2):
                 if item["type"] == "JOB" and item["status"] == "SUCCESS":
                     cursor.execute(
                         """
-                        SELECT id, job_title, company_name, match_score,
-                               application_priority
+                        SELECT id, job_title, company_name, match_score
                         FROM job_matches
                         WHERE queue_item_id = ?
                     """,
@@ -466,7 +465,6 @@ def watch_item(tracking_id: str, timeout: int = 300, poll_interval: int = 2):
                         print(f"  Title: {match['job_title']}")
                         print(f"  Company: {match['company_name']}")
                         print(f"  Score: {match['match_score']}")
-                        print(f"  Priority: {match['application_priority']}")
                 return
 
             time.sleep(poll_interval)

@@ -236,7 +236,11 @@ class JobListingStorage:
                 params.insert(1, _serialize_json(analysis_result))
 
                 # Extract match_score for direct column storage
-                match_score = analysis_result.get("match_score")
+                # Only use scoringResult.finalScore - the deterministic score
+                match_score = None
+                scoring = analysis_result.get("scoringResult")
+                if scoring and isinstance(scoring, dict):
+                    match_score = scoring.get("finalScore")
                 if match_score is not None:
                     sets.insert(1, "match_score = ?")
                     params.insert(1, float(match_score))
