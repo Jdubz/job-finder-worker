@@ -8,11 +8,11 @@ import json
 import logging
 import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
+from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.ai.search_client import get_search_client, SearchResult
 from job_finder.logging_config import format_company_name
 from job_finder.settings import get_text_limits
@@ -23,43 +23,31 @@ logger = logging.getLogger(__name__)
 class CompanyInfoFetcher:
     """Fetches and extracts company information using search + AI."""
 
-    def __init__(self, ai_provider=None, ai_config=None, db_path: Optional[str] = None):
+    def __init__(
+        self,
+        ai_provider=None,
+        ai_config=None,
+        db_path: Optional[str] = None,
+        sources_manager=None,
+    ):
         """
         Initialize company info fetcher.
 
         Args:
             ai_provider: AI provider for content extraction
             ai_config: AI configuration dictionary
-            db_path: Database path for aggregator domain lookup
+            db_path: Database path (deprecated, use sources_manager instead)
+            sources_manager: JobSourcesManager for aggregator domain lookup
         """
         self.ai_provider = ai_provider
         self.ai_config = ai_config or {}
         self.db_path = db_path
+        self.sources_manager = sources_manager
         self.session = requests.Session()
         self.session.headers.update(
             {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         )
         self.search_client = get_search_client()
-
-        # Cache for aggregator domains (loaded once per instance)
-        self._aggregator_domains_cache: Optional[List[str]] = None
-
-        # Static list of known ATS platforms (not aggregators, but job board hosts)
-        # These can host company-specific boards but shouldn't be used for company info
-        self._ats_domains = [
-            "greenhouse.io",
-            "lever.co",
-            "ashbyhq.com",
-            "workday.com",
-            "myworkdayjobs.com",
-            "smartrecruiters.com",
-            "jobvite.com",
-            "icims.com",
-            "taleo.net",
-            "breezy.hr",
-            "applytojob.com",
-            "ultipro.com",
-        ]
 
     # ============================================================
     # MAIN ENTRY POINT
@@ -419,47 +407,17 @@ Be factual. Return ONLY valid JSON."""
     # ============================================================
 
     def _is_job_board_url(self, url: Optional[str]) -> bool:
-        """Check if URL is a job board/ATS (not suitable for company info)."""
-        if not url:
+        """Check if URL is a job board/ATS (not suitable for company info).
+
+        Delegates to JobSourcesManager.is_job_board_url() which uses
+        database-driven aggregator domains from the job_sources table.
+        """
+        if not self.sources_manager:
+            # Fallback: if no sources_manager, can't check
+            logger.debug("No sources_manager available for job board URL check")
             return False
 
-        try:
-            netloc = urlparse(url.lower()).netloc
-        except ValueError as e:
-            logger.debug("Could not parse URL '%s': %s", url, e)
-            netloc = url.lower()
-
-        # Check against known ATS domains
-        for domain in self._ats_domains:
-            if domain in netloc:
-                return True
-
-        # Check aggregator domains from database
-        aggregator_domains = self._get_aggregator_domains_from_db()
-        for domain in aggregator_domains:
-            if domain in netloc:
-                return True
-
-        return False
-
-    def _get_aggregator_domains_from_db(self) -> List[str]:
-        """Get aggregator domains from job_sources table (cached per instance)."""
-        if self._aggregator_domains_cache is not None:
-            return self._aggregator_domains_cache
-
-        try:
-            from job_finder.storage.sqlite_client import sqlite_connection
-
-            with sqlite_connection(self.db_path) as conn:
-                rows = conn.execute(
-                    "SELECT DISTINCT aggregator_domain FROM job_sources WHERE aggregator_domain IS NOT NULL"
-                ).fetchall()
-            self._aggregator_domains_cache = [row[0] for row in rows if row[0]]
-        except Exception as e:
-            logger.warning("Failed to load aggregator domains from DB: %s", e)
-            self._aggregator_domains_cache = []
-
-        return self._aggregator_domains_cache
+        return self.sources_manager.is_job_board_url(url)
 
     def _needs_enrichment(self, info: Dict[str, Any]) -> bool:
         """Check if company info needs additional enrichment."""
@@ -497,15 +455,9 @@ Be factual. Return ONLY valid JSON."""
         if not response:
             return None
 
-        response_clean = response.strip()
-        if response_clean.startswith("```"):
-            start = response_clean.find("{")
-            end = response_clean.rfind("}") + 1
-            if start >= 0 and end > start:
-                response_clean = response_clean[start:end]
-
         try:
-            data = json.loads(response_clean)
+            json_str = extract_json_from_response(response)
+            data = json.loads(json_str)
             # Ensure expected keys have defaults
             for key in [
                 "website",

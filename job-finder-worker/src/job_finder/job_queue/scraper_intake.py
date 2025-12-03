@@ -88,17 +88,22 @@ class ScraperIntake:
             return False
 
     def _is_likely_board_path(self, url: str) -> bool:
-        # Lightweight path heuristic to catch board/collection pages
+        """Check if URL is likely a job board/collection page (not a specific job listing).
+
+        Uses both path-based heuristics and database-driven domain checking.
+        """
+        # Check domain against database-driven aggregator list
+        if self._is_aggregator_domain(url):
+            return True
+
+        # Path-based heuristics for board/collection pages
         lower = url.lower()
-        board_tokens = [
+        board_path_tokens = [
             "/careers",
             "/jobs",
             "/job-board",
-            "boards.greenhouse.io",
-            "ashbyhq.com",
-            "workdayjobs",
         ]
-        return any(token in lower for token in board_tokens)
+        return any(token in lower for token in board_path_tokens)
 
     def _check_job_exists(self, normalized_url: str) -> bool:
         """Check if job URL already exists in job_listings (or legacy job_matches)."""

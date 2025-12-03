@@ -9,6 +9,7 @@ import feedparser
 import requests
 
 from job_finder.ai.providers import AIProvider
+from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.ai.search_client import get_search_client, SearchResult
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.platform_patterns import (
@@ -487,17 +488,9 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
     ) -> Optional[Dict[str, Any]]:
         """Parse AI response into config dict."""
         try:
-            # Clean response
-            response = response.strip()
-
-            # Remove markdown code blocks - find JSON content directly
-            if response.startswith("```"):
-                json_start = response.find("{")
-                json_end = response.rfind("}")
-                if json_start != -1 and json_end != -1:
-                    response = response[json_start : json_end + 1]
-
-            config = json.loads(response)
+            # Extract JSON from response (handles markdown code blocks)
+            json_str = extract_json_from_response(response)
+            config = json.loads(json_str)
 
             # Ensure required fields
             if "type" not in config:

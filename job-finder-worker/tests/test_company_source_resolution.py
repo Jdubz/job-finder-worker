@@ -215,35 +215,76 @@ class TestMatchSourceByCompanyName:
 
 
 class TestIsJobBoardUrl:
-    """Test _is_job_board_url static method in JobProcessor."""
+    """Test is_job_board_url method in JobSourcesManager.
 
-    def test_job_board_urls(self):
-        """Test common job board URL detection using actual production code."""
-        from job_finder.job_queue.processors.job_processor import JobProcessor
+    This tests the database-driven job board URL detection.
+    """
+
+    def test_job_board_urls(self, tmp_path):
+        """Test common job board URL detection using database-driven domains."""
+        db = tmp_path / "test.db"
+        _bootstrap_db(db)
+
+        # Insert aggregator domains for testing
+        with sqlite3.connect(db) as conn:
+            conn.executemany(
+                """
+                INSERT INTO job_sources (id, name, source_type, status, config_json, aggregator_domain,
+                                         created_at, updated_at)
+                VALUES (?, ?, 'api', 'active', '{}', ?, datetime('now'), datetime('now'))
+                """,
+                [
+                    ("1", "Greenhouse", "greenhouse.io"),
+                    ("2", "Lever", "lever.co"),
+                    ("3", "WeWorkRemotely", "weworkremotely.com"),
+                    ("4", "Remotive", "remotive.com"),
+                    ("5", "Jbicy", "jbicy.io"),
+                ],
+            )
+
+        manager = JobSourcesManager(str(db))
 
         # Job board URLs (ATS providers)
-        assert JobProcessor._is_job_board_url("https://boards.greenhouse.io/coinbase/jobs/123")
-        assert JobProcessor._is_job_board_url("https://jobs.lever.co/stripe/123")
-        assert JobProcessor._is_job_board_url("https://jbicy.io/jobs/123")
+        assert manager.is_job_board_url("https://boards.greenhouse.io/coinbase/jobs/123")
+        assert manager.is_job_board_url("https://jobs.lever.co/stripe/123")
+        assert manager.is_job_board_url("https://jbicy.io/jobs/123")
 
         # Job aggregators
-        assert JobProcessor._is_job_board_url("https://weworkremotely.com/remote-jobs/123")
-        assert JobProcessor._is_job_board_url("https://remotive.com/jobs/123")
+        assert manager.is_job_board_url("https://weworkremotely.com/remote-jobs/123")
+        assert manager.is_job_board_url("https://remotive.com/jobs/123")
 
         # Non-job board URLs (company websites)
-        assert not JobProcessor._is_job_board_url("https://coinbase.com/careers")
-        assert not JobProcessor._is_job_board_url("https://stripe.com/jobs")
-        assert not JobProcessor._is_job_board_url("https://google.com/about")
+        assert not manager.is_job_board_url("https://coinbase.com/careers")
+        assert not manager.is_job_board_url("https://stripe.com/jobs")
+        assert not manager.is_job_board_url("https://google.com/about")
 
         # Edge cases
-        assert not JobProcessor._is_job_board_url("")
-        assert not JobProcessor._is_job_board_url(None)
+        assert not manager.is_job_board_url("")
+        assert not manager.is_job_board_url(None)
 
-    def test_no_false_positives_on_similar_domains(self):
+    def test_no_false_positives_on_similar_domains(self, tmp_path):
         """Ensure suffix matching prevents false positives like 'notgreenhouse.io'."""
-        from job_finder.job_queue.processors.job_processor import JobProcessor
+        db = tmp_path / "test.db"
+        _bootstrap_db(db)
+
+        # Insert real domains
+        with sqlite3.connect(db) as conn:
+            conn.executemany(
+                """
+                INSERT INTO job_sources (id, name, source_type, status, config_json, aggregator_domain,
+                                         created_at, updated_at)
+                VALUES (?, ?, 'api', 'active', '{}', ?, datetime('now'), datetime('now'))
+                """,
+                [
+                    ("1", "Greenhouse", "greenhouse.io"),
+                    ("2", "Lever", "lever.co"),
+                    ("3", "Jbicy", "jbicy.io"),
+                ],
+            )
+
+        manager = JobSourcesManager(str(db))
 
         # Should NOT match - similar but not actual job board domains
-        assert not JobProcessor._is_job_board_url("https://notgreenhouse.io/jobs")
-        assert not JobProcessor._is_job_board_url("https://mylever.co/jobs")
-        assert not JobProcessor._is_job_board_url("https://fakejbicy.io/jobs")
+        assert not manager.is_job_board_url("https://notgreenhouse.io/jobs")
+        assert not manager.is_job_board_url("https://mylever.co/jobs")
+        assert not manager.is_job_board_url("https://fakejbicy.io/jobs")
