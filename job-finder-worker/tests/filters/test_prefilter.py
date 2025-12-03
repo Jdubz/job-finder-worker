@@ -200,6 +200,78 @@ class TestPreFilterWorkArrangement:
         assert result.passed is False
         assert "Onsite" in result.reason
 
+    def test_hybrid_outside_portland_rejected(self):
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "employmentType": {
+                "allowFullTime": True,
+                "allowPartTime": True,
+                "allowContract": True,
+            },
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "metadata": {"Location Type": "Hybrid"},
+                "location": "Seattle, WA",
+            }
+        )
+        assert result.passed is False
+        assert "Portland" in result.reason
+
+    def test_hybrid_portland_allowed(self):
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "employmentType": {
+                "allowFullTime": True,
+                "allowPartTime": True,
+                "allowContract": True,
+            },
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "metadata": {"Location Type": "Hybrid"},
+                "location": "Portland, OR",
+            }
+        )
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_onsite_outside_portland_rejected(self):
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "employmentType": {
+                "allowFullTime": True,
+                "allowPartTime": True,
+                "allowContract": True,
+            },
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "metadata": {"Location Type": "Onsite"},
+                "location": "San Francisco, CA",
+            }
+        )
+        assert result.passed is False
+        assert "Portland" in result.reason
+
     def test_unknown_arrangement_skipped(self):
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},

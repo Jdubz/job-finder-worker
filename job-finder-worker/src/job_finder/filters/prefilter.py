@@ -164,7 +164,7 @@ class PreFilter:
         work_arrangement = self._infer_work_arrangement(job_data)
         if work_arrangement:
             checks_performed.append("workArrangement")
-            result = self._check_work_arrangement(work_arrangement)
+            result = self._check_work_arrangement(work_arrangement, job_data)
             if not result.passed:
                 return PreFilterResult(
                     passed=False,
@@ -325,25 +325,83 @@ class PreFilter:
         # Can't determine - return None (will be skipped)
         return None
 
-    def _check_work_arrangement(self, arrangement: str) -> PreFilterResult:
+    def _check_work_arrangement(self, arrangement: str, job_data: Dict[str, Any]) -> PreFilterResult:
         """Check if work arrangement is allowed."""
         if arrangement == "remote" and not self.allow_remote:
             return PreFilterResult(
                 passed=False,
                 reason="Remote positions not allowed",
             )
-        if arrangement == "hybrid" and not self.allow_hybrid:
-            return PreFilterResult(
-                passed=False,
-                reason="Hybrid positions not allowed",
-            )
-        if arrangement == "onsite" and not self.allow_onsite:
-            return PreFilterResult(
-                passed=False,
-                reason="Onsite positions not allowed",
-            )
+
+        if arrangement == "hybrid":
+            if not self.allow_hybrid:
+                return PreFilterResult(
+                    passed=False,
+                    reason="Hybrid positions not allowed",
+                )
+
+            is_portland = self._is_portland_location(job_data)
+            if is_portland is False:
+                return PreFilterResult(
+                    passed=False,
+                    reason="Hybrid roles outside Portland, OR are not allowed",
+                )
+
+        if arrangement == "onsite":
+            if not self.allow_onsite:
+                return PreFilterResult(
+                    passed=False,
+                    reason="Onsite positions not allowed",
+                )
+
+            is_portland = self._is_portland_location(job_data)
+            if is_portland is False:
+                return PreFilterResult(
+                    passed=False,
+                    reason="Onsite roles must be in Portland, OR",
+                )
 
         return PreFilterResult(passed=True)
+
+    def _is_portland_location(self, job_data: Dict[str, Any]) -> Optional[bool]:
+        """Check whether the job location is explicitly Portland, OR.
+
+        Returns True if a location string clearly indicates Portland, OR;
+        False if a location string is present and clearly not Portland, OR;
+        None if location cannot be determined (missing/empty fields).
+        """
+
+        location_candidates: List[str] = []
+
+        location = job_data.get("location")
+        if isinstance(location, str) and location.strip():
+            location_candidates.append(location)
+
+        metadata = job_data.get("metadata")
+        if isinstance(metadata, dict):
+            for key in ("Location", "location", "Office Location", "Office"):
+                value = metadata.get(key)
+                if isinstance(value, str) and value.strip():
+                    location_candidates.append(value)
+
+        city = job_data.get("city")
+        state = job_data.get("state") or job_data.get("state_code")
+        country = job_data.get("country")
+        if city or state:
+            pieces = [str(city or "").strip(), str(state or "").strip(), str(country or "").strip()]
+            combined = ", ".join(p for p in pieces if p)
+            if combined:
+                location_candidates.append(combined)
+
+        for loc in location_candidates:
+            loc_lower = loc.lower()
+            if re.search(r"\bportland\b", loc_lower) and re.search(r"\b(or|oregon)\b", loc_lower):
+                return True
+
+        if location_candidates:
+            return False
+
+        return None
 
     def _normalize_employment_type(self, job_data: Dict[str, Any]) -> Optional[str]:
         """
