@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from job_finder.utils.date_utils import parse_job_date
+from job_finder.exceptions import InitializationError
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +85,27 @@ class PreFilter:
 
         # Work arrangement config
         work_config = config.get("workArrangement", {})
-        self.allow_remote = work_config.get("allowRemote", True)
-        self.allow_hybrid = work_config.get("allowHybrid", True)
-        self.allow_onsite = work_config.get("allowOnsite", True)
-        self.will_relocate = work_config.get("willRelocate", True)
-        # Support both camelCase and snake_case for user location config
-        self.user_location = work_config.get("userLocation") or work_config.get("user_location")
+        required_work_keys = ["allowRemote", "allowHybrid", "allowOnsite", "willRelocate", "userLocation"]
+        missing_work = [k for k in required_work_keys if k not in work_config]
+        if missing_work:
+            raise InitializationError(
+                f"workArrangement missing required keys: {missing_work}. Update prefilter-policy."
+            )
+
+        self.allow_remote = work_config["allowRemote"]
+        self.allow_hybrid = work_config["allowHybrid"]
+        self.allow_onsite = work_config["allowOnsite"]
+        self.will_relocate = work_config["willRelocate"]
+        self.user_location = work_config["userLocation"]
+
+        if not isinstance(self.allow_remote, bool) or not isinstance(self.allow_hybrid, bool) or not isinstance(
+            self.allow_onsite, bool
+        ):
+            raise InitializationError("allowRemote/allowHybrid/allowOnsite must be booleans in workArrangement")
+        if not isinstance(self.will_relocate, bool):
+            raise InitializationError("willRelocate must be a boolean in workArrangement")
+        if not isinstance(self.user_location, str) or not self.user_location.strip():
+            raise InitializationError("userLocation must be a non-empty string in workArrangement")
 
         # Employment type config
         emp_config = config.get("employmentType", {})

@@ -12,7 +12,7 @@ const MIN_PREFILTER = {
     allowHybrid: true,
     allowOnsite: true,
     willRelocate: true,
-    userLocation: "",
+    userLocation: "Portland, OR",
   },
   employmentType: { allowFullTime: true, allowPartTime: true, allowContract: true },
   salary: { minimum: null },

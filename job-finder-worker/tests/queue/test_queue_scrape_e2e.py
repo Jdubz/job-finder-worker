@@ -135,6 +135,8 @@ def test_queue_scrape_end_to_end(temp_db):
                             "allowRemote": True,
                             "allowHybrid": True,
                             "allowOnsite": True,
+                            "willRelocate": True,
+                            "userLocation": "Portland, OR",
                         },
                         "employmentType": {
                             "allowFullTime": True,
