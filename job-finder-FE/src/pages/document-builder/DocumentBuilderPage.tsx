@@ -229,7 +229,10 @@ export function DocumentBuilderPage() {
           ? details.message
           : message
     toast.error({ title: displayMessage })
-    setAlert({ type: "error", message: displayMessage })
+    // Keep a small inline alert only when there's no checklist yet (before steps render)
+    if (generationSteps.length === 0) {
+      setAlert({ type: "error", message: displayMessage })
+    }
   }
 
   const handleGenerate = async () => {
@@ -638,7 +641,7 @@ export function DocumentBuilderPage() {
       )}
 
       {/* Error/Status banner anchored near the bottom */}
-      {alert && (
+      {alert && generationSteps.length === 0 && (
         <div className="mt-6">
           <Alert variant={alert.type === "error" ? "destructive" : "default"} className="w-full">
             <AlertDescription>{alert.message}</AlertDescription>
