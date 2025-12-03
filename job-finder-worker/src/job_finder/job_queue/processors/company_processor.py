@@ -221,9 +221,7 @@ class CompanyProcessor(BaseProcessor):
                                 f"SOURCE_DISCOVERY blocked by spawn rules for {job_board_url}"
                             )
                     except DuplicateQueueItemError:
-                        logger.debug(
-                            f"SOURCE_DISCOVERY already queued for {job_board_url}"
-                        )
+                        logger.debug(f"SOURCE_DISCOVERY already queued for {job_board_url}")
                 else:
                     logger.info(
                         "Source already exists for %s (source_id=%s)",
