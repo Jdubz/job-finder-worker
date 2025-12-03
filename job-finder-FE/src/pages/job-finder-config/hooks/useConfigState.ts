@@ -155,6 +155,10 @@ export function useConfigState() {
     setWorkerSettings((prev) => (prev ? { ...prev, runtime: { ...prev.runtime, ...updates } } : prev))
   }
 
+  const setScrapingSettings = (updates: Partial<WorkerSettings["scraping"]>) => {
+    setWorkerSettings((prev) => (prev ? { ...prev, scraping: { ...prev.scraping, ...updates } } : prev))
+  }
+
   const handleSaveWorkerSettings = async () => {
     if (!workerSettings) {
       setError("Worker settings not loaded")
@@ -255,6 +259,7 @@ export function useConfigState() {
 
     workerSettings,
     setRuntimeSettings,
+    setScrapingSettings,
     handleSaveWorkerSettings,
     hasWorkerChanges: stableStringify(workerSettings) !== stableStringify(originalWorkerSettings),
     resetWorker: () => setWorkerSettings(deepClone(originalWorkerSettings)),
