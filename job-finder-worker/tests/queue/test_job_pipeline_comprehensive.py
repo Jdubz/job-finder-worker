@@ -280,13 +280,8 @@ def test_job_pipeline_full_path(tmp_path: Path):
         "posted_date": datetime.now(timezone.utc).isoformat(),
     }
 
-    processor.job_processor._scrape_job = lambda item: job_data  # type: ignore[attr-defined,method-assign]
     # Mock config refresh to prevent it from overwriting our mocks
     processor.job_processor._refresh_runtime_config = lambda: None  # type: ignore[method-assign]
-    # Mock title filter to always pass
-    from job_finder.filters.title_filter import TitleFilterResult
-
-    processor.job_processor.title_filter.filter = lambda _title: TitleFilterResult(passed=True)  # type: ignore[method-assign]
     # Mock extractor to avoid AI call
     from job_finder.ai.extraction import JobExtractionResult
 
@@ -322,12 +317,13 @@ def test_job_pipeline_full_path(tmp_path: Path):
         "culture": "Remote-first",
     }
 
-    # Enqueue bare JOB item (no pipeline_state)
+    # Enqueue JOB item with scraped_data (required - scraper must provide data)
     item = JobQueueItem(
         type=QueueItemType.JOB,
         url=job_data["url"],
         company_name=job_data["company"],
         source="user_submission",
+        scraped_data=job_data,
     )
     item_id = queue_manager.add_item(item)
 

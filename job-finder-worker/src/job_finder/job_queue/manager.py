@@ -228,7 +228,6 @@ class QueueManager:
             QueueStatus.SUCCESS,
             QueueStatus.FAILED,
             QueueStatus.SKIPPED,
-            QueueStatus.FILTERED,
         ):
             item.completed_at = now_dt
 
@@ -410,7 +409,6 @@ class QueueManager:
         terminal_items = self._get_items_by_tracking_id(
             current_item.tracking_id,
             status_filter=[
-                QueueStatus.FILTERED,
                 QueueStatus.SKIPPED,
                 QueueStatus.FAILED,
             ],

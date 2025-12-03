@@ -153,6 +153,7 @@ class TestGenericScraperAPI:
                     "title": "Software Engineer",
                     "link": "https://example.com/job/1",
                     "location": "Remote",
+                    "posted_date": "2024-01-01T00:00:00Z",
                 }
             ]
         }
@@ -163,7 +164,7 @@ class TestGenericScraperAPI:
             type="api",
             url="https://api.example.com/jobs",
             response_path="jobs",
-            fields={"title": "title", "url": "link", "location": "location"},
+            fields={"title": "title", "url": "link", "location": "location", "posted_date": "posted_date"},
         )
         scraper = GenericScraper(config)
         jobs = scraper.scrape()
@@ -177,14 +178,14 @@ class TestGenericScraperAPI:
     def test_scrape_api_with_auth_bearer(self, mock_get):
         """Test API scraping with bearer auth."""
         mock_response = Mock()
-        mock_response.json.return_value = [{"title": "Job", "url": "https://example.com"}]
+        mock_response.json.return_value = [{"title": "Job", "url": "https://example.com", "posted_date": "2024-01-01"}]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         config = SourceConfig(
             type="api",
             url="https://api.example.com/jobs",
-            fields={"title": "title", "url": "url"},
+            fields={"title": "title", "url": "url", "posted_date": "posted_date"},
             api_key="secret123",
             auth_type="bearer",
         )
@@ -200,14 +201,14 @@ class TestGenericScraperAPI:
     def test_scrape_api_with_auth_query(self, mock_get):
         """Test API scraping with query param auth."""
         mock_response = Mock()
-        mock_response.json.return_value = [{"title": "Job", "url": "https://example.com"}]
+        mock_response.json.return_value = [{"title": "Job", "url": "https://example.com", "posted_date": "2024-01-01"}]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         config = SourceConfig(
             type="api",
             url="https://api.example.com/jobs",
-            fields={"title": "title", "url": "url"},
+            fields={"title": "title", "url": "url", "posted_date": "posted_date"},
             api_key="secret123",
             auth_type="query",
             auth_param="api_key",
@@ -230,6 +231,7 @@ class TestGenericScraperAPI:
                         "position": "Engineer",
                         "company": {"name": "TechCorp"},
                         "url": "https://example.com/job/1",
+                        "posted_date": "2024-01-01",
                     }
                 ]
             }
@@ -245,6 +247,7 @@ class TestGenericScraperAPI:
                 "title": "position",
                 "company": "company.name",
                 "url": "url",
+                "posted_date": "posted_date",
             },
         )
         scraper = GenericScraper(config)
@@ -260,8 +263,8 @@ class TestGenericScraperAPI:
         mock_response = Mock()
         mock_response.json.return_value = [
             {"legal": "notice"},  # First element to skip
-            {"title": "Job 1", "url": "https://example.com/1"},
-            {"title": "Job 2", "url": "https://example.com/2"},
+            {"title": "Job 1", "url": "https://example.com/1", "posted_date": "2024-01-01"},
+            {"title": "Job 2", "url": "https://example.com/2", "posted_date": "2024-01-01"},
         ]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -270,7 +273,7 @@ class TestGenericScraperAPI:
             type="api",
             url="https://remoteok.com/api",
             response_path="[1:]",
-            fields={"title": "title", "url": "url"},
+            fields={"title": "title", "url": "url", "posted_date": "posted_date"},
         )
         scraper = GenericScraper(config)
         jobs = scraper.scrape()
@@ -289,6 +292,7 @@ class TestGenericScraperAPI:
                 "url": "https://example.com/1",
                 "salary_min": 100000,
                 "salary_max": 150000,
+                "posted_date": "2024-01-01",
             }
         ]
         mock_response.raise_for_status = Mock()
@@ -297,7 +301,7 @@ class TestGenericScraperAPI:
         config = SourceConfig(
             type="api",
             url="https://api.example.com/jobs",
-            fields={"title": "title", "url": "url"},
+            fields={"title": "title", "url": "url", "posted_date": "posted_date"},
             salary_min_field="salary_min",
             salary_max_field="salary_max",
         )
@@ -316,6 +320,7 @@ class TestGenericScraperAPI:
                 "title": "Engineer",
                 "url": "https://example.com/1",
                 "company": "Extracted Company",
+                "posted_date": "2024-01-01",
             }
         ]
         mock_response.raise_for_status = Mock()
@@ -324,7 +329,7 @@ class TestGenericScraperAPI:
         config = SourceConfig(
             type="api",
             url="https://api.example.com/jobs",
-            fields={"title": "title", "url": "url", "company": "company"},
+            fields={"title": "title", "url": "url", "company": "company", "posted_date": "posted_date"},
             company_name="Override Company",
         )
         scraper = GenericScraper(config)
@@ -334,7 +339,7 @@ class TestGenericScraperAPI:
 
     @patch("job_finder.scrapers.generic_scraper.requests.get")
     def test_scrape_api_error_handling(self, mock_get):
-        """Test that API errors return empty list."""
+        """Test that API errors propagate (fail loud, fail early)."""
         import requests
 
         mock_get.side_effect = requests.RequestException("API Error")
@@ -345,9 +350,9 @@ class TestGenericScraperAPI:
             fields={"title": "title", "url": "url"},
         )
         scraper = GenericScraper(config)
-        jobs = scraper.scrape()
 
-        assert jobs == []
+        with pytest.raises(requests.RequestException, match="API Error"):
+            scraper.scrape()
 
 
 class TestGenericScraperRSS:
@@ -432,11 +437,13 @@ class TestGenericScraperHTML:
             <div class="job-listing">
                 <h2 class="job-title">Software Engineer</h2>
                 <span class="location">Remote</span>
+                <span class="date">2025-01-15</span>
                 <a href="https://example.com/apply/1">Apply</a>
             </div>
             <div class="job-listing">
                 <h2 class="job-title">Product Manager</h2>
                 <span class="location">NYC</span>
+                <span class="date">2025-01-14</span>
                 <a href="https://example.com/apply/2">Apply</a>
             </div>
         </body>
@@ -453,6 +460,7 @@ class TestGenericScraperHTML:
                 "title": ".job-title",
                 "location": ".location",
                 "url": "a@href",
+                "posted_date": ".date",
             },
         )
         scraper = GenericScraper(config)
@@ -473,6 +481,7 @@ class TestGenericScraperHTML:
         <body>
             <div class="job" data-company="TechCorp">
                 <h2 class="title">Engineer</h2>
+                <span class="posted">2025-01-15</span>
                 <a class="apply" href="/jobs/1">Apply</a>
             </div>
         </body>
@@ -488,6 +497,7 @@ class TestGenericScraperHTML:
             fields={
                 "title": ".title",
                 "url": "a.apply@href",
+                "posted_date": ".posted",
             },
         )
         scraper = GenericScraper(config)
@@ -506,8 +516,8 @@ class TestGenericScraperEdgeCases:
         """Test that jobs without title are skipped."""
         mock_response = Mock()
         mock_response.json.return_value = [
-            {"url": "https://example.com/1"},  # Missing title
-            {"title": "Valid Job", "url": "https://example.com/2"},
+            {"url": "https://example.com/1", "posted_date": "2025-01-15"},  # Missing title
+            {"title": "Valid Job", "url": "https://example.com/2", "posted_date": "2025-01-15"},
         ]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -515,7 +525,7 @@ class TestGenericScraperEdgeCases:
         config = SourceConfig(
             type="api",
             url="https://api.example.com/jobs",
-            fields={"title": "title", "url": "url"},
+            fields={"title": "title", "url": "url", "posted_date": "posted_date"},
         )
         scraper = GenericScraper(config)
         jobs = scraper.scrape()
@@ -528,8 +538,8 @@ class TestGenericScraperEdgeCases:
         """Test that jobs without URL are skipped."""
         mock_response = Mock()
         mock_response.json.return_value = [
-            {"title": "Job 1"},  # Missing URL
-            {"title": "Job 2", "url": "https://example.com/2"},
+            {"title": "Job 1", "posted_date": "2025-01-15"},  # Missing URL
+            {"title": "Job 2", "url": "https://example.com/2", "posted_date": "2025-01-15"},
         ]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -537,7 +547,7 @@ class TestGenericScraperEdgeCases:
         config = SourceConfig(
             type="api",
             url="https://api.example.com/jobs",
-            fields={"title": "title", "url": "url"},
+            fields={"title": "title", "url": "url", "posted_date": "posted_date"},
         )
         scraper = GenericScraper(config)
         jobs = scraper.scrape()
@@ -549,14 +559,16 @@ class TestGenericScraperEdgeCases:
     def test_defaults_for_missing_fields(self, mock_get):
         """Test default values for missing optional fields."""
         mock_response = Mock()
-        mock_response.json.return_value = [{"title": "Engineer", "url": "https://example.com/1"}]
+        mock_response.json.return_value = [
+            {"title": "Engineer", "url": "https://example.com/1", "posted_date": "2025-01-15"}
+        ]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         config = SourceConfig(
             type="api",
             url="https://api.example.com/jobs",
-            fields={"title": "title", "url": "url"},
+            fields={"title": "title", "url": "url", "posted_date": "posted_date"},
         )
         scraper = GenericScraper(config)
         jobs = scraper.scrape()
@@ -779,6 +791,7 @@ class TestAntiBlockDetection:
         mock_entry = Mock()
         mock_entry.title = "Test Job"
         mock_entry.link = "https://example.com/job/1"
+        mock_entry.published = "Mon, 25 Oct 2025 10:00:00 GMT"
 
         mock_feed = Mock()
         mock_feed.bozo = True  # Has issues but still has entries
@@ -789,7 +802,7 @@ class TestAntiBlockDetection:
         config = SourceConfig(
             type="rss",
             url="https://example.com/jobs.rss",
-            fields={"title": "title", "url": "link"},
+            fields={"title": "title", "url": "link", "posted_date": "published"},
         )
         scraper = GenericScraper(config)
 

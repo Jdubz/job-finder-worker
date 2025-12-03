@@ -25,9 +25,9 @@ import { StatPill } from "@/components/ui/stat-pill"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
 import { QueueTable } from "./components/QueueTable"
-type CompletedStatus = "success" | "failed" | "skipped" | "filtered"
+type CompletedStatus = "success" | "failed" | "skipped"
 
-const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped", "filtered"]
+const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped"]
 const STATS_FETCH_DEBOUNCE_MS = 500
 
 export function QueueManagementPage() {
@@ -95,7 +95,6 @@ export function QueueManagementPage() {
           success: queueItems.filter((i) => i.status === "success").length,
           failed: queueItems.filter((i) => i.status === "failed").length,
           skipped: queueItems.filter((i) => i.status === "skipped").length,
-          filtered: queueItems.filter((i) => i.status === "filtered").length,
         }
         setQueueStats(stats)
         setUsingFallbackStats(true)
@@ -183,7 +182,7 @@ export function QueueManagementPage() {
       }) as QueueItem[]
   }, [queueItems, activeStatFilter])
 
-  // Completed items: success, failed, skipped, filtered - sorted by most recently updated first
+  // Completed items: success, failed, skipped - sorted by most recently updated first
   const completedItems = useMemo(() => {
     return [...queueItems]
       .filter((item) => {
@@ -445,13 +444,6 @@ export function QueueManagementPage() {
               onClick={() => handleStatPillClick("skipped")}
             />
             <StatPill
-              label="Filtered"
-              value={queueStats.filtered}
-              tone="orange"
-              active={activeStatFilter === "filtered"}
-              onClick={() => handleStatPillClick("filtered")}
-            />
-            <StatPill
               label="Success"
               value={queueStats.success}
               tone="green"
@@ -490,7 +482,7 @@ export function QueueManagementPage() {
                   Pending ({queueStats ? queueStats.pending + queueStats.processing : pendingItems.length})
                 </TabsTrigger>
                 <TabsTrigger value="completed">
-                  Completed ({queueStats ? queueStats.success + queueStats.failed + queueStats.skipped + queueStats.filtered : completedItems.length})
+                  Completed ({queueStats ? queueStats.success + queueStats.failed + queueStats.skipped : completedItems.length})
                 </TabsTrigger>
               </TabsList>
 
@@ -507,7 +499,6 @@ export function QueueManagementPage() {
                     <SelectItem value="success">Success</SelectItem>
                     <SelectItem value="failed">Failed</SelectItem>
                     <SelectItem value="skipped">Skipped</SelectItem>
-                    <SelectItem value="filtered">Filtered</SelectItem>
                   </SelectContent>
                 </Select>
               )}
