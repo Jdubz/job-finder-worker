@@ -412,8 +412,13 @@ class TestPreFilterTechnology:
 class TestPreFilterBypass:
     """Tests for filter bypass functionality."""
 
-    def test_bypass_skips_all_checks(self):
-        """Test that bypass metadata causes all checks to be skipped."""
+    def test_filter_does_not_handle_bypass(self):
+        """Test that PreFilter.filter does not handle bypass logic itself.
+
+        Bypass logic is handled in job_processor._execute_prefilter, not in
+        the PreFilter class. This test verifies that PreFilter.filter will
+        reject jobs that violate filter rules, regardless of any bypass intent.
+        """
         config = {
             "title": {"requiredKeywords": ["engineer"], "excludedKeywords": ["intern"]},
             "freshness": {"maxAgeDays": 1},
@@ -440,8 +445,7 @@ class TestPreFilterBypass:
             "tags": ["everything"],  # Rejected
         }
 
-        # Should still pass all checks since we check bypass in job_processor, not prefilter
-        # Actually, looking at the code, bypass is handled in job_processor._execute_prefilter
-        # The PreFilter.filter method itself doesn't check bypass
+        # PreFilter.filter() does not handle bypass - it always applies filter rules
+        # Bypass is handled at the job_processor level in _execute_prefilter()
         result = pf.filter(job_data)
-        assert result.passed is False  # Will fail because prefilter doesn't handle bypass
+        assert result.passed is False

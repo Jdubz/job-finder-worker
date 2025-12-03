@@ -69,7 +69,28 @@ def _set_worker_runtime(db_path, settings):
 
 def test_submit_scrape_enqueues_item(tmp_path, capsys):
     db_path = _create_db(tmp_path)
-    _set_worker_runtime(db_path, {"scraping": {"requestTimeoutSeconds": 30, "maxHtmlSampleLength": 1000}, "textLimits": {"minCompanyPageLength": 10, "minSparseCompanyInfoLength": 5, "maxIntakeTextLength": 500, "maxIntakeDescriptionLength": 2000, "maxIntakeFieldLength": 400, "maxDescriptionPreviewLength": 500, "maxCompanyInfoTextLength": 1000}, "runtime": {"processingTimeoutSeconds": 1800, "isProcessingEnabled": True, "taskDelaySeconds": 0, "pollIntervalSeconds": 10, "scrapeConfig": {}}})
+    _set_worker_runtime(
+        db_path,
+        {
+            "scraping": {"requestTimeoutSeconds": 30, "maxHtmlSampleLength": 1000},
+            "textLimits": {
+                "minCompanyPageLength": 10,
+                "minSparseCompanyInfoLength": 5,
+                "maxIntakeTextLength": 500,
+                "maxIntakeDescriptionLength": 2000,
+                "maxIntakeFieldLength": 400,
+                "maxDescriptionPreviewLength": 500,
+                "maxCompanyInfoTextLength": 1000,
+            },
+            "runtime": {
+                "processingTimeoutSeconds": 1800,
+                "isProcessingEnabled": True,
+                "taskDelaySeconds": 0,
+                "pollIntervalSeconds": 10,
+                "scrapeConfig": {},
+            },
+        },
+    )
 
     exit_code = submit_scrape.main(
         [

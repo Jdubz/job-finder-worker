@@ -613,9 +613,7 @@ def main():
             try:
                 worker_settings = config_loader.get_worker_settings()
                 runtime = (
-                    worker_settings.get("runtime", {})
-                    if isinstance(worker_settings, dict)
-                    else {}
+                    worker_settings.get("runtime", {}) if isinstance(worker_settings, dict) else {}
                 )
                 worker_state["poll_interval"] = runtime.get("pollIntervalSeconds", 60)
             except Exception:

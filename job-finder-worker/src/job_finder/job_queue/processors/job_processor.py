@@ -933,33 +933,47 @@ class JobProcessor(BaseProcessor):
             pipeline_state={"pipeline_stage": stage},
         )
 
-    def _finalize_filtered(self, ctx: PipelineContext) -> None:
+    def _finalize_early_rejection(
+        self, ctx: PipelineContext, filter_type: str, rejection_reason: str
+    ) -> None:
         """
-        Finalize pipeline with FILTERED status.
+        Finalize pipeline with FILTERED status due to early filter rejection.
 
-        Filtered jobs are NOT stored in job_listings to avoid wasting resources.
+        Used for both title filter and prefilter rejections. Filtered jobs are NOT
+        stored in job_listings - they are rejected before the listing is created.
         Only the queue item status is updated.
+
+        Args:
+            ctx: Pipeline context
+            filter_type: "title" or "prefilter" - determines log format and status message
+            rejection_reason: The reason for rejection
         """
         job_data = ctx.job_data or {}
         title = job_data.get("title", "")
-        rejection_reason = (
-            ctx.title_filter_result.reason if ctx.title_filter_result else "Title filter rejected"
-        )
 
-        logger.info(f"[PIPELINE] FILTERED: '{title}' - {rejection_reason}")
+        # Log with filter-specific format
+        if filter_type == "prefilter":
+            checks = ctx.prefilter_result.checks_performed if ctx.prefilter_result else []
+            logger.info(
+                f"[PIPELINE] PREFILTERED: '{title}' - {rejection_reason} (checks: {checks})"
+            )
+            status_message = f"Prefilter rejected: {rejection_reason}"
+        else:
+            logger.info(f"[PIPELINE] FILTERED: '{title}' - {rejection_reason}")
+            status_message = f"Rejected: {rejection_reason}"
 
-        # Note: No listing created for filtered jobs - title filter runs before listing creation
+        # Note: No listing created for filtered jobs - filters run before listing creation
         # If listing_id exists (legacy item), update its status
         if ctx.listing_id:
-            self._update_listing_status(
-                ctx.listing_id,
-                "filtered",
-                filter_result={
-                    "titleFilter": (
-                        ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
-                    )
-                },
-            )
+            filter_result: Dict[str, Any] = {
+                "titleFilter": (
+                    ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
+                )
+            }
+            if ctx.prefilter_result:
+                filter_result["prefilter"] = ctx.prefilter_result.to_dict()
+
+            self._update_listing_status(ctx.listing_id, "filtered", filter_result=filter_result)
 
         # Spawn company/source tasks even for filtered jobs
         self._spawn_company_and_source(ctx.item, job_data)
@@ -967,51 +981,23 @@ class JobProcessor(BaseProcessor):
         self.queue_manager.update_status(
             ctx.item.id,
             QueueStatus.FILTERED,
-            f"Rejected: {rejection_reason}",
+            status_message,
             scraped_data=self._build_final_scraped_data(ctx),
         )
 
-    def _finalize_prefiltered(self, ctx: PipelineContext) -> None:
-        """
-        Finalize pipeline with FILTERED status due to prefilter rejection.
+    def _finalize_filtered(self, ctx: PipelineContext) -> None:
+        """Finalize pipeline with FILTERED status due to title filter rejection."""
+        rejection_reason = (
+            ctx.title_filter_result.reason if ctx.title_filter_result else "Title filter rejected"
+        )
+        self._finalize_early_rejection(ctx, "title", rejection_reason)
 
-        Prefiltered jobs are NOT stored in job_listings.
-        Uses the same FILTERED status since both are early filtering stages.
-        """
-        job_data = ctx.job_data or {}
-        title = job_data.get("title", "")
+    def _finalize_prefiltered(self, ctx: PipelineContext) -> None:
+        """Finalize pipeline with FILTERED status due to prefilter rejection (prefiltered jobs are NOT stored in job_listings)."""
         rejection_reason = (
             ctx.prefilter_result.reason if ctx.prefilter_result else "Prefilter rejected"
         )
-
-        logger.info(
-            f"[PIPELINE] PREFILTERED: '{title}' - {rejection_reason} "
-            f"(checks: {ctx.prefilter_result.checks_performed if ctx.prefilter_result else []})"
-        )
-
-        # Note: No listing created for prefiltered jobs - prefilter runs before listing creation
-        # If listing_id exists (legacy item), update its status
-        if ctx.listing_id:
-            self._update_listing_status(
-                ctx.listing_id,
-                "filtered",
-                filter_result={
-                    "titleFilter": (
-                        ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
-                    ),
-                    "prefilter": (ctx.prefilter_result.to_dict() if ctx.prefilter_result else {}),
-                },
-            )
-
-        # Spawn company/source tasks even for prefiltered jobs (same as title filter)
-        self._spawn_company_and_source(ctx.item, job_data)
-
-        self.queue_manager.update_status(
-            ctx.item.id,
-            QueueStatus.FILTERED,
-            f"Prefilter rejected: {rejection_reason}",
-            scraped_data=self._build_final_scraped_data(ctx),
-        )
+        self._finalize_early_rejection(ctx, "prefilter", rejection_reason)
 
     def _finalize_skipped(self, ctx: PipelineContext, reason: str) -> None:
         """Finalize pipeline with SKIPPED status."""
