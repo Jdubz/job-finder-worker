@@ -492,7 +492,6 @@ class JobProcessor(BaseProcessor):
                 item.id,
                 {
                     "matchScore": ctx.match_result.match_score,
-                    "priority": ctx.match_result.application_priority,
                 },
             )
 

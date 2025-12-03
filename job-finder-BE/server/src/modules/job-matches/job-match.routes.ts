@@ -56,7 +56,6 @@ const jobMatchSchema = z.object({
   keyStrengths: z.array(z.string()).optional(),
   potentialConcerns: z.array(z.string()).optional(),
   experienceMatch: z.number().min(0).max(100),
-  applicationPriority: z.enum(['High', 'Medium', 'Low']),
   customizationRecommendations: z.array(z.string()).optional(),
   resumeIntakeData: resumeIntakeDataSchema.optional(),
   analyzedAt: z.union([z.string(), z.date()]).optional(),

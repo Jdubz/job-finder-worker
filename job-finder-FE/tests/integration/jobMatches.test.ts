@@ -33,7 +33,6 @@ describeIntegration("Job Matches API Integration", () => {
       expect(match.listing.title.length).toBeGreaterThan(0)
       expect(typeof match.matchScore).toBe("number")
       expect(typeof match.experienceMatch).toBe("number")
-      expect(["High", "Medium", "Low"]).toContain(match.applicationPriority)
     })
 
     it("tracks AI analysis artifacts", () => {
@@ -51,7 +50,6 @@ describeIntegration("Job Matches API Integration", () => {
   describe("Scoring Heuristics", () => {
     it("keeps high score matches above 90", () => {
       expect(mockHighScoreJobMatch.matchScore).toBeGreaterThanOrEqual(90)
-      expect(mockHighScoreJobMatch.applicationPriority).toBe("High")
     })
 
     it("keeps low score matches below 70", () => {
@@ -108,11 +106,6 @@ describeIntegration("Job Matches API Integration", () => {
       expect(minScore).toBeGreaterThanOrEqual(0)
       expect(maxScore).toBeLessThanOrEqual(100)
       expect(minScore).toBeLessThanOrEqual(maxScore)
-    })
-
-    it("uses application priority for priority filters", () => {
-      const priorities = ["High", "Medium", "Low"] as const
-      expect(priorities).toContain(mockJobMatch.applicationPriority)
     })
   })
 })

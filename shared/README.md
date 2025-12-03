@@ -171,7 +171,6 @@ AI-analyzed job match result (saved to job-matches collection).
 - `keyStrengths: string[]` - Key strengths for this application
 - `potentialConcerns: string[]` - Potential gaps or concerns
 - `experienceMatch: number` - Experience level match (0-100)
-- `applicationPriority: "High" | "Medium" | "Low"` - Application priority
 - `customizationRecommendations: string[]` - Application customization tips
 - `resumeIntakeData?: ResumeIntakeData` - **Contains atsKeywords**
 - Plus timestamps, user info, and queue reference

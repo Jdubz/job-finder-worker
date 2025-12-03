@@ -55,9 +55,6 @@ export interface JobAnalysisResult {
   /** Potential concerns or gaps */
   potentialConcerns: string[]
 
-  /** Application priority level */
-  applicationPriority: "High" | "Medium" | "Low"
-
   /** Deterministic scoring result with detailed breakdown */
   scoringResult?: ScoreBreakdown | null
 
@@ -364,9 +361,6 @@ export interface JobMatch {
 
   /** How well experience level matches (0-100) */
   experienceMatch: number
-
-  /** Application priority level */
-  applicationPriority: "High" | "Medium" | "Low"
 
   /** Specific recommendations for customizing application */
   customizationRecommendations: string[]

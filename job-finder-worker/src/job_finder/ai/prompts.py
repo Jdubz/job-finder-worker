@@ -220,7 +220,7 @@ Before scoring, check for these AUTOMATIC DISQUALIFIERS:
    - Is this actually a management role disguised as IC? (e.g., "Technical Program Manager", "Delivery Manager")
    - Is it primarily sales/customer-facing? (e.g., "Solutions Architect" that's 80% sales, "Customer Success Engineer")
    - Does it require minimal coding? (e.g., "oversee", "coordinate", "manage team" but no "build", "develop", "code")
-   - **If YES to any:** Set match_score = 0 and explain why in potential_concerns
+   - **If YES to any:** Explain why in potential_concerns
 
 2. **Location / Onsite Policy**
    - Is the role onsite-only or hybrid outside the Portland, OR metro (Portland/Beaverton/Hillsboro/Vancouver WA)?
@@ -328,14 +328,14 @@ Use this formula with **EXTREMELY HIGH STANDARDS**:
 
 Return detailed analysis in JSON format with:
 
-1. **match_score** (0-100): Calculated using above formula
-2. **matched_skills**: Array of skills candidate HAS that match (with proficiency level)
-3. **missing_skills**: Array of required skills candidate LACKS
-4. **experience_match**: Detailed explanation of experience level fit
-5. **key_strengths**: Top 3-5 specific reasons candidate is strong (be concrete, reference actual experience)
-6. **potential_concerns**: Honest assessment of gaps/weaknesses (be specific)
-7. **application_priority**: "High" (85-100), "Medium" (70-84), "Low" (0-69)
-8. **customization_recommendations**: Specific, actionable advice for tailoring application
+1. **matched_skills**: Array of skills candidate HAS that match (with proficiency level)
+2. **missing_skills**: Array of required skills candidate LACKS
+3. **experience_match**: Detailed explanation of experience level fit
+4. **key_strengths**: Top 3-5 specific reasons candidate is strong (be concrete, reference actual experience)
+5. **potential_concerns**: Honest assessment of gaps/weaknesses (be specific)
+6. **customization_recommendations**: Specific, actionable advice for tailoring application
+
+NOTE: Do NOT include match_score or application_priority - these are handled by a separate deterministic scoring engine.
 
 ## Scoring Examples (STRICT STANDARDS):
 
@@ -387,18 +387,16 @@ Return detailed analysis in JSON format with:
 
 Respond **ONLY** with valid JSON in this shape (no prose, no markdown):
 {{
-  "match_score": 0,
   "matched_skills": [],
   "missing_skills": [],
   "experience_match": "",
   "key_strengths": [],
   "potential_concerns": [],
-  "application_priority": "High|Medium|Low",
   "customization_recommendations": {{}}
 }}
 
+Example response:
 {{
-  "match_score": 85,
   "matched_skills": ["Python", "Django", "PostgreSQL"],
   "missing_skills": ["Kubernetes", "GraphQL"],
   "experience_match": "Strong match - candidate has 5 years in similar roles",
@@ -411,7 +409,6 @@ Respond **ONLY** with valid JSON in this shape (no prose, no markdown):
     "Limited Kubernetes experience",
     "No GraphQL background"
   ],
-  "application_priority": "High",
   "customization_recommendations": {{
     "resume_focus": [
       "Highlight API development experience",
@@ -464,7 +461,6 @@ Respond ONLY with valid JSON, no additional text.
 ''' if job.get('company_info') else ''}
 # Match Analysis
 
-**Match Score:** {match_analysis.get('match_score', 'N/A')}/100
 **Matched Skills:** {', '.join(match_analysis.get('matched_skills', []))}
 **Missing Skills:** {', '.join(match_analysis.get('missing_skills', []))}
 **Key Strengths:** {', '.join(match_analysis.get('key_strengths', []))}

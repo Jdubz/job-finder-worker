@@ -658,9 +658,6 @@ export function isJobMatch(value: unknown): value is JobMatch {
     isStringArray(match.keyStrengths) &&
     isStringArray(match.potentialConcerns) &&
     typeof match.experienceMatch === "number" &&
-    (match.applicationPriority === "High" ||
-      match.applicationPriority === "Medium" ||
-      match.applicationPriority === "Low") &&
     isStringArray(match.customizationRecommendations) &&
     isDateLike(match.analyzedAt) &&
     isDateLike(match.createdAt) &&

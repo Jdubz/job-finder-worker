@@ -89,7 +89,6 @@ async function buildMatchPayload(item: QueueItem): Promise<SaveJobMatchRequest> 
     keyStrengths: ['End-to-end migration'],
     potentialConcerns: ['Needs role clarity'],
     experienceMatch: 80,
-    applicationPriority: 'High',
     customizationRecommendations: ['Highlight SQLite migration work'],
     resumeIntakeData: {
       jobId: item.id ?? `job-${Date.now()}`,

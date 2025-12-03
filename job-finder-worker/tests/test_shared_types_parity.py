@@ -143,7 +143,6 @@ def test_job_match_fields_cover_shared_contract():
         "key_strengths",
         "potential_concerns",
         "experience_match",
-        "application_priority",
         "customization_recommendations",
         "resume_intake_data",
         "created_at",

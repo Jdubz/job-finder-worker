@@ -158,10 +158,10 @@ class JobStorage:
                     INSERT INTO job_matches (
                         id, job_listing_id, match_score,
                         matched_skills, missing_skills, match_reasons, key_strengths,
-                        potential_concerns, experience_match, application_priority,
+                        potential_concerns, experience_match,
                         customization_recommendations, resume_intake_json, analyzed_at,
                         submitted_by, queue_item_id, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         job_id,
@@ -173,7 +173,6 @@ class JobStorage:
                         _serialize_list(match_result.key_strengths),
                         _serialize_list(match_result.potential_concerns),
                         experience_match,
-                        match_result.application_priority,
                         _serialize_list(customization),
                         _serialize_json(match_result.resume_intake_data),
                         now,
