@@ -27,12 +27,7 @@ import type { JobMatchWithListing } from "@shared/types"
 import { logger } from "@/services/logging"
 import { toDate } from "@/utils/dateFormat"
 import { useEntityModal } from "@/contexts/EntityModalContext"
-
-function getScoreColor(score: number) {
-  if (score >= 85) return "text-green-600 font-bold"
-  if (score >= 70) return "text-yellow-600 font-semibold"
-  return "text-orange-600"
-}
+import { getScoreColor, SCORE_THRESHOLDS } from "@/lib/score-utils"
 
 export function JobApplicationsPage() {
   const { user } = useAuth()
@@ -184,15 +179,15 @@ export function JobApplicationsPage() {
           </div>
           <div className="bg-green-100 dark:bg-green-950 p-4 rounded-lg">
             <div className="text-2xl font-bold text-green-600">
-              {matches.filter((m) => m.matchScore >= 85).length}
+              {matches.filter((m) => m.matchScore >= SCORE_THRESHOLDS.HIGH).length}
             </div>
-            <div className="text-sm text-green-700 dark:text-green-400">Score 85+</div>
+            <div className="text-sm text-green-700 dark:text-green-400">Score {SCORE_THRESHOLDS.HIGH}+</div>
           </div>
           <div className="bg-yellow-100 dark:bg-yellow-950 p-4 rounded-lg">
             <div className="text-2xl font-bold text-yellow-600">
-              {matches.filter((m) => m.matchScore >= 70 && m.matchScore < 85).length}
+              {matches.filter((m) => m.matchScore >= SCORE_THRESHOLDS.MEDIUM && m.matchScore < SCORE_THRESHOLDS.HIGH).length}
             </div>
-            <div className="text-sm text-yellow-700 dark:text-yellow-400">Score 70-84</div>
+            <div className="text-sm text-yellow-700 dark:text-yellow-400">Score {SCORE_THRESHOLDS.MEDIUM}-{SCORE_THRESHOLDS.HIGH - 1}</div>
           </div>
           <div className="bg-blue-100 dark:bg-blue-950 p-4 rounded-lg">
             <div className="text-2xl font-bold text-blue-600">

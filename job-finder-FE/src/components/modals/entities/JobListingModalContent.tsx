@@ -8,6 +8,7 @@ import { Loader2, Trash2, ExternalLink, Database, AlertCircle } from "lucide-rea
 import { MatchBreakdown } from "@/pages/job-listings/components/MatchBreakdown"
 import { statusBadgeClass } from "@/lib/status-badge"
 import { formatDate, formatDateTime } from "@/lib/formatDate"
+import { extractMatchScore } from "@/lib/score-utils"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
 const statusLabel: Record<JobListingStatus, string> = {
@@ -16,24 +17,6 @@ const statusLabel: Record<JobListingStatus, string> = {
   analyzed: "Analyzed",
   matched: "Matched",
   skipped: "Skipped",
-}
-
-function extractMatchScore(listing: JobListingRecord): number | null {
-  // Use direct matchScore column first (populated by worker from deterministic scoring)
-  if (typeof listing.matchScore === "number") return listing.matchScore
-
-  // Fallback: extract from analysisResult.scoringResult.finalScore
-  const analysis = listing.analysisResult as Record<string, unknown> | undefined
-  if (!analysis) return null
-
-  // Only use scoringResult.finalScore - the deterministic score
-  const scoring = analysis["scoringResult"] as Record<string, unknown> | undefined
-  if (scoring) {
-    const score = scoring["finalScore"]
-    if (typeof score === "number") return score
-  }
-
-  return null
 }
 
 interface JobListingModalContentProps {

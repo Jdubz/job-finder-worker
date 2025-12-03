@@ -1,5 +1,6 @@
 import { BaseApiClient } from "./base-client"
 import { API_CONFIG } from "@/config/api"
+import { SCORE_THRESHOLDS } from "@/lib/score-utils"
 import type {
   ApiSuccessResponse,
   JobMatchWithListing,
@@ -107,9 +108,11 @@ export class JobMatchesClient extends BaseApiClient {
     const matches = await this.listMatches()
     const stats = {
       total: matches.length,
-      highScore: matches.filter((m) => m.matchScore >= 85).length,
-      mediumScore: matches.filter((m) => m.matchScore >= 70 && m.matchScore < 85).length,
-      lowScore: matches.filter((m) => m.matchScore < 70).length,
+      highScore: matches.filter((m) => m.matchScore >= SCORE_THRESHOLDS.HIGH).length,
+      mediumScore: matches.filter(
+        (m) => m.matchScore >= SCORE_THRESHOLDS.MEDIUM && m.matchScore < SCORE_THRESHOLDS.HIGH
+      ).length,
+      lowScore: matches.filter((m) => m.matchScore < SCORE_THRESHOLDS.MEDIUM).length,
       averageScore: 0,
     }
 

@@ -53,6 +53,7 @@ import {
   Plus,
 } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
+import { extractMatchScore } from "@/lib/score-utils"
 import type { JobListingRecord, JobListingStatus, SubmitJobRequest } from "@shared/types"
 
 function formatDate(date: unknown): string {
@@ -91,24 +92,6 @@ function getStatusBadge(status: JobListingStatus) {
   }
   const config = statusConfig[status] || statusConfig.pending
   return <Badge className={config.color}>{config.label}</Badge>
-}
-
-function extractMatchScore(listing: JobListingRecord): number | null {
-  // Use direct matchScore column first (populated by worker from deterministic scoring)
-  if (typeof listing.matchScore === "number") return listing.matchScore
-
-  // Fallback: extract from analysisResult.scoringResult.finalScore
-  const analysis = listing.analysisResult as Record<string, unknown> | undefined
-  if (!analysis) return null
-
-  // Only use scoringResult.finalScore - the deterministic score
-  const scoring = analysis["scoringResult"] as Record<string, unknown> | undefined
-  if (scoring) {
-    const score = scoring["finalScore"]
-    if (typeof score === "number") return score
-  }
-
-  return null
 }
 
 export function JobListingsPage() {
