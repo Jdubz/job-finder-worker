@@ -3,8 +3,7 @@
 	dev-setup dev-clone-db dev-clone-db-scp dev-build dev-up dev-up-attached \
 	dev-down dev-restart dev-logs dev-shell dev-sqlite \
 	dev-test-status dev-test-watch dev-test-all dev-test-job dev-test-company \
-	dev-test-clear dev-clean dev-clean-all dev-quick \
-	deploy-compose check-compose-drift
+	dev-test-clear dev-clean dev-clean-all dev-quick
 
 PYTHON := python3
 VENV_DIR := venv
@@ -272,38 +271,3 @@ dev-quick: dev-setup dev-build dev-up ## Quick start: setup, build, and start de
 	@echo "  make dev-clone-db PROD_DB=/path/to/jobfinder.db"
 	@echo ""
 	@echo "Then restart: make dev-restart"
-
-# =============================================================================
-# Production Deployment
-# =============================================================================
-
-PROD_COMPOSE_SRC := ../infra/docker-compose.prod.yml
-PROD_COMPOSE_DST := /srv/job-finder/docker-compose.yml
-
-deploy-compose: ## Sync docker-compose.prod.yml to production
-	@echo "$(CYAN)Syncing docker-compose to production...$(RESET)"
-	@if [ ! -f "$(PROD_COMPOSE_SRC)" ]; then \
-		echo "$(RED)Error: $(PROD_COMPOSE_SRC) not found$(RESET)"; \
-		exit 1; \
-	fi
-	@cp "$(PROD_COMPOSE_SRC)" "$(PROD_COMPOSE_DST)"
-	@echo "$(GREEN)✓ Synced to $(PROD_COMPOSE_DST)$(RESET)"
-	@echo "$(YELLOW)Run 'cd /srv/job-finder && docker compose up -d' to apply changes$(RESET)"
-
-check-compose-drift: ## Check if prod docker-compose has drifted from source
-	@echo "$(CYAN)Checking for docker-compose drift...$(RESET)"
-	@if [ ! -f "$(PROD_COMPOSE_DST)" ]; then \
-		echo "$(RED)Error: $(PROD_COMPOSE_DST) not found$(RESET)"; \
-		exit 1; \
-	fi
-	@if diff -q "$(PROD_COMPOSE_SRC)" "$(PROD_COMPOSE_DST)" > /dev/null 2>&1; then \
-		echo "$(GREEN)✓ No drift detected - prod matches source$(RESET)"; \
-	else \
-		echo "$(RED)⚠ DRIFT DETECTED!$(RESET)"; \
-		echo ""; \
-		echo "Differences:"; \
-		diff "$(PROD_COMPOSE_SRC)" "$(PROD_COMPOSE_DST)" || true; \
-		echo ""; \
-		echo "$(YELLOW)Run 'make deploy-compose' to sync$(RESET)"; \
-		exit 1; \
-	fi

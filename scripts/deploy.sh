@@ -51,17 +51,14 @@ cat <<'EOF' > /tmp/deploy-commands.sh
 set -euo pipefail
 cd "$DEPLOY_PATH"
 tar -xzf job-finder.tar.gz --strip-components=1
-# Always refresh docker-compose.yml from the repo template to keep prod in sync.
-cp infra/docker-compose.template.yml docker-compose.yml
-# If host-specific overrides exist, apply them here (not tracked in git):
-#   - /srv/job-finder/docker-compose.override.yml
-#   - /srv/job-finder/.env.production
-if [ -f docker-compose.override.yml ]; then
-  echo "[deploy] Using docker-compose.override.yml"
-fi
+# Always refresh docker-compose.yml from the prod config to keep in sync.
+# Uses docker-compose.prod.yml (not template) which has prod-specific settings
+# like seed+volume pattern for CLI credentials.
+cp infra/docker-compose.prod.yml docker-compose.yml
+echo "[deploy] Synced docker-compose.yml from infra/docker-compose.prod.yml"
 # Pull and restart stack
 docker compose -f docker-compose.yml pull
-docker compose -f docker-compose.yml up -d --build --remove-orphans
+docker compose -f docker-compose.yml up -d --remove-orphans
 EOF
 
 echo "[deploy] Executing remote deployment…"
