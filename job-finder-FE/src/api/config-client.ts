@@ -48,6 +48,7 @@ export class ConfigClient extends BaseApiClient {
           ...existing.worker?.selected,
           ...settings.worker?.selected,
         },
+        tasks: settings.worker?.tasks ?? existing.worker?.tasks,
       },
       documentGenerator: {
         ...existing.documentGenerator,
@@ -56,6 +57,7 @@ export class ConfigClient extends BaseApiClient {
           ...existing.documentGenerator?.selected,
           ...settings.documentGenerator?.selected,
         },
+        tasks: settings.documentGenerator?.tasks ?? existing.documentGenerator?.tasks,
       },
     })
   }

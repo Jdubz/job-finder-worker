@@ -59,21 +59,27 @@ export function AISettingsTab({
   }
 
   const options: AIProviderOption[] = aiSettings.options ?? []
+  const firstProvider = options[0]
+  const firstInterface = firstProvider?.interfaces[0]
+
+  // Validate options before rendering - show error UI instead of crashing
+  if (!firstProvider || !firstInterface || !firstInterface.models?.length) {
+    return (
+      <TabsContent value="ai" className="space-y-4 mt-4">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
+          <h3 className="text-lg font-semibold text-destructive">Invalid Configuration</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            No AI provider options are available. Check the ai-settings configuration in the database.
+          </p>
+        </div>
+      </TabsContent>
+    )
+  }
 
   const getSectionSelection = (section: "worker" | "documentGenerator") => {
     const selected = aiSettings[section]?.selected
     if (selected) return selected
-    // Fallback to first available option - fail if none available
-    const firstProvider = options[0]
-    const firstInterface = firstProvider?.interfaces[0]
-    if (!firstProvider || !firstInterface) {
-      throw new Error("No AI provider options available - check ai-settings configuration")
-    }
-    if (!firstInterface.models || firstInterface.models.length === 0) {
-      throw new Error(
-        `No models available for provider "${firstProvider.value}" and interface "${firstInterface.value}" - check ai-settings configuration`
-      )
-    }
+    // Fallback to first available option (already validated above)
     return {
       provider: firstProvider.value,
       interface: firstInterface.value,

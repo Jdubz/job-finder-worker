@@ -1,6 +1,8 @@
 import { beforeAll, afterAll, describe, expect, it, vi } from "vitest"
 import type { PersonalInfo, PromptConfig } from "@shared/types"
 import { setupTestServer } from "./helpers/test-server"
+import { runMockWorker } from "./helpers/mock-worker"
+import { TEST_AUTH_TOKEN_KEY } from "../../job-finder-FE/src/config/testing"
 
 // Test fixtures (no defaults - explicit test data)
 const TEST_PERSONAL_INFO: PersonalInfo = {
@@ -18,8 +20,6 @@ const TEST_PROMPTS: PromptConfig = {
   jobScraping: "Test scraping prompt",
   jobMatching: "Test matching prompt",
 }
-import { runMockWorker } from "./helpers/mock-worker"
-import { TEST_AUTH_TOKEN_KEY } from "../../job-finder-FE/src/config/testing"
 
 interface ApiSuccess<T> {
   success: true
