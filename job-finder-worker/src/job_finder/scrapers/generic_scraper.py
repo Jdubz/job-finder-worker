@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -18,6 +19,7 @@ from job_finder.scrapers.text_sanitizer import (
     sanitize_html_description,
     sanitize_title,
 )
+from job_finder.settings import get_fetch_delay_seconds
 from job_finder.utils.date_utils import parse_job_date
 
 logger = logging.getLogger(__name__)
@@ -88,6 +90,10 @@ class GenericScraper:
                     # Optional detail-page enrichment for HTML aggregators (e.g., builtin.com)
                     if self.config.type == "html" and self.config.follow_detail:
                         job = self._enrich_from_detail(job)
+                        # Rate limit between requests to avoid overwhelming the source
+                        delay = get_fetch_delay_seconds()
+                        if delay > 0:
+                            time.sleep(delay)
 
                     if job.get("title") and job.get("url"):
                         jobs.append(job)

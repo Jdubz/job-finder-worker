@@ -407,6 +407,7 @@ export function isWorkerSettings(value: unknown): value is WorkerSettings {
   if (!isObject(scraping)) return false
   if (typeof scraping.requestTimeoutSeconds !== "number") return false
   if (typeof scraping.maxHtmlSampleLength !== "number") return false
+  if (scraping.fetchDelaySeconds !== undefined && typeof scraping.fetchDelaySeconds !== "number") return false
 
   // text limits
   const textLimits = (v as any).textLimits

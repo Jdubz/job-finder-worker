@@ -397,3 +397,46 @@ class TestEnrichFromDetailHtmlFallback:
         enriched = scraper._enrich_from_detail(job)
         # JSON-LD date should take priority
         assert enriched["posted_date"] == "2025-12-01"
+
+
+class TestFetchDelaySettings:
+    """Tests for configurable fetch delay between detail page requests."""
+
+    def test_get_fetch_delay_seconds_returns_configured_value(self, monkeypatch):
+        """Test that fetch delay is read from config."""
+        from job_finder import settings
+
+        def mock_get_scraping_settings(db_path=None):
+            return {"fetchDelaySeconds": 2.5, "requestTimeoutSeconds": 30}
+
+        monkeypatch.setattr(settings, "get_scraping_settings", mock_get_scraping_settings)
+        settings.clear_settings_cache()
+
+        delay = settings.get_fetch_delay_seconds()
+        assert delay == 2.5
+
+    def test_get_fetch_delay_seconds_defaults_to_one(self, monkeypatch):
+        """Test that fetch delay defaults to 1 second when not configured."""
+        from job_finder import settings
+
+        def mock_get_scraping_settings(db_path=None):
+            return {"requestTimeoutSeconds": 30}  # No fetchDelaySeconds
+
+        monkeypatch.setattr(settings, "get_scraping_settings", mock_get_scraping_settings)
+        settings.clear_settings_cache()
+
+        delay = settings.get_fetch_delay_seconds()
+        assert delay == 1.0
+
+    def test_get_fetch_delay_seconds_handles_zero(self, monkeypatch):
+        """Test that fetch delay of 0 disables delay."""
+        from job_finder import settings
+
+        def mock_get_scraping_settings(db_path=None):
+            return {"fetchDelaySeconds": 0, "requestTimeoutSeconds": 30}
+
+        monkeypatch.setattr(settings, "get_scraping_settings", mock_get_scraping_settings)
+        settings.clear_settings_cache()
+
+        delay = settings.get_fetch_delay_seconds()
+        assert delay == 0.0

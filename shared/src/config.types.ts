@@ -496,6 +496,7 @@ export interface WorkerSettings {
   scraping: {
     requestTimeoutSeconds: number // HTTP request timeout (default: 30)
     maxHtmlSampleLength: number // Max HTML length for AI selector discovery (default: 20000)
+    fetchDelaySeconds?: number // Delay between detail page fetches to avoid rate limiting (default: 1)
   }
   /** Source health tracking (optional) */
   health?: {

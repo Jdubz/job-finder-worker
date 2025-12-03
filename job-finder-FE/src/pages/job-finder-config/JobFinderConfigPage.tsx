@@ -126,6 +126,8 @@ export function JobFinderConfigPage() {
               isSaving={configState.isSaving}
               queueSettings={configState.workerSettings.runtime}
               setQueueSettings={configState.setRuntimeSettings}
+              scrapingSettings={configState.workerSettings.scraping}
+              setScrapingSettings={configState.setScrapingSettings}
               hasQueueChanges={configState.hasWorkerChanges}
               handleSaveQueueSettings={configState.handleSaveWorkerSettings}
               resetQueue={() => configState.resetWorker()}

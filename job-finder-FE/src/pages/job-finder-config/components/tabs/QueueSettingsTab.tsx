@@ -5,11 +5,14 @@ import { TabCard } from "../shared"
 import type { WorkerSettings } from "@shared/types"
 
 type RuntimeSettings = WorkerSettings["runtime"]
+type ScrapingSettings = WorkerSettings["scraping"]
 
 type QueueSettingsTabProps = {
   isSaving: boolean
   queueSettings: RuntimeSettings | null
   setQueueSettings: (updates: Partial<RuntimeSettings>) => void
+  scrapingSettings: ScrapingSettings | null
+  setScrapingSettings: (updates: Partial<ScrapingSettings>) => void
   hasQueueChanges: boolean
   handleSaveQueueSettings: () => Promise<void> | void
   resetQueue: () => void
@@ -19,6 +22,8 @@ export function QueueSettingsTab({
   isSaving,
   queueSettings,
   setQueueSettings,
+  scrapingSettings,
+  setScrapingSettings,
   hasQueueChanges,
   handleSaveQueueSettings,
   resetQueue,
@@ -99,6 +104,35 @@ export function QueueSettingsTab({
           />
           <p className="text-xs text-muted-foreground">
             Maximum time allowed for job processing before timeout.
+          </p>
+        </div>
+      </TabCard>
+
+      <TabCard
+        title="Scraping Settings"
+        description="Configure HTTP request behavior for scraping operations."
+        hasChanges={hasQueueChanges}
+        isSaving={isSaving}
+        onSave={handleSaveQueueSettings}
+        onReset={resetQueue}
+      >
+        <div className="space-y-2">
+          <Label htmlFor="fetchDelay">Fetch Delay (seconds)</Label>
+          <Input
+            id="fetchDelay"
+            type="number"
+            min="0"
+            max="30"
+            step="0.5"
+            value={scrapingSettings?.fetchDelaySeconds ?? 1}
+            onChange={(e) =>
+              setScrapingSettings({
+                fetchDelaySeconds: Math.max(0, parseFloat(e.target.value) || 1),
+              })
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            Delay between detail page fetches to prevent rate limiting. 0–30 seconds. Default: 1 second.
           </p>
         </div>
       </TabCard>
