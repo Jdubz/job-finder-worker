@@ -238,11 +238,9 @@ class GenericScraper:
         """Optionally enrich a job by fetching its detail page.
 
         Extracts data using multiple strategies in order of reliability:
-        1. JSON-LD JobPosting schema (most reliable)
-        2. Meta tags (og:, article:, etc.)
-        3. <time> elements with datetime attribute
-        4. Common CSS selectors for date elements
-        5. Text pattern matching for relative dates
+        1. JSON-LD JobPosting schema (via _extract_from_jsonld)
+        2-5. Fallback HTML extraction (via _extract_posted_date_from_html):
+             meta tags, <time> elements, CSS selectors, text patterns
 
         Only fills fields that are missing to avoid clobbering list-page data.
         """
@@ -271,8 +269,12 @@ class GenericScraper:
 
         return job
 
-    def _extract_from_jsonld(self, soup: BeautifulSoup, job: Dict[str, Any]) -> Optional[str]:
-        """Extract job data from JSON-LD JobPosting schema."""
+    def _extract_from_jsonld(self, soup: BeautifulSoup, job: Dict[str, Any]) -> None:
+        """Extract job data from JSON-LD JobPosting schema.
+
+        Modifies job dict in-place with title, company, description, location,
+        and posted_date if found in JSON-LD.
+        """
         for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
             try:
                 data = json.loads(script.string or "{}")
@@ -320,11 +322,8 @@ class GenericScraper:
 
             if not job.get("posted_date") and jp.get("datePosted"):
                 job["posted_date"] = jp.get("datePosted")
-                return jp.get("datePosted")
 
-            return None  # Found JobPosting but no datePosted
-
-        return None
+            return  # Found and processed JobPosting, done
 
     def _extract_posted_date_from_html(self, soup: BeautifulSoup) -> Optional[str]:
         """
@@ -386,32 +385,35 @@ class GenericScraper:
 
     def _extract_date_from_time_elements(self, soup: BeautifulSoup) -> Optional[str]:
         """Extract date from <time> elements with datetime attribute."""
-        # Look for time elements, prioritizing those with job-related context
         job_related_patterns = ["post", "publish", "date", "created", "listed", "added"]
 
-        for time_el in soup.find_all("time"):
-            datetime_attr = time_el.get("datetime")
-            if datetime_attr and isinstance(datetime_attr, str) and parse_job_date(datetime_attr):
-                # Check if this time element is in a job-related context
-                parent_classes = ""
-                for parent in time_el.parents:
-                    if parent.name in ["div", "span", "p", "li"]:
-                        class_list = parent.get("class") or []
-                        if isinstance(class_list, list):
-                            parent_classes = " ".join(class_list).lower()
-                        break
+        # Collect all time elements once to avoid duplicate DOM traversal
+        time_elements = soup.find_all("time")
+        first_valid_date: Optional[str] = None
 
-                # Prioritize job-related time elements
-                if any(p in parent_classes for p in job_related_patterns):
-                    return datetime_attr
+        for time_el in time_elements:
+            datetime_attr = time_el.get("datetime")
+            if not (
+                datetime_attr and isinstance(datetime_attr, str) and parse_job_date(datetime_attr)
+            ):
+                continue
+
+            # Remember first valid date as fallback
+            if first_valid_date is None:
+                first_valid_date = datetime_attr
+
+            # Check if this time element is in a job-related context
+            for parent in time_el.parents:
+                if parent.name in ["div", "span", "p", "li"]:
+                    class_list = parent.get("class") or []
+                    if isinstance(class_list, list):
+                        parent_classes = " ".join(class_list).lower()
+                        if any(p in parent_classes for p in job_related_patterns):
+                            return datetime_attr
+                    break
 
         # Fall back to first valid time element
-        for time_el in soup.find_all("time"):
-            datetime_attr = time_el.get("datetime")
-            if datetime_attr and isinstance(datetime_attr, str) and parse_job_date(datetime_attr):
-                return datetime_attr
-
-        return None
+        return first_valid_date
 
     def _extract_date_from_selectors(self, soup: BeautifulSoup) -> Optional[str]:
         """Extract date using common CSS selectors for job posting dates."""
