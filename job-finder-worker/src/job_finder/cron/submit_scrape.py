@@ -114,9 +114,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     resolved_db = resolve_db_path(args.db_path)
     config_loader = ConfigLoader(str(resolved_db))
-    scheduler_settings = config_loader.get_scheduler_settings()
+    worker_settings = config_loader.get_worker_settings()
+    # Extract runtime settings which contains scrapeConfig
+    runtime_settings = worker_settings.get("runtime", {})
 
-    scrape_config = build_scrape_config(args, scheduler_settings)
+    scrape_config = build_scrape_config(args, runtime_settings)
     item_id = enqueue_scrape(str(resolved_db), scrape_config)
 
     # Structured, cron-friendly log line
