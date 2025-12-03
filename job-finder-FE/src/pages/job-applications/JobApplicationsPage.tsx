@@ -278,7 +278,6 @@ export function JobApplicationsPage() {
                 className="mt-4"
                 onClick={() => {
                   setSearchQuery("")
-                  setPriorityFilter("all")
                 }}
               >
                 Clear Filters

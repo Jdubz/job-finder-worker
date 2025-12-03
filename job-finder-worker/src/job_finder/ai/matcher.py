@@ -194,9 +194,7 @@ class AIJobMatcher:
                 job, match_analysis, match_score, intake_data, score_breakdown
             )
 
-            logger.info(
-                f"Successfully analyzed {job.get('title')} - Score: {match_score}"
-            )
+            logger.info(f"Successfully analyzed {job.get('title')} - Score: {match_score}")
             return result
 
         except Exception as e:

@@ -20,10 +20,7 @@ def patch_text_limits(monkeypatch, tmp_path):
 def mock_provider():
     """Create a mock AI provider."""
     provider = Mock()
-    provider.generate.return_value = (
-        '{"matched_skills": ["Python"], '
-        '"missing_skills": ["Go"]}'
-    )
+    provider.generate.return_value = '{"matched_skills": ["Python"], ' '"missing_skills": ["Go"]}'
     return provider
 
 
@@ -284,10 +281,7 @@ class TestAnalyzeJob:
         """Test that analyze_job uses deterministic_score."""
         mock_provider.generate.side_effect = [
             # First call: match analysis
-            (
-                '{"match_score": 60, "matched_skills": ["Python"], '
-                '"missing_skills": []}'
-            ),
+            ('{"match_score": 60, "matched_skills": ["Python"], ' '"missing_skills": []}'),
             # Second call: intake data
             (
                 '{"job_id": "123", "job_title": "Engineer", '
@@ -316,8 +310,7 @@ class TestAnalyzeJob:
     ):
         """Test that analyze_job raises ValueError when deterministic_score is missing."""
         mock_provider.generate.return_value = (
-            '{"match_score": 85, "matched_skills": ["Python"], '
-            '"missing_skills": []}'
+            '{"match_score": 85, "matched_skills": ["Python"], ' '"missing_skills": []}'
         )
 
         matcher = AIJobMatcher(

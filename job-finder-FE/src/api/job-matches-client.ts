@@ -32,7 +32,6 @@ export class JobMatchesClient extends BaseApiClient {
     if (filters.minScore !== undefined) params.set("minScore", String(filters.minScore))
     if (filters.maxScore !== undefined) params.set("maxScore", String(filters.maxScore))
     if (filters.jobListingId) params.set("jobListingId", filters.jobListingId)
-    if (filters.priority) params.set("priority", filters.priority)
     if (filters.limit !== undefined) params.set("limit", String(filters.limit))
     if (filters.offset !== undefined) params.set("offset", String(filters.offset))
     if (filters.sortBy) params.set("sortBy", filters.sortBy)
