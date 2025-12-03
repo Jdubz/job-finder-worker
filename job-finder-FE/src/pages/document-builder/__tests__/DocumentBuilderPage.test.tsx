@@ -47,6 +47,8 @@ const renderWithRouter = (component: React.ReactElement) => {
   return render(<BrowserRouter>{component}</BrowserRouter>)
 }
 
+const getGenerateButton = () => screen.getAllByRole("button", { name: /generate resume/i })[0]
+
 // Lightweight manual retry helper for occasional async flake in long flows
 const itWithRetry = (name: string, fn: () => Promise<void>, retries = 1) => {
   it(name, async () => {
@@ -222,7 +224,7 @@ describe("DocumentBuilderPage", () => {
       })
 
       // Try to generate without filling required fields
-      await user.click(screen.getByRole("button", { name: /generate resume/i }))
+      await user.click(getGenerateButton())
 
       await waitFor(() => {
         expect(screen.getByText(/job title and company name are required/i)).toBeInTheDocument()
@@ -242,7 +244,7 @@ describe("DocumentBuilderPage", () => {
       await user.type(screen.getByLabelText(/company name/i), "Test Company")
 
       // Submit form
-      await user.click(screen.getByRole("button", { name: /generate resume/i }))
+      await user.click(getGenerateButton())
 
       await waitFor(() => {
         expect(generatorClient.startGeneration).toHaveBeenCalledWith(
@@ -270,7 +272,7 @@ describe("DocumentBuilderPage", () => {
       await user.type(screen.getByLabelText(/company name/i), "Test Company")
 
       // Submit form
-      await user.click(screen.getByRole("button", { name: /generate resume/i }))
+      await user.click(getGenerateButton())
 
       await waitFor(() => {
         expect(screen.getByText(/resume generated successfully/i)).toBeInTheDocument()
@@ -290,7 +292,7 @@ describe("DocumentBuilderPage", () => {
       await user.type(screen.getByLabelText(/company name/i), "Test Company")
 
       // Submit form
-      await user.click(screen.getByRole("button", { name: /generate resume/i }))
+      await user.click(getGenerateButton())
 
       await waitFor(() => {
         expect(screen.getByRole("link", { name: /download resume/i })).toBeInTheDocument()
@@ -317,7 +319,7 @@ describe("DocumentBuilderPage", () => {
       await user.type(screen.getByLabelText(/company name/i), "Test Company")
 
       // Submit form
-      await user.click(screen.getByRole("button", { name: /generate resume/i }))
+      await user.click(getGenerateButton())
 
       await waitFor(() => {
         expect(screen.getByText(/failed to start generation/i)).toBeInTheDocument()
@@ -339,7 +341,7 @@ describe("DocumentBuilderPage", () => {
       await user.type(screen.getByLabelText(/company name/i), "Test Company")
 
       // Submit form
-      await user.click(screen.getByRole("button", { name: /generate resume/i }))
+      await user.click(getGenerateButton())
 
       await waitFor(() => {
         expect(screen.getByText(/network error/i)).toBeInTheDocument()
@@ -364,7 +366,7 @@ describe("DocumentBuilderPage", () => {
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /generate resume/i })).toBeInTheDocument()
+        expect(getGenerateButton()).toBeInTheDocument()
       })
     })
   })
