@@ -156,7 +156,9 @@ class GenericScraper:
             response.raise_for_status()
         except requests.HTTPError as e:
             # Treat hard HTTP failures as blocking so the runner can disable the source
-            raise ScrapeBlockedError(self.config.url, f"HTTP {response.status_code}: {response.reason}") from e
+            raise ScrapeBlockedError(
+                self.config.url, f"HTTP {response.status_code}: {response.reason}"
+            ) from e
         data = response.json()
 
         # Navigate to jobs array using response_path
@@ -178,7 +180,9 @@ class GenericScraper:
         try:
             response.raise_for_status()
         except requests.HTTPError as e:
-            raise ScrapeBlockedError(self.config.url, f"HTTP {response.status_code}: {response.reason}") from e
+            raise ScrapeBlockedError(
+                self.config.url, f"HTTP {response.status_code}: {response.reason}"
+            ) from e
 
         content = response.text
         feed = feedparser.parse(content)
@@ -249,7 +253,9 @@ class GenericScraper:
         try:
             response.raise_for_status()
         except requests.HTTPError as e:
-            raise ScrapeBlockedError(self.config.url, f"HTTP {response.status_code}: {response.reason}") from e
+            raise ScrapeBlockedError(
+                self.config.url, f"HTTP {response.status_code}: {response.reason}"
+            ) from e
 
         soup = BeautifulSoup(response.text, "html.parser")
 
