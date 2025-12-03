@@ -5,28 +5,22 @@ import type {
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
   UpsertConfigEntryResponse,
-  QueueSettings,
   AISettings,
   JobFinderConfigId,
   PromptConfig,
   WorkerSettings,
-  TitleFilterConfig,
   MatchPolicy,
+  PreFilterPolicy,
 } from '@shared/types'
 import {
   ApiErrorCode,
-  DEFAULT_QUEUE_SETTINGS,
   DEFAULT_AI_SETTINGS,
-  DEFAULT_PROMPTS,
   AI_PROVIDER_OPTIONS,
-  DEFAULT_WORKER_SETTINGS,
-  DEFAULT_TITLE_FILTER,
-  isQueueSettings,
   isAISettings,
   isPersonalInfo,
   isWorkerSettings,
-  isTitleFilterConfig,
   isMatchPolicy,
+  isPrefilterPolicy,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -39,12 +33,11 @@ const updateSchema = z.object({
 })
 
 type KnownPayload =
-  | QueueSettings
   | AISettings
-  | TitleFilterConfig
   | MatchPolicy
   | PromptConfig
   | WorkerSettings
+  | PreFilterPolicy
   | Record<string, unknown>
 
 /**
@@ -101,33 +94,8 @@ function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>):
   return Object.fromEntries(entries) as T
 }
 
-function seedDefaults(repo: ConfigRepository) {
-  const seeds: Array<[JobFinderConfigId, KnownPayload]> = [
-    ['queue-settings', DEFAULT_QUEUE_SETTINGS],
-    ['ai-settings', DEFAULT_AI_SETTINGS],
-    ['title-filter', DEFAULT_TITLE_FILTER],
-    // NOTE: match-policy is NOT seeded - it must be configured explicitly
-    // to prevent silent gaps between config and implementation
-    ['ai-prompts', DEFAULT_PROMPTS],
-    // We deliberately do not seed worker-settings; prod DB already holds them.
-  ]
-
-  for (const [id, payload] of seeds) {
-    if (!repo.get(id)) {
-      repo.upsert(id, payload)
-    }
-  }
-}
-
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
   switch (id) {
-    case 'queue-settings': {
-      const normalized = normalizeKeys<QueueSettings>(payload)
-      return {
-        ...DEFAULT_QUEUE_SETTINGS,
-        ...normalized,
-      }
-    }
     case 'ai-settings': {
       const normalized = normalizeKeys<Partial<AISettings>>(payload)
       const legacySelected = (normalized as any).selected
@@ -145,24 +113,21 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
         options: AI_PROVIDER_OPTIONS,
       }
     }
-    case 'title-filter': {
-      const normalized = normalizeKeys<TitleFilterConfig>(payload)
-      return {
-        ...DEFAULT_TITLE_FILTER,
-        ...normalized,
-      }
-    }
     case 'match-policy': {
       // No defaults for match-policy - it must be complete
       // Validation happens in validatePayload
       const normalized = normalizeKeys<MatchPolicy>(payload)
       return normalized
     }
+    case 'prefilter-policy': {
+      const normalized = normalizeKeys<PreFilterPolicy>(payload)
+      return normalized
+    }
     case 'ai-prompts':
       return payload
     case 'worker-settings': {
       const normalized = normalizeKeys<WorkerSettings>(payload)
-      return { ...DEFAULT_WORKER_SETTINGS, ...normalized }
+      return normalized
     }
     case 'personal-info':
     default:
@@ -172,14 +137,12 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
 
 function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean {
   switch (id) {
-    case 'queue-settings':
-      return isQueueSettings(payload)
     case 'ai-settings':
       return isAISettings(payload)
-    case 'title-filter':
-      return isTitleFilterConfig(payload)
     case 'match-policy':
       return isMatchPolicy(payload)
+    case 'prefilter-policy':
+      return isPrefilterPolicy(payload)
     case 'ai-prompts':
       return true
     case 'worker-settings':
@@ -211,9 +174,6 @@ export function buildConfigRouter() {
   const router = Router()
   const repo = new ConfigRepository()
 
-  // Ensure required configs exist with sensible defaults
-  seedDefaults(repo)
-
   router.get(
     '/',
     asyncHandler((_req, res) => {
@@ -226,14 +186,7 @@ export function buildConfigRouter() {
     '/:id',
     asyncHandler((req, res) => {
       const id = req.params.id as JobFinderConfigId
-      const userEmail = (req as typeof req & { user?: { email?: string } }).user?.email ?? null
-
       let entry = repo.get(id)
-
-      // Auto-create personal-info with defaults to avoid 404s in settings UI
-      if (!entry && id === 'personal-info') {
-        entry = repo.upsert(id, { name: '', email: userEmail ?? '', accentColor: '#3b82f6' }, { updatedBy: userEmail ?? undefined })
-      }
 
       if (!entry) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Config not found'))

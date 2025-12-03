@@ -14,16 +14,10 @@
  * ```
  */
 
+import type { QueueItem, QueueSource } from "./queue.types"
 import type {
-  QueueItem,
-  QueueSource,
-  QueueSettings,
-  AISettings,
-} from "./queue.types"
-import type {
-  TitleFilterConfig,
-  ScoringConfig,
   MatchPolicy,
+  PreFilterPolicy,
   AIProviderType,
   AIInterfaceType,
   WorkerSettings,
@@ -122,26 +116,6 @@ export function isQueueItem(value: unknown): value is QueueItem {
     (item.url === undefined || item.url === null || typeof item.url === "string") &&
     isDateLike(item.created_at) &&
     isDateLike(item.updated_at)
-  )
-}
-
-/**
- * Type guard for QueueSettings
- */
-export function isQueueSettings(value: unknown): value is QueueSettings {
-  if (!isObject(value)) return false
-
-  const settings = value as Partial<QueueSettings>
-
-  return (
-    typeof settings.processingTimeoutSeconds === "number" &&
-    (settings.scrapeConfig === undefined ||
-      (isObject(settings.scrapeConfig) &&
-        (settings.scrapeConfig.target_matches === undefined || settings.scrapeConfig.target_matches === null || typeof settings.scrapeConfig.target_matches === "number") &&
-        (settings.scrapeConfig.max_sources === undefined || settings.scrapeConfig.max_sources === null || typeof settings.scrapeConfig.max_sources === "number") &&
-        (settings.scrapeConfig.source_ids === undefined ||
-          (Array.isArray(settings.scrapeConfig.source_ids) &&
-            settings.scrapeConfig.source_ids.every((id) => typeof id === "string")))))
   )
 }
 
@@ -383,15 +357,118 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
   return true
 }
 
+export function isPrefilterPolicy(value: unknown): value is PreFilterPolicy {
+  if (!isObject(value)) return false
+  const v = value as PreFilterPolicy
+
+  if (!isObject((v as any).title)) return false
+  const title = (v as any).title
+  if (!isStringArray(title.requiredKeywords) || !isStringArray(title.excludedKeywords)) return false
+
+  if (!isObject((v as any).freshness)) return false
+  if (typeof (v as any).freshness.maxAgeDays !== "number") return false
+
+  if (!isObject((v as any).workArrangement)) return false
+  const wa = (v as any).workArrangement
+  if (
+    typeof wa.allowRemote !== "boolean" ||
+    typeof wa.allowHybrid !== "boolean" ||
+    typeof wa.allowOnsite !== "boolean"
+  ) {
+    return false
+  }
+
+  if (!isObject((v as any).employmentType)) return false
+  const et = (v as any).employmentType
+  if (
+    typeof et.allowFullTime !== "boolean" ||
+    typeof et.allowPartTime !== "boolean" ||
+    typeof et.allowContract !== "boolean"
+  ) {
+    return false
+  }
+
+  if (!isObject((v as any).salary)) return false
+  const sal = (v as any).salary
+  if (sal.minimum !== null && typeof sal.minimum !== "number") return false
+
+  if (!isObject((v as any).technology)) return false
+  const tech = (v as any).technology
+  if (!isStringArray(tech.rejected)) return false
+
+  return true
+}
+
 export function isWorkerSettings(value: unknown): value is WorkerSettings {
+  if (!isObject(value)) return false
   const v = value as WorkerSettings
-  return (
-    isObject(value) &&
-    isObject(v.scraping) &&
-    isObject(v.health) &&
-    isObject(v.cache) &&
-    isObject(v.textLimits)
-  )
+
+  // scraping
+  if (!isObject(v.scraping)) return false
+  if (typeof (v.scraping as any).requestTimeoutSeconds !== "number") return false
+  if (typeof (v.scraping as any).maxHtmlSampleLength !== "number") return false
+
+  // text limits
+  if (!isObject(v.textLimits)) return false
+  const tl = v.textLimits as any
+  const tlKeys = [
+    "minCompanyPageLength",
+    "minSparseCompanyInfoLength",
+    "maxIntakeTextLength",
+    "maxIntakeDescriptionLength",
+    "maxIntakeFieldLength",
+    "maxDescriptionPreviewLength",
+    "maxCompanyInfoTextLength",
+  ]
+  if (!tlKeys.every((k) => typeof tl[k] === "number")) return false
+
+  // runtime
+  if (!isObject((v as any).runtime)) return false
+  const rt = (v as any).runtime
+  if (
+    typeof rt.processingTimeoutSeconds !== "number" ||
+    typeof rt.isProcessingEnabled !== "boolean" ||
+    typeof rt.taskDelaySeconds !== "number" ||
+    typeof rt.pollIntervalSeconds !== "number"
+  ) {
+    return false
+  }
+  if (rt.scrapeConfig !== undefined) {
+    if (!isObject(rt.scrapeConfig)) return false
+    const sc = rt.scrapeConfig as any
+    if (
+      (sc.target_matches !== undefined && sc.target_matches !== null && typeof sc.target_matches !== "number") ||
+      (sc.max_sources !== undefined && sc.max_sources !== null && typeof sc.max_sources !== "number") ||
+      (sc.source_ids !== undefined &&
+        !(Array.isArray(sc.source_ids) && sc.source_ids.every((id: unknown) => typeof id === "string")))
+    ) {
+      return false
+    }
+  }
+
+  // optional health
+  if (v.health !== undefined) {
+    if (!isObject(v.health)) return false
+    if (
+      typeof (v.health as any).maxConsecutiveFailures !== "number" ||
+      typeof (v.health as any).healthCheckIntervalSeconds !== "number"
+    ) {
+      return false
+    }
+  }
+
+  // optional cache
+  if (v.cache !== undefined) {
+    if (!isObject(v.cache)) return false
+    if (
+      typeof (v.cache as any).companyInfoTtlSeconds !== "number" ||
+      typeof (v.cache as any).sourceConfigTtlSeconds !== "number"
+    ) {
+      return false
+    }
+  }
+
+  return true
 }
 
 export function isPersonalInfo(value: unknown): value is PersonalInfo {

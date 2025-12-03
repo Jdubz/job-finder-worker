@@ -9,20 +9,8 @@
  */
 
 import type { TimestampLike } from "./time.types"
-import type {
-  QueueSettings,
-  AISettings,
-  AIProviderType,
-  AIInterfaceType,
-  AIProviderSelection,
-} from "./config.types"
-export type {
-  QueueSettings,
-  AISettings,
-  AIProviderType,
-  AIInterfaceType,
-  AIProviderSelection,
-} from "./config.types"
+import type { AISettings, AIProviderType, AIInterfaceType, AIProviderSelection } from "./config.types"
+export type { AISettings, AIProviderType, AIInterfaceType, AIProviderSelection } from "./config.types"
 
 /**
  * Queue item status lifecycle:

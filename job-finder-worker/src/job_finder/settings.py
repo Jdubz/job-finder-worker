@@ -24,18 +24,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_WORKER_SETTINGS: Dict[str, Any] = {
     "scraping": {
         "requestTimeoutSeconds": 30,
-        "rateLimitDelaySeconds": 2,
-        "maxRetries": 3,
         "maxHtmlSampleLength": 20000,
-        "maxHtmlSampleLengthSmall": 15000,
-    },
-    "health": {
-        "maxConsecutiveFailures": 5,
-        "healthCheckIntervalSeconds": 3600,
-    },
-    "cache": {
-        "companyInfoTtlSeconds": 86400,
-        "sourceConfigTtlSeconds": 3600,
     },
     "textLimits": {
         "minCompanyPageLength": 200,
@@ -45,6 +34,13 @@ DEFAULT_WORKER_SETTINGS: Dict[str, Any] = {
         "maxIntakeFieldLength": 400,
         "maxDescriptionPreviewLength": 500,
         "maxCompanyInfoTextLength": 1000,
+    },
+    "runtime": {
+        "processingTimeoutSeconds": 1800,
+        "isProcessingEnabled": True,
+        "taskDelaySeconds": 1,
+        "pollIntervalSeconds": 60,
+        "scrapeConfig": {},
     },
 }
 

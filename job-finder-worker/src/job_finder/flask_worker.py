@@ -172,8 +172,11 @@ def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
 
 def get_processing_timeout(config_loader: ConfigLoader) -> int:
     """Lookup processing timeout (fail loud on missing config)."""
-    queue_settings = config_loader.get_queue_settings()
-    return max(5, int(queue_settings.get("processingTimeoutSeconds", 1800)))
+    worker_settings = config_loader.get_worker_settings()
+    runtime = worker_settings.get("runtime", {}) if isinstance(worker_settings, dict) else {}
+    if not isinstance(runtime, dict):
+        raise InitializationError("worker-settings.runtime missing or invalid")
+    return max(5, int(runtime.get("processingTimeoutSeconds", 1800)))
 
 
 def initialize_components(config: Dict[str, Any]) -> tuple:
@@ -337,8 +340,13 @@ def worker_loop():
                 while items and not worker_state["shutdown_requested"]:
                     try:
                         # Refresh delay once per batch; config changes apply to the next batch.
-                        queue_settings = config_loader.get_queue_settings()
-                        task_delay = max(0, int(queue_settings.get("taskDelaySeconds", 0)))
+                        worker_settings = config_loader.get_worker_settings()
+                        runtime = (
+                            worker_settings.get("runtime", {})
+                            if isinstance(worker_settings, dict)
+                            else {}
+                        )
+                        task_delay = max(0, int(runtime.get("taskDelaySeconds", 0)))
                     except Exception:
                         task_delay = 0
 
@@ -600,11 +608,16 @@ def main():
         global queue_manager, processor, config_loader, ai_matcher
         queue_manager, processor, config_loader, ai_matcher, config = initialize_components(config)
 
-        # Set poll interval from DB-backed queue settings if available
+        # Set poll interval from DB-backed worker runtime settings if available
         if config_loader:
             try:
-                queue_settings = config_loader.get_queue_settings()
-                worker_state["poll_interval"] = queue_settings.get("pollIntervalSeconds", 60)
+                worker_settings = config_loader.get_worker_settings()
+                runtime = (
+                    worker_settings.get("runtime", {})
+                    if isinstance(worker_settings, dict)
+                    else {}
+                )
+                worker_state["poll_interval"] = runtime.get("pollIntervalSeconds", 60)
             except Exception:
                 worker_state["poll_interval"] = config.get("queue", {}).get("poll_interval", 60)
         else:
