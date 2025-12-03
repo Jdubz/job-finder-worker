@@ -245,7 +245,7 @@ async function initFrontendClients() {
 async function ensureBaseConfigs(configClient: any, userEmail: string) {
   const server = requireCtx()
   const upsert = async (id: string, payload: any) => {
-    await fetch(`${server.apiBase}/config/${id}`, {
+    const res = await fetch(`${server.apiBase}/config/${id}`, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${server.authToken}`,
@@ -253,6 +253,10 @@ async function ensureBaseConfigs(configClient: any, userEmail: string) {
       },
       body: JSON.stringify({ payload }),
     })
+    if (!res.ok) {
+      const body = await res.text()
+      throw new Error(`Failed to upsert config '${id}': ${res.status} - ${body}`)
+    }
   }
 
   await upsert("prefilter-policy", minimalPrefilterPolicy)
@@ -261,7 +265,20 @@ async function ensureBaseConfigs(configClient: any, userEmail: string) {
   await upsert("ai-settings", {
     worker: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
     documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
-    options: [],
+    options: [
+      {
+        value: "gemini",
+        interfaces: [
+          { value: "api", enabled: true, models: ["gemini-2.0-flash", "gemini-1.5-pro"] },
+        ],
+      },
+      {
+        value: "openai",
+        interfaces: [
+          { value: "api", enabled: true, models: ["gpt-4o", "gpt-4o-mini"] },
+        ],
+      },
+    ],
   })
   await upsert("personal-info", { ...TEST_PERSONAL_INFO, email: userEmail })
 }
