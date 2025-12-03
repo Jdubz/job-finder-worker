@@ -268,7 +268,12 @@ class ConfigLoader:
             raise InitializationError("worker-settings.runtime missing or invalid")
 
         # Validate required runtime keys (fail loud on schema drift)
-        required_keys = {"processingTimeoutSeconds", "isProcessingEnabled", "taskDelaySeconds", "pollIntervalSeconds"}
+        required_keys = {
+            "processingTimeoutSeconds",
+            "isProcessingEnabled",
+            "taskDelaySeconds",
+            "pollIntervalSeconds",
+        }
         missing_keys = required_keys - set(runtime.keys())
         if missing_keys:
             raise InitializationError(
