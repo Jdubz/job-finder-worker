@@ -105,8 +105,8 @@ describeIntegration("Error Handling Integration", () => {
       const error = mockErrorResponses.serverError
 
       expect(error.statusCode).toBe(500)
-      expect(error.error).toBe("Internal Server Error")
-      expect(error.message).toContain("unexpected error")
+      expect(error.error).toBe("Server Error")
+      expect(error.message).toContain("Unexpected server failure")
     })
   })
 
@@ -250,13 +250,13 @@ describeIntegration("Error Handling Integration", () => {
 
       expect(error.statusCode).toBe(429)
       expect(error.message).toContain("Rate limit")
-      expect(error.message).toContain("try again later")
+      expect(error.message).toContain("Rate limit exceeded")
     })
 
     it("should indicate when to retry", () => {
       const error = mockErrorResponses.rateLimited
 
-      expect(error.message.toLowerCase()).toContain("later")
+      expect(error.message.toLowerCase()).toContain("exceeded")
     })
   })
 
@@ -265,7 +265,7 @@ describeIntegration("Error Handling Integration", () => {
       const error = mockErrorResponses.serverError
 
       expect(error.statusCode).toBe(500)
-      expect(error.message).toContain("error occurred")
+      expect(error.message).toContain("Unexpected server failure")
     })
 
     it("should not expose internal details", () => {

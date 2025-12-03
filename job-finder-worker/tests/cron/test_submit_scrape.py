@@ -142,13 +142,29 @@ def test_submit_scrape_uses_db_config_as_fallback(tmp_path):
     db_path = _create_db(tmp_path)
 
     db_settings = {
-        "scrapeConfig": {
-            "targetMatches": 10,
-            "maxSources": 5,
-            "sourceIds": ["db_src_1", "db_src_2"],
-        }
+        "scraping": {"requestTimeoutSeconds": 30, "maxHtmlSampleLength": 1000},
+        "textLimits": {
+            "minCompanyPageLength": 10,
+            "minSparseCompanyInfoLength": 5,
+            "maxIntakeTextLength": 500,
+            "maxIntakeDescriptionLength": 2000,
+            "maxIntakeFieldLength": 400,
+            "maxDescriptionPreviewLength": 500,
+            "maxCompanyInfoTextLength": 1000,
+        },
+        "runtime": {
+            "processingTimeoutSeconds": 1800,
+            "isProcessingEnabled": True,
+            "taskDelaySeconds": 0,
+            "pollIntervalSeconds": 10,
+            "scrapeConfig": {
+                "target_matches": 10,
+                "max_sources": 5,
+                "source_ids": ["db_src_1", "db_src_2"],
+            },
+        },
     }
-    _set_scheduler_settings(db_path, db_settings)
+    _set_worker_runtime(db_path, db_settings)
 
     submit_scrape.main(["--db-path", db_path])
 
