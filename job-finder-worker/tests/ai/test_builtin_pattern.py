@@ -1,7 +1,3 @@
-import types
-
-import pytest
-
 from job_finder.ai.source_discovery import SourceDiscovery
 from job_finder.scrapers.platform_patterns import match_platform, build_config_from_pattern
 from job_finder.scrapers.source_config import SourceConfig
