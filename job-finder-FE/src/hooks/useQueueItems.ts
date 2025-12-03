@@ -14,6 +14,7 @@ interface SubmitCompanyParams {
   companyName: string
   websiteUrl?: string
   companyId?: string | null
+  allowReanalysis?: boolean
 }
 
 interface SubmitSourceDiscoveryParams {
@@ -295,6 +296,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         websiteUrl: params.websiteUrl,
         companyId: params.companyId,
         source: "user_request",
+        allowReanalysis: params.allowReanalysis ?? false,
       })
 
       const normalized = normalizeQueueItem(queueItem)

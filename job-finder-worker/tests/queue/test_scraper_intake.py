@@ -6,12 +6,15 @@ import pytest
 
 from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.scraper_intake import ScraperIntake
+from job_finder.job_queue.models import QueueItemType
 
 
 @pytest.fixture
 def mock_queue_manager():
     """Create mock queue manager."""
-    return MagicMock()
+    mgr = MagicMock()
+    mgr.has_company_task.return_value = False
+    return mgr
 
 
 @pytest.fixture
@@ -243,3 +246,85 @@ def test_submit_company_handles_race_condition(scraper_intake, mock_queue_manage
 
     # Should return None gracefully (not raise or log as error)
     assert result is None
+
+
+def test_submit_company_blocks_existing_without_reanalysis(mock_sources_manager):
+    queue_manager = MagicMock()
+    queue_manager.url_exists_in_queue.return_value = False
+    queue_manager.has_company_task.return_value = False
+
+    companies_manager = MagicMock()
+    companies_manager.get_company.return_value = {"id": "c1", "name": "Discord"}
+
+    intake = ScraperIntake(
+        queue_manager=queue_manager,
+        companies_manager=companies_manager,
+        sources_manager=mock_sources_manager,
+    )
+
+    result = intake.submit_company(
+        company_name="Discord",
+        company_website="https://discord.com",
+        source="scraper",
+        allow_reanalysis=False,
+    )
+
+    assert result is None
+    queue_manager.add_item.assert_not_called()
+    companies_manager.create_company_stub.assert_not_called()
+
+
+def test_submit_company_allows_reanalysis_uses_existing_id(mock_sources_manager):
+    queue_manager = MagicMock()
+    queue_manager.url_exists_in_queue.return_value = False
+    queue_manager.has_company_task.return_value = False
+    queue_manager.add_item.return_value = "doc-id-789"
+
+    companies_manager = MagicMock()
+    companies_manager.get_company.return_value = {"id": "c1", "name": "Discord"}
+
+    intake = ScraperIntake(
+        queue_manager=queue_manager,
+        companies_manager=companies_manager,
+        sources_manager=mock_sources_manager,
+    )
+
+    result = intake.submit_company(
+        company_name="Discord",
+        company_website="https://discord.com",
+        source="scraper",
+        allow_reanalysis=True,
+    )
+
+    assert result == "doc-id-789"
+    queue_manager.add_item.assert_called_once()
+    companies_manager.create_company_stub.assert_not_called()
+
+    queued = queue_manager.add_item.call_args[0][0]
+    assert queued.type == QueueItemType.COMPANY
+    assert queued.company_id == "c1"
+
+
+def test_submit_company_blocks_when_active_task_exists(mock_sources_manager):
+    queue_manager = MagicMock()
+    queue_manager.url_exists_in_queue.return_value = False
+    queue_manager.has_company_task.return_value = True
+
+    companies_manager = MagicMock()
+    companies_manager.get_company.return_value = {"id": "c1", "name": "Discord"}
+
+    intake = ScraperIntake(
+        queue_manager=queue_manager,
+        companies_manager=companies_manager,
+        sources_manager=mock_sources_manager,
+    )
+
+    result = intake.submit_company(
+        company_name="Discord",
+        company_website="https://discord.com",
+        source="scraper",
+        allow_reanalysis=True,
+    )
+
+    assert result is None
+    queue_manager.add_item.assert_not_called()

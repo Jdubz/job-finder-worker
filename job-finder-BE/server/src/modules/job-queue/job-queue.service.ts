@@ -22,6 +22,7 @@ export type SubmitCompanyInput = {
   websiteUrl?: string
   companyId?: string | null
   source?: QueueSource
+  allowReanalysis?: boolean
 }
 
 export type SubmitScrapeInput = {

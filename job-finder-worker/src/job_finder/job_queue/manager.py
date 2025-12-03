@@ -243,6 +243,57 @@ class QueueManager:
             row = conn.execute("SELECT 1 FROM job_queue WHERE url = ? LIMIT 1", (url,)).fetchone()
         return row is not None
 
+    def has_company_task(
+        self,
+        company_id: str,
+        statuses: Optional[List[QueueStatus]] = None,
+        company_name: Optional[str] = None,
+    ) -> bool:
+        """Check if a company discovery task already exists.
+
+        Uses the structured payload stored in `input` to find any COMPANY
+        items that reference the same company_id (preferred) or, as a
+        fallback, the same company_name. This is intentionally *global*
+        (not per-tracking-id) so we don't spawn duplicate discovery work
+        from different job listings.
+        """
+
+        if not company_id and not company_name:
+            return False
+
+        # Only block on work that is still active; terminal items should not
+        # prevent re-analysis.
+        active_statuses = statuses or [QueueStatus.PENDING, QueueStatus.PROCESSING]
+
+        placeholders = ",".join("?" for _ in active_statuses)
+        params: List[Any] = [QueueItemType.COMPANY.value]
+
+        where_clauses = ["type = ?"]
+
+        if company_id:
+            where_clauses.append("json_extract(input, '$.company_id') = ?")
+            params.append(company_id)
+        if company_name:
+            where_clauses.append("json_extract(input, '$.company_name') = ?")
+            params.append(company_name)
+
+        where_clauses.append(f"status IN ({placeholders})")
+        params.extend(status.value for status in active_statuses)
+
+        where_sql = " AND ".join(where_clauses)
+
+        query = f"""
+            SELECT 1
+            FROM job_queue
+            WHERE {where_sql}
+            LIMIT 1
+        """
+
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(query, tuple(params)).fetchone()
+
+        return row is not None
+
     def get_queue_stats(self) -> Dict[str, int]:
         stats = {status.value: 0 for status in QueueStatus}
         stats["total"] = 0

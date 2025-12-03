@@ -434,6 +434,7 @@ describe("CompaniesPage", () => {
           companyName: "Acme Corporation",
           websiteUrl: "https://acme.com",
           companyId: "company-1",
+          allowReanalysis: true,
         })
       })
     })
@@ -463,6 +464,7 @@ describe("CompaniesPage", () => {
           companyName: "Acme Corporation",
           websiteUrl: "https://acme.com",
           companyId: "company-1",
+          allowReanalysis: true,
         })
         expect(mockNavigate).toHaveBeenCalledWith("/queue-management")
       })

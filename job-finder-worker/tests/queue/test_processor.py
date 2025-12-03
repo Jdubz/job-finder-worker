@@ -57,7 +57,7 @@ def mock_managers():
     }
 
     return {
-        "queue_manager": MagicMock(),
+        "queue_manager": MagicMock(has_company_task=MagicMock(return_value=False)),
         "config_loader": config_loader,
         "job_storage": MagicMock(),
         "job_listing_storage": MagicMock(),

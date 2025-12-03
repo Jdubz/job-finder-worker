@@ -69,7 +69,8 @@ const submitCompanySchema = z.object({
   companyName: z.string().min(1),
   websiteUrl: z.string().url().optional(),
   companyId: z.string().nullable().optional(),
-  source: z.enum(queueSources).optional()
+  source: z.enum(queueSources).optional(),
+  allowReanalysis: z.boolean().optional()
 })
 
 const scrapeConfigSchema = z

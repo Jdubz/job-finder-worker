@@ -132,6 +132,7 @@ describe("useQueueItems", () => {
         await result.current.submitCompany({
           companyName: "ExampleCo",
           websiteUrl: "https://example.com",
+          allowReanalysis: false,
         })
       })
 
@@ -140,6 +141,7 @@ describe("useQueueItems", () => {
         websiteUrl: "https://example.com",
         companyId: undefined,
         source: "user_request",
+        allowReanalysis: false,
       })
     })
 
@@ -152,6 +154,7 @@ describe("useQueueItems", () => {
           companyName: "ExampleCo",
           websiteUrl: "https://example.com",
           companyId: "existing-company-123",
+          allowReanalysis: true,
         })
       })
 
@@ -160,6 +163,7 @@ describe("useQueueItems", () => {
         websiteUrl: "https://example.com",
         companyId: "existing-company-123",
         source: "user_request",
+        allowReanalysis: true,
       })
     })
 
