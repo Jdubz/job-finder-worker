@@ -119,7 +119,7 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
 
   watchtower:
-    image: containrrr/watchtower:1.7.1
+    image: containrrr/watchtower:latest
     container_name: job-finder-watchtower
     restart: unless-stopped
     command: --label-enable --interval 300 --cleanup
