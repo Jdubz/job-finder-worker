@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 from job_finder.ai.providers import create_provider_from_config
 from job_finder.ai.source_discovery import SourceDiscovery
 from job_finder.exceptions import QueueProcessingError
+from job_finder.filters.prefilter import PreFilter
+from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import (
@@ -60,9 +62,18 @@ class SourceProcessor(BaseProcessor):
         self.sources_manager = sources_manager
         self.companies_manager = companies_manager
 
-        # Initialize scraper intake without filter_engine
-        # Jobs will be filtered when processed by JobProcessor
-        self.scraper_intake = ScraperIntake(queue_manager=queue_manager)
+        # Create filters from prefilter-policy for early rejection
+        prefilter_policy = config_loader.get_prefilter_policy()
+        title_cfg = prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
+        self.title_filter = TitleFilter(title_cfg) if title_cfg else None
+        self.prefilter = PreFilter(prefilter_policy) if prefilter_policy else None
+
+        # Initialize scraper intake with filters to pre-filter jobs at intake
+        self.scraper_intake = ScraperIntake(
+            queue_manager=queue_manager,
+            title_filter=self.title_filter,
+            prefilter=self.prefilter,
+        )
 
     # ============================================================
     # SOURCE DISCOVERY

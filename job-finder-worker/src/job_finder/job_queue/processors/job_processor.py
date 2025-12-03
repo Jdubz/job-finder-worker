@@ -149,12 +149,13 @@ class JobProcessor(BaseProcessor):
             title_filter=self.title_filter,
         )
 
-        # Initialize scraper intake with title filter for deduplication
+        # Initialize scraper intake with filters for deduplication
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
             job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             title_filter=self.title_filter,
+            prefilter=self.prefilter,
         )
 
     def _refresh_runtime_config(self) -> None:
@@ -301,15 +302,6 @@ class JobProcessor(BaseProcessor):
 
         # Bootstrap from existing state if available
         state = item.pipeline_state or {}
-
-        # Check for existing listing_id from metadata or state (for jobs created during scraper intake)
-        # This allows prefiltered/filtered jobs to update existing listings instead of leaving them pending
-        metadata = item.metadata or {}
-        if metadata.get("job_listing_id"):
-            ctx.listing_id = metadata["job_listing_id"]
-        elif state.get("job_listing_id"):
-            ctx.listing_id = state["job_listing_id"]
-
         if item.scraped_data:
             ctx.job_data = item.scraped_data
         elif "job_data" in state:
@@ -399,9 +391,7 @@ class JobProcessor(BaseProcessor):
             )
 
             # Get/create job listing (only for jobs that passed title filter AND prefilter)
-            # Use existing listing_id if already set from metadata, otherwise create new
-            if not ctx.listing_id:
-                ctx.listing_id = self._get_or_create_job_listing(item, ctx.job_data)
+            ctx.listing_id = self._get_or_create_job_listing(item, ctx.job_data)
 
             # STAGE 3: COMPANY LOOKUP
             ctx.stage = "company"
@@ -928,9 +918,9 @@ class JobProcessor(BaseProcessor):
         """
         Finalize pipeline with FILTERED status due to early filter rejection.
 
-        Used for both title filter and prefilter rejections. If a listing already exists
-        (e.g., created during scraper intake), its status is updated to "filtered".
-        Otherwise, no listing is created - the queue item status is updated.
+        Used for both title filter and prefilter rejections. Filtered jobs are NOT
+        stored in job_listings - they are rejected before the listing is created.
+        Only the queue item status is updated.
 
         Args:
             ctx: Pipeline context
@@ -951,7 +941,8 @@ class JobProcessor(BaseProcessor):
             logger.info(f"[PIPELINE] FILTERED: '{title}' - {rejection_reason}")
             status_message = f"Rejected: {rejection_reason}"
 
-        # Update existing listing status if one was created during scraper intake
+        # Note: No listing created for filtered jobs - filters run before listing creation
+        # If listing_id exists (legacy item), update its status
         if ctx.listing_id:
             filter_result: Dict[str, Any] = {
                 "titleFilter": (
@@ -981,7 +972,7 @@ class JobProcessor(BaseProcessor):
         self._finalize_early_rejection(ctx, "title", rejection_reason)
 
     def _finalize_prefiltered(self, ctx: PipelineContext) -> None:
-        """Finalize pipeline with FILTERED status due to prefilter rejection."""
+        """Finalize pipeline with FILTERED status due to prefilter rejection (prefiltered jobs are NOT stored in job_listings)."""
         rejection_reason = (
             ctx.prefilter_result.reason if ctx.prefilter_result else "Prefilter rejected"
         )

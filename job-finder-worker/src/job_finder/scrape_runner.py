@@ -1,14 +1,16 @@
 """
 Scrape runner - selects sources and submits jobs to the queue.
 
-Pre-filtering is applied at the intake stage:
+Pre-filtering is applied at the intake stage in two phases:
 1) chooses which sources to scrape (rotation/filters)
 2) scrapes raw jobs from each source
-3) pre-filters jobs using TitleFilter (simple keyword-based title filtering)
-4) enqueues only relevant jobs via ScraperIntake
+3) pre-filters jobs using TitleFilter (keyword-based title filtering)
+4) pre-filters jobs using PreFilter (freshness, work arrangement, salary, etc.)
+5) enqueues only relevant jobs via ScraperIntake
 
+Jobs that fail EITHER filter are ignored entirely - no job_listing is created.
 This significantly reduces queue size and AI analysis costs by filtering
-out obviously irrelevant jobs BEFORE they enter the queue.
+out obviously unsuitable jobs BEFORE they enter the queue.
 """
 
 import logging
@@ -16,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import ConfigurationError, ScrapeBlockedError
+from job_finder.filters.prefilter import PreFilter
 from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
@@ -62,33 +65,45 @@ class ScrapeRunner:
         self.sources_manager = sources_manager
         self.company_info_fetcher = company_info_fetcher
 
-        # Use provided title filter or create one from prefilter-policy.title
+        # Use provided title filter or create filters from prefilter-policy
         self.title_filter: Optional[TitleFilter] = None
+        self.prefilter: Optional[PreFilter] = None
+
         if title_filter:
             self.title_filter = title_filter
         elif config_loader:
-            self.title_filter = self._create_title_filter(config_loader)
+            self.title_filter, self.prefilter = self._create_filters(config_loader)
         else:
             # Try to create config loader from job_listing_storage db_path
             try:
                 loader = ConfigLoader(job_listing_storage.db_path)
-                self.title_filter = self._create_title_filter(loader)
+                self.title_filter, self.prefilter = self._create_filters(loader)
             except Exception as e:
-                logger.warning(f"Could not create title filter: {e}. Pre-filtering disabled.")
-                self.title_filter = None
+                logger.warning(f"Could not create filters: {e}. Pre-filtering disabled.")
 
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
             job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             title_filter=self.title_filter,
+            prefilter=self.prefilter,
         )
 
-    def _create_title_filter(self, config_loader: ConfigLoader) -> TitleFilter:
-        """Create TitleFilter for pre-filtering scraped jobs."""
-        prefilter = config_loader.get_prefilter_policy()
-        title_cfg = prefilter.get("title", {}) if isinstance(prefilter, dict) else {}
-        return TitleFilter(title_cfg)
+    def _create_filters(
+        self, config_loader: ConfigLoader
+    ) -> tuple[Optional[TitleFilter], Optional[PreFilter]]:
+        """Create TitleFilter and PreFilter for pre-filtering scraped jobs."""
+        prefilter_policy = config_loader.get_prefilter_policy()
+        if not isinstance(prefilter_policy, dict):
+            return None, None
+
+        title_cfg = prefilter_policy.get("title", {})
+        title_filter = TitleFilter(title_cfg) if title_cfg else None
+
+        # Create PreFilter with the full policy
+        prefilter = PreFilter(prefilter_policy) if prefilter_policy else None
+
+        return title_filter, prefilter
 
     def run_scrape(
         self,
