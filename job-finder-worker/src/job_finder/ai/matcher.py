@@ -246,7 +246,7 @@ class AIJobMatcher:
         )
 
     @staticmethod
-    def _normalize_skills_array(skills: list) -> List[str]:
+    def _normalize_skills_array(skills: List[Any]) -> List[str]:
         """
         Normalize a skills array to a list of strings.
 
@@ -254,11 +254,14 @@ class AIJobMatcher:
         instead of simple strings. This method extracts just the skill names.
 
         Args:
-            skills: List of skills (strings or dicts)
+            skills: List of skills (strings or dicts), or None
 
         Returns:
             List of skill name strings
         """
+        if not skills or not isinstance(skills, list):
+            return []
+
         result = []
         for item in skills:
             if isinstance(item, str):
