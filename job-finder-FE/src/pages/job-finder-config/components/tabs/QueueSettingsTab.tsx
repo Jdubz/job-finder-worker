@@ -8,7 +8,7 @@ type RuntimeSettings = WorkerSettings["runtime"]
 
 type QueueSettingsTabProps = {
   isSaving: boolean
-  queueSettings: RuntimeSettings
+  queueSettings: RuntimeSettings | null
   setQueueSettings: (updates: Partial<RuntimeSettings>) => void
   hasQueueChanges: boolean
   handleSaveQueueSettings: () => Promise<void> | void
@@ -23,6 +23,19 @@ export function QueueSettingsTab({
   handleSaveQueueSettings,
   resetQueue,
 }: QueueSettingsTabProps) {
+  if (!queueSettings) {
+    return (
+      <TabsContent value="queue" className="space-y-4 mt-4">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
+          <h3 className="text-lg font-semibold text-destructive">Configuration Missing</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The worker-settings configuration is not set in the database. Please add it before using this feature.
+          </p>
+        </div>
+      </TabsContent>
+    )
+  }
+
   return (
     <TabsContent value="queue" className="space-y-4 mt-4">
       <TabCard

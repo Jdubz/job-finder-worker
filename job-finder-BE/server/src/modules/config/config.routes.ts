@@ -14,13 +14,12 @@ import type {
 } from '@shared/types'
 import {
   ApiErrorCode,
-  DEFAULT_AI_SETTINGS,
-  AI_PROVIDER_OPTIONS,
   isAISettings,
   isPersonalInfo,
   isWorkerSettings,
   isMatchPolicy,
   isPreFilterPolicy,
+  isPromptConfig,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -41,9 +40,11 @@ type KnownPayload =
   | Record<string, unknown>
 
 /**
- * Check provider availability based on API keys and CLI auth status
+ * Check provider availability based on API keys and CLI auth status.
+ * Takes the configured options from DB and adds availability info.
  */
-function buildProviderOptionsWithAvailability() {
+function buildProviderOptionsWithAvailability(configuredOptions?: AISettings['options']) {
+  if (!configuredOptions) return []
   const availability: Record<string, { enabled: boolean; reason?: string }> = {}
 
   // Codex CLI - check login status
@@ -72,7 +73,7 @@ function buildProviderOptionsWithAvailability() {
   const geminiEnabled = !!(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)
   availability['gemini/api'] = { enabled: geminiEnabled, reason: geminiEnabled ? undefined : 'GOOGLE_API_KEY or GEMINI_API_KEY not set' }
 
-  return AI_PROVIDER_OPTIONS.map((provider) => ({
+  return configuredOptions.map((provider) => ({
     ...provider,
     interfaces: provider.interfaces.map((iface) => {
       const status = availability[`${provider.value}/${iface.value}`]
@@ -96,39 +97,16 @@ function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>):
 
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
   switch (id) {
-    case 'ai-settings': {
-      const normalized = normalizeKeys<Partial<AISettings>>(payload)
-      const legacySelected = (normalized as any).selected
-      const mergedWorkerSelected = {
-        ...DEFAULT_AI_SETTINGS.worker.selected,
-        ...(normalized.worker?.selected ?? legacySelected ?? {}),
-      }
-      const mergedDocSelected = {
-        ...DEFAULT_AI_SETTINGS.documentGenerator.selected,
-        ...(normalized.documentGenerator?.selected ?? legacySelected ?? {}),
-      }
-      return {
-        worker: { selected: mergedWorkerSelected },
-        documentGenerator: { selected: mergedDocSelected },
-        options: AI_PROVIDER_OPTIONS,
-      }
-    }
-    case 'match-policy': {
-      // No defaults for match-policy - it must be complete
-      // Validation happens in validatePayload
-      const normalized = normalizeKeys<MatchPolicy>(payload)
-      return normalized
-    }
-    case 'prefilter-policy': {
-      const normalized = normalizeKeys<PreFilterPolicy>(payload)
-      return normalized
-    }
+    case 'ai-settings':
+      return normalizeKeys<AISettings>(payload)
+    case 'match-policy':
+      return normalizeKeys<MatchPolicy>(payload)
+    case 'prefilter-policy':
+      return normalizeKeys<PreFilterPolicy>(payload)
     case 'ai-prompts':
       return payload
-    case 'worker-settings': {
-      const normalized = normalizeKeys<WorkerSettings>(payload)
-      return normalized
-    }
+    case 'worker-settings':
+      return normalizeKeys<WorkerSettings>(payload)
     case 'personal-info':
     default:
       return payload
@@ -144,7 +122,7 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
     case 'prefilter-policy':
       return isPreFilterPolicy(payload)
     case 'ai-prompts':
-      return true
+      return isPromptConfig(payload)
     case 'worker-settings':
       return isWorkerSettings(payload)
     case 'personal-info':
@@ -186,23 +164,27 @@ export function buildConfigRouter() {
     '/:id',
     asyncHandler((req, res) => {
       const id = req.params.id as JobFinderConfigId
-      let entry = repo.get(id)
+      const entry = repo.get(id)
 
       if (!entry) {
-        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Config not found'))
+        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, `Config '${id}' not found - must be configured before use`))
         return
       }
 
       // For ai-settings, populate provider/interface availability dynamically
       if (id === 'ai-settings') {
         const aiPayload = entry.payload as AISettings
-        entry = {
-          ...entry,
-          payload: {
-            ...aiPayload,
-            options: buildProviderOptionsWithAvailability(),
+        const response: GetConfigEntryResponse = {
+          config: {
+            ...entry,
+            payload: {
+              ...aiPayload,
+              options: buildProviderOptionsWithAvailability(aiPayload.options),
+            },
           },
         }
+        res.json(success(response))
+        return
       }
 
       const response: GetConfigEntryResponse = { config: entry }

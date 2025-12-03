@@ -24,6 +24,7 @@ import type {
   AISettings,
   AIProviderOption,
   ScoringConfig,
+  PromptConfig,
 } from "./config.types"
 import type { PersonalInfo } from "./generator.types"
 // Import and re-export type guards from queue.types for convenience
@@ -478,6 +479,20 @@ export function isPersonalInfo(value: unknown): value is PersonalInfo {
   return typeof v.name === "string" && typeof v.email === "string"
 }
 
+/**
+ * Type guard for PromptConfig
+ */
+export function isPromptConfig(value: unknown): value is PromptConfig {
+  if (!isObject(value)) return false
+  const v = value as Partial<PromptConfig>
+  return (
+    typeof v.resumeGeneration === "string" &&
+    typeof v.coverLetterGeneration === "string" &&
+    typeof v.jobScraping === "string" &&
+    typeof v.jobMatching === "string"
+  )
+}
+
 // ============================================
 // Generator Types Guards
 // ============================================
@@ -616,7 +631,6 @@ export function isJobListingRecord(value: unknown): value is JobListingRecord {
     typeof listing.companyName === "string" &&
     typeof listing.description === "string" &&
     (listing.status === "pending" ||
-      listing.status === "filtered" ||
       listing.status === "analyzing" ||
       listing.status === "analyzed" ||
       listing.status === "skipped" ||

@@ -12,7 +12,6 @@ import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
 const statusLabel: Record<JobListingStatus, string> = {
   pending: "Pending",
-  filtered: "Filtered",
   analyzing: "Analyzing",
   analyzed: "Analyzed",
   matched: "Matched",

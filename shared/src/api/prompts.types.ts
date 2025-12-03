@@ -5,7 +5,7 @@ export interface GetPromptsResponse {
 }
 
 export interface UpdatePromptsRequest {
-  prompts: Omit<PromptConfig, "updatedAt" | "updatedBy">
+  prompts: PromptConfig
   userEmail: string
 }
 

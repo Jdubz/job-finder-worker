@@ -54,7 +54,8 @@ test.describe("Owner configuration and prompts", () => {
     await page.getByRole("button", { name: "Save Prompts" }).click()
     await expect(page.getByText(/AI prompts saved successfully/i)).toBeVisible()
 
-    await page.getByRole("button", { name: "Reset to Defaults" }).click()
-    await expect(page.getByText(/AI prompts reset to defaults/i)).toBeVisible()
+    // Verify the updated content was saved by checking it contains the override
+    await page.reload()
+    await expect(resumePrompt).toHaveValue(/\/\/ e2e override/)
   })
 })

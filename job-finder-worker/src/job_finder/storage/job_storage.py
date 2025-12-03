@@ -10,21 +10,16 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from uuid import uuid4
 
 from job_finder.exceptions import StorageError
-from job_finder.storage.sqlite_client import sqlite_connection
+from job_finder.storage.sqlite_client import sqlite_connection, utcnow_iso
 
 if TYPE_CHECKING:
     from job_finder.ai.matcher import JobMatchResult
 
 logger = logging.getLogger(__name__)
-
-
-def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _serialize_list(value: Optional[List[Any]]) -> str:
@@ -142,7 +137,7 @@ class JobStorage:
                 return existing
 
             job_id = str(uuid4())
-            now = _utcnow()
+            now = utcnow_iso()
 
             match_reasons = getattr(match_result, "match_reasons", None)
             if not match_reasons:

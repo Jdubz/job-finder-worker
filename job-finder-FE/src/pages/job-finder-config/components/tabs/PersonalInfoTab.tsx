@@ -10,7 +10,7 @@ import type { PersonalInfo } from "@shared/types"
 
 type PersonalInfoTabProps = {
   isSaving: boolean
-  currentPersonalInfo: PersonalInfo
+  currentPersonalInfo: PersonalInfo | null
   hasPersonalInfoChanges: boolean
   updatePersonalInfoState: (updates: Partial<PersonalInfo>) => void
   handleSavePersonalInfo: () => Promise<void> | void
@@ -27,6 +27,20 @@ export function PersonalInfoTab({
 }: PersonalInfoTabProps) {
   const [uploading, setUploading] = useState<{ avatar: boolean; logo: boolean }>({ avatar: false, logo: false })
   const [uploadError, setUploadError] = useState<string | null>(null)
+
+  if (!currentPersonalInfo) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Alert variant="destructive">
+            <AlertDescription>
+              The personal-info configuration is not set in the database. Please add it before using this feature.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    )
+  }
 
   const fileToDataUrl = async (file: File) => {
     const reader = new FileReader()

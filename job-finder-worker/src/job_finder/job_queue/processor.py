@@ -198,28 +198,3 @@ class QueueItemProcessor:
             item.id, QueueStatus.FAILED, failed_msg, error_details=failed_details
         )
         logger.error(f"Item {item.id} failed: {error_message}")
-
-    # ============================================================
-    # BACKWARD COMPATIBILITY DELEGATION METHODS
-    # These methods delegate to specialized processors for test compatibility
-    # ============================================================
-
-    # Job processor delegations
-    def _process_scrape(self, item: JobQueueItem) -> None:
-        """Delegate to job processor."""
-        return self.job_processor.process_scrape(item)
-
-    # Legacy job delegation removed; state-driven pipeline is the only path.
-
-    # Company processor helper delegations (for testing)
-    def _detect_tech_stack(
-        self, extracted_info: Dict[str, Any], html_content: Optional[str] = None
-    ) -> list:
-        """Delegate to company processor."""
-        return self.company_processor._detect_tech_stack(extracted_info, html_content)
-
-    def _detect_job_board(
-        self, company_website: str, html_content: Optional[str] = None
-    ) -> Optional[str]:
-        """Delegate to company processor."""
-        return self.company_processor._detect_job_board(company_website, html_content)

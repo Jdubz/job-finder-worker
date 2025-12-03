@@ -11,9 +11,9 @@ type MatchPolicyFormValues = MatchPolicy
 
 type MatchPolicyTabProps = {
   isSaving: boolean
-  config: MatchPolicy
+  config: MatchPolicy | null
   onSave: (config: MatchPolicy) => Promise<void> | void
-  onReset: () => MatchPolicy | void
+  onReset: () => void
 }
 
 const cleanList = (items?: string[]) => (items ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)
@@ -101,12 +101,14 @@ export const ScoringConfigTab = MatchPolicyTab
 
 export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolicyTabProps) {
   const form = useForm<MatchPolicyFormValues>({
-    defaultValues: mapConfigToForm(config),
+    defaultValues: config ? mapConfigToForm(config) : undefined,
     mode: "onChange",
   })
 
   useEffect(() => {
-    form.reset(mapConfigToForm(config))
+    if (config) {
+      form.reset(mapConfigToForm(config))
+    }
   }, [config, form])
 
   const handleSubmit = async (values: MatchPolicyFormValues) => {
@@ -116,8 +118,23 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
   }
 
   const handleReset = () => {
-    const resetValue = onReset() ?? config
-    form.reset(mapConfigToForm(resetValue))
+    onReset()
+    if (config) {
+      form.reset(mapConfigToForm(config))
+    }
+  }
+
+  if (!config) {
+    return (
+      <TabsContent value="scoring" className="space-y-4 mt-4">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
+          <h3 className="text-lg font-semibold text-destructive">Configuration Missing</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The match-policy configuration is not set in the database. Please add it before using this feature.
+          </p>
+        </div>
+      </TabsContent>
+    )
   }
 
   return (

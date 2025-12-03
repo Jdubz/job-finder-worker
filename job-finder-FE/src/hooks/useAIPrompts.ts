@@ -8,10 +8,9 @@ import { useState, useCallback, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { promptsClient } from "@/api"
 import type { PromptConfig } from "@shared/types"
-import { DEFAULT_PROMPTS } from "@shared/types"
 
 interface UseAIPromptsResult {
-  prompts: PromptConfig
+  prompts: PromptConfig | null
   loading: boolean
   error: Error | null
   saving: boolean
@@ -24,7 +23,7 @@ interface UseAIPromptsResult {
  */
 export function useAIPrompts(): UseAIPromptsResult {
   const { user } = useAuth()
-  const [prompts, setPrompts] = useState<PromptConfig>(DEFAULT_PROMPTS)
+  const [prompts, setPrompts] = useState<PromptConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [saving, setSaving] = useState(false)
@@ -40,12 +39,12 @@ export function useAIPrompts(): UseAIPromptsResult {
       try {
         const result = await promptsClient.getPrompts()
         if (mounted) {
-          setPrompts(result ?? DEFAULT_PROMPTS)
+          setPrompts(result)
         }
       } catch (err) {
         if (mounted) {
           setError(err as Error)
-          setPrompts(DEFAULT_PROMPTS)
+          setPrompts(null)
         }
       } finally {
         if (mounted) {
@@ -88,7 +87,8 @@ export function useAIPrompts(): UseAIPromptsResult {
   )
 
   /**
-   * Reset prompts to defaults
+   * Reset prompts to defaults - currently not supported.
+   * The backend returns an error indicating prompts must be configured manually.
    */
   const resetToDefaults = useCallback(async () => {
     if (!user?.email) {
@@ -99,9 +99,8 @@ export function useAIPrompts(): UseAIPromptsResult {
     setError(null)
 
     try {
+      // This will throw - reset is no longer supported
       await promptsClient.resetToDefaults(user.email)
-      // Update local state on successful reset
-      setPrompts(DEFAULT_PROMPTS)
     } catch (err) {
       setError(err as Error)
       throw err

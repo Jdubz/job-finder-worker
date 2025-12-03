@@ -70,10 +70,18 @@ export interface JobAnalysisResult {
 
 /**
  * Status of a job listing in the pipeline.
+ *
+ * Note: There is no "filtered" status - jobs that fail prefilter are never
+ * created as listings. Filtering happens at intake before listing creation.
+ *
+ * - pending: Job listing created, waiting to be processed
+ * - analyzing: Currently being AI analyzed
+ * - analyzed: AI extraction complete
+ * - skipped: Score didn't meet threshold or analysis failed
+ * - matched: Successfully matched and saved to job_matches
  */
 export type JobListingStatus =
   | "pending"
-  | "filtered"
   | "analyzing"
   | "analyzed"
   | "skipped"

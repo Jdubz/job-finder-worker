@@ -34,7 +34,7 @@ from job_finder.ai.extraction import JobExtractor, JobExtractionResult
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 from job_finder.ai.providers import create_provider_from_config
 from job_finder.company_info_fetcher import CompanyInfoFetcher
-from job_finder.exceptions import DuplicateQueueItemError
+from job_finder.exceptions import AIProviderError, DuplicateQueueItemError, ExtractionError
 from job_finder.filters.title_filter import TitleFilter, TitleFilterResult
 from job_finder.filters.prefilter import PreFilter, PreFilterResult
 from job_finder.job_queue.config_loader import ConfigLoader
@@ -83,38 +83,6 @@ class PipelineContext:
 
 class JobProcessor(BaseProcessor):
     """Processor for job queue items using single-task pipeline."""
-
-    # Known job board and aggregator domains (for URL detection)
-    _JOB_BOARD_DOMAINS = frozenset(
-        [
-            # ATS providers
-            "greenhouse.io",
-            "lever.co",
-            "myworkdayjobs.com",
-            "workday.com",
-            "smartrecruiters.com",
-            "ashbyhq.com",
-            "breezy.hr",
-            "applytojob.com",
-            "jobvite.com",
-            "icims.com",
-            "ultipro.com",
-            "taleo.net",
-            # Job aggregators
-            "weworkremotely.com",
-            "remotive.com",
-            "remotive.io",
-            "remote.co",
-            "remoteok.com",
-            "remoteok.io",
-            "jbicy.io",
-            "flexjobs.com",
-            "wellfound.com",
-            "angel.co",
-            "ycombinator.com",
-            "workatastartup.com",
-        ]
-    )
 
     def __init__(
         self,
@@ -181,12 +149,13 @@ class JobProcessor(BaseProcessor):
             title_filter=self.title_filter,
         )
 
-        # Initialize scraper intake with title filter for deduplication
+        # Initialize scraper intake with filters for deduplication
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
             job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             title_filter=self.title_filter,
+            prefilter=self.prefilter,
         )
 
     def _refresh_runtime_config(self) -> None:
@@ -456,9 +425,10 @@ class JobProcessor(BaseProcessor):
             ctx.stage = "extraction"
             logger.info(f"[PIPELINE] {url_preview} -> AI_EXTRACTION")
             self._update_status(item, "Extracting job data", ctx.stage)
-            ctx.extraction = self._execute_ai_extraction(ctx)
-            if not ctx.extraction:
-                self._finalize_failed(ctx, "AI extraction returned no result")
+            try:
+                ctx.extraction = self._execute_ai_extraction(ctx)
+            except (ExtractionError, AIProviderError) as e:
+                self._finalize_failed(ctx, f"AI extraction failed: {e}")
                 return
 
             # Emit extraction event
@@ -822,24 +792,24 @@ class JobProcessor(BaseProcessor):
         except Exception as e:
             logger.warning("Failed to spawn company enrichment for %s: %s", company_name, e)
 
-    def _execute_ai_extraction(self, ctx: PipelineContext) -> Optional[JobExtractionResult]:
-        """Execute AI extraction stage."""
+    def _execute_ai_extraction(self, ctx: PipelineContext) -> JobExtractionResult:
+        """Execute AI extraction stage.
+
+        Raises:
+            ExtractionError: If extraction fails for any reason
+        """
         job_data = ctx.job_data or {}
         title = job_data.get("title", "")
         description = job_data.get("description", "")
         location = job_data.get("location", "")
         posted_date = job_data.get("posted_date")
 
-        try:
-            extraction = self.extractor.extract(title, description, location, posted_date)
-            logger.info(
-                f"Extraction complete: seniority={extraction.seniority}, "
-                f"arrangement={extraction.work_arrangement}, techs={len(extraction.technologies)}"
-            )
-            return extraction
-        except Exception as e:
-            logger.error(f"AI extraction failed: {e}")
-            return None
+        extraction = self.extractor.extract(title, description, location, posted_date)
+        logger.info(
+            f"Extraction complete: seniority={extraction.seniority}, "
+            f"arrangement={extraction.work_arrangement}, techs={len(extraction.technologies)}"
+        )
+        return extraction
 
     def _execute_scoring(self, ctx: PipelineContext) -> ScoreBreakdown:
         """Execute deterministic scoring stage."""
@@ -938,7 +908,7 @@ class JobProcessor(BaseProcessor):
         self, ctx: PipelineContext, filter_type: str, rejection_reason: str
     ) -> None:
         """
-        Finalize pipeline with FILTERED status due to early filter rejection.
+        Finalize pipeline with FILTERED queue status due to early filter rejection.
 
         Used for both title filter and prefilter rejections. Filtered jobs are NOT
         stored in job_listings - they are rejected before the listing is created.
@@ -963,19 +933,6 @@ class JobProcessor(BaseProcessor):
             logger.info(f"[PIPELINE] FILTERED: '{title}' - {rejection_reason}")
             status_message = f"Rejected: {rejection_reason}"
 
-        # Note: No listing created for filtered jobs - filters run before listing creation
-        # If listing_id exists (legacy item), update its status
-        if ctx.listing_id:
-            filter_result: Dict[str, Any] = {
-                "titleFilter": (
-                    ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
-                )
-            }
-            if ctx.prefilter_result:
-                filter_result["prefilter"] = ctx.prefilter_result.to_dict()
-
-            self._update_listing_status(ctx.listing_id, "filtered", filter_result=filter_result)
-
         # Spawn company/source tasks even for filtered jobs
         self._spawn_company_and_source(ctx.item, job_data)
 
@@ -994,7 +951,7 @@ class JobProcessor(BaseProcessor):
         self._finalize_early_rejection(ctx, "title", rejection_reason)
 
     def _finalize_prefiltered(self, ctx: PipelineContext) -> None:
-        """Finalize pipeline with FILTERED status due to prefilter rejection (prefiltered jobs are NOT stored in job_listings)."""
+        """Finalize pipeline with FILTERED queue status due to prefilter rejection."""
         rejection_reason = (
             ctx.prefilter_result.reason if ctx.prefilter_result else "Prefilter rejected"
         )
@@ -1394,21 +1351,13 @@ class JobProcessor(BaseProcessor):
         domain = parsed.netloc.replace("www.", "")
         return f"https://{domain}"
 
-    @staticmethod
-    def _is_job_board_url(url: str) -> bool:
-        """Check if URL is a known job board or aggregator."""
-        if not url:
-            return False
+    def _is_job_board_url(self, url: str) -> bool:
+        """Check if URL is a known job board or aggregator.
 
-        try:
-            netloc = urlparse(url.lower()).netloc
-            return any(
-                netloc == domain or netloc.endswith("." + domain)
-                for domain in JobProcessor._JOB_BOARD_DOMAINS
-            )
-        except Exception as e:
-            logger.warning("URL parsing failed in _is_job_board_url for '%s': %s", url, e)
-            return False
+        Delegates to JobSourcesManager.is_job_board_url() which uses
+        database-driven aggregator domains from the job_sources table.
+        """
+        return self.sources_manager.is_job_board_url(url)
 
     # ============================================================
     # SCRAPE REQUESTS (enqueue-only)

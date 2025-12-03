@@ -304,6 +304,12 @@ class GenericScraper:
             if website:
                 job["company_website"] = website
 
+        # Extract location from description "Headquarters:" pattern if missing
+        if not job.get("location") and job.get("description"):
+            location = self._extract_location_from_description(job["description"])
+            if location:
+                job["location"] = location
+
         # Ensure required fields have defaults (empty string, not "Unknown")
         if not job.get("company"):
             job["company"] = ""
@@ -388,6 +394,41 @@ class GenericScraper:
                         return url
                 except Exception:
                     pass
+
+        return None
+
+    def _extract_location_from_description(self, description: str) -> Optional[str]:
+        """
+        Extract headquarters location from description.
+
+        WeWorkRemotely and similar aggregators often include:
+        <strong>Headquarters:</strong> City, State/Country
+
+        Args:
+            description: Job description text (may contain HTML)
+
+        Returns:
+            Location string if found, None otherwise
+        """
+        if not description:
+            return None
+
+        # Pattern to match "Headquarters: Location" in various formats
+        patterns = [
+            r"Headquarters:</strong>\s*([^\n<]+)",
+            r"Headquarters:&lt;/strong&gt;\s*([^\n&]+)",
+            r"Headquarters:\s*([^\n<]+)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, description, re.IGNORECASE)
+            if match:
+                location = match.group(1).strip()
+                # Clean up common artifacts
+                location = re.sub(r"<br\s*/?>.*", "", location, flags=re.IGNORECASE)
+                location = location.strip()
+                if location and len(location) < 100:
+                    return location
 
         return None
 

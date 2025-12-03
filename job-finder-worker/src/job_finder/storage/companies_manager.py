@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from job_finder.exceptions import StorageError
-from job_finder.storage.sqlite_client import sqlite_connection
+from job_finder.storage.sqlite_client import sqlite_connection, utcnow_iso
 from job_finder.utils.company_name_utils import (
     clean_company_name,
     normalize_company_name,
@@ -19,15 +17,12 @@ from job_finder.utils.company_name_utils import (
 logger = logging.getLogger(__name__)
 
 
-def _utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 class CompaniesManager:
     """Manage the `companies` table."""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, sources_manager=None):
         self.db_path = db_path
+        self.sources_manager = sources_manager
 
     # ------------------------------------------------------------------ #
     # Helpers
@@ -70,19 +65,10 @@ class CompaniesManager:
     def _normalize_name(self, name: str) -> str:
         return normalize_company_name(name)
 
-    def _get_aggregator_domains(self) -> List[str]:
-        """Get all aggregator domains from job_sources table.
-
-        Used to validate that company websites are not job board URLs.
-        """
-        with sqlite_connection(self.db_path) as conn:
-            rows = conn.execute(
-                "SELECT DISTINCT aggregator_domain FROM job_sources WHERE aggregator_domain IS NOT NULL"
-            ).fetchall()
-        return [row[0] for row in rows]
-
     def _validate_website(self, website: Optional[str]) -> Optional[str]:
         """Validate and clean website URL, rejecting aggregator domains.
+
+        Uses JobSourcesManager.is_job_board_url() for database-driven domain checking.
 
         Args:
             website: The website URL to validate
@@ -93,26 +79,21 @@ class CompaniesManager:
         if not website:
             return None
 
-        try:
-            parsed = urlparse(website)
-            domain = parsed.netloc.lower()
+        # Use sources_manager for database-driven job board detection
+        if self.sources_manager:
+            if self.sources_manager.is_job_board_url(website):
+                logger.warning(
+                    "Rejecting aggregator URL as company website: %s",
+                    website,
+                )
+                return None
+        else:
+            logger.debug(
+                "Skipping aggregator URL validation for '%s' - sources_manager not provided",
+                website,
+            )
 
-            # Get aggregator domains dynamically from job_sources
-            aggregator_domains = self._get_aggregator_domains()
-
-            for agg_domain in aggregator_domains:
-                if agg_domain in domain:
-                    logger.warning(
-                        "Rejecting aggregator URL as company website: %s (matches %s)",
-                        website,
-                        agg_domain,
-                    )
-                    return None
-
-            return website
-        except Exception as e:
-            logger.warning("Failed to validate website URL %s: %s", website, e)
-            return website
+        return website
 
     # ------------------------------------------------------------------ #
     # Queries
@@ -168,7 +149,7 @@ class CompaniesManager:
         if existing and not company_id:
             company_id = existing["id"]
 
-        now = _utcnow_iso()
+        now = utcnow_iso()
         has_portland_office = bool(
             company_data.get("hasPortlandOffice") or company_data.get("has_portland_office")
         )

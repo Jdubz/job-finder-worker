@@ -12,19 +12,14 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from job_finder.exceptions import StorageError
-from job_finder.storage.sqlite_client import sqlite_connection
+from job_finder.storage.sqlite_client import sqlite_connection, utcnow_iso
 from job_finder.utils.url_utils import normalize_url
 
 logger = logging.getLogger(__name__)
-
-
-def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _serialize_json(value: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -63,7 +58,7 @@ class JobListingStorage:
         """
         normalized_url = normalize_url(url) if url else ""
         listing_id = listing_id or str(uuid4())
-        now = _utcnow()
+        now = utcnow_iso()
 
         with sqlite_connection(self.db_path) as conn:
             try:
@@ -218,12 +213,15 @@ class JobListingStorage:
         """
         Update job listing status.
 
-        Valid statuses: pending, filtered, analyzing, analyzed, skipped, matched
+        Valid statuses: pending, analyzing, analyzed, skipped, matched
+
+        Note: There is no "filtered" status - jobs that fail prefilter are never
+        created as listings. Filtering happens at intake before listing creation.
 
         When analysis_result is provided, also extracts and saves match_score
         directly for efficient querying/sorting.
         """
-        now = _utcnow()
+        now = utcnow_iso()
 
         with sqlite_connection(self.db_path) as conn:
             sets = ["status = ?", "updated_at = ?"]
@@ -253,7 +251,7 @@ class JobListingStorage:
 
     def update_company_id(self, listing_id: str, company_id: str) -> bool:
         """Update the company_id for a job listing."""
-        now = _utcnow()
+        now = utcnow_iso()
 
         with sqlite_connection(self.db_path) as conn:
             conn.execute(
@@ -268,7 +266,7 @@ class JobListingStorage:
 
     def update_analysis(self, listing_id: str, analysis_result: Dict[str, Any]) -> bool:
         """Persist AI analysis breakdown (JSON) for a job listing."""
-        now = _utcnow()
+        now = utcnow_iso()
         with sqlite_connection(self.db_path) as conn:
             conn.execute(
                 """

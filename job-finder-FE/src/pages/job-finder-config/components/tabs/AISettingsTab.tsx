@@ -15,11 +15,11 @@ import type {
   AIProviderOption,
   AIInterfaceOption,
 } from "@shared/types"
-import { DEFAULT_AI_SETTINGS } from "@shared/types"
+
 type AISettingsTabProps = {
   isSaving: boolean
-  aiSettings: AISettings
-  setAISettings: (updater: (prev: AISettings) => AISettings) => void
+  aiSettings: AISettings | null
+  setAISettings: (updater: (prev: AISettings | null) => AISettings | null) => void
   hasAIChanges: boolean
   handleSaveAISettings: () => Promise<void> | void
   resetAI: () => void
@@ -45,19 +45,46 @@ export function AISettingsTab({
   handleSaveAISettings,
   resetAI,
 }: AISettingsTabProps) {
-  const options: AIProviderOption[] = aiSettings?.options ?? DEFAULT_AI_SETTINGS.options ?? []
-  const defaultSelection: AISettings["worker"]["selected"] =
-    DEFAULT_AI_SETTINGS?.worker?.selected ?? { provider: "codex", interface: "cli", model: "gpt-4o" }
+  if (!aiSettings) {
+    return (
+      <TabsContent value="ai" className="space-y-4 mt-4">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
+          <h3 className="text-lg font-semibold text-destructive">Configuration Missing</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The ai-settings configuration is not set in the database. Please add it before using this feature.
+          </p>
+        </div>
+      </TabsContent>
+    )
+  }
+
+  const options: AIProviderOption[] = aiSettings.options ?? []
+  const firstProvider = options[0]
+  const firstInterface = firstProvider?.interfaces[0]
+
+  // Validate options before rendering - show error UI instead of crashing
+  if (!firstProvider || !firstInterface || !firstInterface.models?.length) {
+    return (
+      <TabsContent value="ai" className="space-y-4 mt-4">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
+          <h3 className="text-lg font-semibold text-destructive">Invalid Configuration</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            No AI provider options are available. Check the ai-settings configuration in the database.
+          </p>
+        </div>
+      </TabsContent>
+    )
+  }
 
   const getSectionSelection = (section: "worker" | "documentGenerator") => {
-    const selected = aiSettings?.[section]?.selected
+    const selected = aiSettings[section]?.selected
     if (selected) return selected
-
-    const defaultSection =
-      (DEFAULT_AI_SETTINGS as Pick<AISettings, "worker" | "documentGenerator"> | undefined)?.[section]
-    if (defaultSection?.selected) return defaultSection.selected
-
-    return defaultSelection
+    // Fallback to first available option (already validated above)
+    return {
+      provider: firstProvider.value,
+      interface: firstInterface.value,
+      model: firstInterface.models[0],
+    }
   }
 
   const resolveProvider = (provider: AIProviderType): AIProviderOption | undefined =>
@@ -71,13 +98,12 @@ export function AISettingsTab({
     selection: { provider: AIProviderType; interface: AIInterfaceType; model: string }
   ) => {
     setAISettings((prev: AISettings | null) => {
-      const base = prev ?? DEFAULT_AI_SETTINGS
+      if (!prev) return null
       return {
-        ...base,
-        options,
+        ...prev,
         [section]: {
           selected: selection,
-          tasks: (base as AISettings)?.[section]?.tasks,
+          tasks: prev[section]?.tasks,
         },
       }
     })
@@ -88,13 +114,12 @@ export function AISettingsTab({
     selection: { provider: AIProviderType; interface: AIInterfaceType; model: string }
   ) => {
     setAISettings((prev: AISettings | null) => {
-      const base = prev ?? DEFAULT_AI_SETTINGS
-      const worker = base.worker ?? DEFAULT_AI_SETTINGS.worker
+      if (!prev) return null
+      const worker = prev.worker ?? { selected: getSectionSelection("worker") }
       const tasks = { ...(worker.tasks ?? {}) }
       tasks[task] = selection
       return {
-        ...base,
-        options,
+        ...prev,
         worker: {
           ...worker,
           tasks,

@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 from job_finder.ai.providers import create_provider_from_config
 from job_finder.ai.source_discovery import SourceDiscovery
 from job_finder.exceptions import QueueProcessingError
+from job_finder.filters.prefilter import PreFilter
+from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import (
@@ -34,24 +36,6 @@ from job_finder.storage.job_sources_manager import JobSourcesManager
 from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
-
-# Known aggregator domains - these host jobs for multiple companies
-# Maps domain pattern to the aggregator_domain value to store
-AGGREGATOR_DOMAINS = {
-    "remotive.com": "remotive.com",
-    "remotive.io": "remotive.com",
-    "weworkremotely.com": "weworkremotely.com",
-    "indeed.com": "indeed.com",
-    "linkedin.com": "linkedin.com",
-    "glassdoor.com": "glassdoor.com",
-    "angel.co": "angel.co",
-    "wellfound.com": "wellfound.com",
-    "builtin.com": "builtin.com",
-    "himalayas.app": "himalayas.app",
-    "jobicy.com": "jobicy.com",
-    "remoteok.com": "remoteok.com",
-    "remoteok.io": "remoteok.com",
-}
 
 
 class SourceProcessor(BaseProcessor):
@@ -78,9 +62,18 @@ class SourceProcessor(BaseProcessor):
         self.sources_manager = sources_manager
         self.companies_manager = companies_manager
 
-        # Initialize scraper intake without filter_engine
-        # Jobs will be filtered when processed by JobProcessor
-        self.scraper_intake = ScraperIntake(queue_manager=queue_manager)
+        # Create filters from prefilter-policy for early rejection
+        prefilter_policy = config_loader.get_prefilter_policy()
+        title_cfg = prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
+        self.title_filter = TitleFilter(title_cfg) if title_cfg else None
+        self.prefilter = PreFilter(prefilter_policy) if prefilter_policy else None
+
+        # Initialize scraper intake with filters to pre-filter jobs at intake
+        self.scraper_intake = ScraperIntake(
+            queue_manager=queue_manager,
+            title_filter=self.title_filter,
+            prefilter=self.prefilter,
+        )
 
     # ============================================================
     # SOURCE DISCOVERY
@@ -345,24 +338,16 @@ class SourceProcessor(BaseProcessor):
     def _detect_aggregator_domain(self, url: str) -> Optional[str]:
         """Detect if URL belongs to a known job aggregator.
 
+        Delegates to JobSourcesManager.get_aggregator_domain_for_url() which uses
+        database-driven aggregator domains from the job_sources table.
+
         Args:
             url: The source URL to check
 
         Returns:
             The aggregator domain if detected, None if company-specific
         """
-        try:
-            parsed = urlparse(url)
-            domain = parsed.netloc.lower()
-
-            # Check against known aggregator domains
-            for pattern, aggregator_domain in AGGREGATOR_DOMAINS.items():
-                if pattern in domain:
-                    return aggregator_domain
-
-            return None
-        except Exception:
-            return None
+        return self.sources_manager.get_aggregator_domain_for_url(url)
 
     # ============================================================
     # SOURCE SCRAPING

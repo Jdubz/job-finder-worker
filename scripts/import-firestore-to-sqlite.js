@@ -2,10 +2,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
-import { createRequire } from 'node:module'
 
-const require = createRequire(import.meta.url)
-const { DEFAULT_PROMPTS } = require('../shared/dist/index.cjs')
+// Fallback prompts for import (no defaults in shared - fail loud approach)
+const FALLBACK_PROMPTS = {
+  resumeGeneration: "Resume generation prompt - configure in database",
+  coverLetterGeneration: "Cover letter generation prompt - configure in database",
+  jobScraping: "Job scraping prompt - configure in database",
+  jobMatching: "Job matching prompt - configure in database",
+}
 
 const DB_PATH = '/srv/job-finder/data/jobfinder.db'
 const EXPORT_BASE = path.resolve('infra/sqlite/seeders/output')
@@ -348,7 +352,7 @@ function main() {
   const extractedPrompts =
     personalInfo?.aiPrompts && typeof personalInfo.aiPrompts === 'object' ? personalInfo.aiPrompts : null
 
-  const aiPromptsPayload = extractedPrompts ?? DEFAULT_PROMPTS
+  const aiPromptsPayload = extractedPrompts ?? FALLBACK_PROMPTS
   const aiPromptsEntry = {
     id: 'ai-prompts',
     payload: aiPromptsPayload,

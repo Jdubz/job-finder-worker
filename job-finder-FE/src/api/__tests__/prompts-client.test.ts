@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { PromptsClient } from "../prompts-client"
-import { DEFAULT_PROMPTS } from "@shared/types"
+import type { PromptConfig } from "@shared/types"
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch as any
+
+// Test fixture for prompts
+const testPrompts: PromptConfig = {
+  resumeGeneration: "test resume prompt",
+  coverLetterGeneration: "test cover letter prompt",
+  jobScraping: "test job scraping prompt",
+  jobMatching: "test job matching prompt",
+}
 
 describe("PromptsClient", () => {
   const baseUrl = "https://api.example.com"
@@ -17,7 +25,7 @@ describe("PromptsClient", () => {
   it("returns prompts from API", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ success: true, data: { prompts: { ...DEFAULT_PROMPTS, resumeGeneration: "test" } } }),
+      json: async () => ({ success: true, data: { prompts: { ...testPrompts, resumeGeneration: "test" } } }),
       headers: { get: () => "application/json" },
     } as unknown as Response)
 
@@ -39,11 +47,11 @@ describe("PromptsClient", () => {
   it("saves prompts via PUT", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ success: true, data: { prompts: DEFAULT_PROMPTS } }),
+      json: async () => ({ success: true, data: { prompts: testPrompts } }),
       headers: { get: () => "application/json" },
     } as unknown as Response)
 
-    await client.savePrompts(DEFAULT_PROMPTS, "user@example.com")
+    await client.savePrompts(testPrompts, "user@example.com")
 
     expect(global.fetch).toHaveBeenCalledWith(
       `${baseUrl}/prompts`,
@@ -54,7 +62,7 @@ describe("PromptsClient", () => {
   it("resets prompts via POST", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ success: true, data: { prompts: DEFAULT_PROMPTS } }),
+      json: async () => ({ success: true, data: { prompts: testPrompts } }),
       headers: { get: () => "application/json" },
     } as unknown as Response)
 
