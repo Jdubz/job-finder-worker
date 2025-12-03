@@ -7,8 +7,18 @@ import type { PdfMakeService } from '../workflow/services/pdfmake.service'
 import { storageService } from '../workflow/services/storage.service'
 import { runCliProvider } from '../workflow/services/cli-runner'
 import type { PersonalInfo, ContentItem, AISettings } from '@shared/types'
-import { DEFAULT_AI_SETTINGS } from '@shared/types'
 import type { ConfigRepository } from '../../config/config.repository'
+
+// Test fixture for AISettings (no defaults - explicit test data)
+const TEST_AI_SETTINGS: AISettings = {
+  worker: {
+    selected: { provider: 'gemini', interface: 'api', model: 'gemini-2.0-flash' }
+  },
+  documentGenerator: {
+    selected: { provider: 'gemini', interface: 'api', model: 'gemini-2.0-flash' }
+  },
+  options: []
+}
 
 vi.mock('../workflow/services/cli-runner', () => {
   const runCliProvider = vi.fn().mockImplementation((prompt: string) => {
@@ -163,7 +173,7 @@ class FakeContentItemRepository {
 }
 
 class FakeConfigRepository {
-  aiSettings: AISettings = DEFAULT_AI_SETTINGS
+  aiSettings: AISettings = TEST_AI_SETTINGS
   get() {
     return { id: 'ai-settings', payload: this.aiSettings, updatedAt: new Date().toISOString() }
   }
@@ -337,10 +347,8 @@ const mockCoverLetterContent = {
   it('uses documentGenerator selection when provider is supported CLI', () => {
     const service = createService()
     ;(configRepo as any).aiSettings = {
-      ...DEFAULT_AI_SETTINGS,
+      ...TEST_AI_SETTINGS,
       documentGenerator: { selected: { provider: 'claude', interface: 'cli', model: 'claude-sonnet-4-5-20250929' } },
-      worker: DEFAULT_AI_SETTINGS.worker,
-      options: DEFAULT_AI_SETTINGS.options
     }
 
     const provider = (service as any).getDocumentGeneratorCliProvider()
@@ -350,10 +358,8 @@ const mockCoverLetterContent = {
   it('falls back to codex when documentGenerator interface is api', () => {
     const service = createService()
     ;(configRepo as any).aiSettings = {
-      ...DEFAULT_AI_SETTINGS,
+      ...TEST_AI_SETTINGS,
       documentGenerator: { selected: { provider: 'claude', interface: 'api', model: 'claude-sonnet-4-5-20250929' } },
-      worker: DEFAULT_AI_SETTINGS.worker,
-      options: DEFAULT_AI_SETTINGS.options
     }
 
     const provider = (service as any).getDocumentGeneratorCliProvider()
