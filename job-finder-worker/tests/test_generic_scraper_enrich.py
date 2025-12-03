@@ -200,6 +200,19 @@ class TestExtractDateFromTimeElements:
         soup = BeautifulSoup(html, "html.parser")
         assert scraper._extract_date_from_time_elements(soup) is None
 
+    def test_checks_multiple_parent_levels(self, scraper):
+        """Test that job-related context is found in higher-level parents."""
+        html = """
+        <div class="job-posting-date">
+            <div class="wrapper">
+                <span><time datetime="2025-11-18">Nov 18</time></span>
+            </div>
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        # Should find job-related context in grandparent div
+        assert scraper._extract_date_from_time_elements(soup) == "2025-11-18"
+
 
 class TestExtractDateFromSelectors:
     """Tests for CSS selector-based date extraction."""

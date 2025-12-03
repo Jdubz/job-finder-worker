@@ -420,14 +420,18 @@ class GenericScraper:
                 first_valid_date = datetime_attr
 
             # Check if this time element is in a job-related context
+            # Check up to 5 parent levels for job-related classes
+            depth = 0
             for parent in time_el.parents:
-                if parent.name in ["div", "span", "p", "li"]:
+                if parent.name in ["div", "span", "p", "li", "section", "article"]:
                     class_list = parent.get("class") or []
                     if isinstance(class_list, list):
                         parent_classes = " ".join(class_list).lower()
                         if any(p in parent_classes for p in job_related_patterns):
                             return datetime_attr
-                    break
+                    depth += 1
+                    if depth >= 5:
+                        break
 
         # Fall back to first valid time element
         return first_valid_date
