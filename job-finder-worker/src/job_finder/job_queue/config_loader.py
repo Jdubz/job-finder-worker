@@ -57,6 +57,15 @@ class ConfigLoader:
                 "Update the prefilter-policy config record to include all required fields."
             )
 
+        wa = config["workArrangement"]
+        wa_required = ["allowRemote", "allowHybrid", "allowOnsite", "willRelocate", "userLocation"]
+        wa_missing = [k for k in wa_required if k not in wa]
+        if wa_missing:
+            raise InitializationError(
+                f"prefilter-policy.workArrangement missing required keys: {wa_missing}. "
+                "Update the prefilter-policy config record to include all required work arrangement fields."
+            )
+
         return config
 
     def get_match_policy(self) -> Dict[str, Any]:

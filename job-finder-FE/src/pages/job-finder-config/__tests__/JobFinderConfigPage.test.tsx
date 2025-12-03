@@ -7,7 +7,13 @@ import type { PreFilterPolicy, MatchPolicy, WorkerSettings } from "@shared/types
 const prefilterPolicy: PreFilterPolicy = {
   title: { requiredKeywords: ["engineer"], excludedKeywords: ["intern"] },
   freshness: { maxAgeDays: 90 },
-  workArrangement: { allowRemote: true, allowHybrid: true, allowOnsite: true },
+  workArrangement: {
+    allowRemote: true,
+    allowHybrid: true,
+    allowOnsite: true,
+    willRelocate: false,
+    userLocation: "Portland, OR",
+  },
   employmentType: { allowFullTime: true, allowPartTime: true, allowContract: true },
   salary: { minimum: null },
   technology: { rejected: [] },

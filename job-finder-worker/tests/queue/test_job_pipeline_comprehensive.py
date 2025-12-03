@@ -107,6 +107,8 @@ def test_job_pipeline_full_path(tmp_path: Path):
                             "allowRemote": True,
                             "allowHybrid": True,
                             "allowOnsite": True,
+                            "willRelocate": True,
+                            "userLocation": "Portland, OR",
                         },
                         "employmentType": {
                             "allowFullTime": True,

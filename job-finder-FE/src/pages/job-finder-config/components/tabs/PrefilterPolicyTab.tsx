@@ -16,31 +16,37 @@ type PrefilterPolicyTabProps = {
 
 const cleanList = (items: string[]) => items.map((item) => item.trim()).filter(Boolean)
 
-const mapToForm = (config?: PreFilterPolicy): PreFilterPolicy => ({
-  title: {
-    requiredKeywords: config?.title.requiredKeywords ?? [],
-    excludedKeywords: config?.title.excludedKeywords ?? [],
-  },
-  freshness: {
-    maxAgeDays: config?.freshness.maxAgeDays ?? 0,
-  },
-  workArrangement: {
-    allowRemote: config?.workArrangement.allowRemote ?? true,
-    allowHybrid: config?.workArrangement.allowHybrid ?? true,
-    allowOnsite: config?.workArrangement.allowOnsite ?? true,
-  },
-  employmentType: {
-    allowFullTime: config?.employmentType.allowFullTime ?? true,
-    allowPartTime: config?.employmentType.allowPartTime ?? true,
-    allowContract: config?.employmentType.allowContract ?? true,
-  },
-  salary: {
-    minimum: config?.salary.minimum ?? null,
-  },
-  technology: {
-    rejected: config?.technology.rejected ?? [],
-  },
-})
+// Intentionally throw instead of falling back to defaults—missing configs should fail loudly
+const mapToForm = (config: PreFilterPolicy): PreFilterPolicy => {
+  if (!config) throw new Error("prefilter-policy config is missing")
+  return {
+    title: {
+      requiredKeywords: config.title.requiredKeywords,
+      excludedKeywords: config.title.excludedKeywords,
+    },
+    freshness: {
+      maxAgeDays: config.freshness.maxAgeDays,
+    },
+    workArrangement: {
+      allowRemote: config.workArrangement.allowRemote,
+      allowHybrid: config.workArrangement.allowHybrid,
+      allowOnsite: config.workArrangement.allowOnsite,
+      willRelocate: config.workArrangement.willRelocate,
+      userLocation: config.workArrangement.userLocation,
+    },
+    employmentType: {
+      allowFullTime: config.employmentType.allowFullTime,
+      allowPartTime: config.employmentType.allowPartTime,
+      allowContract: config.employmentType.allowContract,
+    },
+    salary: {
+      minimum: config.salary.minimum,
+    },
+    technology: {
+      rejected: config.technology.rejected,
+    },
+  }
+}
 
 export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: PrefilterPolicyTabProps) {
   const form = useForm<PreFilterPolicy>({
@@ -53,6 +59,17 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
   }, [config, form])
 
   const handleSubmit = async (values: PreFilterPolicy) => {
+    const trimmedLocation = (values.workArrangement.userLocation ?? "").trim()
+    if (!values.workArrangement.willRelocate && trimmedLocation === "") {
+      form.setError("workArrangement.userLocation", {
+        type: "validate",
+        message: "Location is required when relocation is disabled",
+      })
+      return
+    }
+
+    form.clearErrors("workArrangement.userLocation")
+
     const payload: PreFilterPolicy = {
       ...values,
       title: {
@@ -72,6 +89,8 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
         allowRemote: Boolean(values.workArrangement.allowRemote),
         allowHybrid: Boolean(values.workArrangement.allowHybrid),
         allowOnsite: Boolean(values.workArrangement.allowOnsite),
+        willRelocate: Boolean(values.workArrangement.willRelocate),
+        userLocation: trimmedLocation,
       },
       employmentType: {
         allowFullTime: Boolean(values.employmentType.allowFullTime),
@@ -206,6 +225,32 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
                     )}
                   />
                 </div>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="workArrangement.willRelocate"
+                    render={({ field }) => (
+                      <CheckboxRow
+                        label="Open to Relocation"
+                        description="Check if willing to relocate. If unchecked, onsite/hybrid jobs must be in your city below."
+                        field={field}
+                      />
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="workArrangement.userLocation"
+                    render={({ field }) => (
+                      <FormItem className="md:col-span-2">
+                        <FormLabel>Your City, State</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Portland, OR" {...field} />
+                        </FormControl>
+                        <FormDescription>Used to gate onsite/hybrid when relocation is off.</FormDescription>
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </section>
 
               <section className="space-y-4">
@@ -262,4 +307,3 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
     </TabsContent>
   )
 }
-

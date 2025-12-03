@@ -44,7 +44,13 @@ class TestPreFilterTitleCheck:
                 "excludedKeywords": ["intern", "sales"],
             },
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": []},
@@ -89,7 +95,13 @@ class TestPreFilterFreshnessCheck:
         return {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 30},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": []},
@@ -125,7 +137,13 @@ class TestPreFilterFreshnessCheck:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},  # Disabled
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": []},
@@ -145,7 +163,13 @@ class TestPreFilterWorkArrangement:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": False, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": False,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": []},
@@ -159,7 +183,13 @@ class TestPreFilterWorkArrangement:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": []},
@@ -172,7 +202,13 @@ class TestPreFilterWorkArrangement:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": False, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": False,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": []},
@@ -186,7 +222,13 @@ class TestPreFilterWorkArrangement:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": False},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": False,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": []},
@@ -200,11 +242,186 @@ class TestPreFilterWorkArrangement:
         assert result.passed is False
         assert "Onsite" in result.reason
 
+    def test_hybrid_outside_portland_rejected(self):
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {
+                "allowFullTime": True,
+                "allowPartTime": True,
+                "allowContract": True,
+            },
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "metadata": {"Location Type": "Hybrid"},
+                "location": "Seattle, WA",
+            }
+        )
+        assert result.passed is False
+        assert "Portland" in result.reason
+
+    def test_hybrid_outside_city_allowed_when_relocation_true(self):
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {
+                "allowFullTime": True,
+                "allowPartTime": True,
+                "allowContract": True,
+            },
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "metadata": {"Location Type": "Hybrid"},
+                "location": "Seattle, WA",
+            }
+        )
+
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_hybrid_portland_allowed(self):
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {
+                "allowFullTime": True,
+                "allowPartTime": True,
+                "allowContract": True,
+            },
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "metadata": {"Location Type": "Hybrid"},
+                "location": "Portland, OR",
+            }
+        )
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_hybrid_no_location_data_when_relocation_false_passes(self):
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {
+                "allowFullTime": True,
+                "allowPartTime": True,
+                "allowContract": True,
+            },
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter({"title": "Engineer", "metadata": {"Location Type": "Hybrid"}})
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_onsite_outside_portland_rejected(self):
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {
+                "allowFullTime": True,
+                "allowPartTime": True,
+                "allowContract": True,
+            },
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "metadata": {"Location Type": "Onsite"},
+                "location": "San Francisco, CA",
+            }
+        )
+        assert result.passed is False
+        assert "Portland" in result.reason
+
+    def test_onsite_no_location_data_when_relocation_false_passes(self):
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {
+                "allowFullTime": True,
+                "allowPartTime": True,
+                "allowContract": True,
+            },
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter({"title": "Engineer", "metadata": {"Location Type": "Onsite"}})
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
     def test_unknown_arrangement_skipped(self):
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": False, "allowHybrid": False, "allowOnsite": False},
+            "workArrangement": {
+                "allowRemote": False,
+                "allowHybrid": False,
+                "allowOnsite": False,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": []},
@@ -223,7 +440,13 @@ class TestPreFilterEmploymentType:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {
                 "allowFullTime": False,
                 "allowPartTime": True,
@@ -241,7 +464,13 @@ class TestPreFilterEmploymentType:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {
                 "allowFullTime": True,
                 "allowPartTime": True,
@@ -259,7 +488,13 @@ class TestPreFilterEmploymentType:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {
                 "allowFullTime": False,
                 "allowPartTime": False,
@@ -282,7 +517,13 @@ class TestPreFilterSalary:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": 100000},
             "technology": {"rejected": []},
@@ -297,7 +538,13 @@ class TestPreFilterSalary:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": 100000},
             "technology": {"rejected": []},
@@ -311,7 +558,13 @@ class TestPreFilterSalary:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": 100000},
             "technology": {"rejected": []},
@@ -325,7 +578,13 @@ class TestPreFilterSalary:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": 100000},
             "technology": {"rejected": []},
@@ -339,7 +598,13 @@ class TestPreFilterSalary:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": []},
@@ -357,7 +622,13 @@ class TestPreFilterTechnology:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": ["php", "wordpress"]},
@@ -371,7 +642,13 @@ class TestPreFilterTechnology:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": ["php", "wordpress"]},
@@ -385,7 +662,13 @@ class TestPreFilterTechnology:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": ["php"]},
@@ -399,7 +682,13 @@ class TestPreFilterTechnology:
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
-            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
             "technology": {"rejected": ["PHP", "WordPress"]},
@@ -422,7 +711,13 @@ class TestPreFilterBypass:
         config = {
             "title": {"requiredKeywords": ["engineer"], "excludedKeywords": ["intern"]},
             "freshness": {"maxAgeDays": 1},
-            "workArrangement": {"allowRemote": False, "allowHybrid": False, "allowOnsite": False},
+            "workArrangement": {
+                "allowRemote": False,
+                "allowHybrid": False,
+                "allowOnsite": False,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
             "employmentType": {
                 "allowFullTime": False,
                 "allowPartTime": False,

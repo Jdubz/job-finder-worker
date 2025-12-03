@@ -63,7 +63,13 @@ function ensureWindowAuth(token: string) {
 const minimalPrefilterPolicy = {
   title: { requiredKeywords: [], excludedKeywords: [] },
   freshness: { maxAgeDays: 90 },
-  workArrangement: { allowRemote: true, allowHybrid: true, allowOnsite: true },
+  workArrangement: {
+    allowRemote: true,
+    allowHybrid: true,
+    allowOnsite: true,
+    willRelocate: true,
+    userLocation: "Portland, OR",
+  },
   employmentType: { allowFullTime: true, allowPartTime: true, allowContract: true },
   salary: { minimum: null },
   technology: { rejected: [] },

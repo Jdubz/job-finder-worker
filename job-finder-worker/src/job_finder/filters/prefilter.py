@@ -16,9 +16,10 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from job_finder.utils.date_utils import parse_job_date
+from job_finder.exceptions import InitializationError
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +85,41 @@ class PreFilter:
 
         # Work arrangement config
         work_config = config.get("workArrangement", {})
-        self.allow_remote = work_config.get("allowRemote", True)
-        self.allow_hybrid = work_config.get("allowHybrid", True)
-        self.allow_onsite = work_config.get("allowOnsite", True)
+        required_work_keys = [
+            "allowRemote",
+            "allowHybrid",
+            "allowOnsite",
+            "willRelocate",
+            "userLocation",
+        ]
+        missing_work = [k for k in required_work_keys if k not in work_config]
+        if missing_work:
+            raise InitializationError(
+                f"workArrangement missing required keys: {missing_work}. Update prefilter-policy."
+            )
+
+        self.allow_remote = work_config["allowRemote"]
+        self.allow_hybrid = work_config["allowHybrid"]
+        self.allow_onsite = work_config["allowOnsite"]
+        self.will_relocate = work_config["willRelocate"]
+        self.user_location = work_config["userLocation"]
+
+        bool_keys = [
+            ("allow_remote", self.allow_remote),
+            ("allow_hybrid", self.allow_hybrid),
+            ("allow_onsite", self.allow_onsite),
+            ("will_relocate", self.will_relocate),
+        ]
+        if not all(isinstance(val, bool) for _, val in bool_keys):
+            raise InitializationError(
+                "allowRemote, allowHybrid, allowOnsite, and willRelocate must be booleans in workArrangement"
+            )
+        if not isinstance(self.user_location, str):
+            raise InitializationError("userLocation must be a string in workArrangement")
+        if not self.will_relocate and not self.user_location.strip():
+            raise InitializationError(
+                "userLocation must be a non-empty string in workArrangement when willRelocate is False"
+            )
 
         # Employment type config
         emp_config = config.get("employmentType", {})
@@ -107,6 +140,7 @@ class PreFilter:
             f"title={len(self.required_keywords)}req/{len(self.excluded_keywords)}excl, "
             f"maxAge={self.max_age_days}d, "
             f"work=R{self.allow_remote}/H{self.allow_hybrid}/O{self.allow_onsite}, "
+            f"relocate={self.will_relocate}, userLocation={self.user_location}, "
             f"emp=FT{self.allow_full_time}/PT{self.allow_part_time}/C{self.allow_contract}, "
             f"minSalary={self.min_salary}, "
             f"rejectedTech={len(self.rejected_tech)}"
@@ -164,7 +198,7 @@ class PreFilter:
         work_arrangement = self._infer_work_arrangement(job_data)
         if work_arrangement:
             checks_performed.append("workArrangement")
-            result = self._check_work_arrangement(work_arrangement)
+            result = self._check_work_arrangement(work_arrangement, job_data)
             if not result.passed:
                 return PreFilterResult(
                     passed=False,
@@ -325,25 +359,116 @@ class PreFilter:
         # Can't determine - return None (will be skipped)
         return None
 
-    def _check_work_arrangement(self, arrangement: str) -> PreFilterResult:
-        """Check if work arrangement is allowed."""
+    def _check_work_arrangement(
+        self, arrangement: str, job_data: Dict[str, Any]
+    ) -> PreFilterResult:
+        """Check if work arrangement is allowed, honoring user location/relocation preferences."""
         if arrangement == "remote" and not self.allow_remote:
             return PreFilterResult(
                 passed=False,
                 reason="Remote positions not allowed",
             )
-        if arrangement == "hybrid" and not self.allow_hybrid:
-            return PreFilterResult(
-                passed=False,
-                reason="Hybrid positions not allowed",
-            )
-        if arrangement == "onsite" and not self.allow_onsite:
-            return PreFilterResult(
-                passed=False,
-                reason="Onsite positions not allowed",
-            )
+
+        if arrangement in ("hybrid", "onsite"):
+            if arrangement == "hybrid" and not self.allow_hybrid:
+                return PreFilterResult(
+                    passed=False,
+                    reason="Hybrid positions not allowed",
+                )
+            if arrangement == "onsite" and not self.allow_onsite:
+                return PreFilterResult(
+                    passed=False,
+                    reason="Onsite positions not allowed",
+                )
+
+            if not self.will_relocate and self.user_location:
+                in_user_city = self._is_in_user_location(job_data, self.user_location)
+                if in_user_city is False:
+                    return PreFilterResult(
+                        passed=False,
+                        reason=f"{arrangement.capitalize()} roles must be in {self.user_location}",
+                    )
+                # Missing/ambiguous location data returns None -> allow (missing data = pass)
 
         return PreFilterResult(passed=True)
+
+    def _is_in_user_location(self, job_data: Dict[str, Any], user_location: str) -> Optional[bool]:
+        """Determine whether job location matches the configured user location.
+
+        Returns True if a location string clearly matches; False if data exists and clearly differs;
+        None if insufficient data to decide (missing/empty fields). A None result intentionally
+        lets the job pass because missing data should not block a candidate.
+        """
+
+        if not user_location:
+            return None
+
+        location_candidates: List[str] = []
+
+        location = job_data.get("location")
+        if isinstance(location, str) and location.strip():
+            location_candidates.append(location)
+
+        metadata = job_data.get("metadata")
+        if isinstance(metadata, dict):
+            for key in ("Location", "location", "Office Location", "Office"):
+                value = metadata.get(key)
+                if isinstance(value, str) and value.strip():
+                    location_candidates.append(value)
+
+        city = job_data.get("city")
+        state = job_data.get("state") or job_data.get("state_code")
+        country = job_data.get("country")
+        if city or state:
+            pieces = [str(city or "").strip(), str(state or "").strip(), str(country or "").strip()]
+            combined = ", ".join(p for p in pieces if p)
+            if combined:
+                location_candidates.append(combined)
+
+        city_token, state_token = self._split_user_location(user_location)
+
+        def _state_matches(loc_state: Optional[str], loc_lower: str) -> bool:
+            if not state_token:
+                return True
+            if loc_state:
+                if state_token == loc_state:
+                    return True
+                if len(state_token) == 2 and loc_state.startswith(state_token):
+                    return True
+            return bool(re.search(rf"\\b{re.escape(state_token)}\\b", loc_lower))
+
+        for loc in location_candidates:
+            loc_lower = loc.lower()
+            loc_city, loc_state = self._split_user_location(loc)
+
+            if city_token and not re.search(rf"\\b{re.escape(city_token)}\\b", loc_lower):
+                continue
+            if not _state_matches(loc_state, loc_lower):
+                continue
+
+            return True
+
+        if location_candidates:
+            return False
+
+        return None
+
+    @staticmethod
+    def _split_user_location(user_location: str) -> Tuple[Optional[str], Optional[str]]:
+        """Split a user location string into lowercase city/state tokens for loose matching."""
+        if not user_location:
+            return None, None
+
+        lower = user_location.lower()
+        if "," in lower:
+            city, state = [part.strip() for part in lower.split(",", 1)]
+            return city or None, state or None
+
+        parts = lower.split()
+        if len(parts) >= 2:
+            return " ".join(parts[:-1]), parts[-1]
+
+        return lower.strip() or None, None
 
     def _normalize_employment_type(self, job_data: Dict[str, Any]) -> Optional[str]:
         """

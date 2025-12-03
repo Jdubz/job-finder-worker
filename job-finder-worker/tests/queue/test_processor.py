@@ -44,7 +44,13 @@ def mock_managers():
     config_loader.get_prefilter_policy.return_value = {
         "title": {"requiredKeywords": [], "excludedKeywords": []},
         "freshness": {"maxAgeDays": 0},
-        "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+        "workArrangement": {
+            "allowRemote": True,
+            "allowHybrid": True,
+            "allowOnsite": True,
+            "willRelocate": True,
+            "userLocation": "Portland, OR",
+        },
         "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
         "salary": {"minimum": None},
         "technology": {"rejected": []},
