@@ -185,8 +185,8 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
 
     storage = JobStorage(db_path)
     job_listing_storage = JobListingStorage(db_path)
-    companies_manager = CompaniesManager(db_path)
     job_sources_manager = JobSourcesManager(db_path)
+    companies_manager = CompaniesManager(db_path, sources_manager=job_sources_manager)
 
     # Initialize other components
     profile_loader = SQLiteProfileLoader(db_path)

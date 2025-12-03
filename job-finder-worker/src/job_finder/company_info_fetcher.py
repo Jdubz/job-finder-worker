@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import requests
 from bs4 import BeautifulSoup
 
+from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.ai.search_client import get_search_client, SearchResult
 from job_finder.logging_config import format_company_name
 from job_finder.settings import get_text_limits
@@ -454,15 +455,9 @@ Be factual. Return ONLY valid JSON."""
         if not response:
             return None
 
-        response_clean = response.strip()
-        if response_clean.startswith("```"):
-            start = response_clean.find("{")
-            end = response_clean.rfind("}") + 1
-            if start >= 0 and end > start:
-                response_clean = response_clean[start:end]
-
         try:
-            data = json.loads(response_clean)
+            json_str = extract_json_from_response(response)
+            data = json.loads(json_str)
             # Ensure expected keys have defaults
             for key in [
                 "website",

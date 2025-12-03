@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from job_finder.ai.prompts import JobMatchPrompts
 from job_finder.ai.providers import AIProvider
+from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import AIProviderError
 from job_finder.profile.schema import Profile
 from job_finder.settings import get_text_limits
@@ -302,20 +303,9 @@ class AIJobMatcher:
             # Use sensible defaults for AI generation
             response = self.provider.generate(prompt, max_tokens=4096, temperature=0.3)
 
-            # Parse JSON response
-            # Try to extract JSON from response (in case there's extra text)
-            response_clean = response.strip()
-            if "```json" in response_clean:
-                # Extract JSON from markdown code block
-                start = response_clean.find("```json") + 7
-                end = response_clean.find("```", start)
-                response_clean = response_clean[start:end].strip()
-            elif "```" in response_clean:
-                start = response_clean.find("```") + 3
-                end = response_clean.find("```", start)
-                response_clean = response_clean[start:end].strip()
-
-            analysis = self._safe_parse_json(response_clean)
+            # Parse JSON response (handles markdown code blocks)
+            json_str = extract_json_from_response(response)
+            analysis = self._safe_parse_json(json_str)
 
             # Validate required fields
             required_fields = [
@@ -382,18 +372,9 @@ class AIJobMatcher:
             # Use slightly higher temperature for creative intake data generation
             response = self.provider.generate(prompt, max_tokens=4096, temperature=0.4)
 
-            # Parse JSON response
-            response_clean = response.strip()
-            if "```json" in response_clean:
-                start = response_clean.find("```json") + 7
-                end = response_clean.find("```", start)
-                response_clean = response_clean[start:end].strip()
-            elif "```" in response_clean:
-                start = response_clean.find("```") + 3
-                end = response_clean.find("```", start)
-                response_clean = response_clean[start:end].strip()
-
-            intake_data = self._safe_parse_json(response_clean)
+            # Parse JSON response (handles markdown code blocks)
+            json_str = extract_json_from_response(response)
+            intake_data = self._safe_parse_json(json_str)
 
             # Validate required fields
             required_fields = [
