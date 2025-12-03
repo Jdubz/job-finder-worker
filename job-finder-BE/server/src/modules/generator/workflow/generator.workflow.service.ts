@@ -249,8 +249,8 @@ export class GeneratorWorkflowService {
   }
 
   private buildUserMessage(error: unknown, fallback: string): string {
-    // Allow explicit, user-facing errors to bubble up; otherwise, keep it generic.
     if (error instanceof UserFacingError) return error.message
+    if (error instanceof Error && error.message) return error.message
     return fallback
   }
 

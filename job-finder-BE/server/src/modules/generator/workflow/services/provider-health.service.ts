@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { CliProvider } from './cli-runner'
+import { UserFacingError } from '../generator.workflow.service'
 
 const execFileAsync = promisify(execFile)
 
@@ -26,11 +27,11 @@ export async function ensureCliProviderHealthy(provider: CliProvider): Promise<v
 
     const authHints = ['not logged in', 'login required', 'log in to continue', 'refresh token', 'expired token']
     if (authHints.some((hint) => combined.includes(hint))) {
-      throw new Error('Authentication required')
+      throw new UserFacingError('AI provider authentication required. Please log in and retry.')
     }
   } catch (error) {
     const asError = error as Error & { stderr?: string }
     const detail = asError.stderr || asError.message || 'Unknown error'
-    throw new Error(`AI provider '${provider}' is not authenticated or unavailable: ${detail}`)
+    throw new UserFacingError(`AI provider '${provider}' is not authenticated or unavailable: ${detail}`)
   }
 }
