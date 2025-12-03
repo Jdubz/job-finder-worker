@@ -14,6 +14,7 @@ interface SubmitCompanyParams {
   companyName: string
   websiteUrl?: string
   companyId?: string | null
+  allowReanalysis?: boolean
 }
 
 interface SubmitSourceDiscoveryParams {
