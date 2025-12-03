@@ -278,7 +278,20 @@ export async function seedBaseConfigs(request: APIRequestContext) {
   await upsert("ai-settings", {
     worker: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
     documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
-    options: [],
+    options: [
+      {
+        value: "gemini",
+        interfaces: [
+          { value: "api", enabled: true, models: ["gemini-2.0-flash", "gemini-1.5-pro"] },
+        ],
+      },
+      {
+        value: "openai",
+        interfaces: [
+          { value: "api", enabled: true, models: ["gpt-4o", "gpt-4o-mini"] },
+        ],
+      },
+    ],
   })
   await upsert("personal-info", {
     email: "owner@jobfinder.dev",
