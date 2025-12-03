@@ -13,7 +13,9 @@ test.describe("Owner configuration and prompts", () => {
     const getActiveTab = () => page.locator('[role="tabpanel"][data-state="active"]').first()
 
     // Pre-filter tab (default)
-    await expect(getActiveTab().getByRole("heading", { name: /title keywords/i })).toBeVisible()
+    await expect(
+      getActiveTab().getByRole("heading", { name: /(title keywords|required keywords)/i })
+    ).toBeVisible()
     // Add a keyword to enable save
     await getActiveTab().getByRole("button", { name: /add/i }).first().click()
     await page.getByRole("button", { name: /save changes/i }).click()
