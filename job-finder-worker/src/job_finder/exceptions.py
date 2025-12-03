@@ -72,6 +72,19 @@ class AIProviderError(JobFinderError):
     pass
 
 
+class ExtractionError(JobFinderError):
+    """Raised when AI extraction fails.
+
+    Examples:
+    - Empty title or description
+    - AI returned invalid JSON
+    - AI returned empty response
+    - Required fields missing from extraction
+    """
+
+    pass
+
+
 class StorageError(JobFinderError):
     """Raised when storage operations fail.
 

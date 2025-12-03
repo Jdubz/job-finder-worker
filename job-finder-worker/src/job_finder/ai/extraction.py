@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Literal, Optional, cast, get_args
 
 from job_finder.ai.extraction_prompts import build_extraction_prompt
 from job_finder.ai.providers import AIProvider
+from job_finder.exceptions import ExtractionError
 
 logger = logging.getLogger(__name__)
 
@@ -253,21 +254,15 @@ class JobExtractor:
             JobExtractionResult with extracted data
         """
         if not description or not title:
-            logger.warning("Empty title or description provided for extraction")
-            return JobExtractionResult()
+            raise ExtractionError("Empty title or description provided for extraction")
 
-        try:
-            prompt = build_extraction_prompt(title, description, location, posted_date)
-            response = self.provider.generate(
-                prompt=prompt,
-                max_tokens=500,
-                temperature=0.1,  # Low temperature for consistent extraction
-            )
-            return self._parse_response(response)
-        except Exception as e:
-            logger.error(f"AI extraction failed: {e}", exc_info=True)
-            # Return fallback extraction using regex patterns
-            return self._fallback_extraction(title, description, location)
+        prompt = build_extraction_prompt(title, description, location, posted_date)
+        response = self.provider.generate(
+            prompt=prompt,
+            max_tokens=500,
+            temperature=0.1,  # Low temperature for consistent extraction
+        )
+        return self._parse_response(response)
 
     def _parse_response(self, response: str) -> JobExtractionResult:
         """
@@ -278,115 +273,32 @@ class JobExtractor:
 
         Returns:
             Parsed JobExtractionResult
+
+        Raises:
+            ExtractionError: If response cannot be parsed as valid JSON
         """
+        if not response or not response.strip():
+            raise ExtractionError("AI returned empty response")
+
+        # Try to extract JSON from response
+        json_match = re.search(r"\{[\s\S]*\}", response)
+        if not json_match:
+            raise ExtractionError(
+                f"No JSON found in AI response. Response preview: {response[:200]}"
+            )
+
+        json_str = json_match.group()
         try:
-            # Try to extract JSON from response
-            json_match = re.search(r"\{[\s\S]*\}", response)
-            if not json_match:
-                logger.warning("No JSON found in AI response")
-                return JobExtractionResult()
-
-            json_str = json_match.group()
             data = json.loads(json_str)
-
-            # Normalize technologies to lowercase
-            if "technologies" in data and isinstance(data["technologies"], list):
-                data["technologies"] = [
-                    t.lower().strip() for t in data["technologies"] if isinstance(t, str)
-                ]
-
-            return JobExtractionResult.from_dict(data)
-
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse AI response as JSON: {e}")
-            return JobExtractionResult()
-        except Exception as e:
-            logger.error(f"Error parsing extraction response: {e}")
-            return JobExtractionResult()
+            raise ExtractionError(
+                f"Failed to parse AI response as JSON: {e}. JSON preview: {json_str[:200]}"
+            ) from e
 
-    def _fallback_extraction(
-        self,
-        title: str,
-        description: str,
-        location: Optional[str],
-    ) -> JobExtractionResult:
-        """
-        Fallback extraction using regex patterns when AI fails.
+        # Normalize technologies to lowercase
+        if "technologies" in data and isinstance(data["technologies"], list):
+            data["technologies"] = [
+                t.lower().strip() for t in data["technologies"] if isinstance(t, str)
+            ]
 
-        Args:
-            title: Job title
-            description: Job description
-            location: Optional location string
-
-        Returns:
-            Best-effort extraction result
-        """
-        result = JobExtractionResult()
-        title_lower = title.lower()
-        desc_lower = description.lower()
-
-        # Extract seniority from title
-        if any(kw in title_lower for kw in ["junior", "jr", "entry", "associate", " i ", " 1 "]):
-            result.seniority = "junior"
-        elif any(kw in title_lower for kw in ["senior", "sr", " iii", " 3 "]):
-            result.seniority = "senior"
-        elif any(kw in title_lower for kw in ["staff", " iv", " 4 "]):
-            result.seniority = "staff"
-        elif any(kw in title_lower for kw in ["lead", "principal", "architect"]):
-            result.seniority = "lead"
-        elif any(kw in title_lower for kw in [" ii ", " 2 ", "mid"]):
-            result.seniority = "mid"
-
-        # Extract work arrangement
-        if any(kw in desc_lower for kw in ["fully remote", "100% remote", "work from anywhere"]):
-            result.work_arrangement = "remote"
-        elif any(kw in desc_lower for kw in ["hybrid", "2-3 days", "flexible"]):
-            result.work_arrangement = "hybrid"
-        elif any(kw in desc_lower for kw in ["on-site", "in-office", "must be local"]):
-            result.work_arrangement = "onsite"
-
-        # Extract salary using regex
-        salary_pattern = r"\$\s*(\d{2,3})[,\s]*(\d{3})(?:\s*[-–]\s*\$?\s*(\d{2,3})[,\s]*(\d{3}))?"
-        salary_match = re.search(salary_pattern, description)
-        if salary_match:
-            groups = salary_match.groups()
-            min_salary = int(groups[0] + groups[1])
-            result.salary_min = min_salary
-            if groups[2] and groups[3]:
-                result.salary_max = int(groups[2] + groups[3])
-            else:
-                result.salary_max = min_salary
-
-        # Extract common technologies
-        common_techs = [
-            "python",
-            "javascript",
-            "typescript",
-            "react",
-            "node",
-            "java",
-            "go",
-            "rust",
-            "c++",
-            "ruby",
-            "php",
-            "aws",
-            "gcp",
-            "azure",
-            "kubernetes",
-            "docker",
-            "postgresql",
-            "mongodb",
-            "redis",
-            "graphql",
-            "rest",
-            "sql",
-        ]
-        found_techs = [tech for tech in common_techs if tech in desc_lower]
-        result.technologies = found_techs
-
-        # Extract city from location
-        if location:
-            result.city = location.split(",")[0].strip()
-
-        return result
+        return JobExtractionResult.from_dict(data)

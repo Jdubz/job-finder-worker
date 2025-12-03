@@ -34,7 +34,7 @@ from job_finder.ai.extraction import JobExtractor, JobExtractionResult
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 from job_finder.ai.providers import create_provider_from_config
 from job_finder.company_info_fetcher import CompanyInfoFetcher
-from job_finder.exceptions import DuplicateQueueItemError
+from job_finder.exceptions import AIProviderError, DuplicateQueueItemError, ExtractionError
 from job_finder.filters.title_filter import TitleFilter, TitleFilterResult
 from job_finder.filters.prefilter import PreFilter, PreFilterResult
 from job_finder.job_queue.config_loader import ConfigLoader
@@ -420,9 +420,10 @@ class JobProcessor(BaseProcessor):
             ctx.stage = "extraction"
             logger.info(f"[PIPELINE] {url_preview} -> AI_EXTRACTION")
             self._update_status(item, "Extracting job data", ctx.stage)
-            ctx.extraction = self._execute_ai_extraction(ctx)
-            if not ctx.extraction:
-                self._finalize_failed(ctx, "AI extraction returned no result")
+            try:
+                ctx.extraction = self._execute_ai_extraction(ctx)
+            except (ExtractionError, AIProviderError) as e:
+                self._finalize_failed(ctx, f"AI extraction failed: {e}")
                 return
 
             # Emit extraction event
@@ -800,24 +801,24 @@ class JobProcessor(BaseProcessor):
         except Exception as e:
             logger.warning("Failed to spawn company enrichment for %s: %s", company_name, e)
 
-    def _execute_ai_extraction(self, ctx: PipelineContext) -> Optional[JobExtractionResult]:
-        """Execute AI extraction stage."""
+    def _execute_ai_extraction(self, ctx: PipelineContext) -> JobExtractionResult:
+        """Execute AI extraction stage.
+
+        Raises:
+            ExtractionError: If extraction fails for any reason
+        """
         job_data = ctx.job_data or {}
         title = job_data.get("title", "")
         description = job_data.get("description", "")
         location = job_data.get("location", "")
         posted_date = job_data.get("posted_date")
 
-        try:
-            extraction = self.extractor.extract(title, description, location, posted_date)
-            logger.info(
-                f"Extraction complete: seniority={extraction.seniority}, "
-                f"arrangement={extraction.work_arrangement}, techs={len(extraction.technologies)}"
-            )
-            return extraction
-        except Exception as e:
-            logger.error(f"AI extraction failed: {e}")
-            return None
+        extraction = self.extractor.extract(title, description, location, posted_date)
+        logger.info(
+            f"Extraction complete: seniority={extraction.seniority}, "
+            f"arrangement={extraction.work_arrangement}, techs={len(extraction.technologies)}"
+        )
+        return extraction
 
     def _execute_scoring(self, ctx: PipelineContext) -> ScoreBreakdown:
         """Execute deterministic scoring stage."""
