@@ -7,6 +7,15 @@ import pytest
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 
 
+@pytest.fixture(autouse=True)
+def patch_text_limits(monkeypatch, tmp_path):
+    """Provide default text limits without needing SQLITE_DB_PATH in tests."""
+    monkeypatch.setattr(
+        "job_finder.ai.matcher.get_text_limits",
+        lambda: {"intakeTextLimit": 4000, "intakeFieldLimit": 500},
+    )
+
+
 @pytest.fixture
 def mock_provider():
     """Create a mock AI provider."""

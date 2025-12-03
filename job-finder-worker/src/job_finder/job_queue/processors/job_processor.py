@@ -709,10 +709,19 @@ class JobProcessor(BaseProcessor):
             logger.debug("Company %s has good data, proceeding to extraction", company_name)
             return True
 
-        # Otherwise spawn enrichment and wait
+        # Otherwise spawn enrichment and wait (up to MAX_COMPANY_WAIT_RETRIES)
         self._spawn_company_enrichment(ctx)
 
         wait_count = state.get("company_wait_count", 0)
+
+        if wait_count >= MAX_COMPANY_WAIT_RETRIES:
+            logger.warning(
+                "Company %s still sparse after %d waits, proceeding with extraction",
+                company_name,
+                wait_count,
+            )
+            return True
+
         updated_state = {
             **state,
             "job_data": job_data,

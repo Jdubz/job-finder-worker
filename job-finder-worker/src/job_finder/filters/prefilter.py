@@ -439,6 +439,10 @@ class PreFilter:
 
         for loc in location_candidates:
             loc_lower = loc.lower()
+            # Quick substring match ignoring commas to handle common city/state strings
+            if user_location.replace(",", "").lower() in loc_lower.replace(",", ""):
+                return True
+
             loc_city, loc_state = self._split_user_location(loc)
 
             if city_token and not re.search(rf"\\b{re.escape(city_token)}\\b", loc_lower):

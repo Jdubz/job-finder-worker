@@ -237,12 +237,15 @@ class CompaniesManager:
         if created_at and updated_at and str(updated_at) != str(created_at):
             return True
 
-        has_size = any(
-            company_data.get(field) not in (None, "")
-            for field in ("size_label", "size_min", "size_max")
+        has_size = bool(
+            company_data.get("companySizeCategory")
+            or company_data.get("employeeCount")
+            or company_data.get("company_size_category")
+            or company_data.get("employee_count")
         )
-        has_location = bool(company_data.get("hq_location")) or bool(
-            company_data.get("locations") or []
+
+        has_location = bool(
+            company_data.get("headquartersLocation") or company_data.get("headquarters_location")
         )
 
         return has_size and has_location
