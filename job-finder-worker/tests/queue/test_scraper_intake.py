@@ -12,7 +12,9 @@ from job_finder.job_queue.models import QueueItemType
 @pytest.fixture
 def mock_queue_manager():
     """Create mock queue manager."""
-    return MagicMock()
+    mgr = MagicMock()
+    mgr.has_company_task.return_value = False
+    return mgr
 
 
 @pytest.fixture
