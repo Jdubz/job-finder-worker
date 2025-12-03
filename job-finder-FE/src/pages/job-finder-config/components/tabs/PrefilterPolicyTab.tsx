@@ -229,7 +229,7 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
                     control={form.control}
                     name="workArrangement.userLocation"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="md:col-span-2">
                         <FormLabel>Your City, State</FormLabel>
                         <FormControl>
                           <Input placeholder="e.g., Portland, OR" {...field} />

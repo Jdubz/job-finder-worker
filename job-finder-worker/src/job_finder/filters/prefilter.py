@@ -98,12 +98,16 @@ class PreFilter:
         self.will_relocate = work_config["willRelocate"]
         self.user_location = work_config["userLocation"]
 
-        if not isinstance(self.allow_remote, bool) or not isinstance(self.allow_hybrid, bool) or not isinstance(
-            self.allow_onsite, bool
-        ):
-            raise InitializationError("allowRemote/allowHybrid/allowOnsite must be booleans in workArrangement")
-        if not isinstance(self.will_relocate, bool):
-            raise InitializationError("willRelocate must be a boolean in workArrangement")
+        bool_keys = [
+            ("allow_remote", self.allow_remote),
+            ("allow_hybrid", self.allow_hybrid),
+            ("allow_onsite", self.allow_onsite),
+            ("will_relocate", self.will_relocate),
+        ]
+        if not all(isinstance(val, bool) for _, val in bool_keys):
+            raise InitializationError(
+                "allowRemote, allowHybrid, allowOnsite, and willRelocate must be booleans in workArrangement"
+            )
         if not isinstance(self.user_location, str) or not self.user_location.strip():
             raise InitializationError("userLocation must be a non-empty string in workArrangement")
 
@@ -353,23 +357,13 @@ class PreFilter:
                 reason="Remote positions not allowed",
             )
 
-        if arrangement == "hybrid":
-            if not self.allow_hybrid:
+        if arrangement in ("hybrid", "onsite"):
+            if arrangement == "hybrid" and not self.allow_hybrid:
                 return PreFilterResult(
                     passed=False,
                     reason="Hybrid positions not allowed",
                 )
-
-            if not self.will_relocate and self.user_location:
-                in_user_city = self._is_in_user_location(job_data, self.user_location)
-                if in_user_city is False:
-                    return PreFilterResult(
-                        passed=False,
-                        reason=f"Hybrid roles must be in {self.user_location}",
-                    )
-
-        if arrangement == "onsite":
-            if not self.allow_onsite:
+            if arrangement == "onsite" and not self.allow_onsite:
                 return PreFilterResult(
                     passed=False,
                     reason="Onsite positions not allowed",
@@ -380,7 +374,7 @@ class PreFilter:
                 if in_user_city is False:
                     return PreFilterResult(
                         passed=False,
-                        reason=f"Onsite roles must be in {self.user_location}",
+                        reason=f"{arrangement.capitalize()} roles must be in {self.user_location}",
                     )
 
         return PreFilterResult(passed=True)
