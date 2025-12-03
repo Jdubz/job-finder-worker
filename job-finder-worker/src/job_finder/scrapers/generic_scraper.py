@@ -28,10 +28,6 @@ DEFAULT_HEADERS = {
     "Accept": "application/json, text/html, */*",
 }
 
-# Safety guard: avoid unbounded N+1 requests when follow_detail is enabled
-MAX_DETAIL_ENRICH = 25
-
-
 class GenericScraper:
     """
     Generic scraper that works with any job source type.
@@ -84,24 +80,13 @@ class GenericScraper:
 
             # Parse each item into standardized job format
             jobs = []
-            detail_enriched = 0
             for item in data:
                 try:
                     job = self._extract_fields(item)
 
                     # Optional detail-page enrichment for HTML aggregators (e.g., builtin.com)
-                    if (
-                        self.config.type == "html"
-                        and self.config.follow_detail
-                        and detail_enriched < MAX_DETAIL_ENRICH
-                    ):
+                    if self.config.type == "html" and self.config.follow_detail:
                         job = self._enrich_from_detail(job)
-                        detail_enriched += 1
-                    elif self.config.follow_detail and detail_enriched >= MAX_DETAIL_ENRICH:
-                        logger.info(
-                            "Skipping detail enrichment after %s jobs to avoid over-fetching",
-                            MAX_DETAIL_ENRICH,
-                        )
 
                     if job.get("title") and job.get("url"):
                         jobs.append(job)
@@ -251,7 +236,13 @@ class GenericScraper:
     def _enrich_from_detail(self, job: Dict[str, Any]) -> Dict[str, Any]:
         """Optionally enrich a job by fetching its detail page.
 
-        Currently uses schema.org JobPosting JSON-LD when present.
+        Extracts data using multiple strategies in order of reliability:
+        1. JSON-LD JobPosting schema (most reliable)
+        2. Meta tags (og:, article:, etc.)
+        3. <time> elements with datetime attribute
+        4. Common CSS selectors for date elements
+        5. Text pattern matching for relative dates
+
         Only fills fields that are missing to avoid clobbering list-page data.
         """
         url = job.get("url")
@@ -264,63 +255,256 @@ class GenericScraper:
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
 
-            for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
-                try:
-                    data = json.loads(script.string or "{}")
-                except json.JSONDecodeError:
-                    continue
+            # Strategy 1: JSON-LD JobPosting schema (most reliable)
+            jsonld_date = self._extract_from_jsonld(soup, job)
 
-                postings = []
-                if isinstance(data, list):
-                    postings = [
-                        d for d in data if isinstance(d, dict) and d.get("@type") == "JobPosting"
-                    ]
-                elif isinstance(data, dict):
-                    graph = data.get("@graph")
-                    if graph and isinstance(graph, list):
-                        postings = [
-                            g
-                            for g in graph
-                            if isinstance(g, dict) and g.get("@type") == "JobPosting"
-                        ]
-                    elif data.get("@type") == "JobPosting":
-                        postings = [data]
+            # Strategy 2-5: If no posted_date yet, try HTML extraction methods
+            if not job.get("posted_date"):
+                html_date = self._extract_posted_date_from_html(soup)
+                if html_date:
+                    job["posted_date"] = html_date
 
-                if not postings:
-                    continue
-
-                jp = postings[0]
-                job.setdefault("title", jp.get("title") or "")
-                job.setdefault("company", (jp.get("hiringOrganization") or {}).get("name", ""))
-                job.setdefault("description", jp.get("description", ""))
-
-                # Location: try place then address fields
-                if not job.get("location"):
-                    loc = None
-                    place = jp.get("jobLocation")
-                    if isinstance(place, list):
-                        place = place[0] if place else None
-                    if isinstance(place, dict):
-                        addr = place.get("address") or {}
-                        city = addr.get("addressLocality") or ""
-                        region = addr.get("addressRegion") or ""
-                        country = addr.get("addressCountry") or ""
-                        loc = ", ".join([p for p in [city, region, country] if p])
-                    if loc:
-                        job["location"] = loc
-                    elif "location" not in job:
-                        job["location"] = ""
-
-                if not job.get("posted_date") and jp.get("datePosted"):
-                    job["posted_date"] = jp.get("datePosted")
-
-                break  # Only need first JobPosting block
         except Exception as exc:
             # Swallow enrichment errors; base scrape already succeeded
             logger.debug("Error enriching job from detail page %s: %s", url, exc)
-            return job
 
         return job
+
+    def _extract_from_jsonld(self, soup: BeautifulSoup, job: Dict[str, Any]) -> Optional[str]:
+        """Extract job data from JSON-LD JobPosting schema."""
+        for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+            try:
+                data = json.loads(script.string or "{}")
+            except json.JSONDecodeError:
+                continue
+
+            postings = []
+            if isinstance(data, list):
+                postings = [
+                    d for d in data if isinstance(d, dict) and d.get("@type") == "JobPosting"
+                ]
+            elif isinstance(data, dict):
+                graph = data.get("@graph")
+                if graph and isinstance(graph, list):
+                    postings = [
+                        g
+                        for g in graph
+                        if isinstance(g, dict) and g.get("@type") == "JobPosting"
+                    ]
+                elif data.get("@type") == "JobPosting":
+                    postings = [data]
+
+            if not postings:
+                continue
+
+            jp = postings[0]
+            job.setdefault("title", jp.get("title") or "")
+            job.setdefault("company", (jp.get("hiringOrganization") or {}).get("name", ""))
+            job.setdefault("description", jp.get("description", ""))
+
+            # Location: try place then address fields
+            if not job.get("location"):
+                loc = None
+                place = jp.get("jobLocation")
+                if isinstance(place, list):
+                    place = place[0] if place else None
+                if isinstance(place, dict):
+                    addr = place.get("address") or {}
+                    city = addr.get("addressLocality") or ""
+                    region = addr.get("addressRegion") or ""
+                    country = addr.get("addressCountry") or ""
+                    loc = ", ".join([p for p in [city, region, country] if p])
+                if loc:
+                    job["location"] = loc
+                elif "location" not in job:
+                    job["location"] = ""
+
+            if not job.get("posted_date") and jp.get("datePosted"):
+                job["posted_date"] = jp.get("datePosted")
+                return jp.get("datePosted")
+
+            return None  # Found JobPosting but no datePosted
+
+        return None
+
+    def _extract_posted_date_from_html(self, soup: BeautifulSoup) -> Optional[str]:
+        """
+        Extract posted date from HTML using multiple fallback strategies.
+
+        Tries in order of reliability:
+        1. Meta tags (og:article:published_time, article:published_time, etc.)
+        2. <time> elements with datetime attribute
+        3. Common CSS selectors for date elements
+        4. Text content matching date patterns
+        """
+        # Strategy 1: Meta tags
+        meta_date = self._extract_date_from_meta(soup)
+        if meta_date:
+            return meta_date
+
+        # Strategy 2: <time> elements with datetime attribute
+        time_date = self._extract_date_from_time_elements(soup)
+        if time_date:
+            return time_date
+
+        # Strategy 3: Common CSS selectors for job posting dates
+        selector_date = self._extract_date_from_selectors(soup)
+        if selector_date:
+            return selector_date
+
+        # Strategy 4: Text pattern matching for relative dates
+        text_date = self._extract_date_from_text_patterns(soup)
+        if text_date:
+            return text_date
+
+        return None
+
+    def _extract_date_from_meta(self, soup: BeautifulSoup) -> Optional[str]:
+        """Extract date from meta tags."""
+        # Priority order of meta tag names/properties
+        meta_selectors = [
+            {"property": "article:published_time"},
+            {"property": "og:article:published_time"},
+            {"name": "date"},
+            {"name": "publish_date"},
+            {"name": "publication_date"},
+            {"name": "DC.date"},
+            {"name": "DC.date.issued"},
+            {"name": "dcterms.created"},
+            {"property": "datePublished"},
+            {"itemprop": "datePosted"},
+            {"itemprop": "datePublished"},
+        ]
+
+        for selector in meta_selectors:
+            meta = soup.find("meta", attrs=selector)
+            if meta and meta.get("content"):
+                content = meta.get("content", "").strip()
+                if content and parse_job_date(content):
+                    return content
+
+        return None
+
+    def _extract_date_from_time_elements(self, soup: BeautifulSoup) -> Optional[str]:
+        """Extract date from <time> elements with datetime attribute."""
+        # Look for time elements, prioritizing those with job-related context
+        job_related_patterns = [
+            "post", "publish", "date", "created", "listed", "added"
+        ]
+
+        for time_el in soup.find_all("time"):
+            datetime_attr = time_el.get("datetime")
+            if datetime_attr and parse_job_date(datetime_attr):
+                # Check if this time element is in a job-related context
+                parent_text = ""
+                for parent in time_el.parents:
+                    if parent.name in ["div", "span", "p", "li"]:
+                        parent_text = (parent.get("class") or [])
+                        parent_text = " ".join(parent_text).lower() if parent_text else ""
+                        break
+
+                # Prioritize job-related time elements
+                if any(p in parent_text for p in job_related_patterns):
+                    return datetime_attr
+
+        # Fall back to first valid time element
+        for time_el in soup.find_all("time"):
+            datetime_attr = time_el.get("datetime")
+            if datetime_attr and parse_job_date(datetime_attr):
+                return datetime_attr
+
+        return None
+
+    def _extract_date_from_selectors(self, soup: BeautifulSoup) -> Optional[str]:
+        """Extract date using common CSS selectors for job posting dates."""
+        # Common class/id patterns for date elements in job postings
+        date_selectors = [
+            "[class*='posted-date']",
+            "[class*='post-date']",
+            "[class*='publish-date']",
+            "[class*='date-posted']",
+            "[class*='job-date']",
+            "[class*='listing-date']",
+            "[class*='created-date']",
+            "[class*='datePosted']",
+            "[class*='postDate']",
+            "[class*='jobDate']",
+            "[data-automation*='date']",
+            "[data-testid*='date']",
+            ".posted-on",
+            ".date-posted",
+            ".job-posted",
+            ".posting-date",
+        ]
+
+        for selector in date_selectors:
+            try:
+                elements = soup.select(selector)
+                for el in elements:
+                    # Try datetime attribute first
+                    if el.get("datetime"):
+                        date_str = el.get("datetime")
+                        if parse_job_date(date_str):
+                            return date_str
+
+                    # Try text content
+                    text = el.get_text(strip=True)
+                    if text and parse_job_date(text):
+                        return text
+            except Exception:
+                continue
+
+        return None
+
+    def _extract_date_from_text_patterns(self, soup: BeautifulSoup) -> Optional[str]:
+        """Extract date from text patterns like 'Posted 2 days ago'."""
+        # Common patterns that precede dates in job postings
+        date_patterns = [
+            r"posted\s*:?\s*(.+?)(?:\s*[|\-•]|$)",
+            r"published\s*:?\s*(.+?)(?:\s*[|\-•]|$)",
+            r"listed\s*:?\s*(.+?)(?:\s*[|\-•]|$)",
+            r"added\s*:?\s*(.+?)(?:\s*[|\-•]|$)",
+            r"date\s*:?\s*(.+?)(?:\s*[|\-•]|$)",
+            # Direct relative date patterns
+            r"(\d+\s*(?:day|days|week|weeks|hour|hours|month|months)\s*ago)",
+            r"(today|yesterday|just\s*now|just\s*posted)",
+        ]
+
+        # Look in elements likely to contain posting metadata
+        metadata_selectors = [
+            "[class*='meta']",
+            "[class*='info']",
+            "[class*='detail']",
+            "[class*='header']",
+            "[class*='summary']",
+            "header",
+            ".job-info",
+            ".posting-info",
+        ]
+
+        text_to_search = []
+
+        # Gather text from metadata-like elements
+        for selector in metadata_selectors:
+            try:
+                for el in soup.select(selector):
+                    text = el.get_text(separator=" ", strip=True)
+                    if text and len(text) < 500:  # Avoid huge text blocks
+                        text_to_search.append(text.lower())
+            except Exception:
+                continue
+
+        # Search for date patterns
+        for text in text_to_search:
+            for pattern in date_patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    date_str = match.group(1).strip()
+                    parsed = parse_job_date(date_str)
+                    if parsed:
+                        return date_str
+
+        return None
 
     def _extract_fields(self, item: Any) -> Dict[str, Any]:
         """
