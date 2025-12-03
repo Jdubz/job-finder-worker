@@ -27,21 +27,9 @@ Add a cron entry on the host (runs daily at 07:05):
 
 Adjust the path/time as needed.
 
-## Automation option (systemd watch) — recommended
+## Automation option (systemd watch) — retired
 
-This keeps seeds in sync within seconds of any change to `~/.codex/auth.json`.
-
-```bash
-# from repo root on the host
-mkdir -p ~/.config/systemd/user
-cp infra/systemd/codex-sync.service infra/systemd/codex-sync.path ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now codex-sync.path
-# optional: run once immediately
-systemctl --user start codex-sync.service
-```
-
-The path unit watches `~/.codex/auth.json` only; any change triggers the sync service which calls `scripts/sync_codex_credentials.sh`.
+We previously shipped a user-level systemd path/service pair to mirror `~/.codex/auth.json`. It proved brittle (sudo/permission issues and missed events) and has been removed from the repo. Use the cron job above or copy as part of your deploy script instead.
 
 ## Why this matters
 
