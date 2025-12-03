@@ -289,15 +289,15 @@ class CompanyProcessor(BaseProcessor):
             try:
                 parsed = urlparse(provided_url)
                 path = parsed.path.strip("/")
-                # If there's no path or just a single segment, it's likely a root/homepage
-                # We want actual job listing pages like /jobs, /careers, /remote-jobs/company-name
-                if not path or "/" not in path:
+                # Skip empty paths or common root/homepage patterns
+                # But allow single-segment paths like /jobs, /careers
+                if not path or path.lower() in ("", "index", "index.html", "home"):
                     logger.debug(
                         f"Skipping aggregator root URL for source discovery: {provided_url}"
                     )
                     return None
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to parse aggregator URL {provided_url}: {e}")
             return provided_url
 
         return None

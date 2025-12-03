@@ -4,6 +4,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import feedparser
 import requests
@@ -380,9 +381,13 @@ class GenericScraper:
             match = re.search(pattern, description, re.IGNORECASE)
             if match:
                 url = match.group(1)
-                # Basic validation - must look like a real URL
-                if url and len(url) < 200 and "." in url:
-                    return url
+                # Validate URL structure using urlparse
+                try:
+                    parsed = urlparse(url)
+                    if parsed.scheme in ("http", "https") and parsed.netloc:
+                        return url
+                except Exception:
+                    pass
 
         return None
 
