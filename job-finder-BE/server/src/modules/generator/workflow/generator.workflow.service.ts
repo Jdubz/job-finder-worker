@@ -181,7 +181,7 @@ export class GeneratorWorkflowService {
           steps: updated,
           nextStep: undefined,
           stepCompleted: 'generate-resume',
-          error: error instanceof Error ? error.message : 'Resume generation failed'
+          error: errorMessage
         }
       }
     }
@@ -216,7 +216,7 @@ export class GeneratorWorkflowService {
           steps: updated,
           nextStep: undefined,
           stepCompleted: 'generate-cover-letter',
-          error: error instanceof Error ? error.message : 'Cover letter generation failed'
+          error: errorMessage
         }
       }
     }
@@ -249,7 +249,6 @@ export class GeneratorWorkflowService {
   }
 
   private buildUserMessage(error: unknown, fallback: string): string {
-    // Allow explicit, user-facing errors to bubble up; otherwise, keep it generic.
     if (error instanceof UserFacingError) return error.message
     return fallback
   }

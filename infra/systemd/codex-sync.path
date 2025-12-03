@@ -1,9 +1,0 @@
-[Unit]
-Description=Watch Codex auth/config files and trigger sync
-
-[Path]
-PathChanged=%h/.codex/auth.json
-Unit=codex-sync.service
-
-[Install]
-WantedBy=default.target
