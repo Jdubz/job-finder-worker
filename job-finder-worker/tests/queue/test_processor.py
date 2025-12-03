@@ -242,10 +242,11 @@ def test_single_task_pipeline_spawns_company_enrichment(processor, mock_managers
 
     processor.job_processor.process_job(sample_job_item)
 
-    # Should NOT spawn enrichment when company already exists (dedupe guard)
-    assert not mock_managers["queue_manager"].spawn_item_safely.called
-    # Job should continue (no requeue/wait)
-    mock_managers["queue_manager"].requeue_with_state.assert_not_called()
+    # Should spawn enrichment and requeue while waiting for richer data
+    assert mock_managers["queue_manager"].spawn_item_safely.called
+    mock_managers["queue_manager"].requeue_with_state.assert_called_once()
+    requeue_call = mock_managers["queue_manager"].requeue_with_state.call_args
+    assert "waiting_for_company_id" in requeue_call[0][1]
 
 
 def test_single_task_pipeline_completes_to_match(processor, mock_managers, sample_job_item):
@@ -393,11 +394,9 @@ def test_single_task_pipeline_spawns_company_for_real_company_from_aggregator(
     stub_call_args = mock_managers["companies_manager"].create_company_stub.call_args
     assert "Speechify" in stub_call_args[0][0]  # First positional arg is company name
 
-    # Should NOT spawn COMPANY task now that stub already exists (dedupe guard)
-    assert not mock_managers["queue_manager"].spawn_item_safely.called
-
-    # Job should continue (no requeue/wait)
-    mock_managers["queue_manager"].requeue_with_state.assert_not_called()
+    # Should spawn COMPANY task for enrichment and requeue to wait
+    assert mock_managers["queue_manager"].spawn_item_safely.called
+    mock_managers["queue_manager"].requeue_with_state.assert_called_once()
 
 
 def test_build_company_info_string(processor):

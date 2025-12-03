@@ -690,30 +690,57 @@ class JobProcessor(BaseProcessor):
         """
         Check if company data is ready before proceeding to AI extraction.
 
-        If company data is sparse (just a stub), spawn enrichment in the background
-        but continue processing so scoring still runs with current data. This avoids
-        jobs disappearing in WAIT_COMPANY and keeps scoring using the best available
-        company info.
+        If company data is sparse (just a stub), spawn enrichment and requeue so the
+        pipeline waits for richer company data instead of racing ahead with a stub.
         """
         company = ctx.company_data
         item = ctx.item
         job_data = ctx.job_data
 
-        # No company data - proceed anyway (can't wait for nothing)
+        # No company data - nothing to enrich yet; continue
         if not company:
             return True
 
         company_id = company.get("id")
         company_name = job_data.get("company", "")
 
-        # If we already have the company (even if sparse), keep processing.
+        # If company is good, proceed immediately
         if self.companies_manager.has_good_company_data(company):
             logger.debug("Company %s has good data, proceeding to extraction", company_name)
-        else:
-            # Fire-and-forget enrichment; do NOT requeue the job.
-            self._spawn_company_enrichment(ctx)
+            return True
 
-        return True
+        # Otherwise spawn enrichment and wait
+        self._spawn_company_enrichment(ctx)
+
+        wait_count = state.get("company_wait_count", 0)
+        updated_state = {
+            **state,
+            "job_data": job_data,
+            "waiting_for_company_id": company_id,
+            "company_wait_count": wait_count + 1,
+            "job_listing_id": ctx.listing_id,
+        }
+
+        self.queue_manager.requeue_with_state(item.id, updated_state)
+        logger.info(
+            "[PIPELINE] %s -> WAIT_COMPANY (attempt %d/%d for %s)",
+            (item.url or "")[:50],
+            wait_count + 1,
+            MAX_COMPANY_WAIT_RETRIES,
+            company_name,
+        )
+
+        self._emit_event(
+            "job:waiting_company",
+            item.id,
+            {
+                "company": company_name,
+                "companyId": company_id,
+                "waitCount": wait_count + 1,
+            },
+        )
+
+        return False
 
     def _spawn_company_enrichment(self, ctx: PipelineContext) -> None:
         """Spawn company enrichment task (fire-and-forget, non-blocking)."""
@@ -731,17 +758,6 @@ class JobProcessor(BaseProcessor):
                 ctx.company_data = existing
                 company = existing
                 company_id = existing.get("id")
-
-        # If the company already exists in our database, don't spawn enrichment here.
-        # Automatic enrichment for known companies should be triggered explicitly (e.g. re-analysis UI),
-        # not opportunistically from job processing. This prevents stampeding duplicate tasks.
-        if company_id:
-            logger.debug(
-                "Skip company enrichment spawn for %s (%s): company already exists",
-                company_name,
-                company_id,
-            )
-            return
 
         if not company_name:
             return
