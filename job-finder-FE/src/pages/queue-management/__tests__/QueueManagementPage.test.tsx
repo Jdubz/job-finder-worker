@@ -18,8 +18,8 @@ vi.mock("@/contexts/AuthContext")
 vi.mock("@/hooks/useQueueItems")
 vi.mock("@/api/config-client", () => ({
   configClient: {
-    getQueueSettings: vi.fn(),
-    updateQueueSettings: vi.fn(),
+    getWorkerSettings: vi.fn(),
+    updateWorkerSettings: vi.fn(),
   },
 }))
 vi.mock("@/api/queue-client", () => ({
@@ -114,11 +114,26 @@ describe("QueueManagementPage", () => {
     } as any)
 
     // Default: queue processing is enabled
-    vi.mocked(configClient.getQueueSettings).mockResolvedValue({
-      processingTimeoutSeconds: 1800,
-      isProcessingEnabled: true,
+    vi.mocked(configClient.getWorkerSettings).mockResolvedValue({
+      scraping: { requestTimeoutSeconds: 30, maxHtmlSampleLength: 20000 },
+      textLimits: {
+        minCompanyPageLength: 200,
+        minSparseCompanyInfoLength: 100,
+        maxIntakeTextLength: 500,
+        maxIntakeDescriptionLength: 2000,
+        maxIntakeFieldLength: 400,
+        maxDescriptionPreviewLength: 500,
+        maxCompanyInfoTextLength: 1000,
+      },
+      runtime: {
+        processingTimeoutSeconds: 1800,
+        isProcessingEnabled: true,
+        taskDelaySeconds: 1,
+        pollIntervalSeconds: 60,
+        scrapeConfig: {},
+      },
     })
-    vi.mocked(configClient.updateQueueSettings).mockResolvedValue()
+    vi.mocked(configClient.updateWorkerSettings).mockResolvedValue()
 
     // Mock queue stats API
     vi.mocked(queueClient.getStats).mockResolvedValue({
