@@ -61,8 +61,7 @@ echo "[deploy] Synced docker-compose.yml from infra/docker-compose.prod.yml"
 SOURCE_AUTH="$HOME/.codex/auth.json"
 if [ -f "$SOURCE_AUTH" ]; then
   echo "[deploy] Updating Codex auth from $SOURCE_AUTH"
-  install -m 700 -d /srv/job-finder/codex/.codex /srv/job-finder/codex-seed/.codex
-  install -m 600 "$SOURCE_AUTH" /srv/job-finder/codex/.codex/auth.json
+  install -m 700 -d /srv/job-finder/codex-seed/.codex
   install -m 600 "$SOURCE_AUTH" /srv/job-finder/codex-seed/.codex/auth.json
 
   sync_volume_auth() {
@@ -74,8 +73,8 @@ if [ -f "$SOURCE_AUTH" ]; then
       sh -c 'mkdir -p /data && cp /host/auth.json /data/auth.json && chmod 600 /data/auth.json'
   }
 
-  sync_volume_auth job-finder_codex-home-api || true
-  sync_volume_auth job-finder_codex-home-worker || true
+  sync_volume_auth job-finder_codex-home-api || echo "[deploy] WARNING: Failed to sync auth to volume job-finder_codex-home-api. Continuing..."
+  sync_volume_auth job-finder_codex-home-worker || echo "[deploy] WARNING: Failed to sync auth to volume job-finder_codex-home-worker. Continuing..."
 else
   echo "[deploy] WARNING: $SOURCE_AUTH not found; skipping Codex auth refresh"
 fi

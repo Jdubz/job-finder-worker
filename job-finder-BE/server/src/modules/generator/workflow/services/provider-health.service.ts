@@ -20,8 +20,8 @@ export async function ensureCliProviderHealthy(provider: CliProvider): Promise<v
   try {
     await execFileAsync(check.cmd, check.args, { timeout: 15_000 })
   } catch (error) {
-    const asError = error as { message?: string; stderr?: string }
-    const detail = asError?.stderr || asError?.message || 'Unknown error'
+    const asError = error as Error & { stderr?: string }
+    const detail = asError.stderr || asError.message || 'Unknown error'
     throw new Error(`AI provider '${provider}' is not authenticated or unavailable: ${detail}`)
   }
 }
