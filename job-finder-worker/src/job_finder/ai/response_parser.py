@@ -6,12 +6,12 @@ contain markdown code blocks or other formatting.
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
 
-def extract_json_from_response(response: str) -> str:
+def extract_json_from_response(response: Optional[str]) -> str:
     """Extract JSON content from an AI response that may contain markdown.
 
     Handles common AI response patterns:
@@ -34,7 +34,7 @@ def extract_json_from_response(response: str) -> str:
     if "```json" in cleaned:
         start = cleaned.find("```json") + 7
         end = cleaned.find("```", start)
-        if end > start:
+        if end != -1 and end > start:
             return cleaned[start:end].strip()
 
     # Handle generic ``` ... ``` blocks by finding JSON object or array
@@ -56,16 +56,16 @@ def extract_json_from_response(response: str) -> str:
     if "```" in cleaned:
         start = cleaned.find("```") + 3
         end = cleaned.find("```", start)
-        if end > start:
+        if end != -1 and end > start:
             return cleaned[start:end].strip()
 
     return cleaned
 
 
 def parse_json_response(
-    response: str,
-    default: Optional[Dict[str, Any]] = None,
-) -> Optional[Dict[str, Any]]:
+    response: Optional[str],
+    default: Optional[Union[Dict[str, Any], List[Any]]] = None,
+) -> Optional[Union[Dict[str, Any], List[Any]]]:
     """Parse JSON from an AI response, handling markdown formatting.
 
     Combines extraction and parsing with error handling.
