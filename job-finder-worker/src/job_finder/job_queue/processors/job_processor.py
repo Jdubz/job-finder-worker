@@ -338,6 +338,11 @@ class JobProcessor(BaseProcessor):
         elif "job_data" in state:
             ctx.job_data = state["job_data"]
 
+        # Attach listing_id early so filtered/prefiltered exits can update
+        # the existing job_listings row created during intake.
+        metadata = item.metadata or {}
+        ctx.listing_id = metadata.get("job_listing_id") or state.get("job_listing_id")
+
         self.slogger.queue_item_processing(
             item.id,
             "job",
@@ -758,6 +763,7 @@ class JobProcessor(BaseProcessor):
             "job_data": job_data,
             "waiting_for_company_id": company_id,
             "company_wait_count": wait_count + 1,
+            "job_listing_id": ctx.listing_id,
         }
 
         self.queue_manager.requeue_with_state(item.id, updated_state)
@@ -796,6 +802,15 @@ class JobProcessor(BaseProcessor):
 
         # Only spawn if company data is sparse
         if self.companies_manager.has_good_company_data(company):
+            return
+
+        # Prevent duplicate discovery tasks across different jobs
+        if self.queue_manager.has_company_task(company_id, company_name=company_name):
+            logger.debug(
+                "Company enrichment already queued for %s (%s); skipping spawn",
+                company_name,
+                company_id,
+            )
             return
 
         # Get company website, but reject aggregator URLs

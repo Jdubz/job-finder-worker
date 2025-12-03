@@ -366,6 +366,7 @@ class ScraperIntake:
         company_name: str,
         company_website: str,
         source: QueueSource = "scraper",
+        allow_reanalysis: bool = False,
     ) -> Optional[str]:
         """
         Submit a company for granular pipeline analysis to the queue.
@@ -403,19 +404,39 @@ class ScraperIntake:
                 logger.debug(f"Company already in queue: {queue_url}")
                 return None
 
-            # Check if company already exists in companies collection
+            existing_company = None
             if self.companies_manager:
                 existing_company = self.companies_manager.get_company(cleaned_name)
-                if existing_company:
-                    logger.debug(
-                        f"Company already exists: {cleaned_name} (ID: {existing_company.get('id')})"
-                    )
-                    return None
 
-            company_id = None
-            if self.companies_manager:
-                stub = self.companies_manager.create_company_stub(cleaned_name, normalized_url)
-                company_id = stub.get("id")
+            # Prevent duplicate work if an active task is already queued
+            existing_company_id = existing_company.get("id") if existing_company else None
+            if self.queue_manager.has_company_task(
+                company_id=existing_company_id or "", company_name=cleaned_name
+            ):
+                logger.debug(
+                    "Active company task already queued for %s (%s)",
+                    cleaned_name,
+                    existing_company_id,
+                )
+                return None
+
+            # Block auto-submission when record already exists unless explicitly
+            # allowed (used by company re-analysis from the UI).
+            if existing_company and not allow_reanalysis:
+                logger.debug(
+                    "Company already exists and reanalysis not allowed: %s (ID: %s)",
+                    cleaned_name,
+                    existing_company_id,
+                )
+                return None
+
+            if existing_company:
+                company_id = existing_company_id
+            else:
+                company_id = None
+                if self.companies_manager:
+                    stub = self.companies_manager.create_company_stub(cleaned_name, normalized_url)
+                    company_id = stub.get("id")
 
             # Generate tracking_id for this root company (all spawned items will inherit it)
             tracking_id = str(uuid.uuid4())
