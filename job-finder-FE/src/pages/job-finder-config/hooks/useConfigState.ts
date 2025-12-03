@@ -1,54 +1,43 @@
 import { useState, useEffect, useCallback } from "react"
-import { useAuth } from "@/contexts/AuthContext"
 import { configClient } from "@/api/config-client"
-import {
-  DEFAULT_TITLE_FILTER,
-  DEFAULT_QUEUE_SETTINGS,
-  DEFAULT_AI_SETTINGS,
-  DEFAULT_PERSONAL_INFO,
-} from "@shared/types"
 import type {
   TitleFilterConfig,
   MatchPolicy,
   QueueSettings,
   AISettings,
+  PersonalInfo,
 } from "@shared/types"
-import type { PersonalInfo } from "@shared/types"
 import { deepClone, stableStringify } from "../utils/config-helpers"
 
 export function useConfigState() {
-  const { user } = useAuth()
 
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [missingConfigs, setMissingConfigs] = useState<string[]>([])
 
-  const [titleFilter, setTitleFilter] = useState<TitleFilterConfig>(DEFAULT_TITLE_FILTER)
-  const [originalTitleFilter, setOriginalTitleFilter] = useState<TitleFilterConfig>(DEFAULT_TITLE_FILTER)
+  const [titleFilter, setTitleFilter] = useState<TitleFilterConfig | null>(null)
+  const [originalTitleFilter, setOriginalTitleFilter] = useState<TitleFilterConfig | null>(null)
 
-  // MatchPolicy is required - will throw if not found in DB
   const [matchPolicy, setMatchPolicy] = useState<MatchPolicy | null>(null)
   const [originalMatchPolicy, setOriginalMatchPolicy] = useState<MatchPolicy | null>(null)
 
-  const [queueSettings, setQueueSettingsState] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
-  const [originalQueue, setOriginalQueue] = useState<QueueSettings>(DEFAULT_QUEUE_SETTINGS)
+  const [queueSettings, setQueueSettingsState] = useState<QueueSettings | null>(null)
+  const [originalQueue, setOriginalQueue] = useState<QueueSettings | null>(null)
 
-  const [aiSettings, setAISettings] = useState<AISettings>(DEFAULT_AI_SETTINGS)
-  const [originalAI, setOriginalAI] = useState<AISettings>(DEFAULT_AI_SETTINGS)
+  const [aiSettings, setAISettings] = useState<AISettings | null>(null)
+  const [originalAI, setOriginalAI] = useState<AISettings | null>(null)
 
-  const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
-    ...DEFAULT_PERSONAL_INFO,
-    email: user?.email ?? DEFAULT_PERSONAL_INFO.email,
-  })
-  const [originalPersonalInfo, setOriginalPersonalInfo] = useState<PersonalInfo>({
-    ...DEFAULT_PERSONAL_INFO,
-    email: user?.email ?? DEFAULT_PERSONAL_INFO.email,
-  })
+  const [personalInfo, setPersonalInfo] = useState<PersonalInfo | null>(null)
+  const [originalPersonalInfo, setOriginalPersonalInfo] = useState<PersonalInfo | null>(null)
 
   const loadAll = useCallback(async () => {
     setIsLoading(true)
     setError(null)
+    setMissingConfigs([])
+    const missing: string[] = []
+
     try {
       const entries = await configClient.listEntries()
       const map = entries.reduce<Record<string, unknown>>((acc, cur) => {
@@ -56,52 +45,88 @@ export function useConfigState() {
         return acc
       }, {})
 
-      const titleFilterData = deepClone((map["title-filter"] as TitleFilterConfig) ?? DEFAULT_TITLE_FILTER)
-      setTitleFilter(titleFilterData)
-      setOriginalTitleFilter(deepClone(titleFilterData))
+      // Title filter - required
+      const titleFilterData = map["title-filter"] as TitleFilterConfig | undefined
+      if (titleFilterData) {
+        setTitleFilter(deepClone(titleFilterData))
+        setOriginalTitleFilter(deepClone(titleFilterData))
+      } else {
+        missing.push("title-filter")
+        setTitleFilter(null)
+        setOriginalTitleFilter(null)
+      }
 
-      // MatchPolicy may not exist yet - set to null if not found (UI will show setup prompt)
+      // Match policy - required
       const matchPolicyData = map["match-policy"] as MatchPolicy | undefined
       if (matchPolicyData) {
         setMatchPolicy(deepClone(matchPolicyData))
         setOriginalMatchPolicy(deepClone(matchPolicyData))
       } else {
-        // Keep as null - ScoringConfigTab will show setup instructions
+        missing.push("match-policy")
         setMatchPolicy(null)
         setOriginalMatchPolicy(null)
       }
 
-      const queue = deepClone((map["queue-settings"] as QueueSettings) ?? DEFAULT_QUEUE_SETTINGS)
-      setQueueSettingsState(queue)
-      setOriginalQueue(deepClone(queue))
+      // Queue settings - required
+      const queueData = map["queue-settings"] as QueueSettings | undefined
+      if (queueData) {
+        setQueueSettingsState(deepClone(queueData))
+        setOriginalQueue(deepClone(queueData))
+      } else {
+        missing.push("queue-settings")
+        setQueueSettingsState(null)
+        setOriginalQueue(null)
+      }
 
-      const ai = deepClone((map["ai-settings"] as AISettings) ?? DEFAULT_AI_SETTINGS)
-      setAISettings(ai)
-      setOriginalAI(deepClone(ai))
+      // AI settings - required
+      const aiData = map["ai-settings"] as AISettings | undefined
+      if (aiData) {
+        setAISettings(deepClone(aiData))
+        setOriginalAI(deepClone(aiData))
+      } else {
+        missing.push("ai-settings")
+        setAISettings(null)
+        setOriginalAI(null)
+      }
 
-      const personalFallback = { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
-      const personal = deepClone((map["personal-info"] as PersonalInfo) ?? personalFallback)
-      setPersonalInfo(personal)
-      setOriginalPersonalInfo(deepClone(personal))
+      // Personal info - required
+      const personalData = map["personal-info"] as PersonalInfo | undefined
+      if (personalData) {
+        setPersonalInfo(deepClone(personalData))
+        setOriginalPersonalInfo(deepClone(personalData))
+      } else {
+        missing.push("personal-info")
+        setPersonalInfo(null)
+        setOriginalPersonalInfo(null)
+      }
+
+      if (missing.length > 0) {
+        setMissingConfigs(missing)
+        setError(`Missing required configuration(s): ${missing.join(", ")}. Please configure them in the database.`)
+      }
     } catch (err) {
       console.error(err)
       setError("Failed to load configuration settings")
     } finally {
       setIsLoading(false)
     }
-  }, [user?.email])
+  }, [])
 
   useEffect(() => {
     loadAll()
   }, [loadAll])
 
   const handleSaveTitleFilter = async (configOverride?: TitleFilterConfig) => {
+    const payload = configOverride ?? titleFilter
+    if (!payload) {
+      setError("No title filter to save")
+      return
+    }
     setIsSaving(true)
     setError(null)
-    const payload = deepClone(configOverride ?? titleFilter)
     try {
-      await configClient.updateTitleFilter(payload)
-      setTitleFilter(payload)
+      await configClient.updateTitleFilter(deepClone(payload))
+      setTitleFilter(deepClone(payload))
       setOriginalTitleFilter(deepClone(payload))
       setSuccess("Title filter saved")
     } catch (_err) {
@@ -112,17 +137,16 @@ export function useConfigState() {
   }
 
   const handleSaveMatchPolicy = async (configOverride?: MatchPolicy) => {
-    setIsSaving(true)
-    setError(null)
-    const payload = deepClone(configOverride ?? matchPolicy)
+    const payload = configOverride ?? matchPolicy
     if (!payload) {
       setError("No match policy to save")
-      setIsSaving(false)
       return
     }
+    setIsSaving(true)
+    setError(null)
     try {
-      await configClient.updateMatchPolicy(payload)
-      setMatchPolicy(payload)
+      await configClient.updateMatchPolicy(deepClone(payload))
+      setMatchPolicy(deepClone(payload))
       setOriginalMatchPolicy(deepClone(payload))
       setSuccess("Match policy saved")
     } catch (_err) {
@@ -133,10 +157,17 @@ export function useConfigState() {
   }
 
   const setQueueSettings = (updates: Partial<QueueSettings>) => {
-    setQueueSettingsState((prev) => ({ ...prev, ...updates }))
+    setQueueSettingsState((prev) => {
+      if (!prev) return null
+      return { ...prev, ...updates }
+    })
   }
 
   const handleSaveQueueSettings = async () => {
+    if (!queueSettings) {
+      setError("No queue settings to save")
+      return
+    }
     setIsSaving(true)
     setError(null)
     try {
@@ -151,19 +182,23 @@ export function useConfigState() {
   }
 
   const handleSaveAISettings = async () => {
+    if (!aiSettings) {
+      setError("No AI settings to save")
+      return
+    }
     setIsSaving(true)
     setError(null)
     try {
       // Preserve any existing per-task settings even if UI doesn't edit them yet
-      const merged = {
+      const merged: AISettings = {
         ...aiSettings,
         worker: {
           ...(aiSettings.worker ?? {}),
-          tasks: aiSettings.worker?.tasks ?? originalAI.worker?.tasks,
+          tasks: aiSettings.worker?.tasks ?? originalAI?.worker?.tasks,
         },
         documentGenerator: {
           ...(aiSettings.documentGenerator ?? {}),
-          tasks: aiSettings.documentGenerator?.tasks ?? originalAI.documentGenerator?.tasks,
+          tasks: aiSettings.documentGenerator?.tasks ?? originalAI?.documentGenerator?.tasks,
         },
       }
 
@@ -178,10 +213,14 @@ export function useConfigState() {
   }
 
   const handleSavePersonalInfo = async () => {
+    if (!personalInfo) {
+      setError("No personal info to save")
+      return
+    }
     setIsSaving(true)
     setError(null)
     try {
-      const saved = await configClient.updatePersonalInfo(personalInfo, user?.email ?? "")
+      const saved = await configClient.updatePersonalInfo(personalInfo)
       setPersonalInfo(saved)
       setOriginalPersonalInfo(deepClone(saved))
       setSuccess("Personal info saved")
@@ -193,23 +232,22 @@ export function useConfigState() {
   }
 
   const updatePersonalInfoState = (updates: Partial<PersonalInfo>) => {
-    setPersonalInfo((prev) => ({
-      ...(prev ?? { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }),
-      ...updates,
-    }))
+    setPersonalInfo((prev) => {
+      if (!prev) return null
+      return { ...prev, ...updates }
+    })
   }
 
   const resetTitleFilter = () => {
+    if (!originalTitleFilter) return null
     const resetValue = deepClone(originalTitleFilter)
     setTitleFilter(resetValue)
     setSuccess(null)
     return resetValue
   }
 
-  const resetMatchPolicy = (): MatchPolicy => {
-    if (!originalMatchPolicy) {
-      throw new Error("Cannot reset match-policy: original config not loaded")
-    }
+  const resetMatchPolicy = (): MatchPolicy | null => {
+    if (!originalMatchPolicy) return null
     const resetValue = deepClone(originalMatchPolicy)
     setMatchPolicy(resetValue)
     setSuccess(null)
@@ -217,18 +255,20 @@ export function useConfigState() {
   }
 
   const resetQueue = () => {
+    if (!originalQueue) return
     setQueueSettingsState(deepClone(originalQueue))
     setSuccess(null)
   }
 
   const resetAI = () => {
+    if (!originalAI) return
     setAISettings(deepClone(originalAI))
     setSuccess(null)
   }
 
   const resetPersonal = () => {
-    const fallback = { ...DEFAULT_PERSONAL_INFO, email: user?.email ?? DEFAULT_PERSONAL_INFO.email }
-    setPersonalInfo(deepClone(originalPersonalInfo ?? fallback))
+    if (!originalPersonalInfo) return
+    setPersonalInfo(deepClone(originalPersonalInfo))
     setSuccess(null)
   }
 
@@ -237,6 +277,7 @@ export function useConfigState() {
     isSaving,
     error,
     success,
+    missingConfigs,
     titleFilter,
     setTitleFilter,
     hasTitleFilterChanges: stableStringify(titleFilter) !== stableStringify(originalTitleFilter),

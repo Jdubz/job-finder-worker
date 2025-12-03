@@ -19,7 +19,6 @@ export type { RequestOptions } from "./base-client"
 export type { JobMatchFilters } from "./job-matches-client"
 export type { JobListingFilters } from "./job-listings-client"
 export type { PromptConfig } from "@shared/types"
-export { DEFAULT_PROMPTS } from "@shared/types"
 export type {
   GenerateDocumentRequest,
   DocumentHistoryItem,

@@ -12,7 +12,6 @@ import type {
   TitleFilterConfig,
   MatchPolicy,
 } from "@shared/types"
-import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO, DEFAULT_TITLE_FILTER } from "@shared/types"
 
 export class ConfigClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
@@ -38,16 +37,9 @@ export class ConfigClient extends BaseApiClient {
   }
 
   async updateQueueSettings(settings: Partial<QueueSettings>): Promise<void> {
-    let existing: QueueSettings
-    try {
-      existing = await this.getQueueSettings()
-    } catch {
-      existing = { processingTimeoutSeconds: 1800 }
-    }
-    await this.updateConfigEntry("queue-settings", {
-      ...existing,
-      ...settings,
-    })
+    // Fetch existing to merge - throws if not configured
+    const existing = await this.getQueueSettings()
+    await this.updateConfigEntry("queue-settings", { ...existing, ...settings })
   }
 
   async getAISettings(): Promise<AISettings> {
@@ -55,37 +47,31 @@ export class ConfigClient extends BaseApiClient {
   }
 
   async updateAISettings(settings: Partial<AISettings>): Promise<void> {
-    let existing: AISettings
-    try {
-      existing = await this.getAISettings()
-    } catch {
-      existing = DEFAULT_AI_SETTINGS
-    }
-    const legacySelected = (settings as Partial<{ selected: AISettings["worker"]["selected"] }>).selected
-
+    // Fetch existing to merge - throws if not configured
+    const existing = await this.getAISettings()
     await this.updateConfigEntry("ai-settings", {
+      ...existing,
       worker: {
+        ...existing.worker,
+        ...settings.worker,
         selected: {
-          ...existing.worker.selected,
-          ...(settings.worker?.selected ?? legacySelected ?? {}),
+          ...existing.worker?.selected,
+          ...settings.worker?.selected,
         },
       },
       documentGenerator: {
+        ...existing.documentGenerator,
+        ...settings.documentGenerator,
         selected: {
-          ...existing.documentGenerator.selected,
-          ...(settings.documentGenerator?.selected ?? legacySelected ?? {}),
+          ...existing.documentGenerator?.selected,
+          ...settings.documentGenerator?.selected,
         },
       },
-      options: existing.options ?? DEFAULT_AI_SETTINGS.options,
     })
   }
 
   async getTitleFilter(): Promise<TitleFilterConfig> {
-    try {
-      return await this.getConfigEntry<TitleFilterConfig>("title-filter")
-    } catch {
-      return DEFAULT_TITLE_FILTER
-    }
+    return this.getConfigEntry<TitleFilterConfig>("title-filter")
   }
 
   async updateTitleFilter(config: TitleFilterConfig): Promise<void> {
@@ -93,7 +79,6 @@ export class ConfigClient extends BaseApiClient {
   }
 
   async getMatchPolicy(): Promise<MatchPolicy> {
-    // No fallback - match-policy is required
     return this.getConfigEntry<MatchPolicy>("match-policy")
   }
 
@@ -115,24 +100,15 @@ export class ConfigClient extends BaseApiClient {
 
   async updatePersonalInfo(
     updates: Partial<PersonalInfo>,
-    userEmail: string
+    userEmail?: string
   ): Promise<PersonalInfo> {
-    let existing: PersonalInfo
-    try {
-      existing = await this.getPersonalInfo()
-    } catch {
-      existing = {
-        ...DEFAULT_PERSONAL_INFO,
-        email: userEmail || DEFAULT_PERSONAL_INFO.email,
-      }
-    }
-
+    // Fetch existing to merge - throws if not configured
+    const existing = await this.getPersonalInfo()
     const payload: PersonalInfo = {
       ...existing,
       ...updates,
-      email: updates.email ?? existing.email ?? userEmail,
+      email: updates.email ?? existing.email ?? userEmail ?? "",
     }
-
     await this.updateConfigEntry("personal-info", payload)
     return payload
   }

@@ -4,8 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { BrowserRouter } from "react-router-dom"
 import { JobFinderConfigPage } from "../JobFinderConfigPage"
 import { configClient } from "@/api/config-client"
-import { DEFAULT_TITLE_FILTER } from "@shared/types"
-import type { MatchPolicy } from "@shared/types"
+import type { MatchPolicy, TitleFilterConfig } from "@shared/types"
 
 vi.mock("@/api/config-client", () => ({
   configClient: {
@@ -33,7 +32,10 @@ vi.mock("@/contexts/AuthContext", () => ({
 const renderWithRouter = (ui: React.ReactElement) =>
   render(<BrowserRouter>{ui}</BrowserRouter>)
 
-const baseTitleFilter = DEFAULT_TITLE_FILTER
+const baseTitleFilter: TitleFilterConfig = {
+  requiredKeywords: ["software", "developer", "engineer"],
+  excludedKeywords: ["intern", "internship"],
+}
 
 // Complete MatchPolicy fixture (no defaults - all sections required)
 const baseMatchPolicy: MatchPolicy = {

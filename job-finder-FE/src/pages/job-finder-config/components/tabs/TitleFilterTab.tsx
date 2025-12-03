@@ -5,7 +5,6 @@ import { Form } from "@/components/ui/form"
 import { TabCard } from "../shared"
 import { StringListField, ImpactBadge } from "../shared/form-fields"
 import type { TitleFilterConfig } from "@shared/types"
-import { DEFAULT_TITLE_FILTER } from "@shared/types"
 
 type TitleFilterFormValues = {
   requiredKeywords: string[]
@@ -14,16 +13,16 @@ type TitleFilterFormValues = {
 
 type TitleFilterTabProps = {
   isSaving: boolean
-  config: TitleFilterConfig
+  config: TitleFilterConfig | null
   onSave: (config: TitleFilterConfig) => Promise<void> | void
-  onReset: () => TitleFilterConfig
+  onReset: () => TitleFilterConfig | null
 }
 
 const cleanList = (items: string[]) => items.map((item) => item.trim()).filter(Boolean)
 
-const mapConfigToForm = (config?: TitleFilterConfig): TitleFilterFormValues => ({
-  requiredKeywords: config?.requiredKeywords ?? DEFAULT_TITLE_FILTER?.requiredKeywords ?? [],
-  excludedKeywords: config?.excludedKeywords ?? DEFAULT_TITLE_FILTER?.excludedKeywords ?? [],
+const mapConfigToForm = (config: TitleFilterConfig | null): TitleFilterFormValues => ({
+  requiredKeywords: config?.requiredKeywords ?? [],
+  excludedKeywords: config?.excludedKeywords ?? [],
 })
 
 const mapFormToConfig = (values: TitleFilterFormValues): TitleFilterConfig => ({
@@ -33,12 +32,12 @@ const mapFormToConfig = (values: TitleFilterFormValues): TitleFilterConfig => ({
 
 export function TitleFilterTab({ isSaving, config, onSave, onReset }: TitleFilterTabProps) {
   const form = useForm<TitleFilterFormValues>({
-    defaultValues: mapConfigToForm(config ?? DEFAULT_TITLE_FILTER),
+    defaultValues: mapConfigToForm(config),
     mode: "onChange",
   })
 
   useEffect(() => {
-    form.reset(mapConfigToForm(config ?? DEFAULT_TITLE_FILTER))
+    form.reset(mapConfigToForm(config))
   }, [config, form])
 
   const handleSubmit = async (values: TitleFilterFormValues) => {
@@ -49,7 +48,20 @@ export function TitleFilterTab({ isSaving, config, onSave, onReset }: TitleFilte
 
   const handleReset = () => {
     const resetValue = onReset()
-    form.reset(mapConfigToForm(resetValue ?? config ?? DEFAULT_TITLE_FILTER))
+    form.reset(mapConfigToForm(resetValue))
+  }
+
+  if (!config) {
+    return (
+      <TabsContent value="title-filter" className="space-y-4 mt-4">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
+          <h3 className="text-lg font-semibold text-destructive">Configuration Missing</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The title-filter configuration is not set in the database. Please add it before using this feature.
+          </p>
+        </div>
+      </TabsContent>
+    )
   }
 
   return (

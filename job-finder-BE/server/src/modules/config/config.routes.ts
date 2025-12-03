@@ -15,12 +15,6 @@ import type {
 } from '@shared/types'
 import {
   ApiErrorCode,
-  DEFAULT_QUEUE_SETTINGS,
-  DEFAULT_AI_SETTINGS,
-  DEFAULT_PROMPTS,
-  AI_PROVIDER_OPTIONS,
-  DEFAULT_WORKER_SETTINGS,
-  DEFAULT_TITLE_FILTER,
   isQueueSettings,
   isAISettings,
   isPersonalInfo,
@@ -48,9 +42,10 @@ type KnownPayload =
   | Record<string, unknown>
 
 /**
- * Check provider availability based on API keys and CLI auth status
+ * Check provider availability based on API keys and CLI auth status.
+ * Takes the configured options from DB and adds availability info.
  */
-function buildProviderOptionsWithAvailability() {
+function buildProviderOptionsWithAvailability(configuredOptions: AISettings['options']) {
   const availability: Record<string, { enabled: boolean; reason?: string }> = {}
 
   // Codex CLI - check login status
@@ -79,7 +74,7 @@ function buildProviderOptionsWithAvailability() {
   const geminiEnabled = !!(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)
   availability['gemini/api'] = { enabled: geminiEnabled, reason: geminiEnabled ? undefined : 'GOOGLE_API_KEY or GEMINI_API_KEY not set' }
 
-  return AI_PROVIDER_OPTIONS.map((provider) => ({
+  return configuredOptions.map((provider) => ({
     ...provider,
     interfaces: provider.interfaces.map((iface) => {
       const status = availability[`${provider.value}/${iface.value}`]
@@ -101,69 +96,19 @@ function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>):
   return Object.fromEntries(entries) as T
 }
 
-function seedDefaults(repo: ConfigRepository) {
-  const seeds: Array<[JobFinderConfigId, KnownPayload]> = [
-    ['queue-settings', DEFAULT_QUEUE_SETTINGS],
-    ['ai-settings', DEFAULT_AI_SETTINGS],
-    ['title-filter', DEFAULT_TITLE_FILTER],
-    // NOTE: match-policy is NOT seeded - it must be configured explicitly
-    // to prevent silent gaps between config and implementation
-    ['ai-prompts', DEFAULT_PROMPTS],
-    // We deliberately do not seed worker-settings; prod DB already holds them.
-  ]
-
-  for (const [id, payload] of seeds) {
-    if (!repo.get(id)) {
-      repo.upsert(id, payload)
-    }
-  }
-}
-
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
   switch (id) {
-    case 'queue-settings': {
-      const normalized = normalizeKeys<QueueSettings>(payload)
-      return {
-        ...DEFAULT_QUEUE_SETTINGS,
-        ...normalized,
-      }
-    }
-    case 'ai-settings': {
-      const normalized = normalizeKeys<Partial<AISettings>>(payload)
-      const legacySelected = (normalized as any).selected
-      const mergedWorkerSelected = {
-        ...DEFAULT_AI_SETTINGS.worker.selected,
-        ...(normalized.worker?.selected ?? legacySelected ?? {}),
-      }
-      const mergedDocSelected = {
-        ...DEFAULT_AI_SETTINGS.documentGenerator.selected,
-        ...(normalized.documentGenerator?.selected ?? legacySelected ?? {}),
-      }
-      return {
-        worker: { selected: mergedWorkerSelected },
-        documentGenerator: { selected: mergedDocSelected },
-        options: AI_PROVIDER_OPTIONS,
-      }
-    }
-    case 'title-filter': {
-      const normalized = normalizeKeys<TitleFilterConfig>(payload)
-      return {
-        ...DEFAULT_TITLE_FILTER,
-        ...normalized,
-      }
-    }
-    case 'match-policy': {
-      // No defaults for match-policy - it must be complete
-      // Validation happens in validatePayload
-      const normalized = normalizeKeys<MatchPolicy>(payload)
-      return normalized
-    }
+    case 'queue-settings':
+      return normalizeKeys<QueueSettings>(payload)
+    case 'ai-settings':
+      return normalizeKeys<AISettings>(payload)
+    case 'title-filter':
+      return normalizeKeys<TitleFilterConfig>(payload)
+    case 'match-policy':
+      return normalizeKeys<MatchPolicy>(payload)
+    case 'worker-settings':
+      return normalizeKeys<WorkerSettings>(payload)
     case 'ai-prompts':
-      return payload
-    case 'worker-settings': {
-      const normalized = normalizeKeys<WorkerSettings>(payload)
-      return { ...DEFAULT_WORKER_SETTINGS, ...normalized }
-    }
     case 'personal-info':
     default:
       return payload
@@ -211,9 +156,6 @@ export function buildConfigRouter() {
   const router = Router()
   const repo = new ConfigRepository()
 
-  // Ensure required configs exist with sensible defaults
-  seedDefaults(repo)
-
   router.get(
     '/',
     asyncHandler((_req, res) => {
@@ -226,30 +168,28 @@ export function buildConfigRouter() {
     '/:id',
     asyncHandler((req, res) => {
       const id = req.params.id as JobFinderConfigId
-      const userEmail = (req as typeof req & { user?: { email?: string } }).user?.email ?? null
 
-      let entry = repo.get(id)
-
-      // Auto-create personal-info with defaults to avoid 404s in settings UI
-      if (!entry && id === 'personal-info') {
-        entry = repo.upsert(id, { name: '', email: userEmail ?? '', accentColor: '#3b82f6' }, { updatedBy: userEmail ?? undefined })
-      }
+      const entry = repo.get(id)
 
       if (!entry) {
-        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Config not found'))
+        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, `Config '${id}' not found - must be configured before use`))
         return
       }
 
       // For ai-settings, populate provider/interface availability dynamically
       if (id === 'ai-settings') {
         const aiPayload = entry.payload as AISettings
-        entry = {
-          ...entry,
-          payload: {
-            ...aiPayload,
-            options: buildProviderOptionsWithAvailability(),
+        const response: GetConfigEntryResponse = {
+          config: {
+            ...entry,
+            payload: {
+              ...aiPayload,
+              options: buildProviderOptionsWithAvailability(aiPayload.options),
+            },
           },
         }
+        res.json(success(response))
+        return
       }
 
       const response: GetConfigEntryResponse = { config: entry }
