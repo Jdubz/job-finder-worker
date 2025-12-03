@@ -18,31 +18,9 @@ import os
 from functools import lru_cache
 from typing import Any, Dict, Optional
 
-logger = logging.getLogger(__name__)
+from job_finder.exceptions import InitializationError
 
-# Default values (fallback if DB not available)
-DEFAULT_WORKER_SETTINGS: Dict[str, Any] = {
-    "scraping": {
-        "requestTimeoutSeconds": 30,
-        "maxHtmlSampleLength": 20000,
-    },
-    "textLimits": {
-        "minCompanyPageLength": 200,
-        "minSparseCompanyInfoLength": 100,
-        "maxIntakeTextLength": 500,
-        "maxIntakeDescriptionLength": 2000,
-        "maxIntakeFieldLength": 400,
-        "maxDescriptionPreviewLength": 500,
-        "maxCompanyInfoTextLength": 1000,
-    },
-    "runtime": {
-        "processingTimeoutSeconds": 1800,
-        "isProcessingEnabled": True,
-        "taskDelaySeconds": 1,
-        "pollIntervalSeconds": 60,
-        "scrapeConfig": {},
-    },
-}
+logger = logging.getLogger(__name__)
 
 
 def _get_db_path() -> Optional[str]:
@@ -65,8 +43,7 @@ def get_worker_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
     """
     db = db_path or _get_db_path()
     if not db:
-        logger.debug("No database path available, using default worker settings")
-        return DEFAULT_WORKER_SETTINGS
+        raise InitializationError("SQLITE_DB_PATH not set; cannot load worker-settings")
 
     try:
         from job_finder.job_queue.config_loader import ConfigLoader
@@ -76,8 +53,9 @@ def get_worker_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
         logger.debug("Loaded worker settings from database")
         return settings
     except Exception as e:
-        logger.warning(f"Failed to load worker settings from DB: {e}, using defaults")
-        return DEFAULT_WORKER_SETTINGS
+        # Fail loudly to surface config mismatches early
+        logger.error(f"Failed to load worker settings from DB: {e}")
+        raise
 
 
 def clear_settings_cache() -> None:

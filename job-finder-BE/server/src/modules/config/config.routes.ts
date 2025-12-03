@@ -12,16 +12,7 @@ import type {
   MatchPolicy,
   PreFilterPolicy,
 } from '@shared/types'
-import {
-  ApiErrorCode,
-  DEFAULT_AI_SETTINGS,
-  AI_PROVIDER_OPTIONS,
-  isAISettings,
-  isPersonalInfo,
-  isWorkerSettings,
-  isMatchPolicy,
-  isPreFilterPolicy,
-} from '@shared/types'
+import { ApiErrorCode, DEFAULT_AI_SETTINGS, AI_PROVIDER_OPTIONS, isAISettings, isPersonalInfo, isWorkerSettings, isMatchPolicy, isPreFilterPolicy } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'

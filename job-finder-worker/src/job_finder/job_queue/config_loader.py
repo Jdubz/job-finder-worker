@@ -96,7 +96,9 @@ class ConfigLoader:
         runtime = settings.get("runtime")
         if not isinstance(runtime, dict):
             raise InitializationError("worker-settings.runtime missing or invalid")
-        return bool(runtime.get("isProcessingEnabled", True))
+        if "isProcessingEnabled" not in runtime:
+            raise InitializationError("worker-settings.runtime.isProcessingEnabled missing")
+        return bool(runtime.get("isProcessingEnabled"))
 
     def get_ai_settings(self) -> Dict[str, Any]:
         """Get AI provider configuration (provider selection only)."""
@@ -264,5 +266,14 @@ class ConfigLoader:
                 f"worker-settings missing required sections: {missing}. "
                 "Update the worker-settings config record to include all required fields."
             )
+
+        runtime = settings.get("runtime")
+        if not isinstance(runtime, dict):
+            raise InitializationError("worker-settings.runtime missing or invalid")
+
+        # Validate required runtime keys (fail loud on schema drift)
+        for key in ["processingTimeoutSeconds", "isProcessingEnabled", "taskDelaySeconds", "pollIntervalSeconds"]:
+            if key not in runtime:
+                raise InitializationError(f"worker-settings.runtime.{key} missing")
 
         return settings
