@@ -786,9 +786,6 @@ class JobProcessor(BaseProcessor):
 
         company_id = company.get("id")
         company_name = ctx.job_data.get("company", "")
-        company_website = ctx.job_data.get("company_website") or self._extract_company_domain(
-            ctx.item.url
-        )
 
         if not company_id or not company_name:
             return
@@ -797,10 +794,23 @@ class JobProcessor(BaseProcessor):
         if self.companies_manager.has_good_company_data(company):
             return
 
+        # Get company website, but reject aggregator URLs
+        company_website = ctx.job_data.get("company_website", "")
+        if company_website and self._is_job_board_url(company_website):
+            company_website = ""
+
+        # Don't fall back to extracting domain from job URL - that would give us
+        # the aggregator domain for aggregator jobs
+
+        # Use company-specific placeholder URL for uniqueness in the queue
+        # This allows multiple companies to be queued even without knowing their website
+        if company_website:
+            company_url = company_website
+        else:
+            # Use a search query URL that's unique per company name
+            company_url = f"https://www.google.com/search?q={quote_plus(company_name)}+company"
+
         try:
-            company_url = (
-                company_website or f"https://www.google.com/search?q={quote_plus(company_name)}"
-            )
             self.queue_manager.spawn_item_safely(
                 current_item=ctx.item,
                 new_item_data={
@@ -1079,7 +1089,11 @@ class JobProcessor(BaseProcessor):
     def _spawn_company_and_source(self, item: JobQueueItem, job_data: Dict[str, Any]) -> None:
         """Ensure company stub exists and spawn COMPANY and SOURCE_DISCOVERY tasks."""
         company_name = job_data.get("company") or item.company_name or "Unknown"
-        company_website = job_data.get("company_website") or self._extract_company_domain(item.url)
+
+        # Get company website, but reject aggregator URLs
+        company_website = job_data.get("company_website", "")
+        if company_website and self._is_job_board_url(company_website):
+            company_website = ""
 
         company = self.companies_manager.get_company(
             company_name
@@ -1090,8 +1104,10 @@ class JobProcessor(BaseProcessor):
         # Spawn company enrichment task
         if company_id:
             try:
+                # Use company website if available, otherwise use a search query unique per company
                 company_url = (
-                    company_website or f"https://www.google.com/search?q={quote_plus(company_name)}"
+                    company_website
+                    or f"https://www.google.com/search?q={quote_plus(company_name)}+company"
                 )
                 self.queue_manager.spawn_item_safely(
                     item,
@@ -1106,20 +1122,21 @@ class JobProcessor(BaseProcessor):
             except Exception as e:
                 logger.warning("Failed to spawn company task for %s: %s", company_name, e)
 
-        # Spawn source discovery task
-        try:
-            self.queue_manager.spawn_item_safely(
-                item,
-                {
-                    "type": QueueItemType.SOURCE_DISCOVERY,
-                    "url": job_data.get("company_website") or job_data.get("url") or item.url,
-                    "company_name": company_name,
-                    "company_id": company_id,
-                    "source": item.source,
-                },
-            )
-        except Exception as e:
-            logger.warning("Failed to spawn source discovery for %s: %s", company_name, e)
+        # Spawn source discovery task - only if we have a non-aggregator company website
+        if company_website:
+            try:
+                self.queue_manager.spawn_item_safely(
+                    item,
+                    {
+                        "type": QueueItemType.SOURCE_DISCOVERY,
+                        "url": company_website,
+                        "company_name": company_name,
+                        "company_id": company_id,
+                        "source": item.source,
+                    },
+                )
+            except Exception as e:
+                logger.warning("Failed to spawn source discovery for %s: %s", company_name, e)
 
     # ============================================================
     # JOB SCRAPING METHODS
