@@ -916,7 +916,7 @@ class JobProcessor(BaseProcessor):
         self, ctx: PipelineContext, filter_type: str, rejection_reason: str
     ) -> None:
         """
-        Finalize pipeline with FILTERED status due to early filter rejection.
+        Finalize pipeline with FILTERED queue status due to early filter rejection.
 
         Used for both title filter and prefilter rejections. Filtered jobs are NOT
         stored in job_listings - they are rejected before the listing is created.
@@ -941,19 +941,6 @@ class JobProcessor(BaseProcessor):
             logger.info(f"[PIPELINE] FILTERED: '{title}' - {rejection_reason}")
             status_message = f"Rejected: {rejection_reason}"
 
-        # Note: No listing created for filtered jobs - filters run before listing creation
-        # If listing_id exists (legacy item), update its status
-        if ctx.listing_id:
-            filter_result: Dict[str, Any] = {
-                "titleFilter": (
-                    ctx.title_filter_result.to_dict() if ctx.title_filter_result else {}
-                )
-            }
-            if ctx.prefilter_result:
-                filter_result["prefilter"] = ctx.prefilter_result.to_dict()
-
-            self._update_listing_status(ctx.listing_id, "filtered", filter_result=filter_result)
-
         # Spawn company/source tasks even for filtered jobs
         self._spawn_company_and_source(ctx.item, job_data)
 
@@ -972,7 +959,7 @@ class JobProcessor(BaseProcessor):
         self._finalize_early_rejection(ctx, "title", rejection_reason)
 
     def _finalize_prefiltered(self, ctx: PipelineContext) -> None:
-        """Finalize pipeline with FILTERED status due to prefilter rejection (prefiltered jobs are NOT stored in job_listings)."""
+        """Finalize pipeline with FILTERED queue status due to prefilter rejection."""
         rejection_reason = (
             ctx.prefilter_result.reason if ctx.prefilter_result else "Prefilter rejected"
         )

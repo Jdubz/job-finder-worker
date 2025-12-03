@@ -213,7 +213,10 @@ class JobListingStorage:
         """
         Update job listing status.
 
-        Valid statuses: pending, filtered, analyzing, analyzed, skipped, matched
+        Valid statuses: pending, analyzing, analyzed, skipped, matched
+
+        Note: There is no "filtered" status - jobs that fail prefilter are never
+        created as listings. Filtering happens at intake before listing creation.
 
         When analysis_result is provided, also extracts and saves match_score
         directly for efficient querying/sorting.
