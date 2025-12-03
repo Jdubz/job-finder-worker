@@ -156,6 +156,10 @@ export interface PreFilterWorkArrangementConfig {
    * extract nuances like timezone compatibility or "onsite with remote option".
    */
   allowOnsite: boolean
+  /** Whether the user is willing to relocate for onsite/hybrid roles */
+  willRelocate?: boolean
+  /** User's preferred location for onsite/hybrid roles (e.g., "Portland, OR") */
+  userLocation?: string
 }
 
 /** Employment type filtering */

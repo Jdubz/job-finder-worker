@@ -28,6 +28,8 @@ const mapToForm = (config?: PreFilterPolicy): PreFilterPolicy => ({
     allowRemote: config?.workArrangement.allowRemote ?? true,
     allowHybrid: config?.workArrangement.allowHybrid ?? true,
     allowOnsite: config?.workArrangement.allowOnsite ?? true,
+    willRelocate: config?.workArrangement.willRelocate ?? true,
+    userLocation: config?.workArrangement.userLocation ?? "",
   },
   employmentType: {
     allowFullTime: config?.employmentType.allowFullTime ?? true,
@@ -72,6 +74,8 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
         allowRemote: Boolean(values.workArrangement.allowRemote),
         allowHybrid: Boolean(values.workArrangement.allowHybrid),
         allowOnsite: Boolean(values.workArrangement.allowOnsite),
+        willRelocate: Boolean(values.workArrangement.willRelocate),
+        userLocation: (values.workArrangement.userLocation ?? "").trim(),
       },
       employmentType: {
         allowFullTime: Boolean(values.employmentType.allowFullTime),
@@ -206,6 +210,32 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
                     )}
                   />
                 </div>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="workArrangement.willRelocate"
+                    render={({ field }) => (
+                      <CheckboxRow
+                        label="Open to Relocation"
+                        description="If unchecked, onsite/hybrid must match your city below."
+                        field={field}
+                      />
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="workArrangement.userLocation"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Your City, State</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Portland, OR" {...field} />
+                        </FormControl>
+                        <FormDescription>Used to gate onsite/hybrid when relocation is off.</FormDescription>
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </section>
 
               <section className="space-y-4">
@@ -262,4 +292,3 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
     </TabsContent>
   )
 }
-
