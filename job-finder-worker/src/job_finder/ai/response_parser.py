@@ -37,12 +37,20 @@ def extract_json_from_response(response: str) -> str:
         if end > start:
             return cleaned[start:end].strip()
 
-    # Handle generic ``` ... ``` blocks by finding JSON object
+    # Handle generic ``` ... ``` blocks by finding JSON object or array
     if cleaned.startswith("```"):
-        json_start = cleaned.find("{")
-        json_end = cleaned.rfind("}")
-        if json_start != -1 and json_end > json_start:
-            return cleaned[json_start : json_end + 1]
+        obj_start = cleaned.find("{")
+        arr_start = cleaned.find("[")
+        if obj_start != -1 and (arr_start == -1 or obj_start < arr_start):
+            # It's a JSON object
+            end = cleaned.rfind("}")
+            if end > obj_start:
+                return cleaned[obj_start : end + 1]
+        elif arr_start != -1:
+            # It's a JSON array
+            end = cleaned.rfind("]")
+            if end > arr_start:
+                return cleaned[arr_start : end + 1]
 
     # Handle ``` blocks that don't start at the beginning
     if "```" in cleaned:

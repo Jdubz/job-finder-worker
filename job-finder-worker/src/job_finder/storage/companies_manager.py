@@ -80,12 +80,18 @@ class CompaniesManager:
             return None
 
         # Use sources_manager for database-driven job board detection
-        if self.sources_manager and self.sources_manager.is_job_board_url(website):
-            logger.warning(
-                "Rejecting aggregator URL as company website: %s",
+        if self.sources_manager:
+            if self.sources_manager.is_job_board_url(website):
+                logger.warning(
+                    "Rejecting aggregator URL as company website: %s",
+                    website,
+                )
+                return None
+        else:
+            logger.debug(
+                "Skipping aggregator URL validation for '%s' - sources_manager not provided",
                 website,
             )
-            return None
 
         return website
 
