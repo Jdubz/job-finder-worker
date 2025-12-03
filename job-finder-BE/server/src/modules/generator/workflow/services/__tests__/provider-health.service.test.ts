@@ -1,14 +1,38 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('node:child_process', () => ({ execFile: vi.fn() }))
+var execFileMock: ReturnType<typeof vi.fn>
+
+vi.mock('node:child_process', () => {
+  execFileMock = vi.fn()
+  const execFileProxy = (...args: any[]) => execFileMock(...args)
+  return { __esModule: true, execFile: execFileProxy, default: { execFile: execFileProxy } }
+})
+vi.mock('node:util', () => ({
+  promisify: (fn: any) =>
+    (...args: any[]) =>
+      new Promise((resolve, reject) => {
+        fn(...args, (err: any, stdout: any, stderr: any) => {
+          if (err) {
+            reject(err)
+          } else {
+            resolve({ stdout, stderr })
+          }
+        })
+      })
+}))
+
 import { ensureCliProviderHealthy } from '../provider-health.service'
-import { execFile } from 'node:child_process'
-
-const execFileMock = execFile as unknown as ReturnType<typeof vi.fn>
 
 describe('ensureCliProviderHealthy', () => {
+  beforeEach(() => {
+    if (!execFileMock) {
+      execFileMock = vi.fn()
+    }
+    execFileMock.mockReset()
+  })
+
   afterEach(() => {
-    vi.resetAllMocks()
+    execFileMock?.mockReset()
   })
 
   it('passes through when provider has no health check', async () => {
