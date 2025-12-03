@@ -28,6 +28,9 @@ DEFAULT_HEADERS = {
     "Accept": "application/json, text/html, */*",
 }
 
+# Safety guard: avoid unbounded N+1 requests when follow_detail is enabled
+MAX_DETAIL_ENRICH = 25
+
 
 class GenericScraper:
     """
@@ -81,13 +84,24 @@ class GenericScraper:
 
             # Parse each item into standardized job format
             jobs = []
+            detail_enriched = 0
             for item in data:
                 try:
                     job = self._extract_fields(item)
 
                     # Optional detail-page enrichment for HTML aggregators (e.g., builtin.com)
-                    if self.config.type == "html" and self.config.follow_detail:
+                    if (
+                        self.config.type == "html"
+                        and self.config.follow_detail
+                        and detail_enriched < MAX_DETAIL_ENRICH
+                    ):
                         job = self._enrich_from_detail(job)
+                        detail_enriched += 1
+                    elif self.config.follow_detail and detail_enriched >= MAX_DETAIL_ENRICH:
+                        logger.info(
+                            "Skipping detail enrichment after %s jobs to avoid over-fetching",
+                            MAX_DETAIL_ENRICH,
+                        )
 
                     if job.get("title") and job.get("url"):
                         jobs.append(job)
