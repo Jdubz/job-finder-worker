@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 from job_finder.ai.search_client import get_search_client, SearchResult
 from job_finder.company_info_fetcher import CompanyInfoFetcher
+from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.job_queue.manager import QueueManager
 from job_finder.logging_config import format_company_name
@@ -197,25 +198,32 @@ class CompanyProcessor(BaseProcessor):
                     )
 
                     # Use spawn_item_safely for proper lineage tracking and dedup
-                    spawned_id = self.queue_manager.spawn_item_safely(
-                        current_item=item,
-                        new_item_data={
-                            "type": QueueItemType.SOURCE_DISCOVERY,
-                            "url": job_board_url,
-                            "company_name": company_name,
-                            "company_id": company_id,
-                            "source": "automated_scan",
-                            "source_discovery_config": discovery_config,
-                        },
-                    )
-
-                    if spawned_id:
-                        source_spawned = True
-                        logger.info(
-                            f"Spawned SOURCE_DISCOVERY for {company_display}: {job_board_url}"
+                    try:
+                        spawned_id = self.queue_manager.spawn_item_safely(
+                            current_item=item,
+                            new_item_data={
+                                "type": QueueItemType.SOURCE_DISCOVERY,
+                                "url": job_board_url,
+                                "company_name": company_name,
+                                "company_id": company_id,
+                                "source": "automated_scan",
+                                "source_discovery_config": discovery_config,
+                            },
                         )
-                    else:
-                        logger.info(f"SOURCE_DISCOVERY blocked by spawn rules for {job_board_url}")
+
+                        if spawned_id:
+                            source_spawned = True
+                            logger.info(
+                                f"Spawned SOURCE_DISCOVERY for {company_display}: {job_board_url}"
+                            )
+                        else:
+                            logger.info(
+                                f"SOURCE_DISCOVERY blocked by spawn rules for {job_board_url}"
+                            )
+                    except DuplicateQueueItemError:
+                        logger.debug(
+                            f"SOURCE_DISCOVERY already queued for {job_board_url}"
+                        )
                 else:
                     logger.info(
                         "Source already exists for %s (source_id=%s)",
@@ -278,6 +286,20 @@ class CompanyProcessor(BaseProcessor):
         """
         # If provided URL is a job board, that's what we want for source discovery
         if provided_url and self.company_info_fetcher._is_job_board_url(provided_url):
+            # Skip aggregator root URLs (just domain, no meaningful path)
+            # These are already known sources, not company-specific career pages
+            try:
+                parsed = urlparse(provided_url)
+                path = parsed.path.strip("/")
+                # If there's no path or just a single segment, it's likely a root/homepage
+                # We want actual job listing pages like /jobs, /careers, /remote-jobs/company-name
+                if not path or "/" not in path:
+                    logger.debug(
+                        f"Skipping aggregator root URL for source discovery: {provided_url}"
+                    )
+                    return None
+            except Exception:
+                pass
             return provided_url
 
         return None

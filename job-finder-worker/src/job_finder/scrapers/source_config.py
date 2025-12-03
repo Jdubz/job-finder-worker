@@ -60,6 +60,11 @@ class SourceConfig:
     validation_policy: str = "fail_on_empty"  # "fail_on_empty" | "allow_empty"
     disabled_notes: str = ""
 
+    # Company extraction strategy
+    # "from_title" - parse "Company: Job Title" format (common for aggregators like WeWorkRemotely)
+    # "from_description" - extract company website URL from description HTML
+    company_extraction: str = ""  # "" | "from_title" | "from_description"
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any], company_name: Optional[str] = None) -> "SourceConfig":
         """
@@ -90,6 +95,7 @@ class SourceConfig:
             base_url=data.get("base_url", ""),
             validation_policy=data.get("validation_policy", "fail_on_empty"),
             disabled_notes=data.get("disabled_notes", ""),
+            company_extraction=data.get("company_extraction", ""),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -129,6 +135,8 @@ class SourceConfig:
             result["validation_policy"] = self.validation_policy
         if self.disabled_notes:
             result["disabled_notes"] = self.disabled_notes
+        if self.company_extraction:
+            result["company_extraction"] = self.company_extraction
 
         return result
 

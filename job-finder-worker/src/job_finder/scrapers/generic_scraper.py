@@ -284,6 +284,25 @@ class GenericScraper:
             if url.startswith("/"):
                 job["url"] = f"{self.config.base_url}{url}"
 
+        # Apply company extraction strategy if company is still empty
+        if not job.get("company") and self.config.company_extraction:
+            if self.config.company_extraction == "from_title" and job.get("title"):
+                extracted = self._extract_company_from_title(job["title"])
+                if extracted:
+                    company_name, job_title = extracted
+                    job["company"] = sanitize_company_name(company_name)
+                    job["title"] = sanitize_title(job_title)
+
+        # Extract company website from description if configured
+        if (
+            self.config.company_extraction in ("from_title", "from_description")
+            and not job.get("company_website")
+            and job.get("description")
+        ):
+            website = self._extract_company_website_from_description(job["description"])
+            if website:
+                job["company_website"] = website
+
         # Ensure required fields have defaults (empty string, not "Unknown")
         if not job.get("company"):
             job["company"] = ""
@@ -297,6 +316,75 @@ class GenericScraper:
             job["company_website"] = ""
 
         return job
+
+    def _extract_company_from_title(self, title: str) -> Optional[tuple]:
+        """
+        Extract company name from 'Company: Job Title' format.
+
+        Common in aggregator feeds like WeWorkRemotely, where titles are
+        formatted as "Toptal: Android Developer".
+
+        Args:
+            title: Full title string
+
+        Returns:
+            Tuple of (company_name, job_title) if pattern matches, None otherwise
+        """
+        if not title or ":" not in title:
+            return None
+
+        # Split on first colon only
+        parts = title.split(":", 1)
+        if len(parts) != 2:
+            return None
+
+        company = parts[0].strip()
+        job_title = parts[1].strip()
+
+        # Validate we got reasonable values
+        if not company or not job_title:
+            return None
+
+        # Avoid false positives - company names are typically short
+        # If "company" part is very long, it's probably not a company name
+        if len(company) > 100:
+            return None
+
+        return (company, job_title)
+
+    def _extract_company_website_from_description(self, description: str) -> Optional[str]:
+        """
+        Extract company website URL from description HTML.
+
+        WeWorkRemotely descriptions contain company URLs in format:
+        <strong>URL:</strong> <a href="https://company.com">https://company.com</a>
+
+        Args:
+            description: HTML description text
+
+        Returns:
+            Company website URL if found, None otherwise
+        """
+        if not description:
+            return None
+
+        # Pattern to match URL field in WeWorkRemotely format
+        # Handles both encoded (&lt;) and decoded (<) HTML
+        patterns = [
+            r'URL:</strong>\s*<a\s+href="(https?://[^"]+)"',
+            r"URL:&lt;/strong&gt;\s*&lt;a\s+href=&quot;(https?://[^&]+)&quot;",
+            r'URL:</strong>\s*<a href="(https?://[^"]+)"',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, description, re.IGNORECASE)
+            if match:
+                url = match.group(1)
+                # Basic validation - must look like a real URL
+                if url and len(url) < 200 and "." in url:
+                    return url
+
+        return None
 
     def _get_value(self, item: Any, path: str) -> Optional[Any]:
         """
