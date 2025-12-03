@@ -286,20 +286,22 @@ describe("Content items", () => {
 })
 
 describe("Configuration flows", () => {
-  it("updates title filter, scoring config, queue settings, AI settings, and personal info", async () => {
+  it("updates prefilter policy, match policy, worker runtime, AI settings, and personal info", async () => {
     const { configClient } = await initFrontendClients()
     const userEmail = "ops@jobfinder.dev"
 
-    // Title filter replaces prefilter-policy
-    const existingTitleFilter = await configClient.getTitleFilter()
-    await configClient.updateTitleFilter({
-      ...existingTitleFilter,
-      requiredKeywords: [...(existingTitleFilter?.requiredKeywords ?? []), "engineer"],
-      excludedKeywords: [...(existingTitleFilter?.excludedKeywords ?? []), "intern"],
+    const existingPrefilter = await configClient.getPrefilterPolicy()
+    await configClient.updatePrefilterPolicy({
+      ...existingPrefilter,
+      title: {
+        ...(existingPrefilter?.title ?? { requiredKeywords: [], excludedKeywords: [] }),
+        requiredKeywords: [...(existingPrefilter?.title.requiredKeywords ?? []), "engineer"],
+        excludedKeywords: [...(existingPrefilter?.title.excludedKeywords ?? []), "intern"],
+      },
     })
-    const titleFilter = await configClient.getTitleFilter()
-    expect(titleFilter?.requiredKeywords).toContain("engineer")
-    expect(titleFilter?.excludedKeywords).toContain("intern")
+    const prefilter = await configClient.getPrefilterPolicy()
+    expect(prefilter.title.requiredKeywords).toContain("engineer")
+    expect(prefilter.title.excludedKeywords).toContain("intern")
 
     // Match policy (not seeded by default - must create a complete config)
     const testMatchPolicy = {

@@ -975,7 +975,7 @@ class JobProcessor(BaseProcessor):
         """
         Finalize pipeline with FILTERED status due to prefilter rejection.
 
-        Like title-filtered jobs, prefiltered jobs are NOT stored in job_listings.
+        Prefiltered jobs are NOT stored in job_listings.
         Uses the same FILTERED status since both are early filtering stages.
         """
         job_data = ctx.job_data or {}

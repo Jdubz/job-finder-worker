@@ -123,23 +123,13 @@ def test_queue_scrape_end_to_end(temp_db):
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
-                "title-filter",
-                json.dumps(
-                    {
-                        "requiredKeywords": ["engineer", "developer", "pipeline"],
-                        "excludedKeywords": [],
-                    }
-                ),
-                now_iso,
-            ),
-        )
-        conn.execute(
-            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
-            (
                 "prefilter-policy",
                 json.dumps(
                     {
-                        "title": {"requiredKeywords": [], "excludedKeywords": []},
+                        "title": {
+                            "requiredKeywords": ["engineer", "developer", "pipeline"],
+                            "excludedKeywords": [],
+                        },
                         "freshness": {"maxAgeDays": 60},
                         "workArrangement": {
                             "allowRemote": True,

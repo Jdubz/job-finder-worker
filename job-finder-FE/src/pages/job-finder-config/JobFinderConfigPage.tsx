@@ -4,16 +4,16 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { useConfigState } from "./hooks/useConfigState"
-import { QueueSettingsTab, AISettingsTab, PersonalInfoTab, TitleFilterTab, MatchPolicyTab } from "./components/tabs"
+import { QueueSettingsTab, AISettingsTab, PersonalInfoTab, PrefilterPolicyTab, MatchPolicyTab } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
 
-type TabType = "title-filter" | "scoring" | "queue" | "ai" | "personal"
+type TabType = "prefilter" | "scoring" | "queue" | "ai" | "personal"
 
 export function JobFinderConfigPage() {
   const { user, isOwner } = useAuth()
   const configState = useConfigState()
   const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = (searchParams.get("tab") as TabType | null) ?? "title-filter"
+  const initialTab = (searchParams.get("tab") as TabType | null) ?? "prefilter"
   const [activeTab, setActiveTab] = useState<TabType>(initialTab)
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export function JobFinderConfigPage() {
   }, [searchParams, activeTab])
 
   const handleTabChange = (value: string) => {
-    const tabValue = (value as TabType) ?? "title-filter"
+    const tabValue = (value as TabType) ?? "prefilter"
     setActiveTab(tabValue)
     const params = new URLSearchParams(searchParams)
     params.set("tab", tabValue)
@@ -83,7 +83,7 @@ export function JobFinderConfigPage() {
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="title-filter">Pre-Filter</TabsTrigger>
+          <TabsTrigger value="prefilter">Pre-Filter</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="queue">Worker Runtime</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
@@ -91,16 +91,11 @@ export function JobFinderConfigPage() {
         </TabsList>
 
         <div className="space-y-4 py-4">
-          {activeTab === "title-filter" && configState.prefilterPolicy && (
-            <TitleFilterTab
+          {activeTab === "prefilter" && configState.prefilterPolicy && (
+            <PrefilterPolicyTab
               isSaving={configState.isSaving}
-              config={configState.prefilterPolicy.title}
-              onSave={(title) =>
-                configState.handleSavePrefilter({
-                  ...(configState.prefilterPolicy ?? {}),
-                  title,
-                })
-              }
+              config={configState.prefilterPolicy}
+              onSave={(policy) => configState.handleSavePrefilter(policy)}
               onReset={() => configState.resetPrefilter()}
             />
           )}

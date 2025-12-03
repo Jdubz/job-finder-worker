@@ -66,7 +66,7 @@ describeIntegration("Job Queue API Integration", () => {
       const sum =
         mockQueueStats.pending +
         mockQueueStats.processing +
-        mockQueueStats.completed +
+        mockQueueStats.success +
         mockQueueStats.failed +
         mockQueueStats.skipped
       expect(sum).toBe(mockQueueStats.total)

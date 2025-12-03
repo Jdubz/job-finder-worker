@@ -13,7 +13,7 @@ type MatchPolicyTabProps = {
   isSaving: boolean
   config: MatchPolicy
   onSave: (config: MatchPolicy) => Promise<void> | void
-  onReset: () => MatchPolicy
+  onReset: () => MatchPolicy | void
 }
 
 const cleanList = (items?: string[]) => (items ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)
@@ -116,7 +116,7 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
   }
 
   const handleReset = () => {
-    const resetValue = onReset()
+    const resetValue = onReset() ?? config
     form.reset(mapConfigToForm(resetValue))
   }
 

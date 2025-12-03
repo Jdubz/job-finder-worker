@@ -101,8 +101,12 @@ export function useConfigState() {
     } catch (_err) {
       setError("Failed to save pre-filter policy")
     } finally {
-      setIsSaving(false)
+    setIsSaving(false)
     }
+  }
+
+  const updatePersonalInfoState = (updates: Partial<PersonalInfo>) => {
+    setPersonalInfo((prev) => ({ ...(prev ?? DEFAULT_PERSONAL_INFO), ...updates }))
   }
 
   const handleSaveMatchPolicy = async (configOverride?: MatchPolicy) => {
@@ -217,9 +221,9 @@ export function useConfigState() {
     resetWorker: () => setWorkerSettings(deepClone(originalWorkerSettings)),
 
     personalInfo,
-    setPersonalInfo,
+    updatePersonalInfoState,
     handleSavePersonalInfo,
-    hasPersonalChanges: stableStringify(personalInfo) !== stableStringify(originalPersonalInfo),
-    resetPersonalInfo: () => setPersonalInfo(deepClone(originalPersonalInfo)),
+    hasPersonalInfoChanges: stableStringify(personalInfo) !== stableStringify(originalPersonalInfo),
+    resetPersonal: () => setPersonalInfo(deepClone(originalPersonalInfo)),
   }
 }

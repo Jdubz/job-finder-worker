@@ -21,6 +21,9 @@ import type {
   AIProviderType,
   AIInterfaceType,
   WorkerSettings,
+  AISettings,
+  AIProviderOption,
+  ScoringConfig,
 } from "./config.types"
 import type { PersonalInfo } from "./generator.types"
 // Import and re-export type guards from queue.types for convenience
@@ -156,7 +159,9 @@ export function isAISettings(value: unknown): value is AISettings {
 
   if (!Array.isArray(settings.options)) return false
 
-  for (const provider of settings.options) {
+  const options = settings.options as AIProviderOption[]
+
+  for (const provider of options) {
     if (
       !isObject(provider) ||
       !isAIProviderType((provider as any).value) ||
@@ -165,7 +170,7 @@ export function isAISettings(value: unknown): value is AISettings {
       return false
     }
 
-    for (const iface of (provider as any).interfaces) {
+    for (const iface of provider.interfaces) {
       if (
         !isObject(iface) ||
         !isAIInterfaceType((iface as any).value) ||
@@ -182,9 +187,9 @@ export function isAISettings(value: unknown): value is AISettings {
   }
 
   // Ensure selections match available tiered options
-  const hasValidCombination = (sel: any) =>
-    settings.options!.some(
-      (provider) =>
+  const hasValidCombination = (sel: AISettings["worker"]["selected"]) =>
+    options.some(
+      (provider: AIProviderOption) =>
         provider.value === sel.provider &&
         provider.interfaces.some(
           (iface) => iface.value === sel.interface && iface.models.includes(sel.model)
@@ -196,16 +201,6 @@ export function isAISettings(value: unknown): value is AISettings {
     hasValidCombination((settings.documentGenerator as any).selected)
   )
 
-}
-
-/**
- * Type guard for TitleFilterConfig
- */
-export function isTitleFilterConfig(value: unknown): value is TitleFilterConfig {
-  if (!isObject(value)) return false
-  const v = value as Partial<TitleFilterConfig>
-
-  return isStringArray(v.requiredKeywords) && isStringArray(v.excludedKeywords)
 }
 
 /**
@@ -359,7 +354,7 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
 
 export function isPrefilterPolicy(value: unknown): value is PreFilterPolicy {
   if (!isObject(value)) return false
-  const v = value as PreFilterPolicy
+  const v = value as Record<string, unknown>
 
   if (!isObject((v as any).title)) return false
   const title = (v as any).title
@@ -401,16 +396,18 @@ export function isPrefilterPolicy(value: unknown): value is PreFilterPolicy {
 
 export function isWorkerSettings(value: unknown): value is WorkerSettings {
   if (!isObject(value)) return false
-  const v = value as WorkerSettings
+  const v = value as Record<string, unknown>
 
   // scraping
-  if (!isObject(v.scraping)) return false
-  if (typeof (v.scraping as any).requestTimeoutSeconds !== "number") return false
-  if (typeof (v.scraping as any).maxHtmlSampleLength !== "number") return false
+  const scraping = (v as any).scraping
+  if (!isObject(scraping)) return false
+  if (typeof scraping.requestTimeoutSeconds !== "number") return false
+  if (typeof scraping.maxHtmlSampleLength !== "number") return false
 
   // text limits
-  if (!isObject(v.textLimits)) return false
-  const tl = v.textLimits as any
+  const textLimits = (v as any).textLimits
+  if (!isObject(textLimits)) return false
+  const tl = textLimits as any
   const tlKeys = [
     "minCompanyPageLength",
     "minSparseCompanyInfoLength",
@@ -423,8 +420,9 @@ export function isWorkerSettings(value: unknown): value is WorkerSettings {
   if (!tlKeys.every((k) => typeof tl[k] === "number")) return false
 
   // runtime
-  if (!isObject((v as any).runtime)) return false
-  const rt = (v as any).runtime
+  const runtime = (v as any).runtime
+  if (!isObject(runtime)) return false
+  const rt = runtime as any
   if (
     typeof rt.processingTimeoutSeconds !== "number" ||
     typeof rt.isProcessingEnabled !== "boolean" ||

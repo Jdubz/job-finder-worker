@@ -175,7 +175,7 @@ describeIntegration("Error Handling Integration", () => {
         // If we get here, check the response
         // In a real scenario with backend, this would return 401
         expect(response).toBeDefined()
-      } catch (error) {
+      } catch (error: any) {
         // Network error is expected when no backend is available
         expect(error).toBeDefined()
       }
@@ -195,7 +195,7 @@ describeIntegration("Error Handling Integration", () => {
 
         // Should have Authorization header
         expect(response).toBeDefined()
-      } catch (error) {
+      } catch (error: any) {
         // Network error is expected when no backend is available
         expect(error).toBeDefined()
       }

@@ -513,7 +513,7 @@ export interface WorkerSettings {
     maxDescriptionPreviewLength: number // Max description length for remote keyword search (default: 500)
     maxCompanyInfoTextLength: number // Max length for company info text (default: 1000)
   }
-  /** Runtime/queue loop settings (merged from former queue-settings) */
+  /** Runtime/queue loop settings */
   runtime: {
     processingTimeoutSeconds: number
     isProcessingEnabled: boolean
@@ -587,28 +587,6 @@ export const DEFAULT_PERSONAL_INFO: PersonalInfo = {
   city: "",
   timezone: null,
   relocationAllowed: false,
-}
-
-export const DEFAULT_TITLE_FILTER: TitleFilterConfig = {
-  requiredKeywords: [
-    "software",
-    "developer",
-    "engineer",
-    "frontend",
-    "backend",
-    "fullstack",
-    "full-stack",
-    "full stack",
-  ],
-  excludedKeywords: [
-    "intern",
-    "internship",
-    "wordpress",
-    "php",
-    "sales",
-    "marketing",
-    "recruiter",
-  ],
 }
 
 // No DEFAULT_PREFILTER_POLICY - fail loud on missing config to prevent silent gaps

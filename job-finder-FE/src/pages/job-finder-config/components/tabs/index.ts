@@ -1,5 +1,5 @@
 export { QueueSettingsTab } from "./QueueSettingsTab"
 export { AISettingsTab } from "./AISettingsTab"
 export { PersonalInfoTab } from "./PersonalInfoTab"
-export { TitleFilterTab } from "./TitleFilterTab"
+export { PrefilterPolicyTab } from "./PrefilterPolicyTab"
 export { MatchPolicyTab } from "./ScoringConfigTab"
