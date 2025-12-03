@@ -1,0 +1,141 @@
+# Production stack for /srv/job-finder deployment
+# This file is the source of truth - sync to prod with: make deploy-compose
+#
+# Key differences from template:
+# - Uses seed + named volume pattern for CLI credentials (prevents token corruption)
+# - Absolute paths for /srv/job-finder structure
+# - Custom entrypoints that copy credentials on first boot
+
+services:
+  api:
+    image: ghcr.io/jdubz/job-finder-worker/api:latest
+    container_name: job-finder-api
+    restart: unless-stopped
+    env_file:
+      - /home/jdubz/Development/job-finder/.env.production
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DATABASE_PATH: /data/sqlite/jobfinder.db
+      JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
+      CRON_ENABLED: "true"
+      LOG_DIR: /logs
+      WORKER_MAINTENANCE_URL: http://worker:5555/maintenance
+    entrypoint: ["sh", "-c", "if [ ! -f /home/node/.codex/auth.json ]; then mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/; fi; exec docker-entrypoint.sh node dist/index.js"]
+    volumes:
+      - type: bind
+        source: /srv/job-finder/data
+        target: /data/sqlite
+      - type: bind
+        source: /srv/job-finder/artifacts
+        target: /data/artifacts
+      - type: bind
+        source: /srv/job-finder/logs
+        target: /logs
+      # Codex: seed (ro) + named volume (rw) for runtime state
+      - type: bind
+        source: /srv/job-finder/codex-seed/.codex
+        target: /codex-seed
+        read_only: true
+      - codex-home-api:/home/node/.codex
+    extra_hosts:
+      - "chatgpt.com:104.18.32.47"
+      - "www.chatgpt.com:104.18.32.47"
+    networks:
+      - jobfinder
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  worker:
+    image: ghcr.io/jdubz/job-finder-worker/worker:latest
+    container_name: job-finder-worker
+    restart: unless-stopped
+    env_file:
+      - /home/jdubz/Development/job-finder/.env.production
+    environment:
+      ENVIRONMENT: production
+      ENABLE_QUEUE_MODE: "true"
+      ENABLE_CRON: "false"
+      ENABLE_CLOUD_LOGGING: "false"
+      SQLITE_DB_PATH: /data/sqlite/jobfinder.db
+      CONFIG_PATH: /app/config/config.production.yaml
+      JF_NODE_API_BASE: http://api:8080/api
+      JF_WORKER_ID: default
+      CODEX_CONFIG_SOURCE: /codex
+    entrypoint: ["sh", "-c", "if [ ! -f /home/node/.codex/auth.json ]; then mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/; fi; if [ ! -f /home/node/.gemini/oauth_creds.json ]; then mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/; fi; exec /app/entrypoint.sh"]
+    volumes:
+      - type: bind
+        source: /srv/job-finder/data
+        target: /data/sqlite
+      - type: bind
+        source: /srv/job-finder/config
+        target: /app/config
+      # Codex: seed (ro) + named volume (rw) for runtime state
+      - type: bind
+        source: /srv/job-finder/codex-seed/.codex
+        target: /codex-seed
+        read_only: true
+      - codex-home-worker:/home/node/.codex
+      # Gemini: seed (ro) + named volume (rw) for runtime state
+      - type: bind
+        source: /srv/job-finder/gemini-seed
+        target: /gemini-seed
+        read_only: true
+      - gemini-home-worker:/home/node/.gemini
+      # Python binary for cron/entrypoint
+      - type: bind
+        source: /srv/job-finder/codex/local-bin
+        target: /home/node/.local/bin
+      - type: bind
+        source: /srv/job-finder/logs
+        target: /app/logs
+      - type: bind
+        source: /srv/job-finder/worker-data
+        target: /app/data
+    networks:
+      - jobfinder
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  cloudflared:
+    image: cloudflare/cloudflared:2024.10.0
+    container_name: job-finder-cloudflared
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    env_file:
+      - /home/jdubz/Development/job-finder/.env.production
+    environment:
+      TUNNEL_ORIGIN_CERT: /etc/cloudflared/cert.pem
+    depends_on:
+      - api
+    volumes:
+      - type: bind
+        source: /srv/job-finder/cloudflared
+        target: /etc/cloudflared
+        read_only: true
+    networks:
+      - jobfinder
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: job-finder-watchtower
+    restart: unless-stopped
+    command: --label-enable --interval 300 --cleanup
+    environment:
+      TZ: America/Los_Angeles
+      DOCKER_API_VERSION: 1.44
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - jobfinder
+
+networks:
+  jobfinder:
+    driver: bridge
+
+volumes:
+  codex-home-worker:
+  codex-home-api:
+  gemini-home-worker:
