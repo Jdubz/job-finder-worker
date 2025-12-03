@@ -63,13 +63,16 @@ export function AISettingsTab({
   const getSectionSelection = (section: "worker" | "documentGenerator") => {
     const selected = aiSettings[section]?.selected
     if (selected) return selected
-    // Fallback to first available option
+    // Fallback to first available option - fail if none available
     const firstProvider = options[0]
     const firstInterface = firstProvider?.interfaces[0]
+    if (!firstProvider || !firstInterface) {
+      throw new Error("No AI provider options available - check ai-settings configuration")
+    }
     return {
-      provider: (firstProvider?.value ?? "gemini") as AIProviderType,
-      interface: (firstInterface?.value ?? "api") as AIInterfaceType,
-      model: firstInterface?.models[0] ?? "",
+      provider: firstProvider.value,
+      interface: firstInterface.value,
+      model: firstInterface.models[0] ?? "",
     }
   }
 

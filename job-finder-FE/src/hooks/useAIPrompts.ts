@@ -87,7 +87,8 @@ export function useAIPrompts(): UseAIPromptsResult {
   )
 
   /**
-   * Reset prompts to defaults (server-side defaults)
+   * Reset prompts to defaults - currently not supported.
+   * The backend returns an error indicating prompts must be configured manually.
    */
   const resetToDefaults = useCallback(async () => {
     if (!user?.email) {
@@ -98,10 +99,8 @@ export function useAIPrompts(): UseAIPromptsResult {
     setError(null)
 
     try {
+      // This will throw - reset is no longer supported
       await promptsClient.resetToDefaults(user.email)
-      // Refetch to get the server's default values
-      const result = await promptsClient.getPrompts()
-      setPrompts(result)
     } catch (err) {
       setError(err as Error)
       throw err

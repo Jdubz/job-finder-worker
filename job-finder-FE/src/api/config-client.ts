@@ -40,6 +40,7 @@ export class ConfigClient extends BaseApiClient {
     const existing = await this.getAISettings()
     await this.updateConfigEntry("ai-settings", {
       ...existing,
+      options: existing.options, // Preserve options from existing config
       worker: {
         ...existing.worker,
         ...settings.worker,

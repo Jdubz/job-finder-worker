@@ -42,7 +42,8 @@ type KnownPayload =
  * Check provider availability based on API keys and CLI auth status.
  * Takes the configured options from DB and adds availability info.
  */
-function buildProviderOptionsWithAvailability(configuredOptions: AISettings['options']) {
+function buildProviderOptionsWithAvailability(configuredOptions?: AISettings['options']) {
+  if (!configuredOptions) return []
   const availability: Record<string, { enabled: boolean; reason?: string }> = {}
 
   // Codex CLI - check login status

@@ -59,7 +59,7 @@ export function buildPromptsRouter() {
       // Users must configure prompts manually or restore from a backup
       resetSchema.parse(req.body) // Validate request format
       res.status(400).json(failure(
-        ApiErrorCode.VALIDATION_FAILED,
+        ApiErrorCode.INVALID_REQUEST,
         "Reset to defaults is not supported. Prompts must be configured manually in the database."
       ))
     })
