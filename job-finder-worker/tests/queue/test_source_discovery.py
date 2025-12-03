@@ -352,9 +352,13 @@ class TestSourceDiscoveryFailure:
         item = make_discovery_item(url="https://example.com/invalid")
         source_processor.process_source_discovery(item)
 
-        # Should mark as failed (no config produced)
+        # Should create disabled source with notes and still mark SUCCESS for queue item
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["status"] == SourceStatus.DISABLED
+        assert create_kwargs["config"].get("disabled_notes") == "discovery_failed"
+
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
-        assert status_call[0][1] == QueueStatus.FAILED
+        assert status_call[0][1] == QueueStatus.SUCCESS
 
     @patch("job_finder.ai.providers.create_provider_from_config")
     @patch("job_finder.ai.source_discovery.SourceDiscovery")

@@ -157,8 +157,8 @@ class SourceDiscovery:
         pattern, groups = result
         config = build_config_from_pattern(pattern, groups, original_url=url)
 
-        # RSS patterns don't need API probe
-        if pattern.config_type == "rss":
+        # RSS/HTML patterns don't need API probe
+        if pattern.config_type in {"rss", "html"}:
             return config
 
         # Validate by making a test request to the API
