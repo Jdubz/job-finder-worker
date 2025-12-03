@@ -14,6 +14,23 @@ interface CliResult {
   error?: string
 }
 
+function sanitizeCliError(raw?: string): string {
+  if (!raw) return 'AI generation failed'
+  const text = raw.toString()
+  const lowered = text.toLowerCase()
+  const authKeywords = ['not logged in', 'login', 'refresh token', 'token was already used', 'authentication', 'unauthorized']
+  if (authKeywords.some((k) => lowered.includes(k))) {
+    return 'AI provider authentication required. Please log in and retry.'
+  }
+  // Strip long prompts: keep content before separator lines or first 400 chars
+  const separators = ['--------', 'INPUT DATA', 'user\n']
+  for (const sep of separators) {
+    const idx = text.indexOf(sep)
+    if (idx > 0) return text.slice(0, idx).trim()
+  }
+  return text.slice(0, 400).trim()
+}
+
 function buildCommand(provider: CliProvider, prompt: string): { cmd: string; args: string[] } {
   if (provider === 'codex') {
     return {
@@ -106,8 +123,8 @@ async function executeCommand(provider: CliProvider, prompt: string): Promise<Cl
       if (code === 0) {
         resolve({ success: true, output: stdout })
       } else {
-        logger.warn({ provider, code, stderr, logFile }, 'CLI provider failed')
-        resolve({ success: false, output: stdout, error: stderr })
+      logger.warn({ provider, code, stderr, logFile }, 'CLI provider failed')
+        resolve({ success: false, output: stdout, error: sanitizeCliError(stderr || stdout) })
       }
     })
   })
