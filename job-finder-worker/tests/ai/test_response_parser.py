@@ -1,7 +1,5 @@
 """Tests for AI response parsing utilities."""
 
-import pytest
-
 from job_finder.ai.response_parser import (
     extract_json_from_response,
     parse_json_response,
@@ -33,8 +31,8 @@ class TestExtractJsonFromResponse:
 
     def test_json_code_block_with_array(self):
         """Test extraction of array from ```json ... ``` blocks."""
-        response = '```json\n[1, 2, 3]\n```'
-        assert extract_json_from_response(response) == '[1, 2, 3]'
+        response = "```json\n[1, 2, 3]\n```"
+        assert extract_json_from_response(response) == "[1, 2, 3]"
 
     def test_generic_code_block_with_object(self):
         """Test extraction from generic ``` blocks containing JSON object."""
@@ -137,7 +135,7 @@ class TestParseJsonResponse:
 
     def test_complex_nested_structure(self):
         """Test parsing complex nested JSON structures."""
-        response = '''```json
+        response = """```json
         {
             "analysis": {
                 "match_score": 75,
@@ -149,7 +147,7 @@ class TestParseJsonResponse:
                 }
             }
         }
-        ```'''
+        ```"""
         result = parse_json_response(response)
         assert result is not None
         assert result["analysis"]["match_score"] == 75
@@ -185,12 +183,12 @@ class TestEdgeCases:
 
     def test_empty_object(self):
         """Test parsing of empty JSON object."""
-        response = '{}'
+        response = "{}"
         result = parse_json_response(response)
         assert result == {}
 
     def test_empty_array(self):
         """Test parsing of empty JSON array."""
-        response = '[]'
+        response = "[]"
         result = parse_json_response(response)
         assert result == []
