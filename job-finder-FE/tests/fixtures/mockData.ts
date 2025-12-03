@@ -55,7 +55,6 @@ export const mockJobMatch: JobMatchWithListing = {
   keyStrengths: ["Backend experience"],
   potentialConcerns: [],
   experienceMatch: 88,
-  applicationPriority: "High",
   customizationRecommendations: [],
   analyzedAt: now(),
   createdAt: now(),

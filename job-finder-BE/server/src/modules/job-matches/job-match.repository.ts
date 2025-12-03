@@ -15,7 +15,6 @@ type JobMatchRow = {
   key_strengths: string | null
   potential_concerns: string | null
   experience_match: number
-  application_priority: string
   customization_recommendations: string | null
   resume_intake_json: string | null
   analyzed_at: string | null
@@ -50,7 +49,6 @@ const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   keyStrengths: parseJsonArray(row.key_strengths),
   potentialConcerns: parseJsonArray(row.potential_concerns),
   experienceMatch: row.experience_match,
-  applicationPriority: row.application_priority as JobMatch['applicationPriority'],
   customizationRecommendations: parseJsonArray(row.customization_recommendations),
   resumeIntakeData: row.resume_intake_json ? JSON.parse(row.resume_intake_json) : undefined,
   analyzedAt: parseTimestamp(row.analyzed_at),
@@ -74,7 +72,6 @@ interface JobMatchListOptions {
   offset?: number
   minScore?: number
   maxScore?: number
-  priority?: JobMatch['applicationPriority']
   jobListingId?: string
   sortBy?: 'score' | 'date'
   sortOrder?: 'asc' | 'desc'
@@ -97,7 +94,6 @@ export class JobMatchRepository {
       offset = 0,
       minScore,
       maxScore,
-      priority,
       jobListingId,
       sortBy = 'date',
       sortOrder = 'desc'
@@ -114,11 +110,6 @@ export class JobMatchRepository {
     if (typeof maxScore === 'number') {
       conditions.push('match_score <= ?')
       params.push(maxScore)
-    }
-
-    if (priority) {
-      conditions.push('application_priority = ?')
-      params.push(priority)
     }
 
     if (jobListingId) {
@@ -192,9 +183,9 @@ export class JobMatchRepository {
       INSERT INTO job_matches (
         id, job_listing_id, match_score, matched_skills, missing_skills,
         match_reasons, key_strengths, potential_concerns, experience_match,
-        application_priority, customization_recommendations, resume_intake_json,
+        customization_recommendations, resume_intake_json,
         analyzed_at, submitted_by, queue_item_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         job_listing_id = excluded.job_listing_id,
         match_score = excluded.match_score,
@@ -204,7 +195,6 @@ export class JobMatchRepository {
         key_strengths = excluded.key_strengths,
         potential_concerns = excluded.potential_concerns,
         experience_match = excluded.experience_match,
-        application_priority = excluded.application_priority,
         customization_recommendations = excluded.customization_recommendations,
         resume_intake_json = excluded.resume_intake_json,
         analyzed_at = excluded.analyzed_at,
@@ -223,7 +213,6 @@ export class JobMatchRepository {
       JSON.stringify(match.keyStrengths ?? []),
       JSON.stringify(match.potentialConcerns ?? []),
       match.experienceMatch,
-      match.applicationPriority,
       JSON.stringify(match.customizationRecommendations ?? []),
       match.resumeIntakeData ? JSON.stringify(match.resumeIntakeData) : null,
       toIsoString(match.analyzedAt),

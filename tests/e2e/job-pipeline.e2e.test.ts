@@ -377,7 +377,7 @@ describe("Frontend clients", () => {
 
     const matches = await jobMatchesClient.listMatches({ minScore: 50 })
     expect(matches.length).toBeGreaterThan(0)
-    expect(matches[0].applicationPriority).toBe("High")
+    expect(matches[0].matchScore).toBeGreaterThanOrEqual(50)
   })
 })
 

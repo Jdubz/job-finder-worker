@@ -49,7 +49,6 @@ class DummyMatcher:
             experience_match="5+",
             key_strengths=["relevance"],
             potential_concerns=[],
-            application_priority="High",
             customization_recommendations={},
         )
 

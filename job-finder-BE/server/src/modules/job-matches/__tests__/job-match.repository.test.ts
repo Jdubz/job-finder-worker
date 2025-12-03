@@ -43,15 +43,13 @@ describe('JobMatchRepository', () => {
       buildJobMatchInput({
         queueItemId: 'queue-3',
         jobListingId: 'listing-3',
-        matchScore: 70,
-        applicationPriority: 'Low'
+        matchScore: 70
       })
     )
     repo.upsert(buildJobMatchInput({ queueItemId: 'queue-4', jobListingId: 'listing-4', matchScore: 82 }))
 
     const results = repo.list({
       minScore: 80,
-      priority: 'High',
       sortBy: 'score',
       sortOrder: 'asc'
     })

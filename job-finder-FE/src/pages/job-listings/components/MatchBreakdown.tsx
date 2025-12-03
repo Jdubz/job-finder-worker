@@ -18,7 +18,7 @@ export function MatchBreakdown({ analysis }: MatchBreakdownProps) {
   }
 
   const scoringResult = analysis.scoringResult
-  const { matchReasons, keyStrengths, matchedSkills, missingSkills, potentialConcerns, applicationPriority } = analysis
+  const { matchReasons, keyStrengths, matchedSkills, missingSkills, potentialConcerns } = analysis
 
   return (
     <Card className="bg-muted/40">
@@ -31,11 +31,6 @@ export function MatchBreakdown({ analysis }: MatchBreakdownProps) {
                 <Badge variant="outline">Base: {scoringResult.baseScore}</Badge>
                 <Badge>{scoringResult.finalScore}</Badge>
               </>
-            )}
-            {applicationPriority && (
-              <Badge variant="secondary" className="uppercase tracking-wide text-[11px]">
-                {applicationPriority} priority
-              </Badge>
             )}
           </div>
         </div>

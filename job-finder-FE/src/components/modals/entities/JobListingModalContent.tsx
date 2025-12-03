@@ -8,6 +8,7 @@ import { Loader2, Trash2, ExternalLink, Database, AlertCircle } from "lucide-rea
 import { MatchBreakdown } from "@/pages/job-listings/components/MatchBreakdown"
 import { statusBadgeClass } from "@/lib/status-badge"
 import { formatDate, formatDateTime } from "@/lib/formatDate"
+import { extractMatchScore } from "@/lib/score-utils"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
 const statusLabel: Record<JobListingStatus, string> = {
@@ -16,18 +17,6 @@ const statusLabel: Record<JobListingStatus, string> = {
   analyzed: "Analyzed",
   matched: "Matched",
   skipped: "Skipped",
-}
-
-function extractMatchScore(listing: JobListingRecord): number | null {
-  const analysis = listing.analysisResult as Record<string, unknown> | undefined
-  if (!analysis) return null
-  const raw = analysis["match_score"] ?? analysis["matchScore"]
-  if (typeof raw === "number") return raw
-  if (typeof raw === "string") {
-    const parsed = Number(raw)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-  return null
 }
 
 interface JobListingModalContentProps {

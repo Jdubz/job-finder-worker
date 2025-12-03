@@ -284,12 +284,12 @@ function insertJobMatches(db, docs) {
   const stmt = db.prepare(`INSERT INTO job_matches (
     id, url, company_name, company_id, job_title, location, salary_range, job_description, company_info,
     match_score, matched_skills, missing_skills, match_reasons, key_strengths, potential_concerns,
-    experience_match, application_priority, customization_recommendations, resume_intake_json, analyzed_at,
+    experience_match, customization_recommendations, resume_intake_json, analyzed_at,
     submitted_by, queue_item_id, created_at, updated_at
   ) VALUES (
     @id, @url, @company_name, @company_id, @job_title, @location, @salary_range, @job_description, @company_info,
     @match_score, @matched_skills, @missing_skills, @match_reasons, @key_strengths, @potential_concerns,
-    @experience_match, @application_priority, @customization_recommendations, @resume_intake_json, @analyzed_at,
+    @experience_match, @customization_recommendations, @resume_intake_json, @analyzed_at,
     @submitted_by, @queue_item_id, @created_at, @updated_at
   )
   ON CONFLICT(url) DO UPDATE SET
@@ -301,7 +301,6 @@ function insertJobMatches(db, docs) {
     missing_skills=excluded.missing_skills,
     key_strengths=excluded.key_strengths,
     potential_concerns=excluded.potential_concerns,
-    application_priority=excluded.application_priority,
     updated_at=excluded.updated_at
   `)
 
@@ -322,7 +321,6 @@ function insertJobMatches(db, docs) {
     key_strengths: d.keyStrengths ? JSON.stringify(d.keyStrengths) : null,
     potential_concerns: d.potentialConcerns ? JSON.stringify(d.potentialConcerns) : null,
     experience_match: d.experienceMatch ?? null,
-    application_priority: d.applicationPriority ?? 'Medium',
     customization_recommendations: d.customizationRecommendations
       ? JSON.stringify(d.customizationRecommendations)
       : null,

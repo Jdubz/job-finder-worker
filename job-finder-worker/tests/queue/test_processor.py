@@ -254,12 +254,10 @@ def test_single_task_pipeline_completes_to_match(processor, mock_managers, sampl
 
     class DummyResult:
         match_score = 95
-        application_priority = "High"
 
         def to_dict(self):
             return {
                 "match_score": self.match_score,
-                "application_priority": self.application_priority,
             }
 
     complete_company = {
@@ -329,12 +327,10 @@ def test_single_task_pipeline_handles_aggregator_source_name(
 
     class DummyResult:
         match_score = 75
-        application_priority = "Medium"
 
         def to_dict(self):
             return {
                 "match_score": self.match_score,
-                "application_priority": self.application_priority,
             }
 
     processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())

@@ -42,9 +42,8 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
           </p>
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
-          <Badge className="text-base">{match.applicationPriority}</Badge>
           {typeof match.matchScore === "number" && (
-            <Badge variant="outline">Overall {match.matchScore}%</Badge>
+            <Badge variant="outline">Score: {match.matchScore}%</Badge>
           )}
         </div>
       </div>
@@ -59,7 +58,7 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
 
         <TabsContent value="overview" className="flex-1 min-h-0 mt-2">
           <ScrollArea className="h-[260px] sm:h-[360px] md:h-[420px] pr-4">
-            <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div className="text-center p-3 bg-secondary rounded-lg">
                 <div className="text-2xl font-bold text-green-600">{match.matchScore}%</div>
                 <div className="text-xs text-muted-foreground">Overall Match</div>
@@ -67,10 +66,6 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
               <div className="text-center p-3 bg-secondary rounded-lg">
                 <div className="text-2xl font-bold text-primary">{match.experienceMatch}%</div>
                 <div className="text-xs text-muted-foreground">Experience Match</div>
-              </div>
-              <div className="text-center p-3 bg-secondary rounded-lg">
-                <Badge className="text-base">{match.applicationPriority}</Badge>
-                <div className="text-xs text-muted-foreground mt-1">Priority</div>
               </div>
             </div>
 

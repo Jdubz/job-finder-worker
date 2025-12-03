@@ -4,7 +4,6 @@ import type { PaginationParams } from "../api.types"
 export interface ListJobMatchesRequest extends PaginationParams {
   minScore?: number
   maxScore?: number
-  priority?: JobMatch["applicationPriority"]
   jobListingId?: string
   sortBy?: "score" | "date"
   sortOrder?: "asc" | "desc"

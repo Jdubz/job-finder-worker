@@ -53,6 +53,7 @@ import {
   Plus,
 } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
+import { extractMatchScore } from "@/lib/score-utils"
 import type { JobListingRecord, JobListingStatus, SubmitJobRequest } from "@shared/types"
 
 function formatDate(date: unknown): string {
@@ -91,18 +92,6 @@ function getStatusBadge(status: JobListingStatus) {
   }
   const config = statusConfig[status] || statusConfig.pending
   return <Badge className={config.color}>{config.label}</Badge>
-}
-
-function extractMatchScore(listing: JobListingRecord): number | null {
-  const analysis = listing.analysisResult as Record<string, unknown> | undefined
-  if (!analysis) return null
-  const raw = analysis["match_score"] ?? analysis["matchScore"]
-  if (typeof raw === "number") return raw
-  if (typeof raw === "string") {
-    const parsed = Number(raw)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-  return null
 }
 
 export function JobListingsPage() {

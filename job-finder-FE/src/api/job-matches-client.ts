@@ -1,5 +1,6 @@
 import { BaseApiClient } from "./base-client"
 import { API_CONFIG } from "@/config/api"
+import { SCORE_THRESHOLDS } from "@/lib/score-utils"
 import type {
   ApiSuccessResponse,
   JobMatchWithListing,
@@ -10,7 +11,6 @@ import type {
 export interface JobMatchFilters {
   minScore?: number
   maxScore?: number
-  priority?: JobMatchWithListing["applicationPriority"]
   jobListingId?: string
   limit?: number
   offset?: number
@@ -33,7 +33,6 @@ export class JobMatchesClient extends BaseApiClient {
     if (filters.minScore !== undefined) params.set("minScore", String(filters.minScore))
     if (filters.maxScore !== undefined) params.set("maxScore", String(filters.maxScore))
     if (filters.jobListingId) params.set("jobListingId", filters.jobListingId)
-    if (filters.priority) params.set("priority", filters.priority)
     if (filters.limit !== undefined) params.set("limit", String(filters.limit))
     if (filters.offset !== undefined) params.set("offset", String(filters.offset))
     if (filters.sortBy) params.set("sortBy", filters.sortBy)
@@ -101,17 +100,19 @@ export class JobMatchesClient extends BaseApiClient {
 
   async getMatchStats(): Promise<{
     total: number
-    highPriority: number
-    mediumPriority: number
-    lowPriority: number
+    highScore: number
+    mediumScore: number
+    lowScore: number
     averageScore: number
   }> {
     const matches = await this.listMatches()
     const stats = {
       total: matches.length,
-      highPriority: matches.filter((m) => m.applicationPriority === "High").length,
-      mediumPriority: matches.filter((m) => m.applicationPriority === "Medium").length,
-      lowPriority: matches.filter((m) => m.applicationPriority === "Low").length,
+      highScore: matches.filter((m) => m.matchScore >= SCORE_THRESHOLDS.HIGH).length,
+      mediumScore: matches.filter(
+        (m) => m.matchScore >= SCORE_THRESHOLDS.MEDIUM && m.matchScore < SCORE_THRESHOLDS.HIGH
+      ).length,
+      lowScore: matches.filter((m) => m.matchScore < SCORE_THRESHOLDS.MEDIUM).length,
       averageScore: 0,
     }
 

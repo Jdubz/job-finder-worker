@@ -54,7 +54,6 @@ class JobMatchResult(BaseModel):
     key_strengths: List[str] = Field(default_factory=list)
     match_reasons: List[str] = Field(default_factory=list)
     potential_concerns: List[str] = Field(default_factory=list)
-    application_priority: str = "Medium"  # High/Medium/Low
 
     # Score breakdown showing the math behind the final score
     score_breakdown: Optional[ScoreBreakdown] = None
@@ -148,7 +147,6 @@ class AIJobMatcher:
                 key_strengths=["stubbed matcher"],
                 match_reasons=["DISABLE_AI_MATCHER=1"],
                 potential_concerns=[],
-                application_priority="High",
                 customization_recommendations={},
             )
 
@@ -169,20 +167,6 @@ class AIJobMatcher:
                     "All jobs must be scored by ScoringEngine before AI analysis."
                 )
             match_score = int(deterministic_score)
-
-            # Calculate priority based on score thresholds
-            weights = self.company_weights or {}
-            priority_thresholds = weights.get("priorityThresholds", {})
-            high_threshold = priority_thresholds.get("high", 85)
-            med_threshold = priority_thresholds.get("medium", 70)
-
-            if match_score >= high_threshold:
-                priority = "High"
-            elif match_score >= med_threshold:
-                priority = "Medium"
-            else:
-                priority = "Low"
-            match_analysis["application_priority"] = priority
 
             # Build score breakdown
             score_breakdown = ScoreBreakdown(
@@ -210,14 +194,7 @@ class AIJobMatcher:
                 job, match_analysis, match_score, intake_data, score_breakdown
             )
 
-            # If below threshold but caller wants data, downgrade priority to Low
-            if below_threshold:
-                result.application_priority = "Low"
-
-            logger.info(
-                f"Successfully analyzed {job.get('title')} - "
-                f"Score: {match_score}, Priority: {result.application_priority}"
-            )
+            logger.info(f"Successfully analyzed {job.get('title')} - Score: {match_score}")
             return result
 
         except Exception as e:
@@ -259,7 +236,6 @@ class AIJobMatcher:
             key_strengths=match_analysis.get("key_strengths", []),
             match_reasons=match_analysis.get("match_reasons", []),
             potential_concerns=match_analysis.get("potential_concerns", []),
-            application_priority=match_analysis.get("application_priority", "Medium"),
             score_breakdown=score_breakdown,
             customization_recommendations=match_analysis.get("customization_recommendations", {}),
             resume_intake_data=intake_data,
@@ -308,11 +284,11 @@ class AIJobMatcher:
             analysis = self._safe_parse_json(json_str)
 
             # Validate required fields
+            # NOTE: match_score and application_priority are NOT required from AI
+            # Scoring is deterministic; priority is derived from score
             required_fields = [
-                "match_score",
                 "matched_skills",
                 "missing_skills",
-                "application_priority",
             ]
             missing_fields = [field for field in required_fields if field not in analysis]
             if missing_fields:
