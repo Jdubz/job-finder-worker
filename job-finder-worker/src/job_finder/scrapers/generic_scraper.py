@@ -272,11 +272,17 @@ class GenericScraper:
 
                 postings = []
                 if isinstance(data, list):
-                    postings = [d for d in data if isinstance(d, dict) and d.get("@type") == "JobPosting"]
+                    postings = [
+                        d for d in data if isinstance(d, dict) and d.get("@type") == "JobPosting"
+                    ]
                 elif isinstance(data, dict):
                     graph = data.get("@graph")
                     if graph and isinstance(graph, list):
-                        postings = [g for g in graph if isinstance(g, dict) and g.get("@type") == "JobPosting"]
+                        postings = [
+                            g
+                            for g in graph
+                            if isinstance(g, dict) and g.get("@type") == "JobPosting"
+                        ]
                     elif data.get("@type") == "JobPosting":
                         postings = [data]
 
@@ -292,6 +298,8 @@ class GenericScraper:
                 if not job.get("location"):
                     loc = None
                     place = jp.get("jobLocation")
+                    if isinstance(place, list):
+                        place = place[0] if place else None
                     if isinstance(place, dict):
                         addr = place.get("address") or {}
                         city = addr.get("addressLocality") or ""

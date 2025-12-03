@@ -356,9 +356,7 @@ class SourceProcessor(BaseProcessor):
                 if host == d or host.endswith("." + d):
                     return d
         except Exception as exc:
-            logger.warning(
-                "Fallback aggregator detection failed for %s: %s", url, exc
-            )
+            logger.warning("Fallback aggregator detection failed for %s: %s", url, exc)
 
         return None
 
