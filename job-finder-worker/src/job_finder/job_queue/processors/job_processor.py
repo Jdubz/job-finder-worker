@@ -84,38 +84,6 @@ class PipelineContext:
 class JobProcessor(BaseProcessor):
     """Processor for job queue items using single-task pipeline."""
 
-    # Known job board and aggregator domains (for URL detection)
-    _JOB_BOARD_DOMAINS = frozenset(
-        [
-            # ATS providers
-            "greenhouse.io",
-            "lever.co",
-            "myworkdayjobs.com",
-            "workday.com",
-            "smartrecruiters.com",
-            "ashbyhq.com",
-            "breezy.hr",
-            "applytojob.com",
-            "jobvite.com",
-            "icims.com",
-            "ultipro.com",
-            "taleo.net",
-            # Job aggregators
-            "weworkremotely.com",
-            "remotive.com",
-            "remotive.io",
-            "remote.co",
-            "remoteok.com",
-            "remoteok.io",
-            "jbicy.io",
-            "flexjobs.com",
-            "wellfound.com",
-            "angel.co",
-            "ycombinator.com",
-            "workatastartup.com",
-        ]
-    )
-
     def __init__(
         self,
         queue_manager: QueueManager,
@@ -1399,21 +1367,13 @@ class JobProcessor(BaseProcessor):
         domain = parsed.netloc.replace("www.", "")
         return f"https://{domain}"
 
-    @staticmethod
-    def _is_job_board_url(url: str) -> bool:
-        """Check if URL is a known job board or aggregator."""
-        if not url:
-            return False
+    def _is_job_board_url(self, url: str) -> bool:
+        """Check if URL is a known job board or aggregator.
 
-        try:
-            netloc = urlparse(url.lower()).netloc
-            return any(
-                netloc == domain or netloc.endswith("." + domain)
-                for domain in JobProcessor._JOB_BOARD_DOMAINS
-            )
-        except Exception as e:
-            logger.warning("URL parsing failed in _is_job_board_url for '%s': %s", url, e)
-            return False
+        Delegates to JobSourcesManager.is_job_board_url() which uses
+        database-driven aggregator domains from the job_sources table.
+        """
+        return self.sources_manager.is_job_board_url(url)
 
     # ============================================================
     # SCRAPE REQUESTS (enqueue-only)

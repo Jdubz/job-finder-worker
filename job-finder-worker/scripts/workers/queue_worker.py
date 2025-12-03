@@ -9,7 +9,6 @@ import time
 import signal
 
 from job_finder.flask_worker import initialize_components, load_config
-from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.exceptions import InitializationError, ConfigurationError
 
 
@@ -32,14 +31,9 @@ def handle_signal(signum: int, _frame) -> None:
 
 def main() -> None:
     config = load_config()
-    queue_manager, processor, _ = initialize_components(config)
+    queue_manager, processor, config_loader, _, _ = initialize_components(config)
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
-
-    # Load queue settings for task delay
-    # Use same ENV variable precedence as initialize_components()
-    db_path = os.getenv("SQLITE_DB_PATH") or os.getenv("DATABASE_PATH")
-    config_loader = ConfigLoader(db_path)
 
     # Get task delay from settings (default to 1 second) with validation
     try:

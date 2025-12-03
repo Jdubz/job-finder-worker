@@ -251,6 +251,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         ai_provider=company_discovery_provider,
         ai_config=worker_ai_config,
         db_path=db_path,
+        sources_manager=job_sources_manager,
     )
     notifier = QueueEventNotifier()
     queue_manager = QueueManager(db_path, notifier=notifier)

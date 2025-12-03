@@ -35,24 +35,6 @@ from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
-# Known aggregator domains - these host jobs for multiple companies
-# Maps domain pattern to the aggregator_domain value to store
-AGGREGATOR_DOMAINS = {
-    "remotive.com": "remotive.com",
-    "remotive.io": "remotive.com",
-    "weworkremotely.com": "weworkremotely.com",
-    "indeed.com": "indeed.com",
-    "linkedin.com": "linkedin.com",
-    "glassdoor.com": "glassdoor.com",
-    "angel.co": "angel.co",
-    "wellfound.com": "wellfound.com",
-    "builtin.com": "builtin.com",
-    "himalayas.app": "himalayas.app",
-    "jobicy.com": "jobicy.com",
-    "remoteok.com": "remoteok.com",
-    "remoteok.io": "remoteok.com",
-}
-
 
 class SourceProcessor(BaseProcessor):
     """Processor for source discovery and scraping queue items."""
@@ -345,24 +327,16 @@ class SourceProcessor(BaseProcessor):
     def _detect_aggregator_domain(self, url: str) -> Optional[str]:
         """Detect if URL belongs to a known job aggregator.
 
+        Delegates to JobSourcesManager.get_aggregator_domain_for_url() which uses
+        database-driven aggregator domains from the job_sources table.
+
         Args:
             url: The source URL to check
 
         Returns:
             The aggregator domain if detected, None if company-specific
         """
-        try:
-            parsed = urlparse(url)
-            domain = parsed.netloc.lower()
-
-            # Check against known aggregator domains
-            for pattern, aggregator_domain in AGGREGATOR_DOMAINS.items():
-                if pattern in domain:
-                    return aggregator_domain
-
-            return None
-        except Exception:
-            return None
+        return self.sources_manager.get_aggregator_domain_for_url(url)
 
     # ============================================================
     # SOURCE SCRAPING

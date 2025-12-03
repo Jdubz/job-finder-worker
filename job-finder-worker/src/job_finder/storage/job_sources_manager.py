@@ -6,6 +6,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from job_finder.exceptions import (
@@ -39,6 +40,8 @@ class JobSourcesManager:
 
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path
+        # Cache for aggregator domains (invalidated on add_source with aggregator_domain)
+        self._aggregator_domains_cache: Optional[List[str]] = None
 
     def _validate_transition(self, current: SourceStatus, new: SourceStatus) -> None:
         allowed = VALID_SOURCE_TRANSITIONS.get(current, set()) | {current}
@@ -148,6 +151,10 @@ class JobSourcesManager:
                     now,
                 ),
             )
+
+        # Invalidate aggregator domains cache if this source has an aggregator_domain
+        if aggregator_domain:
+            self._aggregator_domains_cache = None
 
         logger.info("Added job source %s (%s)", name, source_id)
         if disabled_notes:
@@ -460,16 +467,96 @@ class JobSourcesManager:
     def get_aggregator_domains(self) -> List[str]:
         """Return all unique aggregator_domain values (non-null).
 
-        Used for validating that company websites are not job board URLs.
+        Uses an instance-level cache that is automatically invalidated when
+        add_source() is called with an aggregator_domain. Call refresh_aggregator_domains_cache()
+        to manually refresh if domains are modified externally.
 
         Returns:
             List of aggregator domain strings (e.g., ["greenhouse.io", "lever.co"])
         """
+        if self._aggregator_domains_cache is not None:
+            return self._aggregator_domains_cache
+
         with sqlite_connection(self.db_path) as conn:
             rows = conn.execute(
                 "SELECT DISTINCT aggregator_domain FROM job_sources WHERE aggregator_domain IS NOT NULL"
             ).fetchall()
-        return [row[0] for row in rows]
+        self._aggregator_domains_cache = [row[0] for row in rows]
+        return self._aggregator_domains_cache
+
+    def refresh_aggregator_domains_cache(self) -> List[str]:
+        """Force refresh of the aggregator domains cache.
+
+        Call this if domains are modified externally (e.g., direct SQL updates).
+        Returns the refreshed list of domains.
+        """
+        self._aggregator_domains_cache = None
+        return self.get_aggregator_domains()
+
+    def is_job_board_url(self, url: Optional[str]) -> bool:
+        """Check if URL belongs to a known job board or ATS platform.
+
+        Uses database-driven aggregator domains from the job_sources table.
+        This is the canonical method for checking if a URL is a job board -
+        all other code should use this instead of hardcoded domain lists.
+
+        Args:
+            url: URL to check (can be None or empty)
+
+        Returns:
+            True if URL belongs to a known job board/aggregator domain
+        """
+        if not url:
+            return False
+
+        try:
+            parsed = urlparse(url.lower())
+            netloc = parsed.netloc
+
+            if not netloc:
+                return False
+
+            # Check against database-driven aggregator domains
+            aggregator_domains = self.get_aggregator_domains()
+            for domain in aggregator_domains:
+                if netloc == domain or netloc.endswith("." + domain):
+                    return True
+
+            return False
+        except Exception as e:
+            logger.warning("URL parsing failed in is_job_board_url for '%s': %s", url, e)
+            return False
+
+    def get_aggregator_domain_for_url(self, url: str) -> Optional[str]:
+        """Get the aggregator domain if URL belongs to a known job board.
+
+        Used during source discovery to determine the aggregator_domain value
+        to store when creating a new source.
+
+        Args:
+            url: URL to check
+
+        Returns:
+            The matching aggregator domain, or None if not a job board
+        """
+        if not url:
+            return None
+
+        try:
+            parsed = urlparse(url.lower())
+            netloc = parsed.netloc
+
+            if not netloc:
+                return None
+
+            aggregator_domains = self.get_aggregator_domains()
+            for domain in aggregator_domains:
+                if netloc == domain or netloc.endswith("." + domain):
+                    return domain
+
+            return None
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------ #
     # Company Resolution
