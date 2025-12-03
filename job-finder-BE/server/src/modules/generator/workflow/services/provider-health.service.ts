@@ -18,7 +18,7 @@ export async function ensureCliProviderHealthy(provider: CliProvider): Promise<v
   }
 
   try {
-    await execFileAsync(check.cmd, check.args, { timeout: 15_000 })
+    await execFileAsync(check.cmd, check.args, { timeout: 5_000 })
   } catch (error) {
     const asError = error as Error & { stderr?: string }
     const detail = asError.stderr || asError.message || 'Unknown error'

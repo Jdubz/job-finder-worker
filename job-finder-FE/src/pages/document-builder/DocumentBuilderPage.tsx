@@ -222,13 +222,13 @@ export function DocumentBuilderPage() {
     if (details) {
       console.error(details)
     }
-    toast.error({ title: message })
     const displayMessage =
       typeof details === "string"
         ? details
         : details instanceof Error
           ? details.message
           : message
+    toast.error({ title: displayMessage })
     setAlert({ type: "error", message: displayMessage })
   }
 

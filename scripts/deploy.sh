@@ -58,18 +58,19 @@ cp infra/docker-compose.prod.yml docker-compose.yml
 echo "[deploy] Synced docker-compose.yml from infra/docker-compose.prod.yml"
 
 # --- Refresh Codex auth into seeds and volumes ---
+CODEX_BASE="${CODEX_BASE:-$DEPLOY_PATH}"
 SOURCE_AUTH="$HOME/.codex/auth.json"
 if [ -f "$SOURCE_AUTH" ]; then
   echo "[deploy] Updating Codex auth from $SOURCE_AUTH"
-  install -m 700 -d /srv/job-finder/codex-seed/.codex
-  install -m 600 "$SOURCE_AUTH" /srv/job-finder/codex-seed/.codex/auth.json
+  install -m 700 -d "$CODEX_BASE/codex-seed/.codex"
+  install -m 600 "$SOURCE_AUTH" "$CODEX_BASE/codex-seed/.codex/auth.json"
 
   sync_volume_auth() {
     local volume_name="$1"
     docker run --rm \
       -v "${volume_name}:/data" \
       -v "$SOURCE_AUTH:/host/auth.json:ro" \
-      alpine:3.20 \
+      alpine:3.20.2 \
       sh -c 'mkdir -p /data && cp /host/auth.json /data/auth.json && chmod 600 /data/auth.json'
   }
 

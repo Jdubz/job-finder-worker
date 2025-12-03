@@ -63,7 +63,12 @@ export class GeneratorWorkflowService {
       return
     }
 
-    await ensureCliProviderHealthy(selection.provider as CliProvider)
+    try {
+      await ensureCliProviderHealthy(selection.provider as CliProvider)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'AI provider unavailable'
+      throw new UserFacingError(message)
+    }
   }
 
   async createRequest(payload: GenerateDocumentPayload) {
