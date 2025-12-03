@@ -1,7 +1,6 @@
 import { BaseApiClient } from "./base-client"
 import { API_CONFIG } from "@/config/api"
 import type {
-  QueueSettings,
   AISettings,
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
@@ -9,10 +8,10 @@ import type {
   ApiSuccessResponse,
   PersonalInfo,
   WorkerSettings,
-  TitleFilterConfig,
   MatchPolicy,
+  PreFilterPolicy,
 } from "@shared/types"
-import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO, DEFAULT_TITLE_FILTER } from "@shared/types"
+import { DEFAULT_AI_SETTINGS, DEFAULT_PERSONAL_INFO } from "@shared/types"
 
 export class ConfigClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.baseUrl) {
@@ -31,23 +30,6 @@ export class ConfigClient extends BaseApiClient {
       payload,
     })
     return response.data.config
-  }
-
-  async getQueueSettings(): Promise<QueueSettings> {
-    return this.getConfigEntry<QueueSettings>("queue-settings")
-  }
-
-  async updateQueueSettings(settings: Partial<QueueSettings>): Promise<void> {
-    let existing: QueueSettings
-    try {
-      existing = await this.getQueueSettings()
-    } catch {
-      existing = { processingTimeoutSeconds: 1800 }
-    }
-    await this.updateConfigEntry("queue-settings", {
-      ...existing,
-      ...settings,
-    })
   }
 
   async getAISettings(): Promise<AISettings> {
@@ -80,16 +62,12 @@ export class ConfigClient extends BaseApiClient {
     })
   }
 
-  async getTitleFilter(): Promise<TitleFilterConfig> {
-    try {
-      return await this.getConfigEntry<TitleFilterConfig>("title-filter")
-    } catch {
-      return DEFAULT_TITLE_FILTER
-    }
+  async getPrefilterPolicy(): Promise<PreFilterPolicy> {
+    return this.getConfigEntry<PreFilterPolicy>("prefilter-policy")
   }
 
-  async updateTitleFilter(config: TitleFilterConfig): Promise<void> {
-    await this.updateConfigEntry("title-filter", config)
+  async updatePrefilterPolicy(config: PreFilterPolicy): Promise<void> {
+    await this.updateConfigEntry("prefilter-policy", config)
   }
 
   async getMatchPolicy(): Promise<MatchPolicy> {
@@ -105,8 +83,29 @@ export class ConfigClient extends BaseApiClient {
     return this.getConfigEntry<WorkerSettings>("worker-settings")
   }
 
-  async updateWorkerSettings(settings: WorkerSettings): Promise<void> {
-    await this.updateConfigEntry("worker-settings", settings)
+  async updateWorkerSettings(settings: Partial<WorkerSettings>): Promise<void> {
+    const existing = await this.getWorkerSettings()
+    // Deep-merge runtime and other nested objects to avoid clobbering
+    const merged = {
+      ...existing,
+      ...settings,
+      scraping: { ...existing.scraping, ...(settings.scraping ?? {}) },
+      textLimits: { ...existing.textLimits, ...(settings.textLimits ?? {}) },
+      runtime: { ...existing.runtime, ...(settings.runtime ?? {}) },
+    }
+    await this.updateConfigEntry("worker-settings", merged)
+  }
+
+  // Backward-compat convenience wrappers (runtime settings)
+  async getQueueSettings(): Promise<WorkerSettings["runtime"]> {
+    const ws = await this.getWorkerSettings()
+    return ws.runtime
+  }
+
+  async updateQueueSettings(settings: Partial<WorkerSettings["runtime"]>): Promise<void> {
+    const ws = await this.getWorkerSettings()
+    const runtime = { ...ws.runtime, ...settings }
+    await this.updateWorkerSettings({ ...ws, runtime })
   }
 
   async getPersonalInfo(): Promise<PersonalInfo> {

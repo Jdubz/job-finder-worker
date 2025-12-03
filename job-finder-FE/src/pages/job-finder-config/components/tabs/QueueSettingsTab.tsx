@@ -2,12 +2,14 @@ import { TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { TabCard } from "../shared"
-import type { QueueSettings } from "@shared/types"
+import type { WorkerSettings } from "@shared/types"
+
+type RuntimeSettings = WorkerSettings["runtime"]
 
 type QueueSettingsTabProps = {
   isSaving: boolean
-  queueSettings: QueueSettings
-  setQueueSettings: (updates: Partial<QueueSettings>) => void
+  queueSettings: RuntimeSettings
+  setQueueSettings: (updates: Partial<RuntimeSettings>) => void
   hasQueueChanges: boolean
   handleSaveQueueSettings: () => Promise<void> | void
   resetQueue: () => void

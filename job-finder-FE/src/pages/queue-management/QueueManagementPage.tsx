@@ -121,15 +121,15 @@ export function QueueManagementPage() {
     }
   }, [queueItems, error])
 
-  // Load queue settings on mount
+  // Load worker runtime settings on mount
   useEffect(() => {
     const loadQueueSettings = async () => {
       try {
-        const settings = await configClient.getQueueSettings()
-        // Default to true if not set
-        setIsProcessingEnabled(settings?.isProcessingEnabled ?? true)
+        const settings = await configClient.getWorkerSettings()
+        const runtime = settings.runtime
+        setIsProcessingEnabled(runtime.isProcessingEnabled ?? true)
       } catch (err) {
-        console.error("Failed to load queue settings:", err)
+        console.error("Failed to load worker settings:", err)
         setIsProcessingEnabled(true) // Default to enabled
       }
     }
@@ -140,7 +140,9 @@ export function QueueManagementPage() {
     const newValue = !isProcessingEnabled
     setIsTogglingProcessing(true)
     try {
-      await configClient.updateQueueSettings({ isProcessingEnabled: newValue })
+      const current = await configClient.getWorkerSettings()
+      const runtime = { ...current.runtime, isProcessingEnabled: newValue }
+      await configClient.updateWorkerSettings({ ...current, runtime })
       setIsProcessingEnabled(newValue)
       setAlert({
         type: "success",

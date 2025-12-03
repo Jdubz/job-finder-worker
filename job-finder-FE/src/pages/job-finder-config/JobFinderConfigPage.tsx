@@ -4,21 +4,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { useConfigState } from "./hooks/useConfigState"
-import {
-  QueueSettingsTab,
-  AISettingsTab,
-  PersonalInfoTab,
-  TitleFilterTab,
-  MatchPolicyTab,
-} from "./components/tabs"
+import { QueueSettingsTab, AISettingsTab, PersonalInfoTab, TitleFilterTab, MatchPolicyTab } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
 
-type TabType =
-  | "title-filter"
-  | "scoring"
-  | "queue"
-  | "ai"
-  | "personal"
+type TabType = "title-filter" | "scoring" | "queue" | "ai" | "personal"
 
 export function JobFinderConfigPage() {
   const { user, isOwner } = useAuth()
@@ -94,20 +83,25 @@ export function JobFinderConfigPage() {
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="title-filter">Title Filter</TabsTrigger>
+          <TabsTrigger value="title-filter">Pre-Filter</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
-          <TabsTrigger value="queue">Queue</TabsTrigger>
+          <TabsTrigger value="queue">Worker Runtime</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
           <TabsTrigger value="personal">Personal</TabsTrigger>
         </TabsList>
 
         <div className="space-y-4 py-4">
-          {activeTab === "title-filter" && (
+          {activeTab === "title-filter" && configState.prefilterPolicy && (
             <TitleFilterTab
               isSaving={configState.isSaving}
-              config={configState.titleFilter}
-              onSave={configState.handleSaveTitleFilter}
-              onReset={configState.resetTitleFilter}
+              config={configState.prefilterPolicy.title}
+              onSave={(title) =>
+                configState.handleSavePrefilter({
+                  ...(configState.prefilterPolicy ?? {}),
+                  title,
+                })
+              }
+              onReset={() => configState.resetPrefilter()}
             />
           )}
 
@@ -132,14 +126,14 @@ export function JobFinderConfigPage() {
             </div>
           )}
 
-          {activeTab === "queue" && (
+          {activeTab === "queue" && configState.workerSettings && (
             <QueueSettingsTab
               isSaving={configState.isSaving}
-              queueSettings={configState.queueSettings}
-              setQueueSettings={configState.setQueueSettings}
-              hasQueueChanges={configState.hasQueueChanges}
-              handleSaveQueueSettings={configState.handleSaveQueueSettings}
-              resetQueue={configState.resetQueue}
+              queueSettings={configState.workerSettings.runtime}
+              setQueueSettings={configState.setRuntimeSettings}
+              hasQueueChanges={configState.hasWorkerChanges}
+              handleSaveQueueSettings={configState.handleSaveWorkerSettings}
+              resetQueue={() => configState.resetWorker()}
             />
           )}
 
