@@ -633,7 +633,7 @@ class TestAntiBlockDetection:
     @patch("job_finder.scrapers.generic_scraper.requests.get")
     def test_http_errors_raise_scrape_blocked(self, mock_get, source_type, request_attr, config_kwargs):
         """Any HTTP error should bubble up as ScrapeBlockedError so callers can disable sources."""
-        from requests import HTTPError, Response
+        from requests import HTTPError
         from job_finder.exceptions import ScrapeBlockedError
 
         mock_resp = Mock()
