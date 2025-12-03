@@ -222,6 +222,10 @@ class AIJobMatcher:
         Returns:
             JobMatchResult object
         """
+        # Normalize skills arrays - AI may return dicts like {"skill": "Python", "proficiency": "Advanced"}
+        matched_skills = self._normalize_skills_array(match_analysis.get("matched_skills", []))
+        missing_skills = self._normalize_skills_array(match_analysis.get("missing_skills", []))
+
         return JobMatchResult(
             job_title=job.get("title", ""),
             job_company=job.get("company", ""),
@@ -230,8 +234,8 @@ class AIJobMatcher:
             salary_range=job.get("salary") or job.get("salary_range"),
             company_info=job.get("company_info"),
             match_score=match_score,
-            matched_skills=match_analysis.get("matched_skills", []),
-            missing_skills=match_analysis.get("missing_skills", []),
+            matched_skills=matched_skills,
+            missing_skills=missing_skills,
             experience_match=match_analysis.get("experience_match", ""),
             key_strengths=match_analysis.get("key_strengths", []),
             match_reasons=match_analysis.get("match_reasons", []),
@@ -240,6 +244,31 @@ class AIJobMatcher:
             customization_recommendations=match_analysis.get("customization_recommendations", {}),
             resume_intake_data=intake_data,
         )
+
+    @staticmethod
+    def _normalize_skills_array(skills: list) -> List[str]:
+        """
+        Normalize a skills array to a list of strings.
+
+        AI may return skills as objects like {"skill": "Python", "proficiency": "Advanced"}
+        instead of simple strings. This method extracts just the skill names.
+
+        Args:
+            skills: List of skills (strings or dicts)
+
+        Returns:
+            List of skill name strings
+        """
+        result = []
+        for item in skills:
+            if isinstance(item, str):
+                result.append(item)
+            elif isinstance(item, dict):
+                # Extract skill name from common dict formats
+                skill_name = item.get("skill") or item.get("name") or item.get("technology")
+                if skill_name and isinstance(skill_name, str):
+                    result.append(skill_name)
+        return result
 
     def analyze_jobs(self, jobs: List[Dict[str, Any]]) -> List[JobMatchResult]:
         """
