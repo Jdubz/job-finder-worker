@@ -54,12 +54,12 @@ def _fetch_queue_rows(db_path):
     return rows
 
 
-def _set_scheduler_settings(db_path, settings):
+def _set_worker_runtime(db_path, settings):
     conn = sqlite3.connect(db_path)
     conn.execute(
         """
         INSERT INTO job_finder_config (id, payload_json)
-        VALUES ('scheduler-settings', ?)
+        VALUES ('worker-settings', ?)
         """,
         (json.dumps(settings),),
     )
@@ -69,7 +69,28 @@ def _set_scheduler_settings(db_path, settings):
 
 def test_submit_scrape_enqueues_item(tmp_path, capsys):
     db_path = _create_db(tmp_path)
-    _set_scheduler_settings(db_path, {"scrapeConfig": {}})
+    _set_worker_runtime(
+        db_path,
+        {
+            "scraping": {"requestTimeoutSeconds": 30, "maxHtmlSampleLength": 1000},
+            "textLimits": {
+                "minCompanyPageLength": 10,
+                "minSparseCompanyInfoLength": 5,
+                "maxIntakeTextLength": 500,
+                "maxIntakeDescriptionLength": 2000,
+                "maxIntakeFieldLength": 400,
+                "maxDescriptionPreviewLength": 500,
+                "maxCompanyInfoTextLength": 1000,
+            },
+            "runtime": {
+                "processingTimeoutSeconds": 1800,
+                "isProcessingEnabled": True,
+                "taskDelaySeconds": 0,
+                "pollIntervalSeconds": 10,
+                "scrapeConfig": {},
+            },
+        },
+    )
 
     exit_code = submit_scrape.main(
         [
@@ -112,7 +133,7 @@ def test_submit_scrape_enqueues_item(tmp_path, capsys):
 def test_submit_scrape_seeds_defaults_when_config_missing(tmp_path):
     db_path = _create_db(tmp_path)
 
-    # No scheduler-settings row should now fail loudly
+    # Worker runtime config is required; legacy scheduler config is removed
     with pytest.raises(Exception):
         submit_scrape.main(["--db-path", db_path])
 
@@ -121,13 +142,29 @@ def test_submit_scrape_uses_db_config_as_fallback(tmp_path):
     db_path = _create_db(tmp_path)
 
     db_settings = {
-        "scrapeConfig": {
-            "targetMatches": 10,
-            "maxSources": 5,
-            "sourceIds": ["db_src_1", "db_src_2"],
-        }
+        "scraping": {"requestTimeoutSeconds": 30, "maxHtmlSampleLength": 1000},
+        "textLimits": {
+            "minCompanyPageLength": 10,
+            "minSparseCompanyInfoLength": 5,
+            "maxIntakeTextLength": 500,
+            "maxIntakeDescriptionLength": 2000,
+            "maxIntakeFieldLength": 400,
+            "maxDescriptionPreviewLength": 500,
+            "maxCompanyInfoTextLength": 1000,
+        },
+        "runtime": {
+            "processingTimeoutSeconds": 1800,
+            "isProcessingEnabled": True,
+            "taskDelaySeconds": 0,
+            "pollIntervalSeconds": 10,
+            "scrapeConfig": {
+                "target_matches": 10,
+                "max_sources": 5,
+                "source_ids": ["db_src_1", "db_src_2"],
+            },
+        },
     }
-    _set_scheduler_settings(db_path, db_settings)
+    _set_worker_runtime(db_path, db_settings)
 
     submit_scrape.main(["--db-path", db_path])
 

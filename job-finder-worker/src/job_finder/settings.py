@@ -18,35 +18,9 @@ import os
 from functools import lru_cache
 from typing import Any, Dict, Optional
 
-logger = logging.getLogger(__name__)
+from job_finder.exceptions import InitializationError
 
-# Default values (fallback if DB not available)
-DEFAULT_WORKER_SETTINGS: Dict[str, Any] = {
-    "scraping": {
-        "requestTimeoutSeconds": 30,
-        "rateLimitDelaySeconds": 2,
-        "maxRetries": 3,
-        "maxHtmlSampleLength": 20000,
-        "maxHtmlSampleLengthSmall": 15000,
-    },
-    "health": {
-        "maxConsecutiveFailures": 5,
-        "healthCheckIntervalSeconds": 3600,
-    },
-    "cache": {
-        "companyInfoTtlSeconds": 86400,
-        "sourceConfigTtlSeconds": 3600,
-    },
-    "textLimits": {
-        "minCompanyPageLength": 200,
-        "minSparseCompanyInfoLength": 100,
-        "maxIntakeTextLength": 500,
-        "maxIntakeDescriptionLength": 2000,
-        "maxIntakeFieldLength": 400,
-        "maxDescriptionPreviewLength": 500,
-        "maxCompanyInfoTextLength": 1000,
-    },
-}
+logger = logging.getLogger(__name__)
 
 
 def _get_db_path() -> Optional[str]:
@@ -69,8 +43,7 @@ def get_worker_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
     """
     db = db_path or _get_db_path()
     if not db:
-        logger.debug("No database path available, using default worker settings")
-        return DEFAULT_WORKER_SETTINGS
+        raise InitializationError("SQLITE_DB_PATH not set; cannot load worker-settings")
 
     try:
         from job_finder.job_queue.config_loader import ConfigLoader
@@ -79,9 +52,12 @@ def get_worker_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
         settings = loader.get_worker_settings()
         logger.debug("Loaded worker settings from database")
         return settings
-    except Exception as e:
-        logger.warning(f"Failed to load worker settings from DB: {e}, using defaults")
-        return DEFAULT_WORKER_SETTINGS
+    except InitializationError as e:
+        logger.error(f"Failed to load worker settings from DB: {e}")
+        raise
+    except Exception:
+        logger.exception("Unexpected error loading worker settings from DB")
+        raise
 
 
 def clear_settings_cache() -> None:

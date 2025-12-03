@@ -167,7 +167,7 @@ describeIntegration("Generator API Integration", () => {
       expect(skills).toBeInstanceOf(Array)
 
       if (skills) {
-        skills.forEach((skill) => {
+        skills.forEach((skill: string) => {
           expect(typeof skill).toBe("string")
           expect(skill.length).toBeGreaterThan(0)
         })

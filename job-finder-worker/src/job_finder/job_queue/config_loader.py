@@ -32,34 +32,6 @@ class ConfigLoader:
         except json.JSONDecodeError as exc:
             raise InitializationError(f"Invalid JSON for config '{key}': {exc}") from exc
 
-    def _seed_config(self, key: str, value: Dict[str, Any]) -> Dict[str, Any]:
-        """Persist default config to SQLite and return it."""
-        with sqlite_connection(self.db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO job_finder_config (id, payload_json, updated_at)
-                VALUES (?, ?, datetime('now'))
-                ON CONFLICT(id) DO UPDATE SET
-                  payload_json = excluded.payload_json,
-                  updated_at = excluded.updated_at
-                """,
-                (
-                    key,
-                    json.dumps(value),
-                ),
-            )
-        return value
-
-    def get_title_filter(self) -> Dict[str, Any]:
-        """Get title filter configuration. Fails if not configured."""
-        config = self._get_config("title-filter")
-        # Validate required keys
-        required_keys = ["requiredKeywords", "excludedKeywords"]
-        missing = [k for k in required_keys if k not in config]
-        if missing:
-            raise InitializationError(f"title-filter missing required keys: {missing}")
-        return config
-
     def get_prefilter_policy(self) -> Dict[str, Any]:
         """
         Get pre-filter policy configuration.
@@ -118,16 +90,11 @@ class ConfigLoader:
 
         return config
 
-    def get_queue_settings(self) -> Dict[str, Any]:
-        return self._get_config("queue-settings")
-
     def is_processing_enabled(self) -> bool:
-        """Check if queue processing is enabled. Defaults to True if not set."""
-        try:
-            settings = self.get_queue_settings()
-            return settings.get("isProcessingEnabled", True)
-        except Exception:
-            return True  # Default to enabled if config can't be read
+        """Check if queue processing is enabled (worker-settings.runtime)."""
+        settings = self.get_worker_settings()
+        runtime = settings["runtime"]
+        return bool(runtime["isProcessingEnabled"])
 
     def get_ai_settings(self) -> Dict[str, Any]:
         """Get AI provider configuration (provider selection only)."""
@@ -285,13 +252,32 @@ class ConfigLoader:
 
         return payload
 
-    def get_scheduler_settings(self) -> Dict[str, Any]:
-        """Get scheduler settings for cron job configuration (scrapeConfig).
-
-        Note: pollIntervalSeconds has been moved to queue-settings.
-        This config now only contains scrape-related settings for the cron job.
-        """
-        return self._get_config("scheduler-settings")
-
     def get_worker_settings(self) -> Dict[str, Any]:
-        return self._get_config("worker-settings")
+        settings = self._get_config("worker-settings")
+
+        required_sections = ["scraping", "textLimits", "runtime"]
+        missing = [s for s in required_sections if s not in settings]
+        if missing:
+            raise InitializationError(
+                f"worker-settings missing required sections: {missing}. "
+                "Update the worker-settings config record to include all required fields."
+            )
+
+        runtime = settings.get("runtime")
+        if not isinstance(runtime, dict):
+            raise InitializationError("worker-settings.runtime missing or invalid")
+
+        # Validate required runtime keys (fail loud on schema drift)
+        required_keys = {
+            "processingTimeoutSeconds",
+            "isProcessingEnabled",
+            "taskDelaySeconds",
+            "pollIntervalSeconds",
+        }
+        missing_keys = required_keys - set(runtime.keys())
+        if missing_keys:
+            raise InitializationError(
+                "worker-settings.runtime missing keys: " + ", ".join(sorted(missing_keys))
+            )
+
+        return settings

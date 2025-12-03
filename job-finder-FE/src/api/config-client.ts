@@ -1,7 +1,6 @@
 import { BaseApiClient } from "./base-client"
 import { API_CONFIG } from "@/config/api"
 import type {
-  QueueSettings,
   AISettings,
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
@@ -9,8 +8,8 @@ import type {
   ApiSuccessResponse,
   PersonalInfo,
   WorkerSettings,
-  TitleFilterConfig,
   MatchPolicy,
+  PreFilterPolicy,
 } from "@shared/types"
 
 export class ConfigClient extends BaseApiClient {
@@ -30,16 +29,6 @@ export class ConfigClient extends BaseApiClient {
       payload,
     })
     return response.data.config
-  }
-
-  async getQueueSettings(): Promise<QueueSettings> {
-    return this.getConfigEntry<QueueSettings>("queue-settings")
-  }
-
-  async updateQueueSettings(settings: Partial<QueueSettings>): Promise<void> {
-    // Fetch existing to merge - throws if not configured
-    const existing = await this.getQueueSettings()
-    await this.updateConfigEntry("queue-settings", { ...existing, ...settings })
   }
 
   async getAISettings(): Promise<AISettings> {
@@ -70,12 +59,12 @@ export class ConfigClient extends BaseApiClient {
     })
   }
 
-  async getTitleFilter(): Promise<TitleFilterConfig> {
-    return this.getConfigEntry<TitleFilterConfig>("title-filter")
+  async getPrefilterPolicy(): Promise<PreFilterPolicy> {
+    return this.getConfigEntry<PreFilterPolicy>("prefilter-policy")
   }
 
-  async updateTitleFilter(config: TitleFilterConfig): Promise<void> {
-    await this.updateConfigEntry("title-filter", config)
+  async updatePrefilterPolicy(config: PreFilterPolicy): Promise<void> {
+    await this.updateConfigEntry("prefilter-policy", config)
   }
 
   async getMatchPolicy(): Promise<MatchPolicy> {
@@ -90,8 +79,33 @@ export class ConfigClient extends BaseApiClient {
     return this.getConfigEntry<WorkerSettings>("worker-settings")
   }
 
-  async updateWorkerSettings(settings: WorkerSettings): Promise<void> {
-    await this.updateConfigEntry("worker-settings", settings)
+  async updateWorkerSettings(settings: Partial<WorkerSettings>): Promise<void> {
+    const existing = await this.getWorkerSettings()
+    // Deep-merge runtime and other nested objects to avoid clobbering
+    const merged = {
+      ...existing,
+      ...settings,
+      scraping: { ...existing.scraping, ...(settings.scraping ?? {}) },
+      textLimits: { ...existing.textLimits, ...(settings.textLimits ?? {}) },
+      runtime: { ...existing.runtime, ...(settings.runtime ?? {}) },
+      health: Object.prototype.hasOwnProperty.call(settings, "health")
+        ? settings.health
+        : existing.health,
+      cache: Object.prototype.hasOwnProperty.call(settings, "cache") ? settings.cache : existing.cache,
+    }
+    await this.updateConfigEntry("worker-settings", merged)
+  }
+
+  // Backward-compat convenience wrappers (runtime settings)
+  async getQueueSettings(): Promise<WorkerSettings["runtime"]> {
+    const ws = await this.getWorkerSettings()
+    return ws.runtime
+  }
+
+  async updateQueueSettings(settings: Partial<WorkerSettings["runtime"]>): Promise<void> {
+    const ws = await this.getWorkerSettings()
+    const runtime = { ...ws.runtime, ...settings }
+    await this.updateWorkerSettings({ ...ws, runtime })
   }
 
   async getPersonalInfo(): Promise<PersonalInfo> {

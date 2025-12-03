@@ -1,4 +1,5 @@
 import { request, type FullConfig } from "@playwright/test"
+import { seedBaseConfigs } from "./fixtures/api-client"
 
 /**
  * Create a reusable authenticated storage state for the default admin/dev token.
@@ -18,6 +19,9 @@ export default async function globalSetup(_config: FullConfig) {
   if (!response.ok()) {
     throw new Error(`Failed to create admin storage state: ${response.status()} ${await response.text()}`)
   }
+
+  // Ensure baseline configs exist for UI routes that require them
+  await seedBaseConfigs(requestContext)
 
   await requestContext.storageState({ path: storagePath })
   await requestContext.dispose()

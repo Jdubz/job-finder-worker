@@ -37,8 +37,9 @@ def main() -> None:
 
     # Get task delay from settings (default to 1 second) with validation
     try:
-        queue_settings = config_loader.get_queue_settings()
-        task_delay_raw = queue_settings.get("taskDelaySeconds", 1)
+        worker_settings = config_loader.get_worker_settings()
+        runtime = worker_settings.get("runtime", {}) if isinstance(worker_settings, dict) else {}
+        task_delay_raw = runtime.get("taskDelaySeconds", 1)
 
         # Validate taskDelaySeconds is a valid number
         try:
@@ -65,7 +66,7 @@ def main() -> None:
     except (InitializationError, ConfigurationError) as e:
         # Expected errors: database not initialized, config missing, etc.
         logger.warning(
-            "Could not load queue settings (%s: %s), using default task delay of 1s",
+            "Could not load worker runtime settings (%s: %s), using default task delay of 1s",
             type(e).__name__,
             e,
         )

@@ -121,11 +121,13 @@ class JobProcessor(BaseProcessor):
         self.notifier = notifier
 
         # Initialize new hybrid pipeline components
-        title_filter_config = config_loader.get_title_filter()
+        prefilter_policy = config_loader.get_prefilter_policy()
+        title_filter_config = (
+            prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
+        )
         self.title_filter = TitleFilter(title_filter_config)
 
         # Initialize prefilter - fails loud if not configured
-        prefilter_policy = config_loader.get_prefilter_policy()
         self.prefilter = PreFilter(prefilter_policy)
 
         match_policy = config_loader.get_match_policy()
@@ -158,8 +160,10 @@ class JobProcessor(BaseProcessor):
     def _refresh_runtime_config(self) -> None:
         """Reload config-driven components so the next item uses fresh settings."""
         ai_settings = self.config_loader.get_ai_settings()
-        title_filter_config = self.config_loader.get_title_filter()
         prefilter_policy = self.config_loader.get_prefilter_policy()
+        title_filter_config = (
+            prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
+        )
         match_policy = self.config_loader.get_match_policy()
 
         # Rebuild title filter with latest config
@@ -967,7 +971,7 @@ class JobProcessor(BaseProcessor):
         self._finalize_early_rejection(ctx, "title", rejection_reason)
 
     def _finalize_prefiltered(self, ctx: PipelineContext) -> None:
-        """Finalize pipeline with FILTERED status due to prefilter rejection."""
+        """Finalize pipeline with FILTERED status due to prefilter rejection (prefiltered jobs are NOT stored in job_listings)."""
         rejection_reason = (
             ctx.prefilter_result.reason if ctx.prefilter_result else "Prefilter rejected"
         )

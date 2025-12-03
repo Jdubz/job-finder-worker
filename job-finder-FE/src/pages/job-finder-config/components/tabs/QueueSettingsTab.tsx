@@ -2,12 +2,14 @@ import { TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { TabCard } from "../shared"
-import type { QueueSettings } from "@shared/types"
+import type { WorkerSettings } from "@shared/types"
+
+type RuntimeSettings = WorkerSettings["runtime"]
 
 type QueueSettingsTabProps = {
   isSaving: boolean
-  queueSettings: QueueSettings | null
-  setQueueSettings: (updates: Partial<QueueSettings>) => void
+  queueSettings: RuntimeSettings | null
+  setQueueSettings: (updates: Partial<RuntimeSettings>) => void
   hasQueueChanges: boolean
   handleSaveQueueSettings: () => Promise<void> | void
   resetQueue: () => void
@@ -27,7 +29,7 @@ export function QueueSettingsTab({
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
           <h3 className="text-lg font-semibold text-destructive">Configuration Missing</h3>
           <p className="mt-2 text-sm text-muted-foreground">
-            The queue-settings configuration is not set in the database. Please add it before using this feature.
+            The worker-settings configuration is not set in the database. Please add it before using this feature.
           </p>
         </div>
       </TabsContent>

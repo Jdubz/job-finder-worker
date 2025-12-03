@@ -29,7 +29,7 @@ Create `scripts/test-docker-startup.sh`:
 - Verify container is running (`docker compose ps`)
 - Check container health status
 - Verify worker logs show initialization
-- Verify worker can connect to Firestore emulator
+- Verify worker can connect to SQLite database
 - Document exit codes (0 = success, 1 = failure)
 
 ### 2. Graceful Shutdown Test
@@ -60,8 +60,8 @@ Add test cases:
 
 - Verify Docker network is created
 - Test container restart with existing network
-- Verify container can reach Firestore emulator (port 8080)
-- Test when Firestore emulator is not running (expected failure)
+- Verify container can reach SQLite database (port 8080)
+- Test when SQLite database is not running (expected failure)
 - Document network requirements
 
 ### 5. Process Management Tests
@@ -100,7 +100,7 @@ The test script should verify:
 docker compose -f docker-compose.dev.yml up -d
 # Expected: Container starts in detached mode
 # Expected: Worker initializes within 30 seconds
-# Expected: Logs show connection to Firestore
+# Expected: Logs show connection to SQLite DB
 # Expected: Container status: "running"
 ```
 
@@ -160,7 +160,7 @@ docker compose -f docker-compose.dev.yml down
 ## Dependencies
 
 - Docker and Docker Compose must be installed
-- Firestore emulator should be running (for full integration test)
+- SQLite database should be running (for full integration test)
 - Environment variables configured in `.env` file
 
 ## Documentation
@@ -182,7 +182,7 @@ Create `docs/worker-startup.md`:
 - Use `docker compose kill` only when stop hangs or fails
 - Container logs are essential for debugging
 - Dev-monitor should use detached mode (`-d` flag)
-- Test both with and without Firestore emulator running
+- Test both with and without SQLite database running
 - Document expected behavior when dependencies are unavailable
 - Worker should have reasonable startup timeout (30s)
 - Graceful shutdown timeout should be 10s before force kill

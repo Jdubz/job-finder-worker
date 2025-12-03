@@ -6,15 +6,13 @@
 
 ## Overview
 
-This guide covers comprehensive testing for job-finder-bot backend Cloud Functions. Currently there is minimal test coverage (only Firestore rules tests exist), creating critical risk of deploying broken code to production.
+This guide covers comprehensive testing for job-finder-bot backend services. Firestore is no longer used; SQLite is the sole datastore. Currently there is minimal test coverage, creating critical risk of deploying broken code to production.
 
 ## Context
 
 **Current State**:
 
-- Only test files: Firestore security rules tests
-- No unit tests for Cloud Functions
-- No integration tests for API endpoints
+- Sparse unit/integration coverage
 - No smoke tests after deployment
 - **Result**: Cannot verify functions work before deploying
 
@@ -47,7 +45,7 @@ job-finder-BE/
 │   │   │   │   ├── jobQueue.api.test.ts
 │   │   │   │   ├── jobMatching.api.test.ts
 │   │   │   │   └── companies.api.test.ts
-│   │   │   └── firestore/
+  │   │   │   └── (datastore helpers for SQLite only)
 │   │   ├── helpers/
 │   │   │   ├── testSetup.ts
 │   │   │   ├── mockData.ts

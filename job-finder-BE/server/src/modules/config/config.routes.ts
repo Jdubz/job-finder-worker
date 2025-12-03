@@ -5,22 +5,20 @@ import type {
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
   UpsertConfigEntryResponse,
-  QueueSettings,
   AISettings,
   JobFinderConfigId,
   PromptConfig,
   WorkerSettings,
-  TitleFilterConfig,
   MatchPolicy,
+  PreFilterPolicy,
 } from '@shared/types'
 import {
   ApiErrorCode,
-  isQueueSettings,
   isAISettings,
   isPersonalInfo,
   isWorkerSettings,
-  isTitleFilterConfig,
   isMatchPolicy,
+  isPreFilterPolicy,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -33,12 +31,11 @@ const updateSchema = z.object({
 })
 
 type KnownPayload =
-  | QueueSettings
   | AISettings
-  | TitleFilterConfig
   | MatchPolicy
   | PromptConfig
   | WorkerSettings
+  | PreFilterPolicy
   | Record<string, unknown>
 
 /**
@@ -98,17 +95,16 @@ function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>):
 
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
   switch (id) {
-    case 'queue-settings':
-      return normalizeKeys<QueueSettings>(payload)
     case 'ai-settings':
       return normalizeKeys<AISettings>(payload)
-    case 'title-filter':
-      return normalizeKeys<TitleFilterConfig>(payload)
     case 'match-policy':
       return normalizeKeys<MatchPolicy>(payload)
+    case 'prefilter-policy':
+      return normalizeKeys<PreFilterPolicy>(payload)
+    case 'ai-prompts':
+      return payload
     case 'worker-settings':
       return normalizeKeys<WorkerSettings>(payload)
-    case 'ai-prompts':
     case 'personal-info':
     default:
       return payload
@@ -117,14 +113,12 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
 
 function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean {
   switch (id) {
-    case 'queue-settings':
-      return isQueueSettings(payload)
     case 'ai-settings':
       return isAISettings(payload)
-    case 'title-filter':
-      return isTitleFilterConfig(payload)
     case 'match-policy':
       return isMatchPolicy(payload)
+    case 'prefilter-policy':
+      return isPreFilterPolicy(payload)
     case 'ai-prompts':
       return true
     case 'worker-settings':
@@ -168,7 +162,6 @@ export function buildConfigRouter() {
     '/:id',
     asyncHandler((req, res) => {
       const id = req.params.id as JobFinderConfigId
-
       const entry = repo.get(id)
 
       if (!entry) {

@@ -62,7 +62,7 @@ class ScrapeRunner:
         self.sources_manager = sources_manager
         self.company_info_fetcher = company_info_fetcher
 
-        # Use provided title filter or create one from config
+        # Use provided title filter or create one from prefilter-policy.title
         self.title_filter: Optional[TitleFilter] = None
         if title_filter:
             self.title_filter = title_filter
@@ -86,8 +86,9 @@ class ScrapeRunner:
 
     def _create_title_filter(self, config_loader: ConfigLoader) -> TitleFilter:
         """Create TitleFilter for pre-filtering scraped jobs."""
-        title_filter_config = config_loader.get_title_filter()
-        return TitleFilter(title_filter_config)
+        prefilter = config_loader.get_prefilter_policy()
+        title_cfg = prefilter.get("title", {}) if isinstance(prefilter, dict) else {}
+        return TitleFilter(title_cfg)
 
     def run_scrape(
         self,

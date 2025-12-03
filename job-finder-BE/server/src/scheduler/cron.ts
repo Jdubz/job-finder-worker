@@ -8,7 +8,7 @@ import { logger } from '../logger'
 import { env } from '../config/env'
 import { JobQueueService } from '../modules/job-queue/job-queue.service'
 import { ConfigRepository } from '../modules/config/config.repository'
-import { isQueueSettings, type QueueSettings } from '@shared/types'
+import { isWorkerSettings, type WorkerSettings } from '@shared/types'
 
 const getQueueService = (() => {
   let svc: JobQueueService | null = null
@@ -40,14 +40,14 @@ function coalesceNumber(...values: Array<number | null | undefined>): number | n
 }
 
 function loadScrapeConfig() {
-  const entry = getConfigRepo().get<QueueSettings>('queue-settings')
-  if (!entry || !isQueueSettings(entry.payload)) {
-    throw new Error('queue-settings config missing or invalid')
+  const entry = getConfigRepo().get<WorkerSettings>('worker-settings')
+  if (!entry || !isWorkerSettings(entry.payload)) {
+    throw new Error('worker-settings config missing or invalid')
   }
 
-  const raw = (entry.payload as any).scrapeConfig || (entry.payload as any).scrape_config
+  const raw = (entry.payload as any).runtime?.scrapeConfig || (entry.payload as any).runtime?.scrape_config
   if (!raw || typeof raw !== 'object') {
-    throw new Error('queue-settings.scrapeConfig is required for cron scrapes')
+    throw new Error('worker-settings.runtime.scrapeConfig is required for cron scrapes')
   }
 
   const targetMatches = coalesceNumber(raw.target_matches, raw.targetMatches)
@@ -60,7 +60,7 @@ function loadScrapeConfig() {
       : undefined
 
   if (targetMatches === undefined && maxSources === undefined && sourceIds === undefined) {
-    throw new Error('queue-settings.scrapeConfig must specify at least one of target_matches, max_sources, or source_ids')
+    throw new Error('worker-settings.runtime.scrapeConfig must specify at least one of target_matches, max_sources, or source_ids')
   }
 
   return {
