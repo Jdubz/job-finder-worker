@@ -27,6 +27,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Sparkles, Download } from "lucide-react"
 import { GenerationProgress } from "@/components/GenerationProgress"
+import { toast } from "@/components/toast"
 
 // Step definitions matching backend generation-steps.ts
 function getInitialSteps(generateType: "resume" | "coverLetter" | "both"): GenerationStep[] {
@@ -217,6 +218,14 @@ export function DocumentBuilderPage() {
     }
   }, [selectedJobMatchId, jobMatches])
 
+  const showUserError = (message: string, details?: unknown) => {
+    if (details) {
+      console.error(details)
+    }
+    toast.error({ title: message })
+    setAlert({ type: "error", message })
+  }
+
   const handleGenerate = async () => {
     if (!user) {
       setAlert({ type: "error", message: "You must be logged in to generate documents" })
@@ -269,10 +278,7 @@ export function DocumentBuilderPage() {
       const startResponse = await generatorClient.startGeneration(request)
 
       if (!startResponse.success) {
-        setAlert({
-          type: "error",
-          message: "Failed to start generation",
-        })
+        showUserError("Failed to start generation. Please try again.", startResponse.error)
         return
       }
 
@@ -329,10 +335,7 @@ export function DocumentBuilderPage() {
                 )
               )
             }
-            setAlert({
-              type: "error",
-              message: errorMessage,
-            })
+            showUserError("Generation failed. See the checklist for details.", errorMessage)
             return
           }
 
@@ -366,10 +369,10 @@ export function DocumentBuilderPage() {
                 : step
             )
           )
-          setAlert({
-            type: "error",
-            message: `Step execution failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-          })
+          showUserError(
+            "Step execution failed. Please retry.",
+            error instanceof Error ? error.message : error
+          )
           return
         }
       }
@@ -384,6 +387,7 @@ export function DocumentBuilderPage() {
             : documentType === "cover_letter"
               ? "Cover letter"
               : "Resume and cover letter"
+        toast.success({ title: `${documentTypeLabel} generated successfully!` })
         setAlert({
           type: "success",
           message: `${documentTypeLabel} generated successfully!`,
@@ -398,10 +402,7 @@ export function DocumentBuilderPage() {
       setTargetSummary("")
     } catch (error) {
       console.error("Generation error:", error)
-      setAlert({
-        type: "error",
-        message: error instanceof Error ? error.message : "Failed to generate document",
-      })
+      showUserError("Document generation failed. Please try again.", error)
     } finally {
       setLoading(false)
     }
@@ -425,12 +426,6 @@ export function DocumentBuilderPage() {
             <CardDescription>Create a customized resume or cover letter using AI</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {alert && (
-              <Alert variant={alert.type === "error" ? "destructive" : "default"}>
-                <AlertDescription>{alert.message}</AlertDescription>
-              </Alert>
-            )}
-
             {/* Document Type Selection */}
             <div className="space-y-2">
               <Label>Document Type</Label>
@@ -633,6 +628,15 @@ export function DocumentBuilderPage() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Error/Status banner anchored near the bottom */}
+      {alert && (
+        <div className="mt-6">
+          <Alert variant={alert.type === "error" ? "destructive" : "default"} className="w-full">
+            <AlertDescription>{alert.message}</AlertDescription>
+          </Alert>
         </div>
       )}
 

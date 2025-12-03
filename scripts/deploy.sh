@@ -56,6 +56,29 @@ tar -xzf job-finder.tar.gz --strip-components=1
 # like seed+volume pattern for CLI credentials.
 cp infra/docker-compose.prod.yml docker-compose.yml
 echo "[deploy] Synced docker-compose.yml from infra/docker-compose.prod.yml"
+
+# --- Refresh Codex auth into seeds and volumes ---
+SOURCE_AUTH="$HOME/.codex/auth.json"
+if [ -f "$SOURCE_AUTH" ]; then
+  echo "[deploy] Updating Codex auth from $SOURCE_AUTH"
+  install -m 700 -d /srv/job-finder/codex/.codex /srv/job-finder/codex-seed/.codex
+  install -m 600 "$SOURCE_AUTH" /srv/job-finder/codex/.codex/auth.json
+  install -m 600 "$SOURCE_AUTH" /srv/job-finder/codex-seed/.codex/auth.json
+
+  sync_volume_auth() {
+    local volume_name="$1"
+    docker run --rm \
+      -v "${volume_name}:/data" \
+      -v "$SOURCE_AUTH:/host/auth.json:ro" \
+      alpine:3.20 \
+      sh -c 'mkdir -p /data && cp /host/auth.json /data/auth.json && chmod 600 /data/auth.json'
+  }
+
+  sync_volume_auth job-finder_codex-home-api || true
+  sync_volume_auth job-finder_codex-home-worker || true
+else
+  echo "[deploy] WARNING: $SOURCE_AUTH not found; skipping Codex auth refresh"
+fi
 # Pull and restart stack
 docker compose -f docker-compose.yml pull
 docker compose -f docker-compose.yml up -d --remove-orphans
