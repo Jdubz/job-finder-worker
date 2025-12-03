@@ -140,19 +140,23 @@ class PreFilter:
         else:
             checks_skipped.append("title")
 
-        # 2. Freshness check (if posted_date available)
+        # 2. Freshness check (if posted_date available and parseable)
         if self.max_age_days > 0:
             posted_date = job_data.get("posted_date")
             if posted_date:
-                checks_performed.append("freshness")
-                result = self._check_freshness(posted_date)
-                if not result.passed:
-                    return PreFilterResult(
-                        passed=False,
-                        reason=result.reason,
-                        checks_performed=checks_performed,
-                        checks_skipped=checks_skipped,
-                    )
+                result, was_parseable = self._check_freshness(posted_date)
+                if was_parseable:
+                    checks_performed.append("freshness")
+                    if not result.passed:
+                        return PreFilterResult(
+                            passed=False,
+                            reason=result.reason,
+                            checks_performed=checks_performed,
+                            checks_skipped=checks_skipped,
+                        )
+                else:
+                    # Date present but unparseable - treat as skipped
+                    checks_skipped.append("freshness")
             else:
                 checks_skipped.append("freshness")
 
@@ -187,7 +191,7 @@ class PreFilter:
             checks_skipped.append("employmentType")
 
         # 5. Salary check (if salary data available)
-        if self.min_salary:
+        if self.min_salary is not None:
             salary = self._extract_salary(job_data)
             if salary is not None:
                 checks_performed.append("salary")
@@ -248,13 +252,19 @@ class PreFilter:
 
         return PreFilterResult(passed=True)
 
-    def _check_freshness(self, posted_date: Any) -> PreFilterResult:
-        """Check if job is too old based on posted_date."""
+    def _check_freshness(self, posted_date: Any) -> tuple[PreFilterResult, bool]:
+        """
+        Check if job is too old based on posted_date.
+
+        Returns:
+            Tuple of (PreFilterResult, was_parseable) where was_parseable indicates
+            if the date could be parsed (True) or should be treated as skipped (False).
+        """
         try:
             parsed = parse_job_date(str(posted_date))
             if parsed is None:
-                # Can't parse date - pass conservatively
-                return PreFilterResult(passed=True)
+                # Can't parse date - treat as skipped
+                return PreFilterResult(passed=True), False
 
             now = datetime.now(timezone.utc)
             # Ensure parsed date has timezone info
@@ -267,14 +277,14 @@ class PreFilter:
                 return PreFilterResult(
                     passed=False,
                     reason=f"Job is {age_days} days old (max: {self.max_age_days})",
-                )
+                ), True
 
-            return PreFilterResult(passed=True)
+            return PreFilterResult(passed=True), True
 
         except Exception as e:
-            # Error parsing - pass conservatively
+            # Error parsing - treat as skipped, not performed
             logger.debug(f"Error parsing posted_date '{posted_date}': {e}")
-            return PreFilterResult(passed=True)
+            return PreFilterResult(passed=True), False
 
     def _infer_work_arrangement(self, job_data: Dict[str, Any]) -> Optional[str]:
         """
@@ -403,7 +413,8 @@ class PreFilter:
         salary_str = job_data.get("salary", "")
         if salary_str and isinstance(salary_str, str):
             try:
-                # Extract numbers from salary string
+                # Extract numbers with optional 'k' suffix (e.g., "100", "100,000", "150k")
+                # The 'k' is optional to handle both "$150k" and "$150,000" formats
                 numbers = re.findall(r"[\d,]+(?:k)?", salary_str.lower())
                 if numbers:
                     # Parse the highest number as the max salary
@@ -414,6 +425,7 @@ class PreFilter:
                     if parsed:
                         return max(parsed)
             except (ValueError, TypeError):
+                # Unparseable salary string format, fall through to return None
                 pass
 
         return None
