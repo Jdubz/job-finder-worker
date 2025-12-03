@@ -84,7 +84,6 @@ function formatDate(date: unknown): string {
 function getStatusBadge(status: JobListingStatus) {
   const statusConfig: Record<JobListingStatus, { label: string; color: string }> = {
     pending: { label: "Pending", color: "bg-gray-100 text-gray-800" },
-    filtered: { label: "Filtered", color: "bg-yellow-100 text-yellow-800" },
     analyzing: { label: "Analyzing", color: "bg-blue-100 text-blue-800" },
     analyzed: { label: "Analyzed", color: "bg-green-100 text-green-800" },
     matched: { label: "Matched", color: "bg-emerald-100 text-emerald-800" },
@@ -329,13 +328,6 @@ export function JobListingsPage() {
             onClick={() => handleStatusFilterChange("matched")}
           />
           <StatPill
-            label="Filtered"
-            value={statusCounts.filtered ?? 0}
-            tone="orange"
-            active={statusFilter === "filtered"}
-            onClick={() => handleStatusFilterChange("filtered")}
-          />
-          <StatPill
             label="Skipped"
             value={statusCounts.skipped ?? 0}
             tone="red"
@@ -371,7 +363,6 @@ export function JobListingsPage() {
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="analyzing">Analyzing</SelectItem>
                     <SelectItem value="analyzed">Analyzed</SelectItem>
-                    <SelectItem value="filtered">Filtered</SelectItem>
                     <SelectItem value="skipped">Skipped</SelectItem>
                     <SelectItem value="matched">Matched</SelectItem>
                   </SelectContent>

@@ -631,7 +631,6 @@ export function isJobListingRecord(value: unknown): value is JobListingRecord {
     typeof listing.companyName === "string" &&
     typeof listing.description === "string" &&
     (listing.status === "pending" ||
-      listing.status === "filtered" ||
       listing.status === "analyzing" ||
       listing.status === "analyzed" ||
       listing.status === "skipped" ||
