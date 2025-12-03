@@ -280,7 +280,14 @@ export async function seedBaseConfigs(request: APIRequestContext) {
     documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
     options: [],
   })
-  await upsert("personal-info", { email: "owner@jobfinder.dev" })
+  await upsert("personal-info", {
+    email: "owner@jobfinder.dev",
+    name: "E2E Owner",
+    accentColor: "#3b82f6",
+    city: "",
+    timezone: null,
+    relocationAllowed: false,
+  })
 }
 
 export async function listContentItems(
