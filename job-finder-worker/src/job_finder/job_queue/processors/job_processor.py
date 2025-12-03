@@ -958,6 +958,23 @@ class JobProcessor(BaseProcessor):
             logger.info(f"[PIPELINE] FILTERED: '{title}' - {rejection_reason}")
             status_message = f"Rejected: {rejection_reason}"
 
+        # If the listing was pre-created during scraper intake, make sure its
+        # status is updated so it doesn't linger in `pending` after the queue
+        # item is filtered out early.
+        filter_data: Dict[str, Any] = {}
+        if ctx.title_filter_result:
+            filter_data["titleFilter"] = ctx.title_filter_result.to_dict()
+        if ctx.prefilter_result:
+            filter_data["prefilter"] = ctx.prefilter_result.to_dict()
+
+        if ctx.listing_id:
+            self._update_listing_status(
+                ctx.listing_id,
+                "skipped",
+                filter_result=filter_data or None,
+                analysis_result=None,
+            )
+
         # Spawn company/source tasks even for filtered jobs
         self._spawn_company_and_source(ctx.item, job_data)
 
