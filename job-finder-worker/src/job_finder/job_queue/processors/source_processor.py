@@ -131,49 +131,46 @@ class SourceProcessor(BaseProcessor):
                 source_config, validation_meta = discovery_result, {}
 
             if not source_config:
-                # If auth required, bot protection, or DNS errors detected, create a disabled placeholder source with notes
-                error = validation_meta.get("error")
+                # Always materialize a source record, even when discovery failed
+                error = validation_meta.get("error", "discovery_failed")
                 error_details = validation_meta.get("error_details", "")
-                is_dns_probe_failure = (
-                    error == "api_probe_failed" and "resolve" in error_details.lower()
-                )
-                if (
-                    error in {"auth_required", "bot_protection", "dns_error"}
-                    or is_dns_probe_failure
-                ):
-                    disabled_reason = error if not is_dns_probe_failure else "dns_error"
-                    placeholder_config = {
-                        "type": "api",
-                        "url": url,
-                        "headers": {},
-                        "disabled_notes": disabled_reason,
-                    }
-                    source_type = placeholder_config.get("type", "unknown")
-                    aggregator_domain = self._detect_aggregator_domain(url)
-                    source_id = self.sources_manager.create_from_discovery(
-                        name=f"{urlparse(url).netloc} Jobs",
-                        source_type=source_type,
-                        config=placeholder_config,
-                        company_id=None,
-                        aggregator_domain=aggregator_domain,
-                        status=SourceStatus.DISABLED,
-                    )
-                    self.queue_manager.update_status(
-                        item.id,
-                        QueueStatus.SUCCESS,
-                        f"Source disabled due to {disabled_reason}; created placeholder {source_id}",
-                        scraped_data={
-                            "source_id": source_id,
-                            "disabled_notes": disabled_reason,
-                        },
-                    )
-                    return
 
-                # Discovery produced no config - mark as failed
-                self._update_item_status(
+                # Normalize common blockers for transparency
+                normalized_reason = error
+                if not normalized_reason and "cloudflare" in error_details.lower():
+                    normalized_reason = "bot_protection"
+                if not normalized_reason and "vercel" in error_details.lower():
+                    normalized_reason = "bot_protection"
+                if not normalized_reason:
+                    normalized_reason = "discovery_failed"
+
+                placeholder_config = {
+                    "type": "html",
+                    "url": url,
+                    "headers": {},
+                    "disabled_notes": normalized_reason,
+                }
+
+                aggregator_domain = self._detect_aggregator_domain(url)
+                source_id = self.sources_manager.create_from_discovery(
+                    name=f"{urlparse(url).netloc} Jobs",
+                    source_type=placeholder_config.get("type", "unknown"),
+                    config=placeholder_config,
+                    company_id=None,
+                    aggregator_domain=aggregator_domain,
+                    status=SourceStatus.DISABLED,
+                )
+
+                # Persist failure context on the queue item for UI visibility
+                self.queue_manager.update_status(
                     item.id,
-                    QueueStatus.FAILED,
-                    f"Source discovery produced no config for {url}",
+                    QueueStatus.SUCCESS,
+                    f"Source created disabled: {normalized_reason}",
+                    scraped_data={
+                        "source_id": source_id,
+                        "disabled_notes": normalized_reason,
+                        "error_details": error_details,
+                    },
                 )
                 return
 
