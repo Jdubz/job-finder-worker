@@ -159,6 +159,7 @@ export function CompaniesPage() {
         companyName: company.name,
         websiteUrl: company.website || undefined,
         companyId: company.id,
+        allowReanalysis: true,
       })
       navigate("/queue-management")
     } catch (err) {

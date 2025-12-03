@@ -295,6 +295,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         websiteUrl: params.websiteUrl,
         companyId: params.companyId,
         source: "user_request",
+        allowReanalysis: params.allowReanalysis ?? false,
       })
 
       const normalized = normalizeQueueItem(queueItem)
