@@ -28,6 +28,7 @@ DEFAULT_HEADERS = {
     "Accept": "application/json, text/html, */*",
 }
 
+
 class GenericScraper:
     """
     Generic scraper that works with any job source type.
@@ -256,7 +257,7 @@ class GenericScraper:
             soup = BeautifulSoup(response.text, "html.parser")
 
             # Strategy 1: JSON-LD JobPosting schema (most reliable)
-            jsonld_date = self._extract_from_jsonld(soup, job)
+            self._extract_from_jsonld(soup, job)
 
             # Strategy 2-5: If no posted_date yet, try HTML extraction methods
             if not job.get("posted_date"):
@@ -287,9 +288,7 @@ class GenericScraper:
                 graph = data.get("@graph")
                 if graph and isinstance(graph, list):
                     postings = [
-                        g
-                        for g in graph
-                        if isinstance(g, dict) and g.get("@type") == "JobPosting"
+                        g for g in graph if isinstance(g, dict) and g.get("@type") == "JobPosting"
                     ]
                 elif data.get("@type") == "JobPosting":
                     postings = [data]
@@ -388,29 +387,28 @@ class GenericScraper:
     def _extract_date_from_time_elements(self, soup: BeautifulSoup) -> Optional[str]:
         """Extract date from <time> elements with datetime attribute."""
         # Look for time elements, prioritizing those with job-related context
-        job_related_patterns = [
-            "post", "publish", "date", "created", "listed", "added"
-        ]
+        job_related_patterns = ["post", "publish", "date", "created", "listed", "added"]
 
         for time_el in soup.find_all("time"):
             datetime_attr = time_el.get("datetime")
-            if datetime_attr and parse_job_date(datetime_attr):
+            if datetime_attr and isinstance(datetime_attr, str) and parse_job_date(datetime_attr):
                 # Check if this time element is in a job-related context
-                parent_text = ""
+                parent_classes = ""
                 for parent in time_el.parents:
                     if parent.name in ["div", "span", "p", "li"]:
-                        parent_text = (parent.get("class") or [])
-                        parent_text = " ".join(parent_text).lower() if parent_text else ""
+                        class_list = parent.get("class") or []
+                        if isinstance(class_list, list):
+                            parent_classes = " ".join(class_list).lower()
                         break
 
                 # Prioritize job-related time elements
-                if any(p in parent_text for p in job_related_patterns):
+                if any(p in parent_classes for p in job_related_patterns):
                     return datetime_attr
 
         # Fall back to first valid time element
         for time_el in soup.find_all("time"):
             datetime_attr = time_el.get("datetime")
-            if datetime_attr and parse_job_date(datetime_attr):
+            if datetime_attr and isinstance(datetime_attr, str) and parse_job_date(datetime_attr):
                 return datetime_attr
 
         return None
@@ -442,10 +440,9 @@ class GenericScraper:
                 elements = soup.select(selector)
                 for el in elements:
                     # Try datetime attribute first
-                    if el.get("datetime"):
-                        date_str = el.get("datetime")
-                        if parse_job_date(date_str):
-                            return date_str
+                    date_str = el.get("datetime")
+                    if date_str and isinstance(date_str, str) and parse_job_date(date_str):
+                        return date_str
 
                     # Try text content
                     text = el.get_text(strip=True)
