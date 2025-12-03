@@ -52,9 +52,11 @@ def test_process_company_spawns_source_discovery_when_no_source():
 
     with (
         patch.object(cp, "_detect_job_board_for_discovery", return_value=None),
-        patch.object(cp, "_find_career_page_if_needed", return_value=(
-            "https://boards.greenhouse.io/acme", True
-        )),
+        patch.object(
+            cp,
+            "_find_career_page_if_needed",
+            return_value=("https://boards.greenhouse.io/acme", True),
+        ),
     ):
         cp.process_company(_company_item())
 
