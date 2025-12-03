@@ -1,15 +1,20 @@
 """Helper for scrapers to submit jobs to the queue.
 
 Pre-filtering behavior:
-  Jobs are pre-filtered using TitleFilter BEFORE being added to the queue.
-  This uses simple keyword-based title matching to filter out irrelevant jobs
-  (sales roles, wrong job types) from consuming queue and storage resources.
+  Jobs are pre-filtered in TWO stages BEFORE being added to the queue:
 
-  Jobs that don't pass the title filter are IGNORED ENTIRELY - they are not
-  stored in the database and not added to the queue.
+  1. TitleFilter: Simple keyword-based title matching to filter out irrelevant
+     jobs (sales roles, wrong job types).
+
+  2. PreFilter: Structured data filtering (freshness, work arrangement, salary,
+     employment type) using data available from the scrape.
+
+  Jobs that don't pass EITHER filter are IGNORED ENTIRELY - they are not
+  stored in the database and not added to the queue. This prevents wasting
+  storage and queue resources on obviously unsuitable jobs.
 
 Job Listings Integration:
-  Only jobs that pass pre-filter are stored in the job_listings table.
+  Only jobs that pass ALL pre-filters are stored in the job_listings table.
   This table tracks jobs that passed initial screening, for deduplication
   and pipeline tracking. The job_matches table stores jobs that pass AI
   analysis, referencing job_listings via foreign key.
@@ -36,12 +41,15 @@ class ScraperIntake:
     worrying about queue implementation details.
 
     Pre-filtering:
-      When a title_filter is provided, jobs are pre-filtered before queueing.
-      Only jobs that pass the title keyword filter are added to the queue.
+      Jobs are filtered in two stages before queueing:
+      1. TitleFilter - keyword-based title matching
+      2. PreFilter - structured data filtering (freshness, work arrangement, etc.)
+
+      Only jobs that pass BOTH filters are added to the queue.
       This significantly reduces queue size and AI analysis costs.
 
     Job Listings:
-      Jobs that pass pre-filter are stored in job_listings table for deduplication.
+      Jobs that pass all pre-filters are stored in job_listings table for deduplication.
       This ensures we don't re-process the same job URL multiple times.
     """
 
@@ -52,6 +60,7 @@ class ScraperIntake:
         companies_manager=None,
         sources_manager=None,
         title_filter=None,
+        prefilter=None,
         # Legacy parameter - still accepted but job_listing_storage takes precedence
         job_storage=None,
     ):
@@ -63,6 +72,7 @@ class ScraperIntake:
             job_listing_storage: JobListingStorage for checking/storing job listings
             companies_manager: CompaniesManager for checking company existence (optional)
             title_filter: TitleFilter for pre-filtering jobs by title keywords (optional)
+            prefilter: PreFilter for structured data filtering (freshness, location, etc.)
             job_storage: DEPRECATED - use job_listing_storage instead
         """
         self.queue_manager = queue_manager
@@ -70,6 +80,7 @@ class ScraperIntake:
         self.companies_manager = companies_manager
         self.sources_manager = sources_manager
         self.title_filter = title_filter
+        self.prefilter = prefilter
         # Legacy fallback - will be removed in future version
         self._legacy_job_storage = job_storage
 
@@ -280,11 +291,25 @@ class ScraperIntake:
                         reason = filter_result.reason or "unknown"
                         reason_key = reason.split(":")[0].strip() if ":" in reason else reason
                         prefilter_reasons[reason_key] = prefilter_reasons.get(reason_key, 0) + 1
+                        logger.debug(f"Title-filtered job: {title} - {reason}")
+                        # Filtered jobs are ignored entirely - no storage, no queue
+                        continue
+
+                # Pre-filter job by structured data (freshness, work arrangement, etc.)
+                if self.prefilter:
+                    prefilter_result = self.prefilter.filter(job_payload)
+                    if not prefilter_result.passed:
+                        prefiltered_count += 1
+                        # Track rejection reasons for logging
+                        reason = prefilter_result.reason or "unknown"
+                        reason_key = reason.split(":")[0].strip() if ":" in reason else reason
+                        prefilter_reasons[reason_key] = prefilter_reasons.get(reason_key, 0) + 1
+                        title = job_payload.get("title", "")
                         logger.debug(f"Pre-filtered job: {title} - {reason}")
                         # Filtered jobs are ignored entirely - no storage, no queue
                         continue
 
-                # Job passed pre-filter - store in job_listings with status='pending'
+                # Job passed all pre-filters - store in job_listings with status='pending'
                 listing_id = self._store_job_listing(
                     job=job_payload,
                     normalized_url=normalized_url,

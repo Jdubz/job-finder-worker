@@ -149,12 +149,13 @@ class JobProcessor(BaseProcessor):
             title_filter=self.title_filter,
         )
 
-        # Initialize scraper intake with title filter for deduplication
+        # Initialize scraper intake with filters for deduplication
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
             job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             title_filter=self.title_filter,
+            prefilter=self.prefilter,
         )
 
     def _refresh_runtime_config(self) -> None:
