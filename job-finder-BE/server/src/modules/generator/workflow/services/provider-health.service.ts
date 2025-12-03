@@ -18,7 +18,16 @@ export async function ensureCliProviderHealthy(provider: CliProvider): Promise<v
   }
 
   try {
-    await execFileAsync(check.cmd, check.args, { timeout: 5_000 })
+    const result = await execFileAsync(check.cmd, check.args, { timeout: 5_000 })
+
+    const stdout = typeof result === 'object' && result !== null && 'stdout' in result ? String((result as any).stdout) : ''
+    const stderr = typeof result === 'object' && result !== null && 'stderr' in result ? String((result as any).stderr) : ''
+    const combined = `${stdout}\n${stderr}`.toLowerCase()
+
+    const authHints = ['not logged in', 'login required', 'log in to continue', 'refresh token', 'expired token']
+    if (authHints.some((hint) => combined.includes(hint))) {
+      throw new Error('Authentication required')
+    }
   } catch (error) {
     const asError = error as Error & { stderr?: string }
     const detail = asError.stderr || asError.message || 'Unknown error'
