@@ -262,10 +262,9 @@ class QueueManager:
         """Check if a company discovery task already exists.
 
         Uses the structured payload stored in `input` to find any COMPANY
-        items that reference the same company_id (preferred) or, as a
-        fallback, the same company_name. This is intentionally *global*
-        (not per-tracking-id) so we don't spawn duplicate discovery work
-        from different job listings.
+        items that reference the same company_id OR the same company_name.
+        This is intentionally *global* (not per-tracking-id) so we don't
+        spawn duplicate discovery work from different job listings.
         """
 
         if not company_id and not company_name:
@@ -275,27 +274,27 @@ class QueueManager:
         # prevent re-analysis.
         active_statuses = statuses or [QueueStatus.PENDING, QueueStatus.PROCESSING]
 
-        placeholders = ",".join("?" for _ in active_statuses)
+        status_placeholders = ",".join("?" for _ in active_statuses)
         params: List[Any] = [QueueItemType.COMPANY.value]
 
-        where_clauses = ["type = ?"]
-
+        # Build OR conditions for company matching (match by id OR name)
+        company_conditions = []
         if company_id:
-            where_clauses.append("json_extract(input, '$.company_id') = ?")
+            company_conditions.append("json_extract(input, '$.company_id') = ?")
             params.append(company_id)
         if company_name:
-            where_clauses.append("json_extract(input, '$.company_name') = ?")
+            company_conditions.append("json_extract(input, '$.company_name') = ?")
             params.append(company_name)
 
-        where_clauses.append(f"status IN ({placeholders})")
+        company_match_sql = " OR ".join(company_conditions)
         params.extend(status.value for status in active_statuses)
-
-        where_sql = " AND ".join(where_clauses)
 
         query = f"""
             SELECT 1
             FROM job_queue
-            WHERE {where_sql}
+            WHERE type = ?
+              AND ({company_match_sql})
+              AND status IN ({status_placeholders})
             LIMIT 1
         """
 

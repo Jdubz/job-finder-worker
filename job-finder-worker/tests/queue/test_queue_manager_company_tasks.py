@@ -113,3 +113,39 @@ def test_has_company_task_blocks_by_name_when_no_id(queue_mgr):
     conn.close()
 
     assert queue_mgr.has_company_task("", company_name="NameOnly") is True
+
+
+def test_has_company_task_uses_or_logic_for_id_and_name(queue_mgr):
+    """has_company_task should match by company_id OR company_name, not both."""
+
+    import sqlite3
+
+    # Insert a task with specific id and name
+    payload = json.dumps({"company_id": "existing-id", "company_name": "ExistingCompany"})
+    conn = sqlite3.connect(queue_mgr.db_path)
+    conn.execute(
+        """
+        INSERT INTO job_queue (id, type, status, url, tracking_id, parent_item_id, input)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "item-or-test",
+            QueueItemType.COMPANY.value,
+            QueueStatus.PENDING.value,
+            "https://example.com",
+            "t-3",
+            None,
+            payload,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    # Should match by id alone (even with different name)
+    assert queue_mgr.has_company_task("existing-id", company_name="DifferentName") is True
+
+    # Should match by name alone (even with different id)
+    assert queue_mgr.has_company_task("different-id", company_name="ExistingCompany") is True
+
+    # Should NOT match when both id AND name are different
+    assert queue_mgr.has_company_task("different-id", company_name="DifferentName") is False
