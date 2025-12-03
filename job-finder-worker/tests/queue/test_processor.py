@@ -214,6 +214,46 @@ def test_handle_failure_max_retries(processor, mock_managers):
     assert "failed" in call_args[2].lower()
 
 
+def test_filtered_listing_status_updated(processor, mock_managers):
+    """Early filter rejection should mark listing as filtered with filter metadata."""
+    from job_finder.filters.title_filter import TitleFilterResult
+    from job_finder.job_queue.processors.job_processor import PipelineContext
+
+    # Build queue item and context with a pre-created listing
+    item = JobQueueItem(
+        id="queue-filter-1",
+        type=QueueItemType.JOB,
+        url="https://example.com/job/filtered",
+        company_name="Test Co",
+        source="scraper",
+    )
+
+    ctx = PipelineContext(
+        item=item,
+        job_data={"title": "Filtered Role"},
+        listing_id="listing-123",
+        title_filter_result=TitleFilterResult(passed=False, reason="bad title"),
+    )
+
+    # Patch internals to isolate behavior
+    processor.job_processor._spawn_company_and_source = MagicMock()
+    processor.job_processor._update_listing_status = MagicMock()
+
+    processor.job_processor._finalize_filtered(ctx)
+
+    processor.job_processor._update_listing_status.assert_called_once()
+    args, kwargs = processor.job_processor._update_listing_status.call_args
+    assert args[0] == "listing-123"
+    assert args[1] == "filtered"
+    # Filter metadata should be passed through
+    assert kwargs["filter_result"]["titleFilter"]["reason"] == "bad title"
+
+    # Queue item should be marked FILTERED
+    q_args, _ = mock_managers["queue_manager"].update_status.call_args
+    assert q_args[0] == item.id
+    assert q_args[1] == QueueStatus.FILTERED
+
+
 def test_single_task_pipeline_spawns_company_enrichment(processor, mock_managers, sample_job_item):
     """Single-task pipeline should spawn company enrichment in background (fire-and-forget)."""
     # Company exists but has incomplete data (no about/culture)
