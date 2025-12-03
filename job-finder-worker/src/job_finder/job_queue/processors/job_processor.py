@@ -483,7 +483,7 @@ class JobProcessor(BaseProcessor):
             self._update_status(item, "Generating match analysis", ctx.stage)
             ctx.match_result = self._execute_match_analysis(ctx)
             if not ctx.match_result:
-                self._finalize_skipped(ctx, "AI analysis returned no result")
+                self._finalize_failed(ctx, "AI analysis returned no result")
                 return
 
             # Emit analysis event
@@ -882,8 +882,9 @@ class JobProcessor(BaseProcessor):
                 logger.info(f"Match analysis complete: score={result.match_score}")
             return result
         except Exception as e:
+            # Re-raise to let pipeline handle as failure, not skip
             logger.error(f"AI match analysis failed: {e}")
-            return None
+            raise
 
     def _execute_save_match(self, ctx: PipelineContext) -> str:
         """Execute save match stage."""

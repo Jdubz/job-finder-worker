@@ -156,7 +156,7 @@ class SourceProcessor(BaseProcessor):
                     name=f"{urlparse(url).netloc} Jobs",
                     source_type=placeholder_config.get("type", "unknown"),
                     config=placeholder_config,
-                    company_id=None,
+                    company_id=config.company_id,
                     aggregator_domain=aggregator_domain,
                     status=SourceStatus.DISABLED,
                 )

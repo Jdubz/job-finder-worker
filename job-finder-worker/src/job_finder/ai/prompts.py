@@ -328,8 +328,8 @@ Use this formula with **EXTREMELY HIGH STANDARDS**:
 
 Return detailed analysis in JSON format with:
 
-1. **matched_skills**: Array of skills candidate HAS that match (with proficiency level)
-2. **missing_skills**: Array of required skills candidate LACKS
+1. **matched_skills**: Array of skill names (strings only, e.g. ["Python", "React"])
+2. **missing_skills**: Array of skill names (strings only, e.g. ["Kubernetes", "AWS"])
 3. **experience_match**: Detailed explanation of experience level fit
 4. **key_strengths**: Top 3-5 specific reasons candidate is strong (be concrete, reference actual experience)
 5. **potential_concerns**: Honest assessment of gaps/weaknesses (be specific)
