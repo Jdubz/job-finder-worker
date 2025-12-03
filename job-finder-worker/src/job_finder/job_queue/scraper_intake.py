@@ -377,6 +377,7 @@ class ScraperIntake:
             company_name: Company name
             company_website: Company website URL
             source: Source identifier
+            allow_reanalysis: Allow re-queuing an existing company (used by UI re-analysis)
 
         Returns:
             Document ID if added successfully, None otherwise
