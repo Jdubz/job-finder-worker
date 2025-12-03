@@ -423,8 +423,20 @@ class PreFilter:
                     # Parse the highest number as the max salary
                     parsed = []
                     for num in numbers:
-                        clean = num.replace(",", "").replace("k", "000")
-                        parsed.append(int(clean))
+                        has_k = "k" in num
+                        has_comma = "," in num
+
+                        if has_k and has_comma:
+                            # Invalid mixed format like "120,000k", skip
+                            continue
+                        elif has_k:
+                            # "100k" -> 100 * 1000 = 100000
+                            clean = num.replace("k", "")
+                            parsed.append(int(clean) * 1000)
+                        else:
+                            # "100,000" -> 100000
+                            clean = num.replace(",", "")
+                            parsed.append(int(clean))
                     if parsed:
                         return max(parsed)
             except (ValueError, TypeError):
