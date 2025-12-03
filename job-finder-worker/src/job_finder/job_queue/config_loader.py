@@ -60,6 +60,33 @@ class ConfigLoader:
             raise InitializationError(f"title-filter missing required keys: {missing}")
         return config
 
+    def get_prefilter_policy(self) -> Dict[str, Any]:
+        """
+        Get pre-filter policy configuration.
+
+        Fails loudly if config is missing or incomplete - no defaults to prevent
+        silent gaps between config and implementation.
+        """
+        config = self._get_config("prefilter-policy")
+
+        # Validate all required top-level sections exist
+        required_sections = [
+            "title",
+            "freshness",
+            "workArrangement",
+            "employmentType",
+            "salary",
+            "technology",
+        ]
+        missing = [s for s in required_sections if s not in config]
+        if missing:
+            raise InitializationError(
+                f"prefilter-policy missing required sections: {missing}. "
+                "Update the prefilter-policy config record to include all required fields."
+            )
+
+        return config
+
     def get_match_policy(self) -> Dict[str, Any]:
         """
         Get match policy configuration for scoring engine.
@@ -90,16 +117,6 @@ class ConfigLoader:
             )
 
         return config
-
-    def get_scoring_config(self) -> Dict[str, Any]:
-        """
-        @deprecated Use get_match_policy() instead.
-
-        Temporary shim that returns match-policy for backwards compatibility
-        during migration. Will be removed once all callers are updated.
-        """
-        logger.warning("get_scoring_config() is deprecated - use get_match_policy() instead")
-        return self.get_match_policy()
 
     def get_queue_settings(self) -> Dict[str, Any]:
         return self._get_config("queue-settings")

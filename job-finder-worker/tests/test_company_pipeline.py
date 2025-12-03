@@ -103,6 +103,14 @@ class TestCompanyPipeline:
                 }
             },
         }
+        config_loader.get_prefilter_policy.return_value = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {"allowRemote": True, "allowHybrid": True, "allowOnsite": True},
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
 
         company_info_fetcher = Mock()
         company_info_fetcher._is_job_board_url.return_value = False
