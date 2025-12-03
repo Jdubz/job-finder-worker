@@ -221,6 +221,7 @@ export interface SubmitCompanyRequest {
   websiteUrl?: string // Optional: if not provided, agent will research to find it
   companyId?: string | null // Optional: existing company ID for re-analysis
   source?: "manual_submission" | "user_request" | "automated_scan"
+  allowReanalysis?: boolean
 }
 
 /**

@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from job_finder.job_queue.models import JobQueueItem, QueueItemType
 from job_finder.job_queue.processors.job_processor import JobProcessor, PipelineContext
 
