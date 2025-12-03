@@ -69,10 +69,15 @@ export function AISettingsTab({
     if (!firstProvider || !firstInterface) {
       throw new Error("No AI provider options available - check ai-settings configuration")
     }
+    if (!firstInterface.models || firstInterface.models.length === 0) {
+      throw new Error(
+        `No models available for provider "${firstProvider.value}" and interface "${firstInterface.value}" - check ai-settings configuration`
+      )
+    }
     return {
       provider: firstProvider.value,
       interface: firstInterface.value,
-      model: firstInterface.models[0] ?? "",
+      model: firstInterface.models[0],
     }
   }
 

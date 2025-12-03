@@ -18,7 +18,6 @@ export function AIPromptsPage() {
     error: loadError,
     saving: isSaving,
     savePrompts,
-    resetToDefaults: resetToDefaultsServer,
   } = useAIPrompts()
 
   const canEdit = isOwner
@@ -76,27 +75,6 @@ export function AIPromptsPage() {
     setEditedPrompts(serverPrompts)
     setSuccess(null)
     setError(null)
-  }
-
-  const handleResetToDefaults = async () => {
-    if (!canEdit) {
-      setError("Admin access required to edit prompts")
-      return
-    }
-
-    setError(null)
-    setSuccess(null)
-
-    try {
-      await resetToDefaultsServer()
-      setSuccess("AI prompts reset to defaults!")
-
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError("Failed to reset prompts")
-      console.error("Error resetting prompts:", err)
-    }
   }
 
   const handlePromptChange = (key: keyof PromptConfig, value: string) => {
@@ -220,15 +198,6 @@ export function AIPromptsPage() {
               </Button>
               {canEdit && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetToDefaults}
-                    disabled={isSaving}
-                  >
-                    <RotateCcw className="h-4 w-4 mr-2" />
-                    Reset to Defaults
-                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
