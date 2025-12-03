@@ -71,6 +71,12 @@ def get_text_limits(db_path: Optional[str] = None) -> Dict[str, int]:
     return get_worker_settings(db_path)["textLimits"]
 
 
-def get_scraping_settings(db_path: Optional[str] = None) -> Dict[str, int]:
+def get_scraping_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
     """Get scraping settings."""
     return get_worker_settings(db_path)["scraping"]
+
+
+def get_fetch_delay_seconds(db_path: Optional[str] = None) -> float:
+    """Get delay between detail page fetches (default: 1 second)."""
+    scraping = get_scraping_settings(db_path)
+    return float(scraping.get("fetchDelaySeconds", 1))
