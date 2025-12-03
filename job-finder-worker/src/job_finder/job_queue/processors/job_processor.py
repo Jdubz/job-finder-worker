@@ -797,7 +797,18 @@ class JobProcessor(BaseProcessor):
         company_id = company.get("id")
         company_name = ctx.job_data.get("company", "")
 
-        if not company_id or not company_name:
+        # If the company already exists in our database, don't spawn enrichment here.
+        # Automatic enrichment for known companies should be triggered explicitly (e.g. re-analysis UI),
+        # not opportunistically from job processing. This prevents stampeding duplicate tasks.
+        if company_id:
+            logger.debug(
+                "Skip company enrichment spawn for %s (%s): company already exists",
+                company_name,
+                company_id,
+            )
+            return
+
+        if not company_name:
             return
 
         # Only spawn if company data is sparse

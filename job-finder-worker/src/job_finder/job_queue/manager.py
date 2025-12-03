@@ -104,6 +104,17 @@ class QueueManager:
         item.updated_at = now
         item.status = item.status or QueueStatus.PENDING
 
+        # Application-level duplicate prevention (do not rely solely on DB uniqueness)
+        if item.type == QueueItemType.COMPANY:
+            # Block if an active company task already exists by ID or name
+            if self.has_company_task(
+                company_id=item.company_id or item.input.get("company_id", ""),
+                company_name=item.company_name or item.input.get("company_name", ""),
+            ):
+                raise DuplicateQueueItemError(
+                    f"Active company task already exists for {item.company_name or item.company_id}"
+                )
+
         # Enforce URL rules by type to reduce ambiguity
         if item.type == QueueItemType.JOB:
             if not item.url:
