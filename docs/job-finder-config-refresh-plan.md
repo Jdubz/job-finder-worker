@@ -27,10 +27,10 @@ Scope: Align backend/worker behavior, configs, and UI so every config key is liv
 - Remove all implicit defaults at runtime: missing configs must fail loudly to surface schema/key mismatches. The only defaults that remain are for type definitions, not runtime fallbacks.
 
 ### 1) Backend/Worker Config Hygiene
-1. Reload configs **per item** (or batch item) for: prefilter-policy, match-policy, queue-settings, scheduler-settings, ai-settings, worker-settings, personal-info. Avoid stale in-memory copies.
+1. Reload configs **per item** (or batch item) for: prefilter-policy, match-policy, worker-settings (includes runtime), ai-settings, personal-info. Avoid stale in-memory copies.
 2. Remove legacy rows (`job-match`, `job-filters`, `stop-list`, `technology-ranks`) and migrate data into canonical keys; add one-time migrator that deletes old rows after backup.
 3. `/config/reload` must rebuild: StrikeFilterEngine, matcher inputs, QueueManager timeout, scheduler poll interval, AI providers, `taskDelaySeconds`.
-4. Apply `taskDelaySeconds` from queue-settings in worker loop.
+4. Apply `taskDelaySeconds` from worker-settings.runtime in worker loop.
 
 ### 2) Location & Timezone Rules (Match & Prefilter Alignment)
 1. Store user city and timezone in `personal-info`; ensure FE collects both.
