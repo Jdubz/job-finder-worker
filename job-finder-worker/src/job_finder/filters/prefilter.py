@@ -16,7 +16,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from job_finder.utils.date_utils import parse_job_date
 from job_finder.exceptions import InitializationError
@@ -388,6 +388,7 @@ class PreFilter:
                         passed=False,
                         reason=f"{arrangement.capitalize()} roles must be in {self.user_location}",
                     )
+                # Missing/ambiguous location data returns None -> allow (missing data = pass)
 
         return PreFilterResult(passed=True)
 
@@ -395,7 +396,8 @@ class PreFilter:
         """Determine whether job location matches the configured user location.
 
         Returns True if a location string clearly matches; False if data exists and clearly differs;
-        None if insufficient data to decide (missing/empty fields).
+        None if insufficient data to decide (missing/empty fields). A None result intentionally
+        lets the job pass because missing data should not block a candidate.
         """
 
         if not user_location:
@@ -425,11 +427,26 @@ class PreFilter:
 
         city_token, state_token = self._split_user_location(user_location)
 
+        def _state_matches(loc_state: Optional[str], loc_lower: str) -> bool:
+            if not state_token:
+                return True
+            if loc_state:
+                if state_token == loc_state:
+                    return True
+                if len(state_token) == 2 and loc_state.startswith(state_token):
+                    return True
+            return bool(re.search(rf"\\b{re.escape(state_token)}\\b", loc_lower))
+
         for loc in location_candidates:
             loc_lower = loc.lower()
-            if city_token and city_token in loc_lower:
-                if not state_token or state_token in loc_lower:
-                    return True
+            loc_city, loc_state = self._split_user_location(loc)
+
+            if city_token and not re.search(rf"\\b{re.escape(city_token)}\\b", loc_lower):
+                continue
+            if not _state_matches(loc_state, loc_lower):
+                continue
+
+            return True
 
         if location_candidates:
             return False
@@ -437,7 +454,7 @@ class PreFilter:
         return None
 
     @staticmethod
-    def _split_user_location(user_location: str) -> tuple[Optional[str], Optional[str]]:
+    def _split_user_location(user_location: str) -> Tuple[Optional[str], Optional[str]]:
         """Split a user location string into lowercase city/state tokens for loose matching."""
         if not user_location:
             return None, None

@@ -16,7 +16,8 @@ type PrefilterPolicyTabProps = {
 
 const cleanList = (items: string[]) => items.map((item) => item.trim()).filter(Boolean)
 
-const mapToForm = (config?: PreFilterPolicy): PreFilterPolicy => {
+// Intentionally throw instead of falling back to defaults—missing configs should fail loudly
+const mapToForm = (config: PreFilterPolicy): PreFilterPolicy => {
   if (!config) throw new Error("prefilter-policy config is missing")
   return {
     title: {
@@ -58,6 +59,17 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
   }, [config, form])
 
   const handleSubmit = async (values: PreFilterPolicy) => {
+    const trimmedLocation = (values.workArrangement.userLocation ?? "").trim()
+    if (!values.workArrangement.willRelocate && trimmedLocation === "") {
+      form.setError("workArrangement.userLocation", {
+        type: "validate",
+        message: "Location is required when relocation is disabled",
+      })
+      return
+    }
+
+    form.clearErrors("workArrangement.userLocation")
+
     const payload: PreFilterPolicy = {
       ...values,
       title: {
@@ -78,7 +90,7 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
         allowHybrid: Boolean(values.workArrangement.allowHybrid),
         allowOnsite: Boolean(values.workArrangement.allowOnsite),
         willRelocate: Boolean(values.workArrangement.willRelocate),
-        userLocation: (values.workArrangement.userLocation ?? "").trim(),
+        userLocation: trimmedLocation,
       },
       employmentType: {
         allowFullTime: Boolean(values.employmentType.allowFullTime),
@@ -220,7 +232,7 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
                     render={({ field }) => (
                       <CheckboxRow
                         label="Open to Relocation"
-                        description="If unchecked, onsite/hybrid must match your city below."
+                        description="Check if willing to relocate. If unchecked, onsite/hybrid jobs must be in your city below."
                         field={field}
                       />
                     )}

@@ -63,20 +63,6 @@ describe("isPreFilterPolicy", () => {
     expect(isPreFilterPolicy(bad)).toBe(false)
   })
 
-  it("rejects empty userLocation", () => {
-    const bad = {
-      ...valid,
-      workArrangement: {
-        allowRemote: true,
-        allowHybrid: true,
-        allowOnsite: true,
-        willRelocate: true,
-        userLocation: " ",
-      },
-    } as any
-    expect(isPreFilterPolicy(bad)).toBe(false)
-  })
-
   it("rejects empty userLocation when relocation disallowed", () => {
     const bad = {
       ...valid,
@@ -89,6 +75,20 @@ describe("isPreFilterPolicy", () => {
       },
     } as any
     expect(isPreFilterPolicy(bad)).toBe(false)
+  })
+
+  it("allows empty userLocation when relocation allowed", () => {
+    const ok = {
+      ...valid,
+      workArrangement: {
+        allowRemote: true,
+        allowHybrid: true,
+        allowOnsite: true,
+        willRelocate: true,
+        userLocation: " ",
+      },
+    } as any
+    expect(isPreFilterPolicy(ok)).toBe(true)
   })
 
   it("rejects invalid employment type", () => {
