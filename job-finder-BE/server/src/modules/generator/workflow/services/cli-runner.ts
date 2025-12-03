@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import os from 'node:os'
 import { logger } from '../../../../logger'
+import { isAuthenticationError } from './auth-error.util'
 
 // Primary provider is 'codex' (OpenAI/ChatGPT)
 // Other providers are included for future support but not currently active
@@ -17,9 +18,7 @@ interface CliResult {
 function sanitizeCliError(raw?: string): string {
   if (!raw) return 'AI generation failed'
   const text = raw.toString()
-  const lowered = text.toLowerCase()
-  const authKeywords = ['not logged in', 'login', 'refresh token', 'token was already used', 'authentication', 'unauthorized']
-  if (authKeywords.some((k) => lowered.includes(k))) {
+  if (isAuthenticationError(text)) {
     return 'AI provider authentication required. Please log in and retry.'
   }
   // Strip long prompts: keep content before separator lines or first 400 chars
@@ -123,7 +122,7 @@ async function executeCommand(provider: CliProvider, prompt: string): Promise<Cl
       if (code === 0) {
         resolve({ success: true, output: stdout })
       } else {
-      logger.warn({ provider, code, stderr, logFile }, 'CLI provider failed')
+        logger.warn({ provider, code, stderr, logFile }, 'CLI provider failed')
         resolve({ success: false, output: stdout, error: sanitizeCliError(stderr || stdout) })
       }
     })
