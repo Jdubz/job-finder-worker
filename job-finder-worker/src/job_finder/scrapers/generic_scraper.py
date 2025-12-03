@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import feedparser
+import json
 import requests
 from bs4 import BeautifulSoup
 
@@ -83,6 +84,11 @@ class GenericScraper:
             for item in data:
                 try:
                     job = self._extract_fields(item)
+
+                    # Optional detail-page enrichment for HTML aggregators (e.g., builtin.com)
+                    if self.config.type == "html" and self.config.follow_detail:
+                        job = self._enrich_from_detail(job)
+
                     if job.get("title") and job.get("url"):
                         jobs.append(job)
                 except Exception as e:
@@ -227,6 +233,67 @@ class GenericScraper:
             return []
 
         return soup.select(self.config.job_selector)
+
+    def _enrich_from_detail(self, job: Dict[str, Any]) -> Dict[str, Any]:
+        """Optionally enrich a job by fetching its detail page.
+
+        Currently uses schema.org JobPosting JSON-LD when present.
+        Only fills fields that are missing to avoid clobbering list-page data.
+        """
+        url = job.get("url")
+        if not url:
+            return job
+
+        try:
+            headers = {**DEFAULT_HEADERS, **self.config.headers}
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+                try:
+                    data = json.loads(script.string or "{}")
+                except json.JSONDecodeError:
+                    continue
+
+                postings = []
+                if isinstance(data, list):
+                    postings = [d for d in data if isinstance(d, dict) and d.get("@type") == "JobPosting"]
+                elif isinstance(data, dict):
+                    if data.get("@graph"):
+                        postings = [g for g in data.get("@graph") if isinstance(g, dict) and g.get("@type") == "JobPosting"]
+                    elif data.get("@type") == "JobPosting":
+                        postings = [data]
+
+                if not postings:
+                    continue
+
+                jp = postings[0]
+                job.setdefault("title", jp.get("title") or "")
+                job.setdefault("company", (jp.get("hiringOrganization") or {}).get("name", ""))
+                job.setdefault("description", jp.get("description", ""))
+
+                # Location: try place then address fields
+                if not job.get("location"):
+                    loc = None
+                    place = jp.get("jobLocation")
+                    if isinstance(place, dict):
+                        addr = place.get("address") or {}
+                        city = addr.get("addressLocality") or ""
+                        region = addr.get("addressRegion") or ""
+                        country = addr.get("addressCountry") or ""
+                        loc = ", ".join([p for p in [city, region, country] if p])
+                    job["location"] = loc or job.get("location") or ""
+
+                if not job.get("posted_date") and jp.get("datePosted"):
+                    job["posted_date"] = jp.get("datePosted")
+
+                break  # Only need first JobPosting block
+        except Exception:
+            # Swallow enrichment errors; base scrape already succeeded
+            return job
+
+        return job
 
     def _extract_fields(self, item: Any) -> Dict[str, Any]:
         """

@@ -38,6 +38,8 @@ class PlatformPattern:
     response_path: str = "jobs"
     # Field mappings (standard field -> source field path)
     fields: Dict[str, str] = field(default_factory=dict)
+    # CSS selector for HTML job listings (config_type == "html")
+    job_selector: str = ""
     # Optional base URL template for relative job URLs
     base_url_template: str = ""
     # Headers to include in requests
@@ -51,6 +53,8 @@ class PlatformPattern:
     # Salary field paths (for structured compensation data)
     salary_min_field: str = ""
     salary_max_field: str = ""
+    # Whether the scraper should follow job detail links for enrichment
+    follow_detail: bool = False
 
 
 # Platform patterns registry - add new platforms here, not in code
@@ -263,6 +267,22 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         validation_key="",  # will likely fail without params; flagged auth_required
         auth_required=True,
     ),
+    PlatformPattern(
+        name="builtin_html",
+        url_pattern=r"builtin\.com/jobs",
+        api_url_template="https://builtin.com/jobs",
+        response_path="",
+        fields={
+            "title": "a[data-id=job-card-title]",
+            "company": "div.left-side-tile-item-1 a",
+            "url": "a[data-id=job-card-title]@href",
+        },
+        job_selector="[data-id=job-card]",
+        config_type="html",
+        base_url_template="https://builtin.com",
+        validation_key="",
+        follow_detail=True,
+    ),
 ]
 
 
@@ -308,6 +328,9 @@ def build_config_from_pattern(
         "fields": pattern.fields.copy(),
     }
 
+    if pattern.job_selector:
+        config["job_selector"] = pattern.job_selector
+
     if pattern.config_type != "rss":
         config["response_path"] = pattern.response_path
 
@@ -331,5 +354,8 @@ def build_config_from_pattern(
 
     if pattern.headers:
         config["headers"] = pattern.headers.copy()
+
+    if pattern.follow_detail:
+        config["follow_detail"] = True
 
     return config

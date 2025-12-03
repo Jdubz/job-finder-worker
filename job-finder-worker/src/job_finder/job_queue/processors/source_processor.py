@@ -347,7 +347,21 @@ class SourceProcessor(BaseProcessor):
         Returns:
             The aggregator domain if detected, None if company-specific
         """
-        return self.sources_manager.get_aggregator_domain_for_url(url)
+        domain = self.sources_manager.get_aggregator_domain_for_url(url)
+        if domain:
+            return domain
+
+        # Fallback: lightweight built-ins to avoid hard failures before DB seed
+        fallback_domains = {"builtin.com"}
+        try:
+            host = urlparse(url.lower()).netloc
+            for d in fallback_domains:
+                if host == d or host.endswith("." + d):
+                    return d
+        except Exception:
+            return None
+
+        return None
 
     # ============================================================
     # SOURCE SCRAPING

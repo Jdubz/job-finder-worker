@@ -65,6 +65,9 @@ class SourceConfig:
     # "from_description" - extract company website URL from description HTML
     company_extraction: str = ""  # "" | "from_title" | "from_description"
 
+    # Optional: fetch each job's detail page to enrich fields (e.g., description/location)
+    follow_detail: bool = False
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any], company_name: Optional[str] = None) -> "SourceConfig":
         """
@@ -96,6 +99,7 @@ class SourceConfig:
             validation_policy=data.get("validation_policy", "fail_on_empty"),
             disabled_notes=data.get("disabled_notes", ""),
             company_extraction=data.get("company_extraction", ""),
+            follow_detail=bool(data.get("follow_detail", False)),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -137,6 +141,8 @@ class SourceConfig:
             result["disabled_notes"] = self.disabled_notes
         if self.company_extraction:
             result["company_extraction"] = self.company_extraction
+        if self.follow_detail:
+            result["follow_detail"] = self.follow_detail
 
         return result
 
