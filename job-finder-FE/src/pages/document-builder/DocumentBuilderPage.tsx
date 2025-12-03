@@ -223,7 +223,13 @@ export function DocumentBuilderPage() {
       console.error(details)
     }
     toast.error({ title: message })
-    setAlert({ type: "error", message })
+    const displayMessage =
+      typeof details === "string"
+        ? details
+        : details instanceof Error
+          ? details.message
+          : message
+    setAlert({ type: "error", message: displayMessage })
   }
 
   const handleGenerate = async () => {
