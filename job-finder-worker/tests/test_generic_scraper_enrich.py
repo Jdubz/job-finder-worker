@@ -22,6 +22,8 @@ def stub_requests(monkeypatch):
 
     fake_get.payloads = {}
     monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+    # Mock the fetch delay to avoid needing database in tests
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0)
     return fake_get
 
 

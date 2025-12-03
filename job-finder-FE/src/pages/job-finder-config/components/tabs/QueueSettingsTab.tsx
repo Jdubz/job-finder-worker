@@ -125,11 +125,12 @@ export function QueueSettingsTab({
             max="30"
             step="0.5"
             value={scrapingSettings?.fetchDelaySeconds ?? 1}
-            onChange={(e) =>
+            onChange={(e) => {
+              const parsed = parseFloat(e.target.value)
               setScrapingSettings({
-                fetchDelaySeconds: Math.max(0, parseFloat(e.target.value) || 1),
+                fetchDelaySeconds: isNaN(parsed) ? 1 : Math.max(0, parsed),
               })
-            }
+            }}
           />
           <p className="text-xs text-muted-foreground">
             Delay between detail page fetches to prevent rate limiting. 0–30 seconds. Default: 1 second.

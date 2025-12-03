@@ -90,10 +90,6 @@ class GenericScraper:
                     # Optional detail-page enrichment for HTML aggregators (e.g., builtin.com)
                     if self.config.type == "html" and self.config.follow_detail:
                         job = self._enrich_from_detail(job)
-                        # Rate limit between requests to avoid overwhelming the source
-                        delay = get_fetch_delay_seconds()
-                        if delay > 0:
-                            time.sleep(delay)
 
                     if job.get("title") and job.get("url"):
                         jobs.append(job)
@@ -266,6 +262,7 @@ class GenericScraper:
              meta tags, <time> elements, CSS selectors, text patterns
 
         Only fills fields that are missing to avoid clobbering list-page data.
+        Applies rate limiting delay after HTTP requests to avoid overwhelming sources.
         """
         url = job.get("url")
         if not url:
@@ -286,9 +283,18 @@ class GenericScraper:
                 if html_date:
                     job["posted_date"] = html_date
 
+            # Rate limit after successful request to avoid overwhelming the source
+            delay = get_fetch_delay_seconds()
+            if delay > 0:
+                time.sleep(delay)
+
         except Exception as exc:
             # Swallow enrichment errors; base scrape already succeeded
             logger.debug("Error enriching job from detail page %s: %s", url, exc)
+            # Still apply delay on errors to rate limit failed requests
+            delay = get_fetch_delay_seconds()
+            if delay > 0:
+                time.sleep(delay)
 
         return job
 
