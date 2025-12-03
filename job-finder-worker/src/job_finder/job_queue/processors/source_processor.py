@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from job_finder.ai.providers import create_provider_from_config
 from job_finder.ai.source_discovery import SourceDiscovery
-from job_finder.exceptions import QueueProcessingError
+from job_finder.exceptions import QueueProcessingError, ScrapeBlockedError
 from job_finder.filters.prefilter import PreFilter
 from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
@@ -518,6 +518,19 @@ class SourceProcessor(BaseProcessor):
                         "jobs_submitted": jobs_added,
                         "source_name": source_name,
                     },
+                )
+
+            except ScrapeBlockedError as blocked:
+                # Anti-bot/HTTP block detected: disable source and mark item failed with note
+                logger.warning("Source blocked: %s - %s", source_name, blocked.reason)
+                self.sources_manager.disable_source_with_note(
+                    source.get("id"), f"Blocked during scrape: {blocked.reason}"
+                )
+                self._update_item_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Source blocked: {blocked.reason}",
+                    error_details=traceback.format_exc(),
                 )
 
             except Exception as scrape_error:

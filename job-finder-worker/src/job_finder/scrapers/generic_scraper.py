@@ -102,11 +102,12 @@ class GenericScraper:
             # Let blocking errors propagate so the caller can disable the source
             raise
         except requests.RequestException as e:
+            # Surface network/HTTP failures so callers can record failure or disable the source
             logger.error(f"Request error scraping {self.config.url}: {e}")
-            return []
+            raise
         except Exception as e:
             logger.error(f"Error scraping {self.config.url}: {e}")
-            return []
+            raise
 
     def _fetch_json(self) -> List[Dict[str, Any]]:
         """
@@ -137,7 +138,13 @@ class GenericScraper:
         else:
             response = requests.get(url, headers=headers, timeout=30)
 
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as e:
+            # Treat hard HTTP failures as blocking so the runner can disable the source
+            raise ScrapeBlockedError(
+                self.config.url, f"HTTP {response.status_code}: {response.reason}"
+            ) from e
         data = response.json()
 
         # Navigate to jobs array using response_path
@@ -156,7 +163,12 @@ class GenericScraper:
         # Fetch with requests first to get raw content for anti-bot detection
         headers = {**DEFAULT_HEADERS, **self.config.headers}
         response = requests.get(self.config.url, headers=headers, timeout=30)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as e:
+            raise ScrapeBlockedError(
+                self.config.url, f"HTTP {response.status_code}: {response.reason}"
+            ) from e
 
         content = response.text
         feed = feedparser.parse(content)
@@ -224,7 +236,12 @@ class GenericScraper:
         """
         headers = {**DEFAULT_HEADERS, **self.config.headers}
         response = requests.get(self.config.url, headers=headers, timeout=30)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as e:
+            raise ScrapeBlockedError(
+                self.config.url, f"HTTP {response.status_code}: {response.reason}"
+            ) from e
 
         soup = BeautifulSoup(response.text, "html.parser")
 
