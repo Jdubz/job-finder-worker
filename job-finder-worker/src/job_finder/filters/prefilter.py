@@ -274,10 +274,13 @@ class PreFilter:
             age_days = (now - parsed).days
 
             if age_days > self.max_age_days:
-                return PreFilterResult(
-                    passed=False,
-                    reason=f"Job is {age_days} days old (max: {self.max_age_days})",
-                ), True
+                return (
+                    PreFilterResult(
+                        passed=False,
+                        reason=f"Job is {age_days} days old (max: {self.max_age_days})",
+                    ),
+                    True,
+                )
 
             return PreFilterResult(passed=True), True
 
