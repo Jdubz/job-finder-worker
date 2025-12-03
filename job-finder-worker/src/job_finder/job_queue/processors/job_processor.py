@@ -24,7 +24,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional
 from urllib.parse import urlparse, quote_plus
 
 from job_finder.ai.extraction import JobExtractor, JobExtractionResult
@@ -906,58 +906,6 @@ class JobProcessor(BaseProcessor):
             if ctx.match_result:
                 data["analysis_result"]["detailedAnalysis"] = ctx.match_result.to_dict()
         return data
-
-    def _spawn_company_and_source(self, item: JobQueueItem, job_data: Dict[str, Any]) -> None:
-        """Ensure company stub exists and spawn COMPANY and SOURCE_DISCOVERY tasks."""
-        company_name = job_data.get("company") or item.company_name or "Unknown"
-
-        # Get company website, but reject aggregator URLs
-        company_website = job_data.get("company_website", "")
-        if company_website and self._is_job_board_url(company_website):
-            company_website = ""
-
-        company = self.companies_manager.get_company(
-            company_name
-        ) or self.companies_manager.create_company_stub(company_name, company_website or "")
-
-        company_id = company.get("id") if company else None
-
-        # Spawn company enrichment task
-        if company_id:
-            try:
-                # Use company website if available, otherwise use a search query unique per company
-                company_url = (
-                    company_website
-                    or f"https://www.google.com/search?q={quote_plus(company_name)}+company"
-                )
-                self.queue_manager.spawn_item_safely(
-                    item,
-                    {
-                        "type": QueueItemType.COMPANY,
-                        "url": company_url,
-                        "company_name": company_name,
-                        "company_id": company_id,
-                        "source": item.source,
-                    },
-                )
-            except Exception as e:
-                logger.warning("Failed to spawn company task for %s: %s", company_name, e)
-
-        # Spawn source discovery task - only if we have a non-aggregator company website
-        if company_website:
-            try:
-                self.queue_manager.spawn_item_safely(
-                    item,
-                    {
-                        "type": QueueItemType.SOURCE_DISCOVERY,
-                        "url": company_website,
-                        "company_name": company_name,
-                        "company_id": company_id,
-                        "source": item.source,
-                    },
-                )
-            except Exception as e:
-                logger.warning("Failed to spawn source discovery for %s: %s", company_name, e)
 
     def _extract_company_domain(self, url: str) -> str:
         """Extract company domain from job URL."""
