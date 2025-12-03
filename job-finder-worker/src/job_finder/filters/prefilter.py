@@ -432,6 +432,10 @@ class PreFilter:
 
     def _check_salary(self, salary: int) -> PreFilterResult:
         """Check if salary meets minimum floor."""
+        # Defensive check - caller should verify min_salary is not None
+        if self.min_salary is None:
+            return PreFilterResult(passed=True)
+
         if salary < self.min_salary:
             return PreFilterResult(
                 passed=False,
