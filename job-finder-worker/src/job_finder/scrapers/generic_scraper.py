@@ -260,8 +260,9 @@ class GenericScraper:
                 if isinstance(data, list):
                     postings = [d for d in data if isinstance(d, dict) and d.get("@type") == "JobPosting"]
                 elif isinstance(data, dict):
-                    if data.get("@graph"):
-                        postings = [g for g in data.get("@graph") if isinstance(g, dict) and g.get("@type") == "JobPosting"]
+                    graph = data.get("@graph")
+                    if graph and isinstance(graph, list):
+                        postings = [g for g in graph if isinstance(g, dict) and g.get("@type") == "JobPosting"]
                     elif data.get("@type") == "JobPosting":
                         postings = [data]
 
@@ -283,14 +284,18 @@ class GenericScraper:
                         region = addr.get("addressRegion") or ""
                         country = addr.get("addressCountry") or ""
                         loc = ", ".join([p for p in [city, region, country] if p])
-                    job["location"] = loc or job.get("location") or ""
+                    if loc:
+                        job["location"] = loc
+                    elif "location" not in job:
+                        job["location"] = ""
 
                 if not job.get("posted_date") and jp.get("datePosted"):
                     job["posted_date"] = jp.get("datePosted")
 
                 break  # Only need first JobPosting block
-        except Exception:
+        except Exception as exc:
             # Swallow enrichment errors; base scrape already succeeded
+            logger.debug("Error enriching job from detail page %s: %s", url, exc)
             return job
 
         return job
