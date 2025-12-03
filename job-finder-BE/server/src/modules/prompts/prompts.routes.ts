@@ -36,9 +36,16 @@ export function buildPromptsRouter() {
   router.get(
     "/",
     asyncHandler((_req, res) => {
-      const prompts = repository.getPrompts()
-      const response: GetPromptsResponse = { prompts }
-      res.json(success(response))
+      try {
+        const prompts = repository.getPrompts()
+        const response: GetPromptsResponse = { prompts }
+        res.json(success(response))
+      } catch {
+        res.status(404).json(failure(
+          ApiErrorCode.NOT_FOUND,
+          "Prompts configuration 'ai-prompts' not found - must be configured in database"
+        ))
+      }
     })
   )
 

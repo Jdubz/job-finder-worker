@@ -301,6 +301,27 @@ export async function seedBaseConfigs(request: APIRequestContext) {
     timezone: null,
     relocationAllowed: false,
   })
+
+  // Seed ai-prompts via the prompts endpoint (different API structure)
+  const promptsRes = await request.put(`${API_BASE}/prompts`, {
+    headers: {
+      Authorization: `Bearer ${AUTH_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    data: {
+      prompts: {
+        resumeGeneration: "E2E test resume generation prompt",
+        coverLetterGeneration: "E2E test cover letter generation prompt",
+        jobScraping: "E2E test job scraping prompt",
+        jobMatching: "E2E test job matching prompt",
+      },
+      userEmail: "owner@jobfinder.dev",
+    },
+  })
+  if (!promptsRes.ok()) {
+    const body = await promptsRes.text()
+    throw new Error(`Failed to seed prompts: ${promptsRes.status()} ${body}`)
+  }
 }
 
 export async function listContentItems(
