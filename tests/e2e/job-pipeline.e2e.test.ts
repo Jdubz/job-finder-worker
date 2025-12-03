@@ -266,6 +266,21 @@ async function ensureBaseConfigs(configClient: any, userEmail: string) {
   await upsert("personal-info", { ...TEST_PERSONAL_INFO, email: userEmail })
 }
 
+async function ensurePrompts() {
+  const server = requireCtx()
+  await fetch(`${server.apiBase}/prompts`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${server.authToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      prompts: TEST_PROMPTS,
+      userEmail: "e2e-test@jobfinder.dev",
+    }),
+  })
+}
+
 async function authorizedRequest<T>(path: string, init: RequestInit = {}) {
   const server = requireCtx()
   const response = await fetch(`${server.apiBase}${path}`, {
@@ -463,7 +478,8 @@ describe("Configuration flows", () => {
     expect(queueSettings?.processingTimeoutSeconds).toBe(1200)
 
     await configClient.updateAISettings({
-      selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" },
+      worker: { selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" } },
+      documentGenerator: { selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" } },
     })
     const aiSettings = await configClient.getAISettings()
     expect(aiSettings?.worker.selected.provider).toBe("openai")
@@ -494,9 +510,12 @@ describe("Configuration discovery", () => {
 })
 
 describe("Prompts", () => {
-  it("saves custom prompts and resets to defaults", async () => {
+  it("saves and retrieves custom prompts", async () => {
     const { promptsClient } = await initFrontendClients()
     const userEmail = "ai-admin@jobfinder.dev"
+
+    // Ensure prompts are seeded before test
+    await ensurePrompts()
 
     const existingPrompts = await promptsClient.getPrompts()
     await promptsClient.savePrompts(
@@ -511,10 +530,13 @@ describe("Prompts", () => {
 
     const updatedPrompts = await promptsClient.getPrompts()
     expect(updatedPrompts.resumeGeneration).toContain("e2e customization")
+  })
 
-    await promptsClient.resetToDefaults(userEmail)
-    const resetPrompts = await promptsClient.getPrompts()
-    // After reset, prompts should have content (actual defaults from backend)
-    expect(resetPrompts.resumeGeneration.length).toBeGreaterThan(0)
+  it("rejects reset to defaults (no longer supported)", async () => {
+    const { promptsClient } = await initFrontendClients()
+    const userEmail = "ai-admin@jobfinder.dev"
+
+    // Reset is no longer supported - should throw
+    await expect(promptsClient.resetToDefaults(userEmail)).rejects.toThrow()
   })
 })
