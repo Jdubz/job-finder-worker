@@ -13,6 +13,7 @@ import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import { buildCoverLetterPrompt, buildResumePrompt } from './prompts'
 import { runCliProvider } from './services/cli-runner'
 import type { CliProvider } from './services/cli-runner'
+import { ensureCliProviderHealthy } from './services/provider-health.service'
 import { ConfigRepository } from '../../config/config.repository'
 import type { AISettings } from '@shared/types'
 
@@ -48,6 +49,27 @@ export class GeneratorWorkflowService {
     private readonly configRepo = new ConfigRepository(),
     private readonly log: Logger = logger
   ) {}
+
+  private async ensureProviderAvailable(): Promise<void> {
+    const config = this.configRepo.get<AISettings>('ai-settings')
+    if (!config?.payload?.documentGenerator?.selected) {
+      throw new UserFacingError('AI settings not configured. Please configure ai-settings in the database.')
+    }
+
+    const selection = config.payload.documentGenerator.selected
+
+    if (selection.interface !== 'cli') {
+      // Only CLI providers need health checks here
+      return
+    }
+
+    try {
+      await ensureCliProviderHealthy(selection.provider as CliProvider)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'AI provider unavailable'
+      throw new UserFacingError(message)
+    }
+  }
 
   async createRequest(payload: GenerateDocumentPayload) {
     const requestId = generateRequestId()
@@ -99,15 +121,33 @@ export class GeneratorWorkflowService {
     this.workflowRepo.updateRequest(requestId, { personalInfo, steps })
 
     if (pendingStep.id === 'collect-data') {
-      const updated = completeStep(startStep(steps, 'collect-data'), 'collect-data', 'completed')
-      this.workflowRepo.updateRequest(requestId, { steps: updated })
-      const nextStep = updated.find((s) => s.status === 'pending')?.id
-      return {
-        requestId,
-        status: request.status,
-        steps: updated,
-        nextStep,
-        stepCompleted: 'collect-data'
+      try {
+        await this.ensureProviderAvailable()
+        const updated = completeStep(startStep(steps, 'collect-data'), 'collect-data', 'completed')
+        this.workflowRepo.updateRequest(requestId, { steps: updated })
+        const nextStep = updated.find((s) => s.status === 'pending')?.id
+        return {
+          requestId,
+          status: request.status,
+          steps: updated,
+          nextStep,
+          stepCompleted: 'collect-data'
+        }
+      } catch (error) {
+        this.log.error({ err: error, requestId }, 'AI provider health check failed')
+        const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
+        const updated = completeStep(startStep(steps, 'collect-data'), 'collect-data', 'failed', undefined, {
+          message: errorMessage
+        })
+        this.workflowRepo.updateRequest(requestId, { status: 'failed', steps: updated })
+        return {
+          requestId,
+          status: 'failed',
+          steps: updated,
+          nextStep: undefined,
+          stepCompleted: 'collect-data',
+          error: error instanceof Error ? error.message : 'AI provider unavailable'
+        }
       }
     }
 
