@@ -52,9 +52,11 @@ def get_worker_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
         settings = loader.get_worker_settings()
         logger.debug("Loaded worker settings from database")
         return settings
-    except Exception as e:
-        # Fail loudly to surface config mismatches early
+    except InitializationError as e:
         logger.error(f"Failed to load worker settings from DB: {e}")
+        raise
+    except Exception:
+        logger.exception("Unexpected error loading worker settings from DB")
         raise
 
 
