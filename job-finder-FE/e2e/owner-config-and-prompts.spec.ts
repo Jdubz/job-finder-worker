@@ -12,12 +12,12 @@ test.describe("Owner configuration and prompts", () => {
     await expect(page.getByRole("heading", { name: "Job Finder Configuration" })).toBeVisible()
     const getActiveTab = () => page.locator('[role="tabpanel"][data-state="active"]').first()
 
-    // Title Filter tab (default)
-    await expect(getActiveTab().getByRole("heading", { name: /required keywords/i })).toBeVisible()
+    // Pre-filter tab (default)
+    await expect(getActiveTab().getByRole("heading", { name: /title keywords/i })).toBeVisible()
     // Add a keyword to enable save
     await getActiveTab().getByRole("button", { name: /add/i }).first().click()
     await page.getByRole("button", { name: /save changes/i }).click()
-    await expect(page.getByText(/Title filter saved/i)).toBeVisible()
+    await expect(page.getByText(/Pre-filter policy saved/i)).toBeVisible()
 
     // Scoring tab - may show setup prompt if match-policy not configured
     await page.getByRole("tab", { name: "Scoring" }).click()
@@ -36,7 +36,7 @@ test.describe("Owner configuration and prompts", () => {
     }
 
     // Queue settings tab
-    await page.getByRole("tab", { name: "Queue" }).click()
+    await page.getByRole("tab", { name: "Worker Runtime" }).click()
     await expect(getActiveTab().getByLabel(/Processing Timeout/)).toBeVisible()
 
     // AI settings tab

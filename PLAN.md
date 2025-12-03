@@ -438,7 +438,7 @@ def get_worker_settings(self) -> Dict[str, Any]:
 
 **Config router should:**
 - Fail loud on missing configs (no seedDefaults); only allow IDs: `ai-settings`, `ai-prompts`, `personal-info`, `prefilter-policy`, `match-policy`, `worker-settings`.
-- Validate with guards `isAISettings`, `isPrefilterPolicy`, `isMatchPolicy`, `isWorkerSettings`, `isPersonalInfo`.
+- Validate with guards `isAISettings`, `isPreFilterPolicy`, `isMatchPolicy`, `isWorkerSettings`, `isPersonalInfo`.
 - Coerce only current IDs; no legacy fallbacks or merges for queue/title/scoring/scheduler.
 
 **Validate payloads:** ensure only current IDs are accepted; legacy IDs should return 400/404.

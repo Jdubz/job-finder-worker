@@ -20,7 +20,7 @@ import {
   isPersonalInfo,
   isWorkerSettings,
   isMatchPolicy,
-  isPrefilterPolicy,
+  isPreFilterPolicy,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -142,7 +142,7 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
     case 'match-policy':
       return isMatchPolicy(payload)
     case 'prefilter-policy':
-      return isPrefilterPolicy(payload)
+      return isPreFilterPolicy(payload)
     case 'ai-prompts':
       return true
     case 'worker-settings':

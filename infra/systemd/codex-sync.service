@@ -3,8 +3,9 @@ Description=Sync Codex CLI credentials from host to job-finder seed dirs
 
 [Service]
 Type=oneshot
-ExecStart=%h/Development/job-finder-bot/scripts/sync_codex_credentials.sh
-WorkingDirectory=%h/Development/job-finder-bot
+Environment=JOB_FINDER_BOT_DIR=%h/Development/job-finder-bot
+ExecStart=/usr/bin/env bash -c "${JOB_FINDER_BOT_DIR}/scripts/sync_codex_credentials.sh"
+WorkingDirectory=${JOB_FINDER_BOT_DIR}
 
 [Install]
 WantedBy=default.target

@@ -6,8 +6,8 @@ set -euo pipefail
 
 SOURCE="${HOME}/.codex"
 TARGETS=(
-  "/srv/job-finder/codex/.codex"
-  "/srv/job-finder/codex-seed/.codex"
+  "${CODEX_SYNC_ROOT:-/srv/job-finder}/codex/.codex"
+  "${CODEX_SYNC_ROOT:-/srv/job-finder}/codex-seed/.codex"
 )
 
 if [[ ! -d "${SOURCE}" ]]; then
@@ -22,9 +22,10 @@ if [[ ! -f "${SOURCE_FILE}" ]]; then
   exit 1
 fi
 
+umask 077
 for target in "${TARGETS[@]}"; do
-  mkdir -p "${target}"
-  cp -p "${SOURCE_FILE}" "${target}/auth.json"
+  install -m 700 -d "${target}"
+  install -m 600 "${SOURCE_FILE}" "${target}/auth.json"
 done
 
 echo "Synced Codex auth.json from ${SOURCE} to:"

@@ -92,6 +92,10 @@ export class ConfigClient extends BaseApiClient {
       scraping: { ...existing.scraping, ...(settings.scraping ?? {}) },
       textLimits: { ...existing.textLimits, ...(settings.textLimits ?? {}) },
       runtime: { ...existing.runtime, ...(settings.runtime ?? {}) },
+      health: Object.prototype.hasOwnProperty.call(settings, "health")
+        ? settings.health
+        : existing.health,
+      cache: Object.prototype.hasOwnProperty.call(settings, "cache") ? settings.cache : existing.cache,
     }
     await this.updateConfigEntry("worker-settings", merged)
   }

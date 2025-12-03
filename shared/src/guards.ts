@@ -352,19 +352,19 @@ export function isMatchPolicy(value: unknown): value is MatchPolicy {
   return true
 }
 
-export function isPrefilterPolicy(value: unknown): value is PreFilterPolicy {
+export function isPreFilterPolicy(value: unknown): value is PreFilterPolicy {
   if (!isObject(value)) return false
   const v = value as Record<string, unknown>
 
-  if (!isObject((v as any).title)) return false
-  const title = (v as any).title
+  if (!isObject(v.title)) return false
+  const title = v.title as Record<string, unknown>
   if (!isStringArray(title.requiredKeywords) || !isStringArray(title.excludedKeywords)) return false
 
-  if (!isObject((v as any).freshness)) return false
-  if (typeof (v as any).freshness.maxAgeDays !== "number") return false
+  if (!isObject(v.freshness)) return false
+  if (typeof (v.freshness as any).maxAgeDays !== "number") return false
 
-  if (!isObject((v as any).workArrangement)) return false
-  const wa = (v as any).workArrangement
+  if (!isObject(v.workArrangement)) return false
+  const wa = v.workArrangement as Record<string, unknown>
   if (
     typeof wa.allowRemote !== "boolean" ||
     typeof wa.allowHybrid !== "boolean" ||
@@ -373,8 +373,8 @@ export function isPrefilterPolicy(value: unknown): value is PreFilterPolicy {
     return false
   }
 
-  if (!isObject((v as any).employmentType)) return false
-  const et = (v as any).employmentType
+  if (!isObject(v.employmentType)) return false
+  const et = v.employmentType as Record<string, unknown>
   if (
     typeof et.allowFullTime !== "boolean" ||
     typeof et.allowPartTime !== "boolean" ||
@@ -383,12 +383,12 @@ export function isPrefilterPolicy(value: unknown): value is PreFilterPolicy {
     return false
   }
 
-  if (!isObject((v as any).salary)) return false
-  const sal = (v as any).salary
+  if (!isObject(v.salary)) return false
+  const sal = v.salary as Record<string, unknown>
   if (sal.minimum !== null && typeof sal.minimum !== "number") return false
 
-  if (!isObject((v as any).technology)) return false
-  const tech = (v as any).technology
+  if (!isObject(v.technology)) return false
+  const tech = v.technology as Record<string, unknown>
   if (!isStringArray(tech.rejected)) return false
 
   return true
