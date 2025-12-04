@@ -86,7 +86,7 @@ class GenericScraper:
             for item in data:
                 job = self._extract_fields(item)
 
-                # Always enrich from detail page to get complete data (including posted_date)
+                # Enrich from detail page if posted_date is missing (to get complete data)
                 if job.get("url") and not job.get("posted_date"):
                     job = self._enrich_from_detail(job)
 
@@ -258,30 +258,31 @@ class GenericScraper:
              meta tags, <time> elements, CSS selectors, text patterns
 
         Only fills fields that are missing to avoid clobbering list-page data.
-        Applies rate limiting delay after HTTP requests.
+        Applies rate limiting delay after HTTP requests, even on failure.
         """
         url = job.get("url")
         if not url:
             return job
 
-        headers = {**DEFAULT_HEADERS, **self.config.headers}
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        # Strategy 1: JSON-LD JobPosting schema (most reliable)
-        self._extract_from_jsonld(soup, job)
-
-        # Strategy 2-5: If no posted_date yet, try HTML extraction methods
-        if not job.get("posted_date"):
-            html_date = self._extract_posted_date_from_html(soup)
-            if html_date:
-                job["posted_date"] = html_date
-
-        # Rate limit after request
         delay = get_fetch_delay_seconds()
-        if delay > 0:
-            time.sleep(delay)
+        try:
+            headers = {**DEFAULT_HEADERS, **self.config.headers}
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # Strategy 1: JSON-LD JobPosting schema (most reliable)
+            self._extract_from_jsonld(soup, job)
+
+            # Strategy 2-5: If no posted_date yet, try HTML extraction methods
+            if not job.get("posted_date"):
+                html_date = self._extract_posted_date_from_html(soup)
+                if html_date:
+                    job["posted_date"] = html_date
+        finally:
+            # Rate limit after request, even on failure, to avoid overwhelming the source
+            if delay > 0:
+                time.sleep(delay)
 
         return job
 

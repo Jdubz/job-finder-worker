@@ -273,13 +273,16 @@ class JobProcessor(BaseProcessor):
         Process job item through complete pipeline in a single task.
 
         Pipeline stages (all in-memory, no respawning):
-        1. SCRAPE - Extract job data from URL
-        2. TITLE_FILTER - Quick keyword-based filtering
-        3. COMPANY_LOOKUP - Get/create company data
-        4. AI_EXTRACTION - Extract semantic data (seniority, tech, etc.)
-        5. SCORING - Deterministic scoring from config
-        6. ANALYSIS - AI match analysis with reasoning
-        7. SAVE_MATCH - Save to job_matches if above threshold
+        1. SCRAPE - Extract job data from URL (or use manual submission data)
+        2. COMPANY_LOOKUP - Get/create company data
+        2.5. WAIT_COMPANY - Requeue if company needs enrichment (up to 3 retries)
+        3. AI_EXTRACTION - Extract semantic data (seniority, tech, etc.)
+        4. SCORING - Deterministic scoring from config
+        5. ANALYSIS - AI match analysis with reasoning
+        6. SAVE_MATCH - Save to job_matches if above threshold
+
+        Note: Title/pre-filtering happens at scraper intake, not here.
+        Jobs that reach this processor have already passed all filters.
 
         Args:
             item: Job queue item
@@ -339,7 +342,7 @@ class JobProcessor(BaseProcessor):
             # Get/create job listing (filtering happens at scraper intake, not here)
             ctx.listing_id = self._get_or_create_job_listing(item, ctx.job_data)
 
-            # STAGE 3: COMPANY LOOKUP
+            # STAGE 2: COMPANY LOOKUP
             ctx.stage = "company"
             logger.info(f"[PIPELINE] {url_preview} -> COMPANY_LOOKUP")
             self._update_status(item, "Looking up company", ctx.stage)
@@ -355,14 +358,14 @@ class JobProcessor(BaseProcessor):
                 },
             )
 
-            # STAGE 3.5: COMPANY DEPENDENCY CHECK
+            # STAGE 2.5: COMPANY DEPENDENCY CHECK
             # Before AI extraction, ensure company has good data (not just a stub)
             company_ready = self._check_company_dependency(ctx, state)
             if not company_ready:
                 # Job was requeued to wait for company enrichment
                 return
 
-            # STAGE 4: AI EXTRACTION
+            # STAGE 3: AI EXTRACTION
             ctx.stage = "extraction"
             logger.info(f"[PIPELINE] {url_preview} -> AI_EXTRACTION")
             self._update_status(item, "Extracting job data", ctx.stage)
@@ -394,7 +397,7 @@ class JobProcessor(BaseProcessor):
                 },
             )
 
-            # STAGE 5: DETERMINISTIC SCORING
+            # STAGE 4: DETERMINISTIC SCORING
             ctx.stage = "scoring"
             logger.info(f"[PIPELINE] {url_preview} -> SCORING")
             self._update_status(item, "Scoring job match", ctx.stage)
@@ -417,7 +420,7 @@ class JobProcessor(BaseProcessor):
                 )
                 return
 
-            # STAGE 6: AI MATCH ANALYSIS
+            # STAGE 5: AI MATCH ANALYSIS
             ctx.stage = "analysis"
             logger.info(f"[PIPELINE] {url_preview} -> AI_ANALYSIS")
             self._update_status(item, "Generating match analysis", ctx.stage)
@@ -443,7 +446,7 @@ class JobProcessor(BaseProcessor):
                 )
                 return
 
-            # STAGE 7: SAVE MATCH
+            # STAGE 6: SAVE MATCH
             ctx.stage = "save"
             logger.info(f"[PIPELINE] {url_preview} -> SAVE_MATCH")
             self._update_status(item, "Saving job match", ctx.stage)
@@ -499,12 +502,13 @@ class JobProcessor(BaseProcessor):
         """Execute scrape stage - use data from scraper, no fallbacks."""
         item = ctx.item
 
-        # Manual job data (user-submitted)
+        # Manual job data (user-submitted) - check both title and description
         manual_title = (item.metadata or {}).get("manualTitle")
-        if manual_title:
+        manual_desc = (item.metadata or {}).get("manualDescription")
+        if manual_title or manual_desc:
             return {
-                "title": manual_title,
-                "description": (item.metadata or {}).get("manualDescription") or "",
+                "title": manual_title or "",
+                "description": manual_desc or "",
                 "company": (item.metadata or {}).get("manualCompanyName") or item.company_name or "",
                 "location": (item.metadata or {}).get("manualLocation") or "",
                 "url": item.url,
@@ -512,7 +516,10 @@ class JobProcessor(BaseProcessor):
 
         # Scraped data MUST be present - scraper's responsibility
         if not item.scraped_data:
-            raise ValueError(f"No scraped_data for {item.url} - scraper failed to provide data")
+            raise ValueError(
+                f"No job data found for {item.url} - neither manual submission "
+                "(manualTitle/manualDescription) nor scraped_data present"
+            )
 
         return item.scraped_data
 
