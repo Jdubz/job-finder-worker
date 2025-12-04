@@ -12,7 +12,7 @@ services:
     container_name: job-finder-api
     restart: unless-stopped
     env_file:
-      - /srv/job-finder/.env.production
+      - /srv/job-finder/secrets/api.env
     environment:
       NODE_ENV: production
       PORT: 8080
@@ -68,7 +68,7 @@ services:
     container_name: job-finder-worker
     restart: unless-stopped
     env_file:
-      - /srv/job-finder/.env.production
+      - /srv/job-finder/secrets/worker.env
     environment:
       ENVIRONMENT: production
       ENABLE_QUEUE_MODE: "true"
@@ -130,8 +130,6 @@ services:
     container_name: job-finder-cloudflared
     restart: unless-stopped
     command: tunnel --config /etc/cloudflared/config.yml run
-    env_file:
-      - /srv/job-finder/.env.production
     environment:
       TUNNEL_ORIGIN_CERT: /etc/cloudflared/cert.pem
     depends_on:

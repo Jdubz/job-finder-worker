@@ -19,13 +19,13 @@
 #   ├── logs/              # Container logs
 #   └── output/            # Validation test output
 
-version: "3.9"
 name: job-finder-api-dev
 
 x-api-env: &api-env
   NODE_ENV: development
   CODEX_HOME: /home/node/.codex
   GEMINI_HOME: /home/node/.gemini
+  CHROMIUM_PATH: /usr/bin/chromium
   PORT: 8080
   DATABASE_PATH: /data/sqlite/jobfinder.db
   JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
@@ -37,12 +37,13 @@ services:
   sqlite-migrator:
     image: ghcr.io/jdubz/job-finder-worker/api:latest
     user: "1000:1000"
+    entrypoint: ["node"]
     env_file:
       - .env.dev
     environment:
       <<: *api-env
       NODE_ENV: production
-    command: ["node", "dist/scripts/migrate.js"]
+    command: ["dist/scripts/migrate.js"]
     volumes:
       - type: bind
         source: ./.dev/data
@@ -55,7 +56,14 @@ services:
   api:
     image: ghcr.io/jdubz/job-finder-worker/api:latest
     container_name: job-finder-api-dev
-    user: "1000:1000"
+    user: "root"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cp -r /codex-seed/. /home/node/.codex/ 2>/dev/null || true
+        cp -r /gemini-seed/. /home/node/.gemini/ 2>/dev/null || true
+        chown -R node:node /home/node/.codex /home/node/.gemini /data 2>/dev/null || true
+        exec gosu node node dist/index.js
     env_file:
       - .env.dev
     environment:
