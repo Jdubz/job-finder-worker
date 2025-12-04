@@ -28,7 +28,22 @@ export interface GeneratorArtifactRecord {
   createdAt: string
 }
 
-// Timestamp serialization functions removed - were only used for generator_steps
+/** SQLite row shape for generator_requests table */
+interface GeneratorRequestRow {
+  id: string
+  generate_type: string
+  job_json: string
+  preferences_json: string | null
+  personal_info_json: string | null
+  status: string
+  resume_url: string | null
+  cover_letter_url: string | null
+  job_match_id: string | null
+  created_by: string | null
+  steps_json: string | null
+  created_at: string
+  updated_at: string
+}
 
 export class GeneratorWorkflowRepository {
   private db: Database.Database
@@ -111,21 +126,7 @@ export class GeneratorWorkflowRepository {
          ORDER BY created_at DESC
          LIMIT ?`
       )
-      .all(limit) as Array<{
-      id: string
-      generate_type: string
-      job_json: string
-      preferences_json: string | null
-      personal_info_json: string | null
-      status: string
-      resume_url: string | null
-      cover_letter_url: string | null
-      job_match_id: string | null
-      created_by: string | null
-      steps_json: string | null
-      created_at: string
-      updated_at: string
-    }>
+      .all(limit) as GeneratorRequestRow[]
 
     return rows.map((row) => this.mapRequest(row))
   }
@@ -136,23 +137,8 @@ export class GeneratorWorkflowRepository {
         `SELECT * FROM generator_requests
          WHERE id = ?`
       )
-      .get(id) as
-      | {
-          id: string
-          generate_type: string
-          job_json: string
-          preferences_json: string | null
-          personal_info_json: string | null
-          status: string
-          resume_url: string | null
-          cover_letter_url: string | null
-          job_match_id: string | null
-          created_by: string | null
-          steps_json: string | null
-          created_at: string
-          updated_at: string
-        }
-      | undefined
+      .get(id) as GeneratorRequestRow | undefined
+
     return row ? this.mapRequest(row) : null
   }
 
@@ -163,21 +149,7 @@ export class GeneratorWorkflowRepository {
          WHERE status = ?
          ORDER BY created_at ASC`
       )
-      .all(status) as Array<{
-      id: string
-      generate_type: string
-      job_json: string
-      preferences_json: string | null
-      personal_info_json: string | null
-      status: string
-      resume_url: string | null
-      cover_letter_url: string | null
-      job_match_id: string | null
-      created_by: string | null
-      steps_json: string | null
-      created_at: string
-      updated_at: string
-    }>
+      .all(status) as GeneratorRequestRow[]
 
     return rows.map((row) => this.mapRequest(row))
   }
@@ -229,21 +201,7 @@ export class GeneratorWorkflowRepository {
     }))
   }
 
-  private mapRequest(row: {
-    id: string
-    generate_type: string
-    job_json: string
-    preferences_json: string | null
-    personal_info_json: string | null
-    status: string
-    resume_url: string | null
-    cover_letter_url: string | null
-    job_match_id: string | null
-    created_by: string | null
-    steps_json: string | null
-    created_at: string
-    updated_at: string
-  }): GeneratorRequestRecord {
+  private mapRequest(row: GeneratorRequestRow): GeneratorRequestRecord {
     return {
       id: row.id,
       generateType: row.generate_type as GeneratorRequestRecord['generateType'],

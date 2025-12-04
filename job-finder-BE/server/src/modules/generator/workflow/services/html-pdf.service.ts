@@ -1,9 +1,10 @@
 import { chromium, type BrowserContext } from 'playwright-core'
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
 import { cleanText } from './text.util'
-import { sharedCss } from './html-style'
-const DEFAULT_MARGIN = '0.8in'
-const CONTENT_WIDTH = '6.0in'
+import { sharedCss, icons } from './html-style'
+import { normalizeUrl } from './url.util'
+
+const DEFAULT_MARGIN = '0.5in'
 
 async function createContext(): Promise<BrowserContext> {
   const launchOptions: Parameters<typeof chromium.launch>[0] = {
@@ -21,113 +22,156 @@ async function createContext(): Promise<BrowserContext> {
 
 function buildContactRow(personal: PersonalInfo): string {
   const items: string[] = []
-  const add = (label?: string, href?: string) => {
-    if (!label) return
+
+  const addItem = (icon: string, label: string, href?: string) => {
     const text = cleanText(label)
     if (!text) return
-    const content = href ? `<a href="${href}" target="_blank">${text}</a>` : text
-    items.push(`<span class="chip">${content}</span>`)
+    const content = href ? `<a href="${href}">${text}</a>` : `<span>${text}</span>`
+    items.push(`<span class="contact-item">${icon}${content}</span>`)
   }
-  add(personal.email, `mailto:${personal.email}`)
-  add(personal.phone)
-  add(personal.location)
+
+  if (personal.email) {
+    addItem(icons.email, personal.email, `mailto:${personal.email}`)
+  }
+  if (personal.location) {
+    addItem(icons.location, personal.location)
+  }
   if (personal.website) {
-    const w = personal.website.startsWith('http') ? personal.website : `https://${personal.website}`
-    add(personal.website, w)
+    addItem(icons.website, personal.website, normalizeUrl(personal.website))
   }
   if (personal.linkedin) {
-    const l = personal.linkedin.startsWith('http') ? personal.linkedin : `https://${personal.linkedin}`
-    add('LinkedIn', l)
+    addItem(icons.linkedin, 'LinkedIn', normalizeUrl(personal.linkedin))
   }
   if (personal.github) {
-    const g = personal.github.startsWith('http') ? personal.github : `https://${personal.github}`
-    add('GitHub', g)
+    addItem(icons.github, 'GitHub', normalizeUrl(personal.github))
   }
-  return items.length ? `<div class="contact">${items.join('<span class="dot">·</span>')}</div>` : ''
+
+  return items.length ? `<div class="contact">${items.join('')}</div>` : ''
+}
+
+function getInitials(name?: string): string {
+  if (!name) return ''
+  return cleanText(name)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
 }
 
 function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string {
   const info = personalInfo ?? (content as any).personalInfo
-  const initials = info?.name
-    ? cleanText(info.name)
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((p) => p[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()
-    : ''
+  const initials = getInitials(info?.name)
   const avatar = (info as any)?.avatar || ''
   const logo = (info as any)?.logo || ''
   const contactRow = buildContactRow(info)
+
+  // Build experiences with timeline
   const experiences = content.experience
     .map((exp) => {
-      const dates = `${cleanText(exp.startDate || '')} – ${cleanText(exp.endDate || 'Present')}`.trim()
+      const dates = `${cleanText(exp.startDate || '')} - ${cleanText(exp.endDate || 'Present')}`.trim()
       const bullets = (exp.highlights || [])
         .map((b) => `<li>${cleanText(b)}</li>`)
         .join('')
+
       const tech = Array.isArray((exp as any).technologies) && (exp as any).technologies.length
-        ? `<div class="tech">${cleanText((exp as any).technologies.join(', '))}</div>`
+        ? `<div class="tech">Technologies: ${cleanText((exp as any).technologies.join(', '))}</div>`
         : ''
+
       return `
         <div class="role">
           <div class="role-header">
-            <div>
-              <div class="role-title">${cleanText(exp.role)}</div>
-              <div class="company">${cleanText(exp.company)}${exp.location ? ' • ' + cleanText(exp.location) : ''}</div>
-            </div>
-            <div class="dates">${dates}</div>
+            <span class="role-title">${cleanText(exp.role)}</span>
+            <span class="dates">${dates}</span>
           </div>
-          <ul class="bullets">${bullets}</ul>
+          <div class="company"><strong>${cleanText(exp.company)}</strong>${exp.location ? ' • ' + cleanText(exp.location) : ''}</div>
+          ${bullets ? `<ul class="bullets">${bullets}</ul>` : ''}
           ${tech}
         </div>
       `
     })
     .join('')
 
-  const skills = (content.skills || [])
-    .map((s) => `<div class="skill"><strong>${cleanText(s.category)}:</strong> ${cleanText(s.items.join(', '))}</div>`) 
+  // Build skills as tags/pills in two columns
+  const skillItems = (content.skills || [])
+    .map((s) => {
+      const tags = s.items.map((item) => `<span class="skill-tag">${cleanText(item)}</span>`).join('')
+      return `
+        <div class="skill-category">
+          <span class="skill-label">${cleanText(s.category)}</span>
+          <div class="skill-tags">${tags}</div>
+        </div>
+      `
+    })
     .join('')
 
+  const skillsSection = skillItems
+    ? `<section class="skills-section">
+        <div class="section-title">Technical Skills</div>
+        <div class="skills-grid">${skillItems}</div>
+       </section>`
+    : ''
+
+  // Build education
   const education = (content.education || [])
-    .map((e) => `<div class="edu"><strong>${cleanText(e.institution)}</strong> — ${cleanText(e.degree || e.field || '')}</div>`)
+    .map((e) => {
+      const gradDate = (e as any).graduationDate || e.endDate
+      return `
+        <div class="edu">
+          <strong>${cleanText(e.degree || e.field || '')}</strong>
+          <span class="edu-details"> — ${cleanText(e.institution)}${gradDate ? ', ' + cleanText(gradDate) : ''}</span>
+        </div>
+      `
+    })
     .join('')
+
+  const educationSection = education
+    ? `<section>
+        <div class="section-title">Education</div>
+        ${education}
+       </section>`
+    : ''
 
   return `
+  <!DOCTYPE html>
   <html>
   <head>
+    <meta charset="UTF-8">
     <style>${sharedCss}</style>
   </head>
   <body>
     <div class="page">
       <header>
-        <div class="brand">
-          ${logo ? `<div class="logo-box"><img src="${logo}" alt="" /></div>` : ''}
-          ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
-        </div>
-        <div>
+        ${logo ? `<div class="logo-box"><img src="${logo}" alt="" /></div>` : '<div></div>'}
+        <div class="header-center">
           <div class="name">${cleanText(info.name)}</div>
-          <div class="title">${cleanText(info.title || content.personalInfo.title || '')}</div>
+          <div class="title">${cleanText(info.title || content.personalInfo?.title || '')}</div>
           ${contactRow}
-          <hr class="contact-rule" />
         </div>
+        ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
       </header>
+      <hr class="header-rule" />
 
       <section>
-        <div class="section-title">PROFESSIONAL SUMMARY</div>
-        <div class="summary">${cleanText(content.professionalSummary || content.personalInfo.summary || '')}</div>
+        <div class="section-title">Professional Summary</div>
+        <div class="summary">${cleanText(content.professionalSummary || content.personalInfo?.summary || '')}</div>
       </section>
-
-      ${skills ? `<section><div class="section-title">TECHNICAL SKILLS</div>${skills}</section>` : ''}
 
       <section>
-        <div class="section-title">PROFESSIONAL EXPERIENCE</div>
-        ${experiences}
+        <div class="section-title">Professional Experience</div>
+        <div class="experience-list">
+          ${experiences}
+        </div>
       </section>
 
-      ${education ? `<section><div class="section-title">EDUCATION</div>${education}</section>` : ''}
+      ${skillsSection}
 
-      <footer>This document was created using my custom AI job-finder application — Job Finder</footer>
+      ${educationSection}
+
+      <footer>
+        Generated by my custom AI resume builder — <a href="https://job-finder.joshwentworth.com">JOB FINDER</a>
+      </footer>
     </div>
   </body>
   </html>
@@ -146,15 +190,8 @@ function coverLetterHtml(
     title: '',
     summary: ''
   } as any)
-  const initials = opts.name
-    ? cleanText(opts.name)
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((p) => p[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()
-    : ''
+
+  const initials = getInitials(opts.name)
   const avatar = opts.avatar || ''
 
   const bodyParas = [content.openingParagraph, ...(content.bodyParagraphs || []), content.closingParagraph]
@@ -162,33 +199,140 @@ function coverLetterHtml(
     .map((p) => `<p>${cleanText(p || '')}</p>`)
     .join('')
 
+  const coverLetterCss = `
+    ${sharedCss}
+
+    /* Override: no decorative corners for cover letter */
+    .letter::before,
+    .letter::after { display: none; }
+
+    .letter {
+      width: 100%;
+      max-width: 7.3in;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .letter header {
+      margin-bottom: 12px;
+      grid-template-columns: auto 1fr auto;
+    }
+
+    /* Recipient block with accent bar */
+    .recipient {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--rule-light);
+    }
+
+    .greeting {
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .date {
+      font-size: 10px;
+      color: var(--muted);
+      margin: 0;
+      margin-left: auto;
+    }
+
+    /* Letter body - clean with subtle left accent */
+    .letter-body {
+      padding-left: 16px;
+      border-left: 3px solid var(--accent);
+      margin-left: 4px;
+    }
+
+    .letter-body p {
+      font-size: 10.5px;
+      line-height: 1.75;
+      color: var(--text);
+      margin: 0 0 14px 0;
+      text-align: justify;
+    }
+
+    .letter-body p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Signature with accent */
+    .signature {
+      margin-top: 28px;
+      padding-left: 16px;
+      margin-left: 4px;
+    }
+
+    .signature-line {
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .signature-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      position: relative;
+      display: inline-block;
+    }
+
+    .signature-name::after {
+      content: "";
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
+    }
+
+    .letter footer {
+      margin-top: 48px;
+    }
+  `
+
   return `
+  <!DOCTYPE html>
   <html>
   <head>
-    <style>
-      ${sharedCss}
-      .letter { width: ${CONTENT_WIDTH}; margin: 0 auto; }
-      .letter header { margin-bottom: 14px; grid-template-columns: 1fr; }
-      .meta { font-size: 10.6px; color: var(--muted); margin: 6px 0 16px 0; }
-      p { font-size: 11px; line-height: 1.68; color: var(--text); margin: 0 0 14px 0; }
-      .signature { font-size: 11.2px; margin-top: 18px; font-weight: 700; }
-    </style>
+    <meta charset="UTF-8">
+    <style>${coverLetterCss}</style>
   </head>
   <body>
     <div class="letter">
       <header>
-        <div class="brand">
-          ${opts.logo ? `<div class="logo-box"><img src="${opts.logo}" alt="" /></div>` : ''}
-          ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
-        </div>
-        <div>
+        ${opts.logo ? `<div class="logo-box"><img src="${opts.logo}" alt="" /></div>` : '<div></div>'}
+        <div class="header-center">
           <div class="name">${cleanText(opts.name)}</div>
           ${contact}
         </div>
+        ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
       </header>
-      <div class="meta">${cleanText(content.greeting)}<br>${cleanText(opts.date || '')}</div>
-      ${bodyParas}
-      <div class="signature">${cleanText(content.signature || opts.name)}</div>
+      <hr class="header-rule" />
+
+      <div class="recipient">
+        <div class="greeting">${cleanText(content.greeting)}</div>
+        <div class="date">${cleanText(opts.date || '')}</div>
+      </div>
+
+      <div class="letter-body">
+        ${bodyParas}
+      </div>
+
+      <div class="signature">
+        <div class="signature-line">Sincerely,</div>
+        <div class="signature-name">${cleanText(content.signature || opts.name)}</div>
+      </div>
+
+      <footer>
+        Generated by my custom AI resume builder — <a href="https://job-finder.joshwentworth.com">JOB FINDER</a>
+      </footer>
     </div>
   </body>
   </html>
