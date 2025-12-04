@@ -7,7 +7,8 @@ import type {
   SaveJobMatchRequest,
   SaveJobMatchResponse,
   DeleteJobMatchResponse,
-  ResumeIntakeData
+  ResumeIntakeData,
+  GetJobMatchStatsResponse
 } from '@shared/types'
 import { JobMatchRepository } from './job-match.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -94,6 +95,15 @@ export function buildJobMatchRouter() {
       const filters = listQuerySchema.parse(req.query)
       const matches = repo.listWithListings(filters)
       const response: ListJobMatchesResponse = { matches, count: matches.length }
+      res.json(success(response))
+    })
+  )
+
+  router.get(
+    '/stats',
+    asyncHandler((_req, res) => {
+      const stats = repo.getStats()
+      const response: GetJobMatchStatsResponse = { stats }
       res.json(success(response))
     })
   )

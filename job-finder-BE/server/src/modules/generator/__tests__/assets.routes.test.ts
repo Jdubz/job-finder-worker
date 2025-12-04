@@ -27,13 +27,18 @@ describe('Generator assets upload + serve', () => {
 
     expect(uploadRes.body.success).toBe(true)
     expect(uploadRes.body.path).toMatch(/^\/assets\//)
+    // Allow both relative and absolute URLs (env-dependent)
     expect(uploadRes.body.publicUrl).toMatch(/\/api\/generator\/artifacts\/assets\//)
 
     const savedPath = path.join(artifactsDir, uploadRes.body.path)
     await expect(fs.stat(savedPath)).resolves.toBeTruthy()
 
+    // Extract relative path from publicUrl (works for both relative and absolute URLs)
+    const publicUrl = uploadRes.body.publicUrl as string
+    const relativePath = publicUrl.replace(/^https?:\/\/[^/]+/, '')
+
     const getRes = await request(app)
-      .get(uploadRes.body.publicUrl)
+      .get(relativePath)
       .set('Authorization', 'Bearer bypass-token')
       .expect(200)
     expect(getRes.headers['content-type']).toMatch(/image\/png/)

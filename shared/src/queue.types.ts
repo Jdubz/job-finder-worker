@@ -13,6 +13,19 @@ import type { AISettings, AIProviderType, AIInterfaceType, AIProviderSelection }
 export type { AISettings, AIProviderType, AIInterfaceType, AIProviderSelection } from "./config.types"
 
 /**
+ * Queue status values as const array for Zod schema validation.
+ * Import this in backend routes instead of duplicating.
+ */
+export const QUEUE_STATUSES = [
+  "pending",
+  "processing",
+  "success",
+  "failed",
+  "skipped",
+  "needs_review"
+] as const
+
+/**
  * Queue item status lifecycle:
  * pending → processing → success/failed/skipped
  *
@@ -23,36 +36,43 @@ export type { AISettings, AIProviderType, AIInterfaceType, AIProviderSelection }
  * - failed: Processing error occurred (terminal)
  * - needs_review: Human review required before proceeding
  */
-export type QueueStatus =
-  | "pending"
-  | "processing"
-  | "success"
-  | "failed"
-  | "skipped"
-  | "needs_review"
+export type QueueStatus = (typeof QUEUE_STATUSES)[number]
+
+/**
+ * Queue item type values as const array for Zod schema validation.
+ * Import this in backend routes instead of duplicating.
+ */
+export const QUEUE_ITEM_TYPES = [
+  "job",
+  "company",
+  "scrape",
+  "source_discovery",
+  "scrape_source"
+] as const
 
 /**
  * Queue item types
  */
-export type QueueItemType =
-  | "job"
-  | "company"
-  | "scrape"
-  | "source_discovery"
-  | "scrape_source"
-  | "agent_review"
+export type QueueItemType = (typeof QUEUE_ITEM_TYPES)[number]
+
+/**
+ * Queue source values as const array for Zod schema validation.
+ * Import this in backend routes instead of duplicating.
+ */
+export const QUEUE_SOURCES = [
+  "user_submission",
+  "automated_scan",
+  "scraper",
+  "webhook",
+  "email",
+  "manual_submission",
+  "user_request"
+] as const
 
 /**
  * Source of queue submission
  */
-export type QueueSource =
-  | "user_submission"
-  | "automated_scan"
-  | "scraper"
-  | "webhook"
-  | "email"
-  | "manual_submission"
-  | "user_request"
+export type QueueSource = (typeof QUEUE_SOURCES)[number]
 
 /**
  * Configuration for scrape requests
@@ -254,11 +274,11 @@ export interface SubmitSourceDiscoveryResponse {
 
 // Type guard helpers
 export function isQueueStatus(status: string): status is QueueStatus {
-  return ["pending", "processing", "success", "failed", "skipped", "needs_review"].includes(status)
+  return (QUEUE_STATUSES as readonly string[]).includes(status)
 }
 
 export function isQueueItemType(type: string): type is QueueItemType {
-  return ["job", "company", "scrape", "source_discovery", "scrape_source", "agent_review"].includes(type)
+  return (QUEUE_ITEM_TYPES as readonly string[]).includes(type)
 }
 
 export function isSourceTypeHint(hint: string): hint is SourceTypeHint {

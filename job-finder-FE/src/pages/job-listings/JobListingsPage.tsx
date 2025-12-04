@@ -1,9 +1,11 @@
-import { useState, useMemo } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobListings } from "@/hooks/useJobListings"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { useEntityModal } from "@/contexts/EntityModalContext"
+import { jobListingsClient } from "@/api"
+import type { JobListingStats } from "@shared/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -121,16 +123,29 @@ export function JobListingsPage() {
   const [deleteRequest, setDeleteRequest] = useState<{ id: string; title?: string }>({ id: "", title: "" })
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
-  // Calculate status counts in a single pass for performance
-  const statusCounts = useMemo(() => {
-    return listings.reduce(
-      (acc, listing) => {
-        acc[listing.status] = (acc[listing.status] || 0) + 1
-        return acc
-      },
-      {} as Record<JobListingStatus, number>
-    )
-  }, [listings])
+  // Fetch stats from server for accurate totals (not limited by pagination)
+  const [stats, setStats] = useState<JobListingStats | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+
+    const fetchStats = async () => {
+      try {
+        const serverStats = await jobListingsClient.getStats()
+        if (!cancelled) {
+          setStats(serverStats)
+        }
+      } catch (err) {
+        console.error("Failed to fetch job listing stats:", err)
+      }
+    }
+
+    fetchStats()
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   const resetAddForm = () => {
     setJobUrl("")
@@ -279,46 +294,46 @@ export function JobListingsPage() {
         </Button>
       </div>
 
-      {/* Stats Overview - Clickable Pills */}
-      {!loading && listings.length > 0 && (
+      {/* Stats Overview - Clickable Pills (using server-side stats for accuracy) */}
+      {!loading && stats && (
         <div className="flex overflow-x-auto pb-2 sm:flex-wrap items-center gap-2 text-sm scrollbar-thin">
           <StatPill
             label="Total"
-            value={listings.length}
+            value={stats.total}
             active={statusFilter === "all"}
             onClick={() => handleStatusFilterChange("all")}
           />
           <StatPill
             label="Pending"
-            value={statusCounts.pending ?? 0}
+            value={stats.pending}
             tone="gray"
             active={statusFilter === "pending"}
             onClick={() => handleStatusFilterChange("pending")}
           />
           <StatPill
             label="Analyzing"
-            value={statusCounts.analyzing ?? 0}
+            value={stats.analyzing}
             tone="blue"
             active={statusFilter === "analyzing"}
             onClick={() => handleStatusFilterChange("analyzing")}
           />
           <StatPill
             label="Analyzed"
-            value={statusCounts.analyzed ?? 0}
+            value={stats.analyzed}
             tone="green"
             active={statusFilter === "analyzed"}
             onClick={() => handleStatusFilterChange("analyzed")}
           />
           <StatPill
             label="Matched"
-            value={statusCounts.matched ?? 0}
+            value={stats.matched}
             tone="emerald"
             active={statusFilter === "matched"}
             onClick={() => handleStatusFilterChange("matched")}
           />
           <StatPill
             label="Skipped"
-            value={statusCounts.skipped ?? 0}
+            value={stats.skipped}
             tone="red"
             active={statusFilter === "skipped"}
             onClick={() => handleStatusFilterChange("skipped")}

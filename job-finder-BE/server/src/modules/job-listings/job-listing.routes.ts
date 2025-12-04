@@ -6,7 +6,8 @@ import type {
   GetJobListingResponse,
   CreateJobListingResponse,
   UpdateJobListingResponse,
-  DeleteJobListingResponse
+  DeleteJobListingResponse,
+  GetJobListingStatsResponse
 } from '@shared/types'
 import { JobListingRepository } from './job-listing.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -58,6 +59,15 @@ export function buildJobListingRouter() {
         listings: items,
         count: total
       }
+      res.json(success(response))
+    })
+  )
+
+  router.get(
+    '/stats',
+    asyncHandler((_req, res) => {
+      const stats = repo.getStats()
+      const response: GetJobListingStatsResponse = { stats }
       res.json(success(response))
     })
   )

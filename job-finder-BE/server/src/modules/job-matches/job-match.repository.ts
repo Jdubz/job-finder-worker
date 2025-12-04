@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { JobMatch, JobMatchWithListing, TimestampLike } from '@shared/types'
+import type { JobMatch, JobMatchWithListing, TimestampLike, JobMatchStats } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 import { JobListingRepository } from '../job-listings/job-listing.repository'
 import { CompanyRepository } from '../companies/company.repository'
@@ -229,5 +229,37 @@ export class JobMatchRepository {
 
   delete(id: string): void {
     this.db.prepare('DELETE FROM job_matches WHERE id = ?').run(id)
+  }
+
+  /**
+   * Get stats for job matches grouped by score range.
+   * Used for summary pills in the UI.
+   */
+  getStats(): JobMatchStats {
+    const result = this.db
+      .prepare(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN match_score >= 80 THEN 1 ELSE 0 END) as highScore,
+          SUM(CASE WHEN match_score >= 50 AND match_score < 80 THEN 1 ELSE 0 END) as mediumScore,
+          SUM(CASE WHEN match_score < 50 THEN 1 ELSE 0 END) as lowScore,
+          AVG(match_score) as averageScore
+        FROM job_matches
+      `)
+      .get() as {
+      total: number
+      highScore: number
+      mediumScore: number
+      lowScore: number
+      averageScore: number | null
+    }
+
+    return {
+      total: result.total ?? 0,
+      highScore: result.highScore ?? 0,
+      mediumScore: result.mediumScore ?? 0,
+      lowScore: result.lowScore ?? 0,
+      averageScore: result.averageScore ?? 0
+    }
   }
 }

@@ -19,6 +19,9 @@ import type { Express } from 'express'
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { LocalStorageService, type ArtifactMetadata } from '../workflow/services/storage.service'
 
+// Use default relative base path for test assertions
+const TEST_PUBLIC_BASE = '/api/generator/artifacts'
+
 describe('Generator artifacts routes', () => {
   const artifactsDir = process.env.GENERATOR_ARTIFACTS_DIR ?? path.resolve(__dirname, '../../../../.artifacts-test')
   let storageService: LocalStorageService
@@ -28,7 +31,7 @@ describe('Generator artifacts routes', () => {
     process.env.NODE_ENV = 'development'
     await fs.rm(artifactsDir, { recursive: true, force: true })
     await fs.mkdir(artifactsDir, { recursive: true })
-    storageService = new LocalStorageService(artifactsDir)
+    storageService = new LocalStorageService(artifactsDir, TEST_PUBLIC_BASE)
     const { buildApp } = await import('../../../app')
     app = buildApp()
   })
@@ -254,7 +257,7 @@ describe('Storage service path format', () => {
   beforeAll(async () => {
     await fs.rm(artifactsDir, { recursive: true, force: true })
     await fs.mkdir(artifactsDir, { recursive: true })
-    storageService = new LocalStorageService(artifactsDir)
+    storageService = new LocalStorageService(artifactsDir, TEST_PUBLIC_BASE)
   })
 
   afterAll(async () => {

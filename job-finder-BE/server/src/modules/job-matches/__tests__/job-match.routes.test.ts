@@ -88,4 +88,46 @@ describe('job match routes', () => {
     expect(res.body.data.deleted).toBe(true)
     expect(repo.getById(seeded.id!)).toBeNull()
   })
+
+  describe('GET /job-matches/stats', () => {
+    it('returns aggregated stats from database', async () => {
+      // Create listings and matches with different scores
+      createTestListing('listing-stats-1')
+      createTestListing('listing-stats-2')
+      createTestListing('listing-stats-3')
+      createTestListing('listing-stats-4')
+
+      // High score (>=80)
+      repo.upsert(buildJobMatchInput({ queueItemId: 'queue-stats-1', jobListingId: 'listing-stats-1', matchScore: 95 }))
+      repo.upsert(buildJobMatchInput({ queueItemId: 'queue-stats-2', jobListingId: 'listing-stats-2', matchScore: 85 }))
+      // Medium score (>=50, <80)
+      repo.upsert(buildJobMatchInput({ queueItemId: 'queue-stats-3', jobListingId: 'listing-stats-3', matchScore: 65 }))
+      // Low score (<50)
+      repo.upsert(buildJobMatchInput({ queueItemId: 'queue-stats-4', jobListingId: 'listing-stats-4', matchScore: 30 }))
+
+      const res = await request(app).get('/job-matches/stats')
+
+      expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
+      expect(res.body.data.stats).toBeDefined()
+      expect(res.body.data.stats.total).toBe(4)
+      expect(res.body.data.stats.highScore).toBe(2)
+      expect(res.body.data.stats.mediumScore).toBe(1)
+      expect(res.body.data.stats.lowScore).toBe(1)
+      // Average: (95 + 85 + 65 + 30) / 4 = 68.75
+      expect(res.body.data.stats.averageScore).toBe(68.75)
+    })
+
+    it('returns zeros when no matches exist', async () => {
+      const res = await request(app).get('/job-matches/stats')
+
+      expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
+      expect(res.body.data.stats.total).toBe(0)
+      expect(res.body.data.stats.highScore).toBe(0)
+      expect(res.body.data.stats.mediumScore).toBe(0)
+      expect(res.body.data.stats.lowScore).toBe(0)
+      expect(res.body.data.stats.averageScore).toBe(0)
+    })
+  })
 })
