@@ -218,7 +218,8 @@ export async function getWorkerHealth() {
 export async function getWorkerCliHealth() {
   const workerBaseUrl = getWorkerBaseUrl()
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 5_000)
+  // Longer timeout for CLI checks (they spawn subprocesses)
+  const timeout = setTimeout(() => controller.abort(), 10_000)
 
   try {
     const res = await fetch(`${workerBaseUrl}/cli/health`, { signal: controller.signal })
