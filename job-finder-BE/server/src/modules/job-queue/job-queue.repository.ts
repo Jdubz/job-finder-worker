@@ -288,7 +288,6 @@ export class JobQueueRepository {
       success: 0,
       failed: 0,
       skipped: 0,
-      filtered: 0,
       total: 0
     }
 
@@ -308,9 +307,6 @@ export class JobQueueRepository {
           break
         case 'skipped':
           stats.skipped = row.count
-          break
-        case 'filtered':
-          stats.filtered = row.count
           break
         default:
           break

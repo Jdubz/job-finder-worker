@@ -97,7 +97,7 @@ export function QueueFilters({
                 <SelectItem value="success">Success</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
                 <SelectItem value="skipped">Skipped</SelectItem>
-                <SelectItem value="filtered">Filtered</SelectItem>
+                <SelectItem value="needs_review">Needs Review</SelectItem>
               </SelectContent>
             </Select>
           </div>

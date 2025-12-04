@@ -12,6 +12,7 @@ export const ROUTES = {
   // Admin-only routes
   QUEUE_MANAGEMENT: "/queue-management",
   JOB_FINDER_CONFIG: "/job-finder-config",
+  SYSTEM_HEALTH: "/system-health",
   // Legal pages
   TERMS_OF_USE: "/terms-of-use",
   PRIVACY_POLICY: "/privacy-policy",
@@ -37,6 +38,7 @@ export const AUTHENTICATED_ROUTES: RoutePath[] = [
 export const ADMIN_ROUTES: RoutePath[] = [
   ROUTES.QUEUE_MANAGEMENT,
   ROUTES.JOB_FINDER_CONFIG,
+  ROUTES.SYSTEM_HEALTH,
 ]
 
 // Public routes that anyone can access

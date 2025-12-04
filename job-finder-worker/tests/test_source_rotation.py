@@ -16,14 +16,12 @@ def mock_dependencies():
     job_listing_storage.db_path = ":memory:"
     companies_manager = MagicMock()
     sources_manager = MagicMock()
-    company_info_fetcher = MagicMock()
 
     return {
         "queue_manager": queue_manager,
         "job_listing_storage": job_listing_storage,
         "companies_manager": companies_manager,
         "sources_manager": sources_manager,
-        "company_info_fetcher": company_info_fetcher,
     }
 
 

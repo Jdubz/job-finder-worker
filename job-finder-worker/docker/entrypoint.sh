@@ -82,9 +82,6 @@ else
 fi
 echo "=== End Gemini Setup ==="
 
-# Cron removed from worker; scheduling now lives in the API container.
-ENABLE_CRON=false
-
 # Start Flask worker if enabled (default mode)
 if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then
     echo ""
@@ -115,15 +112,9 @@ if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then
     fi
 
     echo ""
-    if [ "${ENABLE_CRON}" = "true" ]; then
-        echo "Container is running in HYBRID mode:"
-        echo "  1. Cron (every 6h) - Scrapes sources and adds to queue"
-        echo "  2. Flask Worker (port 5555) - HTTP API for job processing"
-    else
-        echo "Container is running in FLASK-ONLY mode:"
-        echo "  - Cron disabled (manual queue submissions only)"
-        echo "  - Flask Worker (port 5555) - HTTP API for job processing"
-    fi
+    echo "Container is running in FLASK WORKER mode:"
+    echo "  - Flask Worker (port 5555) - HTTP API for job processing"
+    echo "  - Cron scheduling handled by API container"
     echo "========================================="
 elif [ "${ENABLE_QUEUE_MODE}" = "true" ]; then
     echo ""
@@ -151,27 +142,16 @@ elif [ "${ENABLE_QUEUE_MODE}" = "true" ]; then
     fi
 
     echo ""
-    if [ "${ENABLE_CRON}" = "true" ]; then
-        echo "Container is running in DUAL-PROCESS mode:"
-        echo "  1. Cron (every 6h) - Scrapes sources and adds to queue"
-        echo "  2. Queue Worker (continuous) - Processes queue items"
-    else
-        echo "Container is running in QUEUE-ONLY mode:"
-        echo "  - Cron disabled (manual queue submissions only)"
-        echo "  - Queue Worker (continuous) - Processes queue items"
-    fi
+    echo "Container is running in QUEUE WORKER mode (legacy):"
+    echo "  - Queue Worker (continuous) - Processes queue items"
+    echo "  - Cron scheduling handled by API container"
     echo "========================================="
 else
     echo ""
-    if [ "${ENABLE_CRON}" = "true" ]; then
-        echo "Container is running in LEGACY mode (direct processing)"
-        echo "Queue mode disabled. Use ENABLE_QUEUE_MODE=true to enable."
-    else
-        echo "Container is running in IDLE mode:"
-        echo "  - Cron disabled (ENABLE_CRON=false)"
-        echo "  - Queue disabled (ENABLE_QUEUE_MODE=false)"
-        echo "  - No automatic processing will occur"
-    fi
+    echo "Container is running in IDLE mode:"
+    echo "  - Queue disabled (ENABLE_QUEUE_MODE=false)"
+    echo "  - Flask disabled (ENABLE_FLASK_WORKER=false)"
+    echo "  - No automatic processing will occur"
     echo "========================================="
 fi
 

@@ -164,7 +164,6 @@ vi.mock("@/api/queue-client", async () => {
     success: 0,
     failed: 0,
     skipped: 0,
-    filtered: 0,
   })
   return {
     ...actual,

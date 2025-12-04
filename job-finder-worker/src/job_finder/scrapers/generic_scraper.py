@@ -84,18 +84,14 @@ class GenericScraper:
             # Parse each item into standardized job format
             jobs = []
             for item in data:
-                try:
-                    job = self._extract_fields(item)
+                job = self._extract_fields(item)
 
-                    # Optional detail-page enrichment for HTML aggregators (e.g., builtin.com)
-                    if self.config.type == "html" and self.config.follow_detail:
-                        job = self._enrich_from_detail(job)
+                # Enrich from detail page if posted_date is missing (to get complete data)
+                if job.get("url") and not job.get("posted_date"):
+                    job = self._enrich_from_detail(job)
 
-                    if job.get("title") and job.get("url"):
-                        jobs.append(job)
-                except Exception as e:
-                    logger.warning(f"Error parsing item: {e}")
-                    continue
+                if job.get("title") and job.get("url"):
+                    jobs.append(job)
 
             logger.info(f"Scraped {len(jobs)} jobs from {self.config.url}")
             return jobs
@@ -254,20 +250,21 @@ class GenericScraper:
         return soup.select(self.config.job_selector)
 
     def _enrich_from_detail(self, job: Dict[str, Any]) -> Dict[str, Any]:
-        """Optionally enrich a job by fetching its detail page.
+        """Enrich a job by fetching its detail page. Errors propagate.
 
         Extracts data using multiple strategies in order of reliability:
         1. JSON-LD JobPosting schema (via _extract_from_jsonld)
-        2-5. Fallback HTML extraction (via _extract_posted_date_from_html):
+        2-5. HTML extraction (via _extract_posted_date_from_html):
              meta tags, <time> elements, CSS selectors, text patterns
 
         Only fills fields that are missing to avoid clobbering list-page data.
-        Applies rate limiting delay after HTTP requests to avoid overwhelming sources.
+        Applies rate limiting delay after HTTP requests, even on failure.
         """
         url = job.get("url")
         if not url:
             return job
 
+        delay = get_fetch_delay_seconds()
         try:
             headers = {**DEFAULT_HEADERS, **self.config.headers}
             response = requests.get(url, headers=headers, timeout=15)
@@ -282,17 +279,8 @@ class GenericScraper:
                 html_date = self._extract_posted_date_from_html(soup)
                 if html_date:
                     job["posted_date"] = html_date
-
-            # Rate limit after successful request to avoid overwhelming the source
-            delay = get_fetch_delay_seconds()
-            if delay > 0:
-                time.sleep(delay)
-
-        except Exception as exc:
-            # Swallow enrichment errors; base scrape already succeeded
-            logger.debug("Error enriching job from detail page %s: %s", url, exc)
-            # Still apply delay on errors to rate limit failed requests
-            delay = get_fetch_delay_seconds()
+        finally:
+            # Rate limit after request, even on failure, to avoid overwhelming the source
             if delay > 0:
                 time.sleep(delay)
 

@@ -16,7 +16,6 @@ out obviously unsuitable jobs BEFORE they enter the queue.
 import logging
 from typing import Any, Dict, List, Optional
 
-from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import ConfigurationError, ScrapeBlockedError
 from job_finder.filters.prefilter import PreFilter
 from job_finder.filters.title_filter import TitleFilter
@@ -55,7 +54,6 @@ class ScrapeRunner:
         job_listing_storage: JobListingStorage,
         companies_manager: CompaniesManager,
         sources_manager: JobSourcesManager,
-        company_info_fetcher: CompanyInfoFetcher,
         title_filter: Optional[TitleFilter] = None,
         config_loader: Optional[ConfigLoader] = None,
     ):
@@ -63,7 +61,6 @@ class ScrapeRunner:
         self.job_listing_storage = job_listing_storage
         self.companies_manager = companies_manager
         self.sources_manager = sources_manager
-        self.company_info_fetcher = company_info_fetcher
 
         # Use provided title filter or create filters from prefilter-policy
         self.title_filter: Optional[TitleFilter] = None

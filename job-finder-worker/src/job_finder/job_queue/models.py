@@ -75,11 +75,10 @@ class QueueStatus(str, Enum):
     Status of queue item processing.
 
     TypeScript equivalent: QueueStatus in queue.types.ts
-    Lifecycle: pending → processing → success/failed/skipped/filtered
+    Lifecycle: pending → processing → success/failed/skipped
 
     - PENDING: In queue, waiting to be processed
     - PROCESSING: Currently being processed
-    - FILTERED: Rejected by filter engine (did not pass intake filters)
     - SKIPPED: Skipped (duplicate or stop list blocked)
     - NEEDS_REVIEW: Human review required before proceeding
     - SUCCESS: Successfully processed and saved to job-matches
@@ -88,7 +87,6 @@ class QueueStatus(str, Enum):
 
     PENDING = "pending"
     PROCESSING = "processing"
-    FILTERED = "filtered"
     SKIPPED = "skipped"
     FAILED = "failed"
     SUCCESS = "success"

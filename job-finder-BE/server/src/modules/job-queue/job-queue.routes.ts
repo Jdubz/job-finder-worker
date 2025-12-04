@@ -24,6 +24,7 @@ import {
   sendCommandToWorker
 } from './queue-events'
 import { requireRole } from '../../middleware/firebase-auth'
+import { enqueueScrapeJob, triggerMaintenance, getCronStatus, getWorkerHealth } from '../../scheduler/cron'
 
 const queueStatuses = [
   'pending',
@@ -31,7 +32,7 @@ const queueStatuses = [
   'success',
   'failed',
   'skipped',
-  'filtered'
+  'needs_review'
 ] as const
 const queueSources = [
   'user_submission',
@@ -295,6 +296,51 @@ export function buildJobQueueRouter() {
 
   // Note: Worker bridge routes (/worker/commands, /worker/events) are now in worker.routes.ts
   // and mounted separately with worker token auth instead of Google OAuth
+
+  // Cron status and manual trigger endpoints
+  router.get(
+    '/cron/status',
+    requireRole('admin'),
+    asyncHandler((_req, res) => {
+      const status = getCronStatus()
+      res.json(success(status))
+    })
+  )
+
+  router.post(
+    '/cron/trigger/scrape',
+    requireRole('admin'),
+    asyncHandler(async (_req, res) => {
+      const result = await enqueueScrapeJob()
+      if (result.success) {
+        res.json(success(result))
+      } else {
+        res.status(500).json(failure('CRON_TRIGGER_FAILED', result.error ?? 'Unknown error'))
+      }
+    })
+  )
+
+  router.post(
+    '/cron/trigger/maintenance',
+    requireRole('admin'),
+    asyncHandler(async (_req, res) => {
+      const result = await triggerMaintenance()
+      if (result.success) {
+        res.json(success(result))
+      } else {
+        res.status(500).json(failure('CRON_TRIGGER_FAILED', result.error ?? 'Unknown error'))
+      }
+    })
+  )
+
+  router.get(
+    '/worker/health',
+    requireRole('admin'),
+    asyncHandler(async (_req, res) => {
+      const health = await getWorkerHealth()
+      res.json(success(health))
+    })
+  )
 
   return router
 }
