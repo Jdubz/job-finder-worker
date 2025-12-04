@@ -1,10 +1,10 @@
 import { chromium, type BrowserContext } from 'playwright-core'
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
 import { cleanText } from './text.util'
-import { sharedCss } from './html-style'
+import { sharedCss, icons } from './html-style'
 import { normalizeUrl } from './url.util'
 
-const DEFAULT_MARGIN = '0.55in'
+const DEFAULT_MARGIN = '0.5in'
 
 async function createContext(): Promise<BrowserContext> {
   const launchOptions: Parameters<typeof chromium.launch>[0] = {
@@ -23,28 +23,30 @@ async function createContext(): Promise<BrowserContext> {
 function buildContactRow(personal: PersonalInfo): string {
   const items: string[] = []
 
-  const addChip = (label?: string, href?: string) => {
-    if (!label) return
+  const addItem = (icon: string, label: string, href?: string) => {
     const text = cleanText(label)
     if (!text) return
-    const content = href ? `<a href="${href}" target="_blank">${text}</a>` : text
-    items.push(`<span class="chip">${content}</span>`)
+    const content = href ? `<a href="${href}">${text}</a>` : `<span>${text}</span>`
+    items.push(`<span class="contact-item">${icon}${content}</span>`)
   }
 
-  addChip(personal.email, `mailto:${personal.email}`)
-  addChip(personal.location)
-
+  if (personal.email) {
+    addItem(icons.email, personal.email, `mailto:${personal.email}`)
+  }
+  if (personal.location) {
+    addItem(icons.location, personal.location)
+  }
   if (personal.website) {
-    addChip(personal.website, normalizeUrl(personal.website))
+    addItem(icons.website, personal.website, normalizeUrl(personal.website))
   }
   if (personal.linkedin) {
-    addChip('LinkedIn', normalizeUrl(personal.linkedin))
+    addItem(icons.linkedin, 'LinkedIn', normalizeUrl(personal.linkedin))
   }
   if (personal.github) {
-    addChip('GitHub', normalizeUrl(personal.github))
+    addItem(icons.github, 'GitHub', normalizeUrl(personal.github))
   }
 
-  return items.length ? `<div class="contact">${items.join('<span class="dot">•</span>')}</div>` : ''
+  return items.length ? `<div class="contact">${items.join('')}</div>` : ''
 }
 
 function getInitials(name?: string): string {
@@ -65,7 +67,7 @@ function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string
   const logo = (info as any)?.logo || ''
   const contactRow = buildContactRow(info)
 
-  // Build experiences
+  // Build experiences with timeline
   const experiences = content.experience
     .map((exp) => {
       const dates = `${cleanText(exp.startDate || '')} - ${cleanText(exp.endDate || 'Present')}`.trim()
@@ -74,7 +76,7 @@ function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string
         .join('')
 
       const tech = Array.isArray((exp as any).technologies) && (exp as any).technologies.length
-        ? `<div class="tech"><em>Technologies: ${cleanText((exp as any).technologies.join(', '))}</em></div>`
+        ? `<div class="tech">Technologies: ${cleanText((exp as any).technologies.join(', '))}</div>`
         : ''
 
       return `
@@ -91,18 +93,21 @@ function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string
     })
     .join('')
 
-  // Build skills in two-column grid
+  // Build skills as tags/pills in two columns
   const skillItems = (content.skills || [])
-    .map((s) => `
-      <div class="skill">
-        <span class="skill-label">${cleanText(s.category)}</span>
-        <span class="skill-items">${cleanText(s.items.join(', '))}</span>
-      </div>
-    `)
+    .map((s) => {
+      const tags = s.items.map((item) => `<span class="skill-tag">${cleanText(item)}</span>`).join('')
+      return `
+        <div class="skill-category">
+          <span class="skill-label">${cleanText(s.category)}</span>
+          <div class="skill-tags">${tags}</div>
+        </div>
+      `
+    })
     .join('')
 
   const skillsSection = skillItems
-    ? `<section>
+    ? `<section class="skills-section">
         <div class="section-title">Technical Skills</div>
         <div class="skills-grid">${skillItems}</div>
        </section>`
@@ -155,7 +160,9 @@ function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string
 
       <section>
         <div class="section-title">Professional Experience</div>
-        ${experiences}
+        <div class="experience-list">
+          ${experiences}
+        </div>
       </section>
 
       ${skillsSection}
@@ -195,30 +202,40 @@ function coverLetterHtml(
   const coverLetterCss = `
     ${sharedCss}
 
-    .letter { width: 100%; max-width: 7in; margin: 0 auto; }
+    .letter { width: 100%; max-width: 7.3in; margin: 0 auto; position: relative; }
 
     .letter header {
-      margin-bottom: 20px;
+      margin-bottom: 16px;
       grid-template-columns: auto 1fr auto;
+    }
+
+    .recipient {
+      margin-bottom: 20px;
     }
 
     .greeting {
       font-size: 11px;
-      color: var(--text-secondary);
+      color: var(--text);
+      font-weight: 600;
       margin: 0 0 4px 0;
     }
 
     .date {
-      font-size: 10.5px;
+      font-size: 10px;
       color: var(--muted);
-      margin: 0 0 20px 0;
+      margin: 0;
+    }
+
+    .letter-body {
+      padding-left: 12px;
+      border-left: 2px solid var(--accent-border);
     }
 
     .letter-body p {
-      font-size: 11px;
+      font-size: 10.5px;
       line-height: 1.7;
       color: var(--text);
-      margin: 0 0 14px 0;
+      margin: 0 0 12px 0;
       text-align: justify;
     }
 
@@ -253,8 +270,10 @@ function coverLetterHtml(
       </header>
       <hr class="header-rule" />
 
-      <div class="greeting">${cleanText(content.greeting)}</div>
-      <div class="date">${cleanText(opts.date || '')}</div>
+      <div class="recipient">
+        <div class="greeting">${cleanText(content.greeting)}</div>
+        <div class="date">${cleanText(opts.date || '')}</div>
+      </div>
 
       <div class="letter-body">
         ${bodyParas}
