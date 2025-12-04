@@ -21,7 +21,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = join(__dirname, '..')
 
 // Configuration
-const PROD_DB_PATH = '/srv/job-finder/data/jobfinder.db'
+// Prefer a local checked-in seed DB; allow override via DEV_DB_PATH env.
+const SOURCE_DB_PATH = process.env.DEV_DB_PATH || join(ROOT_DIR, 'infra/sqlite/jobfinder.db')
 const TEMP_DB_DIR = join(tmpdir(), 'job-finder-dev')
 const TEMP_DB_NAME = `jobfinder-dev-${randomBytes(4).toString('hex')}.db`
 const TEMP_DB_PATH = join(TEMP_DB_DIR, TEMP_DB_NAME)
@@ -94,9 +95,9 @@ function cleanup() {
 }
 
 function copyDatabase() {
-  if (!existsSync(PROD_DB_PATH)) {
-    logError(`Production database not found at: ${PROD_DB_PATH}`)
-    logError('Please ensure the production database exists before running dev mode.')
+  if (!existsSync(SOURCE_DB_PATH)) {
+    logError(`Source database not found at: ${SOURCE_DB_PATH}`)
+    logError('Provide a dev DB via DEV_DB_PATH or place infra/sqlite/jobfinder.db')
     process.exit(1)
   }
 
@@ -105,8 +106,8 @@ function copyDatabase() {
     mkdirSync(TEMP_DB_DIR, { recursive: true })
   }
 
-  log(`Copying production DB to: ${TEMP_DB_PATH}`)
-  copyFileSync(PROD_DB_PATH, TEMP_DB_PATH)
+  log(`Copying dev DB to: ${TEMP_DB_PATH}`)
+  copyFileSync(SOURCE_DB_PATH, TEMP_DB_PATH)
   log('Database copy complete')
 }
 

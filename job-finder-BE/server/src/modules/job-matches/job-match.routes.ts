@@ -58,6 +58,7 @@ const jobMatchSchema = z.object({
   experienceMatch: z.number().min(0).max(100),
   customizationRecommendations: z.array(z.string()).optional(),
   resumeIntakeData: resumeIntakeDataSchema.optional(),
+  applicationPriority: z.enum(['High', 'Medium', 'Low']).optional(),
   analyzedAt: z.union([z.string(), z.date()]).optional(),
   createdAt: z.union([z.string(), z.date()]).optional(),
   submittedBy: z.string().nullable().optional(),
@@ -124,6 +125,7 @@ export function buildJobMatchRouter() {
         keyStrengths: payload.keyStrengths ?? [],
         potentialConcerns: payload.potentialConcerns ?? [],
         customizationRecommendations: payload.customizationRecommendations ?? [],
+        applicationPriority: payload.applicationPriority ?? 'Medium',
         submittedBy: payload.submittedBy ?? null
       }
 

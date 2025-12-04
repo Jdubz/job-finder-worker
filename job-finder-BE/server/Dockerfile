@@ -11,6 +11,7 @@ WORKDIR /app
 ENV HUSKY=0
 ENV HUSKY_SKIP_INSTALL=1
 RUN npm install -g npm@11.6.3
+RUN apt-get update && apt-get install -y --no-install-recommends chromium && rm -rf /var/lib/apt/lists/*
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
 # Adjust monorepo file dependency to match container layout (shared copied into /app/shared)
 RUN sed -i 's#file:../../shared#file:./shared#g; s#"../../shared"#"./shared"#g' package.json package-lock.json

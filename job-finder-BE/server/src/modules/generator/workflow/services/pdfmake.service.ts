@@ -1,5 +1,6 @@
 import PdfPrinter from 'pdfmake'
 import type { TDocumentDefinitions, Content, StyleDictionary } from 'pdfmake/interfaces'
+import { cleanText, cleanArray } from './text.util'
 import type { Logger } from 'pino'
 import type { CoverLetterContent, ResumeContent, PersonalInfo } from '@shared/types'
 import { logger as rootLogger } from '../../../../logger'
@@ -15,6 +16,7 @@ function formatDate(value?: string | null): string {
   const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' })
   return formatter.format(date)
 }
+
 
 // SVG icons for contact items (simple, clean designs)
 const CONTACT_ICONS = {
@@ -177,16 +179,13 @@ export class PdfMakeService {
   /**
    * Build a contact row with bullet separators.
    */
-  private buildContactRow(items: Content[], margin: [number, number, number, number] = [0, 8, 0, 2]): Content | null {
+  private buildContactRow(
+    items: Content[],
+    margin: [number, number, number, number] = [0, 10, 0, 4]
+  ): Content | null {
     if (items.length === 0) return null
 
-    const separator: Content = {
-      text: '•',
-      fontSize: 10,
-      color: '#CBD5E1',
-      alignment: 'center',
-      margin: [6, 0.5, 6, 0]
-    }
+    const separator: Content = { text: '•', fontSize: 10, color: '#CBD5E1', alignment: 'center', margin: [8, -0.5, 8, 0] }
 
     const cells: Content[] = items.flatMap((item, index) => (index > 0 ? [separator, item] : [item]))
 
@@ -214,6 +213,9 @@ export class PdfMakeService {
     accentColor = '#3B82F6',
     personalInfo?: PersonalInfo
   ): Promise<Buffer> {
+    const resumeMargins: [number, number, number, number] = [60, 72, 60, 60]
+    const contentWidth = 612 - resumeMargins[0] - resumeMargins[2] // LETTER width in points minus horizontal margins
+
     const styles: StyleDictionary = {
       // Header styles
       name: {
@@ -246,9 +248,9 @@ export class PdfMakeService {
       },
       // Summary
       summary: {
-        fontSize: 10,
+        fontSize: 10.5,
         color: '#374151',
-        lineHeight: 1.55
+        lineHeight: 1.6
       },
       // Experience styles
       roleTitle: {
@@ -267,9 +269,10 @@ export class PdfMakeService {
         margin: [0, 2, 0, 6]
       },
       bulletPoint: {
-        fontSize: 9.5,
+        fontSize: 10,
         color: '#374151',
-        lineHeight: 1.45
+        lineHeight: 1.5,
+        margin: [0, 0, 0, 4]
       },
       technologies: {
         fontSize: 8.75,
@@ -284,20 +287,19 @@ export class PdfMakeService {
         color: '#1F2937'
       },
       skillItems: {
-        fontSize: 9.5,
+        fontSize: 9.75,
         color: '#4B5563',
-        lineHeight: 1.3
+        lineHeight: 1.35
       },
       // Education
       educationEntry: {
-        fontSize: 9.5,
+        fontSize: 10,
         color: '#374151'
       },
       // Footer
       footer: {
-        fontSize: 7.5,
-        color: '#9CA3AF',
-        italics: true,
+        fontSize: 7,
+        color: '#A0A6B1',
         alignment: 'center'
       }
     }
@@ -320,11 +322,11 @@ export class PdfMakeService {
     // Build contact line from PersonalInfo (primary) or ResumeContent (fallback)
     const linkColor = '#2563EB' // Blue color for all links
     const iconColor = '#6B7280' // Gray for icons
-    const email = personalInfo?.email || content.personalInfo.contact.email
-    const location = personalInfo?.location || content.personalInfo.contact.location
-    const website = personalInfo?.website || content.personalInfo.contact.website
-    const linkedin = personalInfo?.linkedin || content.personalInfo.contact.linkedin
-    const github = personalInfo?.github || content.personalInfo.contact.github
+    const email = cleanText(personalInfo?.email || content.personalInfo.contact.email)
+    const location = cleanText(personalInfo?.location || content.personalInfo.contact.location)
+    const website = cleanText(personalInfo?.website || content.personalInfo.contact.website)
+    const linkedin = cleanText(personalInfo?.linkedin || content.personalInfo.contact.linkedin)
+    const github = cleanText(personalInfo?.github || content.personalInfo.contact.github)
     const phone = (personalInfo as any)?.phone || (content.personalInfo as any)?.contact?.phone
 
     // Build contact items with generous breathing room and consistent alignment
@@ -340,75 +342,45 @@ export class PdfMakeService {
       contactItems.push(this.buildContactCell('location', location, { iconColor, linkColor }))
     }
     if (website) {
-      const websiteUrl = website.startsWith('http') ? website : `https://${website}`
-      contactItems.push(this.buildContactCell('website', 'Portfolio', { link: websiteUrl, iconColor, linkColor }))
+      const websiteUrl = website.match(/^https?:/i) ? website : `https://${website}`
+      contactItems.push(this.buildContactCell('website', cleanText(website.replace(/^https?:\/\//i, '')), { link: websiteUrl, iconColor, linkColor }))
     }
     if (linkedin) {
-      const linkedinUrl = linkedin.startsWith('http') ? linkedin : `https://${linkedin}`
+      const linkedinUrl = linkedin.match(/^https?:/i) ? linkedin : `https://${linkedin}`
       contactItems.push(this.buildContactCell('linkedin', 'LinkedIn', { link: linkedinUrl, iconColor, linkColor }))
     }
     if (github) {
-      const githubUrl = github.startsWith('http') ? github : `https://${github}`
+      const githubUrl = github.match(/^https?:/i) ? github : `https://${github}`
       contactItems.push(this.buildContactCell('github', 'GitHub', { link: githubUrl, iconColor, linkColor }))
     }
 
-    // Build contact row with separators and a table layout to keep icons centered
-    const contactRow = this.buildContactRow(contactItems, [0, 8, 0, 2])
+    // Build contact row with separators
+    const contactRow = this.buildContactRow(contactItems, [0, 10, 0, 4])
 
     // Build header with optional avatar
     const headerContent: Content[] = []
-    const headerTitle = content.personalInfo.title ?? ''
+    const headerTitle = cleanText(content.personalInfo.title ?? '')
 
-    // Build the header with logo on left, name/title centered, avatar on right, and contact row beneath
+    // Left-aligned header stack + optional avatar on the right
     const headerColumns: any[] = []
 
-    // Left column: Logo (or spacer)
-    if (logoDataUri) {
-      headerColumns.push({
-        image: logoDataUri,
-        width: 42,
-        height: 42,
-        margin: [0, 4, 8, 0]
-      })
-    } else {
-      headerColumns.push({ text: '', width: 42 }) // Spacer for alignment
-    }
-
-    // Center column: Name, title, and contact info row underneath
-    const centerStack: Content[] = [
-      { text: personalInfo?.name || content.personalInfo.name, style: 'name', alignment: 'center' }
+    const mainStack: Content[] = [
+      { text: cleanText(personalInfo?.name || content.personalInfo.name), style: 'name', alignment: 'left' }
     ]
     if (headerTitle) {
-      centerStack.push({ text: headerTitle, style: 'title', alignment: 'center' })
+      mainStack.push({ text: headerTitle, style: 'title', alignment: 'left' })
     }
     if (contactRow) {
-      centerStack.push(contactRow)
+      mainStack.push({ ...(contactRow as any), alignment: 'left' })
     }
 
-    headerColumns.push({
-      stack: centerStack,
-      width: '*',
-      alignment: 'center'
-    })
+    headerColumns.push({ stack: mainStack, width: '*', alignment: 'left' })
 
-    // Right column: Circular avatar (or spacer)
     if (avatarDataUri) {
-      headerColumns.push({
-        image: avatarDataUri,
-        width: avatarSize,
-        height: avatarSize,
-        alignment: 'right',
-        margin: [0, 0, 0, 0]
-      })
-    } else {
-      headerColumns.push({ text: '', width: avatarSize }) // Spacer for alignment
+      headerColumns.push({ image: avatarDataUri, width: avatarSize, height: avatarSize, alignment: 'right', margin: [12, 2, 0, 0] })
     }
 
-    headerContent.push({
-      columns: headerColumns,
-      columnGap: 16,
-      margin: [0, 0, 0, 14]
-    })
+    headerContent.push({ columns: headerColumns, columnGap: 16, margin: [0, 10, 0, 18] })
 
     // Build experience section (each role is a cohesive block to improve flow)
     const experienceContent: Content[] = []
@@ -421,14 +393,14 @@ export class PdfMakeService {
 
       const roleAndDate: Content = {
         columns: [
-          { text: exp.role, style: 'roleTitle', width: '*' },
-          { text: dateRange, style: 'dateRange', width: 'auto', alignment: 'right' }
+          { text: cleanText(exp.role), style: 'roleTitle', width: '*' },
+          { text: cleanText(dateRange), style: 'dateRange', width: 'auto', alignment: 'right' }
         ],
         columnGap: 10
       }
 
       const companyLine: Content = {
-        text: exp.company + (exp.location ? ` • ${exp.location}` : ''),
+        text: cleanText(exp.company + (exp.location ? ` • ${exp.location}` : '')),
         style: 'companyLine'
       }
 
@@ -436,14 +408,14 @@ export class PdfMakeService {
         exp.highlights && exp.highlights.length > 0
           ? [
               {
-                ul: exp.highlights.map((h) => ({ text: h, style: 'bulletPoint' })),
-                margin: [0, 4, 0, 2],
+                ul: cleanArray(exp.highlights).map((h) => ({ text: h, style: 'bulletPoint' })),
+                margin: [0, 2, 0, 0],
                 markerColor: accentColor
               }
             ]
           : []
 
-      const tech = Array.isArray((exp as any).technologies) ? (exp as any).technologies : []
+      const tech = Array.isArray((exp as any).technologies) ? cleanArray((exp as any).technologies) : []
       const techLine: Content[] =
         tech.length > 0
           ? [
@@ -472,7 +444,7 @@ export class PdfMakeService {
         row.push({
           stack: [
             { text: skill1.category, style: 'skillCategory', margin: [0, 0, 0, 4] },
-            { text: skill1.items.join(', '), style: 'skillItems', lineHeight: 1.3 }
+            { text: cleanArray(skill1.items).join(', '), style: 'skillItems', lineHeight: 1.35 }
           ],
           margin: [0, 6, 16, 6]
         })
@@ -482,7 +454,7 @@ export class PdfMakeService {
           row.push({
             stack: [
               { text: skill2.category, style: 'skillCategory', margin: [0, 0, 0, 4] },
-              { text: skill2.items.join(', '), style: 'skillItems', lineHeight: 1.3 }
+              { text: cleanArray(skill2.items).join(', '), style: 'skillItems', lineHeight: 1.35 }
             ],
             margin: [16, 6, 0, 6]
           })
@@ -506,9 +478,9 @@ export class PdfMakeService {
     const educationContent: Content[] = []
     if (content.education && content.education.length > 0) {
       for (const edu of content.education) {
-        const institution = edu.institution || ''
-        const degree = edu.degree || ''
-        const field = edu.field || ''
+        const institution = cleanText(edu.institution || '')
+        const degree = cleanText(edu.degree || '')
+        const field = cleanText(edu.field || '')
         const start = formatDate(edu.startDate)
         const end = formatDate(edu.endDate)
         const dateStr = start || end ? ` (${start || ''}${end ? ` - ${end}` : ''})` : ''
@@ -529,14 +501,14 @@ export class PdfMakeService {
     // Section header with underline - adjusted width for new margins
     const createSectionHeader = (title: string): Content => ({
       stack: [
-        { text: title, style: 'sectionHeader' },
+        { text: cleanText(title), style: 'sectionHeader' },
         {
           canvas: [
             {
               type: 'line',
               x1: 0,
               y1: 0,
-              x2: 512, // matches LETTER width minus 50pt margins
+              x2: contentWidth,
               y2: 0,
               lineWidth: 1,
               lineColor: accentColor
@@ -549,38 +521,21 @@ export class PdfMakeService {
 
     // Build footer with optional logo
     const footerContent = (_currentPage: number, _pageCount: number): Content => {
-      const footerText = [
-        { text: 'Generated by a custom AI resume builder built by the candidate — ' },
-        { text: 'joshwentworth.com/resume-builder', link: 'https://joshwentworth.com/resume-builder', color: '#2563EB' }
-      ]
+      const footerText = [{ text: 'Generated by the candidate with Job Finder', color: '#A0A6B1' }]
       if (logoDataUri) {
         return {
           columns: [
-            {
-              image: logoDataUri,
-              width: 16,
-              height: 16,
-              margin: [50, 6, 4, 0]
-            },
-            {
-              text: footerText,
-              style: 'footer',
-              margin: [0, 10, 50, 0],
-              width: '*'
-            }
+            { image: logoDataUri, width: 14, height: 14, margin: [50, 6, 6, 0] },
+            { text: footerText, style: 'footer', margin: [0, 10, 50, 0], width: '*' }
           ]
         }
       }
-      return {
-        text: footerText,
-        style: 'footer',
-        margin: [50, 10, 50, 0]
-      }
+      return { text: footerText, style: 'footer', margin: [50, 10, 50, 0] }
     }
 
     const docDefinition: TDocumentDefinitions = {
       pageSize: 'LETTER',
-      pageMargins: [50, 45, 50, 55], // Slightly larger margins for cleaner look
+      pageMargins: resumeMargins,
       defaultStyle: {
         font: 'Helvetica'
       },
@@ -592,7 +547,7 @@ export class PdfMakeService {
 
         // Professional Summary
         createSectionHeader('PROFESSIONAL SUMMARY'),
-        { text: content.professionalSummary || content.personalInfo.summary, style: 'summary', margin: [0, 0, 0, 8] },
+        { text: cleanText(content.professionalSummary || content.personalInfo.summary), style: 'summary', margin: [0, 0, 0, 10] },
 
         // Professional Experience
         createSectionHeader('PROFESSIONAL EXPERIENCE'),
@@ -625,6 +580,7 @@ export class PdfMakeService {
     }
   ): Promise<Buffer> {
     const accentColor = options.accentColor ?? '#3B82F6'
+    const letterMargins: [number, number, number, number] = [60, 68, 60, 64]
     const date =
       options.date ??
       new Date().toLocaleDateString('en-US', {
@@ -640,100 +596,50 @@ export class PdfMakeService {
     }
 
     const styles: StyleDictionary = {
-      name: {
-        fontSize: 20,
-        bold: true,
-        color: accentColor,
-        margin: [0, 0, 0, 4]
-      },
-      contact: {
-        fontSize: 9,
-        color: '#1F2937'
-      },
-      contactChip: {
-        fontSize: 9,
-        color: '#1F2937',
-        lineHeight: 1.1
-      },
-      date: {
-        fontSize: 10,
-        color: '#374151',
-        margin: [0, 8, 0, 12]
-      },
-      greeting: {
-        fontSize: 10,
-        color: '#111827',
-        margin: [0, 0, 0, 12]
-      },
-      body: {
-        fontSize: 10,
-        color: '#374151',
-        lineHeight: 1.5,
-        margin: [0, 0, 0, 12]
-      },
-      closing: {
-        fontSize: 10,
-        color: '#374151',
-        margin: [0, 8, 0, 4]
-      },
-      signature: {
-        fontSize: 10,
-        bold: true,
-        color: '#111827',
-        margin: [0, 16, 0, 0]
-      },
-      footer: {
-        fontSize: 7.5,
-        color: '#9CA3AF',
-        italics: true,
-        alignment: 'center'
-      }
+      name: { fontSize: 21, bold: true, color: accentColor, margin: [0, 0, 0, 6] },
+      contact: { fontSize: 9.5, color: '#1F2937' },
+      contactChip: { fontSize: 9.5, color: '#1F2937', lineHeight: 1.15 },
+      date: { fontSize: 10.5, color: '#374151', margin: [0, 12, 0, 12] },
+      greeting: { fontSize: 10.5, color: '#111827', margin: [0, 0, 0, 12] },
+      body: { fontSize: 10.5, color: '#374151', lineHeight: 1.6, margin: [0, 0, 0, 14] },
+      closing: { fontSize: 10.5, color: '#374151', margin: [0, 6, 0, 4] },
+      signature: { fontSize: 10.5, bold: true, color: '#111827', margin: [0, 16, 0, 0] },
+      footer: { fontSize: 7, color: '#A0A6B1', alignment: 'center' }
     }
 
-    const bodyContent: Content[] = content.bodyParagraphs.map((para) => ({
-      text: para,
-      style: 'body'
-    }))
+    const bodyContent: Content[] = cleanArray(content.bodyParagraphs).map((para) => ({ text: para, style: 'body' }))
 
     const iconColor = '#6B7280'
     const linkColor = '#2563EB'
     const contactItems: Content[] = []
-    if (options.email)
-      contactItems.push(this.buildContactCell('email', options.email, { link: `mailto:${options.email}`, iconColor, linkColor }))
-    if (options.phone) contactItems.push(this.buildContactCell('phone', options.phone, { iconColor, linkColor }))
-    if (options.location) contactItems.push(this.buildContactCell('location', options.location, { iconColor, linkColor }))
+    const safeEmail = cleanText(options.email)
+    if (safeEmail)
+      contactItems.push(this.buildContactCell('email', safeEmail, { link: `mailto:${safeEmail}`, iconColor, linkColor }))
+    if (options.phone) contactItems.push(this.buildContactCell('phone', cleanText(options.phone), { iconColor, linkColor }))
+    if (options.location) contactItems.push(this.buildContactCell('location', cleanText(options.location), { iconColor, linkColor }))
     if (options.website) {
-      const url = options.website.startsWith('http') ? options.website : `https://${options.website}`
-      contactItems.push(this.buildContactCell('website', 'Portfolio', { link: url, iconColor, linkColor }))
+      const url = options.website.match(/^https?:/i) ? options.website : `https://${options.website}`
+      contactItems.push(this.buildContactCell('website', cleanText(options.website.replace(/^https?:\/\//i, '')), { link: url, iconColor, linkColor }))
     }
     if (options.linkedin) {
-      const url = options.linkedin.startsWith('http') ? options.linkedin : `https://${options.linkedin}`
+      const url = options.linkedin.match(/^https?:/i) ? options.linkedin : `https://${options.linkedin}`
       contactItems.push(this.buildContactCell('linkedin', 'LinkedIn', { link: url, iconColor, linkColor }))
     }
     if (options.github) {
-      const url = options.github.startsWith('http') ? options.github : `https://${options.github}`
+      const url = options.github.match(/^https?:/i) ? options.github : `https://${options.github}`
       contactItems.push(this.buildContactCell('github', 'GitHub', { link: url, iconColor, linkColor }))
     }
 
-    const contactRow = this.buildContactRow(contactItems, [0, 6, 0, 10])
+    const contactRow = this.buildContactRow(contactItems, [0, 10, 0, 12])
 
     // Build header with optional logo + contact chips to avoid top dead space
     const headerColumns: any[] = []
 
     if (logoDataUri) {
-      headerColumns.push({
-        image: logoDataUri,
-        width: 32,
-        height: 32,
-        margin: [0, 2, 8, 0]
-      })
-    } else {
-      headerColumns.push({ text: '', width: 32 })
+      headerColumns.push({ image: logoDataUri, width: 32, height: 32, margin: [0, 4, 10, 0] })
     }
 
-    const headerStack: Content[] = [
-      { text: options.name, style: 'name', alignment: 'left' }
-    ]
+    const headerStack: Content[] = [{ text: cleanText(options.name), style: 'name', alignment: 'left' }]
     if (contactRow) {
       headerStack.push(contactRow)
     }
@@ -743,46 +649,25 @@ export class PdfMakeService {
       width: '*'
     })
 
-    const headerBlock: Content = {
-      columns: headerColumns,
-      columnGap: 12,
-      margin: [0, 0, 0, 12]
-    }
+    const headerBlock: Content = { columns: headerColumns, columnGap: 14, margin: [0, 8, 0, 16] }
 
     // Build footer with optional logo
     const footerContent = (): Content => {
-      const footerText = [
-        { text: 'Generated by my custom AI resume builder — ' },
-        { text: 'Job Finder', link: 'https://job-finder.joshwentworth.com/', color: '#2563EB' }
-      ]
+      const footerText = [{ text: 'Generated by the candidate with Job Finder', color: '#A0A6B1' }]
       if (logoDataUri) {
         return {
           columns: [
-            {
-              image: logoDataUri,
-              width: 16,
-              height: 16,
-              margin: [50, 6, 4, 0]
-            },
-            {
-              text: footerText,
-              style: 'footer',
-              margin: [0, 10, 50, 0],
-              width: '*'
-            }
+            { image: logoDataUri, width: 14, height: 14, margin: [50, 6, 6, 0] },
+            { text: footerText, style: 'footer', margin: [0, 10, 50, 0], width: '*' }
           ]
         }
       }
-      return {
-        text: footerText,
-        style: 'footer',
-        margin: [50, 10, 50, 0]
-      }
+      return { text: footerText, style: 'footer', margin: [50, 10, 50, 0] }
     }
 
     const docDefinition: TDocumentDefinitions = {
       pageSize: 'LETTER',
-      pageMargins: [50, 42, 50, 50],
+      pageMargins: letterMargins,
       defaultStyle: {
         font: 'Helvetica'
       },
@@ -793,23 +678,23 @@ export class PdfMakeService {
         headerBlock,
 
         // Date
-        { text: date, style: 'date' },
+        { text: cleanText(date), style: 'date' },
 
         // Greeting
-        { text: content.greeting, style: 'greeting' },
+        { text: cleanText(content.greeting), style: 'greeting' },
 
         // Opening paragraph
-        { text: content.openingParagraph, style: 'body' },
+        { text: cleanText(content.openingParagraph), style: 'body' },
 
         // Body paragraphs
         ...bodyContent,
 
         // Closing paragraph
-        { text: content.closingParagraph, style: 'body' },
+        { text: cleanText(content.closingParagraph), style: 'body' },
 
         // Signature
-        { text: content.signature, style: 'closing' },
-        { text: options.name, style: 'signature' }
+        { text: cleanText(content.signature), style: 'closing' },
+        { text: cleanText(options.name), style: 'signature' }
       ]
     }
 

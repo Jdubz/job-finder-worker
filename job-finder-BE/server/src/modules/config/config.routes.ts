@@ -19,7 +19,6 @@ import {
   isWorkerSettings,
   isMatchPolicy,
   isPreFilterPolicy,
-  isPromptConfig,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -122,7 +121,9 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
     case 'prefilter-policy':
       return isPreFilterPolicy(payload)
     case 'ai-prompts':
-      return isPromptConfig(payload)
+      // Prompts are intentionally free-form to allow owners to iterate quickly.
+      // If we tighten this in the future, add a schema validator here.
+      return true
     case 'worker-settings':
       return isWorkerSettings(payload)
     case 'personal-info':

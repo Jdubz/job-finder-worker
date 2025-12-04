@@ -48,11 +48,11 @@ function buildHumanReadablePath(metadata: ArtifactMetadata): { folder: string; f
   const type = metadata.type
   const token = generateSecureToken()
 
-  // Folder: {date}/{company}_{role}_{token}/ - token prevents URL guessing (IDOR)
-  const folder = path.join(date, `${company}_${role}_${token}`)
+  // Folder: {date}/ (flat per-day bucket to avoid deep nesting)
+  const folder = date
 
-  // Filename: {name}_{company}_{role}_{type}.pdf
-  const filename = `${name}_${company}_${role}_${type}.pdf`
+  // Filename: {name}_{company}_{role}_{type}_{token}.pdf (token keeps paths non-guessable)
+  const filename = `${name}_${company}_${role}_${type}_${token}.pdf`
 
   return { folder, filename }
 }
