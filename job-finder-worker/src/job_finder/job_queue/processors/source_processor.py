@@ -10,7 +10,7 @@ All sources use the GenericScraper with unified SourceConfig format.
 import logging
 import re
 import traceback
-from typing import Optional
+from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 from job_finder.ai.providers import create_provider_from_config
@@ -73,6 +73,24 @@ class SourceProcessor(BaseProcessor):
             queue_manager=queue_manager,
             title_filter=self.title_filter,
             prefilter=self.prefilter,
+        )
+
+    def _handle_existing_source(
+        self, item: JobQueueItem, existing_source: Dict[str, Any], context: str
+    ) -> None:
+        """Log and mark queue item success when an existing source is reused."""
+
+        source_id = existing_source.get("id")
+        logger.info("Discovery reuse (%s): source already exists (%s)", context, source_id)
+        self.queue_manager.update_status(
+            item.id,
+            QueueStatus.SUCCESS,
+            f"Source already exists: {existing_source.get('name')}",
+            scraped_data={
+                "source_id": source_id,
+                "source_type": existing_source.get("sourceType"),
+                "disabled_notes": existing_source.get("disabledNotes", ""),
+            },
         )
 
     # ============================================================
@@ -144,13 +162,12 @@ class SourceProcessor(BaseProcessor):
                 if company_record:
                     company_name = company_record.get("name")
 
-            # Handle discovery failure (no source_config)
             if not source_config:
                 error = validation_meta.get("error", "discovery_failed")
                 error_details = validation_meta.get("error_details", "")
 
                 normalized_reason = error or "discovery_failed"
-                if normalized_reason and isinstance(error_details, str):
+                if normalized_reason == "discovery_failed" and isinstance(error_details, str):
                     details_lower = error_details.lower()
                     if "cloudflare" in details_lower or "vercel" in details_lower:
                         normalized_reason = "bot_protection"
@@ -169,21 +186,13 @@ class SourceProcessor(BaseProcessor):
                         company_id, aggregator_domain
                     )
                     if existing_pair:
-                        logger.info(
-                            "Discovery reuse (placeholder): source already exists for company=%s domain=%s (%s)",
-                            company_id,
-                            aggregator_domain,
-                            existing_pair.get("id"),
-                        )
-                        self.queue_manager.update_status(
-                            item.id,
-                            QueueStatus.SUCCESS,
-                            f"Source already exists: {existing_pair.get('name')}",
-                            scraped_data={
-                                "source_id": existing_pair.get("id"),
-                                "disabled_notes": existing_pair.get("disabledNotes", ""),
-                                "error_details": error_details,
+                        self._handle_existing_source(
+                            item,
+                            {
+                                **existing_pair,
+                                "disabledNotes": existing_pair.get("disabledNotes", ""),
                             },
+                            context="placeholder",
                         )
                         return
 
@@ -270,26 +279,19 @@ class SourceProcessor(BaseProcessor):
                     aggregator_domain=aggregator_domain,
                     status=initial_status,
                 )
-            except DuplicateSourceError as dup_exc:
-                if existing_pair:
-                    logger.info(
-                        "Discovery reuse: source already exists for company=%s domain=%s (%s)",
-                        company_id,
-                        aggregator_domain,
-                        existing_pair.get("id"),
+            except DuplicateSourceError:
+                if not existing_pair and company_id and aggregator_domain:
+                    existing_pair = self.sources_manager.get_source_by_company_and_aggregator(
+                        company_id, aggregator_domain
                     )
-                    self.queue_manager.update_status(
-                        item.id,
-                        QueueStatus.SUCCESS,
-                        f"Source already exists: {existing_pair.get('name')}",
-                        scraped_data={
-                            "source_id": existing_pair.get("id"),
-                            "source_type": existing_pair.get("sourceType"),
-                            "disabled_notes": existing_pair.get("disabledNotes", ""),
-                        },
+                if existing_pair:
+                    self._handle_existing_source(
+                        item,
+                        {**existing_pair, "disabledNotes": existing_pair.get("disabledNotes", "")},
+                        context="race",
                     )
                     return
-                raise dup_exc
+                raise
 
             if initial_status == SourceStatus.ACTIVE:
                 # Spawn SCRAPE_SOURCE to immediately scrape the new source

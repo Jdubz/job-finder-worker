@@ -104,7 +104,8 @@ class JobSourcesManager:
             The ID of the newly created source
 
         Raises:
-            DuplicateSourceError: If a source with this name already exists
+            DuplicateSourceError: If a source with this name already exists, or if a source
+                with the same (company_id, aggregator_domain) pair already exists
             ValueError: If neither company_id nor aggregator_domain is provided
         """
         # Every source must be EITHER company-specific OR an aggregator

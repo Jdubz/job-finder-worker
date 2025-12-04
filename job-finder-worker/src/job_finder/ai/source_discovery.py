@@ -13,6 +13,7 @@ from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.ai.search_client import get_search_client, SearchResult
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.platform_patterns import (
+    PLATFORM_PATTERNS,
     PlatformPattern,
     build_config_from_pattern,
     match_platform,
@@ -216,24 +217,16 @@ class SourceDiscovery:
             if not isinstance(data, dict) or "jobs" not in data:
                 return None
 
-            return {
-                "type": "api",
-                "url": api_url,
-                "response_path": "jobs",
-                "fields": {
-                    "title": "title",
-                    "location": "location.name",
-                    "description": "content",
-                    "url": "absolute_url",
-                    "posted_date": "updated_at",
-                    "first_published": "first_published",
-                    "requisition_id": "requisition_id",
-                    "departments": "departments",
-                    "offices": "offices",
-                    "metadata": "metadata",
-                },
-                "board_token": board_token,
-            }
+            gh_pattern = next((p for p in PLATFORM_PATTERNS if p.name == "greenhouse_api"), None)
+            if not gh_pattern:
+                logger.error("Greenhouse API pattern not found, cannot build config.")
+                return None
+
+            config = build_config_from_pattern(
+                gh_pattern, {"board_token": board_token}, original_url=url
+            )
+            config["board_token"] = board_token
+            return config
         except (requests.RequestException, ValueError, json.JSONDecodeError):
             return None
 
