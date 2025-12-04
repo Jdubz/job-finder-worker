@@ -58,6 +58,7 @@ export const mockJobMatch: JobMatchWithListing = {
   customizationRecommendations: [],
   analyzedAt: now(),
   createdAt: now(),
+  updatedAt: now(),
   submittedBy: "tester@example.com",
   queueItemId: "queue-1",
   resumeIntakeData: undefined,
