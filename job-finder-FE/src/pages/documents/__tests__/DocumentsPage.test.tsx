@@ -387,7 +387,8 @@ describe("DocumentsPage", () => {
         expect(screen.getByText("Updated")).toBeInTheDocument()
       })
 
-      await user.click(screen.getByRole('combobox', { name: /updated/i }))
+      const [sortFieldCombobox] = screen.getAllByRole('combobox')
+      await user.click(sortFieldCombobox)
       await user.click(screen.getByText("Company"))
 
       const rows = screen.getAllByRole("row")
