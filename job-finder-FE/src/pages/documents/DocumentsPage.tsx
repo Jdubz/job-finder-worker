@@ -315,8 +315,7 @@ export function DocumentsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                const resumeUrl = doc.resumeUrl
-                                if (!resumeUrl) return
+                                const resumeUrl = doc.resumeUrl as string
                                 handleViewDocument(resumeUrl, `Resume - ${doc.job.role} at ${doc.job.company}`)
                               }}
                               title="View Resume"
@@ -328,8 +327,7 @@ export function DocumentsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                const resumeUrl = doc.resumeUrl
-                                if (!resumeUrl) return
+                                const resumeUrl = doc.resumeUrl as string
                                 const artifact = doc.artifacts.find((a) => a.artifactType === "resume")
                                 handleDownload(resumeUrl, artifact?.filename || "resume.pdf")
                               }}
@@ -346,8 +344,7 @@ export function DocumentsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                const coverUrl = doc.coverLetterUrl
-                                if (!coverUrl) return
+                                const coverUrl = doc.coverLetterUrl as string
                                 handleViewDocument(
                                   coverUrl,
                                   `Cover Letter - ${doc.job.role} at ${doc.job.company}`
@@ -362,8 +359,7 @@ export function DocumentsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                const coverUrl = doc.coverLetterUrl
-                                if (!coverUrl) return
+                                const coverUrl = doc.coverLetterUrl as string
                                 const artifact = doc.artifacts.find((a) => a.artifactType === "cover-letter")
                                 handleDownload(coverUrl, artifact?.filename || "cover-letter.pdf")
                               }}
