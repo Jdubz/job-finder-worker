@@ -341,9 +341,6 @@ export interface JobMatch {
   /** Foreign key to job_listings table */
   jobListingId: string
 
-  /** Optional priority set by the AI or user */
-  applicationPriority?: "High" | "Medium" | "Low"
-
   /** AI match score (0-100) */
   matchScore: number
 
@@ -381,7 +378,7 @@ export interface JobMatch {
   createdAt: TimestampLike
 
   /** When record was last updated */
-  updatedAt?: TimestampLike
+  updatedAt: TimestampLike
 
   /** User ID who submitted the job */
   submittedBy: string | null

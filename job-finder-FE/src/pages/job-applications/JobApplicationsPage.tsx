@@ -105,7 +105,7 @@ export function JobApplicationsPage() {
   }, [user])
 
   const getUpdatedDate = (match: JobMatchWithListing) =>
-    toDate(match.updatedAt ?? match.listing.updatedAt ?? match.createdAt ?? match.listing.createdAt)
+    toDate(match.updatedAt ?? match.createdAt ?? match.listing.updatedAt ?? match.listing.createdAt)
 
   // Apply filters and sorting
   useEffect(() => {

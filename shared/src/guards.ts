@@ -691,11 +691,7 @@ export function isJobMatch(value: unknown): value is JobMatch {
     isStringArray(match.customizationRecommendations) &&
     isDateLike(match.analyzedAt) &&
     isDateLike(match.createdAt) &&
-    (match.updatedAt === undefined || isDateLike(match.updatedAt)) &&
-    (match.applicationPriority === undefined ||
-      match.applicationPriority === "High" ||
-      match.applicationPriority === "Medium" ||
-      match.applicationPriority === "Low") &&
+    isDateLike(match.updatedAt) &&
     (match.submittedBy === null || typeof match.submittedBy === "string") &&
     typeof match.queueItemId === "string"
   )
