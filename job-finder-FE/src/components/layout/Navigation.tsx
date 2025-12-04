@@ -15,6 +15,7 @@ import {
   Rss,
   List,
   Activity,
+  Files,
 } from "lucide-react"
 import { useState } from "react"
 import { AuthIcon } from "@/components/auth/AuthIcon"
@@ -34,6 +35,7 @@ const publicLinks: NavLink[] = [
   { to: ROUTES.HOW_IT_WORKS, label: "How It Works", icon: HelpCircle },
   { to: ROUTES.CONTENT_ITEMS, label: "Experience", icon: FolderOpen },
   { to: ROUTES.DOCUMENT_BUILDER, label: "Document Builder", icon: FileText },
+  { to: ROUTES.DOCUMENTS, label: "Documents", icon: Files },
 ]
 
 const jobFinderLinks: NavLink[] = [

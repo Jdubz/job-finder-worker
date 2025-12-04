@@ -48,14 +48,37 @@ export interface GenerateDocumentRequest {
   jobMatchId?: string // Reference to job-match document ID
 }
 
-export interface DocumentHistoryItem {
+export interface GeneratorArtifact {
   id: string
-  type: "resume" | "cover_letter"
-  jobTitle: string
-  companyName: string
-  documentUrl: string
-  createdAt: Date
-  jobMatchId?: string
+  requestId: string
+  artifactType: string
+  filename: string
+  storagePath: string
+  sizeBytes?: number | null
+  createdAt: string
+}
+
+export interface GeneratorRequestRecord {
+  id: string
+  generateType: "resume" | "coverLetter" | "both"
+  job: {
+    role: string
+    company: string
+    companyWebsite?: string
+    jobDescriptionUrl?: string
+    jobDescriptionText?: string
+  }
+  preferences?: Record<string, unknown> | null
+  personalInfo?: Record<string, unknown> | null
+  status: "pending" | "processing" | "completed" | "failed"
+  resumeUrl?: string | null
+  coverLetterUrl?: string | null
+  jobMatchId?: string | null
+  createdBy?: string | null
+  steps?: GenerationStep[] | null
+  createdAt: string
+  updatedAt: string
+  artifacts: GeneratorArtifact[]
 }
 
 export interface GenerationStep {
@@ -116,8 +139,8 @@ export class GeneratorClient extends BaseApiClient {
   /**
    * List document generation history
    */
-  async listHistory(): Promise<DocumentHistoryItem[]> {
-    type HistoryResponse = { requests: DocumentHistoryItem[]; count: number }
+  async listDocuments(): Promise<GeneratorRequestRecord[]> {
+    type HistoryResponse = { requests: GeneratorRequestRecord[]; count: number }
     const response = await this.get<HistoryResponse | ApiEnvelope<HistoryResponse>>(`/requests`)
     const data = unwrapResponse(response)
     return data.requests ?? []

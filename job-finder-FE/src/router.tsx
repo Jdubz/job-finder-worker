@@ -22,6 +22,11 @@ const DocumentBuilderPage = lazyWithRetry(() =>
     default: m.DocumentBuilderPage,
   }))
 )
+const DocumentsPage = lazyWithRetry(() =>
+  import("@/pages/documents/DocumentsPage").then((m) => ({
+    default: m.DocumentsPage,
+  }))
+)
 const AIPromptsPage = lazyWithRetry(() =>
   import("@/pages/ai-prompts/AIPromptsPage").then((m) => ({
     default: m.AIPromptsPage,
@@ -108,6 +113,14 @@ export const router = createBrowserRouter([
         element: (
           <LazyPage>
             <DocumentBuilderPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.DOCUMENTS,
+        element: (
+          <LazyPage>
+            <DocumentsPage />
           </LazyPage>
         ),
       },
