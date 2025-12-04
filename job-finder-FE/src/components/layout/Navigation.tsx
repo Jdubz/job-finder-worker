@@ -14,6 +14,7 @@ import {
   Building2,
   Rss,
   List,
+  Activity,
 } from "lucide-react"
 import { useState } from "react"
 import { AuthIcon } from "@/components/auth/AuthIcon"
@@ -46,6 +47,7 @@ const jobFinderLinks: NavLink[] = [
 const systemLinks: NavLink[] = [
   { to: ROUTES.AI_PROMPTS, label: "AI Prompts", icon: Sparkles },
   { to: ROUTES.JOB_FINDER_CONFIG, label: "Configuration", icon: Settings },
+  { to: ROUTES.SYSTEM_HEALTH, label: "System Health", icon: Activity },
 ]
 
 export function Navigation() {

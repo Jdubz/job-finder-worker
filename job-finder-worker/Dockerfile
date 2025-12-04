@@ -65,7 +65,7 @@ COPY src/ ./src/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
 
-# Copy entrypoint and helper scripts (no cron)
+# Copy entrypoint and helper scripts
 COPY docker/entrypoint.sh /app/entrypoint.sh
 COPY docker/run-now.sh /app/docker/run-now.sh
 

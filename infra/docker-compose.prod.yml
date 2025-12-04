@@ -55,7 +55,6 @@ services:
     environment:
       ENVIRONMENT: production
       ENABLE_QUEUE_MODE: "true"
-      ENABLE_CRON: "false"
       ENABLE_CLOUD_LOGGING: "false"
       SQLITE_DB_PATH: /data/sqlite/jobfinder.db
       CONFIG_PATH: /app/config/config.production.yaml
