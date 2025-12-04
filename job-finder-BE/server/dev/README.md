@@ -8,6 +8,12 @@ Development harness for the backend API server. Matches production as closely as
 cd job-finder-BE/server
 make dev-setup
 make dev-clone-db-scp SCP_SRC=user@host:/srv/job-finder/data/jobfinder.db
+
+# Copy auth credentials to seed directories (required for AI generation)
+mkdir -p .dev/codex-seed/.codex .dev/gemini-seed/.gemini
+cp ~/.codex/auth.json .dev/codex-seed/.codex/
+cp ~/.gemini/oauth_creds.json .dev/gemini-seed/.gemini/ 2>/dev/null || true
+
 make dev-up
 make dev-validate
 ```
