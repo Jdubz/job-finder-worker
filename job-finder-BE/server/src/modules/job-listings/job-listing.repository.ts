@@ -84,7 +84,7 @@ export class JobListingRepository {
       sourceId,
       companyId,
       search,
-      sortBy = 'date',
+      sortBy = 'updated',
       sortOrder = 'desc'
     } = options
 

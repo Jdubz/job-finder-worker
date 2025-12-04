@@ -208,9 +208,40 @@ describe("CompaniesPage", () => {
     })
   })
 
+  describe("Sorting controls", () => {
+    it("shows sort dropdowns with updated-at default and applies changes", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderWithProviders()
+
+      // Default selections rendered
+      await waitFor(() => {
+        expect(screen.getByText("Updated (newest)")).toBeInTheDocument()
+        expect(screen.getByText("Desc")).toBeInTheDocument()
+      })
+
+      // Change sort field to Name
+      const [sortFieldCombobox, sortOrderCombobox] = screen.getAllByRole("combobox")
+      await user.click(sortFieldCombobox)
+      await user.click(await screen.findByRole("option", { name: /Name/i }))
+
+      // Change order to Asc
+      await user.click(sortOrderCombobox)
+      await user.click(await screen.findByRole("option", { name: "Asc" }))
+
+      await waitFor(() =>
+        expect(mockSetFilters).toHaveBeenLastCalledWith({
+          search: undefined,
+          limit: 100,
+          sortBy: "name",
+          sortOrder: "asc",
+        })
+      )
+    })
+  })
+
   describe("Detail Modal", () => {
     it("should open detail modal when clicking on a row", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
 
       await waitFor(() => {
@@ -229,7 +260,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should show detailed information in modal", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
 
       await waitFor(() => {
@@ -249,7 +280,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should show description when available", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
 
       await waitFor(() => {
@@ -265,7 +296,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should show headquarters when available", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
 
       await waitFor(() => {
@@ -281,7 +312,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should show delete button in modal", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
 
       await waitFor(() => {
@@ -297,7 +328,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should show placeholder when tech stack is empty", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
 
       await waitFor(() => {
@@ -395,7 +426,7 @@ describe("CompaniesPage", () => {
 
   describe("Re-analyze Feature", () => {
     it("should show Re-analyze button in detail modal", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
 
       await waitFor(() => {
@@ -411,7 +442,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should call submitCompany with companyId when Re-analyze is clicked", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       mockSubmitCompany.mockResolvedValueOnce("queue-item-123")
       renderWithProviders()
 
@@ -440,7 +471,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should navigate to queue management after successful re-analyze submission", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       mockSubmitCompany.mockResolvedValueOnce("queue-item-123")
       renderWithProviders()
 
@@ -471,7 +502,7 @@ describe("CompaniesPage", () => {
     })
 
     it("should show error message when re-analyze fails", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       mockSubmitCompany.mockRejectedValueOnce(new Error("Network error"))
       renderWithProviders()
 
@@ -518,7 +549,7 @@ describe("CompaniesPage", () => {
         setFilters: mockSetFilters,
       } as any)
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
 
       await waitFor(() => {

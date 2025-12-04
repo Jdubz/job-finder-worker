@@ -19,7 +19,11 @@ interface UseCompaniesResult {
 }
 
 export function useCompanies(options: UseCompaniesOptions = {}): UseCompaniesResult {
-  const { autoFetch = true, ...initialFilters } = options
+  const defaultFilters: ListCompaniesParams = { sortBy: "updated_at", sortOrder: "desc" }
+  const { autoFetch = true, ...initialFilters } = {
+    ...defaultFilters,
+    ...options,
+  }
 
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState<boolean>(autoFetch)

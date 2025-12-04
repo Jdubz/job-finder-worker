@@ -168,7 +168,7 @@ describe("DocumentBuilderPage", () => {
 
   describe("form interactions", () => {
     it("should allow entering job title manually", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
@@ -182,7 +182,7 @@ describe("DocumentBuilderPage", () => {
     })
 
     it("should allow entering company name manually", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
@@ -196,7 +196,7 @@ describe("DocumentBuilderPage", () => {
     })
 
     it("should clear form when Clear Form button is clicked", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
@@ -216,7 +216,7 @@ describe("DocumentBuilderPage", () => {
 
   describe("generation workflow", () => {
     it("should show validation error when required fields are missing", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
@@ -232,7 +232,7 @@ describe("DocumentBuilderPage", () => {
     })
 
     it("should start generation when form is submitted with required fields", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
@@ -260,7 +260,7 @@ describe("DocumentBuilderPage", () => {
     })
 
     itWithRetry("should show success message when generation completes", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
@@ -280,7 +280,7 @@ describe("DocumentBuilderPage", () => {
     })
 
     itWithRetry("should show download button when resume is generated", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
@@ -307,7 +307,7 @@ describe("DocumentBuilderPage", () => {
         data: { requestId: "", nextStep: null, steps: [] },
       } as any)
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
@@ -329,7 +329,7 @@ describe("DocumentBuilderPage", () => {
     it("should show error when generation throws an exception", async () => {
       vi.mocked(generatorClient.startGeneration).mockRejectedValue(new Error("Network error"))
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {

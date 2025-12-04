@@ -79,6 +79,24 @@ Object.defineProperty(window, "alert", {
   value: vi.fn(),
 })
 
+// Radix Select + jsdom: provide minimal PointerEvent/pointer capture shims to avoid runtime errors
+if (!global.PointerEvent) {
+  // @ts-expect-error PointerEvent not in jsdom
+  global.PointerEvent = class PointerEvent extends MouseEvent {}
+}
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false
+}
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = () => {}
+}
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = () => {}
+}
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {}
+}
+
 // Mock fetch
 global.fetch = vi.fn()
 

@@ -188,6 +188,36 @@ describe("SourcesPage", () => {
     })
   })
 
+  describe("Sorting controls", () => {
+    it("renders sort dropdowns and sends filter updates", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderWithProvider()
+
+      await waitFor(() => {
+        expect(screen.getByText("Updated (newest)")).toBeInTheDocument()
+        expect(screen.getByText("Desc")).toBeInTheDocument()
+      })
+
+      const comboboxes = screen.getAllByRole('combobox')
+      const sortFieldCombobox = comboboxes[1]
+      const sortOrderCombobox = comboboxes[2]
+
+      await user.click(sortFieldCombobox)
+      await user.click(screen.getByText("Last scraped"))
+
+      await user.click(sortOrderCombobox)
+      await user.click(screen.getByText("Asc"))
+
+      expect(mockSetFilters).toHaveBeenLastCalledWith({
+        search: undefined,
+        status: undefined,
+        limit: 100,
+        sortBy: "last_scraped_at",
+        sortOrder: "asc",
+      })
+    })
+  })
+
   describe("Table Rows", () => {
     it("should have clickable rows", async () => {
       renderWithProvider()
@@ -278,8 +308,7 @@ describe("SourcesPage", () => {
       renderWithProvider()
 
       await waitFor(() => {
-        const combobox = screen.getByRole("combobox")
-        expect(combobox).toBeInTheDocument()
+      expect(screen.getByText(/All Status/i)).toBeInTheDocument()
       })
     })
 

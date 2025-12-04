@@ -21,7 +21,11 @@ interface UseJobSourcesResult {
 }
 
 export function useJobSources(options: UseJobSourcesOptions = {}): UseJobSourcesResult {
-  const { autoFetch = true, ...initialFilters } = options
+  const defaultFilters: ListJobSourcesParams = { sortBy: "updated_at", sortOrder: "desc" }
+  const { autoFetch = true, ...initialFilters } = {
+    ...defaultFilters,
+    ...options,
+  }
 
   const [sources, setSources] = useState<JobSource[]>([])
   const [loading, setLoading] = useState<boolean>(autoFetch)

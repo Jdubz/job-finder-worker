@@ -377,6 +377,9 @@ export interface JobMatch {
   /** When record was created */
   createdAt: TimestampLike
 
+  /** When record was last updated */
+  updatedAt: TimestampLike
+
   /** User ID who submitted the job */
   submittedBy: string | null
 

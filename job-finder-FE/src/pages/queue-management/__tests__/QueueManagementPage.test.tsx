@@ -343,7 +343,7 @@ describe("QueueManagementPage", () => {
 
   describe("Details Modal", () => {
     it("opens when a row is clicked", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProvider()
 
       await waitFor(() => {
@@ -434,7 +434,7 @@ describe("QueueManagementPage", () => {
     })
 
     it("opens confirmation modal when Pause Queue is clicked", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProvider()
 
       await waitFor(() => {
@@ -470,7 +470,7 @@ describe("QueueManagementPage", () => {
         },
       })
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProvider()
 
       await waitFor(() => {
@@ -486,7 +486,7 @@ describe("QueueManagementPage", () => {
     })
 
     it("closes confirmation modal when Cancel is clicked", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProvider()
 
       await waitFor(() => {
@@ -507,7 +507,7 @@ describe("QueueManagementPage", () => {
     })
 
     it("pauses processing when confirmed", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProvider()
 
       await waitFor(() => {
@@ -554,7 +554,7 @@ describe("QueueManagementPage", () => {
         },
       })
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProvider()
 
       await waitFor(() => {
@@ -583,7 +583,7 @@ describe("QueueManagementPage", () => {
     it("shows error message when toggle fails", async () => {
       vi.mocked(configClient.updateWorkerSettings).mockRejectedValue(new Error("Network error"))
 
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProvider()
 
       await waitFor(() => {

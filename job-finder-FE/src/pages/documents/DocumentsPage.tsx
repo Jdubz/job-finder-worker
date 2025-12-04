@@ -54,7 +54,7 @@ export function DocumentsPage() {
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("")
-  const [sortBy, setSortBy] = useState<string>("date")
+  const [sortBy, setSortBy] = useState<string>("updated")
   const [statusFilter, setStatusFilter] = useState<string>("all")
 
   // Modal state
@@ -102,6 +102,9 @@ export function DocumentsPage() {
     // Sorting
     filtered.sort((a, b) => {
       switch (sortBy) {
+        case "updated":
+          return new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime()
+        case "created":
         case "date":
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         case "company":
@@ -230,7 +233,8 @@ export function DocumentsPage() {
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="date">Date</SelectItem>
+                  <SelectItem value="updated">Updated</SelectItem>
+                  <SelectItem value="created">Created</SelectItem>
                   <SelectItem value="company">Company</SelectItem>
                   <SelectItem value="role">Role</SelectItem>
                 </SelectContent>
@@ -310,12 +314,10 @@ export function DocumentsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() =>
-                                handleViewDocument(
-                                  doc.resumeUrl!,
-                                  `Resume - ${doc.job.role} at ${doc.job.company}`
-                                )
-                              }
+                              onClick={() => {
+                                const resumeUrl = doc.resumeUrl as string
+                                handleViewDocument(resumeUrl, `Resume - ${doc.job.role} at ${doc.job.company}`)
+                              }}
                               title="View Resume"
                             >
                               <Eye className="h-4 w-4" />
@@ -325,8 +327,9 @@ export function DocumentsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
+                                const resumeUrl = doc.resumeUrl as string
                                 const artifact = doc.artifacts.find((a) => a.artifactType === "resume")
-                                handleDownload(doc.resumeUrl!, artifact?.filename || "resume.pdf")
+                                handleDownload(resumeUrl, artifact?.filename || "resume.pdf")
                               }}
                               title="Download Resume"
                             >
@@ -340,12 +343,13 @@ export function DocumentsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() =>
+                              onClick={() => {
+                                const coverUrl = doc.coverLetterUrl as string
                                 handleViewDocument(
-                                  doc.coverLetterUrl!,
+                                  coverUrl,
                                   `Cover Letter - ${doc.job.role} at ${doc.job.company}`
                                 )
-                              }
+                              }}
                               title="View Cover Letter"
                             >
                               <Eye className="h-4 w-4 text-blue-500" />
@@ -355,8 +359,9 @@ export function DocumentsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
+                                const coverUrl = doc.coverLetterUrl as string
                                 const artifact = doc.artifacts.find((a) => a.artifactType === "cover-letter")
-                                handleDownload(doc.coverLetterUrl!, artifact?.filename || "cover-letter.pdf")
+                                handleDownload(coverUrl, artifact?.filename || "cover-letter.pdf")
                               }}
                               title="Download Cover Letter"
                             >

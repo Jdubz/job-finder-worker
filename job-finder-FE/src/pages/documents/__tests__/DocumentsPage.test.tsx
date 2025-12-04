@@ -59,7 +59,7 @@ const mockDocuments: GeneratorRequestRecord[] = [
     preferences: null,
     personalInfo: null,
     createdAt: "2024-01-15T10:30:00Z",
-    updatedAt: "2024-01-15T10:35:00Z",
+    updatedAt: "2024-01-18T10:35:00Z",
     artifacts: [
       {
         id: "artifact-1",
@@ -307,7 +307,7 @@ describe("DocumentsPage", () => {
     })
 
     it("should filter by search query", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {
@@ -324,7 +324,7 @@ describe("DocumentsPage", () => {
     })
 
     it("should filter by role name", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {
@@ -341,7 +341,7 @@ describe("DocumentsPage", () => {
     })
 
     it("should show no results message when filter matches nothing", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {
@@ -368,14 +368,35 @@ describe("DocumentsPage", () => {
   })
 
   describe("Sorting", () => {
-    it("should sort by date by default (newest first)", async () => {
+    it("should sort by updated date by default (most recently updated first)", async () => {
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {
         const rows = screen.getAllByRole("row")
         // Skip header row, first data row should be most recent
         const firstDataRow = rows[1]
-        expect(within(firstDataRow).getByText("DevOps Engineer")).toBeInTheDocument()
+        expect(within(firstDataRow).getByText("Senior Software Engineer")).toBeInTheDocument()
+      })
+    })
+
+    it("should reorder when selecting Company sort", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderWithRouter(<DocumentsPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText("Updated")).toBeInTheDocument()
+      })
+
+      const comboboxes = screen.getAllByRole("combobox")
+      const sortFieldCombobox = comboboxes[comboboxes.length - 1]
+
+      await user.click(sortFieldCombobox)
+      await user.click(await screen.findByRole("option", { name: /Company/i }))
+
+      await waitFor(() => {
+        const rows = screen.getAllByRole("row")
+        const firstDataRow = rows[1]
+        expect(within(firstDataRow).getByText("Cloud Services")).toBeInTheDocument()
       })
     })
   })
@@ -426,7 +447,7 @@ describe("DocumentsPage", () => {
 
   describe("Preview Modal", () => {
     it("should open preview modal when view button is clicked", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {

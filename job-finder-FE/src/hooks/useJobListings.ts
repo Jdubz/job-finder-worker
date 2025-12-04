@@ -17,7 +17,11 @@ export function useJobListings(initialFilters: JobListingFilters = {}): UseJobLi
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [count, setCount] = useState(0)
-  const [filters, setFilters] = useState<JobListingFilters>(initialFilters)
+  const [filters, setFilters] = useState<JobListingFilters>({
+    sortBy: "updated",
+    sortOrder: "desc",
+    ...initialFilters,
+  })
 
   const fetchListings = useCallback(async () => {
     try {

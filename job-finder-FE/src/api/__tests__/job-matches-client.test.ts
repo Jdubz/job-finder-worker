@@ -19,6 +19,7 @@ const createMockMatch = (overrides: Partial<JobMatchWithListing> = {}): JobMatch
   resumeIntakeData: undefined,
   analyzedAt: new Date(),
   createdAt: new Date(),
+  updatedAt: new Date(),
   submittedBy: null,
   queueItemId: "queue-1",
   listing: {
