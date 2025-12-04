@@ -120,19 +120,21 @@ describe("JobApplicationsPage sorting", () => {
     expect(within(firstDataRow).getByText("Frontend Engineer")).toBeInTheDocument()
   })
 
-  it.skip("changes ordering when sort switched to company", async () => {
+  it("changes ordering when sort switched to company", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderPage()
 
     await waitFor(() => expect(screen.getByText("Updated")).toBeInTheDocument())
 
-    const [sortFieldCombobox] = screen.getAllByRole('combobox')
+    const [sortFieldCombobox] = screen.getAllByRole("combobox")
     await user.click(sortFieldCombobox)
-    await user.click(screen.getByText("Company"))
+    await user.click(await screen.findByRole("option", { name: "Company" }))
 
-    const rows = screen.getAllByRole("row")
-    const firstDataRow = rows[1]
-    // Alphabetical company ordering should put Acme first
-    expect(within(firstDataRow).getByText("Frontend Engineer")).toBeInTheDocument()
+    await waitFor(() => {
+      const rows = screen.getAllByRole("row")
+      const firstDataRow = rows[1]
+      // Alphabetical company ordering should put Acme first
+      expect(within(firstDataRow).getByText("Frontend Engineer")).toBeInTheDocument()
+    })
   })
 })

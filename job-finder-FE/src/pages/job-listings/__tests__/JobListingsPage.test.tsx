@@ -84,25 +84,27 @@ describe("JobListingsPage sorting", () => {
     })
   })
 
-  it.skip("updates filters when sort field and order change", async () => {
+  it("updates filters when sort field and order change", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderPage()
 
     await waitFor(() => expect(screen.getByText("Updated (newest)")).toBeInTheDocument())
 
-    const [sortFieldCombobox] = screen.getAllByRole('combobox')
+    const [sortFieldCombobox, sortOrderCombobox] = screen.getAllByRole("combobox")
     await user.click(sortFieldCombobox)
-    await user.click(screen.getByText("Company"))
+    await user.click(await screen.findByRole("option", { name: "Company" }))
 
-    await user.click(screen.getByText("Desc"))
-    await user.click(screen.getByText("Asc"))
+    await user.click(sortOrderCombobox)
+    await user.click(await screen.findByRole("option", { name: "Asc" }))
 
-    expect(mockSetFilters).toHaveBeenLastCalledWith({
-      search: undefined,
-      status: undefined,
-      limit: 100,
-      sortBy: "company",
-      sortOrder: "asc",
-    })
+    await waitFor(() =>
+      expect(mockSetFilters).toHaveBeenLastCalledWith({
+        search: undefined,
+        status: undefined,
+        limit: 100,
+        sortBy: "company",
+        sortOrder: "asc",
+      })
+    )
   })
 })

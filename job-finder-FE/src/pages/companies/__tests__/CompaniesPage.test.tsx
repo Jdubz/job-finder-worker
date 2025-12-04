@@ -209,7 +209,7 @@ describe("CompaniesPage", () => {
   })
 
   describe("Sorting controls", () => {
-    it.skip("shows sort dropdowns with updated-at default and applies changes", async () => {
+    it("shows sort dropdowns with updated-at default and applies changes", async () => {
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
 
@@ -220,20 +220,22 @@ describe("CompaniesPage", () => {
       })
 
       // Change sort field to Name
-      const [sortFieldCombobox, sortOrderCombobox] = screen.getAllByRole('combobox')
+      const [sortFieldCombobox, sortOrderCombobox] = screen.getAllByRole("combobox")
       await user.click(sortFieldCombobox)
-      await user.click(screen.getByText(/Name/i))
+      await user.click(await screen.findByRole("option", { name: /Name/i }))
 
       // Change order to Asc
       await user.click(sortOrderCombobox)
-      await user.click(screen.getByText("Asc"))
+      await user.click(await screen.findByRole("option", { name: "Asc" }))
 
-      expect(mockSetFilters).toHaveBeenLastCalledWith({
-        search: undefined,
-        limit: 100,
-        sortBy: "name",
-        sortOrder: "asc",
-      })
+      await waitFor(() =>
+        expect(mockSetFilters).toHaveBeenLastCalledWith({
+          search: undefined,
+          limit: 100,
+          sortBy: "name",
+          sortOrder: "asc",
+        })
+      )
     })
   })
 

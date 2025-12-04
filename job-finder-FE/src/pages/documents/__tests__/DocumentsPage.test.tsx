@@ -379,7 +379,7 @@ describe("DocumentsPage", () => {
       })
     })
 
-    it.skip("should reorder when selecting Company sort", async () => {
+    it("should reorder when selecting Company sort", async () => {
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentsPage />)
 
@@ -387,13 +387,17 @@ describe("DocumentsPage", () => {
         expect(screen.getByText("Updated")).toBeInTheDocument()
       })
 
-    const [sortFieldCombobox] = screen.getAllByRole('combobox')
-    await user.click(sortFieldCombobox)
-    await user.click(screen.getByText(/Company/i))
+      const comboboxes = screen.getAllByRole("combobox")
+      const sortFieldCombobox = comboboxes[comboboxes.length - 1]
 
-    const rows = screen.getAllByRole("row")
-    const firstDataRow = rows[1]
-    expect(within(firstDataRow).getByText("Cloud Services")).toBeInTheDocument()
+      await user.click(sortFieldCombobox)
+      await user.click(await screen.findByRole("option", { name: /Company/i }))
+
+      await waitFor(() => {
+        const rows = screen.getAllByRole("row")
+        const firstDataRow = rows[1]
+        expect(within(firstDataRow).getByText("Cloud Services")).toBeInTheDocument()
+      })
     })
   })
 
