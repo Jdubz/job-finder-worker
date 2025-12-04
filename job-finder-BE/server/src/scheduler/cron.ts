@@ -157,6 +157,13 @@ async function rotateLogs() {
 
 let schedulerStarted = false
 
+function getWorkerBaseUrl() {
+  // Parse URL properly instead of fragile string replacement
+  const maintenanceUrl = new URL(env.WORKER_MAINTENANCE_URL)
+  maintenanceUrl.pathname = maintenanceUrl.pathname.replace(/\/[^/]+$/, '')
+  return maintenanceUrl.href.replace(/\/$/, '')
+}
+
 export function getCronStatus() {
   return {
     enabled: env.CRON_ENABLED,
@@ -173,10 +180,7 @@ export function getCronStatus() {
 }
 
 export async function getWorkerHealth() {
-  // Parse URL properly instead of fragile string replacement
-  const maintenanceUrl = new URL(env.WORKER_MAINTENANCE_URL)
-  maintenanceUrl.pathname = maintenanceUrl.pathname.replace(/\/[^/]+$/, '')
-  const workerBaseUrl = maintenanceUrl.href.replace(/\/$/, '')
+  const workerBaseUrl = getWorkerBaseUrl()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 5_000)
 
@@ -201,6 +205,36 @@ export async function getWorkerHealth() {
     }
   } catch (error) {
     logger.error({ error, workerUrl: workerBaseUrl }, 'Failed to fetch worker health')
+    return {
+      reachable: false,
+      error: error instanceof Error ? error.message : String(error),
+      workerUrl: workerBaseUrl
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export async function getWorkerCliHealth() {
+  const workerBaseUrl = getWorkerBaseUrl()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5_000)
+
+  try {
+    const res = await fetch(`${workerBaseUrl}/cli/health`, { signal: controller.signal })
+    if (!res.ok) {
+      throw new Error(`Worker CLI health responded with ${res.status}`)
+    }
+
+    const payload = await res.json()
+    const providers = payload?.providers ?? payload
+    return {
+      reachable: true,
+      providers,
+      workerUrl: workerBaseUrl
+    }
+  } catch (error) {
+    logger.error({ error, workerUrl: workerBaseUrl }, 'Failed to fetch worker CLI health')
     return {
       reachable: false,
       error: error instanceof Error ? error.message : String(error),

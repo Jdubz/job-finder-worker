@@ -13,7 +13,8 @@ import type {
   GetQueueStatsResponse,
   GetQueueItemResponse,
   UpdateJobStatusResponse,
-  QueueItem
+  QueueItem,
+  AgentCliHealth
 } from "@shared/types"
 import type { ApiSuccessResponse } from "@shared/types"
 
@@ -131,6 +132,11 @@ export class QueueClient extends BaseApiClient {
 
   async getWorkerHealth(): Promise<WorkerHealth> {
     const response = await this.get<ApiSuccessResponse<WorkerHealth>>(`/queue/worker/health`)
+    return response.data
+  }
+
+  async getAgentCliHealth(): Promise<AgentCliHealth> {
+    const response = await this.get<ApiSuccessResponse<AgentCliHealth>>(`/queue/cli/health`)
     return response.data
   }
 }

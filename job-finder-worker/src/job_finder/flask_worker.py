@@ -14,6 +14,7 @@ import sys
 import threading
 import concurrent.futures
 import time
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -74,6 +75,72 @@ worker_state = {
     "iteration": 0,
     "current_item_id": None,
 }
+
+CLI_CHECKS = {
+    "codex": {
+        "cmd": ["codex", "login", "status"],
+        "success_terms": ["logged in"],
+    },
+    "gemini": {
+        "cmd": ["gemini", "auth", "status"],
+        "success_terms": ["logged in", "authenticated"],
+    },
+}
+
+
+def check_cli_health() -> Dict[str, Dict[str, Any]]:
+    """Run lightweight auth/availability checks for agent CLIs.
+
+    We treat the CLI as healthy when the command exits cleanly and the output
+    indicates an authenticated session. If the binary is missing or the
+    command errors, the error text is returned for quick diagnosis.
+    """
+
+    results: Dict[str, Dict[str, Any]] = {}
+    for name, cfg in CLI_CHECKS.items():
+        try:
+            proc = subprocess.run(
+                cfg["cmd"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            output = f"{proc.stdout} {proc.stderr}".strip()
+            normalized = output.lower()
+            unauthenticated = (
+                "not logged" in normalized
+                or "not authenticated" in normalized
+                or "login required" in normalized
+            )
+            success_terms_lower = [t.lower() for t in cfg["success_terms"]]
+            healthy = (
+                proc.returncode == 0
+                and any(term in normalized for term in success_terms_lower)
+                and not unauthenticated
+            )
+
+            results[name] = {
+                "healthy": healthy,
+                "message": output or "Command succeeded",
+            }
+        except FileNotFoundError as exc:
+            results[name] = {
+                "healthy": False,
+                "message": f"{name} CLI not installed: {exc}",
+            }
+        except subprocess.TimeoutExpired:
+            results[name] = {
+                "healthy": False,
+                "message": "CLI health check timed out",
+            }
+        except Exception as exc:  # pragma: no cover - defensive
+            results[name] = {
+                "healthy": False,
+                "message": str(exc),
+            }
+
+    return results
 
 
 def reset_stuck_processing_items(
@@ -453,6 +520,13 @@ def health():
             "last_error": worker_state["last_error"],
         }
     )
+
+
+@app.route("/cli/health")
+def cli_health():
+    """Return health for CLI-based agents (codex, gemini)."""
+
+    return jsonify({"providers": check_cli_health()})
 
 
 @app.route("/status")
