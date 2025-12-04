@@ -4,8 +4,7 @@ import { cleanText } from './text.util'
 import { sharedCss } from './html-style'
 import { normalizeUrl } from './url.util'
 
-const DEFAULT_MARGIN = '0.8in'
-const CONTENT_WIDTH = '6.0in'
+const DEFAULT_MARGIN = '0.55in'
 
 async function createContext(): Promise<BrowserContext> {
   const launchOptions: Parameters<typeof chromium.launch>[0] = {
@@ -24,7 +23,7 @@ async function createContext(): Promise<BrowserContext> {
 function buildContactRow(personal: PersonalInfo): string {
   const items: string[] = []
 
-  const addChip = (label?: string, href?: string) => {
+  const addChip = (label?: string, href?: string, isLink = false) => {
     if (!label) return
     const text = cleanText(label)
     if (!text) return
@@ -33,7 +32,6 @@ function buildContactRow(personal: PersonalInfo): string {
   }
 
   addChip(personal.email, `mailto:${personal.email}`)
-  addChip(personal.phone)
   addChip(personal.location)
 
   if (personal.website) {
@@ -46,91 +44,127 @@ function buildContactRow(personal: PersonalInfo): string {
     addChip('GitHub', normalizeUrl(personal.github))
   }
 
-  return items.length ? `<div class="contact">${items.join('<span class="dot">·</span>')}</div>` : ''
+  return items.length ? `<div class="contact">${items.join('<span class="dot">•</span>')}</div>` : ''
+}
+
+function getInitials(name?: string): string {
+  if (!name) return ''
+  return cleanText(name)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
 }
 
 function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string {
   const info = personalInfo ?? (content as any).personalInfo
-  const initials = info?.name
-    ? cleanText(info.name)
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((p) => p[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()
-    : ''
+  const initials = getInitials(info?.name)
   const avatar = (info as any)?.avatar || ''
   const logo = (info as any)?.logo || ''
   const contactRow = buildContactRow(info)
+
+  // Build experiences
   const experiences = content.experience
     .map((exp) => {
-      const dates = `${cleanText(exp.startDate || '')} – ${cleanText(exp.endDate || 'Present')}`.trim()
+      const dates = `${cleanText(exp.startDate || '')} - ${cleanText(exp.endDate || 'Present')}`.trim()
       const bullets = (exp.highlights || [])
         .map((b) => `<li>${cleanText(b)}</li>`)
         .join('')
+
       const tech = Array.isArray((exp as any).technologies) && (exp as any).technologies.length
-        ? `<div class="tech">${cleanText((exp as any).technologies.join(', '))}</div>`
+        ? `<div class="tech"><em>Technologies: ${cleanText((exp as any).technologies.join(', '))}</em></div>`
         : ''
+
       return `
         <div class="role">
           <div class="role-header">
-            <div>
-              <div class="role-title">${cleanText(exp.role)}</div>
-              <div class="company">${cleanText(exp.company)}${exp.location ? ' • ' + cleanText(exp.location) : ''}</div>
-            </div>
-            <div class="dates">${dates}</div>
+            <span class="role-title">${cleanText(exp.role)}</span>
+            <span class="dates">${dates}</span>
           </div>
-          <ul class="bullets">${bullets}</ul>
+          <div class="company"><strong>${cleanText(exp.company)}</strong>${exp.location ? ' • ' + cleanText(exp.location) : ''}</div>
+          ${bullets ? `<ul class="bullets">${bullets}</ul>` : ''}
           ${tech}
         </div>
       `
     })
     .join('')
 
-  const skills = (content.skills || [])
-    .map((s) => `<div class="skill"><strong>${cleanText(s.category)}:</strong> ${cleanText(s.items.join(', '))}</div>`) 
+  // Build skills in two-column grid
+  const skillItems = (content.skills || [])
+    .map((s) => `
+      <div class="skill">
+        <span class="skill-label">${cleanText(s.category)}</span>
+        <span class="skill-items">${cleanText(s.items.join(', '))}</span>
+      </div>
+    `)
     .join('')
 
+  const skillsSection = skillItems
+    ? `<section>
+        <div class="section-title">Technical Skills</div>
+        <div class="skills-grid">${skillItems}</div>
+       </section>`
+    : ''
+
+  // Build education
   const education = (content.education || [])
-    .map((e) => `<div class="edu"><strong>${cleanText(e.institution)}</strong> — ${cleanText(e.degree || e.field || '')}</div>`)
+    .map((e) => {
+      const gradDate = (e as any).graduationDate || e.endDate
+      return `
+        <div class="edu">
+          <strong>${cleanText(e.degree || e.field || '')}</strong>
+          <span class="edu-details"> — ${cleanText(e.institution)}${gradDate ? ', ' + cleanText(gradDate) : ''}</span>
+        </div>
+      `
+    })
     .join('')
+
+  const educationSection = education
+    ? `<section>
+        <div class="section-title">Education</div>
+        ${education}
+       </section>`
+    : ''
 
   return `
+  <!DOCTYPE html>
   <html>
   <head>
+    <meta charset="UTF-8">
     <style>${sharedCss}</style>
   </head>
   <body>
     <div class="page">
       <header>
-        <div class="brand">
-          ${logo ? `<div class="logo-box"><img src="${logo}" alt="" /></div>` : ''}
-          ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
-        </div>
-        <div>
+        ${logo ? `<div class="logo-box"><img src="${logo}" alt="" /></div>` : '<div></div>'}
+        <div class="header-center">
           <div class="name">${cleanText(info.name)}</div>
-          <div class="title">${cleanText(info.title || content.personalInfo.title || '')}</div>
+          <div class="title">${cleanText(info.title || content.personalInfo?.title || '')}</div>
           ${contactRow}
-          <hr class="contact-rule" />
         </div>
+        ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
       </header>
+      <hr class="header-rule" />
 
       <section>
-        <div class="section-title">PROFESSIONAL SUMMARY</div>
-        <div class="summary">${cleanText(content.professionalSummary || content.personalInfo.summary || '')}</div>
+        <div class="section-title">Professional Summary</div>
+        <div class="summary">${cleanText(content.professionalSummary || content.personalInfo?.summary || '')}</div>
       </section>
 
-      ${skills ? `<section><div class="section-title">TECHNICAL SKILLS</div>${skills}</section>` : ''}
-
       <section>
-        <div class="section-title">PROFESSIONAL EXPERIENCE</div>
+        <div class="section-title">Professional Experience</div>
         ${experiences}
       </section>
 
-      ${education ? `<section><div class="section-title">EDUCATION</div>${education}</section>` : ''}
+      ${skillsSection}
 
-      <footer>This document was created using my custom AI job-finder application — Job Finder</footer>
+      ${educationSection}
+
+      <footer>
+        Generated by a custom AI resume builder — <a href="https://joshwentworth.com/resume-builder">joshwentworth.com/resume-builder</a>
+      </footer>
     </div>
   </body>
   </html>
@@ -149,15 +183,8 @@ function coverLetterHtml(
     title: '',
     summary: ''
   } as any)
-  const initials = opts.name
-    ? cleanText(opts.name)
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((p) => p[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()
-    : ''
+
+  const initials = getInitials(opts.name)
   const avatar = opts.avatar || ''
 
   const bodyParas = [content.openingParagraph, ...(content.bodyParagraphs || []), content.closingParagraph]
@@ -165,33 +192,79 @@ function coverLetterHtml(
     .map((p) => `<p>${cleanText(p || '')}</p>`)
     .join('')
 
+  const coverLetterCss = `
+    ${sharedCss}
+
+    .letter { width: 100%; max-width: 7in; margin: 0 auto; }
+
+    .letter header {
+      margin-bottom: 20px;
+      grid-template-columns: auto 1fr auto;
+    }
+
+    .greeting {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin: 0 0 4px 0;
+    }
+
+    .date {
+      font-size: 10.5px;
+      color: var(--muted);
+      margin: 0 0 20px 0;
+    }
+
+    .letter-body p {
+      font-size: 11px;
+      line-height: 1.7;
+      color: var(--text);
+      margin: 0 0 14px 0;
+      text-align: justify;
+    }
+
+    .signature {
+      font-size: 11.5px;
+      margin-top: 24px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .letter footer {
+      margin-top: 40px;
+    }
+  `
+
   return `
+  <!DOCTYPE html>
   <html>
   <head>
-    <style>
-      ${sharedCss}
-      .letter { width: ${CONTENT_WIDTH}; margin: 0 auto; }
-      .letter header { margin-bottom: 14px; grid-template-columns: 1fr; }
-      .meta { font-size: 10.6px; color: var(--muted); margin: 6px 0 16px 0; }
-      p { font-size: 11px; line-height: 1.68; color: var(--text); margin: 0 0 14px 0; }
-      .signature { font-size: 11.2px; margin-top: 18px; font-weight: 700; }
-    </style>
+    <meta charset="UTF-8">
+    <style>${coverLetterCss}</style>
   </head>
   <body>
     <div class="letter">
       <header>
-        <div class="brand">
-          ${opts.logo ? `<div class="logo-box"><img src="${opts.logo}" alt="" /></div>` : ''}
-          ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
-        </div>
-        <div>
+        ${opts.logo ? `<div class="logo-box"><img src="${opts.logo}" alt="" /></div>` : '<div></div>'}
+        <div class="header-center">
           <div class="name">${cleanText(opts.name)}</div>
           ${contact}
         </div>
+        ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
       </header>
-      <div class="meta">${cleanText(content.greeting)}<br>${cleanText(opts.date || '')}</div>
-      ${bodyParas}
+      <hr class="header-rule" />
+
+      <div class="greeting">${cleanText(content.greeting)}</div>
+      <div class="date">${cleanText(opts.date || '')}</div>
+
+      <div class="letter-body">
+        ${bodyParas}
+      </div>
+
       <div class="signature">${cleanText(content.signature || opts.name)}</div>
+
+      <footer>
+        Generated by a custom AI resume builder — <a href="https://joshwentworth.com/resume-builder">joshwentworth.com/resume-builder</a>
+      </footer>
     </div>
   </body>
   </html>
