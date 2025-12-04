@@ -317,6 +317,7 @@ class ScrapeRunner:
             source_type=source_type,
             company_id=company_id,
             max_to_add=remaining_matches,
+            is_remote_source=source_config.is_remote_source,
         )
         stats["jobs_submitted"] = jobs_submitted
         logger.info(f"  Submitted {jobs_submitted} jobs to queue from {source_name}")

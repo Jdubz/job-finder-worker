@@ -698,6 +698,249 @@ class TestPreFilterTechnology:
         assert result.passed is False
 
 
+class TestPreFilterOfficesArray:
+    """Tests for remote detection via Greenhouse offices array."""
+
+    @pytest.fixture
+    def base_config(self):
+        return {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+
+    def test_remote_detected_from_offices_array(self, base_config):
+        """Offices array with 'Remote' should be detected as remote."""
+        pf = PreFilter(base_config)
+        result = pf.filter({
+            "title": "Engineer",
+            "offices": ["Remote (International)"],
+        })
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_remote_detected_from_offices_dict(self, base_config):
+        """Offices array with dict objects containing 'Remote' should be detected."""
+        pf = PreFilter(base_config)
+        result = pf.filter({
+            "title": "Engineer",
+            "offices": [{"name": "Remote", "id": 123}],
+        })
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_non_remote_offices_skipped(self, base_config):
+        """Offices without remote keyword should not infer work arrangement."""
+        pf = PreFilter(base_config)
+        result = pf.filter({
+            "title": "Engineer",
+            "offices": ["San Francisco", "New York"],
+        })
+        assert result.passed is True
+        assert "workArrangement" in result.checks_skipped
+
+
+class TestPreFilterRemoteKeywords:
+    """Tests for configurable remote keywords."""
+
+    def test_distributed_detected_as_remote(self):
+        """'Distributed' in location should be detected as remote by default."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": False,  # Reject remote to verify detection
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter({"title": "Engineer", "location": "Distributed"})
+        assert result.passed is False
+        assert "Remote" in result.reason
+
+    def test_custom_remote_keywords(self):
+        """Custom remote keywords should be used when configured."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": False,  # Reject remote to verify detection
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+                "remoteKeywords": ["wfh", "telecommute"],  # Custom keywords
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        # Default keyword should not trigger
+        result = pf.filter({"title": "Engineer", "location": "Remote"})
+        assert result.passed is True  # Not detected as remote
+
+        # Custom keyword should trigger
+        result = pf.filter({"title": "Engineer", "location": "WFH Available"})
+        assert result.passed is False
+        assert "Remote" in result.reason
+
+
+class TestPreFilterRemoteSource:
+    """Tests for is_remote_source flag (set on source config, not prefilter-policy)."""
+
+    def test_remote_source_flag_detects_remote(self):
+        """Jobs from remote-only sources should be detected as remote."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": False,  # Reject remote to verify detection
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        # No remote indicators in job data, but is_remote_source=True
+        result = pf.filter({"title": "Engineer", "location": "USA"}, is_remote_source=True)
+        assert result.passed is False
+        assert "Remote" in result.reason
+
+    def test_non_remote_source_not_defaulted(self):
+        """Jobs from non-remote sources should not default to remote."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter({"title": "Engineer", "location": "USA"}, is_remote_source=False)
+        assert result.passed is True
+        assert "workArrangement" in result.checks_skipped  # No remote indicators
+
+
+class TestPreFilterTreatUnknownAsOnsite:
+    """Tests for treatUnknownAsOnsite option."""
+
+    def test_unknown_treated_as_onsite_rejects_outside_location(self):
+        """Unknown work arrangement should be treated as onsite when enabled."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+                "treatUnknownAsOnsite": True,
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        # No remote indicators, location outside user location
+        result = pf.filter({"title": "Engineer", "location": "San Francisco, CA"})
+        assert result.passed is False
+        assert "Portland" in result.reason
+
+    def test_unknown_treated_as_onsite_allows_matching_location(self):
+        """Unknown work arrangement in user location should pass."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+                "treatUnknownAsOnsite": True,
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        result = pf.filter({"title": "Engineer", "location": "Portland, OR"})
+        assert result.passed is True
+
+    def test_unknown_without_treatUnknownAsOnsite_passes(self):
+        """Without treatUnknownAsOnsite, unknown arrangement should be skipped."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+                "treatUnknownAsOnsite": False,
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        # No remote indicators, location outside - but treatUnknownAsOnsite is False
+        result = pf.filter({"title": "Engineer", "location": "San Francisco, CA"})
+        assert result.passed is True
+        assert "workArrangement" in result.checks_skipped
+
+    def test_unknown_with_missing_location_passes(self):
+        """Unknown work arrangement with no location data should pass (missing data = pass)."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+                "treatUnknownAsOnsite": True,
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        # No remote indicators, no location data
+        result = pf.filter({"title": "Engineer"})
+        assert result.passed is True
+
+
 class TestPreFilterBypass:
     """Tests for filter bypass functionality."""
 
