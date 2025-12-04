@@ -29,7 +29,7 @@ function buildContactRow(personal: PersonalInfo): string {
     items.push(`<span class="chip">${content}</span>`)
   }
   add(personal.email, `mailto:${personal.email}`)
-  add((personal as any).phone)
+  add(personal.phone)
   add(personal.location)
   if (personal.website) {
     const w = personal.website.startsWith('http') ? personal.website : `https://${personal.website}`
@@ -39,8 +39,8 @@ function buildContactRow(personal: PersonalInfo): string {
     const l = personal.linkedin.startsWith('http') ? personal.linkedin : `https://${personal.linkedin}`
     add('LinkedIn', l)
   }
-  if ((personal as any).github) {
-    const g = (personal as any).github.startsWith('http') ? (personal as any).github : `https://${(personal as any).github}`
+  if (personal.github) {
+    const g = personal.github.startsWith('http') ? personal.github : `https://${personal.github}`
     add('GitHub', g)
   }
   return items.length ? `<div class="contact">${items.join('<span class="dot">·</span>')}</div>` : ''
@@ -48,7 +48,15 @@ function buildContactRow(personal: PersonalInfo): string {
 
 function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string {
   const info = personalInfo ?? (content as any).personalInfo
-  const initials = info?.name ? cleanText(info.name).split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase() : ''
+  const initials = info?.name
+    ? cleanText(info.name)
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((p) => p[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : ''
   const avatar = (info as any)?.avatar || ''
   const logo = (info as any)?.logo || ''
   const contactRow = buildContactRow(info)
@@ -126,7 +134,10 @@ function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string
   `
 }
 
-function coverLetterHtml(content: CoverLetterContent, opts: { name: string; email: string; location?: string; phone?: string; date?: string; logo?: string }): string {
+function coverLetterHtml(
+  content: CoverLetterContent,
+  opts: { name: string; email: string; location?: string; phone?: string; date?: string; logo?: string; avatar?: string }
+): string {
   const contact = buildContactRow({
     name: opts.name,
     email: opts.email,
@@ -135,8 +146,16 @@ function coverLetterHtml(content: CoverLetterContent, opts: { name: string; emai
     title: '',
     summary: ''
   } as any)
-  const initials = opts.name ? cleanText(opts.name).split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase() : ''
-  const avatar = (opts as any).avatar || ''
+  const initials = opts.name
+    ? cleanText(opts.name)
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((p) => p[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : ''
+  const avatar = opts.avatar || ''
 
   const bodyParas = [content.openingParagraph, ...(content.bodyParagraphs || []), content.closingParagraph]
     .filter(Boolean)

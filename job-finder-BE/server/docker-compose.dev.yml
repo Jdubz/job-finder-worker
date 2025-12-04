@@ -67,7 +67,7 @@ services:
         source: ./.dev/data
         target: /data/sqlite
       - type: bind
-        source: ../.artifacts-test
+        source: ../.artifacts-test # shared, gitignored test artifacts (see .gitignore)
         target: /data/artifacts
       - type: bind
         source: ./.dev/logs
