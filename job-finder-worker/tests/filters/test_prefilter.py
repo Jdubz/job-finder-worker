@@ -704,8 +704,8 @@ class TestPreFilterBypass:
     def test_filter_does_not_handle_bypass(self):
         """Test that PreFilter.filter does not handle bypass logic itself.
 
-        Bypass logic is handled in job_processor._execute_prefilter, not in
-        the PreFilter class. This test verifies that PreFilter.filter will
+        Bypass logic is handled at the scraper intake level, not in the
+        PreFilter class. This test verifies that PreFilter.filter will
         reject jobs that violate filter rules, regardless of any bypass intent.
         """
         config = {
@@ -741,6 +741,6 @@ class TestPreFilterBypass:
         }
 
         # PreFilter.filter() does not handle bypass - it always applies filter rules
-        # Bypass is handled at the job_processor level in _execute_prefilter()
+        # Bypass is handled at the scraper intake level
         result = pf.filter(job_data)
         assert result.passed is False

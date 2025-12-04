@@ -356,7 +356,6 @@ def show_status():
             "PROCESSING": Colors.CYAN,
             "SUCCESS": Colors.GREEN,
             "FAILED": Colors.RED,
-            "FILTERED": Colors.MAGENTA,
             "SKIPPED": Colors.MAGENTA,
         }.get(s, Colors.RESET)
         print(f"  {color}{s}: {count}{Colors.RESET}")
@@ -374,7 +373,6 @@ def show_status():
             "PROCESSING": Colors.CYAN,
             "SUCCESS": Colors.GREEN,
             "FAILED": Colors.RED,
-            "FILTERED": Colors.MAGENTA,
             "SKIPPED": Colors.MAGENTA,
         }.get(item["status"], Colors.RESET)
 
@@ -428,7 +426,6 @@ def watch_item(tracking_id: str, timeout: int = 300, poll_interval: int = 2):
                     "PROCESSING": Colors.CYAN,
                     "SUCCESS": Colors.GREEN,
                     "FAILED": Colors.RED,
-                    "FILTERED": Colors.MAGENTA,
                     "SKIPPED": Colors.MAGENTA,
                 }.get(item["status"], Colors.RESET)
 
@@ -446,7 +443,7 @@ def watch_item(tracking_id: str, timeout: int = 300, poll_interval: int = 2):
                 last_status = item["status"]
 
             # Check if terminal state
-            if item["status"] in ("SUCCESS", "FAILED", "FILTERED", "SKIPPED"):
+            if item["status"] in ("SUCCESS", "FAILED", "SKIPPED"):
                 print(f"\n{Colors.GREEN}Item completed in {elapsed}s{Colors.RESET}")
 
                 # Check for job match if job type
@@ -509,7 +506,6 @@ def watch_queue(poll_interval: int = 5):
                     "PROCESSING",
                     "SUCCESS",
                     "FAILED",
-                    "FILTERED",
                     "SKIPPED",
                 ]:
                     old = last_counts.get(status, 0)

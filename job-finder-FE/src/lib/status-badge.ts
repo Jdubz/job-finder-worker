@@ -7,9 +7,9 @@ const STATUS_MAP: Record<string, StatusTone> = {
   success: "success",
 
   paused: "warning",
-  filtered: "warning",
   skipped: "warning",
   disabled: "warning",
+  needs_review: "warning",
 
   analyzing: "info",
   processing: "info",

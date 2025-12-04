@@ -31,7 +31,7 @@ const queueStatuses = [
   'success',
   'failed',
   'skipped',
-  'filtered'
+  'needs_review'
 ] as const
 const queueSources = [
   'user_submission',

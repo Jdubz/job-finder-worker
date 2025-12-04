@@ -201,7 +201,7 @@ export interface JobListingRecord {
   /** Pipeline status */
   status: JobListingStatus
 
-  /** Filter result details (if status=filtered) */
+  /** Filter/extraction result details */
   filterResult?: Record<string, unknown> | null
 
   /** Full analysis result with score breakdown, matched/missing skills, and reasons */

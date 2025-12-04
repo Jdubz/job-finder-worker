@@ -143,7 +143,6 @@ describe("QueueManagementPage", () => {
       success: 1,
       failed: 1,
       skipped: 0,
-      filtered: 0,
     })
   })
 
@@ -230,7 +229,6 @@ describe("QueueManagementPage", () => {
         success: 1,
         failed: 1,
         skipped: 0,
-        filtered: 0,
       })
 
       vi.mocked(useQueueItems).mockReturnValue({

@@ -45,7 +45,7 @@ describeIntegration("Job Queue API Integration", () => {
 
   describe("Status + stage validation", () => {
     it("only reports known queue statuses", () => {
-      const valid: string[] = ["pending", "processing", "success", "failed", "skipped", "filtered"]
+      const valid: string[] = ["pending", "processing", "success", "failed", "skipped", "needs_review"]
       const statuses = [
         mockQueueItem.status,
         mockProcessingQueueItem.status,
