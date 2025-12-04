@@ -196,6 +196,15 @@ class TestMatchPlatform:
         assert pattern.name == "smartrecruiters_api"
         assert groups["company"] == "stripe"
 
+    def test_smartrecruiters_www_url(self):
+        """www subdomain should also match SmartRecruiters sites."""
+        url = "https://www.smartrecruiters.com/Experian/job/123"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "smartrecruiters_api"
+        assert groups["company"] == "Experian"
+
     # Avature tests
     def test_avature_rss_url(self):
         """Avature SearchJobs feed should match and build RSS config."""
@@ -208,6 +217,19 @@ class TestMatchPlatform:
             "subdomain": "mantech",
             "lang": "en_US",
             "site": "careers",
+        }
+
+    def test_avature_rss_multilevel_subdomain(self):
+        """Dotted subdomains should be captured fully for Avature."""
+        url = "https://us.jobs.company.avature.net/en_GB/talent/SearchJobs"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "avature_rss"
+        assert groups == {
+            "subdomain": "us.jobs.company",
+            "lang": "en_GB",
+            "site": "talent",
         }
 
     # Non-matching URLs

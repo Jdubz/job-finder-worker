@@ -238,7 +238,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     PlatformPattern(
         name="smartrecruiters_api",
         # Match SmartRecruiters hosted career sites
-        url_pattern=r"(?:api\.)?smartrecruiters\.com/(?:v1/companies/)?(?P<company>[^/]+)/?(?:$|/)",
+        url_pattern=r"(?:(?:api|www)\.)?smartrecruiters\.com/(?:v1/companies/)?(?P<company>[^/?#]+)",
         api_url_template="https://api.smartrecruiters.com/v1/companies/{company}/postings?limit=200",
         response_path="content",
         fields={
@@ -255,7 +255,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     PlatformPattern(
         name="avature_rss",
         # Avature career portals expose an RSS feed via SearchJobs/feed
-        url_pattern=r"(?P<subdomain>[^./]+)\.avature\.net/(?P<lang>[a-zA-Z_]+)/(?P<site>[^/]+)/SearchJobs",
+        url_pattern=r"(?P<subdomain>[^/]+)\.avature\.net/(?P<lang>[a-zA-Z_]+)/(?P<site>[^/]+)/SearchJobs",
         api_url_template="https://{subdomain}.avature.net/{lang}/{site}/SearchJobs/feed/?jobRecordsPerPage=200",
         response_path="items",
         fields={
