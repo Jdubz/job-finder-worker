@@ -376,6 +376,17 @@ class TestFieldMappings:
         assert pattern.fields["url"] == "hostedUrl"
         assert pattern.fields["posted_date"] == "createdAt"
 
+    def test_smartrecruiters_field_mappings(self):
+        """Test SmartRecruiters field mappings match API response structure."""
+        pattern = next(p for p in PLATFORM_PATTERNS if p.name == "smartrecruiters_api")
+        assert pattern.fields["title"] == "name"
+        assert pattern.fields["location"] == "location.fullLocation"
+        assert pattern.fields["description"] == "jobAd.sections.jobDescription.text"
+        assert pattern.fields["url"] == "ref"
+        assert pattern.fields["posted_date"] == "releasedDate"
+        assert pattern.fields["job_type"] == "typeOfEmployment.label"
+        assert pattern.fields["department"] == "department.label"
+
 
 class TestValidationKeys:
     """Test validation key correctness for each platform."""
