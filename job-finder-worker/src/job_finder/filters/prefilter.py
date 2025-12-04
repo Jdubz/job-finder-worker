@@ -61,6 +61,9 @@ class PreFilter:
     - Technology rejection (from structured tags)
     """
 
+    # Default keywords that indicate remote work (used if not configured)
+    DEFAULT_REMOTE_KEYWORDS = ["remote", "distributed", "anywhere", "worldwide"]
+
     def __init__(self, config: Dict[str, Any]):
         """
         Initialize the pre-filter.
@@ -104,6 +107,19 @@ class PreFilter:
         self.will_relocate = work_config["willRelocate"]
         self.user_location = work_config["userLocation"]
 
+        # New optional config fields for improved work arrangement detection
+        # Keywords that indicate remote work (checked in location, offices, metadata)
+        remote_kw = work_config.get("remoteKeywords")
+        if remote_kw is not None and isinstance(remote_kw, list):
+            self.remote_keywords = [
+                k.lower().strip() for k in remote_kw if isinstance(k, str) and k.strip()
+            ]
+        else:
+            self.remote_keywords = self.DEFAULT_REMOTE_KEYWORDS
+
+        # If true, treat unknown work arrangement as potentially onsite and apply location filter
+        self.treat_unknown_as_onsite = work_config.get("treatUnknownAsOnsite", False)
+
         bool_keys = [
             ("allow_remote", self.allow_remote),
             ("allow_hybrid", self.allow_hybrid),
@@ -141,17 +157,20 @@ class PreFilter:
             f"maxAge={self.max_age_days}d, "
             f"work=R{self.allow_remote}/H{self.allow_hybrid}/O{self.allow_onsite}, "
             f"relocate={self.will_relocate}, userLocation={self.user_location}, "
+            f"remoteKeywords={self.remote_keywords}, treatUnknownAsOnsite={self.treat_unknown_as_onsite}, "
             f"emp=FT{self.allow_full_time}/PT{self.allow_part_time}/C{self.allow_contract}, "
             f"minSalary={self.min_salary}, "
             f"rejectedTech={len(self.rejected_tech)}"
         )
 
-    def filter(self, job_data: Dict[str, Any]) -> PreFilterResult:
+    def filter(self, job_data: Dict[str, Any], is_remote_source: bool = False) -> PreFilterResult:
         """
         Filter a job using available structured data.
 
         Args:
             job_data: Scraped job data dictionary with available fields
+            is_remote_source: If True, source is a remote-only job board (e.g., Remotive)
+                             All jobs from such sources are treated as remote.
 
         Returns:
             PreFilterResult with pass/fail status and details
@@ -195,7 +214,7 @@ class PreFilter:
                 checks_skipped.append("freshness")
 
         # 3. Work arrangement check (if is_remote or work_arrangement available)
-        work_arrangement = self._infer_work_arrangement(job_data)
+        work_arrangement = self._infer_work_arrangement(job_data, is_remote_source)
         if work_arrangement:
             checks_performed.append("workArrangement")
             result = self._check_work_arrangement(work_arrangement, job_data)
@@ -206,6 +225,19 @@ class PreFilter:
                     checks_performed=checks_performed,
                     checks_skipped=checks_skipped,
                 )
+        elif self.treat_unknown_as_onsite and not self.will_relocate and self.user_location:
+            # Unknown work arrangement but treatUnknownAsOnsite is enabled
+            # Apply location check as if it were onsite
+            checks_performed.append("workArrangement")
+            in_user_city = self._is_in_user_location(job_data, self.user_location)
+            if in_user_city is False:
+                return PreFilterResult(
+                    passed=False,
+                    reason=f"Unknown work arrangement with location outside {self.user_location}",
+                    checks_performed=checks_performed,
+                    checks_skipped=checks_skipped,
+                )
+            # in_user_city is True or None (missing data) - allow
         else:
             checks_skipped.append("workArrangement")
 
@@ -323,40 +355,64 @@ class PreFilter:
             logger.debug(f"Error parsing posted_date '{posted_date}': {e}")
             return PreFilterResult(passed=True), False
 
-    def _infer_work_arrangement(self, job_data: Dict[str, Any]) -> Optional[str]:
+    def _infer_work_arrangement(
+        self, job_data: Dict[str, Any], is_remote_source: bool = False
+    ) -> Optional[str]:
         """
         Infer work arrangement from available data.
 
+        Args:
+            job_data: Scraped job data dictionary
+            is_remote_source: If True, source is a remote-only job board
+
         Returns: "remote", "hybrid", "onsite", or None if unknown
         """
+        # Source-level override: remote-only job boards (Remotive, RemoteOK, etc.)
+        if is_remote_source:
+            return "remote"
+
         # Direct is_remote boolean (Ashby)
         is_remote = job_data.get("is_remote")
         if is_remote is True:
             return "remote"
 
-        # Check metadata for work arrangement (Greenhouse)
+        # Check metadata for work arrangement (Greenhouse "Location Type" field)
         metadata = job_data.get("metadata", {})
         if isinstance(metadata, dict):
             location_type = metadata.get("Location Type", "")
-            if location_type:
+            if isinstance(location_type, str) and location_type:
                 lt_lower = location_type.lower()
-                if "remote" in lt_lower:
+                if any(kw in lt_lower for kw in self.remote_keywords):
                     return "remote"
                 if "hybrid" in lt_lower:
                     return "hybrid"
                 if "onsite" in lt_lower or "on-site" in lt_lower or "office" in lt_lower:
                     return "onsite"
 
+        # Check offices array for remote indicators (Greenhouse)
+        offices = job_data.get("offices", [])
+        if isinstance(offices, list):
+            for office in offices:
+                office_name = ""
+                if isinstance(office, dict):
+                    office_name = office.get("name", "")
+                elif isinstance(office, str):
+                    office_name = office
+                if isinstance(office_name, str) and office_name:
+                    office_lower = office_name.lower()
+                    if any(kw in office_lower for kw in self.remote_keywords):
+                        return "remote"
+
         # Check location string for hints
         location = job_data.get("location", "")
         if isinstance(location, str):
             loc_lower = location.lower()
-            if "remote" in loc_lower:
+            if any(kw in loc_lower for kw in self.remote_keywords):
                 return "remote"
             if "hybrid" in loc_lower:
                 return "hybrid"
 
-        # Can't determine - return None (will be skipped)
+        # Can't determine - return None (will be skipped or treated as onsite if configured)
         return None
 
     def _check_work_arrangement(

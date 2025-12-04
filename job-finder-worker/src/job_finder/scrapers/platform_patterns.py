@@ -55,6 +55,8 @@ class PlatformPattern:
     salary_max_field: str = ""
     # Whether the scraper should follow job detail links for enrichment
     follow_detail: bool = False
+    # Whether this is a remote-only job board (all jobs treated as remote)
+    is_remote_source: bool = False
 
 
 # Platform patterns registry - add new platforms here, not in code
@@ -190,6 +192,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
             "salary": "salary",
         },
         validation_key="jobs",
+        is_remote_source=True,
     ),
     PlatformPattern(
         name="remoteok_api",
@@ -203,9 +206,34 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
             "description": "description",
             "url": "url",
             "posted_date": "date",
+            "tags": "tags",  # Tech stack tags for technology filtering
         },
+        salary_min_field="salary_min",
+        salary_max_field="salary_max",
         validation_key="",  # validate list
         headers={"Accept": "application/json"},
+        is_remote_source=True,
+    ),
+    PlatformPattern(
+        name="jobicy_api",
+        url_pattern=r"jobicy\.com",
+        api_url_template="https://jobicy.com/api/v2/remote-jobs",
+        response_path="jobs",
+        fields={
+            "title": "jobTitle",
+            "company": "companyName",
+            "location": "jobGeo",
+            "description": "jobDescription",
+            "url": "url",
+            "posted_date": "pubDate",
+            "job_level": "jobLevel",  # Senior/Midweight/Junior/Any
+            "job_type": "jobType",  # ["Full-Time"], ["Part-Time"], etc.
+            "industry": "jobIndustry",
+        },
+        salary_min_field="salaryMin",
+        salary_max_field="salaryMax",
+        validation_key="jobs",
+        is_remote_source=True,
     ),
     PlatformPattern(
         name="monster_rss",
@@ -357,5 +385,8 @@ def build_config_from_pattern(
 
     if pattern.follow_detail:
         config["follow_detail"] = True
+
+    if pattern.is_remote_source:
+        config["is_remote_source"] = True
 
     return config

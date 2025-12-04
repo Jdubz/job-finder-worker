@@ -160,6 +160,17 @@ export interface PreFilterWorkArrangementConfig {
   willRelocate: boolean
   /** User's preferred location for onsite/hybrid roles (e.g., "Portland, OR") */
   userLocation: string
+  /**
+   * Keywords that indicate remote work arrangement (checked in location, offices, metadata).
+   * Defaults to ["remote", "distributed", "anywhere", "worldwide"] if not specified.
+   */
+  remoteKeywords?: string[]
+  /**
+   * If true, treat unknown work arrangement as potentially onsite and apply location filter.
+   * Jobs with location data outside userLocation will be rejected even if work type is unknown.
+   * Default: false (unknown = skip location check, following "missing data = pass" principle)
+   */
+  treatUnknownAsOnsite?: boolean
 }
 
 /** Employment type filtering */

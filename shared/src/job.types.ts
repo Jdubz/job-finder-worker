@@ -447,6 +447,60 @@ export interface Company {
 export type JobSourceStatus = "active" | "paused" | "disabled" | "error"
 
 /**
+ * Source configuration JSON structure.
+ *
+ * This defines the structure of the configJson field in JobSource.
+ * Maps to Python's SourceConfig dataclass in job_finder/scrapers/source_config.py.
+ */
+export interface SourceConfigJson {
+  /** Index signature for JSON compatibility */
+  [key: string]: unknown
+  /** Source type - "api" | "rss" | "html" */
+  type: "api" | "rss" | "html"
+  /** Endpoint URL, RSS feed URL, or page URL */
+  url: string
+  /** Mapping of job fields to extraction paths */
+  fields: Record<string, string>
+  /** Path to jobs array in API response (e.g., "jobs", "data.results") */
+  response_path?: string
+  /** CSS selector for job items in HTML */
+  job_selector?: string
+  /** Override company name for all jobs from this source */
+  company_name?: string
+  /** Custom HTTP headers for requests */
+  headers?: Record<string, string>
+  /** API key for authenticated sources */
+  api_key?: string
+  /** Authentication type - "header" | "query" | "bearer" */
+  auth_type?: "header" | "query" | "bearer"
+  /** Header name or query param name for auth */
+  auth_param?: string
+  /** Path to minimum salary field in response */
+  salary_min_field?: string
+  /** Path to maximum salary field in response */
+  salary_max_field?: string
+  /** HTTP method - "GET" | "POST" */
+  method?: "GET" | "POST"
+  /** POST body for APIs that require it (e.g., Workday) */
+  post_body?: Record<string, unknown>
+  /** Base URL for constructing full URLs from relative paths */
+  base_url?: string
+  /** Validation policy - "fail_on_empty" | "allow_empty" */
+  validation_policy?: "fail_on_empty" | "allow_empty"
+  /** Notes explaining why source is disabled */
+  disabled_notes?: string
+  /** Company extraction strategy - "from_title" | "from_description" */
+  company_extraction?: "from_title" | "from_description"
+  /** Whether to fetch each job's detail page to enrich fields */
+  follow_detail?: boolean
+  /**
+   * Remote source flag - if true, all jobs from this source are assumed remote.
+   * Use for remote-only job boards like RemoteOK, WeWorkRemotely, Remotive, etc.
+   */
+  is_remote_source?: boolean
+}
+
+/**
  * Job source record (job_sources table).
  *
  * Represents a configured source for scraping job listings.
@@ -465,8 +519,8 @@ export interface JobSource {
   /** Source status */
   status: JobSourceStatus
 
-  /** Configuration blob (type-specific) */
-  configJson: Record<string, unknown>
+  /** Configuration blob (see SourceConfigJson for structure) */
+  configJson: SourceConfigJson
 
   /** Tags for categorization */
   tags?: string[] | null
