@@ -249,6 +249,8 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
             "posted_date": "releasedDate",
             "job_type": "typeOfEmployment.label",
             "department": "department.label",
+            # SmartRecruiters stores HTML in jobAd.sections.jobDescription.text.
+            "description": "jobAd.sections.jobDescription.text",
         },
         validation_key="content",
     ),
