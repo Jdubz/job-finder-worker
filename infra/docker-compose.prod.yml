@@ -21,7 +21,7 @@ services:
       CRON_ENABLED: "true"
       LOG_DIR: /logs
       WORKER_MAINTENANCE_URL: http://worker:5555/maintenance
-    entrypoint: ["sh", "-c", "if [ ! -f /home/node/.codex/auth.json ]; then mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/; fi; exec docker-entrypoint.sh node dist/index.js"]
+    entrypoint: ["sh", "-c", "if [ ! -f /home/node/.codex/auth.json ]; then mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/; fi; if [ ! -f /home/node/.gemini/oauth_creds.json ]; then mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/; fi; exec docker-entrypoint.sh node dist/index.js"]
     volumes:
       - type: bind
         source: /srv/job-finder/data
@@ -38,6 +38,12 @@ services:
         target: /codex-seed
         read_only: true
       - codex-home-api:/home/node/.codex
+      # Gemini: seed (ro) + named volume (rw) for runtime state
+      - type: bind
+        source: /srv/job-finder/gemini-seed
+        target: /gemini-seed
+        read_only: true
+      - gemini-home-api:/home/node/.gemini
     extra_hosts:
       - "chatgpt.com:${CHATGPT_IPV4:-104.18.32.47}"
       - "www.chatgpt.com:${CHATGPT_IPV4:-104.18.32.47}"
@@ -138,3 +144,4 @@ volumes:
   codex-home-worker:
   codex-home-api:
   gemini-home-worker:
+  gemini-home-api:
