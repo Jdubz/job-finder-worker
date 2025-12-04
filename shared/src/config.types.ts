@@ -160,6 +160,10 @@ export interface PreFilterWorkArrangementConfig {
   willRelocate: boolean
   /** User's preferred location for onsite/hybrid roles (e.g., "Portland, OR") */
   userLocation: string
+  /** User timezone offset hours (e.g., -8 for PST). Optional to stay permissive. */
+  userTimezone?: number
+  /** Maximum allowed timezone difference (hours). Optional; when set enables a hard gate. */
+  maxTimezoneDiffHours?: number
   /**
    * Keywords that indicate remote work arrangement (checked in location, offices, metadata).
    * Defaults to ["remote", "distributed", "anywhere", "worldwide"] if not specified.
@@ -563,4 +567,3 @@ export type JobFinderConfigPayloadMap = {
   "match-policy": MatchPolicy
   "worker-settings": WorkerSettings
 }
-
