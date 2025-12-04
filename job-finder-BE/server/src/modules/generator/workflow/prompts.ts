@@ -292,7 +292,7 @@ export function buildResumePrompt(
   ],
   "education": [{ "institution": "...", "degree": "...", "field": "...", "endDate": "..." }]
 }
-IMPORTANT for skills: Group skills into 5-6 categories. Each category needs a descriptive name and an array of skill items. DO NOT use a single "Skills" category.
+IMPORTANT for skills: Group skills into 4-6 categories based on the role requirements. Each category needs a descriptive name and an array of skill items. DO NOT use a single "Skills" category.
 
 ${getBalancedContentGuidance(4)}`
   )

@@ -7,7 +7,7 @@ import type { ResumeContent } from '@shared/types'
  * - Left sidebar (2in / ~25%): Avatar, Contact, Skills, Education
  * - Right main area (~5.5in / 75%): Name/Title header, Summary, Experience
  *
- * Letter page: 11in height - 0.8in margins = 10.2in usable
+ * Letter page: 11in height - 0.8in total margins (0.4in × 2) = 10.2in usable
  * Main column at 10px font with 1.45 line-height ≈ 70 lines
  */
 
@@ -146,7 +146,7 @@ export function getContentBudget(): {
     maxExperiences: 4,
     maxBulletsPerExperience: 4,
     maxSummaryWords: 50,
-    maxSkillCategories: 4
+    maxSkillCategories: 5 // 4-6 range, balanced with sidebar
   }
 }
 
