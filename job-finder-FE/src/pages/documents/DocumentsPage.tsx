@@ -314,12 +314,11 @@ export function DocumentsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() =>
-                                handleViewDocument(
-                                  doc.resumeUrl!,
-                                  `Resume - ${doc.job.role} at ${doc.job.company}`
-                                )
-                              }
+                              onClick={() => {
+                                const resumeUrl = doc.resumeUrl
+                                if (!resumeUrl) return
+                                handleViewDocument(resumeUrl, `Resume - ${doc.job.role} at ${doc.job.company}`)
+                              }}
                               title="View Resume"
                             >
                               <Eye className="h-4 w-4" />
@@ -329,8 +328,10 @@ export function DocumentsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
+                                const resumeUrl = doc.resumeUrl
+                                if (!resumeUrl) return
                                 const artifact = doc.artifacts.find((a) => a.artifactType === "resume")
-                                handleDownload(doc.resumeUrl!, artifact?.filename || "resume.pdf")
+                                handleDownload(resumeUrl, artifact?.filename || "resume.pdf")
                               }}
                               title="Download Resume"
                             >
@@ -344,12 +345,14 @@ export function DocumentsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() =>
+                              onClick={() => {
+                                const coverUrl = doc.coverLetterUrl
+                                if (!coverUrl) return
                                 handleViewDocument(
-                                  doc.coverLetterUrl!,
+                                  coverUrl,
                                   `Cover Letter - ${doc.job.role} at ${doc.job.company}`
                                 )
-                              }
+                              }}
                               title="View Cover Letter"
                             >
                               <Eye className="h-4 w-4 text-blue-500" />
@@ -359,8 +362,10 @@ export function DocumentsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
+                                const coverUrl = doc.coverLetterUrl
+                                if (!coverUrl) return
                                 const artifact = doc.artifacts.find((a) => a.artifactType === "cover-letter")
-                                handleDownload(doc.coverLetterUrl!, artifact?.filename || "cover-letter.pdf")
+                                handleDownload(coverUrl, artifact?.filename || "cover-letter.pdf")
                               }}
                               title="Download Cover Letter"
                             >
