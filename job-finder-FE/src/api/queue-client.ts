@@ -113,6 +113,66 @@ export class QueueClient extends BaseApiClient {
     const response = await this.get<ApiSuccessResponse<GetQueueStatsResponse>>(`/queue/stats`)
     return response.data.stats
   }
+
+  async getCronStatus(): Promise<CronStatus> {
+    const response = await this.get<ApiSuccessResponse<CronStatus>>(`/queue/cron/status`)
+    return response.data
+  }
+
+  async triggerCronScrape(): Promise<CronTriggerResult> {
+    const response = await this.post<ApiSuccessResponse<CronTriggerResult>>(`/queue/cron/trigger/scrape`)
+    return response.data
+  }
+
+  async triggerCronMaintenance(): Promise<CronTriggerResult> {
+    const response = await this.post<ApiSuccessResponse<CronTriggerResult>>(`/queue/cron/trigger/maintenance`)
+    return response.data
+  }
+
+  async getWorkerHealth(): Promise<WorkerHealth> {
+    const response = await this.get<ApiSuccessResponse<WorkerHealth>>(`/queue/worker/health`)
+    return response.data
+  }
+}
+
+// Cron and Worker Health types
+export interface CronStatus {
+  enabled: boolean
+  started: boolean
+  nodeEnv: string
+  expressions: {
+    scrape: string
+    maintenance: string
+    logrotate: string
+  }
+  workerMaintenanceUrl: string
+  logDir: string
+}
+
+export interface CronTriggerResult {
+  success: boolean
+  queueItemId?: string
+  status?: number
+  error?: string
+}
+
+export interface WorkerHealth {
+  reachable: boolean
+  workerUrl: string
+  error?: string
+  health?: {
+    status: string
+    running: boolean
+    items_processed: number
+    last_poll: string | null
+    iteration: number
+    last_error: string | null
+  }
+  status?: {
+    worker: Record<string, unknown>
+    queue: Record<string, unknown>
+    uptime: number
+  }
 }
 
 export const queueClient = new QueueClient()

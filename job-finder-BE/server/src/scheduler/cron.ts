@@ -70,27 +70,34 @@ function loadScrapeConfig() {
   }
 }
 
-async function enqueueScrapeJob() {
+export async function enqueueScrapeJob() {
   try {
+    logger.info({ at: utcNowIso() }, 'Cron scrape job starting')
     const scrapeConfig = loadScrapeConfig()
+    logger.info({ scrapeConfig, at: utcNowIso() }, 'Cron loaded scrape config')
     const item = getQueueService().submitScrape({ scrapeConfig })
     logger.info({ queueItemId: item.id, at: utcNowIso() }, 'Cron enqueued scrape job')
+    return { success: true, queueItemId: item.id }
   } catch (error) {
     logger.error({ error, at: utcNowIso() }, 'Cron failed to enqueue scrape job')
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
   }
 }
 
-async function triggerMaintenance() {
+export async function triggerMaintenance() {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 30_000)
   try {
+    logger.info({ url: env.WORKER_MAINTENANCE_URL, at: utcNowIso() }, 'Cron maintenance starting')
     const res = await fetch(env.WORKER_MAINTENANCE_URL, { method: 'POST', signal: controller.signal })
     if (!res.ok) {
       throw new Error(`Maintenance HTTP ${res.status}`)
     }
     logger.info({ status: res.status, at: utcNowIso() }, 'Cron triggered worker maintenance')
+    return { success: true, status: res.status }
   } catch (error) {
     logger.error({ error, at: utcNowIso() }, 'Cron failed to trigger maintenance')
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
   } finally {
     clearTimeout(timeout)
   }
@@ -148,7 +155,70 @@ async function rotateLogs() {
   }
 }
 
+let schedulerStarted = false
+
+export function getCronStatus() {
+  return {
+    enabled: env.CRON_ENABLED,
+    started: schedulerStarted,
+    nodeEnv: env.NODE_ENV,
+    expressions: {
+      scrape: env.CRON_SCRAPE_EXPRESSION,
+      maintenance: env.CRON_MAINTENANCE_EXPRESSION,
+      logrotate: env.CRON_LOGROTATE_EXPRESSION
+    },
+    workerMaintenanceUrl: env.WORKER_MAINTENANCE_URL,
+    logDir: env.LOG_DIR
+  }
+}
+
+export async function getWorkerHealth() {
+  const workerBaseUrl = env.WORKER_MAINTENANCE_URL.replace('/maintenance', '')
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5_000)
+
+  try {
+    const [healthRes, statusRes] = await Promise.all([
+      fetch(`${workerBaseUrl}/health`, { signal: controller.signal }),
+      fetch(`${workerBaseUrl}/status`, { signal: controller.signal })
+    ])
+
+    if (!healthRes.ok || !statusRes.ok) {
+      throw new Error(`Worker responded with health=${healthRes.status}, status=${statusRes.status}`)
+    }
+
+    const health = await healthRes.json()
+    const status = await statusRes.json()
+
+    return {
+      reachable: true,
+      health,
+      status,
+      workerUrl: workerBaseUrl
+    }
+  } catch (error) {
+    logger.error({ error, workerUrl: workerBaseUrl }, 'Failed to fetch worker health')
+    return {
+      reachable: false,
+      error: error instanceof Error ? error.message : String(error),
+      workerUrl: workerBaseUrl
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export function startCronScheduler() {
+  // Debug: log cron-related env vars at startup to diagnose configuration issues
+  logger.info({
+    NODE_ENV: env.NODE_ENV,
+    CRON_ENABLED: env.CRON_ENABLED,
+    CRON_ENABLED_RAW: process.env.CRON_ENABLED,
+    CRON_SCRAPE_EXPRESSION: env.CRON_SCRAPE_EXPRESSION,
+    CRON_MAINTENANCE_EXPRESSION: env.CRON_MAINTENANCE_EXPRESSION,
+    CRON_LOGROTATE_EXPRESSION: env.CRON_LOGROTATE_EXPRESSION
+  }, 'Cron scheduler config')
+
   if (env.NODE_ENV !== 'production') {
     logger.info('Cron scheduler skipped outside production environment')
     return
@@ -199,6 +269,7 @@ export function startCronScheduler() {
     { timezone: 'UTC' }
   )
 
+  schedulerStarted = true
   logger.info({
     scrape: env.CRON_SCRAPE_EXPRESSION,
     maintenance: env.CRON_MAINTENANCE_EXPRESSION,
