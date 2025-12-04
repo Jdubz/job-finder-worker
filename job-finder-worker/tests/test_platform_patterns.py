@@ -26,6 +26,8 @@ class TestPlatformPatternRegistry:
             "indeed_partner_api",
             "indeed_rss",
             "linkedin_stub",
+            "smartrecruiters_api",
+            "avature_rss",
         }
         assert expected.issubset(pattern_names)
 
@@ -174,6 +176,61 @@ class TestMatchPlatform:
         pattern, groups = result
         assert pattern.name == "lever"
         assert groups["company"] == "stripe"
+
+    # SmartRecruiters tests
+    def test_smartrecruiters_html_url(self):
+        """SmartRecruiters careers site should map to smartrecruiters_api."""
+        url = "https://www.smartrecruiters.com/Experian"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "smartrecruiters_api"
+        assert groups["company"] == "Experian"
+
+    def test_smartrecruiters_api_url(self):
+        """Direct API URL should match and extract company."""
+        url = "https://api.smartrecruiters.com/v1/companies/stripe/postings"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "smartrecruiters_api"
+        assert groups["company"] == "stripe"
+
+    def test_smartrecruiters_www_url(self):
+        """www subdomain should also match SmartRecruiters sites."""
+        url = "https://www.smartrecruiters.com/Experian/job/123"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "smartrecruiters_api"
+        assert groups["company"] == "Experian"
+
+    # Avature tests
+    def test_avature_rss_url(self):
+        """Avature SearchJobs feed should match and build RSS config."""
+        url = "https://mantech.avature.net/en_US/careers/SearchJobs"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "avature_rss"
+        assert groups == {
+            "subdomain": "mantech",
+            "lang": "en_US",
+            "site": "careers",
+        }
+
+    def test_avature_rss_multilevel_subdomain(self):
+        """Dotted subdomains should be captured fully for Avature."""
+        url = "https://us.jobs.company.avature.net/en_GB/talent/SearchJobs"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "avature_rss"
+        assert groups == {
+            "subdomain": "us.jobs.company",
+            "lang": "en_GB",
+            "site": "talent",
+        }
 
     # Non-matching URLs
     def test_unknown_url_returns_none(self):

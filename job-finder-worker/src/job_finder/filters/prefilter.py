@@ -120,6 +120,10 @@ class PreFilter:
         # If true, treat unknown work arrangement as potentially onsite and apply location filter
         self.treat_unknown_as_onsite = work_config.get("treatUnknownAsOnsite", False)
 
+        # Optional timezone guard for remote/hybrid roles
+        self.user_timezone = work_config.get("userTimezone")
+        self.max_timezone_diff_hours = work_config.get("maxTimezoneDiffHours")
+
         bool_keys = [
             ("allow_remote", self.allow_remote),
             ("allow_hybrid", self.allow_hybrid),
@@ -445,6 +449,23 @@ class PreFilter:
                         reason=f"{arrangement.capitalize()} roles must be in {self.user_location}",
                     )
                 # Missing/ambiguous location data returns None -> allow (missing data = pass)
+
+        # Optional timezone check (only when both sides provide a timezone)
+        if (
+            self.user_timezone is not None
+            and self.max_timezone_diff_hours is not None
+            and job_data.get("timezone") is not None
+        ):
+            try:
+                tz = float(job_data.get("timezone"))
+                if abs(tz - float(self.user_timezone)) > float(self.max_timezone_diff_hours):
+                    return PreFilterResult(
+                        passed=False,
+                        reason=f"Timezone diff > {self.max_timezone_diff_hours}h",
+                    )
+            except (TypeError, ValueError):
+                # If timezone is present but not numeric, allow (permissive default)
+                pass
 
         return PreFilterResult(passed=True)
 
