@@ -14,6 +14,7 @@ export * from "./content-item.types"
 export * from "./time.types"
 export * from "./config.types"
 export * from "./contact.types"
+export * from "./agent-cli.types"
 
 // API types
 export * from "./api.types"

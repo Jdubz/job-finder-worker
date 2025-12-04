@@ -1,225 +1,233 @@
-"""Tests for the Flask worker /cli/health endpoint."""
+"""Tests for CLI health check functionality in flask_worker."""
 
 import subprocess
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 
-@pytest.fixture
-def flask_client():
-    """Create a Flask test client for the worker app."""
-    from job_finder.flask_worker import app
+class TestCheckCliHealth:
+    """Tests for the check_cli_health function."""
 
-    app.config["TESTING"] = True
-    with app.test_client() as client:
-        yield client
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Import the function fresh for each test."""
+        # Import here to avoid module-level import issues with mocking
+        from job_finder.flask_worker import check_cli_health
 
+        self.check_cli_health = check_cli_health
 
-class TestCliHealthEndpoint:
-    """Tests for the /cli/health endpoint."""
+    def test_healthy_codex_logged_in(self):
+        """Test codex CLI returns healthy when user is logged in."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "You are logged in as user@example.com"
+        mock_result.stderr = ""
 
-    def test_cli_health_all_providers_authenticated(self, flask_client, monkeypatch):
-        """Test when all providers are authenticated."""
-        # Mock subprocess for CLI checks
-        def mock_run(args, **kwargs):
-            result = MagicMock()
-            result.returncode = 0
-            if args[0] == "codex":
-                result.stdout = "Logged in as user@example.com"
-                result.stderr = ""
-            elif args[0] == "gemini":
-                result.stdout = "I'm ready for your first command."
-                result.stderr = ""
-            return result
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
 
-        with patch("subprocess.run", side_effect=mock_run):
-            response = flask_client.get("/cli/health")
+            result = self.check_cli_health()
 
-        assert response.status_code == 200
-        data = response.get_json()
+            assert result["codex"]["healthy"] is True
+            assert "logged in" in result["codex"]["message"].lower()
 
-        assert "providers" in data
-        assert "timestamp" in data
+    def test_healthy_gemini_authenticated(self):
+        """Test gemini CLI returns healthy when authenticated."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "You are authenticated as user@example.com"
+        mock_result.stderr = ""
 
-        # Check codex
-        assert data["providers"]["codex"]["available"] is True
-        assert data["providers"]["codex"]["authenticated"] is True
-        assert "Logged in" in data["providers"]["codex"]["message"]
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
 
-        # Check gemini
-        assert data["providers"]["gemini"]["available"] is True
-        assert data["providers"]["gemini"]["authenticated"] is True
-        assert "ready" in data["providers"]["gemini"]["message"].lower()
+            result = self.check_cli_health()
 
-        # Only codex and gemini should be present
-        assert len(data["providers"]) == 2
+            assert result["gemini"]["healthy"] is True
+            assert "authenticated" in result["gemini"]["message"].lower()
 
-    def test_cli_health_codex_not_logged_in(self, flask_client, monkeypatch):
-        """Test when codex is installed but not logged in."""
-        def mock_run(args, **kwargs):
-            result = MagicMock()
-            if args[0] == "codex":
-                result.returncode = 1
-                result.stdout = ""
-                result.stderr = "Not logged in. Run `codex login` to authenticate."
-            elif args[0] == "gemini":
-                result.returncode = 0
-                result.stdout = "I'm ready for your first command."
-                result.stderr = ""
-            return result
+    def test_unhealthy_codex_not_logged_in(self):
+        """Test codex CLI returns unhealthy when not logged in."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "You are not logged in. Run 'codex login' to authenticate."
+        mock_result.stderr = ""
 
-        with patch("subprocess.run", side_effect=mock_run):
-            response = flask_client.get("/cli/health")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
 
-        assert response.status_code == 200
-        data = response.get_json()
+            result = self.check_cli_health()
 
-        assert data["providers"]["codex"]["available"] is True
-        assert data["providers"]["codex"]["authenticated"] is False
-        assert "Not logged in" in data["providers"]["codex"]["message"]
+            assert result["codex"]["healthy"] is False
 
-    def test_cli_health_gemini_not_authenticated(self, flask_client, monkeypatch):
-        """Test when gemini CLI returns non-ready status."""
-        def mock_run(args, **kwargs):
-            result = MagicMock()
-            if args[0] == "codex":
-                result.returncode = 0
-                result.stdout = "Logged in as user@example.com"
-                result.stderr = ""
-            elif args[0] == "gemini":
-                result.returncode = 1
-                result.stdout = ""
-                result.stderr = "Please set an Auth method in your settings.json"
-            return result
+    def test_unhealthy_gemini_not_authenticated(self):
+        """Test gemini CLI returns unhealthy when not authenticated."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Not authenticated. Please run gemini auth login."
+        mock_result.stderr = ""
 
-        with patch("subprocess.run", side_effect=mock_run):
-            response = flask_client.get("/cli/health")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
 
-        assert response.status_code == 200
-        data = response.get_json()
+            result = self.check_cli_health()
 
-        assert data["providers"]["gemini"]["available"] is True
-        assert data["providers"]["gemini"]["authenticated"] is False
-        assert "Auth method" in data["providers"]["gemini"]["message"]
+            assert result["gemini"]["healthy"] is False
 
-    def test_cli_health_cli_not_installed(self, flask_client, monkeypatch):
-        """Test when CLI tools are not installed."""
-        def mock_run(args, **kwargs):
-            raise FileNotFoundError(f"Command '{args[0]}' not found")
+    def test_unhealthy_login_required(self):
+        """Test CLI returns unhealthy when login is required."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = "Login required to continue"
+        mock_result.stderr = ""
 
-        with patch("subprocess.run", side_effect=mock_run):
-            response = flask_client.get("/cli/health")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
 
-        assert response.status_code == 200
-        data = response.get_json()
+            result = self.check_cli_health()
 
-        assert data["providers"]["codex"]["available"] is False
-        assert data["providers"]["codex"]["authenticated"] is False
-        assert "not installed" in data["providers"]["codex"]["message"].lower()
+            assert result["codex"]["healthy"] is False
 
-        assert data["providers"]["gemini"]["available"] is False
-        assert data["providers"]["gemini"]["authenticated"] is False
-        assert "not installed" in data["providers"]["gemini"]["message"].lower()
+    def test_unhealthy_nonzero_return_code(self):
+        """Test CLI returns unhealthy when command returns non-zero."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = "Some error occurred"
+        mock_result.stderr = "Error details"
 
-    def test_cli_health_timeout(self, flask_client, monkeypatch):
-        """Test when CLI health check times out."""
-        def mock_run(args, **kwargs):
-            raise subprocess.TimeoutExpired(cmd=args[0], timeout=5)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
 
-        with patch("subprocess.run", side_effect=mock_run):
-            response = flask_client.get("/cli/health")
+            result = self.check_cli_health()
 
-        assert response.status_code == 200
-        data = response.get_json()
+            assert result["codex"]["healthy"] is False
+            assert result["gemini"]["healthy"] is False
 
-        assert data["providers"]["codex"]["available"] is True
-        assert data["providers"]["codex"]["authenticated"] is False
-        assert "timed out" in data["providers"]["codex"]["message"].lower()
+    def test_cli_not_installed_file_not_found(self):
+        """Test handling when CLI binary is not found."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError("No such file or directory: 'codex'")
 
-        assert data["providers"]["gemini"]["available"] is True
-        assert data["providers"]["gemini"]["authenticated"] is False
-        assert "timed out" in data["providers"]["gemini"]["message"].lower()
+            result = self.check_cli_health()
 
-    def test_cli_health_unexpected_error(self, flask_client, monkeypatch):
-        """Test handling of unexpected errors during CLI check."""
-        def mock_run(args, **kwargs):
-            raise RuntimeError("Unexpected subprocess error")
+            assert result["codex"]["healthy"] is False
+            assert "not installed" in result["codex"]["message"].lower()
+            assert result["gemini"]["healthy"] is False
+            assert "not installed" in result["gemini"]["message"].lower()
 
-        with patch("subprocess.run", side_effect=mock_run):
-            response = flask_client.get("/cli/health")
+    def test_cli_timeout_expired(self):
+        """Test handling when CLI command times out."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=5)
 
-        assert response.status_code == 200
-        data = response.get_json()
+            result = self.check_cli_health()
 
-        assert data["providers"]["codex"]["available"] is False
-        assert data["providers"]["codex"]["authenticated"] is False
-        assert "Unexpected subprocess error" in data["providers"]["codex"]["message"]
+            assert result["codex"]["healthy"] is False
+            assert "timed out" in result["codex"]["message"].lower()
+            assert result["gemini"]["healthy"] is False
+            assert "timed out" in result["gemini"]["message"].lower()
 
-    def test_cli_health_response_structure(self, flask_client, monkeypatch):
-        """Test that response matches expected CliHealthResponse structure."""
-        def mock_run(args, **kwargs):
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = "Logged in" if args[0] == "codex" else "I'm ready"
-            result.stderr = ""
-            return result
+    def test_generic_exception_handling(self):
+        """Test handling of unexpected exceptions."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = RuntimeError("Unexpected error")
 
-        with patch("subprocess.run", side_effect=mock_run):
-            response = flask_client.get("/cli/health")
+            result = self.check_cli_health()
 
-        data = response.get_json()
+            assert result["codex"]["healthy"] is False
+            assert "Unexpected error" in result["codex"]["message"]
+            assert result["gemini"]["healthy"] is False
 
-        # Verify top-level structure
-        assert "providers" in data
-        assert "timestamp" in data
-        assert isinstance(data["timestamp"], (int, float))
+    def test_message_includes_stderr(self):
+        """Test that error message includes stderr content."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""
+        mock_result.stderr = "Warning: API key expired"
 
-        # Verify only codex and gemini are present
-        expected_providers = ["codex", "gemini"]
-        assert len(data["providers"]) == 2
-        for provider in expected_providers:
-            assert provider in data["providers"]
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
 
-            # Verify provider structure
-            provider_data = data["providers"][provider]
-            assert "available" in provider_data
-            assert "authenticated" in provider_data
-            assert "message" in provider_data
-            assert isinstance(provider_data["available"], bool)
-            assert isinstance(provider_data["authenticated"], bool)
-            assert isinstance(provider_data["message"], str)
+            result = self.check_cli_health()
 
-    def test_cli_health_mixed_status(self, flask_client, monkeypatch):
-        """Test with mixed authentication status across providers."""
-        call_count = {"codex": 0, "gemini": 0}
+            assert "API key expired" in result["codex"]["message"]
 
-        def mock_run(args, **kwargs):
-            result = MagicMock()
-            if args[0] == "codex":
-                call_count["codex"] += 1
-                result.returncode = 0
-                result.stdout = "Logged in as user@example.com"
-                result.stderr = ""
-            elif args[0] == "gemini":
-                call_count["gemini"] += 1
-                result.returncode = 1
-                result.stdout = ""
-                result.stderr = "Not authenticated"
-            return result
+    def test_empty_output_command_succeeded(self):
+        """Test that empty output returns appropriate message."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""
+        mock_result.stderr = ""
 
-        with patch("subprocess.run", side_effect=mock_run):
-            response = flask_client.get("/cli/health")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
 
-        assert response.status_code == 200
-        data = response.get_json()
+            result = self.check_cli_health()
 
-        # Codex: authenticated
-        assert data["providers"]["codex"]["authenticated"] is True
+            # Empty output without success terms should be unhealthy
+            assert result["codex"]["healthy"] is False
+            assert result["codex"]["message"] == "Command succeeded"
 
-        # Gemini: not authenticated
-        assert data["providers"]["gemini"]["authenticated"] is False
+    def test_both_clis_checked(self):
+        """Test that both codex and gemini CLIs are checked."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "You are logged in"
+        mock_result.stderr = ""
 
-        # Verify both CLIs were checked
-        assert call_count["codex"] == 1
-        assert call_count["gemini"] == 1
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
+
+            result = self.check_cli_health()
+
+            assert "codex" in result
+            assert "gemini" in result
+            assert "healthy" in result["codex"]
+            assert "message" in result["codex"]
+            assert "healthy" in result["gemini"]
+            assert "message" in result["gemini"]
+
+    def test_subprocess_called_with_correct_args(self):
+        """Test that subprocess.run is called with correct arguments."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "logged in"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
+
+            self.check_cli_health()
+
+            # Check that both commands were called
+            calls = mock_run.call_args_list
+            assert len(calls) == 2
+
+            # Verify codex call
+            codex_call = [c for c in calls if c[0][0] == ["codex", "login", "status"]]
+            assert len(codex_call) == 1
+            assert codex_call[0][1]["check"] is False
+            assert codex_call[0][1]["capture_output"] is True
+            assert codex_call[0][1]["timeout"] == 5
+
+            # Verify gemini call
+            gemini_call = [c for c in calls if c[0][0] == ["gemini", "auth", "status"]]
+            assert len(gemini_call) == 1
+            assert gemini_call[0][1]["check"] is False
+            assert gemini_call[0][1]["capture_output"] is True
+            assert gemini_call[0][1]["timeout"] == 5
+
+    def test_success_terms_case_insensitive(self):
+        """Test that success term matching is case insensitive."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "LOGGED IN as user@example.com"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock_result
+
+            result = self.check_cli_health()
+
+            assert result["codex"]["healthy"] is True

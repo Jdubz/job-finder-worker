@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   queueClient,
-  type CronStatusResponse,
-  type WorkerHealthResponse,
-  type CronTriggerResponse,
-  type CliHealthResponse
+  type CronStatus,
+  type WorkerHealth,
+  type CronTriggerResult
 } from "@/api/queue-client"
+import type { AgentCliHealth } from "@shared/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -22,7 +22,7 @@ import {
   Clock,
   Loader2,
   Activity,
-  Cpu
+  TerminalSquare
 } from "lucide-react"
 
 const REFRESH_INTERVAL_MS = 30000 // 30 seconds
@@ -30,9 +30,9 @@ const REFRESH_INTERVAL_MS = 30000 // 30 seconds
 export function SystemHealthPage() {
   const { user, isOwner } = useAuth()
 
-  const [cronStatus, setCronStatus] = useState<CronStatusResponse | null>(null)
-  const [workerHealth, setWorkerHealth] = useState<WorkerHealthResponse | null>(null)
-  const [cliHealth, setCliHealth] = useState<CliHealthResponse | null>(null)
+  const [cronStatus, setCronStatus] = useState<CronStatus | null>(null)
+  const [workerHealth, setWorkerHealth] = useState<WorkerHealth | null>(null)
+  const [cliHealth, setCliHealth] = useState<AgentCliHealth | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
@@ -45,7 +45,7 @@ export function SystemHealthPage() {
       const [cron, worker, cli] = await Promise.all([
         queueClient.getCronStatus(),
         queueClient.getWorkerHealth(),
-        queueClient.getCliHealth()
+        queueClient.getAgentCliHealth()
       ])
       setCronStatus(cron)
       setWorkerHealth(worker)
@@ -70,7 +70,7 @@ export function SystemHealthPage() {
     setTriggeringCron(type)
     setAlert(null)
     try {
-      let result: CronTriggerResponse
+      let result: CronTriggerResult
       if (type === "scrape") {
         result = await queueClient.triggerCronScrape()
       } else {
@@ -93,6 +93,13 @@ export function SystemHealthPage() {
       setTriggeringCron(null)
     }
   }
+
+  const overallCliHealthy = cliHealth
+    ? Object.values(cliHealth.backend).every((s) => s.healthy) &&
+      cliHealth.worker.reachable &&
+      !!cliHealth.worker.providers &&
+      Object.values(cliHealth.worker.providers).every((s) => s.healthy)
+    : false
 
   if (!user) {
     return (
@@ -118,7 +125,7 @@ export function SystemHealthPage() {
         <div>
           <h1 className="text-2xl font-bold">System Health</h1>
           <p className="text-muted-foreground">
-            Monitor cron scheduler and worker status
+            Monitor cron scheduler, worker, and agent CLI status
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -152,7 +159,7 @@ export function SystemHealthPage() {
         </Alert>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2">
         {/* Cron Scheduler Card */}
         <Card>
           <CardHeader>
@@ -363,24 +370,28 @@ export function SystemHealthPage() {
           </CardContent>
         </Card>
 
-        {/* CLI Health Card */}
+        {/* Agent CLI Health Card */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Cpu className="h-5 w-5" />
-                <CardTitle>AI Providers</CardTitle>
+                <TerminalSquare className="h-5 w-5" />
+                <CardTitle>Agent CLI Tools</CardTitle>
               </div>
               {loading ? (
                 <Skeleton className="h-6 w-20" />
-              ) : cliHealth?.reachable ? (
-                <Badge variant="default" className="bg-green-600">Connected</Badge>
+              ) : cliHealth ? (
+                overallCliHealthy ? (
+                  <Badge variant="default" className="bg-green-600">Healthy</Badge>
+                ) : (
+                  <Badge variant="destructive">Attention</Badge>
+                )
               ) : (
-                <Badge variant="destructive">Unreachable</Badge>
+                <Badge variant="secondary">Unknown</Badge>
               )}
             </div>
             <CardDescription>
-              CLI and API provider authentication status
+              Authentication and availability checks for codex and gemini CLIs
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -391,51 +402,62 @@ export function SystemHealthPage() {
                 <Skeleton className="h-4 w-1/2" />
               </div>
             ) : cliHealth ? (
-              <>
-                {!cliHealth.reachable ? (
-                  <Alert variant="destructive">
-                    <XCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      Cannot reach worker at {cliHealth.workerUrl}
-                      {cliHealth.error && `: ${cliHealth.error}`}
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <div className="space-y-3">
-                    {cliHealth.providers && Object.entries(cliHealth.providers).map(([name, provider]) => (
-                      <div key={name} className="flex items-center justify-between py-2 border-b last:border-0">
-                        <div className="flex items-center gap-2">
-                          {provider.authenticated ? (
+              <div className="space-y-4 text-sm">
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">Backend API Host</h4>
+                  {Object.entries(cliHealth.backend).map(([provider, status]) => (
+                    <div key={provider} className="flex items-start justify-between gap-2">
+                      <span className="text-muted-foreground capitalize">{provider}</span>
+                      <div className="flex items-center gap-2 text-xs text-right max-w-[260px]">
+                        {status.healthy ? (
+                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-600" />
+                        )}
+                        <span className="text-muted-foreground break-words">{status.message}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-medium text-sm">Worker</h4>
+                    {cliHealth.worker.workerUrl && (
+                      <Badge variant="outline" className="text-[10px]">{cliHealth.worker.workerUrl}</Badge>
+                    )}
+                  </div>
+
+                  {!cliHealth.worker.reachable ? (
+                    <Alert variant="destructive">
+                      <XCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        Cannot reach worker CLI endpoint
+                        {cliHealth.worker.error ? `: ${cliHealth.worker.error}` : ""}
+                      </AlertDescription>
+                    </Alert>
+                  ) : cliHealth.worker.providers ? (
+                    Object.entries(cliHealth.worker.providers).map(([provider, status]) => (
+                      <div key={provider} className="flex items-start justify-between gap-2">
+                        <span className="text-muted-foreground capitalize">{provider}</span>
+                        <div className="flex items-center gap-2 text-xs text-right max-w-[260px]">
+                          {status.healthy ? (
                             <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          ) : provider.available ? (
-                            <AlertCircle className="h-4 w-4 text-yellow-600" />
                           ) : (
                             <XCircle className="h-4 w-4 text-red-600" />
                           )}
-                          <span className="font-medium capitalize">{name}</span>
-                        </div>
-                        <div className="text-right">
-                          <Badge
-                            variant={provider.authenticated ? "default" : "secondary"}
-                            className={provider.authenticated ? "bg-green-600" : ""}
-                          >
-                            {provider.authenticated ? "Authenticated" : provider.available ? "Not Authenticated" : "Unavailable"}
-                          </Badge>
-                          <p className="text-xs text-muted-foreground mt-1 max-w-[200px] truncate">
-                            {provider.message}
-                          </p>
+                          <span className="text-muted-foreground break-words">{status.message}</span>
                         </div>
                       </div>
-                    ))}
-
-                    {cliHealth.timestamp && (
-                      <div className="text-xs text-muted-foreground pt-2">
-                        Last checked: {new Date(cliHealth.timestamp * 1000).toLocaleTimeString()}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
+                    ))
+                  ) : (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>No CLI status reported from worker</AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              </div>
             ) : null}
           </CardContent>
         </Card>
