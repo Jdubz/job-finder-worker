@@ -2,6 +2,8 @@ import { chromium, type BrowserContext } from 'playwright-core'
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
 import { cleanText } from './text.util'
 import { sharedCss } from './html-style'
+import { normalizeUrl } from './url.util'
+
 const DEFAULT_MARGIN = '0.8in'
 const CONTENT_WIDTH = '6.0in'
 
@@ -21,28 +23,29 @@ async function createContext(): Promise<BrowserContext> {
 
 function buildContactRow(personal: PersonalInfo): string {
   const items: string[] = []
-  const add = (label?: string, href?: string) => {
+
+  const addChip = (label?: string, href?: string) => {
     if (!label) return
     const text = cleanText(label)
     if (!text) return
     const content = href ? `<a href="${href}" target="_blank">${text}</a>` : text
     items.push(`<span class="chip">${content}</span>`)
   }
-  add(personal.email, `mailto:${personal.email}`)
-  add(personal.phone)
-  add(personal.location)
+
+  addChip(personal.email, `mailto:${personal.email}`)
+  addChip(personal.phone)
+  addChip(personal.location)
+
   if (personal.website) {
-    const w = personal.website.startsWith('http') ? personal.website : `https://${personal.website}`
-    add(personal.website, w)
+    addChip(personal.website, normalizeUrl(personal.website))
   }
   if (personal.linkedin) {
-    const l = personal.linkedin.startsWith('http') ? personal.linkedin : `https://${personal.linkedin}`
-    add('LinkedIn', l)
+    addChip('LinkedIn', normalizeUrl(personal.linkedin))
   }
   if (personal.github) {
-    const g = personal.github.startsWith('http') ? personal.github : `https://${personal.github}`
-    add('GitHub', g)
+    addChip('GitHub', normalizeUrl(personal.github))
   }
+
   return items.length ? `<div class="contact">${items.join('<span class="dot">·</span>')}</div>` : ''
 }
 

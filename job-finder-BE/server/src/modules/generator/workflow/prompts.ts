@@ -46,29 +46,114 @@ function buildChildrenMap(items: ContentItem[]): Map<string | null, ContentItem[
   return map
 }
 
-/** Check if item is work experience */
-function isWorkItem(item: ContentItem): boolean {
-  return item.aiContext === 'work'
+/** Content item type predicates */
+type AiContextType = 'work' | 'education' | 'project' | 'skills' | 'narrative' | 'highlight'
+
+function filterByContext(items: ContentItem[], context: AiContextType): ContentItem[] {
+  return items.filter((item) => item.aiContext === context)
 }
 
-/** Check if item is education */
-function isEducationItem(item: ContentItem): boolean {
-  return item.aiContext === 'education'
+/** Extracted content from content items, formatted for prompts */
+interface FormattedContent {
+  workFormatted: string
+  educationFormatted: string
+  projectsFormatted: string
+  narrativeText: string
+  skillsFromCategories: string
+  allSkills: string
 }
 
-/** Check if item is a personal project */
-function isProjectItem(item: ContentItem): boolean {
-  return item.aiContext === 'project'
+/**
+ * Extract and format all content items for use in prompts.
+ * This is shared between resume and cover letter prompt builders.
+ */
+function extractFormattedContent(contentItems: ContentItem[]): FormattedContent {
+  const childrenMap = buildChildrenMap(contentItems)
+
+  // Work items with highlights
+  const workItems = filterByContext(contentItems, 'work')
+  const workFormatted = workItems
+    .map((work) => {
+      const highlights = (childrenMap.get(work.id) || []).filter(
+        (child) => child.aiContext === 'highlight'
+      )
+      return formatWorkItem(work, highlights)
+    })
+    .join('\n\n')
+
+  // Education
+  const educationFormatted = filterByContext(contentItems, 'education')
+    .map(formatEducationItem)
+    .join('\n')
+
+  // Projects
+  const projectsFormatted = filterByContext(contentItems, 'project')
+    .map(formatProjectItem)
+    .join('\n')
+
+  // Narrative
+  const narrativeText = filterByContext(contentItems, 'narrative')
+    .map((item) => item.description || '')
+    .filter(Boolean)
+    .join('\n\n')
+
+  // Skills
+  const skillsFromCategories = filterByContext(contentItems, 'skills')
+    .map(formatSkillsItem)
+    .filter(Boolean)
+    .join('\n')
+
+  const allSkills = [...new Set(contentItems.flatMap((item) => item.skills || []))].join(', ')
+
+  return {
+    workFormatted,
+    educationFormatted,
+    projectsFormatted,
+    narrativeText,
+    skillsFromCategories,
+    allSkills
+  }
 }
 
-/** Check if item is a skills category */
-function isSkillsItem(item: ContentItem): boolean {
-  return item.aiContext === 'skills'
-}
+/**
+ * Build the authoritative data block for AI prompts.
+ */
+function buildDataBlock(
+  variables: PromptVariables,
+  content: FormattedContent,
+  header = 'INPUT DATA (authoritative — use exactly this):'
+): string {
+  const { workFormatted, educationFormatted, projectsFormatted, narrativeText, skillsFromCategories, allSkills } = content
+  const skills = skillsFromCategories || allSkills || 'None'
 
-/** Check if item is narrative content */
-function isNarrativeItem(item: ContentItem): boolean {
-  return item.aiContext === 'narrative'
+  return `
+
+${header}
+
+Candidate: ${variables.candidateName}
+Target Role: ${variables.jobTitle}
+Company: ${variables.companyName}
+
+Job Description:
+${variables.jobDescription}
+
+Work Experience:
+${workFormatted || 'None'}
+
+Education:
+${educationFormatted || 'None'}
+
+Projects:
+${projectsFormatted || 'None'}
+
+Skills:
+${skills}
+
+Background/Narrative:
+${narrativeText || 'None'}
+
+Additional Instructions:
+${variables.additionalInstructions || 'None'}`
 }
 
 /** Format work experience item with its highlight children */
@@ -165,48 +250,15 @@ export function buildResumePrompt(
   jobMatch: JobMatchWithListing | null = null
 ): string {
   const prompts = promptsRepo.getPrompts()
-  const childrenMap = buildChildrenMap(contentItems)
-
-  // Get work items and their highlights
-  const workItems = contentItems.filter(isWorkItem)
-  const workFormatted = workItems
-    .map((work) => {
-      const highlights = (childrenMap.get(work.id) || []).filter(
-        (child) => child.aiContext === 'highlight'
-      )
-      return formatWorkItem(work, highlights)
-    })
-    .join('\n\n')
-
-  // Get education items
-  const educationItems = contentItems.filter(isEducationItem)
-  const educationFormatted = educationItems.map(formatEducationItem).join('\n')
-
-  // Get personal projects
-  const projectItems = contentItems.filter(isProjectItem)
-  const projectsFormatted = projectItems.map(formatProjectItem).join('\n')
-
-  // Get skills from skills items and all other items
-  const skillsItems = contentItems.filter(isSkillsItem)
-  const skillsFromCategories = skillsItems.map(formatSkillsItem).filter(Boolean).join('\n')
-  const allSkills = [
-    ...new Set(contentItems.flatMap((item) => item.skills || []))
-  ].join(', ')
-
-  // Get narrative for summary context
-  const narrativeItems = contentItems.filter(isNarrativeItem)
-  const narrativeText = narrativeItems
-    .map((item) => item.description || '')
-    .filter(Boolean)
-    .join('\n\n')
+  const content = extractFormattedContent(contentItems)
 
   const variables: PromptVariables = {
     candidateName: personalInfo.name ?? 'the candidate',
     jobTitle: payload.job.role,
     companyName: payload.job.company,
     jobDescription: payload.job.jobDescriptionText || 'No job description provided',
-    userExperience: workFormatted || 'No experience data available',
-    userSkills: skillsFromCategories || allSkills || 'No skills data available',
+    userExperience: content.workFormatted || 'No experience data available',
+    userSkills: content.skillsFromCategories || content.allSkills || 'No skills data available',
     additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
     companyInfo: jobMatch?.company?.about || '',
     matchedSkills: jobMatch?.matchedSkills?.join(', ') || '',
@@ -215,34 +267,7 @@ export function buildResumePrompt(
   }
 
   const prompt = replaceVariables(prompts.resumeGeneration, variables)
-
-  const dataBlock = `
-
-INPUT DATA (authoritative — use exactly this):
-Candidate: ${variables.candidateName}
-Target Role: ${variables.jobTitle}
-Company: ${variables.companyName}
-
-Job Description:
-${variables.jobDescription}
-
-Work Experience:
-${workFormatted || 'None'}
-
-Education:
-${educationFormatted || 'None'}
-
-Projects:
-${projectsFormatted || 'None'}
-
-Skills:
-${skillsFromCategories || allSkills || 'None'}
-
-Background/Narrative:
-${narrativeText || 'None'}
-
-Additional Instructions:
-${variables.additionalInstructions || 'None'}`
+  const dataBlock = buildDataBlock(variables, content)
 
   return (
     prompt +
@@ -264,75 +289,24 @@ export function buildCoverLetterPrompt(
   jobMatch: JobMatchWithListing | null = null
 ): string {
   const prompts = promptsRepo.getPrompts()
-  const childrenMap = buildChildrenMap(contentItems)
-
-  // Get work items with full details (like resume does)
-  const workItems = contentItems.filter(isWorkItem)
-  const workFormatted = workItems
-    .map((work) => {
-      const highlights = (childrenMap.get(work.id) || []).filter(
-        (child) => child.aiContext === 'highlight'
-      )
-      return formatWorkItem(work, highlights)
-    })
-    .join('\n\n')
-
-  // Get education items
-  const educationItems = contentItems.filter(isEducationItem)
-  const educationFormatted = educationItems.map(formatEducationItem).join('\n')
-
-  // Get personal projects
-  const projectItems = contentItems.filter(isProjectItem)
-  const projectsFormatted = projectItems.map(formatProjectItem).join('\n')
-
-  // Get narrative for personal touch
-  const narrativeItems = contentItems.filter(isNarrativeItem)
-  const narrativeText = narrativeItems
-    .map((item) => item.description || '')
-    .filter(Boolean)
-    .join('\n\n')
-
-  const allSkills = [...new Set(contentItems.flatMap((item) => item.skills || []))].join(', ')
+  const content = extractFormattedContent(contentItems)
 
   const variables: PromptVariables = {
     candidateName: personalInfo.name ?? 'the candidate',
     jobTitle: payload.job.role,
     companyName: payload.job.company,
     jobDescription: payload.job.jobDescriptionText || 'No job description provided',
-    userExperience: workFormatted || 'No experience data available',
-    userSkills: allSkills || 'No skills data available',
+    userExperience: content.workFormatted || 'No experience data available',
+    userSkills: content.allSkills || 'No skills data available',
     additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
     companyInfo: jobMatch?.company?.about || '',
-    matchedSkills: jobMatch?.matchedSkills?.join(', ') || allSkills,
+    matchedSkills: jobMatch?.matchedSkills?.join(', ') || content.allSkills,
     keyStrengths: jobMatch?.keyStrengths?.join(', ') || '',
     atsKeywords: jobMatch?.resumeIntakeData?.atsKeywords?.join(', ') || ''
   }
 
   const prompt = replaceVariables(prompts.coverLetterGeneration, variables)
-
-  // Build comprehensive data block like resume has
-  const dataBlock = `
-
-AUTHORITATIVE CANDIDATE DATA (use ONLY this information):
-
-Candidate: ${variables.candidateName}
-Target Role: ${variables.jobTitle}
-Company: ${variables.companyName}
-
-Work Experience:
-${workFormatted || 'None provided'}
-
-Education:
-${educationFormatted || 'None provided'}
-
-Projects:
-${projectsFormatted || 'None provided'}
-
-Skills:
-${allSkills || 'None provided'}
-
-Background/Narrative:
-${narrativeText || 'None provided'}`
+  const dataBlock = buildDataBlock(variables, content, 'AUTHORITATIVE CANDIDATE DATA (use ONLY this information):')
 
   return (
     prompt +

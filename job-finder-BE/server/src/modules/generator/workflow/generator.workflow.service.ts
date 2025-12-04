@@ -120,105 +120,53 @@ export class GeneratorWorkflowService {
     }
     this.workflowRepo.updateRequest(requestId, { personalInfo, steps })
 
+    // Build payload once for reuse
+    const payload: GenerateDocumentPayload = {
+      generateType: request.generateType,
+      job: request.job as GenerateDocumentPayload['job'],
+      preferences: request.preferences as GenerateDocumentPayload['preferences'],
+      jobMatchId: request.jobMatchId ?? undefined
+    }
+
     if (pendingStep.id === 'collect-data') {
-      try {
-        await this.ensureProviderAvailable()
-        const updated = completeStep(startStep(steps, 'collect-data'), 'collect-data', 'completed')
-        this.workflowRepo.updateRequest(requestId, { steps: updated })
-        const nextStep = updated.find((s) => s.status === 'pending')?.id
-        return {
-          requestId,
-          status: request.status,
-          steps: updated,
-          nextStep,
-          stepCompleted: 'collect-data'
-        }
-      } catch (error) {
-        this.log.error({ err: error, requestId }, 'AI provider health check failed')
-        const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
-        const updated = completeStep(startStep(steps, 'collect-data'), 'collect-data', 'failed', undefined, {
-          message: errorMessage
-        })
-        this.workflowRepo.updateRequest(requestId, { status: 'failed', steps: updated })
-        return {
-          requestId,
-          status: 'failed',
-          steps: updated,
-          nextStep: undefined,
-          stepCompleted: 'collect-data',
-          error: error instanceof Error ? error.message : 'AI provider unavailable'
-        }
-      }
+      return this.executeStep(
+        'collect-data',
+        requestId,
+        request.status,
+        steps,
+        async () => {
+          await this.ensureProviderAvailable()
+        },
+        'AI provider health check'
+      )
     }
 
     if (pendingStep.id === 'generate-resume') {
-      try {
-        const resumeUrl = await this.generateResume(
-          {
-            generateType: request.generateType,
-            job: request.job as GenerateDocumentPayload['job'],
-            preferences: request.preferences as GenerateDocumentPayload['preferences'],
-            jobMatchId: request.jobMatchId ?? undefined
-          },
-          requestId,
-          personalInfo
-        )
-        this.workflowRepo.updateRequest(requestId, { resumeUrl: resumeUrl ?? null })
-        const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'completed')
-        this.workflowRepo.updateRequest(requestId, { steps: updated })
-        const nextStep = updated.find((s) => s.status === 'pending')?.id
-        return { requestId, status: request.status, steps: updated, nextStep, resumeUrl, stepCompleted: 'generate-resume' }
-      } catch (error) {
-        this.log.error({ err: error, requestId }, 'Resume generation failed')
-        const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
-        const updated = completeStep(startStep(steps, 'generate-resume'), 'generate-resume', 'failed', undefined, {
-          message: errorMessage
-        })
-        this.workflowRepo.updateRequest(requestId, { status: 'failed', steps: updated })
-        return {
-          requestId,
-          status: 'failed',
-          steps: updated,
-          nextStep: undefined,
-          stepCompleted: 'generate-resume',
-          error: errorMessage
-        }
-      }
+      return this.executeStep(
+        'generate-resume',
+        requestId,
+        request.status,
+        steps,
+        async () => {
+          const url = await this.generateResume(payload, requestId, personalInfo)
+          return { urlField: 'resumeUrl' as const, url }
+        },
+        'Resume generation'
+      )
     }
 
     if (pendingStep.id === 'generate-cover-letter') {
-      try {
-        const coverLetterUrl = await this.generateCoverLetter(
-          {
-            generateType: request.generateType,
-            job: request.job as GenerateDocumentPayload['job'],
-            preferences: request.preferences as GenerateDocumentPayload['preferences'],
-            jobMatchId: request.jobMatchId ?? undefined
-          },
-          requestId,
-          personalInfo
-        )
-        this.workflowRepo.updateRequest(requestId, { coverLetterUrl: coverLetterUrl ?? null })
-        const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'completed')
-        this.workflowRepo.updateRequest(requestId, { steps: updated })
-        const nextStep = updated.find((s) => s.status === 'pending')?.id
-        return { requestId, status: request.status, steps: updated, nextStep, coverLetterUrl, stepCompleted: 'generate-cover-letter' }
-      } catch (error) {
-        this.log.error({ err: error, requestId }, 'Cover letter generation failed')
-        const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
-        const updated = completeStep(startStep(steps, 'generate-cover-letter'), 'generate-cover-letter', 'failed', undefined, {
-          message: errorMessage
-        })
-        this.workflowRepo.updateRequest(requestId, { status: 'failed', steps: updated })
-        return {
-          requestId,
-          status: 'failed',
-          steps: updated,
-          nextStep: undefined,
-          stepCompleted: 'generate-cover-letter',
-          error: errorMessage
-        }
-      }
+      return this.executeStep(
+        'generate-cover-letter',
+        requestId,
+        request.status,
+        steps,
+        async () => {
+          const url = await this.generateCoverLetter(payload, requestId, personalInfo)
+          return { urlField: 'coverLetterUrl' as const, url }
+        },
+        'Cover letter generation'
+      )
     }
 
     // render-pdf step: PDF rendering is done within generateResume/generateCoverLetter,
@@ -251,6 +199,57 @@ export class GeneratorWorkflowService {
   private buildUserMessage(error: unknown, fallback: string): string {
     if (error instanceof UserFacingError) return error.message
     return fallback
+  }
+
+  /**
+   * Generic step executor that handles the common try/catch pattern for workflow steps.
+   */
+  private async executeStep(
+    stepId: string,
+    requestId: string,
+    currentStatus: string,
+    steps: ReturnType<typeof createInitialSteps>,
+    action: () => Promise<{ urlField?: 'resumeUrl' | 'coverLetterUrl'; url?: string } | void>,
+    logContext: string
+  ) {
+    try {
+      const result = await action()
+
+      // Update URL field if returned
+      if (result?.urlField && result.url !== undefined) {
+        this.workflowRepo.updateRequest(requestId, { [result.urlField]: result.url ?? null })
+      }
+
+      const updated = completeStep(startStep(steps, stepId), stepId, 'completed')
+      this.workflowRepo.updateRequest(requestId, { steps: updated })
+      const nextStep = updated.find((s) => s.status === 'pending')?.id
+
+      return {
+        requestId,
+        status: currentStatus,
+        steps: updated,
+        nextStep,
+        stepCompleted: stepId,
+        ...(result?.urlField === 'resumeUrl' ? { resumeUrl: result.url } : {}),
+        ...(result?.urlField === 'coverLetterUrl' ? { coverLetterUrl: result.url } : {})
+      }
+    } catch (error) {
+      this.log.error({ err: error, requestId }, `${logContext} failed`)
+      const errorMessage = this.buildUserMessage(error, this.userFriendlyError)
+      const updated = completeStep(startStep(steps, stepId), stepId, 'failed', undefined, {
+        message: errorMessage
+      })
+      this.workflowRepo.updateRequest(requestId, { status: 'failed', steps: updated })
+
+      return {
+        requestId,
+        status: 'failed',
+        steps: updated,
+        nextStep: undefined,
+        stepCompleted: stepId,
+        error: errorMessage
+      }
+    }
   }
 
   private async generateResume(

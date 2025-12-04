@@ -1,7 +1,4 @@
 import { spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import path from 'node:path'
-import os from 'node:os'
 import { logger } from '../../../../logger'
 import { isAuthenticationError } from './auth-error.util'
 
@@ -80,7 +77,6 @@ export async function runCliProvider(prompt: string, preferred: CliProvider = 'c
 async function executeCommand(provider: CliProvider, prompt: string): Promise<CliResult> {
   return new Promise((resolve) => {
     const command = buildCommand(provider, prompt)
-    const logFile = path.join(os.tmpdir(), `generator-cli-${randomUUID()}.log`)
 
     logger.info({ provider, cmd: command.cmd }, 'Executing AI generation command')
 
@@ -129,11 +125,11 @@ async function executeCommand(provider: CliProvider, prompt: string): Promise<Cl
       try {
         const parsed = JSON.parse(stdout) // validate once; keep returning stdout to preserve API contract
         void parsed
-        logger.warn({ provider, code, logFile }, 'CLI exited non-zero but produced JSON; accepting output')
+        logger.warn({ provider, code }, 'CLI exited non-zero but produced JSON; accepting output')
         resolve({ success: true, output: stdout })
         return
       } catch {
-        logger.warn({ provider, code, stderr, logFile }, 'CLI provider failed')
+        logger.warn({ provider, code, stderr }, 'CLI provider failed')
         resolve({ success: false, output: stdout, error: sanitizeCliError(stderr || stdout) })
       }
     })
