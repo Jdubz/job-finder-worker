@@ -203,9 +203,32 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
             "description": "description",
             "url": "url",
             "posted_date": "date",
+            "tags": "tags",  # Tech stack tags for technology filtering
         },
+        salary_min_field="salary_min",
+        salary_max_field="salary_max",
         validation_key="",  # validate list
         headers={"Accept": "application/json"},
+    ),
+    PlatformPattern(
+        name="jobicy_api",
+        url_pattern=r"jobicy\.com",
+        api_url_template="https://jobicy.com/api/v2/remote-jobs",
+        response_path="jobs",
+        fields={
+            "title": "jobTitle",
+            "company": "companyName",
+            "location": "jobGeo",
+            "description": "jobDescription",
+            "url": "url",
+            "posted_date": "pubDate",
+            "job_level": "jobLevel",  # Senior/Midweight/Junior/Any
+            "job_type": "jobType",  # ["Full-Time"], ["Part-Time"], etc.
+            "industry": "jobIndustry",
+        },
+        salary_min_field="salaryMin",
+        salary_max_field="salaryMax",
+        validation_key="jobs",
     ),
     PlatformPattern(
         name="monster_rss",
