@@ -41,23 +41,37 @@ The `infra/` directory contains **templates and development configurations** for
    - Set actual tunnel IDs and hostnames
    - Configure environment variables
 
-3. Create `/srv/job-finder/.env` with required environment variables:
+3. Create service-specific environment files in `/srv/job-finder/secrets/`:
+
+   **API environment** (`/srv/job-finder/secrets/api.env`):
    ```bash
    # CORS configuration - comma-separated list of allowed frontend origins
    CORS_ALLOWED_ORIGINS="https://job-finder.joshwentworth.com"
 
-   # Worker/WebSocket auth (shared secret between API and worker)
-   WORKER_WS_TOKEN="change-me"
-
-   # Firebase configuration
+   # Firebase configuration (for auth verification)
    FIREBASE_PROJECT_ID="your-project-id"
    FIREBASE_CLIENT_EMAIL="your-service-account@project.iam.gserviceaccount.com"
    FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
    ...
    -----END PRIVATE KEY-----"
 
-   # Other API configuration as needed
+   # Generator settings
+   GENERATOR_BYPASS_TOKEN="your-secure-token"
+   GENERATOR_ARTIFACTS_PUBLIC_BASE="https://your-domain.com/api/generator/artifacts"
    ```
+
+   **Worker environment** (`/srv/job-finder/secrets/worker.env`):
+   ```bash
+   # AI provider API keys
+   OPENAI_API_KEY="sk-..."
+   ANTHROPIC_API_KEY="sk-ant-..."
+   GEMINI_API_KEY="..."
+
+   # Worker/WebSocket auth (shared secret between API and worker)
+   WORKER_WS_TOKEN="change-me"
+   ```
+
+   > **Note:** Service-specific env files follow least-privilege principle - each service only gets the secrets it needs. Common settings like `DATABASE_PATH` are defined directly in the compose file's `environment:` block.
 
 4. Ensure all required directories exist:
    ```bash
