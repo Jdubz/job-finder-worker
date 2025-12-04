@@ -133,6 +133,11 @@ export class QueueClient extends BaseApiClient {
     const response = await this.get<ApiSuccessResponse<WorkerHealth>>(`/queue/worker/health`)
     return response.data
   }
+
+  async getAgentCliHealth(): Promise<AgentCliHealth> {
+    const response = await this.get<ApiSuccessResponse<AgentCliHealth>>(`/queue/cli/health`)
+    return response.data
+  }
 }
 
 // Cron and Worker Health types
@@ -172,6 +177,23 @@ export interface WorkerHealth {
     worker: Record<string, unknown>
     queue: Record<string, unknown>
     uptime: number
+  }
+}
+
+export type AgentCliProvider = "codex" | "gemini"
+
+export interface AgentCliStatus {
+  healthy: boolean
+  message: string
+}
+
+export interface AgentCliHealth {
+  backend: Record<AgentCliProvider, AgentCliStatus>
+  worker: {
+    reachable: boolean
+    providers?: Record<AgentCliProvider, AgentCliStatus>
+    error?: string
+    workerUrl?: string
   }
 }
 

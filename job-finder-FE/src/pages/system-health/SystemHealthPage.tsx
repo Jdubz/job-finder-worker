@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import { queueClient, type CronStatus, type WorkerHealth, type CronTriggerResult } from "@/api/queue-client"
+import {
+  queueClient,
+  type CronStatus,
+  type WorkerHealth,
+  type CronTriggerResult,
+  type AgentCliHealth
+} from "@/api/queue-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -15,7 +21,8 @@ import {
   Server,
   Clock,
   Loader2,
-  Activity
+  Activity,
+  TerminalSquare
 } from "lucide-react"
 
 const REFRESH_INTERVAL_MS = 30000 // 30 seconds
@@ -25,6 +32,7 @@ export function SystemHealthPage() {
 
   const [cronStatus, setCronStatus] = useState<CronStatus | null>(null)
   const [workerHealth, setWorkerHealth] = useState<WorkerHealth | null>(null)
+  const [cliHealth, setCliHealth] = useState<AgentCliHealth | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
@@ -34,12 +42,14 @@ export function SystemHealthPage() {
   const fetchHealth = useCallback(async () => {
     try {
       setError(null)
-      const [cron, worker] = await Promise.all([
+      const [cron, worker, cli] = await Promise.all([
         queueClient.getCronStatus(),
-        queueClient.getWorkerHealth()
+        queueClient.getWorkerHealth(),
+        queueClient.getAgentCliHealth()
       ])
       setCronStatus(cron)
       setWorkerHealth(worker)
+      setCliHealth(cli)
       setLastRefresh(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch health status")
@@ -84,6 +94,13 @@ export function SystemHealthPage() {
     }
   }
 
+  const overallCliHealthy = cliHealth
+    ? Object.values(cliHealth.backend).every((s) => s.healthy) &&
+      cliHealth.worker.reachable &&
+      !!cliHealth.worker.providers &&
+      Object.values(cliHealth.worker.providers).every((s) => s.healthy)
+    : false
+
   if (!user) {
     return (
       <Alert variant="destructive">
@@ -108,7 +125,7 @@ export function SystemHealthPage() {
         <div>
           <h1 className="text-2xl font-bold">System Health</h1>
           <p className="text-muted-foreground">
-            Monitor cron scheduler and worker status
+            Monitor cron scheduler, worker, and agent CLI status
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -349,6 +366,98 @@ export function SystemHealthPage() {
                   </>
                 )}
               </>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {/* Agent CLI Health Card */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <TerminalSquare className="h-5 w-5" />
+                <CardTitle>Agent CLI Tools</CardTitle>
+              </div>
+              {loading ? (
+                <Skeleton className="h-6 w-20" />
+              ) : cliHealth ? (
+                overallCliHealthy ? (
+                  <Badge variant="default" className="bg-green-600">Healthy</Badge>
+                ) : (
+                  <Badge variant="destructive">Attention</Badge>
+                )
+              ) : (
+                <Badge variant="secondary">Unknown</Badge>
+              )}
+            </div>
+            <CardDescription>
+              Authentication and availability checks for codex and gemini CLIs
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : cliHealth ? (
+              <div className="space-y-4 text-sm">
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">Backend API Host</h4>
+                  {Object.entries(cliHealth.backend).map(([provider, status]) => (
+                    <div key={provider} className="flex items-start justify-between gap-2">
+                      <span className="text-muted-foreground capitalize">{provider}</span>
+                      <div className="flex items-center gap-2 text-xs text-right max-w-[260px]">
+                        {status.healthy ? (
+                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-600" />
+                        )}
+                        <span className="text-muted-foreground break-words">{status.message}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-medium text-sm">Worker</h4>
+                    {cliHealth.worker.workerUrl && (
+                      <Badge variant="outline" className="text-[10px]">{cliHealth.worker.workerUrl}</Badge>
+                    )}
+                  </div>
+
+                  {!cliHealth.worker.reachable ? (
+                    <Alert variant="destructive">
+                      <XCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        Cannot reach worker CLI endpoint
+                        {cliHealth.worker.error ? `: ${cliHealth.worker.error}` : ""}
+                      </AlertDescription>
+                    </Alert>
+                  ) : cliHealth.worker.providers ? (
+                    Object.entries(cliHealth.worker.providers).map(([provider, status]) => (
+                      <div key={provider} className="flex items-start justify-between gap-2">
+                        <span className="text-muted-foreground capitalize">{provider}</span>
+                        <div className="flex items-center gap-2 text-xs text-right max-w-[260px]">
+                          {status.healthy ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-600" />
+                          )}
+                          <span className="text-muted-foreground break-words">{status.message}</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>No CLI status reported from worker</AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              </div>
             ) : null}
           </CardContent>
         </Card>

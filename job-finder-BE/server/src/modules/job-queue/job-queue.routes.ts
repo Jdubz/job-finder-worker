@@ -24,7 +24,14 @@ import {
   sendCommandToWorker
 } from './queue-events'
 import { requireRole } from '../../middleware/firebase-auth'
-import { enqueueScrapeJob, triggerMaintenance, getCronStatus, getWorkerHealth } from '../../scheduler/cron'
+import {
+  enqueueScrapeJob,
+  triggerMaintenance,
+  getCronStatus,
+  getWorkerHealth,
+  getWorkerCliHealth
+} from '../../scheduler/cron'
+import { getLocalCliHealth } from '../../services/cli-health.service'
 
 const queueStatuses = [
   'pending',
@@ -339,6 +346,19 @@ export function buildJobQueueRouter() {
     asyncHandler(async (_req, res) => {
       const health = await getWorkerHealth()
       res.json(success(health))
+    })
+  )
+
+  router.get(
+    '/cli/health',
+    requireRole('admin'),
+    asyncHandler(async (_req, res) => {
+      const [backend, worker] = await Promise.all([
+        getLocalCliHealth(),
+        getWorkerCliHealth()
+      ])
+
+      res.json(success({ backend, worker }))
     })
   )
 
