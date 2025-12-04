@@ -110,7 +110,7 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
     case 'worker-settings':
       return normalizeKeys<WorkerSettings>(payload)
     case 'cron-config':
-      return payload as CronConfig
+      return payload as unknown as CronConfig
     case 'personal-info':
     default:
       return payload

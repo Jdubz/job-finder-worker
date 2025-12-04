@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   AlertCircle,
   CheckCircle2,
@@ -316,9 +316,9 @@ export function SystemHealthPage() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="text-muted-foreground text-sm">Enabled</span>
-                                <Switch
+                                <Checkbox
                                   checked={job.enabled}
-                                  onCheckedChange={(checked) => handleToggleJob(key, checked)}
+                                  onCheckedChange={(checked) => handleToggleJob(key, checked === true)}
                                   disabled={savingJob === key || loading}
                                 />
                               </div>
