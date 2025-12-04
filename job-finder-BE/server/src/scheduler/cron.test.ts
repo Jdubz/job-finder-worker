@@ -14,22 +14,10 @@ vi.mock('../logger', () => ({
 vi.mock('../config/env', () => ({
   env: {
     WORKER_MAINTENANCE_URL: 'http://localhost:5555/maintenance',
-    CRON_ENABLED: true,
     NODE_ENV: 'test',
-    CRON_SCRAPE_EXPRESSION: '0 */6 * * *',
-    CRON_MAINTENANCE_EXPRESSION: '0 0 * * *',
-    CRON_LOGROTATE_EXPRESSION: '0 3 * * *',
     LOG_DIR: '/tmp/logs',
     LOG_ROTATE_MAX_BYTES: 10485760,
     LOG_ROTATE_RETENTION_DAYS: 7
-  }
-}))
-
-// Mock node-cron
-vi.mock('node-cron', () => ({
-  default: {
-    validate: vi.fn(() => true),
-    schedule: vi.fn()
   }
 }))
 

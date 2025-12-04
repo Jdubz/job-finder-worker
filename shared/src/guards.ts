@@ -25,6 +25,8 @@ import type {
   AIProviderOption,
   ScoringConfig,
   PromptConfig,
+  CronConfig,
+  CronJobSchedule,
 } from "./config.types"
 import type { PersonalInfo } from "./generator.types"
 // Import and re-export type guards from queue.types for convenience
@@ -474,6 +476,31 @@ export function isWorkerSettings(value: unknown): value is WorkerSettings {
   }
 
   return true
+}
+
+function isCronJobSchedule(value: unknown): value is CronJobSchedule {
+  if (!isObject(value)) return false
+  const v = value as any
+  if (typeof v.enabled !== "boolean") return false
+  if (
+    !Array.isArray(v.hours) ||
+    !v.hours.every((h: unknown) => Number.isInteger(h as number) && (h as number) >= 0 && (h as number) <= 23)
+  ) {
+    return false
+  }
+  if (v.lastRun !== undefined && v.lastRun !== null && typeof v.lastRun !== "string") return false
+  return true
+}
+
+export function isCronConfig(value: unknown): value is CronConfig {
+  if (!isObject(value)) return false
+  const jobs = (value as any).jobs
+  if (!isObject(jobs)) return false
+  return (
+    isCronJobSchedule((jobs as any).scrape) &&
+    isCronJobSchedule((jobs as any).maintenance) &&
+    isCronJobSchedule((jobs as any).logrotate)
+  )
 }
 
 export function isPersonalInfo(value: unknown): value is PersonalInfo {

@@ -18,9 +18,9 @@ services:
       PORT: 8080
       DATABASE_PATH: /data/sqlite/jobfinder.db
       JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
-      CRON_ENABLED: "true"
       LOG_DIR: /logs
       WORKER_MAINTENANCE_URL: http://worker:5555/maintenance
+      TZ: America/Los_Angeles
     entrypoint:
       - sh
       - -c
@@ -78,6 +78,7 @@ services:
       JF_NODE_API_BASE: http://api:8080/api
       JF_WORKER_ID: default
       CODEX_CONFIG_SOURCE: /codex
+      TZ: America/Los_Angeles
     entrypoint:
       - sh
       - -c

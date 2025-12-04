@@ -3,12 +3,23 @@ import fs from 'fs/promises'
 import path from 'path'
 import { pipeline } from 'stream/promises'
 import { createGzip } from 'zlib'
-import cron from 'node-cron'
 import { logger } from '../logger'
 import { env } from '../config/env'
 import { JobQueueService } from '../modules/job-queue/job-queue.service'
 import { ConfigRepository } from '../modules/config/config.repository'
-import { isWorkerSettings, type WorkerSettings } from '@shared/types'
+import { isWorkerSettings, isCronConfig, type WorkerSettings, type CronConfig } from '@shared/types'
+
+type CronJobKey = keyof CronConfig['jobs']
+
+const DEFAULT_CRON_CONFIG: CronConfig = {
+  jobs: {
+    scrape: { enabled: true, hours: [0, 6, 12, 18], lastRun: null },
+    maintenance: { enabled: true, hours: [0], lastRun: null },
+    logrotate: { enabled: true, hours: [0], lastRun: null }
+  }
+}
+
+const TICK_INTERVAL_MS = 60_000 // check every minute, run on matching hours
 
 const getQueueService = (() => {
   let svc: JobQueueService | null = null
@@ -32,7 +43,6 @@ function utcNowIso() {
 
 function coalesceNumber(...values: Array<number | null | undefined>): number | null | undefined {
   for (const v of values) {
-    // In scrapeConfig, 0 is our explicit "no limit" signal (stored as null downstream)
     if (v === 0) return null
     if (v !== undefined && v !== null) return v
   }
@@ -125,7 +135,6 @@ async function rotateLogs() {
         if (stat.size > env.LOG_ROTATE_MAX_BYTES) {
           const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '-')
           const rotated = `${fullPath}.${stamp}`
-          // copy-truncate to avoid descriptor loss
           await fs.copyFile(fullPath, rotated)
           await fs.truncate(fullPath, 0)
           logger.info({ file: fullPath, originalSize: stat.size, at: utcNowIso() }, 'Log rotated')
@@ -155,25 +164,165 @@ async function rotateLogs() {
   }
 }
 
+export async function triggerLogRotation() {
+  try {
+    await rotateLogs()
+    return { success: true }
+  } catch (error) {
+    logger.error({ error, at: utcNowIso() }, 'Cron failed to rotate logs')
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 let schedulerStarted = false
+const lastRunHourKey: Record<CronJobKey, string | null> = {
+  scrape: null,
+  maintenance: null,
+  logrotate: null
+}
+
+function getContainerTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || process.env.TZ || 'UTC'
+}
+
+function normalizeHours(hours: number[]): number[] {
+  const unique = Array.from(new Set(hours.filter((h) => Number.isInteger(h) && h >= 0 && h <= 23)))
+  return unique.sort((a, b) => a - b)
+}
+
+function loadCronConfig(): CronConfig {
+  const entry = getConfigRepo().get<CronConfig>('cron-config')
+  const payload = entry?.payload
+
+  if (payload && isCronConfig(payload)) {
+    return {
+      jobs: {
+        scrape: { ...payload.jobs.scrape, hours: normalizeHours(payload.jobs.scrape.hours) },
+        maintenance: { ...payload.jobs.maintenance, hours: normalizeHours(payload.jobs.maintenance.hours) },
+        logrotate: { ...payload.jobs.logrotate, hours: normalizeHours(payload.jobs.logrotate.hours) }
+      }
+    }
+  }
+
+  // Seed defaults if missing or invalid
+  const defaults = {
+    jobs: {
+      scrape: { ...DEFAULT_CRON_CONFIG.jobs.scrape, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.scrape.hours) },
+      maintenance: { ...DEFAULT_CRON_CONFIG.jobs.maintenance, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.maintenance.hours) },
+      logrotate: { ...DEFAULT_CRON_CONFIG.jobs.logrotate, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.logrotate.hours) }
+    }
+  }
+  persistCronConfig(defaults, 'system-bootstrap')
+  return defaults
+}
+
+function persistCronConfig(config: CronConfig, updatedBy: string = 'cron-service') {
+  getConfigRepo().upsert<CronConfig>('cron-config', config, { updatedBy })
+}
+
+function buildHourKey(now: Date): string {
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}-${now.getHours()}`
+}
+
+function hourKeyFromIso(iso?: string | null): string | null {
+  if (!iso) return null
+  const dt = new Date(iso)
+  if (Number.isNaN(dt.getTime())) return null
+  return buildHourKey(dt)
+}
+
+async function maybeRunJob(jobKey: CronJobKey, config: CronConfig, now: Date) {
+  const schedule = config.jobs[jobKey]
+  if (!schedule.enabled) return false
+
+  const currentHour = now.getHours()
+  const hourKey = buildHourKey(now)
+  if (!schedule.hours.includes(currentHour)) return false
+  if (lastRunHourKey[jobKey] === hourKey) return false
+
+  switch (jobKey) {
+    case 'scrape':
+      await enqueueScrapeJob()
+      break
+    case 'maintenance':
+      await triggerMaintenance()
+      break
+    case 'logrotate':
+      await rotateLogs()
+      break
+  }
+
+  const iso = now.toISOString()
+  config.jobs[jobKey].lastRun = iso
+  lastRunHourKey[jobKey] = hourKey
+  return true
+}
+
+async function schedulerTick() {
+  const now = new Date()
+  const config = loadCronConfig()
+
+  // Prevent double-runs when service restarts within the same hour by priming lastRun map
+  for (const key of Object.keys(config.jobs) as CronJobKey[]) {
+    const priorHourKey = hourKeyFromIso(config.jobs[key].lastRun)
+    const currentHourKey = buildHourKey(now)
+    if (priorHourKey === currentHourKey) {
+      lastRunHourKey[key] = priorHourKey
+    }
+  }
+
+  let mutated = false
+  for (const key of Object.keys(config.jobs) as CronJobKey[]) {
+    const ran = await maybeRunJob(key, config, now)
+    mutated = mutated || ran
+  }
+
+  if (mutated) {
+    persistCronConfig(config)
+  }
+}
+
+function scheduleNextTick() {
+  const now = Date.now()
+  const delay = TICK_INTERVAL_MS - (now % TICK_INTERVAL_MS)
+  setTimeout(() => {
+    void schedulerTick().catch((error) => {
+      logger.error({ error }, 'Cron scheduler tick failed')
+    })
+    scheduleNextTick()
+  }, delay)
+}
+
+export function startCronScheduler() {
+  logger.info({ NODE_ENV: env.NODE_ENV, timezone: getContainerTimezone() }, 'Cron scheduler config')
+
+  if (env.NODE_ENV !== 'production') {
+    logger.info('Cron scheduler skipped outside production environment')
+    return
+  }
+
+  if (schedulerStarted) return
+
+  schedulerStarted = true
+  void schedulerTick()
+  scheduleNextTick()
+
+  logger.info({ defaults: DEFAULT_CRON_CONFIG, timezone: getContainerTimezone() }, 'Cron scheduler started')
+}
 
 function getWorkerBaseUrl() {
-  // Parse URL properly instead of fragile string replacement
   const maintenanceUrl = new URL(env.WORKER_MAINTENANCE_URL)
   maintenanceUrl.pathname = maintenanceUrl.pathname.replace(/\/[^/]+$/, '')
   return maintenanceUrl.href.replace(/\/$/, '')
 }
 
 export function getCronStatus() {
+  const config = loadCronConfig()
   return {
-    enabled: env.CRON_ENABLED,
     started: schedulerStarted,
     nodeEnv: env.NODE_ENV,
-    expressions: {
-      scrape: env.CRON_SCRAPE_EXPRESSION,
-      maintenance: env.CRON_MAINTENANCE_EXPRESSION,
-      logrotate: env.CRON_LOGROTATE_EXPRESSION
-    },
+    timezone: getContainerTimezone(),
+    jobs: config.jobs,
     workerMaintenanceUrl: env.WORKER_MAINTENANCE_URL,
     logDir: env.LOG_DIR
   }
@@ -218,7 +367,6 @@ export async function getWorkerHealth() {
 export async function getWorkerCliHealth() {
   const workerBaseUrl = getWorkerBaseUrl()
   const controller = new AbortController()
-  // Longer timeout for CLI checks (they spawn subprocesses)
   const timeout = setTimeout(() => controller.abort(), 10_000)
 
   try {
@@ -244,74 +392,4 @@ export async function getWorkerCliHealth() {
   } finally {
     clearTimeout(timeout)
   }
-}
-
-export function startCronScheduler() {
-  // Debug: log cron-related env vars at startup to diagnose configuration issues
-  logger.info({
-    NODE_ENV: env.NODE_ENV,
-    CRON_ENABLED: env.CRON_ENABLED,
-    CRON_ENABLED_RAW: process.env.CRON_ENABLED,
-    CRON_SCRAPE_EXPRESSION: env.CRON_SCRAPE_EXPRESSION,
-    CRON_MAINTENANCE_EXPRESSION: env.CRON_MAINTENANCE_EXPRESSION,
-    CRON_LOGROTATE_EXPRESSION: env.CRON_LOGROTATE_EXPRESSION
-  }, 'Cron scheduler config')
-
-  if (env.NODE_ENV !== 'production') {
-    logger.info('Cron scheduler skipped outside production environment')
-    return
-  }
-
-  if (!env.CRON_ENABLED) {
-    logger.info('Cron scheduler disabled; set CRON_ENABLED=true to enable')
-    return
-  }
-
-  // Validate expressions early to fail fast
-  const expressions = [
-    ['CRON_SCRAPE_EXPRESSION', env.CRON_SCRAPE_EXPRESSION],
-    ['CRON_MAINTENANCE_EXPRESSION', env.CRON_MAINTENANCE_EXPRESSION],
-    ['CRON_LOGROTATE_EXPRESSION', env.CRON_LOGROTATE_EXPRESSION]
-  ] as const
-
-  for (const [name, expr] of expressions) {
-    if (!cron.validate(expr)) {
-      throw new Error(`Invalid ${name}: ${expr}`)
-    }
-  }
-
-  // Enqueue scrape every 6h (UTC by default)
-  cron.schedule(
-    env.CRON_SCRAPE_EXPRESSION,
-    () => {
-      void enqueueScrapeJob()
-    },
-    { timezone: 'UTC' }
-  )
-
-  // Daily maintenance (delegated to worker HTTP endpoint)
-  cron.schedule(
-    env.CRON_MAINTENANCE_EXPRESSION,
-    () => {
-      void triggerMaintenance()
-    },
-    { timezone: 'UTC' }
-  )
-
-  // Log rotation
-  cron.schedule(
-    env.CRON_LOGROTATE_EXPRESSION,
-    () => {
-      void rotateLogs()
-    },
-    { timezone: 'UTC' }
-  )
-
-  schedulerStarted = true
-  logger.info({
-    scrape: env.CRON_SCRAPE_EXPRESSION,
-    maintenance: env.CRON_MAINTENANCE_EXPRESSION,
-    logrotate: env.CRON_LOGROTATE_EXPRESSION,
-    logDir: env.LOG_DIR
-  }, 'Cron scheduler started')
 }

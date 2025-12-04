@@ -548,6 +548,24 @@ export interface WorkerSettings {
 }
 
 // -----------------------------------------------------------
+// Cron Scheduler Settings
+// -----------------------------------------------------------
+
+export interface CronJobSchedule {
+  enabled: boolean
+  hours: number[] // integers 0-23 in container/local timezone
+  lastRun?: string | null // ISO timestamp of last execution
+}
+
+export interface CronConfig {
+  jobs: {
+    scrape: CronJobSchedule
+    maintenance: CronJobSchedule
+    logrotate: CronJobSchedule
+  }
+}
+
+// -----------------------------------------------------------
 // Config IDs and payload map
 // -----------------------------------------------------------
 
@@ -558,6 +576,7 @@ export type JobFinderConfigId =
   | "prefilter-policy"
   | "match-policy"
   | "worker-settings"
+  | "cron-config"
 
 export type JobFinderConfigPayloadMap = {
   "ai-settings": AISettings
@@ -566,4 +585,5 @@ export type JobFinderConfigPayloadMap = {
   "prefilter-policy": PreFilterPolicy
   "match-policy": MatchPolicy
   "worker-settings": WorkerSettings
+  "cron-config": CronConfig
 }
