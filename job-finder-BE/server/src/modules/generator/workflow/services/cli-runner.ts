@@ -127,7 +127,8 @@ async function executeCommand(provider: CliProvider, prompt: string): Promise<Cl
       // Some CLI tools emit valid JSON but still return non-zero (e.g., extra stderr noise).
       // If stdout parses as JSON, treat it as success so downstream rendering can continue.
       try {
-        JSON.parse(stdout)
+        const parsed = JSON.parse(stdout) // validate once; keep returning stdout to preserve API contract
+        void parsed
         logger.warn({ provider, code, logFile }, 'CLI exited non-zero but produced JSON; accepting output')
         resolve({ success: true, output: stdout })
         return

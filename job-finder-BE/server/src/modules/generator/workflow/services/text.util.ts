@@ -8,4 +8,5 @@ export function cleanText(value?: string | null): string {
   return text
 }
 
-export const cleanArray = (items?: string[] | null): string[] => (items ?? []).map((item) => cleanText(item)).filter(Boolean)
+export const cleanArray = (items?: string[] | null): string[] =>
+  (items ?? []).map((item) => cleanText(item)).filter((item) => item !== '')

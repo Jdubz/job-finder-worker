@@ -6,11 +6,16 @@ const DEFAULT_MARGIN = '0.8in'
 const CONTENT_WIDTH = '6.0in'
 
 async function createContext(): Promise<BrowserContext> {
-  const browser = await chromium.launch({
+  const launchOptions: Parameters<typeof chromium.launch>[0] = {
     headless: true,
-    args: ['--no-sandbox'],
-    executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium'
-  })
+    args: ['--no-sandbox']
+  }
+
+  if (process.env.CHROMIUM_PATH) {
+    launchOptions.executablePath = process.env.CHROMIUM_PATH
+  }
+
+  const browser = await chromium.launch(launchOptions)
   return browser.newContext({ viewport: { width: 1275, height: 1650 } }) // Letter @150dpi
 }
 
@@ -173,10 +178,14 @@ function coverLetterHtml(content: CoverLetterContent, opts: { name: string; emai
 
 async function renderHtmlToPdf(html: string): Promise<Buffer> {
   const context = await createContext()
-  const page = await context.newPage()
-  await page.setContent(html, { waitUntil: 'networkidle' })
-  const pdf = await page.pdf({ format: 'Letter', margin: DEFAULT_MARGIN as any, printBackground: true })
-  await context.browser()?.close()
+  let pdf: Buffer
+  try {
+    const page = await context.newPage()
+    await page.setContent(html, { waitUntil: 'networkidle' })
+    pdf = await page.pdf({ format: 'Letter', margin: DEFAULT_MARGIN as any, printBackground: true })
+  } finally {
+    await context.browser()?.close()
+  }
   return pdf
 }
 

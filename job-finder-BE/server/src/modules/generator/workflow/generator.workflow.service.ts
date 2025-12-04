@@ -6,7 +6,6 @@ import { PersonalInfoStore } from '../personal-info.store'
 import { ContentItemRepository } from '../../content-items/content-item.repository'
 import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { storageService, type ArtifactMetadata } from './services/storage.service'
-import { PdfMakeService } from './services/pdfmake.service'
 import { HtmlPdfService } from './services/html-pdf.service'
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
@@ -42,7 +41,6 @@ export class GeneratorWorkflowService {
     'AI generation failed. Please retry in a moment or contact support if it keeps happening.'
 
   constructor(
-    private readonly pdfService = new PdfMakeService(),
     private readonly htmlPdf = new HtmlPdfService(),
     private readonly workflowRepo = new GeneratorWorkflowRepository(),
     private readonly personalInfoStore = new PersonalInfoStore(),
