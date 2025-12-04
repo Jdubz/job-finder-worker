@@ -52,3 +52,7 @@ if (artifactsDir === defaultArtifactsDir) {
 
 // Make the auth bypass token available before any modules load (tests share module cache)
 process.env.TEST_AUTH_BYPASS_TOKEN = process.env.TEST_AUTH_BYPASS_TOKEN ?? 'bypass-token'
+
+// Reset the artifacts public base to ensure tests use relative URLs regardless of local .env settings.
+// This must happen before any modules that import the storage service are loaded.
+delete process.env.GENERATOR_ARTIFACTS_PUBLIC_BASE

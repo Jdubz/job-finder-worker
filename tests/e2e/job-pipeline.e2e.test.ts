@@ -417,7 +417,7 @@ describe("Job match access", () => {
     const detail = await jobMatchesClient.getMatch(matches[0].id)
     expect(detail?.url).toBe(matches[0].url)
 
-    const stats = await jobMatchesClient.getMatchStats()
+    const stats = await jobMatchesClient.getStats()
     expect(stats.total).toBeGreaterThan(0)
     expect(stats.averageScore).toBeGreaterThan(0)
   })

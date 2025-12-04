@@ -65,7 +65,10 @@ function detectExtension(mime: string): string {
 }
 
 export class LocalStorageService {
-  constructor(private readonly rootDir: string = artifactsRoot) {}
+  constructor(
+    private readonly rootDir: string = artifactsRoot,
+    private readonly basePath: string = publicBasePath
+  ) {}
 
   /**
    * Save artifact with human-readable folder structure and filename
@@ -90,7 +93,7 @@ export class LocalStorageService {
 
   createPublicUrl(storagePath: string): string {
     const normalized = storagePath.startsWith('/') ? storagePath : `/${storagePath}`
-    return `${publicBasePath}${normalized}`
+    return `${this.basePath}${normalized}`
   }
 
   /**
