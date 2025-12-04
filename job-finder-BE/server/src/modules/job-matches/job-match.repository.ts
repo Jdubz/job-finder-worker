@@ -51,6 +51,7 @@ const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   experienceMatch: row.experience_match,
   customizationRecommendations: parseJsonArray(row.customization_recommendations),
   resumeIntakeData: row.resume_intake_json ? JSON.parse(row.resume_intake_json) : undefined,
+  applicationPriority: (row as any).application_priority ?? null,
   analyzedAt: parseTimestamp(row.analyzed_at),
   createdAt: parseTimestamp(row.created_at),
   submittedBy: row.submitted_by,

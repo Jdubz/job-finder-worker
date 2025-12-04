@@ -11,5 +11,7 @@ coverage
 
 # Docker dev environment (cloned DB, artifacts, logs)
 .dev/
+.dev/codex-seed/.codex
+.dev/codex-seed/.keep
 # Local scratch / generated PDFs
 tmp/

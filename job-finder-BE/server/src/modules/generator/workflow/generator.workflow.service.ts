@@ -7,6 +7,7 @@ import { ContentItemRepository } from '../../content-items/content-item.reposito
 import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { storageService, type ArtifactMetadata } from './services/storage.service'
 import { PdfMakeService } from './services/pdfmake.service'
+import { HtmlPdfService } from './services/html-pdf.service'
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
@@ -42,6 +43,7 @@ export class GeneratorWorkflowService {
 
   constructor(
     private readonly pdfService = new PdfMakeService(),
+    private readonly htmlPdf = new HtmlPdfService(),
     private readonly workflowRepo = new GeneratorWorkflowRepository(),
     private readonly personalInfoStore = new PersonalInfoStore(),
     private readonly contentItemRepo = new ContentItemRepository(),
@@ -259,12 +261,7 @@ export class GeneratorWorkflowService {
     personalInfo: PersonalInfo
   ): Promise<string | undefined> {
     const resume = await this.buildResumeContent(payload, personalInfo)
-    const pdf = await this.pdfService.generateResumePDF(
-      resume,
-      payload.preferences?.style ?? 'modern',
-      personalInfo.accentColor ?? '#2563eb',
-      personalInfo
-    )
+    const pdf = await this.htmlPdf.renderResume(resume, personalInfo)
     const metadata: ArtifactMetadata = {
       name: personalInfo.name,
       company: payload.job.company,
@@ -290,17 +287,14 @@ export class GeneratorWorkflowService {
     personalInfo: PersonalInfo
   ): Promise<string | undefined> {
     const coverLetter = await this.buildCoverLetterContent(payload, personalInfo)
-    const pdf = await this.pdfService.generateCoverLetterPDF(coverLetter, {
+    const pdf = await this.htmlPdf.renderCoverLetter(coverLetter, {
       name: personalInfo.name,
       email: personalInfo.email,
       location: personalInfo.location,
       phone: personalInfo.phone,
-      website: personalInfo.website,
-      linkedin: personalInfo.linkedin,
-      github: personalInfo.github,
-      accentColor: personalInfo.accentColor,
       date: payload.date,
-      logo: personalInfo.logo
+      logo: (personalInfo as any).logo,
+      avatar: (personalInfo as any).avatar
     })
     const metadata: ArtifactMetadata = {
       name: personalInfo.name,
