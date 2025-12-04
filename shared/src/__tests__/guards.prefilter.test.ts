@@ -54,6 +54,31 @@ describe("isPreFilterPolicy", () => {
     expect(isPreFilterPolicy(bad)).toBe(false)
   })
 
+  it("rejects invalid maxTimezoneDiffHours", () => {
+    const bad = {
+      ...valid,
+      workArrangement: {
+        ...valid.workArrangement,
+        maxTimezoneDiffHours: "far",
+      },
+    } as any
+    expect(isPreFilterPolicy(bad)).toBe(false)
+  })
+
+  it("allows missing optional timezone fields", () => {
+    const ok: PreFilterPolicy = {
+      ...valid,
+      workArrangement: {
+        allowRemote: true,
+        allowHybrid: true,
+        allowOnsite: true,
+        willRelocate: false,
+        userLocation: "Portland, OR",
+      },
+    }
+    expect(isPreFilterPolicy(ok)).toBe(true)
+  })
+
   it("rejects invalid relocation flags", () => {
     const bad = {
       ...valid,

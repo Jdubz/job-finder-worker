@@ -970,6 +970,29 @@ class TestPreFilterTreatUnknownAsOnsite:
         assert result.passed is False
         assert "Timezone diff" in result.reason
 
+    def test_timezone_guard_allows_within_limit(self):
+        """Remote roles within max diff should pass."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+                "userTimezone": -8,
+                "maxTimezoneDiffHours": 4,
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        job_data = {"title": "Engineer", "location": "Remote", "timezone": -6}
+        result = pf.filter(job_data, is_remote_source=True)
+        assert result.passed is True
+
     def test_timezone_guard_allows_missing_or_invalid(self):
         """Missing or non-numeric timezone stays permissive."""
         base_cfg = {
@@ -991,11 +1014,15 @@ class TestPreFilterTreatUnknownAsOnsite:
 
         # Missing timezone on job
         pf = PreFilter(base_cfg)
-        result_missing = pf.filter({"title": "Engineer", "location": "Remote"}, is_remote_source=True)
+        result_missing = pf.filter(
+            {"title": "Engineer", "location": "Remote"}, is_remote_source=True
+        )
         assert result_missing.passed is True
 
         # Non-numeric timezone on job
-        result_invalid = pf.filter({"title": "Engineer", "location": "Remote", "timezone": "east"}, is_remote_source=True)
+        result_invalid = pf.filter(
+            {"title": "Engineer", "location": "Remote", "timezone": "east"}, is_remote_source=True
+        )
         assert result_invalid.passed is True
 
 
