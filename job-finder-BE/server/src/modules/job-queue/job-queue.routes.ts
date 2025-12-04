@@ -34,15 +34,6 @@ import {
 } from '../../scheduler/cron'
 import { getLocalCliHealth } from '../../services/cli-health.service'
 
-// Queue item type subset for validation (excludes agent_review which is internal)
-const queueItemTypesForSubmission = [
-  'job',
-  'company',
-  'scrape',
-  'source_discovery',
-  'scrape_source'
-] as const
-
 const submitJobSchema = z.object({
   url: z.string().url(),
   companyName: z.string().optional(),
