@@ -43,6 +43,7 @@ function utcNowIso() {
 
 function coalesceNumber(...values: Array<number | null | undefined>): number | null | undefined {
   for (const v of values) {
+    // In scrapeConfig, 0 is our explicit "no limit" signal; downstream stores this as null
     if (v === 0) return null
     if (v !== undefined && v !== null) return v
   }
