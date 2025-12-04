@@ -946,6 +946,58 @@ class TestPreFilterTreatUnknownAsOnsite:
         result = pf.filter({"title": "Engineer"})
         assert result.passed is True
 
+    def test_timezone_guard_blocks_large_offset(self):
+        """Remote/hybrid roles are rejected when timezone diff exceeds max."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+                "userTimezone": -8,
+                "maxTimezoneDiffHours": 4,
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+        pf = PreFilter(config)
+        job_data = {"title": "Engineer", "location": "Remote", "timezone": 2}
+        result = pf.filter(job_data, is_remote_source=True)
+        assert result.passed is False
+        assert "Timezone diff" in result.reason
+
+    def test_timezone_guard_allows_missing_or_invalid(self):
+        """Missing or non-numeric timezone stays permissive."""
+        base_cfg = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+                "userTimezone": -8,
+                "maxTimezoneDiffHours": 4,
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+
+        # Missing timezone on job
+        pf = PreFilter(base_cfg)
+        result_missing = pf.filter({"title": "Engineer", "location": "Remote"}, is_remote_source=True)
+        assert result_missing.passed is True
+
+        # Non-numeric timezone on job
+        result_invalid = pf.filter({"title": "Engineer", "location": "Remote", "timezone": "east"}, is_remote_source=True)
+        assert result_invalid.passed is True
+
 
 class TestPreFilterBypass:
     """Tests for filter bypass functionality."""
