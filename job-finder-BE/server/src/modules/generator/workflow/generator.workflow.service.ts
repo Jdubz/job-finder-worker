@@ -293,8 +293,8 @@ export class GeneratorWorkflowService {
       location: personalInfo.location,
       phone: personalInfo.phone,
       date: payload.date,
-      logo: (personalInfo as any).logo,
-      avatar: (personalInfo as any).avatar
+      logo: personalInfo.logo,
+      avatar: personalInfo.avatar
     })
     const metadata: ArtifactMetadata = {
       name: personalInfo.name,
