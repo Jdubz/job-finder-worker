@@ -249,6 +249,9 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
             "posted_date": "releasedDate",
             "job_type": "typeOfEmployment.label",
             "department": "department.label",
+            # SmartRecruiters stores HTML in jobAd.sections.jobDescription.text.
+            # No fallbacks: empty/missing descriptions should fail hard for accuracy.
+            "description": "jobAd.sections.jobDescription.text",
         },
         validation_key="content",
     ),
