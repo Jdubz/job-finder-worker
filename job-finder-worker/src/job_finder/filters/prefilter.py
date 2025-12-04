@@ -163,9 +163,7 @@ class PreFilter:
             f"rejectedTech={len(self.rejected_tech)}"
         )
 
-    def filter(
-        self, job_data: Dict[str, Any], is_remote_source: bool = False
-    ) -> PreFilterResult:
+    def filter(self, job_data: Dict[str, Any], is_remote_source: bool = False) -> PreFilterResult:
         """
         Filter a job using available structured data.
 

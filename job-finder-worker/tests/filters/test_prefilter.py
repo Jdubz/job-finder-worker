@@ -721,30 +721,36 @@ class TestPreFilterOfficesArray:
     def test_remote_detected_from_offices_array(self, base_config):
         """Offices array with 'Remote' should be detected as remote."""
         pf = PreFilter(base_config)
-        result = pf.filter({
-            "title": "Engineer",
-            "offices": ["Remote (International)"],
-        })
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "offices": ["Remote (International)"],
+            }
+        )
         assert result.passed is True
         assert "workArrangement" in result.checks_performed
 
     def test_remote_detected_from_offices_dict(self, base_config):
         """Offices array with dict objects containing 'Remote' should be detected."""
         pf = PreFilter(base_config)
-        result = pf.filter({
-            "title": "Engineer",
-            "offices": [{"name": "Remote", "id": 123}],
-        })
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "offices": [{"name": "Remote", "id": 123}],
+            }
+        )
         assert result.passed is True
         assert "workArrangement" in result.checks_performed
 
     def test_non_remote_offices_skipped(self, base_config):
         """Offices without remote keyword should not infer work arrangement."""
         pf = PreFilter(base_config)
-        result = pf.filter({
-            "title": "Engineer",
-            "offices": ["San Francisco", "New York"],
-        })
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "offices": ["San Francisco", "New York"],
+            }
+        )
         assert result.passed is True
         assert "workArrangement" in result.checks_skipped
 

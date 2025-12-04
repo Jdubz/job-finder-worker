@@ -9,6 +9,7 @@ import type {
   GetJobSourceStatsResponse
 } from '@shared/types'
 import { JobSourceRepository } from './job-source.repository'
+import type { UpdateJobSourceInput } from './job-source.repository'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 
@@ -88,7 +89,7 @@ export function buildJobSourceRouter() {
   router.patch(
     '/:id',
     asyncHandler((req, res) => {
-      const updates = updateSchema.parse(req.body)
+      const updates = updateSchema.parse(req.body) as UpdateJobSourceInput
       const source = repo.update(req.params.id, updates)
       if (!source) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Job source not found'))

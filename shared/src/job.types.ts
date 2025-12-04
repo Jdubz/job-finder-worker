@@ -453,6 +453,8 @@ export type JobSourceStatus = "active" | "paused" | "disabled" | "error"
  * Maps to Python's SourceConfig dataclass in job_finder/scrapers/source_config.py.
  */
 export interface SourceConfigJson {
+  /** Index signature for JSON compatibility */
+  [key: string]: unknown
   /** Source type - "api" | "rss" | "html" */
   type: "api" | "rss" | "html"
   /** Endpoint URL, RSS feed URL, or page URL */
