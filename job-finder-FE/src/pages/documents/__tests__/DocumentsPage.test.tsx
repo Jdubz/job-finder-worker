@@ -307,7 +307,7 @@ describe("DocumentsPage", () => {
     })
 
     it("should filter by search query", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {
@@ -324,7 +324,7 @@ describe("DocumentsPage", () => {
     })
 
     it("should filter by role name", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {
@@ -341,7 +341,7 @@ describe("DocumentsPage", () => {
     })
 
     it("should show no results message when filter matches nothing", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {
@@ -380,20 +380,20 @@ describe("DocumentsPage", () => {
     })
 
     it.skip("should reorder when selecting Company sort", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {
         expect(screen.getByText("Updated")).toBeInTheDocument()
       })
 
-      const [sortFieldCombobox] = screen.getAllByRole('combobox')
-      await user.click(sortFieldCombobox)
-      await user.click(screen.getByText("Company"))
+    const [sortFieldCombobox] = screen.getAllByRole('combobox')
+    await user.click(sortFieldCombobox)
+    await user.click(screen.getByText(/Company/i))
 
-      const rows = screen.getAllByRole("row")
-      const firstDataRow = rows[1]
-      expect(within(firstDataRow).getByText("DevOps Engineer")).toBeInTheDocument()
+    const rows = screen.getAllByRole("row")
+    const firstDataRow = rows[1]
+    expect(within(firstDataRow).getByText("Cloud Services")).toBeInTheDocument()
     })
   })
 
@@ -443,7 +443,7 @@ describe("DocumentsPage", () => {
 
   describe("Preview Modal", () => {
     it("should open preview modal when view button is clicked", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {

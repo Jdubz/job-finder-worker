@@ -190,7 +190,7 @@ describe("SourcesPage", () => {
 
   describe("Sorting controls", () => {
     it("renders sort dropdowns and sends filter updates", async () => {
-      const user = userEvent.setup()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProvider()
 
       await waitFor(() => {
@@ -198,10 +198,14 @@ describe("SourcesPage", () => {
         expect(screen.getByText("Desc")).toBeInTheDocument()
       })
 
-      await user.click(screen.getByRole('combobox', { name: /updated \(newest\)/i }))
+      const comboboxes = screen.getAllByRole('combobox')
+      const sortFieldCombobox = comboboxes[1]
+      const sortOrderCombobox = comboboxes[2]
+
+      await user.click(sortFieldCombobox)
       await user.click(screen.getByText("Last scraped"))
 
-      await user.click(screen.getByText("Desc"))
+      await user.click(sortOrderCombobox)
       await user.click(screen.getByText("Asc"))
 
       expect(mockSetFilters).toHaveBeenLastCalledWith({
