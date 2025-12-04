@@ -114,10 +114,15 @@ class JobSourcesManager:
                 "or aggregator_domain (job board platform)"
             )
 
-        # Check for existing source with same name
+        # Check for existing source with same name (legacy uniqueness) OR same (company_id, aggregator_domain)
         existing = self.get_source_by_name(name)
         if existing:
             raise DuplicateSourceError(name=name, existing_id=existing["id"])
+
+        if company_id and aggregator_domain:
+            existing_pair = self.get_source_by_company_and_aggregator(company_id, aggregator_domain)
+            if existing_pair:
+                raise DuplicateSourceError(name=name, existing_id=existing_pair["id"])
 
         source_id = str(uuid4())
         now = utcnow_iso()
@@ -155,6 +160,28 @@ class JobSourcesManager:
         if disabled_notes:
             logger.info("Source %s created disabled: %s", source_id, disabled_notes)
         return source_id
+
+    def get_source_by_company_and_aggregator(
+        self, company_id: Optional[str], aggregator_domain: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        """Return the first source matching both company_id and aggregator_domain."""
+
+        if not company_id or not aggregator_domain:
+            return None
+
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM job_sources
+                WHERE company_id = ?
+                  AND aggregator_domain = ?
+                LIMIT 1
+                """,
+                (company_id, aggregator_domain),
+            ).fetchone()
+
+        return self._row_to_source(dict(row)) if row else None
 
     def get_active_sources(
         self, source_type: Optional[str] = None, tags: Optional[List[str]] = None
