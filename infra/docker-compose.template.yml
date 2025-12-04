@@ -7,9 +7,11 @@ version: "3.9"
 # 2. Update the volume paths to match your server setup
 # 3. Ensure all required directories exist on the host
 # 4. Update the .env file with production secrets
-# 5. Copy your ~/.codex folder to ./codex for AI document generation
-#    This uses OAuth tokens from your ChatGPT Pro subscription
-# 6. Run: docker compose up -d
+# 5. Copy your ~/.codex folder to ./codex-seed/.codex (seed copy, read-only in containers)
+#    and your ~/.gemini folder to ./gemini-seed/.gemini
+# 6. Containers will copy from the seed into an internal named volume on first start,
+#    avoiding root-owned host writes while still allowing token refresh.
+# 7. Run: docker compose up -d
 #
 # AI CLI CREDENTIALS:
 # - Both API and worker containers share the same ./codex and ./gemini directories
@@ -30,8 +32,7 @@ services:
       DATABASE_PATH: /data/sqlite/jobfinder.db
       JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
       WORKER_WS_TOKEN: ${WORKER_WS_TOKEN}
-      # Cron + log rotation (runs inside API container)
-      CRON_ENABLED: "true"
+      TZ: America/Los_Angeles
       LOG_DIR: /logs
       WORKER_MAINTENANCE_URL: http://worker:5555/maintenance
       # CORS_ALLOWED_ORIGINS: "https://your-frontend-domain.com,https://another-domain.com"
@@ -46,12 +47,18 @@ services:
       - type: bind
         source: ./logs  # Shared logs directory for rotation
         target: /logs
+      # Codex: seed (ro) + named volume (rw) to prevent host permission issues
       - type: bind
-        source: ./codex  # Codex CLI OAuth tokens (ChatGPT Pro) - must be read-write for token refresh
-        target: /home/node/.codex
+        source: ./codex-seed/.codex
+        target: /codex-seed
+        read_only: true
+      - codex-home-api:/home/node/.codex
+      # Gemini: seed (ro) + named volume (rw)
       - type: bind
-        source: ./gemini  # Gemini CLI OAuth tokens (Google account) - must be read-write for token refresh
-        target: /home/node/.gemini
+        source: ./gemini-seed/.gemini
+        target: /gemini-seed
+        read_only: true
+      - gemini-home-api:/home/node/.gemini
     extra_hosts:
       # TEMP: Force IPv4 for ChatGPT domains to avoid IPv6 edge/network issues seen in prod.
       # TODO(JIRA-1234): Remove once upstream networking is stable; monitor Codex connectivity weekly.
@@ -80,6 +87,7 @@ services:
       JF_NODE_API_TOKEN: ${WORKER_WS_TOKEN}
       JF_WORKER_WS_TOKEN: ${WORKER_WS_TOKEN}
       JF_WORKER_ID: default
+      TZ: America/Los_Angeles
     volumes:
       # Update these paths to match your production server
       - type: bind
@@ -94,12 +102,18 @@ services:
       - type: bind
         source: ./worker-data  # Change to your worker-data directory
         target: /app/data
+      # Codex: seed (ro) + named volume (rw) to prevent host permission issues
       - type: bind
-        source: ./codex  # Codex CLI OAuth tokens (ChatGPT Pro) - shared with API container
-        target: /home/node/.codex
+        source: ./codex-seed/.codex
+        target: /codex-seed
+        read_only: true
+      - codex-home-worker:/home/node/.codex
+      # Gemini: seed (ro) + named volume (rw)
       - type: bind
-        source: ./gemini  # Gemini CLI OAuth tokens (Google account) - shared with API container
-        target: /home/node/.gemini
+        source: ./gemini-seed/.gemini
+        target: /gemini-seed
+        read_only: true
+      - gemini-home-worker:/home/node/.gemini
     networks:
       - jobfinder
     labels:
@@ -116,7 +130,11 @@ services:
       TUNNEL_ORIGIN_CERT: /etc/cloudflared/cert.pem
     depends_on:
       - api
-    volumes:
+volumes:
+  codex-home-api:
+  codex-home-worker:
+  gemini-home-api:
+  gemini-home-worker:
       # Update this path to your cloudflared config directory
       - type: bind
         source: ./cloudflared  # Change to your cloudflared directory

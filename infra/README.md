@@ -9,6 +9,7 @@ The `infra/` directory contains **templates and development configurations** for
 | [`infra/cloudflared/config.template.yml`](./cloudflared/config.template.yml) | **Template** for Cloudflared tunnel configuration. Production config lives in `/srv/job-finder/cloudflared/config.yml` |
 | [`infra/docker-compose.template.yml`](./docker-compose.template.yml) | **Template** for production Docker Compose stack. Production config lives in `/srv/job-finder/docker-compose.yml` |
 | [`infra/sqlite`](./sqlite) | SQLite schema, migrations, and seed/export workspace |
+| [`docs/backend/architecture/scheduler.md`](../docs/backend/architecture/scheduler.md) | Details on the API-owned scheduler (cron replacement) |
 
 ## Production Configuration Locations
 

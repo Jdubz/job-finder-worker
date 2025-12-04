@@ -10,6 +10,7 @@ import type {
   WorkerSettings,
   MatchPolicy,
   PreFilterPolicy,
+  CronConfig,
 } from "@shared/types"
 
 export class ConfigClient extends BaseApiClient {
@@ -138,6 +139,14 @@ export class ConfigClient extends BaseApiClient {
   async getEntry(id: string): Promise<GetConfigEntryResponse["config"]> {
     const response = await this.get<ApiSuccessResponse<GetConfigEntryResponse>>(`/config/${id}`)
     return response.data.config
+  }
+
+  async getCronConfig(): Promise<CronConfig> {
+    return this.getConfigEntry<CronConfig>("cron-config")
+  }
+
+  async updateCronConfig(config: CronConfig): Promise<void> {
+    await this.updateConfigEntry("cron-config", config)
   }
 }
 

@@ -72,17 +72,18 @@ services:
       - type: bind
         source: ./.dev/logs
         target: /srv/job-finder/logs
-      # Codex CLI auth (ChatGPT Pro session tokens)
-      # Mount to /home/node/.codex - container runs as node user (uid 1000)
-      # to prevent session files from being locked by root
+      # Codex CLI auth: seed (ro) + named volume (rw) to avoid host permission issues
       - type: bind
-        source: ${HOME}/.codex
-        target: /home/node/.codex
-      # Gemini CLI auth (Google account OAuth tokens)
-      # Mount to /home/node/.gemini - same uid 1000 pattern
+        source: ./.dev/codex-seed/.codex
+        target: /codex-seed
+        read_only: true
+      - codex-home-dev:/home/node/.codex
+      # Gemini CLI auth: seed (ro) + named volume (rw)
       - type: bind
-        source: ${HOME}/.gemini
-        target: /home/node/.gemini
+        source: ./.dev/gemini-seed/.gemini
+        target: /gemini-seed
+        read_only: true
+      - gemini-home-dev:/home/node/.gemini
     extra_hosts:
       # Force IPv4 for ChatGPT endpoints (IPv6 sometimes blocked in local Docker)
       - "chatgpt.com:104.18.32.47"
@@ -142,6 +143,12 @@ services:
         target: /codex-seed
         read_only: true
       - codex-home-dev:/home/node/.codex
+      # Gemini CLI auth (Google account OAuth tokens)
+      - type: bind
+        source: ./.dev/gemini-seed/.gemini
+        target: /gemini-seed
+        read_only: true
+      - gemini-home-dev:/home/node/.gemini
     extra_hosts:
       - "chatgpt.com:104.18.32.47"
       - "www.chatgpt.com:104.18.32.47"
@@ -158,6 +165,7 @@ services:
 
 volumes:
   codex-home-dev:
+  gemini-home-dev:
 
 networks:
   default:
