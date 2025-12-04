@@ -2,3 +2,4 @@
 set -e
 
 npm run tests:staged
+scripts/lint-staged-python.sh
