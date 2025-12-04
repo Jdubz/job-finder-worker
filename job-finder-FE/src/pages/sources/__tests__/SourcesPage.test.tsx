@@ -198,7 +198,7 @@ describe("SourcesPage", () => {
         expect(screen.getByText("Desc")).toBeInTheDocument()
       })
 
-      await user.click(screen.getByText("Updated (newest)"))
+      await user.click(screen.getByRole('combobox', { name: /updated \(newest\)/i }))
       await user.click(screen.getByText("Last scraped"))
 
       await user.click(screen.getByText("Desc"))
@@ -304,8 +304,8 @@ describe("SourcesPage", () => {
       renderWithProvider()
 
       await waitFor(() => {
-        const combobox = screen.getByRole("combobox")
-        expect(combobox).toBeInTheDocument()
+      const statusCombobox = screen.getByRole('combobox', { name: /all status/i })
+      expect(statusCombobox).toBeInTheDocument()
       })
     })
 

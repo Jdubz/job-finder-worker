@@ -220,7 +220,7 @@ describe("CompaniesPage", () => {
       })
 
       // Change sort field to Name
-      await user.click(screen.getByText("Updated (newest)"))
+      await user.click(screen.getByRole('combobox', { name: /updated \(newest\)/i }))
       await user.click(screen.getByText("Name (A–Z)"))
 
       // Change order to Asc

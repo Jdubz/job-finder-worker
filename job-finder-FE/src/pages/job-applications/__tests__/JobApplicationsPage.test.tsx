@@ -126,7 +126,7 @@ describe("JobApplicationsPage sorting", () => {
 
     await waitFor(() => expect(screen.getByText("Updated")).toBeInTheDocument())
 
-    await user.click(screen.getByText("Updated"))
+    await user.click(screen.getByRole('combobox', { name: /updated/i }))
     await user.click(screen.getByText("Company"))
 
     const rows = screen.getAllByRole("row")
@@ -135,4 +135,3 @@ describe("JobApplicationsPage sorting", () => {
     expect(within(firstDataRow).getByText("Frontend Engineer")).toBeInTheDocument()
   })
 })
-

@@ -90,7 +90,7 @@ describe("JobListingsPage sorting", () => {
 
     await waitFor(() => expect(screen.getByText("Updated (newest)")).toBeInTheDocument())
 
-    await user.click(screen.getByText("Updated (newest)"))
+    await user.click(screen.getByRole('combobox', { name: /updated \(newest\)/i }))
     await user.click(screen.getByText("Company"))
 
     await user.click(screen.getByText("Desc"))
@@ -105,4 +105,3 @@ describe("JobListingsPage sorting", () => {
     })
   })
 })
-
