@@ -14,8 +14,7 @@ import type {
   GetQueueItemResponse,
   UpdateJobStatusResponse,
   QueueItem,
-  AgentCliProvider,
-  AgentCliStatus
+  AgentCliHealth
 } from "@shared/types"
 import type { ApiSuccessResponse } from "@shared/types"
 
@@ -179,16 +178,6 @@ export interface WorkerHealth {
     worker: Record<string, unknown>
     queue: Record<string, unknown>
     uptime: number
-  }
-}
-
-export interface AgentCliHealth {
-  backend: Record<AgentCliProvider, AgentCliStatus>
-  worker: {
-    reachable: boolean
-    providers?: Record<AgentCliProvider, AgentCliStatus>
-    error?: string
-    workerUrl?: string
   }
 }
 

@@ -4,9 +4,9 @@ import {
   queueClient,
   type CronStatus,
   type WorkerHealth,
-  type CronTriggerResult,
-  type AgentCliHealth
+  type CronTriggerResult
 } from "@/api/queue-client"
+import type { AgentCliHealth } from "@shared/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"

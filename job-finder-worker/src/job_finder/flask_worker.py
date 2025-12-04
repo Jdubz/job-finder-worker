@@ -113,9 +113,10 @@ def check_cli_health() -> Dict[str, Dict[str, Any]]:
                 or "not authenticated" in normalized
                 or "login required" in normalized
             )
+            success_terms_lower = [t.lower() for t in cfg["success_terms"]]
             healthy = (
                 proc.returncode == 0
-                and any(term in normalized for term in (t.lower() for t in cfg["success_terms"]))
+                and any(term in normalized for term in success_terms_lower)
                 and not unauthenticated
             )
 
