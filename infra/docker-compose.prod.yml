@@ -21,7 +21,18 @@ services:
       CRON_ENABLED: "true"
       LOG_DIR: /logs
       WORKER_MAINTENANCE_URL: http://worker:5555/maintenance
-    entrypoint: ["sh", "-c", "if [ ! -f /home/node/.codex/auth.json ]; then mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/; fi; if [ ! -f /home/node/.gemini/oauth_creds.json ]; then mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/; fi; exec docker-entrypoint.sh node dist/index.js"]
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ ! -f /home/node/.codex/auth.json ]; then
+          mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/
+        fi
+        if [ ! -f /home/node/.gemini/oauth_creds.json ]; then
+          mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/
+        fi
+        exec docker-entrypoint.sh node dist/index.js
     volumes:
       - type: bind
         source: /srv/job-finder/data
@@ -40,7 +51,7 @@ services:
       - codex-home-api:/home/node/.codex
       # Gemini: seed (ro) + named volume (rw) for runtime state
       - type: bind
-        source: /srv/job-finder/gemini-seed
+        source: /srv/job-finder/gemini-seed/.gemini
         target: /gemini-seed
         read_only: true
       - gemini-home-api:/home/node/.gemini
@@ -67,7 +78,18 @@ services:
       JF_NODE_API_BASE: http://api:8080/api
       JF_WORKER_ID: default
       CODEX_CONFIG_SOURCE: /codex
-    entrypoint: ["sh", "-c", "if [ ! -f /home/node/.codex/auth.json ]; then mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/; fi; if [ ! -f /home/node/.gemini/oauth_creds.json ]; then mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/; fi; exec /app/entrypoint.sh"]
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ ! -f /home/node/.codex/auth.json ]; then
+          mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/
+        fi
+        if [ ! -f /home/node/.gemini/oauth_creds.json ]; then
+          mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/
+        fi
+        exec /app/entrypoint.sh
     volumes:
       - type: bind
         source: /srv/job-finder/data
@@ -83,7 +105,7 @@ services:
       - codex-home-worker:/home/node/.codex
       # Gemini: seed (ro) + named volume (rw) for runtime state
       - type: bind
-        source: /srv/job-finder/gemini-seed
+        source: /srv/job-finder/gemini-seed/.gemini
         target: /gemini-seed
         read_only: true
       - gemini-home-worker:/home/node/.gemini
