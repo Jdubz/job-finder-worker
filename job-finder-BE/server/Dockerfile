@@ -30,9 +30,11 @@ ENV HUSKY_SKIP_INSTALL=1
 # AI CLI config directories (mount from host for auth credentials)
 ENV CODEX_HOME=/home/node/.codex
 ENV GEMINI_HOME=/home/node/.gemini
+# Chromium path for Playwright PDF generation
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
-# Install gosu for dropping privileges, ca-certificates for TLS, npm update, and AI CLIs
-RUN apt-get update && apt-get install -y --no-install-recommends gosu ca-certificates \
+# Install gosu for dropping privileges, ca-certificates for TLS, chromium for PDF generation, npm update, and AI CLIs
+RUN apt-get update && apt-get install -y --no-install-recommends gosu ca-certificates chromium \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g npm@11.6.3 @openai/codex@0.63.0 @google/gemini-cli@0.18.4 \
     && npm cache clean --force \
