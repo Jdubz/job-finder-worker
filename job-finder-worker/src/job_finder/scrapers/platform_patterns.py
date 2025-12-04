@@ -236,6 +236,38 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         is_remote_source=True,
     ),
     PlatformPattern(
+        name="smartrecruiters_api",
+        # Match SmartRecruiters hosted career sites
+        url_pattern=r"(?:api\.)?smartrecruiters\.com/(?:v1/companies/)?(?P<company>[^/]+)/?(?:$|/)",
+        api_url_template="https://api.smartrecruiters.com/v1/companies/{company}/postings?limit=200",
+        response_path="content",
+        fields={
+            "title": "name",
+            "company": "company.name",
+            "location": "location.fullLocation",
+            "url": "ref",
+            "posted_date": "releasedDate",
+            "job_type": "typeOfEmployment.label",
+            "department": "department.label",
+        },
+        validation_key="content",
+    ),
+    PlatformPattern(
+        name="avature_rss",
+        # Avature career portals expose an RSS feed via SearchJobs/feed
+        url_pattern=r"(?P<subdomain>[^./]+)\.avature\.net/(?P<lang>[a-zA-Z_]+)/(?P<site>[^/]+)/SearchJobs",
+        api_url_template="https://{subdomain}.avature.net/{lang}/{site}/SearchJobs/feed/?jobRecordsPerPage=200",
+        response_path="items",
+        fields={
+            "title": "title",
+            "url": "link",
+            "description": "description",
+            "posted_date": "pubDate",
+        },
+        validation_key="items",
+        config_type="rss",
+    ),
+    PlatformPattern(
         name="monster_rss",
         url_pattern=r"monster\.com/jobs/rss\.aspx(?P<query>.*)",
         api_url_template="https://www.monster.com/jobs/rss.aspx{query}",
