@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { JobListingRecord, JobListingStatus, JobAnalysisResult } from '@shared/types'
+import type { JobListingRecord, JobListingStatus, JobAnalysisResult, JobListingStats } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
 type JobListingRow = {
@@ -231,6 +231,39 @@ export class JobListingRepository {
 
   delete(id: string): void {
     this.db.prepare('DELETE FROM job_listings WHERE id = ?').run(id)
+  }
+
+  /**
+   * Get stats for job listings grouped by status.
+   * Used for summary pills in the UI.
+   */
+  getStats(): JobListingStats {
+    const rows = this.db
+      .prepare(`
+        SELECT status, COUNT(*) as count
+        FROM job_listings
+        GROUP BY status
+      `)
+      .all() as { status: string; count: number }[]
+
+    const stats: JobListingStats = {
+      total: 0,
+      pending: 0,
+      analyzing: 0,
+      analyzed: 0,
+      matched: 0,
+      skipped: 0
+    }
+
+    for (const row of rows) {
+      const count = row.count
+      stats.total += count
+      if (row.status in stats) {
+        stats[row.status as keyof Omit<JobListingStats, 'total'>] = count
+      }
+    }
+
+    return stats
   }
 
   /**

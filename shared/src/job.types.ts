@@ -447,6 +447,31 @@ export interface Company {
 export type JobSourceStatus = "active" | "paused" | "disabled" | "error"
 
 /**
+ * Statistics for job listings by status.
+ * Used by stats endpoint to provide accurate totals for summary pills.
+ */
+export interface JobListingStats {
+  total: number
+  pending: number
+  analyzing: number
+  analyzed: number
+  matched: number
+  skipped: number
+}
+
+/**
+ * Statistics for job matches by score range.
+ * Used by stats endpoint to provide accurate totals for summary pills.
+ */
+export interface JobMatchStats {
+  total: number
+  highScore: number      // matchScore >= 80
+  mediumScore: number    // matchScore >= 50 && < 80
+  lowScore: number       // matchScore < 50
+  averageScore: number
+}
+
+/**
  * Source configuration JSON structure.
  *
  * This defines the structure of the configJson field in JobSource.

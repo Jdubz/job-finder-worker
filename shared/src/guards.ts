@@ -15,6 +15,7 @@
  */
 
 import type { QueueItem, QueueSource } from "./queue.types"
+import { QUEUE_SOURCES } from "./queue.types"
 import type {
   MatchPolicy,
   PreFilterPolicy,
@@ -93,18 +94,7 @@ function isDateLike(value: unknown): boolean {
  * Type guard for QueueSource
  */
 export function isQueueSource(value: unknown): value is QueueSource {
-  return (
-    typeof value === "string" &&
-    [
-      "user_submission",
-      "automated_scan",
-      "scraper",
-      "webhook",
-      "email",
-      "manual_submission",
-      "user_request",
-    ].includes(value)
-  )
+  return typeof value === "string" && (QUEUE_SOURCES as readonly string[]).includes(value)
 }
 
 /**

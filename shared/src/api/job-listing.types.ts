@@ -1,4 +1,4 @@
-import type { JobListingRecord, JobListingStatus } from "../job.types"
+import type { JobListingRecord, JobListingStatus, JobListingStats } from "../job.types"
 import type { PaginationParams } from "../api.types"
 
 export interface ListJobListingsRequest extends PaginationParams {
@@ -50,4 +50,8 @@ export interface UpdateJobListingResponse {
 export interface DeleteJobListingResponse {
   listingId: string
   deleted: boolean
+}
+
+export interface GetJobListingStatsResponse {
+  stats: JobListingStats
 }

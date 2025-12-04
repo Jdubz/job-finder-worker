@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { ApiErrorCode } from '@shared/types'
+import { ApiErrorCode, QUEUE_STATUSES, QUEUE_SOURCES, QUEUE_ITEM_TYPES } from '@shared/types'
 import type {
   SubmitJobRequest,
   SubmitJobResponse,
@@ -34,24 +34,8 @@ import {
 } from '../../scheduler/cron'
 import { getLocalCliHealth } from '../../services/cli-health.service'
 
-const queueStatuses = [
-  'pending',
-  'processing',
-  'success',
-  'failed',
-  'skipped',
-  'needs_review'
-] as const
-const queueSources = [
-  'user_submission',
-  'automated_scan',
-  'scraper',
-  'webhook',
-  'email',
-  'manual_submission',
-  'user_request'
-] as const
-const queueItemTypes = [
+// Queue item type subset for validation (excludes agent_review which is internal)
+const queueItemTypesForSubmission = [
   'job',
   'company',
   'scrape',
@@ -70,7 +54,7 @@ const submitJobSchema = z.object({
   techStack: z.string().optional(),
   bypassFilter: z.boolean().optional(),
   generationId: z.string().optional(),
-  source: z.enum(queueSources).optional(),
+  source: z.enum(QUEUE_SOURCES).optional(),
   metadata: z.record(z.unknown()).optional()
 })
 
@@ -78,7 +62,7 @@ const submitCompanySchema = z.object({
   companyName: z.string().min(1),
   websiteUrl: z.string().url().optional(),
   companyId: z.string().nullable().optional(),
-  source: z.enum(queueSources).optional(),
+  source: z.enum(QUEUE_SOURCES).optional(),
   allowReanalysis: z.boolean().optional()
 })
 
@@ -105,16 +89,16 @@ const submitSourceDiscoverySchema = z.object({
 })
 
 const listQueueSchema = z.object({
-  status: z.union([z.enum(queueStatuses), z.array(z.enum(queueStatuses))]).optional(),
-  type: z.enum(queueItemTypes).optional(),
-  source: z.enum(queueSources).optional(),
+  status: z.union([z.enum(QUEUE_STATUSES), z.array(z.enum(QUEUE_STATUSES))]).optional(),
+  type: z.enum(QUEUE_ITEM_TYPES).optional(),
+  source: z.enum(QUEUE_SOURCES).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0)
 })
 
 const updateQueueItemSchema = z
   .object({
-    status: z.enum(queueStatuses).optional(),
+    status: z.enum(QUEUE_STATUSES).optional(),
     result_message: z.string().optional(),
     error_details: z.string().optional(),
     processed_at: z.union([z.string().datetime(), z.coerce.date()]).optional(),

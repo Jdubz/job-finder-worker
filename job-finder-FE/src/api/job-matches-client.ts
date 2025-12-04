@@ -1,11 +1,12 @@
 import { BaseApiClient } from "./base-client"
 import { API_CONFIG } from "@/config/api"
-import { SCORE_THRESHOLDS } from "@/lib/score-utils"
 import type {
   ApiSuccessResponse,
   JobMatchWithListing,
   ListJobMatchesResponse,
   GetJobMatchResponse,
+  JobMatchStats,
+  GetJobMatchStatsResponse,
 } from "@shared/types"
 
 export interface JobMatchFilters {
@@ -98,29 +99,16 @@ export class JobMatchesClient extends BaseApiClient {
     }
   }
 
-  async getMatchStats(): Promise<{
-    total: number
-    highScore: number
-    mediumScore: number
-    lowScore: number
-    averageScore: number
-  }> {
-    const matches = await this.listMatches()
-    const stats = {
-      total: matches.length,
-      highScore: matches.filter((m) => m.matchScore >= SCORE_THRESHOLDS.HIGH).length,
-      mediumScore: matches.filter(
-        (m) => m.matchScore >= SCORE_THRESHOLDS.MEDIUM && m.matchScore < SCORE_THRESHOLDS.HIGH
-      ).length,
-      lowScore: matches.filter((m) => m.matchScore < SCORE_THRESHOLDS.MEDIUM).length,
-      averageScore: 0,
-    }
-
-    if (matches.length > 0) {
-      stats.averageScore = matches.reduce((sum, m) => sum + m.matchScore, 0) / matches.length
-    }
-
-    return stats
+  /**
+   * Get stats for job matches grouped by score range.
+   * Uses server-side aggregation for accurate totals.
+   */
+  async getStats(): Promise<JobMatchStats> {
+    const response = await this.get<ApiSuccessResponse<GetJobMatchStatsResponse>>(
+      "/job-matches/stats"
+    )
+    const payload = "data" in response ? response.data : response
+    return (payload as GetJobMatchStatsResponse).stats
   }
 }
 

@@ -124,21 +124,28 @@ describe("JobMatchesClient", () => {
     unsubscribe()
   })
 
-  it("calculates match stats", async () => {
-    const matches: JobMatchWithListing[] = [
-      createMockMatch({ matchScore: 90 }),
-      createMockMatch({ matchScore: 80 }),
-      createMockMatch({ matchScore: 65 }),
-    ]
-    vi.spyOn(client, "listMatches").mockResolvedValue(matches)
+  it("fetches match stats from server", async () => {
+    const mockStats = {
+      total: 10,
+      highScore: 3,
+      mediumScore: 5,
+      lowScore: 2,
+      averageScore: 72,
+    }
 
-    const stats = await client.getMatchStats()
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { stats: mockStats } }),
+      headers: { get: () => "application/json" },
+    } as unknown as Response)
 
-    expect(stats.total).toBe(3)
-    expect(stats.highScore).toBe(1)
-    expect(stats.mediumScore).toBe(1)
-    expect(stats.lowScore).toBe(1)
-    expect(stats.averageScore).toBeCloseTo(78.33, 1)
+    const stats = await client.getStats()
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      `${baseUrl}/job-matches/stats`,
+      expect.objectContaining({ method: "GET", credentials: "include" })
+    )
+    expect(stats).toEqual(mockStats)
   })
 
   it("unwraps legacy responses without data when fetching a single match", async () => {

@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { jobMatchesClient } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import type { JobMatchStats } from "@shared/types"
 import {
   Select,
   SelectContent,
@@ -38,9 +39,23 @@ export function JobApplicationsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Server-side stats for accurate totals (not limited by pagination)
+  const [stats, setStats] = useState<JobMatchStats | null>(null)
+
   // Filter state
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState<string>("score")
+
+  // Fetch stats from server
+  const fetchStats = useCallback(async () => {
+    if (!user) return
+    try {
+      const serverStats = await jobMatchesClient.getStats()
+      setStats(serverStats)
+    } catch (err) {
+      console.error("Failed to fetch job match stats:", err)
+    }
+  }, [user])
 
   // Subscribe to real-time job matches
   useEffect(() => {
@@ -58,6 +73,9 @@ export function JobApplicationsPage() {
         details: {},
       }
     )
+
+    // Fetch stats on mount
+    fetchStats()
 
     // All authenticated users see all matches (no user ownership filtering)
     const unsubscribe = jobMatchesClient.subscribeToMatches(
@@ -81,6 +99,7 @@ export function JobApplicationsPage() {
           })
         }
         setMatches(updatedMatches)
+        fetchStats() // Refresh stats when matches change
         setLoading(false)
         setError(null) // Clear any previous errors
       },
@@ -102,7 +121,7 @@ export function JobApplicationsPage() {
       logger.debug("database", "stopped", "JobApplicationsPage: Unsubscribing from job matches")
       unsubscribe()
     }
-  }, [user])
+  }, [user, fetchStats])
 
   // Apply filters and sorting
   useEffect(() => {
@@ -170,31 +189,28 @@ export function JobApplicationsPage() {
           </Button>
         </div>
 
-      {/* Stats Overview */}
-      {!loading && matches.length > 0 && (
+      {/* Stats Overview (using server-side stats for accuracy) */}
+      {!loading && stats && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <div className="bg-secondary p-4 rounded-lg">
-            <div className="text-2xl font-bold">{matches.length}</div>
+            <div className="text-2xl font-bold">{stats.total}</div>
             <div className="text-sm text-muted-foreground">Total Matches</div>
           </div>
           <div className="bg-green-100 dark:bg-green-950 p-4 rounded-lg">
             <div className="text-2xl font-bold text-green-600">
-              {matches.filter((m) => m.matchScore >= SCORE_THRESHOLDS.HIGH).length}
+              {stats.highScore}
             </div>
             <div className="text-sm text-green-700 dark:text-green-400">Score {SCORE_THRESHOLDS.HIGH}+</div>
           </div>
           <div className="bg-yellow-100 dark:bg-yellow-950 p-4 rounded-lg">
             <div className="text-2xl font-bold text-yellow-600">
-              {matches.filter((m) => m.matchScore >= SCORE_THRESHOLDS.MEDIUM && m.matchScore < SCORE_THRESHOLDS.HIGH).length}
+              {stats.mediumScore}
             </div>
             <div className="text-sm text-yellow-700 dark:text-yellow-400">Score {SCORE_THRESHOLDS.MEDIUM}-{SCORE_THRESHOLDS.HIGH - 1}</div>
           </div>
           <div className="bg-blue-100 dark:bg-blue-950 p-4 rounded-lg">
             <div className="text-2xl font-bold text-blue-600">
-              {matches.length > 0
-                ? Math.round(matches.reduce((sum, m) => sum + m.matchScore, 0) / matches.length)
-                : 0}
-              %
+              {Math.round(stats.averageScore)}%
             </div>
             <div className="text-sm text-blue-700 dark:text-blue-400">Avg Match Score</div>
           </div>

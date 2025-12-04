@@ -1,4 +1,4 @@
-import type { JobMatch, JobMatchWithListing } from "../job.types"
+import type { JobMatch, JobMatchWithListing, JobMatchStats } from "../job.types"
 import type { PaginationParams } from "../api.types"
 
 export interface ListJobMatchesRequest extends PaginationParams {
@@ -27,4 +27,8 @@ export interface SaveJobMatchResponse {
 export interface DeleteJobMatchResponse {
   matchId: string
   deleted: boolean
+}
+
+export interface GetJobMatchStatsResponse {
+  stats: JobMatchStats
 }

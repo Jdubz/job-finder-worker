@@ -7,6 +7,8 @@ import type {
   GetJobListingResponse,
   DeleteJobListingResponse,
   JobListingStatus,
+  JobListingStats,
+  GetJobListingStatsResponse,
 } from "@shared/types"
 
 export interface JobListingFilters {
@@ -83,6 +85,18 @@ export class JobListingsClient extends BaseApiClient {
     )
     const payload = "data" in response ? response.data : response
     return (payload as DeleteJobListingResponse)?.deleted ?? false
+  }
+
+  /**
+   * Get stats for job listings grouped by status.
+   * Used for accurate summary pill totals.
+   */
+  async getStats(): Promise<JobListingStats> {
+    const response = await this.get<ApiSuccessResponse<GetJobListingStatsResponse>>(
+      "/job-listings/stats"
+    )
+    const payload = "data" in response ? response.data : response
+    return (payload as GetJobListingStatsResponse).stats
   }
 }
 

@@ -137,11 +137,11 @@ vi.mock("@/api/job-matches-client", async () => {
   subclassed.listMatches = vi.fn().mockResolvedValue([])
   subclassed.getMatch = vi.fn().mockResolvedValue(null)
   subclassed.subscribeToMatches = vi.fn(() => vi.fn())
-  subclassed.getMatchStats = vi.fn().mockResolvedValue({
+  subclassed.getStats = vi.fn().mockResolvedValue({
     total: 0,
-    highPriority: 0,
-    mediumPriority: 0,
-    lowPriority: 0,
+    highScore: 0,
+    mediumScore: 0,
+    lowScore: 0,
     averageScore: 0,
   })
   return {
