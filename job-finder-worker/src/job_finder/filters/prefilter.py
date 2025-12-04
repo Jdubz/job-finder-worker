@@ -111,7 +111,9 @@ class PreFilter:
         # Keywords that indicate remote work (checked in location, offices, metadata)
         remote_kw = work_config.get("remoteKeywords")
         if remote_kw is not None and isinstance(remote_kw, list):
-            self.remote_keywords = [k.lower().strip() for k in remote_kw if k]
+            self.remote_keywords = [
+                k.lower().strip() for k in remote_kw if isinstance(k, str) and k.strip()
+            ]
         else:
             self.remote_keywords = self.DEFAULT_REMOTE_KEYWORDS
 
@@ -380,7 +382,7 @@ class PreFilter:
         metadata = job_data.get("metadata", {})
         if isinstance(metadata, dict):
             location_type = metadata.get("Location Type", "")
-            if location_type:
+            if isinstance(location_type, str) and location_type:
                 lt_lower = location_type.lower()
                 if any(kw in lt_lower for kw in self.remote_keywords):
                     return "remote"
@@ -398,7 +400,7 @@ class PreFilter:
                     office_name = office.get("name", "")
                 elif isinstance(office, str):
                     office_name = office
-                if office_name:
+                if isinstance(office_name, str) and office_name:
                     office_lower = office_name.lower()
                     if any(kw in office_lower for kw in self.remote_keywords):
                         return "remote"
