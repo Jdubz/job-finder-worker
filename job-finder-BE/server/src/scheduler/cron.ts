@@ -173,7 +173,10 @@ export function getCronStatus() {
 }
 
 export async function getWorkerHealth() {
-  const workerBaseUrl = env.WORKER_MAINTENANCE_URL.replace('/maintenance', '')
+  // Parse URL properly instead of fragile string replacement
+  const maintenanceUrl = new URL(env.WORKER_MAINTENANCE_URL)
+  maintenanceUrl.pathname = maintenanceUrl.pathname.replace(/\/[^/]+$/, '')
+  const workerBaseUrl = maintenanceUrl.href.replace(/\/$/, '')
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 5_000)
 
