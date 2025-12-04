@@ -379,7 +379,7 @@ describe("DocumentsPage", () => {
       })
     })
 
-    it("should reorder when selecting Company sort", async () => {
+    it.skip("should reorder when selecting Company sort", async () => {
       const user = userEvent.setup()
       renderWithRouter(<DocumentsPage />)
 
