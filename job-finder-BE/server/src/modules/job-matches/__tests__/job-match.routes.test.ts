@@ -114,9 +114,8 @@ describe('job match routes', () => {
       expect(res.body.data.stats.highScore).toBe(2)
       expect(res.body.data.stats.mediumScore).toBe(1)
       expect(res.body.data.stats.lowScore).toBe(1)
-      // Average: (95 + 85 + 65 + 30) / 4 = 68.75, but SQLite rounds to integer
-      expect(res.body.data.stats.averageScore).toBeGreaterThanOrEqual(68)
-      expect(res.body.data.stats.averageScore).toBeLessThanOrEqual(69)
+      // Average: (95 + 85 + 65 + 30) / 4 = 68.75
+      expect(res.body.data.stats.averageScore).toBe(68.75)
     })
 
     it('returns zeros when no matches exist', async () => {

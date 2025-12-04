@@ -99,7 +99,7 @@ export function JobApplicationsPage() {
           })
         }
         setMatches(updatedMatches)
-        fetchStats() // Refresh stats when matches change
+        // Stats are fetched once on mount; avoid refetching on every real-time update
         setLoading(false)
         setError(null) // Clear any previous errors
       },

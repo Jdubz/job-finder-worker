@@ -145,7 +145,7 @@ export function JobListingsPage() {
     return () => {
       cancelled = true
     }
-  }, [user, listings])
+  }, [user])
 
   const resetAddForm = () => {
     setJobUrl("")

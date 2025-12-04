@@ -259,7 +259,7 @@ export class JobMatchRepository {
       highScore: result.highScore ?? 0,
       mediumScore: result.mediumScore ?? 0,
       lowScore: result.lowScore ?? 0,
-      averageScore: Math.round(result.averageScore ?? 0)
+      averageScore: result.averageScore ?? 0
     }
   }
 }
