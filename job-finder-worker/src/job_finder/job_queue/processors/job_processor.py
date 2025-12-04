@@ -509,7 +509,9 @@ class JobProcessor(BaseProcessor):
             return {
                 "title": manual_title or "",
                 "description": manual_desc or "",
-                "company": (item.metadata or {}).get("manualCompanyName") or item.company_name or "",
+                "company": (item.metadata or {}).get("manualCompanyName")
+                or item.company_name
+                or "",
                 "location": (item.metadata or {}).get("manualLocation") or "",
                 "url": item.url,
             }

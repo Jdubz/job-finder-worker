@@ -9,7 +9,7 @@ Bug History (2024-12): has_company_task used AND logic which allowed duplicates
 when company_id changed between job submissions. Fixed to use OR logic.
 """
 
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from job_finder.job_queue.models import JobQueueItem, QueueItemType
 from job_finder.job_queue.processors.job_processor import JobProcessor, PipelineContext

@@ -164,7 +164,12 @@ class TestGenericScraperAPI:
             type="api",
             url="https://api.example.com/jobs",
             response_path="jobs",
-            fields={"title": "title", "url": "link", "location": "location", "posted_date": "posted_date"},
+            fields={
+                "title": "title",
+                "url": "link",
+                "location": "location",
+                "posted_date": "posted_date",
+            },
         )
         scraper = GenericScraper(config)
         jobs = scraper.scrape()
@@ -178,7 +183,9 @@ class TestGenericScraperAPI:
     def test_scrape_api_with_auth_bearer(self, mock_get):
         """Test API scraping with bearer auth."""
         mock_response = Mock()
-        mock_response.json.return_value = [{"title": "Job", "url": "https://example.com", "posted_date": "2024-01-01"}]
+        mock_response.json.return_value = [
+            {"title": "Job", "url": "https://example.com", "posted_date": "2024-01-01"}
+        ]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
@@ -201,7 +208,9 @@ class TestGenericScraperAPI:
     def test_scrape_api_with_auth_query(self, mock_get):
         """Test API scraping with query param auth."""
         mock_response = Mock()
-        mock_response.json.return_value = [{"title": "Job", "url": "https://example.com", "posted_date": "2024-01-01"}]
+        mock_response.json.return_value = [
+            {"title": "Job", "url": "https://example.com", "posted_date": "2024-01-01"}
+        ]
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
@@ -329,7 +338,12 @@ class TestGenericScraperAPI:
         config = SourceConfig(
             type="api",
             url="https://api.example.com/jobs",
-            fields={"title": "title", "url": "url", "company": "company", "posted_date": "posted_date"},
+            fields={
+                "title": "title",
+                "url": "url",
+                "company": "company",
+                "posted_date": "posted_date",
+            },
             company_name="Override Company",
         )
         scraper = GenericScraper(config)
