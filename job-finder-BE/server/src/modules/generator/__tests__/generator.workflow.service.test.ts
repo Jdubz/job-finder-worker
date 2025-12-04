@@ -3,7 +3,6 @@ import { GeneratorWorkflowService, type GenerateDocumentPayload } from '../workf
 import type { GeneratorWorkflowRepository, GeneratorRequestRecord, GeneratorArtifactRecord } from '../generator.workflow.repository'
 import type { PersonalInfoStore } from '../personal-info.store'
 import type { ContentItemRepository } from '../../content-items/content-item.repository'
-import type { PdfMakeService } from '../workflow/services/pdfmake.service'
 import { storageService } from '../workflow/services/storage.service'
 import { runCliProvider } from '../workflow/services/cli-runner'
 import type { PersonalInfo, ContentItem, AISettings } from '@shared/types'
@@ -191,10 +190,10 @@ describe('GeneratorWorkflowService', () => {
 const repo = new InMemoryRepo()
 const personalInfoStore = new FakePersonalInfoStore()
 const contentItemRepo = new FakeContentItemRepository()
-const pdfService: PdfMakeService = {
-  generateResumePDF: vi.fn().mockResolvedValue(Buffer.from('resume')),
-  generateCoverLetterPDF: vi.fn().mockResolvedValue(Buffer.from('cover'))
-} as unknown as PdfMakeService
+const htmlPdfService = {
+  renderResume: vi.fn().mockResolvedValue(Buffer.from('resume')),
+  renderCoverLetter: vi.fn().mockResolvedValue(Buffer.from('cover'))
+}
 const configRepo = new FakeConfigRepository() as unknown as ConfigRepository
 const mockLog = {
   info: vi.fn(),
@@ -288,7 +287,7 @@ const mockCoverLetterContent = {
 
   const createService = () =>
     new GeneratorWorkflowService(
-      pdfService,
+      htmlPdfService as any,
       repo as unknown as GeneratorWorkflowRepository,
       personalInfoStore as unknown as PersonalInfoStore,
       contentItemRepo as unknown as ContentItemRepository,

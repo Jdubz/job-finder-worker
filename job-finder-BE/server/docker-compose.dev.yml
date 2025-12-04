@@ -23,7 +23,9 @@ version: "3.9"
 name: job-finder-api-dev
 
 x-api-env: &api-env
-  NODE_ENV: production
+  NODE_ENV: development
+  CODEX_HOME: /home/node/.codex
+  GEMINI_HOME: /home/node/.gemini
   PORT: 8080
   DATABASE_PATH: /data/sqlite/jobfinder.db
   JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
@@ -34,20 +36,26 @@ x-api-env: &api-env
 services:
   sqlite-migrator:
     image: ghcr.io/jdubz/job-finder-worker/api:latest
+    user: "1000:1000"
     env_file:
       - .env.dev
     environment:
       <<: *api-env
+      NODE_ENV: production
     command: ["node", "dist/scripts/migrate.js"]
     volumes:
       - type: bind
         source: ./.dev/data
         target: /data/sqlite
+      - type: bind
+        source: ../../infra/sqlite/migrations
+        target: /app/infra/sqlite/migrations
     profiles: ["prod", "hotreload"]
 
   api:
     image: ghcr.io/jdubz/job-finder-worker/api:latest
     container_name: job-finder-api-dev
+    user: "1000:1000"
     env_file:
       - .env.dev
     environment:
@@ -59,7 +67,7 @@ services:
         source: ./.dev/data
         target: /data/sqlite
       - type: bind
-        source: ./.dev/artifacts
+        source: ../.artifacts-test # shared, gitignored test artifacts (see .gitignore)
         target: /data/artifacts
       - type: bind
         source: ./.dev/logs
@@ -96,8 +104,9 @@ services:
       dockerfile: job-finder-BE/server/Dockerfile
       target: base
     container_name: job-finder-api-dev-hotreload
+    user: "root"
     working_dir: /app
-    command: npm run dev
+    command: ["/bin/sh", "-c", "mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/ && chown -R node:node /home/node/.codex; npm run dev"]
     env_file:
       - .env.dev
     environment:
@@ -114,10 +123,13 @@ services:
         source: ../../shared
         target: /app/shared
       - type: bind
+        source: ../../infra/sqlite/migrations
+        target: /app/infra/sqlite/migrations
+      - type: bind
         source: ./.dev/data
         target: /data/sqlite
       - type: bind
-        source: ./.dev/artifacts
+        source: ../.artifacts-test
         target: /data/artifacts
       - type: bind
         source: ./.dev/logs
@@ -126,13 +138,10 @@ services:
       # Mount to /home/node/.codex - container runs as node user (uid 1000)
       # to prevent session files from being locked by root
       - type: bind
-        source: ${HOME}/.codex
-        target: /home/node/.codex
-      # Gemini CLI auth (Google account OAuth tokens)
-      # Mount to /home/node/.gemini - same uid 1000 pattern
-      - type: bind
-        source: ${HOME}/.gemini
-        target: /home/node/.gemini
+        source: ./.dev/codex-seed/.codex
+        target: /codex-seed
+        read_only: true
+      - codex-home-dev:/home/node/.codex
     extra_hosts:
       - "chatgpt.com:104.18.32.47"
       - "www.chatgpt.com:104.18.32.47"
@@ -146,6 +155,9 @@ services:
       start_period: 15s
       retries: 3
     profiles: ["hotreload"]
+
+volumes:
+  codex-home-dev:
 
 networks:
   default:

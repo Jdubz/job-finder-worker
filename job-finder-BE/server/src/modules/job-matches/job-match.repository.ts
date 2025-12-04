@@ -9,6 +9,7 @@ type JobMatchRow = {
   id: string
   job_listing_id: string
   match_score: number
+  application_priority: string | null
   matched_skills: string | null
   missing_skills: string | null
   match_reasons: string | null
@@ -51,6 +52,7 @@ const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   experienceMatch: row.experience_match,
   customizationRecommendations: parseJsonArray(row.customization_recommendations),
   resumeIntakeData: row.resume_intake_json ? JSON.parse(row.resume_intake_json) : undefined,
+  applicationPriority: (row.application_priority as JobMatch['applicationPriority']) ?? undefined,
   analyzedAt: parseTimestamp(row.analyzed_at),
   createdAt: parseTimestamp(row.created_at),
   submittedBy: row.submitted_by,

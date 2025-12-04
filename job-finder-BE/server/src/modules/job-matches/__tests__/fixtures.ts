@@ -39,6 +39,7 @@ export const buildJobMatchInput = (
     potentialConcerns: overrides.potentialConcerns ?? [],
     experienceMatch: overrides.experienceMatch ?? 85,
     customizationRecommendations: overrides.customizationRecommendations ?? ['Highlight mentorship'],
+    applicationPriority: overrides.applicationPriority ?? 'Medium',
     resumeIntakeData: overrides.resumeIntakeData ?? {
       jobId: `job-${counter}`,
       jobTitle: `Engineer ${counter}`,
