@@ -158,7 +158,9 @@ class SourceDiscovery:
             if redirected and redirected != url:
                 result = match_platform(redirected)
                 if result:
-                    logger.info("Pattern detection matched after redirect: %s -> %s", url, redirected)
+                    logger.info(
+                        "Pattern detection matched after redirect: %s -> %s", url, redirected
+                    )
 
         # 1b) Heuristic Greenhouse probe for jobs.company.com style hosts
         if not result:
