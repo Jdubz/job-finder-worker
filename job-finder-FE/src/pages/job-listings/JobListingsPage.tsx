@@ -106,7 +106,7 @@ export function JobListingsPage() {
   const { openModal, closeModal } = useEntityModal()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [sortBy, setSortBy] = useState<"updated" | "date" | "title" | "company" | "status" | "score">("updated")
+  const [sortBy, setSortBy] = useState<"updated" | "date" | "title" | "company" | "status">("updated")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
 
   // Add job modal state
@@ -375,7 +375,6 @@ export function JobListingsPage() {
                   <SelectContent>
                     <SelectItem value="updated">Updated (newest)</SelectItem>
                     <SelectItem value="date">Created (newest)</SelectItem>
-                    <SelectItem value="score">Match score</SelectItem>
                     <SelectItem value="company">Company</SelectItem>
                     <SelectItem value="title">Title</SelectItem>
                     <SelectItem value="status">Status</SelectItem>

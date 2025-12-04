@@ -19,9 +19,9 @@ interface UseCompaniesResult {
 }
 
 export function useCompanies(options: UseCompaniesOptions = {}): UseCompaniesResult {
+  const defaultFilters: ListCompaniesParams = { sortBy: "updated_at", sortOrder: "desc" }
   const { autoFetch = true, ...initialFilters } = {
-    sortBy: "updated_at",
-    sortOrder: "desc",
+    ...defaultFilters,
     ...options,
   }
 
