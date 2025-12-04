@@ -28,6 +28,11 @@ vi.mock("@/config/api", () => ({
   API_CONFIG: {
     generatorBaseUrl: "http://localhost:3001/api/generator",
   },
+  getAbsoluteArtifactUrl: (url: string | null | undefined) => {
+    if (!url) return null
+    if (url.startsWith("http://") || url.startsWith("https://")) return url
+    return `http://localhost:3001/api/generator${url.replace("/api/generator", "")}`
+  },
 }))
 
 // Helper function to render with router

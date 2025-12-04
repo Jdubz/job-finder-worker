@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { generatorClient, type GeneratorRequestRecord } from "@/api/generator-client"
 import { Button } from "@/components/ui/button"
@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { AlertCircle, Loader2, Search, FileText, Eye, Download, Building2 } from "lucide-react"
 import { ROUTES } from "@/types/routes"
 import { DocumentPreviewModal } from "./components/DocumentPreviewModal"
-import { API_CONFIG } from "@/config/api"
+import { getAbsoluteArtifactUrl } from "@/config/api"
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString)
@@ -117,15 +117,15 @@ export function DocumentsPage() {
   }, [documents, searchQuery, sortBy, statusFilter])
 
   const handleViewDocument = (url: string, title: string) => {
-    // Prefix with the API base URL if the URL is relative
-    const fullUrl = url.startsWith("/") ? `${API_CONFIG.generatorBaseUrl}${url.replace("/api/generator", "")}` : url
+    const fullUrl = getAbsoluteArtifactUrl(url)
     setPreviewUrl(fullUrl)
     setPreviewTitle(title)
     setPreviewOpen(true)
   }
 
   const handleDownload = (url: string, filename: string) => {
-    const fullUrl = url.startsWith("/") ? `${API_CONFIG.generatorBaseUrl}${url.replace("/api/generator", "")}` : url
+    const fullUrl = getAbsoluteArtifactUrl(url)
+    if (!fullUrl) return
     const link = document.createElement("a")
     link.href = fullUrl
     link.download = filename
@@ -135,8 +135,19 @@ export function DocumentsPage() {
     document.body.removeChild(link)
   }
 
-  const completedCount = documents.filter((d) => d.status === "completed").length
-  const processingCount = documents.filter((d) => d.status === "processing" || d.status === "pending").length
+  const { completedCount, processingCount } = useMemo(() => {
+    return documents.reduce(
+      (acc, doc) => {
+        if (doc.status === "completed") {
+          acc.completedCount += 1
+        } else if (doc.status === "processing" || doc.status === "pending") {
+          acc.processingCount += 1
+        }
+        return acc
+      },
+      { completedCount: 0, processingCount: 0 }
+    )
+  }, [documents])
 
   return (
     <div className="space-y-6 p-4 sm:p-6">

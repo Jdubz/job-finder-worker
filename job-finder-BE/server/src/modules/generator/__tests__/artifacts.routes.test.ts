@@ -15,18 +15,22 @@
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import request from 'supertest'
+import type { Express } from 'express'
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { LocalStorageService, type ArtifactMetadata } from '../workflow/services/storage.service'
 
 describe('Generator artifacts routes', () => {
   const artifactsDir = process.env.GENERATOR_ARTIFACTS_DIR ?? path.resolve(__dirname, '../../../../.artifacts-test')
   let storageService: LocalStorageService
+  let app: Express
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'development'
     await fs.rm(artifactsDir, { recursive: true, force: true })
     await fs.mkdir(artifactsDir, { recursive: true })
     storageService = new LocalStorageService(artifactsDir)
+    const { buildApp } = await import('../../../app')
+    app = buildApp()
   })
 
   afterAll(async () => {
@@ -44,8 +48,6 @@ describe('Generator artifacts routes', () => {
      * The route MUST accept the exact path format that storage produces.
      */
     it('should serve artifacts using the path format created by storage service', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
 
       // Create a test PDF artifact using the storage service
       const testContent = Buffer.from('%PDF-1.4 test content')
@@ -79,9 +81,6 @@ describe('Generator artifacts routes', () => {
     })
 
     it('should handle real-world filenames with special characters sanitized', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       const testContent = Buffer.from('%PDF-1.4 test')
       const metadata: ArtifactMetadata = {
         name: 'José García-López',
@@ -113,9 +112,6 @@ describe('Generator artifacts routes', () => {
     })
 
     it('should reject invalid date formats (not YYYY-MM-DD)', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       const invalidDates = [
         '2024-1-15',      // single digit month
         '2024-01-5',      // single digit day
@@ -136,9 +132,6 @@ describe('Generator artifacts routes', () => {
     })
 
     it('should reject invalid calendar dates', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       const invalidCalendarDates = [
         '2024-02-30',     // February 30th doesn't exist
         '2024-13-01',     // Month 13 doesn't exist
@@ -157,9 +150,6 @@ describe('Generator artifacts routes', () => {
     })
 
     it('should return 404 for non-existent files', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       const response = await request(app)
         .get('/api/generator/artifacts/2024-01-15/nonexistent.pdf')
         .set('Authorization', 'Bearer bypass-token')
@@ -169,9 +159,6 @@ describe('Generator artifacts routes', () => {
     })
 
     it('should successfully serve existing files', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       const response = await request(app)
         .get('/api/generator/artifacts/2024-01-15/test_acme_engineer_resume_abc123def456.pdf')
         .set('Authorization', 'Bearer bypass-token')
@@ -183,9 +170,6 @@ describe('Generator artifacts routes', () => {
 
   describe('Security: path traversal prevention', () => {
     it('should sanitize path segments to prevent directory traversal', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       const maliciousPaths = [
         '/api/generator/artifacts/2024-01-15/../../../etc/passwd',
         '/api/generator/artifacts/2024-01-15/..%2F..%2Fetc/passwd',
@@ -203,9 +187,6 @@ describe('Generator artifacts routes', () => {
     })
 
     it('should strip special characters from filename', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       // These should be sanitized and result in 404 (file not found after sanitization)
       const response = await request(app)
         .get('/api/generator/artifacts/2024-01-15/test<script>alert(1)</script>.pdf')
@@ -227,9 +208,6 @@ describe('Generator artifacts routes', () => {
     })
 
     it('should set correct content-type for PDF files', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       const response = await request(app)
         .get('/api/generator/artifacts/2024-01-20/headers_test_resume_abc123.pdf')
         .set('Authorization', 'Bearer bypass-token')
@@ -239,9 +217,6 @@ describe('Generator artifacts routes', () => {
     })
 
     it('should set content-length header', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       const response = await request(app)
         .get('/api/generator/artifacts/2024-01-20/headers_test_resume_abc123.pdf')
         .set('Authorization', 'Bearer bypass-token')
@@ -252,9 +227,6 @@ describe('Generator artifacts routes', () => {
     })
 
     it('should set cache-control header for private caching', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       const response = await request(app)
         .get('/api/generator/artifacts/2024-01-20/headers_test_resume_abc123.pdf')
         .set('Authorization', 'Bearer bypass-token')
@@ -264,9 +236,6 @@ describe('Generator artifacts routes', () => {
     })
 
     it('should set content-disposition header', async () => {
-      const { buildApp } = await import('../../../app')
-      const app = buildApp()
-
       const response = await request(app)
         .get('/api/generator/artifacts/2024-01-20/headers_test_resume_abc123.pdf')
         .set('Authorization', 'Bearer bypass-token')
