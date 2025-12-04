@@ -304,7 +304,7 @@ describe("GeneratorClient", () => {
         json: () => Promise.resolve(mockPayload),
       } as Response)
 
-      const result = await client.listHistory()
+      const result = await client.listDocuments()
 
       expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/requests"), expect.objectContaining({
         method: "GET",
@@ -326,7 +326,7 @@ describe("GeneratorClient", () => {
         json: () => Promise.resolve({ error: "Failed to fetch history" }),
       } as Response)
 
-      await expect(client.listHistory()).rejects.toThrow("Failed to fetch history")
+      await expect(client.listDocuments()).rejects.toThrow("Failed to fetch history")
     })
   })
 

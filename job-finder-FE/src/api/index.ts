@@ -21,5 +21,6 @@ export type { JobListingFilters } from "./job-listings-client"
 export type { PromptConfig } from "@shared/types"
 export type {
   GenerateDocumentRequest,
-  DocumentHistoryItem,
+  GeneratorRequestRecord,
+  GeneratorArtifact,
 } from "./generator-client"

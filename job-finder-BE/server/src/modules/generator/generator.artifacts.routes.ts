@@ -15,16 +15,15 @@ function sanitizeSegment(value: string): string {
 export function buildGeneratorArtifactsRouter() {
   const router = Router()
 
-  // New human-readable path: /:date/:folder/:filename
-  // e.g., /2024-01-15/acme_software-engineer/josh-wentworth_acme_software-engineer_resume.pdf
+  // Human-readable path: /:date/:filename
+  // e.g., /2024-01-15/josh-wentworth_acme_software-engineer_resume_a1b2c3d4.pdf
   router.get(
-    '/:date/:folder/:filename',
+    '/:date/:filename',
     asyncHandler(async (req, res) => {
       const date = sanitizeSegment(req.params.date)
-      const folder = sanitizeSegment(req.params.folder)
       const filename = sanitizeSegment(req.params.filename)
 
-      if (!date || !folder || !filename) {
+      if (!date || !filename) {
         res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Invalid artifact path'))
         return
       }
@@ -35,7 +34,7 @@ export function buildGeneratorArtifactsRouter() {
         return
       }
 
-      const relativePath = path.posix.join(date, folder, filename)
+      const relativePath = path.posix.join(date, filename)
       const absolutePath = storageService.getAbsolutePath(relativePath)
 
       try {
