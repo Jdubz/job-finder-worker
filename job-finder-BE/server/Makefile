@@ -1,6 +1,6 @@
 # Job Finder API Server Makefile
 .PHONY: help install dev test lint clean \
-	dev-setup dev-clone-db dev-clone-db-scp dev-build dev-up dev-up-hotreload \
+	dev-setup dev-clone-db dev-clone-db-scp dev-build dev-up dev-up-prod \
 	dev-down dev-restart dev-logs dev-shell dev-sqlite \
 	dev-validate dev-health dev-clean dev-clean-all dev-quick
 
@@ -108,17 +108,17 @@ dev-build: ## Build dev Docker image
 	@docker compose -f docker-compose.dev.yml --profile $(PROFILE) build
 	@echo "$(GREEN)✓ Build complete!$(RESET)"
 
-dev-up: ## Start dev containers (detached, prod image)
-	@echo "$(CYAN)Starting dev containers...$(RESET)"
-	@docker compose -f docker-compose.dev.yml --profile prod up -d
-	@echo "$(GREEN)✓ Containers started!$(RESET)"
-	@echo "API: http://localhost:$(API_PORT)/healthz"
-	@echo "Logs: make dev-logs"
-
-dev-up-hotreload: ## Start dev containers with hot reload
+dev-up: ## Start dev containers (hot reload, uses local source)
 	@echo "$(CYAN)Starting dev containers (hot reload)...$(RESET)"
 	@docker compose -f docker-compose.dev.yml --profile hotreload up -d
 	@echo "$(GREEN)✓ Containers started with hot reload!$(RESET)"
+	@echo "API: http://localhost:$(API_PORT)/healthz"
+	@echo "Logs: make dev-logs"
+
+dev-up-prod: ## Start dev containers with prod image (no hot reload)
+	@echo "$(CYAN)Starting dev containers (prod image)...$(RESET)"
+	@docker compose -f docker-compose.dev.yml --profile prod up -d
+	@echo "$(GREEN)✓ Containers started!$(RESET)"
 	@echo "API: http://localhost:$(API_PORT)/healthz"
 	@echo "Logs: make dev-logs"
 

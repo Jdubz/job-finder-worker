@@ -1,6 +1,7 @@
 import type { GenerateDocumentPayload } from './generator.workflow.service'
 import type { PersonalInfo, ContentItem, JobMatchWithListing } from '@shared/types'
 import { PromptsRepository } from '../../prompts/prompts.repository'
+import { getBalancedContentGuidance } from './services/content-fit.service'
 
 const promptsRepo = new PromptsRepository()
 
@@ -278,7 +279,22 @@ export function buildResumePrompt(
     '\nRewrite bullet points in fresh language that sounds like the same person without copying sentences verbatim.' +
     '\nPrioritize accomplishments that match the job description and company tech stack.' +
     '\nIf a field is missing, leave it empty/null but still return the full JSON object.' +
-    '\nReturn the result as a JSON object with keys: personalInfo, professionalSummary, experience[], skills[], education[].'
+    `\nReturn the result as a JSON object with this exact structure:
+{
+  "personalInfo": { "title": "Job Title matching target role" },
+  "professionalSummary": "2-3 sentence summary",
+  "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
+  "skills": [
+    { "category": "Languages & Frameworks", "items": ["TypeScript", "Node.js", "React"] },
+    { "category": "Databases", "items": ["MySQL", "Redis", "MongoDB"] },
+    { "category": "Cloud & DevOps", "items": ["GCP", "Docker", "Kubernetes"] },
+    { "category": "Tools & Integrations", "items": ["Stripe", "Twilio", "SendGrid"] }
+  ],
+  "education": [{ "institution": "...", "degree": "...", "field": "...", "endDate": "..." }]
+}
+IMPORTANT for skills: Group skills into 5-6 categories. Each category needs a descriptive name and an array of skill items. DO NOT use a single "Skills" category.
+
+${getBalancedContentGuidance(4)}`
   )
 }
 

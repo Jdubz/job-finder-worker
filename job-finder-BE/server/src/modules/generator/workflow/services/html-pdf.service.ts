@@ -6,6 +6,44 @@ import { normalizeUrl } from './url.util'
 
 const DEFAULT_MARGIN = '0.5in'
 
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/**
+ * Format date to MMM-YYYY (e.g., "Feb-2025")
+ * Handles various input formats: "2025-02", "2025-02-15", "Feb 2025", etc.
+ */
+function formatDate(dateStr: string | undefined | null): string {
+  if (!dateStr) return ''
+  const cleaned = cleanText(dateStr)
+  if (!cleaned || cleaned.toLowerCase() === 'present') return 'Present'
+
+  // Try YYYY-MM or YYYY-MM-DD format
+  const isoMatch = cleaned.match(/^(\d{4})-(\d{1,2})/)
+  if (isoMatch) {
+    const year = isoMatch[1]
+    const monthIdx = parseInt(isoMatch[2], 10) - 1
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${MONTH_NAMES[monthIdx]}-${year}`
+    }
+  }
+
+  // Try "Month YYYY" or "Month-YYYY" format (already formatted)
+  const monthYearMatch = cleaned.match(/^([A-Za-z]{3,})\s*[-\s]?\s*(\d{4})$/)
+  if (monthYearMatch) {
+    const monthStr = monthYearMatch[1].slice(0, 3)
+    const monthCap = monthStr.charAt(0).toUpperCase() + monthStr.slice(1).toLowerCase()
+    return `${monthCap}-${monthYearMatch[2]}`
+  }
+
+  // Just a year
+  const yearMatch = cleaned.match(/^(\d{4})$/)
+  if (yearMatch) {
+    return yearMatch[1]
+  }
+
+  return cleaned
+}
+
 async function createContext(): Promise<BrowserContext> {
   const launchOptions: Parameters<typeof chromium.launch>[0] = {
     headless: true,
@@ -49,6 +87,39 @@ function buildContactRow(personal: PersonalInfo): string {
   return items.length ? `<div class="contact">${items.join('')}</div>` : ''
 }
 
+function buildSidebarContact(personal: PersonalInfo): string {
+  const items: string[] = []
+
+  const addItem = (icon: string, label: string, href?: string) => {
+    const text = cleanText(label)
+    if (!text) return
+    const content = href ? `<a href="${href}">${text}</a>` : `<span>${text}</span>`
+    items.push(`<div class="contact-item">${icon}${content}</div>`)
+  }
+
+  if (personal.email) {
+    addItem(icons.email, personal.email, `mailto:${personal.email}`)
+  }
+  if (personal.phone) {
+    addItem(icons.phone, personal.phone)
+  }
+  if (personal.location) {
+    addItem(icons.location, personal.location)
+  }
+  if (personal.website) {
+    const displayUrl = personal.website.replace(/^https?:\/\//, '').replace(/\/$/, '')
+    addItem(icons.website, displayUrl, normalizeUrl(personal.website))
+  }
+  if (personal.linkedin) {
+    addItem(icons.linkedin, 'LinkedIn', normalizeUrl(personal.linkedin))
+  }
+  if (personal.github) {
+    addItem(icons.github, 'GitHub', normalizeUrl(personal.github))
+  }
+
+  return items.length ? `<div class="contact-list">${items.join('')}</div>` : ''
+}
+
 function getInitials(name?: string): string {
   if (!name) return ''
   return cleanText(name)
@@ -65,18 +136,18 @@ function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string
   const initials = getInitials(info?.name)
   const avatar = (info as any)?.avatar || ''
   const logo = (info as any)?.logo || ''
-  const contactRow = buildContactRow(info)
+  const sidebarContact = buildSidebarContact(info)
 
-  // Build experiences with timeline
+  // Build experiences
   const experiences = content.experience
     .map((exp) => {
-      const dates = `${cleanText(exp.startDate || '')} - ${cleanText(exp.endDate || 'Present')}`.trim()
+      const dates = `${formatDate(exp.startDate)} - ${formatDate(exp.endDate) || 'Present'}`
       const bullets = (exp.highlights || [])
         .map((b) => `<li>${cleanText(b)}</li>`)
         .join('')
 
       const tech = Array.isArray((exp as any).technologies) && (exp as any).technologies.length
-        ? `<div class="tech">Technologies: ${cleanText((exp as any).technologies.join(', '))}</div>`
+        ? `<div class="tech">${cleanText((exp as any).technologies.join(' • '))}</div>`
         : ''
 
       return `
@@ -93,45 +164,32 @@ function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string
     })
     .join('')
 
-  // Build skills as tags/pills in two columns
-  const skillItems = (content.skills || [])
+  // Build skills for sidebar
+  const skillsHtml = (content.skills || [])
     .map((s) => {
       const tags = s.items.map((item) => `<span class="skill-tag">${cleanText(item)}</span>`).join('')
       return `
         <div class="skill-category">
-          <span class="skill-label">${cleanText(s.category)}</span>
+          <div class="skill-label">${cleanText(s.category)}</div>
           <div class="skill-tags">${tags}</div>
         </div>
       `
     })
     .join('')
 
-  const skillsSection = skillItems
-    ? `<section class="skills-section">
-        <div class="section-title">Technical Skills</div>
-        <div class="skills-grid">${skillItems}</div>
-       </section>`
-    : ''
-
-  // Build education
-  const education = (content.education || [])
+  // Build education for sidebar
+  const educationHtml = (content.education || [])
     .map((e) => {
       const gradDate = (e as any).graduationDate || e.endDate
       return `
-        <div class="edu">
-          <strong>${cleanText(e.degree || e.field || '')}</strong>
-          <span class="edu-details"> — ${cleanText(e.institution)}${gradDate ? ', ' + cleanText(gradDate) : ''}</span>
+        <div class="edu-item">
+          <div class="edu-degree">${cleanText(e.degree || e.field || '')}</div>
+          <div class="edu-school">${cleanText(e.institution)}</div>
+          ${gradDate ? `<div class="edu-date">${formatDate(gradDate)}</div>` : ''}
         </div>
       `
     })
     .join('')
-
-  const educationSection = education
-    ? `<section>
-        <div class="section-title">Education</div>
-        ${education}
-       </section>`
-    : ''
 
   return `
   <!DOCTYPE html>
@@ -142,36 +200,60 @@ function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string
   </head>
   <body>
     <div class="page">
-      <header>
-        ${logo ? `<div class="logo-box"><img src="${logo}" alt="" /></div>` : '<div></div>'}
-        <div class="header-center">
-          <div class="name">${cleanText(info.name)}</div>
-          <div class="title">${cleanText(info.title || content.personalInfo?.title || '')}</div>
-          ${contactRow}
+      <!-- Left Sidebar -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <div class="avatar-wrapper">
+            ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
+          </div>
         </div>
-        ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
-      </header>
-      <hr class="header-rule" />
 
-      <section>
-        <div class="section-title">Professional Summary</div>
-        <div class="summary">${cleanText(content.professionalSummary || content.personalInfo?.summary || '')}</div>
-      </section>
-
-      <section>
-        <div class="section-title">Professional Experience</div>
-        <div class="experience-list">
-          ${experiences}
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Contact</div>
+          ${sidebarContact}
         </div>
-      </section>
 
-      ${skillsSection}
+        ${skillsHtml ? `
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Skills</div>
+          ${skillsHtml}
+        </div>
+        ` : ''}
 
-      ${educationSection}
+        ${educationHtml ? `
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Education</div>
+          ${educationHtml}
+        </div>
+        ` : ''}
+      </div>
 
-      <footer>
-        Generated by my custom AI resume builder — <a href="https://job-finder.joshwentworth.com">JOB FINDER</a>
-      </footer>
+      <!-- Main Content -->
+      <div class="main-content">
+        <div class="main-header">
+          <div class="header-text">
+            <div class="name">${cleanText(info.name)}</div>
+            <div class="title">${cleanText(info.title || content.personalInfo?.title || '')}</div>
+          </div>
+          ${logo ? `<div class="logo-box"><img src="${logo}" alt="" /></div>` : ''}
+        </div>
+
+        <div class="main-section">
+          <div class="section-title">Professional Summary</div>
+          <div class="summary">${cleanText(content.professionalSummary || content.personalInfo?.summary || '')}</div>
+        </div>
+
+        <div class="main-section">
+          <div class="section-title">Experience</div>
+          <div class="experience-list">
+            ${experiences}
+          </div>
+        </div>
+
+        <div class="main-footer">
+          Generated by my custom AI application — <a href="https://job-finder.joshwentworth.com/">JOB FINDER</a>
+        </div>
+      </div>
     </div>
   </body>
   </html>
