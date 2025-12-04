@@ -13,6 +13,7 @@ from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.ai.search_client import get_search_client, SearchResult
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.platform_patterns import (
+    PLATFORM_PATTERNS,
     PlatformPattern,
     build_config_from_pattern,
     match_platform,
@@ -150,7 +151,24 @@ class SourceDiscovery:
         Returns:
             Config dictionary or None
         """
+        # 1) Direct pattern match
         result = match_platform(url)
+        if not result:
+            # 1a) Follow one redirect and try again (catches vanity domains -> Workday, etc.)
+            redirected = self._follow_redirect_once(url)
+            if redirected and redirected != url:
+                result = match_platform(redirected)
+                if result:
+                    logger.info(
+                        "Pattern detection matched after redirect: %s -> %s", url, redirected
+                    )
+
+        # 1b) Heuristic Greenhouse probe for jobs.company.com style hosts
+        if not result:
+            gh_config = self._probe_greenhouse_from_host(url)
+            if gh_config:
+                return gh_config
+
         if not result:
             return None
 
@@ -166,6 +184,51 @@ class SourceDiscovery:
             return None
 
         return config
+
+    def _follow_redirect_once(self, url: str) -> Optional[str]:
+        """Issue a HEAD with redirects allowed to capture the canonical URL."""
+        try:
+            resp = requests.head(url, allow_redirects=True, timeout=8)
+            return resp.url
+        except requests.RequestException:
+            return None
+
+    def _probe_greenhouse_from_host(self, url: str) -> Optional[Dict[str, Any]]:
+        """
+        Heuristic: jobs.<slug>.com or careers.<slug>.com often back Greenhouse boards.
+        If a quick probe to boards-api succeeds, return a Greenhouse API config.
+        """
+        try:
+            parsed = urlparse(url)
+            host_parts = parsed.netloc.split(".")
+            if len(host_parts) < 3:
+                return None
+
+            subdomain, slug = host_parts[0], host_parts[1]
+            if subdomain not in {"jobs", "careers"}:
+                return None
+
+            board_token = slug
+            api_url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true"
+            resp = requests.get(api_url, headers={"Accept": "application/json"}, timeout=8)
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            if not isinstance(data, dict) or "jobs" not in data:
+                return None
+
+            gh_pattern = next((p for p in PLATFORM_PATTERNS if p.name == "greenhouse_api"), None)
+            if not gh_pattern:
+                logger.error("Greenhouse API pattern not found, cannot build config.")
+                return None
+
+            config = build_config_from_pattern(
+                gh_pattern, {"board_token": board_token}, original_url=url
+            )
+            config["board_token"] = board_token
+            return config
+        except (requests.RequestException, ValueError, json.JSONDecodeError):
+            return None
 
     def _validate_api_endpoint(self, config: Dict[str, Any], pattern: PlatformPattern) -> bool:
         """

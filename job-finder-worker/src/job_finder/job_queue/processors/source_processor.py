@@ -10,12 +10,12 @@ All sources use the GenericScraper with unified SourceConfig format.
 import logging
 import re
 import traceback
-from typing import Optional
+from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 from job_finder.ai.providers import create_provider_from_config
 from job_finder.ai.source_discovery import SourceDiscovery
-from job_finder.exceptions import QueueProcessingError, ScrapeBlockedError
+from job_finder.exceptions import DuplicateSourceError, QueueProcessingError, ScrapeBlockedError
 from job_finder.filters.prefilter import PreFilter
 from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
@@ -75,6 +75,24 @@ class SourceProcessor(BaseProcessor):
             prefilter=self.prefilter,
         )
 
+    def _handle_existing_source(
+        self, item: JobQueueItem, existing_source: Dict[str, Any], context: str
+    ) -> None:
+        """Log and mark queue item success when an existing source is reused."""
+
+        source_id = existing_source.get("id")
+        logger.info("Discovery reuse (%s): source already exists (%s)", context, source_id)
+        self.queue_manager.update_status(
+            item.id,
+            QueueStatus.SUCCESS,
+            f"Source already exists: {existing_source.get('name')}",
+            scraped_data={
+                "source_id": source_id,
+                "source_type": existing_source.get("sourceType"),
+                "disabled_notes": existing_source.get("disabledNotes", ""),
+            },
+        )
+
     # ============================================================
     # SOURCE DISCOVERY
     # ============================================================
@@ -130,19 +148,29 @@ class SourceProcessor(BaseProcessor):
             else:
                 source_config, validation_meta = discovery_result, {}
 
+            # Detect if this is an aggregator based on URL
+            aggregator_domain = self._detect_aggregator_domain(url)
+
+            # Extract company info
+            company_id = config.company_id
+            company_created = False
+
+            # Try to resolve company name regardless of aggregator so we can build unique names
+            company_name = config.company_name or source_config.get("company_name", "")
+            if not company_name and config.company_id:
+                company_record = self.companies_manager.get_company_by_id(config.company_id)
+                if company_record:
+                    company_name = company_record.get("name")
+
             if not source_config:
-                # Always materialize a source record, even when discovery failed
                 error = validation_meta.get("error", "discovery_failed")
                 error_details = validation_meta.get("error_details", "")
 
-                # Normalize common blockers for transparency
-                normalized_reason = error
-                if not normalized_reason and "cloudflare" in error_details.lower():
-                    normalized_reason = "bot_protection"
-                if not normalized_reason and "vercel" in error_details.lower():
-                    normalized_reason = "bot_protection"
-                if not normalized_reason:
-                    normalized_reason = "discovery_failed"
+                normalized_reason = error or "discovery_failed"
+                if normalized_reason == "discovery_failed" and isinstance(error_details, str):
+                    details_lower = error_details.lower()
+                    if "cloudflare" in details_lower or "vercel" in details_lower:
+                        normalized_reason = "bot_protection"
 
                 placeholder_config = {
                     "type": "html",
@@ -151,17 +179,38 @@ class SourceProcessor(BaseProcessor):
                     "disabled_notes": normalized_reason,
                 }
 
-                aggregator_domain = self._detect_aggregator_domain(url)
+                # Check for existing company+aggregator source to avoid duplicates
+                existing_pair = None
+                if company_id and aggregator_domain:
+                    existing_pair = self.sources_manager.get_source_by_company_and_aggregator(
+                        company_id, aggregator_domain
+                    )
+                    if existing_pair:
+                        self._handle_existing_source(
+                            item,
+                            {
+                                **existing_pair,
+                                "disabledNotes": existing_pair.get("disabledNotes", ""),
+                            },
+                            context="placeholder",
+                        )
+                        return
+
+                # Build a collision-resistant placeholder name
+                if company_name and aggregator_domain:
+                    placeholder_name = f"{company_name} Jobs ({aggregator_domain})"
+                else:
+                    placeholder_name = f"{urlparse(url).netloc} Jobs"
+
                 source_id = self.sources_manager.create_from_discovery(
-                    name=f"{urlparse(url).netloc} Jobs",
+                    name=placeholder_name,
                     source_type=placeholder_config.get("type", "unknown"),
                     config=placeholder_config,
-                    company_id=config.company_id,
+                    company_id=company_id,
                     aggregator_domain=aggregator_domain,
                     status=SourceStatus.DISABLED,
                 )
 
-                # Persist failure context on the queue item for UI visibility
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.SUCCESS,
@@ -174,17 +223,8 @@ class SourceProcessor(BaseProcessor):
                 )
                 return
 
-            # Detect if this is an aggregator based on URL
-            aggregator_domain = self._detect_aggregator_domain(url)
-
-            # Extract company info (only if not an aggregator)
-            company_name = None
-            company_id = config.company_id
-            company_created = False
-
             if not aggregator_domain:
-                # This is a company-specific source, resolve company
-                company_name = config.company_name or source_config.get("company_name", "")
+                # This is a company-specific source, resolve company and create stub if needed
                 if not company_name:
                     company_name = self._extract_company_from_url(url)
 
@@ -205,8 +245,10 @@ class SourceProcessor(BaseProcessor):
 
             source_type = source_config.get("type", "unknown")
 
-            # Create source name
-            if company_name:
+            # Create source name (keep aggregator + company to avoid collisions)
+            if company_name and aggregator_domain:
+                source_name = f"{company_name} Jobs ({aggregator_domain})"
+            elif company_name:
                 source_name = f"{company_name} Jobs"
             elif aggregator_domain:
                 source_name = f"{aggregator_domain.split('.')[0].title()} Jobs"
@@ -221,14 +263,35 @@ class SourceProcessor(BaseProcessor):
             if disabled_notes:
                 source_config["disabled_notes"] = disabled_notes
 
-            source_id = self.sources_manager.create_from_discovery(
-                name=source_name,
-                source_type=source_type,
-                config=source_config,
-                company_id=company_id,
-                aggregator_domain=aggregator_domain,
-                status=initial_status,
-            )
+            # Guard against duplicates on the (company, aggregator) pair before creating
+            existing_pair = None
+            if company_id and aggregator_domain:
+                existing_pair = self.sources_manager.get_source_by_company_and_aggregator(
+                    company_id, aggregator_domain
+                )
+
+            try:
+                source_id = self.sources_manager.create_from_discovery(
+                    name=source_name,
+                    source_type=source_type,
+                    config=source_config,
+                    company_id=company_id,
+                    aggregator_domain=aggregator_domain,
+                    status=initial_status,
+                )
+            except DuplicateSourceError:
+                if not existing_pair and company_id and aggregator_domain:
+                    existing_pair = self.sources_manager.get_source_by_company_and_aggregator(
+                        company_id, aggregator_domain
+                    )
+                if existing_pair:
+                    self._handle_existing_source(
+                        item,
+                        {**existing_pair, "disabledNotes": existing_pair.get("disabledNotes", "")},
+                        context="race",
+                    )
+                    return
+                raise
 
             if initial_status == SourceStatus.ACTIVE:
                 # Spawn SCRAPE_SOURCE to immediately scrape the new source
