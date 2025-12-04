@@ -474,6 +474,98 @@ def status():
     )
 
 
+@app.route("/cli/health")
+def cli_health():
+    """
+    Check CLI provider authentication status.
+
+    Returns health status for each AI provider:
+    - codex: Checks `codex login status`
+    - gemini: Checks `gemini auth status`
+    - claude: Checks ANTHROPIC_API_KEY environment variable
+    - openai: Checks OPENAI_API_KEY environment variable
+
+    Response format matches CliHealthResponse from @shared/types.
+    """
+    import subprocess
+
+    results = {}
+
+    # Codex CLI check
+    try:
+        result = subprocess.run(
+            ["codex", "login", "status"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        output = (result.stdout + result.stderr).lower()
+        codex_ok = "logged in" in output
+        results["codex"] = {
+            "available": True,
+            "authenticated": codex_ok,
+            "message": result.stdout.strip()
+            if codex_ok
+            else (result.stderr.strip() or "Not logged in"),
+        }
+    except FileNotFoundError:
+        results["codex"] = {
+            "available": False,
+            "authenticated": False,
+            "message": "CLI not installed",
+        }
+    except subprocess.TimeoutExpired:
+        results["codex"] = {
+            "available": True,
+            "authenticated": False,
+            "message": "Health check timed out",
+        }
+    except Exception as e:
+        results["codex"] = {
+            "available": False,
+            "authenticated": False,
+            "message": str(e),
+        }
+
+    # Gemini CLI check
+    try:
+        result = subprocess.run(
+            ["gemini", "auth", "status"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        # Gemini returns 0 and "ready" message when authenticated
+        gemini_ok = result.returncode == 0 and "ready" in result.stdout.lower()
+        results["gemini"] = {
+            "available": True,
+            "authenticated": gemini_ok,
+            "message": result.stdout.strip()
+            if gemini_ok
+            else (result.stderr.strip() or "Not authenticated"),
+        }
+    except FileNotFoundError:
+        results["gemini"] = {
+            "available": False,
+            "authenticated": False,
+            "message": "CLI not installed",
+        }
+    except subprocess.TimeoutExpired:
+        results["gemini"] = {
+            "available": True,
+            "authenticated": False,
+            "message": "Health check timed out",
+        }
+    except Exception as e:
+        results["gemini"] = {
+            "available": False,
+            "authenticated": False,
+            "message": str(e),
+        }
+
+    return jsonify({"providers": results, "timestamp": time.time()})
+
+
 @app.route("/start", methods=["POST"])
 def start_worker():
     """Start the worker."""

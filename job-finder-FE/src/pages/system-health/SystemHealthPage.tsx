@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import { queueClient, type CronStatus, type WorkerHealth, type CronTriggerResult } from "@/api/queue-client"
+import {
+  queueClient,
+  type CronStatusResponse,
+  type WorkerHealthResponse,
+  type CronTriggerResponse,
+  type CliHealthResponse
+} from "@/api/queue-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -15,7 +21,8 @@ import {
   Server,
   Clock,
   Loader2,
-  Activity
+  Activity,
+  Cpu
 } from "lucide-react"
 
 const REFRESH_INTERVAL_MS = 30000 // 30 seconds
@@ -23,8 +30,9 @@ const REFRESH_INTERVAL_MS = 30000 // 30 seconds
 export function SystemHealthPage() {
   const { user, isOwner } = useAuth()
 
-  const [cronStatus, setCronStatus] = useState<CronStatus | null>(null)
-  const [workerHealth, setWorkerHealth] = useState<WorkerHealth | null>(null)
+  const [cronStatus, setCronStatus] = useState<CronStatusResponse | null>(null)
+  const [workerHealth, setWorkerHealth] = useState<WorkerHealthResponse | null>(null)
+  const [cliHealth, setCliHealth] = useState<CliHealthResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
@@ -34,12 +42,14 @@ export function SystemHealthPage() {
   const fetchHealth = useCallback(async () => {
     try {
       setError(null)
-      const [cron, worker] = await Promise.all([
+      const [cron, worker, cli] = await Promise.all([
         queueClient.getCronStatus(),
-        queueClient.getWorkerHealth()
+        queueClient.getWorkerHealth(),
+        queueClient.getCliHealth()
       ])
       setCronStatus(cron)
       setWorkerHealth(worker)
+      setCliHealth(cli)
       setLastRefresh(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch health status")
@@ -60,7 +70,7 @@ export function SystemHealthPage() {
     setTriggeringCron(type)
     setAlert(null)
     try {
-      let result: CronTriggerResult
+      let result: CronTriggerResponse
       if (type === "scrape") {
         result = await queueClient.triggerCronScrape()
       } else {
@@ -142,7 +152,7 @@ export function SystemHealthPage() {
         </Alert>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Cron Scheduler Card */}
         <Card>
           <CardHeader>
@@ -347,6 +357,83 @@ export function SystemHealthPage() {
                       </div>
                     )}
                   </>
+                )}
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {/* CLI Health Card */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Cpu className="h-5 w-5" />
+                <CardTitle>AI Providers</CardTitle>
+              </div>
+              {loading ? (
+                <Skeleton className="h-6 w-20" />
+              ) : cliHealth?.reachable ? (
+                <Badge variant="default" className="bg-green-600">Connected</Badge>
+              ) : (
+                <Badge variant="destructive">Unreachable</Badge>
+              )}
+            </div>
+            <CardDescription>
+              CLI and API provider authentication status
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : cliHealth ? (
+              <>
+                {!cliHealth.reachable ? (
+                  <Alert variant="destructive">
+                    <XCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      Cannot reach worker at {cliHealth.workerUrl}
+                      {cliHealth.error && `: ${cliHealth.error}`}
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <div className="space-y-3">
+                    {cliHealth.providers && Object.entries(cliHealth.providers).map(([name, provider]) => (
+                      <div key={name} className="flex items-center justify-between py-2 border-b last:border-0">
+                        <div className="flex items-center gap-2">
+                          {provider.authenticated ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : provider.available ? (
+                            <AlertCircle className="h-4 w-4 text-yellow-600" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-600" />
+                          )}
+                          <span className="font-medium capitalize">{name}</span>
+                        </div>
+                        <div className="text-right">
+                          <Badge
+                            variant={provider.authenticated ? "default" : "secondary"}
+                            className={provider.authenticated ? "bg-green-600" : ""}
+                          >
+                            {provider.authenticated ? "Authenticated" : provider.available ? "Not Authenticated" : "Unavailable"}
+                          </Badge>
+                          <p className="text-xs text-muted-foreground mt-1 max-w-[200px] truncate">
+                            {provider.message}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+
+                    {cliHealth.timestamp && (
+                      <div className="text-xs text-muted-foreground pt-2">
+                        Last checked: {new Date(cliHealth.timestamp * 1000).toLocaleTimeString()}
+                      </div>
+                    )}
+                  </div>
                 )}
               </>
             ) : null}

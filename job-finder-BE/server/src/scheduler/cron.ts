@@ -211,6 +211,42 @@ export async function getWorkerHealth() {
   }
 }
 
+export async function getWorkerCliHealth() {
+  // Parse URL properly instead of fragile string replacement
+  const maintenanceUrl = new URL(env.WORKER_MAINTENANCE_URL)
+  maintenanceUrl.pathname = maintenanceUrl.pathname.replace(/\/[^/]+$/, '')
+  const workerBaseUrl = maintenanceUrl.href.replace(/\/$/, '')
+  const controller = new AbortController()
+  // Longer timeout for CLI checks (they spawn subprocesses)
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+
+  try {
+    const res = await fetch(`${workerBaseUrl}/cli/health`, { signal: controller.signal })
+
+    if (!res.ok) {
+      throw new Error(`Worker CLI health responded with ${res.status}`)
+    }
+
+    const data = await res.json()
+
+    return {
+      reachable: true,
+      providers: data.providers,
+      timestamp: data.timestamp,
+      workerUrl: workerBaseUrl
+    }
+  } catch (error) {
+    logger.error({ error, workerUrl: workerBaseUrl }, 'Failed to fetch worker CLI health')
+    return {
+      reachable: false,
+      error: error instanceof Error ? error.message : String(error),
+      workerUrl: workerBaseUrl
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export function startCronScheduler() {
   // Debug: log cron-related env vars at startup to diagnose configuration issues
   logger.info({
