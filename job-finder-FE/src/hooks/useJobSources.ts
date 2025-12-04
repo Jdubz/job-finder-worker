@@ -20,7 +20,7 @@ interface UseJobSourcesResult {
   setFilters: (filters: ListJobSourcesParams) => void
 }
 
-export function useJobSources(options: UseJobSourcesOptions = { sortBy: "updated_at", sortOrder: "desc" }): UseJobSourcesResult {
+export function useJobSources(options: UseJobSourcesOptions = {}): UseJobSourcesResult {
   const { autoFetch = true, ...initialFilters } = {
     sortBy: "updated_at",
     sortOrder: "desc",

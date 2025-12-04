@@ -18,7 +18,7 @@ interface UseCompaniesResult {
   setFilters: (filters: ListCompaniesParams) => void
 }
 
-export function useCompanies(options: UseCompaniesOptions = { sortBy: "updated_at", sortOrder: "desc" }): UseCompaniesResult {
+export function useCompanies(options: UseCompaniesOptions = {}): UseCompaniesResult {
   const { autoFetch = true, ...initialFilters } = {
     sortBy: "updated_at",
     sortOrder: "desc",

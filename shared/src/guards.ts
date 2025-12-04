@@ -692,6 +692,10 @@ export function isJobMatch(value: unknown): value is JobMatch {
     isDateLike(match.analyzedAt) &&
     isDateLike(match.createdAt) &&
     (match.updatedAt === undefined || isDateLike(match.updatedAt)) &&
+    (match.applicationPriority === undefined ||
+      match.applicationPriority === "High" ||
+      match.applicationPriority === "Medium" ||
+      match.applicationPriority === "Low") &&
     (match.submittedBy === null || typeof match.submittedBy === "string") &&
     typeof match.queueItemId === "string"
   )
