@@ -168,6 +168,7 @@ class ScraperIntake:
         source_type: Optional[str] = None,
         company_id: Optional[str] = None,
         max_to_add: Optional[int] = None,
+        is_remote_source: bool = False,
     ) -> int:
         """
         Submit multiple jobs to the queue with pre-filtering.
@@ -198,6 +199,7 @@ class ScraperIntake:
             source_type: Optional source type (greenhouse, rss, etc.)
             company_id: Optional company ID if known
             max_to_add: Optional limit on jobs to add
+            is_remote_source: If True, all jobs from this source are assumed remote
 
         Returns:
             Number of jobs successfully added to queue
@@ -297,7 +299,9 @@ class ScraperIntake:
 
                 # Pre-filter job by structured data (freshness, work arrangement, etc.)
                 if self.prefilter:
-                    prefilter_result = self.prefilter.filter(job_payload)
+                    prefilter_result = self.prefilter.filter(
+                        job_payload, is_remote_source=is_remote_source
+                    )
                     if not prefilter_result.passed:
                         prefiltered_count += 1
                         # Track rejection reasons for logging

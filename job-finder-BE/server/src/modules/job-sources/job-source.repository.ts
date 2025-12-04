@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { JobSource, JobSourceStatus, TimestampLike } from '@shared/types'
+import type { JobSource, JobSourceStatus, TimestampLike, SourceConfigJson } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
 type JobSourceRow = {
@@ -46,7 +46,7 @@ const buildJobSource = (row: JobSourceRow): JobSource => ({
   name: row.name,
   sourceType: row.source_type,
   status: row.status as JobSourceStatus,
-  configJson: parseJsonObject<Record<string, unknown>>(row.config_json) ?? {},
+  configJson: parseJsonObject<SourceConfigJson>(row.config_json) ?? {} as SourceConfigJson,
   tags: parseJsonArray(row.tags),
   companyId: row.company_id,
   aggregatorDomain: row.aggregator_domain,

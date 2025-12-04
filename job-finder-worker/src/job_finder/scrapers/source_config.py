@@ -68,6 +68,10 @@ class SourceConfig:
     # Optional: fetch each job's detail page to enrich fields (e.g., description/location)
     follow_detail: bool = False
 
+    # Remote source flag - if True, all jobs from this source are assumed remote
+    # Use for remote-only job boards like RemoteOK, WeWorkRemotely, Remotive, etc.
+    is_remote_source: bool = False
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any], company_name: Optional[str] = None) -> "SourceConfig":
         """
@@ -100,6 +104,7 @@ class SourceConfig:
             disabled_notes=data.get("disabled_notes", ""),
             company_extraction=data.get("company_extraction", ""),
             follow_detail=bool(data.get("follow_detail", False)),
+            is_remote_source=bool(data.get("is_remote_source", False)),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -143,6 +148,8 @@ class SourceConfig:
             result["company_extraction"] = self.company_extraction
         if self.follow_detail:
             result["follow_detail"] = self.follow_detail
+        if self.is_remote_source:
+            result["is_remote_source"] = self.is_remote_source
 
         return result
 
