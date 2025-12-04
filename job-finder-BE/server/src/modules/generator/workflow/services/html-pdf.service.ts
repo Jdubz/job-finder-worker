@@ -23,7 +23,7 @@ async function createContext(): Promise<BrowserContext> {
 function buildContactRow(personal: PersonalInfo): string {
   const items: string[] = []
 
-  const addChip = (label?: string, href?: string, isLink = false) => {
+  const addChip = (label?: string, href?: string) => {
     if (!label) return
     const text = cleanText(label)
     if (!text) return
