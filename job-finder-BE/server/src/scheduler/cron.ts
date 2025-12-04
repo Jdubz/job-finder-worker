@@ -232,29 +232,35 @@ function hourKeyFromIso(iso?: string | null): string | null {
 }
 
 async function maybeRunJob(jobKey: CronJobKey, config: CronConfig, now: Date) {
+  return maybeRunJobWithState(jobKey, config, now, lastRunHourKey, {
+    scrape: enqueueScrapeJob,
+    maintenance: triggerMaintenance,
+    logrotate: rotateLogs
+  })
+}
+
+type JobActions = Record<CronJobKey, () => Promise<unknown>>
+
+async function maybeRunJobWithState(
+  jobKey: CronJobKey,
+  config: CronConfig,
+  now: Date,
+  state: Record<CronJobKey, string | null>,
+  actions: JobActions
+) {
   const schedule = config.jobs[jobKey]
   if (!schedule.enabled) return false
 
   const currentHour = now.getHours()
   const hourKey = buildHourKey(now)
   if (!schedule.hours.includes(currentHour)) return false
-  if (lastRunHourKey[jobKey] === hourKey) return false
+  if (state[jobKey] === hourKey) return false
 
-  switch (jobKey) {
-    case 'scrape':
-      await enqueueScrapeJob()
-      break
-    case 'maintenance':
-      await triggerMaintenance()
-      break
-    case 'logrotate':
-      await rotateLogs()
-      break
-  }
+  await actions[jobKey]()
 
   const iso = now.toISOString()
   config.jobs[jobKey].lastRun = iso
-  lastRunHourKey[jobKey] = hourKey
+  state[jobKey] = hourKey
   return true
 }
 
@@ -308,6 +314,14 @@ export function startCronScheduler() {
   scheduleNextTick()
 
   logger.info({ defaults: DEFAULT_CRON_CONFIG, timezone: getContainerTimezone() }, 'Cron scheduler started')
+}
+
+// Test-only utilities (not used by runtime code)
+export const __cronTestInternals = {
+  normalizeHours,
+  buildHourKey,
+  hourKeyFromIso,
+  maybeRunJobWithState
 }
 
 function getWorkerBaseUrl() {
