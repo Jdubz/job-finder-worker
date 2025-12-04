@@ -3,6 +3,7 @@ export const ROUTES = {
   HOW_IT_WORKS: "/how-it-works",
   CONTENT_ITEMS: "/content-items",
   DOCUMENT_BUILDER: "/document-builder",
+  DOCUMENTS: "/documents",
   AI_PROMPTS: "/ai-prompts",
   // Authenticated routes (viewer or admin)
   JOB_APPLICATIONS: "/job-applications",
@@ -47,6 +48,7 @@ export const PUBLIC_ROUTES: RoutePath[] = [
   ROUTES.HOW_IT_WORKS,
   ROUTES.CONTENT_ITEMS,
   ROUTES.DOCUMENT_BUILDER,
+  ROUTES.DOCUMENTS,
   ROUTES.AI_PROMPTS,
   ROUTES.TERMS_OF_USE,
   ROUTES.PRIVACY_POLICY,
