@@ -188,6 +188,32 @@ describe("SourcesPage", () => {
     })
   })
 
+  describe("Sorting controls", () => {
+    it("renders sort dropdowns and sends filter updates", async () => {
+      const user = userEvent.setup()
+      renderWithProvider()
+
+      await waitFor(() => {
+        expect(screen.getByText("Updated (newest)")).toBeInTheDocument()
+        expect(screen.getByText("Desc")).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByText("Updated (newest)"))
+      await user.click(screen.getByText("Last scraped"))
+
+      await user.click(screen.getByText("Desc"))
+      await user.click(screen.getByText("Asc"))
+
+      expect(mockSetFilters).toHaveBeenLastCalledWith({
+        search: undefined,
+        status: undefined,
+        limit: 100,
+        sortBy: "last_scraped_at",
+        sortOrder: "asc",
+      })
+    })
+  })
+
   describe("Table Rows", () => {
     it("should have clickable rows", async () => {
       renderWithProvider()

@@ -14,7 +14,7 @@ export interface JobMatchFilters {
   jobListingId?: string
   limit?: number
   offset?: number
-  sortBy?: "score" | "date"
+  sortBy?: "score" | "date" | "updated"
   sortOrder?: "asc" | "desc"
 }
 

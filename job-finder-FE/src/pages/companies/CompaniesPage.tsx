@@ -36,6 +36,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { AlertCircle, Loader2, Plus, Building2, Search } from "lucide-react"
 import type { Company } from "@shared/types"
 
@@ -103,6 +110,8 @@ export function CompaniesPage() {
   const [error, setError] = useState<string | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
+  const [sortBy, setSortBy] = useState<"updated_at" | "created_at" | "name">("updated_at")
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
 
   // Form state
   const [companyName, setCompanyName] = useState("")
@@ -172,6 +181,29 @@ export function CompaniesPage() {
     setFilters({
       search: searchTerm || undefined,
       limit: 100,
+      sortBy,
+      sortOrder,
+    })
+  }
+
+  const handleSortChange = (value: string) => {
+    const nextSort = value as typeof sortBy
+    setSortBy(nextSort)
+    setFilters({
+      search: searchTerm || undefined,
+      limit: 100,
+      sortBy: nextSort,
+      sortOrder,
+    })
+  }
+
+  const handleSortOrderChange = (value: "asc" | "desc") => {
+    setSortOrder(value)
+    setFilters({
+      search: searchTerm || undefined,
+      limit: 100,
+      sortBy,
+      sortOrder: value,
     })
   }
 
@@ -335,17 +367,40 @@ export function CompaniesPage() {
                 Click on a company to view details
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <Input
-                placeholder="Search companies..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="w-full sm:w-[200px]"
-              />
-              <Button variant="outline" size="icon" onClick={handleSearch} className="flex-shrink-0">
-                <Search className="h-4 w-4" />
-              </Button>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <div className="flex gap-2 w-full sm:w-auto">
+                <Input
+                  placeholder="Search companies..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className="w-full sm:w-[200px]"
+                />
+                <Button variant="outline" size="icon" onClick={handleSearch} className="flex-shrink-0">
+                  <Search className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Select value={sortBy} onValueChange={handleSortChange}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="updated_at">Updated (newest)</SelectItem>
+                    <SelectItem value="created_at">Created (newest)</SelectItem>
+                    <SelectItem value="name">Name (A–Z)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sortOrder} onValueChange={(value) => handleSortOrderChange(value as "asc" | "desc")}>
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue placeholder="Order" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">Desc</SelectItem>
+                    <SelectItem value="asc">Asc</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </CardHeader>

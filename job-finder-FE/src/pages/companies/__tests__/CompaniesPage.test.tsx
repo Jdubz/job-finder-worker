@@ -208,6 +208,34 @@ describe("CompaniesPage", () => {
     })
   })
 
+  describe("Sorting controls", () => {
+    it("shows sort dropdowns with updated-at default and applies changes", async () => {
+      const user = userEvent.setup()
+      renderWithProviders()
+
+      // Default selections rendered
+      await waitFor(() => {
+        expect(screen.getByText("Updated (newest)")).toBeInTheDocument()
+        expect(screen.getByText("Desc")).toBeInTheDocument()
+      })
+
+      // Change sort field to Name
+      await user.click(screen.getByText("Updated (newest)"))
+      await user.click(screen.getByText("Name (A–Z)"))
+
+      // Change order to Asc
+      await user.click(screen.getByText("Desc"))
+      await user.click(screen.getByText("Asc"))
+
+      expect(mockSetFilters).toHaveBeenLastCalledWith({
+        search: undefined,
+        limit: 100,
+        sortBy: "name",
+        sortOrder: "asc",
+      })
+    })
+  })
+
   describe("Detail Modal", () => {
     it("should open detail modal when clicking on a row", async () => {
       const user = userEvent.setup()

@@ -80,7 +80,7 @@ const listQuerySchema = z.object({
   maxScore: z.coerce.number().int().min(0).max(100).optional(),
   jobListingId: z.string().min(1).optional(),
   priority: z.enum(['High', 'Medium', 'Low']).optional(),
-  sortBy: z.enum(['score', 'date']).optional(),
+  sortBy: z.enum(['score', 'date', 'updated']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional()
 })
 

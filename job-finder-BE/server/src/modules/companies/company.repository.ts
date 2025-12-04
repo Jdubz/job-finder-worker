@@ -76,7 +76,7 @@ export class CompanyRepository {
       offset = 0,
       industry,
       search,
-      sortBy = 'created_at',
+      sortBy = 'updated_at',
       sortOrder = 'desc'
     } = options
 

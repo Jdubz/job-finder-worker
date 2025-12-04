@@ -12,7 +12,7 @@ interface UseJobListingsResult {
   setFilters: (filters: JobListingFilters) => void
 }
 
-export function useJobListings(initialFilters: JobListingFilters = {}): UseJobListingsResult {
+export function useJobListings(initialFilters: JobListingFilters = { sortBy: "updated", sortOrder: "desc" }): UseJobListingsResult {
   const [listings, setListings] = useState<JobListingRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)

@@ -74,6 +74,8 @@ export function SourcesPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [sortBy, setSortBy] = useState<"updated_at" | "created_at" | "name" | "last_scraped_at">("updated_at")
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [scrapeDialogOpen, setScrapeDialogOpen] = useState(false)
   const [scrapePrefillSourceId, setScrapePrefillSourceId] = useState<string | null>(null)
   const [deleteRequest, setDeleteRequest] = useState<{ id: string; name?: string } | null>(null)
@@ -134,6 +136,31 @@ export function SourcesPage() {
       search: searchTerm || undefined,
       status: statusFilter !== "all" ? (statusFilter as JobSourceStatus) : undefined,
       limit: 100,
+      sortBy,
+      sortOrder,
+    })
+  }
+
+  const handleSortChange = (value: string) => {
+    const nextSort = value as typeof sortBy
+    setSortBy(nextSort)
+    setFilters({
+      search: searchTerm || undefined,
+      status: statusFilter !== "all" ? (statusFilter as JobSourceStatus) : undefined,
+      limit: 100,
+      sortBy: nextSort,
+      sortOrder,
+    })
+  }
+
+  const handleSortOrderChange = (value: "asc" | "desc") => {
+    setSortOrder(value)
+    setFilters({
+      search: searchTerm || undefined,
+      status: statusFilter !== "all" ? (statusFilter as JobSourceStatus) : undefined,
+      limit: 100,
+      sortBy,
+      sortOrder: value,
     })
   }
 
@@ -281,6 +308,26 @@ export function SourcesPage() {
                     <SelectItem value="paused">Paused</SelectItem>
                     <SelectItem value="disabled">Disabled</SelectItem>
                     <SelectItem value="error">Error</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sortBy} onValueChange={handleSortChange}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="updated_at">Updated (newest)</SelectItem>
+                    <SelectItem value="created_at">Created (newest)</SelectItem>
+                    <SelectItem value="last_scraped_at">Last scraped</SelectItem>
+                    <SelectItem value="name">Name (A–Z)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sortOrder} onValueChange={(value) => handleSortOrderChange(value as "asc" | "desc")}>
+                  <SelectTrigger className="w-[110px]">
+                    <SelectValue placeholder="Order" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">Desc</SelectItem>
+                    <SelectItem value="asc">Asc</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button variant="outline" size="icon" onClick={handleSearch}>

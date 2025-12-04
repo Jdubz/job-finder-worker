@@ -92,7 +92,7 @@ export class JobSourceRepository {
       sourceType,
       companyId,
       search,
-      sortBy = 'created_at',
+      sortBy = 'updated_at',
       sortOrder = 'desc'
     } = options
 

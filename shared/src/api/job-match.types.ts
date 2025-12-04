@@ -5,7 +5,7 @@ export interface ListJobMatchesRequest extends PaginationParams {
   minScore?: number
   maxScore?: number
   jobListingId?: string
-  sortBy?: "score" | "date"
+  sortBy?: "score" | "date" | "updated"
   sortOrder?: "asc" | "desc"
 }
 

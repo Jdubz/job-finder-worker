@@ -40,7 +40,7 @@ export function JobApplicationsPage() {
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("")
-  const [sortBy, setSortBy] = useState<string>("score")
+  const [sortBy, setSortBy] = useState<string>("updated")
 
   // Subscribe to real-time job matches
   useEffect(() => {
@@ -84,7 +84,7 @@ export function JobApplicationsPage() {
         setLoading(false)
         setError(null) // Clear any previous errors
       },
-      undefined,
+      { sortBy: "updated", sortOrder: "desc" },
       (err) => {
         logger.error("database", "failed", "JobApplicationsPage: Job matches subscription error", {
           error: {
@@ -104,6 +104,9 @@ export function JobApplicationsPage() {
     }
   }, [user])
 
+  const getUpdatedDate = (match: JobMatchWithListing) =>
+    toDate(match.updatedAt ?? match.listing.updatedAt ?? match.createdAt ?? match.listing.createdAt)
+
   // Apply filters and sorting
   useEffect(() => {
     let filtered = [...matches]
@@ -121,6 +124,8 @@ export function JobApplicationsPage() {
     // Sorting
     filtered.sort((a, b) => {
       switch (sortBy) {
+        case "updated":
+          return getUpdatedDate(b).getTime() - getUpdatedDate(a).getTime()
         case "score":
           return b.matchScore - a.matchScore
         case "date":
@@ -232,17 +237,18 @@ export function JobApplicationsPage() {
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="updated">Updated</SelectItem>
                   <SelectItem value="score">Score</SelectItem>
-                  <SelectItem value="date">Date</SelectItem>
+                  <SelectItem value="date">Created</SelectItem>
                   <SelectItem value="company">Company</SelectItem>
                 </SelectContent>
               </Select>
-              {(searchQuery.trim() || sortBy !== "score") && (
+              {(searchQuery.trim() || sortBy !== "updated") && (
                 <Button
                   variant="ghost"
                   onClick={() => {
                     setSearchQuery("")
-                    setSortBy("score")
+                    setSortBy("updated")
                   }}
                 >
                   Clear Filters

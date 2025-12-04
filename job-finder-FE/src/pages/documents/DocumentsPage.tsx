@@ -54,7 +54,7 @@ export function DocumentsPage() {
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("")
-  const [sortBy, setSortBy] = useState<string>("date")
+  const [sortBy, setSortBy] = useState<string>("updated")
   const [statusFilter, setStatusFilter] = useState<string>("all")
 
   // Modal state
@@ -102,6 +102,9 @@ export function DocumentsPage() {
     // Sorting
     filtered.sort((a, b) => {
       switch (sortBy) {
+        case "updated":
+          return new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime()
+        case "created":
         case "date":
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         case "company":
@@ -230,7 +233,8 @@ export function DocumentsPage() {
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="date">Date</SelectItem>
+                  <SelectItem value="updated">Updated</SelectItem>
+                  <SelectItem value="created">Created</SelectItem>
                   <SelectItem value="company">Company</SelectItem>
                   <SelectItem value="role">Role</SelectItem>
                 </SelectContent>

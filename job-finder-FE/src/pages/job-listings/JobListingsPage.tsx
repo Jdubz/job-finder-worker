@@ -106,6 +106,8 @@ export function JobListingsPage() {
   const { openModal, closeModal } = useEntityModal()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [sortBy, setSortBy] = useState<"updated" | "date" | "title" | "company" | "status" | "score">("updated")
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
 
   // Add job modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -215,8 +217,8 @@ export function JobListingsPage() {
       search: searchTerm || undefined,
       status: statusFilter !== "all" ? (statusFilter as JobListingStatus) : undefined,
       limit: 100,
-      sortBy: "updated",
-      sortOrder: "desc",
+      sortBy,
+      sortOrder,
     })
   }
 
@@ -226,8 +228,31 @@ export function JobListingsPage() {
       search: searchTerm || undefined,
       status: value !== "all" ? (value as JobListingStatus) : undefined,
       limit: 100,
-      sortBy: "updated",
-      sortOrder: "desc",
+      sortBy,
+      sortOrder,
+    })
+  }
+
+  const handleSortChange = (value: string) => {
+    const nextSort = value as typeof sortBy
+    setSortBy(nextSort)
+    setFilters({
+      search: searchTerm || undefined,
+      status: statusFilter !== "all" ? (statusFilter as JobListingStatus) : undefined,
+      limit: 100,
+      sortBy: nextSort,
+      sortOrder,
+    })
+  }
+
+  const handleSortOrderChange = (value: "asc" | "desc") => {
+    setSortOrder(value)
+    setFilters({
+      search: searchTerm || undefined,
+      status: statusFilter !== "all" ? (statusFilter as JobListingStatus) : undefined,
+      limit: 100,
+      sortBy,
+      sortOrder: value,
     })
   }
 
@@ -343,6 +368,28 @@ export function JobListingsPage() {
                 className="w-full sm:w-[200px]"
               />
               <div className="flex gap-2">
+                <Select value={sortBy} onValueChange={handleSortChange}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="updated">Updated (newest)</SelectItem>
+                    <SelectItem value="date">Created (newest)</SelectItem>
+                    <SelectItem value="score">Match score</SelectItem>
+                    <SelectItem value="company">Company</SelectItem>
+                    <SelectItem value="title">Title</SelectItem>
+                    <SelectItem value="status">Status</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sortOrder} onValueChange={(value) => handleSortOrderChange(value as "asc" | "desc")}>
+                  <SelectTrigger className="w-[110px]">
+                    <SelectValue placeholder="Order" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">Desc</SelectItem>
+                    <SelectItem value="asc">Asc</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
                   <SelectTrigger className="flex-1 sm:w-[140px]">
                     <SelectValue placeholder="Status" />

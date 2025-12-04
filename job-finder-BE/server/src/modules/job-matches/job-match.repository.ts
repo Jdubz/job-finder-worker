@@ -55,6 +55,7 @@ const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   applicationPriority: (row.application_priority as JobMatch['applicationPriority']) ?? undefined,
   analyzedAt: parseTimestamp(row.analyzed_at),
   createdAt: parseTimestamp(row.created_at),
+  updatedAt: parseTimestamp(row.updated_at),
   submittedBy: row.submitted_by,
   queueItemId: row.queue_item_id
 })
@@ -75,7 +76,7 @@ interface JobMatchListOptions {
   minScore?: number
   maxScore?: number
   jobListingId?: string
-  sortBy?: 'score' | 'date'
+  sortBy?: 'score' | 'date' | 'updated'
   sortOrder?: 'asc' | 'desc'
 }
 
@@ -97,7 +98,7 @@ export class JobMatchRepository {
       minScore,
       maxScore,
       jobListingId,
-      sortBy = 'date',
+      sortBy = 'updated',
       sortOrder = 'desc'
     } = options
 
@@ -120,7 +121,12 @@ export class JobMatchRepository {
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-    const orderColumn = sortBy === 'score' ? 'match_score' : 'created_at'
+    const sortColumnMap: Record<string, string> = {
+      score: 'match_score',
+      date: 'created_at',
+      updated: 'updated_at'
+    }
+    const orderColumn = sortColumnMap[sortBy] ?? 'updated_at'
     const orderDirection = (sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
 
     const rows = this.db
