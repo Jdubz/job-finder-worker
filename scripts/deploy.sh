@@ -79,6 +79,29 @@ if [ -f "$SOURCE_AUTH" ]; then
 else
   echo "[deploy] WARNING: $SOURCE_AUTH not found; skipping Codex auth refresh"
 fi
+
+# --- Refresh Gemini auth into seeds and volumes ---
+GEMINI_BASE="${GEMINI_BASE:-$DEPLOY_PATH}"
+SOURCE_GEMINI="$HOME/.gemini/oauth_creds.json"
+if [ -f "$SOURCE_GEMINI" ]; then
+  echo "[deploy] Updating Gemini auth from $SOURCE_GEMINI"
+  install -m 700 -d "$GEMINI_BASE/gemini-seed/.gemini"
+  install -m 600 "$SOURCE_GEMINI" "$GEMINI_BASE/gemini-seed/.gemini/oauth_creds.json"
+
+  sync_volume_gemini() {
+    local volume_name="$1"
+    docker run --rm \
+      -v "${volume_name}:/data" \
+      -v "$SOURCE_GEMINI:/host/oauth_creds.json:ro" \
+      alpine:3.20.2 \
+      sh -c 'mkdir -p /data && cp /host/oauth_creds.json /data/oauth_creds.json && chmod 600 /data/oauth_creds.json'
+  }
+
+  sync_volume_gemini job-finder_gemini-home-api || echo "[deploy] WARNING: Failed to sync auth to volume job-finder_gemini-home-api. Continuing..."
+  sync_volume_gemini job-finder_gemini-home-worker || echo "[deploy] WARNING: Failed to sync auth to volume job-finder_gemini-home-worker. Continuing..."
+else
+  echo "[deploy] WARNING: $SOURCE_GEMINI not found; skipping Gemini auth refresh"
+fi
 # Pull and restart stack
 docker compose -f docker-compose.yml pull
 docker compose -f docker-compose.yml up -d --remove-orphans
