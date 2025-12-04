@@ -13,7 +13,9 @@ import type {
   GetQueueStatsResponse,
   GetQueueItemResponse,
   UpdateJobStatusResponse,
-  QueueItem
+  QueueItem,
+  AgentCliProvider,
+  AgentCliStatus
 } from "@shared/types"
 import type { ApiSuccessResponse } from "@shared/types"
 
@@ -178,13 +180,6 @@ export interface WorkerHealth {
     queue: Record<string, unknown>
     uptime: number
   }
-}
-
-export type AgentCliProvider = "codex" | "gemini"
-
-export interface AgentCliStatus {
-  healthy: boolean
-  message: string
 }
 
 export interface AgentCliHealth {

@@ -1,24 +1,18 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import type { AgentCliProvider, AgentCliStatus } from '@shared/types'
 import { logger } from '../logger'
 
 const execFileAsync = promisify(execFile)
 
-export type AgentCliProvider = 'codex' | 'gemini'
-
-export interface CliHealthStatus {
-  healthy: boolean
-  message: string
-}
-
-export type CliHealthMap = Record<AgentCliProvider, CliHealthStatus>
+export type CliHealthMap = Record<AgentCliProvider, AgentCliStatus>
 
 const CHECKS: Record<AgentCliProvider, { cmd: string; args: string[]; successPattern: RegExp }> = {
   codex: { cmd: 'codex', args: ['login', 'status'], successPattern: /logged in/i },
   gemini: { cmd: 'gemini', args: ['auth', 'status'], successPattern: /(logged in|authenticated)/i }
 }
 
-async function runCheck(provider: AgentCliProvider): Promise<CliHealthStatus> {
+async function runCheck(provider: AgentCliProvider): Promise<AgentCliStatus> {
   const check = CHECKS[provider]
   try {
     const { stdout, stderr } = await execFileAsync(check.cmd, check.args, { timeout: 5_000 })
