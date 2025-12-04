@@ -130,6 +130,11 @@ export class QueueClient extends BaseApiClient {
     return response.data
   }
 
+  async triggerCronLogrotate(): Promise<CronTriggerResult> {
+    const response = await this.post<ApiSuccessResponse<CronTriggerResult>>(`/queue/cron/trigger/logrotate`)
+    return response.data
+  }
+
   async getWorkerHealth(): Promise<WorkerHealth> {
     const response = await this.get<ApiSuccessResponse<WorkerHealth>>(`/queue/worker/health`)
     return response.data
@@ -142,14 +147,20 @@ export class QueueClient extends BaseApiClient {
 }
 
 // Cron and Worker Health types
-export interface CronStatus {
+export interface CronJobStatus {
   enabled: boolean
+  hours: number[]
+  lastRun?: string | null
+}
+
+export interface CronStatus {
   started: boolean
   nodeEnv: string
-  expressions: {
-    scrape: string
-    maintenance: string
-    logrotate: string
+  timezone: string
+  jobs: {
+    scrape: CronJobStatus
+    maintenance: CronJobStatus
+    logrotate: CronJobStatus
   }
   workerMaintenanceUrl: string
   logDir: string

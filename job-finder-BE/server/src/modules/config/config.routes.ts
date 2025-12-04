@@ -11,6 +11,7 @@ import type {
   WorkerSettings,
   MatchPolicy,
   PreFilterPolicy,
+  CronConfig,
 } from '@shared/types'
 import {
   ApiErrorCode,
@@ -19,6 +20,7 @@ import {
   isWorkerSettings,
   isMatchPolicy,
   isPreFilterPolicy,
+  isCronConfig,
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
@@ -36,6 +38,7 @@ type KnownPayload =
   | PromptConfig
   | WorkerSettings
   | PreFilterPolicy
+  | CronConfig
   | Record<string, unknown>
 
 /**
@@ -106,6 +109,8 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
       return payload
     case 'worker-settings':
       return normalizeKeys<WorkerSettings>(payload)
+    case 'cron-config':
+      return payload as unknown as CronConfig
     case 'personal-info':
     default:
       return payload
@@ -126,6 +131,8 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
       return true
     case 'worker-settings':
       return isWorkerSettings(payload)
+    case 'cron-config':
+      return isCronConfig(payload)
     case 'personal-info':
       return isPersonalInfo(payload)
     default:

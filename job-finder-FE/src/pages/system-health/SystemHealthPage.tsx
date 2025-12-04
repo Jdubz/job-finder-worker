@@ -6,12 +6,15 @@ import {
   type WorkerHealth,
   type CronTriggerResult
 } from "@/api/queue-client"
-import type { AgentCliHealth } from "@shared/types"
+import { configClient } from "@/api/config-client"
+import type { AgentCliHealth, CronConfig } from "@shared/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   AlertCircle,
   CheckCircle2,
@@ -26,28 +29,74 @@ import {
 } from "lucide-react"
 
 const REFRESH_INTERVAL_MS = 30000 // 30 seconds
+type CronJobKey = keyof CronConfig["jobs"]
+
+const CRON_JOB_LABELS: Record<CronJobKey, string> = {
+  scrape: "Scrape Jobs",
+  maintenance: "Maintenance",
+  logrotate: "Log Rotation",
+}
+
+function formatHoursInput(hours: number[]): string {
+  return [...hours].sort((a, b) => a - b).join(", ")
+}
+
+function parseHours(input: string): number[] {
+  const tokens = input
+    .split(/[,\s]+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => Number(t))
+
+  if (tokens.length === 0) return []
+
+  for (const h of tokens) {
+    if (!Number.isInteger(h) || h < 0 || h > 23) {
+      throw new Error("Hours must be integers between 0 and 23")
+    }
+  }
+
+  return Array.from(new Set(tokens)).sort((a, b) => a - b)
+}
 
 export function SystemHealthPage() {
   const { user, isOwner } = useAuth()
 
   const [cronStatus, setCronStatus] = useState<CronStatus | null>(null)
+  const [cronConfig, setCronConfig] = useState<CronConfig | null>(null)
   const [workerHealth, setWorkerHealth] = useState<WorkerHealth | null>(null)
   const [cliHealth, setCliHealth] = useState<AgentCliHealth | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [triggeringCron, setTriggeringCron] = useState<string | null>(null)
+  const [savingJob, setSavingJob] = useState<string | null>(null)
+  const [hourInputs, setHourInputs] = useState<Record<string, string>>({})
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
 
   const fetchHealth = useCallback(async () => {
     try {
       setError(null)
-      const [cron, worker, cli] = await Promise.all([
+      const [cron, worker, cli, cfg] = await Promise.all([
         queueClient.getCronStatus(),
         queueClient.getWorkerHealth(),
-        queueClient.getAgentCliHealth()
+        queueClient.getAgentCliHealth(),
+        configClient.getCronConfig().catch(() => null)
       ])
+
+      const derivedConfig: CronConfig | null = cfg ?? (cron ? { jobs: cron.jobs } : null)
+
       setCronStatus(cron)
+      setCronConfig(derivedConfig)
+      setHourInputs(
+        derivedConfig
+          ? {
+              scrape: formatHoursInput(derivedConfig.jobs.scrape.hours),
+              maintenance: formatHoursInput(derivedConfig.jobs.maintenance.hours),
+              logrotate: formatHoursInput(derivedConfig.jobs.logrotate.hours),
+            }
+          : {}
+      )
       setWorkerHealth(worker)
       setCliHealth(cli)
       setLastRefresh(new Date())
@@ -66,23 +115,21 @@ export function SystemHealthPage() {
     return () => clearInterval(interval)
   }, [user, isOwner, fetchHealth])
 
-  const handleTriggerCron = async (type: "scrape" | "maintenance") => {
+  const handleTriggerCron = async (type: CronJobKey) => {
     setTriggeringCron(type)
     setAlert(null)
     try {
       let result: CronTriggerResult
-      if (type === "scrape") {
-        result = await queueClient.triggerCronScrape()
-      } else {
-        result = await queueClient.triggerCronMaintenance()
-      }
+      if (type === "scrape") result = await queueClient.triggerCronScrape()
+      else if (type === "maintenance") result = await queueClient.triggerCronMaintenance()
+      else result = await queueClient.triggerCronLogrotate()
 
       if (result.success) {
         setAlert({
           type: "success",
           message: type === "scrape"
             ? `Scrape job queued (ID: ${result.queueItemId})`
-            : "Maintenance triggered successfully"
+            : "Job triggered successfully"
         })
       } else {
         setAlert({ type: "error", message: result.error ?? "Unknown error" })
@@ -91,6 +138,55 @@ export function SystemHealthPage() {
       setAlert({ type: "error", message: err instanceof Error ? err.message : "Failed to trigger cron" })
     } finally {
       setTriggeringCron(null)
+    }
+  }
+
+  const saveCronConfig = async (config: CronConfig, job: string) => {
+    setSavingJob(job)
+    setAlert(null)
+    try {
+      await configClient.updateCronConfig(config)
+      setCronConfig(config)
+      setAlert({ type: "success", message: "Scheduler updated" })
+      await fetchHealth()
+    } catch (err) {
+      setAlert({ type: "error", message: err instanceof Error ? err.message : "Failed to save scheduler" })
+    } finally {
+      setSavingJob(null)
+    }
+  }
+
+  const handleToggleJob = async (job: CronJobKey, enabled: boolean) => {
+    const base = cronConfig ?? (cronStatus ? { jobs: cronStatus.jobs } : null)
+    if (!base) return
+    try {
+      const hours = parseHours(hourInputs[job] ?? formatHoursInput(base.jobs[job].hours))
+      const next: CronConfig = {
+        jobs: {
+          ...base.jobs,
+          [job]: { ...base.jobs[job], enabled, hours }
+        }
+      }
+      await saveCronConfig(next, job)
+    } catch (err) {
+      setAlert({ type: "error", message: err instanceof Error ? err.message : "Invalid hours" })
+    }
+  }
+
+  const handleSaveHours = async (job: CronJobKey) => {
+    const base = cronConfig ?? (cronStatus ? { jobs: cronStatus.jobs } : null)
+    if (!base) return
+    try {
+      const hours = parseHours(hourInputs[job] ?? "")
+      const next: CronConfig = {
+        jobs: {
+          ...base.jobs,
+          [job]: { ...base.jobs[job], hours }
+        }
+      }
+      await saveCronConfig(next, job)
+    } catch (err) {
+      setAlert({ type: "error", message: err instanceof Error ? err.message : "Invalid hours" })
     }
   }
 
@@ -172,8 +268,6 @@ export function SystemHealthPage() {
                 <Skeleton className="h-6 w-20" />
               ) : cronStatus?.started ? (
                 <Badge variant="default" className="bg-green-600">Running</Badge>
-              ) : cronStatus?.enabled ? (
-                <Badge variant="secondary">Enabled (Not Started)</Badge>
               ) : (
                 <Badge variant="destructive">Disabled</Badge>
               )}
@@ -197,60 +291,80 @@ export function SystemHealthPage() {
                     <Badge variant="outline">{cronStatus.nodeEnv}</Badge>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Enabled</span>
-                    <span>{cronStatus.enabled ? "Yes" : "No"}</span>
-                  </div>
-                  <div className="flex justify-between">
                     <span className="text-muted-foreground">Started</span>
                     <span>{cronStatus.started ? "Yes" : "No"}</span>
                   </div>
-                </div>
-
-                <div className="border-t pt-4 space-y-2">
-                  <h4 className="font-medium text-sm">Schedules (UTC)</h4>
-                  <div className="space-y-1 text-sm font-mono">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Scrape</span>
-                      <span>{cronStatus.expressions.scrape}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Maintenance</span>
-                      <span>{cronStatus.expressions.maintenance}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Log Rotate</span>
-                      <span>{cronStatus.expressions.logrotate}</span>
-                    </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Timezone</span>
+                    <span>{cronStatus.timezone}</span>
                   </div>
                 </div>
 
-                <div className="border-t pt-4 flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleTriggerCron("scrape")}
-                    disabled={triggeringCron !== null}
-                  >
-                    {triggeringCron === "scrape" ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Play className="h-4 w-4 mr-2" />
-                    )}
-                    Trigger Scrape
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleTriggerCron("maintenance")}
-                    disabled={triggeringCron !== null}
-                  >
-                    {triggeringCron === "maintenance" ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Play className="h-4 w-4 mr-2" />
-                    )}
-                    Trigger Maintenance
-                  </Button>
+                <div className="border-t pt-4 space-y-4">
+                  {cronConfig && (
+                    <div className="grid gap-4">
+                      {(Object.keys(cronConfig.jobs) as CronJobKey[]).map((key) => {
+                        const job = cronConfig.jobs[key]
+                        return (
+                          <div key={key} className="border rounded-lg p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{CRON_JOB_LABELS[key]}</span>
+                                <Badge variant="outline" className="text-[11px]">
+                                  Last run: {job.lastRun ? new Date(job.lastRun).toLocaleString() : "Never"}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground text-sm">Enabled</span>
+                                <Checkbox
+                                  checked={job.enabled}
+                                  onCheckedChange={(checked) => handleToggleJob(key, checked === true)}
+                                  disabled={savingJob === key || loading}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid md:grid-cols-[1fr_auto_auto] gap-2 items-center">
+                              <div className="space-y-1">
+                                <span className="text-xs text-muted-foreground">Run at hours (0-23, comma separated)</span>
+                                <Input
+                                  value={hourInputs[key] ?? ""}
+                                  onChange={(e) => setHourInputs((prev) => ({ ...prev, [key]: e.target.value }))}
+                                  disabled={savingJob === key || loading}
+                                />
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleSaveHours(key)}
+                                disabled={savingJob === key || loading}
+                              >
+                                {savingJob === key ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                                Save
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => handleTriggerCron(key)}
+                                disabled={triggeringCron !== null || loading}
+                              >
+                                {triggeringCron === key ? (
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                  <Play className="h-4 w-4 mr-2" />
+                                )}
+                                Run Now
+                              </Button>
+                            </div>
+
+                            <div className="text-xs text-muted-foreground font-mono">
+                              Scheduled hours: {formatHoursInput(job.hours) || "None"}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               </>
             ) : null}
