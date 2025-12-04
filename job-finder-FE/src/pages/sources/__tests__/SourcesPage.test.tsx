@@ -304,8 +304,7 @@ describe("SourcesPage", () => {
       renderWithProvider()
 
       await waitFor(() => {
-      const statusCombobox = screen.getByRole('combobox', { name: /all status/i })
-      expect(statusCombobox).toBeInTheDocument()
+      expect(screen.getByText(/All Status/i)).toBeInTheDocument()
       })
     })
 
