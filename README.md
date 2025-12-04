@@ -37,6 +37,7 @@ Import shared definitions via the local `@shared/types` workspace package. Add i
 - [`docs/DOCUMENTATION_GUIDELINES.md`](docs/DOCUMENTATION_GUIDELINES.md) – rules for writing/archiving docs, metadata requirements, and templates.
 - [`docs/tasks/backlog.md`](docs/tasks/backlog.md) – single backlog for outstanding documentation or process follow-ups.
 - [`infra/README.md`](infra/README.md) – explanation of the deployment artifacts (`cloudflared`, Docker compose, SQLite schema/seeders).
+- **Cron/Scheduler**: The API now owns all scheduled work via an in-process hourly loop configured by the `cron-config` entry in `job_finder_config` (set through the System Health page). No OS cron jobs are required; container timezone is pinned to `America/Los_Angeles` for schedule interpretation.
 
 ## Husky Hooks
 

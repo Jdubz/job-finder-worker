@@ -110,7 +110,7 @@ services:
         target: /gemini-seed
         read_only: true
       - gemini-home-worker:/home/node/.gemini
-      # Python binary for cron/entrypoint
+      # Python/local bin for helper scripts (no cron jobs run here)
       - type: bind
         source: /srv/job-finder/codex/local-bin
         target: /home/node/.local/bin
