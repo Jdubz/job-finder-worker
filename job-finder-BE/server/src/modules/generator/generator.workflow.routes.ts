@@ -76,8 +76,8 @@ export function buildGeneratorWorkflowRouter() {
           steps: stepResult.steps,
           nextStep: stepResult.nextStep,
           stepCompleted: steps[0]?.id, // First step that was completed
-          resumeUrl: 'resumeUrl' in stepResult ? stepResult.resumeUrl : undefined,
-          coverLetterUrl: 'coverLetterUrl' in stepResult ? stepResult.coverLetterUrl : undefined
+          resumeUrl: stepResult.resumeUrl,
+          coverLetterUrl: stepResult.coverLetterUrl
         })
       )
     })
