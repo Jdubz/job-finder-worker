@@ -51,17 +51,22 @@ export function normalizeObjectValue(value: unknown): Record<string, unknown> | 
 }
 
 /**
- * Convert TimestampLike to Date
- * Handles both Date objects and structured timestamps
- * @param timestamp TimestampLike value (Date or structured timestamp)
- * @returns Date object
+ * Convert a variety of timestamp representations to a Date instance.
+ * Accepts: Date, TimestampLike (with toDate), ISO string, Unix number, or nullish.
+ * Returns an Invalid Date when conversion is not possible (caller can check isNaN).
  */
-export function toDate(timestamp: TimestampLike): Date {
-  if (timestamp instanceof Date) {
-    return timestamp
+export function toDate(timestamp: TimestampLike | string | number | null | undefined): Date {
+  // Reuse broader normalization logic for anything we consider date-like
+  const normalized = normalizeDateValue(timestamp)
+  if (normalized) return normalized
+
+  // Fallbacks to avoid runtime crashes if an unexpected type sneaks through
+  if (typeof timestamp === "string" || typeof timestamp === "number") {
+    return new Date(timestamp)
   }
-  // Structured timestamp objects usually expose a toDate() method
-  return timestamp.toDate()
+
+  // Last resort: return an invalid date instead of throwing, so consumers can handle it
+  return new Date(NaN)
 }
 
 /**

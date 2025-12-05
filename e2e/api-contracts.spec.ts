@@ -1,0 +1,88 @@
+import { test, expect } from "@playwright/test"
+import {
+  jobListingRecordSchema,
+  jobListingStatsSchema,
+  jobMatchWithListingSchema,
+  jobMatchStatsSchema,
+  queueItemSchema,
+  queueStatsSchema,
+} from "@shared/types"
+
+const API_BASE = process.env.JF_E2E_API_BASE || "http://127.0.0.1:5080/api"
+const AUTH_TOKEN = process.env.JF_E2E_AUTH_TOKEN || "dev-admin-token"
+
+test.describe("API contract (shared schemas)", () => {
+  test("API contract :: listings/matches/queue conform to shared schemas", async ({ request }) => {
+    // Seed one listing so listing schema validation hits real data
+    const unique = `e2e-contract-${Date.now()}`
+    const createRes = await request.post(`${API_BASE}/job-listings`, {
+      data: {
+        url: `https://example.com/${unique}`,
+        title: "Contract Schema Engineer",
+        companyName: "Schema Co",
+        description: "Validate schemas",
+      },
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(createRes.ok()).toBeTruthy()
+
+    const listingsRes = await request.get(`${API_BASE}/job-listings?limit=5`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(listingsRes.ok()).toBeTruthy()
+    const listingsBody = await listingsRes.json()
+    const listingsParse = jobListingRecordSchema.array().safeParse(listingsBody.data.listings)
+    expect(listingsParse.success).toBe(true)
+
+    const listingStatsRes = await request.get(`${API_BASE}/job-listings/stats`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(listingStatsRes.ok()).toBeTruthy()
+    const listingStatsBody = await listingStatsRes.json()
+    const listingStatsParse = jobListingStatsSchema.safeParse(listingStatsBody.data.stats)
+    expect(listingStatsParse.success).toBe(true)
+
+    // Job matches may be empty; still validate payload shape
+    const matchesRes = await request.get(`${API_BASE}/job-matches`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(matchesRes.ok()).toBeTruthy()
+    const matchesBody = await matchesRes.json()
+    const matchesParse = jobMatchWithListingSchema.array().safeParse(matchesBody.data.matches)
+    expect(matchesParse.success).toBe(true)
+
+    const matchStatsRes = await request.get(`${API_BASE}/job-matches/stats`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(matchStatsRes.ok()).toBeTruthy()
+    const matchStatsBody = await matchStatsRes.json()
+    const matchStatsParse = jobMatchStatsSchema.safeParse(matchStatsBody.data.stats)
+    expect(matchStatsParse.success).toBe(true)
+
+    // Queue: submit a job and validate payloads
+    const queueRes = await request.post(`${API_BASE}/queue/jobs`, {
+      data: {
+        url: `https://example.com/${unique}-queue`,
+        companyName: "Queue Co",
+      },
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(queueRes.ok()).toBeTruthy()
+
+    const queueList = await request.get(`${API_BASE}/queue?limit=5`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(queueList.ok()).toBeTruthy()
+    const queueBody = await queueList.json()
+    const queueParse = queueItemSchema.array().safeParse(queueBody.data.items)
+    expect(queueParse.success).toBe(true)
+
+    const queueStats = await request.get(`${API_BASE}/queue/stats`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(queueStats.ok()).toBeTruthy()
+    const queueStatsBody = await queueStats.json()
+    const queueStatsParse = queueStatsSchema.safeParse(queueStatsBody.data.stats)
+    expect(queueStatsParse.success).toBe(true)
+  })
+})
