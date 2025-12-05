@@ -159,13 +159,23 @@ describe('job match routes', () => {
       expect(statsInclude.body.data.stats.total).toBe(2)
     })
 
-    it('PATCH /job-matches/:id/status toggles status', async () => {
+    it('PATCH /job-matches/:id/status toggles status and returns listing data', async () => {
       createTestListing('listing-toggle')
-      const seeded = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-toggle', jobListingId: 'listing-toggle', status: 'active' as const }))
+      const seeded = repo.upsert(
+        buildJobMatchInput({
+          queueItemId: 'queue-toggle',
+          jobListingId: 'listing-toggle',
+          status: 'active' as const,
+          matchScore: 75,
+        })
+      )
 
       const res = await request(app).patch(`/job-matches/${seeded.id}/status`).send({ status: 'ignored' })
       expect(res.status).toBe(200)
       expect(res.body.data.match.status).toBe('ignored')
+      expect(res.body.data.match.listing.id).toBe('listing-toggle')
+      expect(res.body.data.match.listing.title).toBeDefined()
+      expect(res.body.data.match.matchScore).toBe(75)
 
       const updated = repo.getById(seeded.id!)
       expect(updated?.status).toBe('ignored')

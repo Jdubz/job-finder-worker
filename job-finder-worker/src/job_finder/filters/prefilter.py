@@ -64,6 +64,9 @@ class PreFilter:
     # Default keywords that indicate remote work (used if not configured)
     DEFAULT_REMOTE_KEYWORDS = ["remote", "distributed", "anywhere", "worldwide"]
 
+    # LinkedIn job-wrapping tags that signal work arrangement inside descriptions
+    LI_WORK_ARRANGEMENT_PATTERN = re.compile(r"#\s*li[-_ ]?(remote|hybrid|onsite)\b", re.IGNORECASE)
+
     def __init__(self, config: Dict[str, Any]):
         """
         Initialize the pre-filter.
@@ -392,6 +395,14 @@ class PreFilter:
                     return "hybrid"
                 if "onsite" in lt_lower or "on-site" in lt_lower or "office" in lt_lower:
                     return "onsite"
+
+        # LinkedIn job-wrapping hashtags often live only in the description
+        description = job_data.get("description", "")
+        if isinstance(description, str) and description:
+            match = self.LI_WORK_ARRANGEMENT_PATTERN.search(description)
+            if match:
+                arrangement = match.group(1).lower()
+                return arrangement
 
         # Check offices array for remote indicators (Greenhouse)
         offices = job_data.get("offices", [])

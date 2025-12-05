@@ -105,4 +105,17 @@ describe('JobMatchRepository', () => {
     expect(fetched?.id).toBe(created.id)
     expect(fetched?.jobListingId).toBe('test-listing')
   })
+
+  it('updateStatus returns match with listing data', () => {
+    createListing('listing-status')
+    const created = repo.upsert(
+      buildJobMatchInput({ queueItemId: 'queue-status', jobListingId: 'listing-status', status: 'active' })
+    )
+
+    const updated = repo.updateStatus(created.id!, 'ignored')
+
+    expect(updated?.status).toBe('ignored')
+    expect(updated?.listing.id).toBe('listing-status')
+    expect(updated?.listing.title).toBeTruthy()
+  })
 })

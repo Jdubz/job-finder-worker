@@ -122,6 +122,35 @@ def test_submit_jobs_handles_errors(scraper_intake, mock_queue_manager):
     assert count == 1  # Only first succeeded
 
 
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Do cool things #LI-DNI",
+        "Do cool things #li_dni",
+        "Do cool things #li dnp",
+        "Do cool things #LI-DNP and more",
+    ],
+)
+def test_submit_jobs_skips_linkedin_suppression(description, scraper_intake, mock_queue_manager):
+    """Jobs carrying LinkedIn suppression tags should be skipped before queueing."""
+
+    jobs = [
+        {
+            "title": "Software Engineer",
+            "url": "https://example.com/job/1",
+            "company": "Test Corp",
+            "description": description,
+        }
+    ]
+
+    mock_queue_manager.url_exists_in_queue.return_value = False
+
+    count = scraper_intake.submit_jobs(jobs, source="scraper")
+
+    assert count == 0
+    mock_queue_manager.add_item.assert_not_called()
+
+
 def test_submit_company_success(scraper_intake, mock_queue_manager):
     """Test successful company submission with granular pipeline."""
     mock_queue_manager.url_exists_in_queue.return_value = False

@@ -807,6 +807,48 @@ class TestPreFilterRemoteKeywords:
         assert "Remote" in result.reason
 
 
+class TestPreFilterLinkedInHashtags:
+    """Tests for LinkedIn work-arrangement hashtags inside descriptions."""
+
+    @pytest.fixture
+    def base_config(self):
+        return {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": False,  # Flip to see rejection when detected
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+
+    @pytest.mark.parametrize(
+        "description, arrangement_to_reject, expected_reason",
+        [
+            ("Great role #LI-Remote with global team", "allowRemote", "Remote"),
+            ("Join us #li_Hybrid in NYC", "allowHybrid", "Hybrid"),
+            ("Office-first culture #LI Onsite", "allowOnsite", "Onsite"),
+            ("Another role with #li-REMOTE tag", "allowRemote", "Remote"),
+        ],
+    )
+    def test_li_work_arrangement_detected_in_description(
+        self, base_config, description, arrangement_to_reject, expected_reason
+    ):
+        """Hashtags for LI remote/hybrid/onsite should override allow flags."""
+
+        base_config["workArrangement"][arrangement_to_reject] = False
+        pf = PreFilter(base_config)
+        result = pf.filter({"title": "Engineer", "description": description})
+
+        assert result.passed is False
+        assert expected_reason in result.reason
+
+
 class TestPreFilterRemoteSource:
     """Tests for is_remote_source flag (set on source config, not prefilter-policy)."""
 

@@ -259,7 +259,7 @@ export class JobMatchRepository {
     this.db.prepare('DELETE FROM job_matches WHERE id = ?').run(id)
   }
 
-  updateStatus(id: string, status: 'active' | 'ignored' | 'applied'): JobMatch | null {
+  updateStatus(id: string, status: 'active' | 'ignored' | 'applied'): JobMatchWithListing | null {
     const now = new Date().toISOString()
     this.db
       .prepare(
@@ -271,7 +271,7 @@ export class JobMatchRepository {
       )
       .run({ status, now, id })
 
-    return this.getById(id)
+    return this.getByIdWithListing(id)
   }
 
   /**
