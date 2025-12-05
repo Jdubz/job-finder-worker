@@ -108,7 +108,7 @@ describe("AISettingsTab", () => {
 
     expect(screen.getByText("Task Fallback Chains")).toBeInTheDocument()
     expect(screen.getByText("Data Extraction")).toBeInTheDocument()
-    expect(screen.getByText("Match Analysis")).toBeInTheDocument()
+    expect(screen.getByText("Analysis")).toBeInTheDocument()
   })
 
   it("renders document generator section", () => {

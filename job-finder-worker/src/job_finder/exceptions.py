@@ -75,8 +75,13 @@ class AIProviderError(JobFinderError):
 class QuotaExhaustedError(AIProviderError):
     """Raised when an AI provider's quota or rate limit is exhausted.
 
-    This is a critical error that should stop queue processing immediately
-    and reset the current task to pending for retry after quota resets.
+    When this error is raised, the AgentManager will:
+    1. Disable the exhausted agent
+    2. Continue to the next agent in the fallback chain
+
+    This allows graceful degradation when one provider hits limits while
+    others are still available. Only if ALL agents are exhausted will
+    NoAgentsAvailableError be raised.
 
     Examples:
     - Gemini daily quota exhausted

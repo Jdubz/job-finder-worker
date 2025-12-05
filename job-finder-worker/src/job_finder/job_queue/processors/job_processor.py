@@ -315,14 +315,27 @@ class JobProcessor(BaseProcessor):
         # Bootstrap from existing state if available
         state = item.pipeline_state or {}
         if item.scraped_data:
-            # scraped_data is {"job_data": {...}}, extract the nested job_data
-            # Handle potential double-nesting from previous bug by checking if
-            # the dict is a wrapper (only contains "job_data" key)
-            job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
-                job_data = job_data["job_data"]
-            ctx.job_data = job_data
-        elif "job_data" in state:
+            job_data = item.scraped_data.get("job_data")
+            if job_data and "job_data" in job_data:
+                # Corrupted nested data from previous bug - clear and re-scrape
+                logger.warning(
+                    f"[{item.id}] Detected corrupted nested job_data structure, "
+                    "clearing and will re-scrape"
+                )
+                item.scraped_data = None
+            elif job_data and "title" in job_data:
+                # Valid wrapped structure - make a copy to avoid mutation issues
+                ctx.job_data = dict(job_data)
+            elif job_data:
+                # Has job_data key but no title - invalid, clear it
+                logger.warning(
+                    f"[{item.id}] Invalid job_data missing 'title', clearing and will re-scrape"
+                )
+                item.scraped_data = None
+            elif "title" in item.scraped_data:
+                # Flat structure - job data fields at top level (no job_data wrapper)
+                ctx.job_data = dict(item.scraped_data)
+        if not ctx.job_data and "job_data" in state:
             ctx.job_data = state["job_data"]
 
         # Attach listing_id if one was pre-created during intake
@@ -924,6 +937,17 @@ class JobProcessor(BaseProcessor):
         """Build final scraped_data dict for queue item."""
         data: Dict[str, Any] = {}
         if ctx.job_data:
+            # Validate structure - fail fast if corrupted
+            # Corruption: job_data contains a nested dict but no title at current level
+            if (
+                "job_data" in ctx.job_data
+                and isinstance(ctx.job_data["job_data"], dict)
+                and "title" not in ctx.job_data
+            ):
+                raise ValueError(
+                    f"BUG: Attempted to save nested job_data structure. "
+                    f"Keys: {list(ctx.job_data.keys())}. This indicates a bug in the pipeline."
+                )
             data["job_data"] = ctx.job_data
         if ctx.extraction:
             data["filter_result"] = {"extraction": ctx.extraction.to_dict()}
