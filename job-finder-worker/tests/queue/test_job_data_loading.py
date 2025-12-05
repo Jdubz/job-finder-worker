@@ -166,11 +166,10 @@ class TestJobDataLoadingValidation:
 
         ctx = PipelineContext(item=item)
 
-        # Simulate the new loading logic
+        # Simulate the loading logic
         job_data = item.scraped_data.get("job_data")
         if job_data and "job_data" in job_data:
             item.scraped_data = None
-            job_data = None
         elif job_data and "title" in job_data:
             ctx.job_data = dict(job_data)  # Copy
         elif job_data:
@@ -179,6 +178,43 @@ class TestJobDataLoadingValidation:
         assert ctx.job_data is not None
         assert ctx.job_data.get("title") == "Senior Engineer"
         assert ctx.job_data.get("description") == "A great job opportunity"
+
+    def test_loads_job_data_with_sibling_metadata(self):
+        """Test extraction when scraped_data has job_data alongside sibling keys.
+
+        Real-world scenario: scraped_data contains job_data plus metadata like
+        company, company_id at the same level.
+        """
+        item = JobQueueItem(
+            id="test-siblings",
+            type=QueueItemType.JOB,
+            url="https://example.com/job/siblings",
+            company_name="Test Corp",
+            source="scraper",
+            scraped_data={
+                "job_data": {"title": "Engineer", "description": "Build things"},
+                "company": "Test Corp",
+                "company_id": "123",
+            },
+        )
+
+        ctx = PipelineContext(item=item)
+
+        # Simulate the loading logic - should extract job_data correctly
+        job_data = item.scraped_data.get("job_data")
+        if job_data and "job_data" in job_data:
+            item.scraped_data = None
+        elif job_data and "title" in job_data:
+            ctx.job_data = dict(job_data)
+        elif job_data:
+            item.scraped_data = None
+
+        # job_data should be extracted, sibling keys don't interfere
+        assert ctx.job_data is not None
+        assert ctx.job_data.get("title") == "Engineer"
+        assert ctx.job_data.get("description") == "Build things"
+        # Sibling keys are NOT in job_data (they're at scraped_data level)
+        assert "company_id" not in ctx.job_data
 
     def test_loads_copy_to_prevent_mutation(self):
         """Test that loaded job_data is a copy, not a reference."""
@@ -212,36 +248,34 @@ class TestJobDataLoadingValidation:
         assert original_data["description"] == "Original description"
 
     def test_clears_nested_job_data(self):
-        """Test that nested job_data (corruption) is detected and cleared."""
-        # Corrupted structure from previous bug
-        corrupted_data = {
-            "job_data": {
-                "job_data": {
-                    "title": "Engineer",
-                    "description": "...",
-                },
-                "company": "Test",
-            },
-            "company": "Test",
-        }
+        """Test that nested job_data (corruption) is detected and cleared.
 
+        The bug caused data to be saved as {"job_data": {"job_data": {...}}}.
+        When job_data contains a nested job_data key, it's corrupted and
+        should be cleared to trigger a re-scrape.
+        """
         item = JobQueueItem(
             id="test-nested",
             type=QueueItemType.JOB,
             url="https://example.com/job/nested",
             company_name="Test Corp",
             source="scraper",
-            scraped_data={"job_data": corrupted_data},
+            # Double-nested structure: job_data contains job_data
+            scraped_data={
+                "job_data": {
+                    "job_data": {"title": "Engineer", "description": "..."},
+                    "company": "Test",
+                }
+            },
         )
 
         ctx = PipelineContext(item=item)
 
-        # Simulate the new loading logic
+        # Simulate the loading logic
         job_data = item.scraped_data.get("job_data")
         if job_data and "job_data" in job_data:
             # Detected corruption - clear it
             item.scraped_data = None
-            job_data = None
         elif job_data and "title" in job_data:
             ctx.job_data = dict(job_data)
 
@@ -267,11 +301,10 @@ class TestJobDataLoadingValidation:
 
         ctx = PipelineContext(item=item)
 
-        # Simulate the new loading logic
+        # Simulate the loading logic
         job_data = item.scraped_data.get("job_data")
         if job_data and "job_data" in job_data:
             item.scraped_data = None
-            job_data = None
         elif job_data and "title" in job_data:
             ctx.job_data = dict(job_data)
         elif job_data:

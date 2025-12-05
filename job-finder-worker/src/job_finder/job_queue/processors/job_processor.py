@@ -323,7 +323,6 @@ class JobProcessor(BaseProcessor):
                     "clearing and will re-scrape"
                 )
                 item.scraped_data = None
-                job_data = None
             elif job_data and "title" in job_data:
                 # Valid data - make a copy to avoid mutation issues
                 ctx.job_data = dict(job_data)
@@ -936,7 +935,12 @@ class JobProcessor(BaseProcessor):
         data: Dict[str, Any] = {}
         if ctx.job_data:
             # Validate structure - fail fast if corrupted
-            if "job_data" in ctx.job_data and "title" not in ctx.job_data:
+            # Corruption: job_data contains a nested dict but no title at current level
+            if (
+                "job_data" in ctx.job_data
+                and isinstance(ctx.job_data["job_data"], dict)
+                and "title" not in ctx.job_data
+            ):
                 raise ValueError(
                     f"BUG: Attempted to save nested job_data structure. "
                     f"Keys: {list(ctx.job_data.keys())}. This indicates a bug in the pipeline."
