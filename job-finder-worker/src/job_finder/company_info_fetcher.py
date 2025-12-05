@@ -7,7 +7,7 @@ Scraping is supplementary, not primary. URL is a hint, not a requirement.
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import requests
 from bs4 import BeautifulSoup
@@ -17,6 +17,9 @@ from job_finder.ai.search_client import get_search_client, SearchResult
 from job_finder.logging_config import format_company_name
 from job_finder.settings import get_text_limits
 
+if TYPE_CHECKING:
+    from job_finder.ai.agent_manager import AgentManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,8 +28,7 @@ class CompanyInfoFetcher:
 
     def __init__(
         self,
-        ai_provider=None,
-        ai_config=None,
+        agent_manager: Optional["AgentManager"] = None,
         db_path: Optional[str] = None,
         sources_manager=None,
     ):
@@ -34,13 +36,11 @@ class CompanyInfoFetcher:
         Initialize company info fetcher.
 
         Args:
-            ai_provider: AI provider for content extraction
-            ai_config: AI configuration dictionary
+            agent_manager: AgentManager for AI-powered extraction
             db_path: Database path (deprecated, use sources_manager instead)
             sources_manager: JobSourcesManager for aggregator domain lookup
         """
-        self.ai_provider = ai_provider
-        self.ai_config = ai_config or {}
+        self.agent_manager = agent_manager
         self.db_path = db_path
         self.sources_manager = sources_manager
         self.session = requests.Session()
@@ -164,7 +164,7 @@ class CompanyInfoFetcher:
             search_context = self._format_search_results(results)
 
             # AI extracts structured data from search results
-            if self.ai_provider:
+            if self.agent_manager:
                 return self._extract_from_search_results(company_name, search_context)
 
             # No AI - use heuristics on search snippets
@@ -185,7 +185,7 @@ class CompanyInfoFetcher:
         self, company_name: str, search_context: str
     ) -> Optional[Dict[str, Any]]:
         """Use AI to extract structured company data from search results."""
-        if not self.ai_provider:
+        if not self.agent_manager:
             return None
 
         try:
@@ -213,14 +213,14 @@ Return JSON with these fields (use empty string/null/false if truly unknown):
 Be factual. Only include information present in the search results.
 Return ONLY valid JSON, no other text."""
 
-            model_name = self.ai_config.get("model", "")
-            models_config = self.ai_config.get("models", {})
-            model_settings = models_config.get(model_name, {})
-            max_tokens = min(model_settings.get("max_tokens", 1000), 1000)
+            result = self.agent_manager.execute(
+                task_type="extraction",
+                prompt=prompt,
+                max_tokens=1000,
+                temperature=0.1,
+            )
 
-            response = self.ai_provider.generate(prompt, max_tokens=max_tokens, temperature=0.1)
-
-            return self._parse_json_response(response)
+            return self._parse_json_response(result.text)
 
         except Exception as e:
             logger.warning("AI extraction failed: %s", e)
@@ -228,7 +228,7 @@ Return ONLY valid JSON, no other text."""
 
     def _fallback_ai_search(self, company_name: str) -> Optional[Dict[str, Any]]:
         """Fallback: Ask AI directly (relies on AI's web search capability if available)."""
-        if not self.ai_provider:
+        if not self.agent_manager:
             return None
 
         try:
@@ -239,8 +239,13 @@ employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, pr
 
 Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
 
-            response = self.ai_provider.generate(prompt, max_tokens=800, temperature=0.1)
-            return self._parse_json_response(response)
+            result = self.agent_manager.execute(
+                task_type="extraction",
+                prompt=prompt,
+                max_tokens=800,
+                temperature=0.1,
+            )
+            return self._parse_json_response(result.text)
 
         except Exception as e:
             logger.warning("Fallback AI search failed: %s", e)
@@ -278,7 +283,7 @@ Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
             return None
 
         # Extract info from scraped content
-        if self.ai_provider:
+        if self.agent_manager:
             return self._extract_with_ai(content, company_name)
 
         return self._extract_with_heuristics(content)
@@ -323,14 +328,14 @@ employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, pr
 
 Be factual. Return ONLY valid JSON."""
 
-            model_name = self.ai_config.get("model", "")
-            models_config = self.ai_config.get("models", {})
-            model_settings = models_config.get(model_name, {})
-            max_tokens = min(model_settings.get("max_tokens", 1000), 1000)
+            result = self.agent_manager.execute(
+                task_type="extraction",
+                prompt=prompt,
+                max_tokens=1000,
+                temperature=0.2,
+            )
 
-            response = self.ai_provider.generate(prompt, max_tokens=max_tokens, temperature=0.2)
-
-            return self._parse_json_response(response) or {}
+            return self._parse_json_response(result.text) or {}
 
         except Exception as e:
             logger.warning("AI extraction error: %s", e)

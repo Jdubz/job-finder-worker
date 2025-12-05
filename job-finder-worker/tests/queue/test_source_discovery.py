@@ -27,7 +27,22 @@ def mock_dependencies() -> Dict[str, Any]:
 
     config_loader = MagicMock()
     config_loader.get_ai_settings.return_value = {
-        "worker": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
+        "agents": {
+            "codex.cli": {
+                "provider": "codex",
+                "interface": "cli",
+                "defaultModel": "gpt-4o",
+                "enabled": True,
+                "reason": None,
+                "dailyBudget": 100,
+                "dailyUsage": 0,
+            }
+        },
+        "taskFallbacks": {
+            "extraction": ["codex.cli"],
+            "analysis": ["codex.cli"],
+        },
+        "modelRates": {"gpt-4o": 1.0},
         "documentGenerator": {
             "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
         },
@@ -121,6 +136,8 @@ def mock_dependencies() -> Dict[str, Any]:
     companies_manager = MagicMock()
     sources_manager = MagicMock()
     sources_manager.create_from_discovery.return_value = "source-123"
+    sources_manager.get_source_by_company_and_aggregator.return_value = None
+    sources_manager.get_source_by_name.return_value = None
 
     company_info_fetcher = MagicMock()
     ai_matcher = MagicMock()
@@ -140,7 +157,12 @@ def mock_dependencies() -> Dict[str, Any]:
 @pytest.fixture
 def processor(mock_dependencies: Dict[str, Any]) -> QueueItemProcessor:
     """Instantiate a QueueItemProcessor wired with mocked dependencies."""
-    return QueueItemProcessor(**mock_dependencies)
+    with (
+        patch("job_finder.job_queue.processors.source_processor.AgentManager"),
+        patch("job_finder.job_queue.processors.job_processor.AgentManager"),
+        patch("job_finder.job_queue.processors.job_processor.ScrapeRunner"),
+    ):
+        return QueueItemProcessor(**mock_dependencies)
 
 
 @pytest.fixture
@@ -205,12 +227,12 @@ class TestQueueRouting:
 class TestSourceDiscoverySuccess:
     """Test successful source discovery scenarios."""
 
-    @patch("job_finder.ai.providers.create_provider_from_config")
-    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
     def test_discovers_api_source(
         self,
         mock_discovery_class,
-        _mock_create_provider,
+        _mock_agent_manager,
         source_processor,
         mock_dependencies,
     ):
@@ -244,12 +266,12 @@ class TestSourceDiscoverySuccess:
         new_item_data = spawn_call.kwargs.get("new_item_data", {})
         assert new_item_data.get("type") == QueueItemType.SCRAPE_SOURCE
 
-    @patch("job_finder.ai.providers.create_provider_from_config")
-    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
     def test_discovers_rss_source(
         self,
         mock_discovery_class,
-        _mock_create_provider,
+        _mock_agent_manager,
         source_processor,
         mock_dependencies,
     ):
@@ -271,12 +293,12 @@ class TestSourceDiscoverySuccess:
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
-    @patch("job_finder.ai.providers.create_provider_from_config")
-    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
     def test_discovers_html_source(
         self,
         mock_discovery_class,
-        _mock_create_provider,
+        _mock_agent_manager,
         source_processor,
         mock_dependencies,
     ):
@@ -299,12 +321,12 @@ class TestSourceDiscoverySuccess:
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
-    @patch("job_finder.ai.providers.create_provider_from_config")
-    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
     def test_creates_disabled_when_api_key_needed(
         self,
         mock_discovery_class,
-        _mock_create_provider,
+        _mock_agent_manager,
         source_processor,
         mock_dependencies,
     ):
@@ -335,12 +357,12 @@ class TestSourceDiscoverySuccess:
 class TestSourceDiscoveryFailure:
     """Test source discovery failure scenarios."""
 
-    @patch("job_finder.ai.providers.create_provider_from_config")
-    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
     def test_handles_discovery_failure(
         self,
         mock_discovery_class,
-        _mock_create_provider,
+        _mock_agent_manager,
         source_processor,
         mock_dependencies,
     ):
@@ -360,12 +382,12 @@ class TestSourceDiscoveryFailure:
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
-    @patch("job_finder.ai.providers.create_provider_from_config")
-    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
     def test_disables_on_bot_protection(
         self,
         mock_discovery_class,
-        _mock_create_provider,
+        _mock_agent_manager,
         source_processor,
         mock_dependencies,
     ):
@@ -383,12 +405,12 @@ class TestSourceDiscoveryFailure:
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
-    @patch("job_finder.ai.providers.create_provider_from_config")
-    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
     def test_disables_on_dns_error(
         self,
         mock_discovery_class,
-        _mock_create_provider,
+        _mock_agent_manager,
         source_processor,
         mock_dependencies,
     ):
@@ -406,16 +428,16 @@ class TestSourceDiscoveryFailure:
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
-    @patch("job_finder.ai.providers.create_provider_from_config")
-    @patch("job_finder.ai.source_discovery.SourceDiscovery")
-    def test_disables_on_dns_inside_api_probe(
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    def test_disables_on_api_probe_failed(
         self,
         mock_discovery_class,
-        _mock_create_provider,
+        _mock_agent_manager,
         source_processor,
         mock_dependencies,
     ):
-        """If API probe fails due to DNS resolution, treat as dns_error and disable."""
+        """If API probe fails, create disabled source with the error reason."""
         mock_discovery = Mock()
         mock_discovery.discover.return_value = (
             None,
@@ -431,16 +453,16 @@ class TestSourceDiscoveryFailure:
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
-        assert create_kwargs["config"]["disabled_notes"] == "dns_error"
+        assert create_kwargs["config"]["disabled_notes"] == "api_probe_failed"
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
-    @patch("job_finder.ai.providers.create_provider_from_config")
-    @patch("job_finder.ai.source_discovery.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
     def test_handles_discovery_exception(
         self,
         mock_discovery_class,
-        _mock_create_provider,
+        _mock_agent_manager,
         source_processor,
         mock_dependencies,
     ):

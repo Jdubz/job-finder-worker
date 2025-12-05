@@ -270,7 +270,25 @@ async function ensureBaseConfigs(configClient: any, userEmail: string) {
   await upsert("match-policy", minimalMatchPolicy)
   await upsert("worker-settings", minimalWorkerSettings)
   await upsert("ai-settings", {
-    worker: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
+    agents: {
+      "gemini.api": {
+        provider: "gemini",
+        interface: "api",
+        defaultModel: "gemini-2.0-flash",
+        enabled: true,
+        reason: null,
+        dailyBudget: 100,
+        dailyUsage: 0,
+      },
+    },
+    taskFallbacks: {
+      extraction: ["gemini.api"],
+      analysis: ["gemini.api"],
+    },
+    modelRates: {
+      "gemini-2.0-flash": 0.5,
+      "gemini-1.5-pro": 1.0,
+    },
     documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
     options: [
       {
@@ -502,12 +520,28 @@ describe("Configuration flows", () => {
     expect(queueSettings?.processingTimeoutSeconds).toBe(1200)
 
     await configClient.updateAISettings({
-      worker: { selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" } },
+      agents: {
+        "openai.api": {
+          provider: "openai",
+          interface: "api",
+          defaultModel: "gpt-4o-mini",
+          enabled: true,
+          reason: null,
+          dailyBudget: 100,
+          dailyUsage: 0,
+        },
+      },
+      taskFallbacks: {
+        extraction: ["openai.api"],
+        analysis: ["openai.api"],
+      },
+      modelRates: { "gpt-4o-mini": 0.5 },
       documentGenerator: { selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" } },
+      options: [],
     })
     const aiSettings = await configClient.getAISettings()
-    expect(aiSettings?.worker.selected.provider).toBe("openai")
-    expect(aiSettings?.worker.selected.model).toBe("gpt-4o-mini")
+    expect(aiSettings?.agents?.["openai.api"]?.provider).toBe("openai")
+    expect(aiSettings?.agents?.["openai.api"]?.defaultModel).toBe("gpt-4o-mini")
 
     const personalInfo = await configClient.updatePersonalInfo(
       {

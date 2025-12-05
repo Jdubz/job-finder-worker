@@ -26,17 +26,26 @@ def mock_managers():
         "excludedKeywords": [],
     }
     config_loader.get_ai_settings.return_value = {
-        "worker": {
-            "selected": {
+        "agents": {
+            "gemini.cli": {
                 "provider": "gemini",
-                "interface": "api",
-                "model": "gemini-2.0-flash",
+                "interface": "cli",
+                "defaultModel": "gemini-2.0-flash",
+                "enabled": True,
+                "reason": None,
+                "dailyBudget": 100,
+                "dailyUsage": 0,
             }
         },
+        "taskFallbacks": {
+            "extraction": ["gemini.cli"],
+            "analysis": ["gemini.cli"],
+        },
+        "modelRates": {"gemini-2.0-flash": 0.5},
         "documentGenerator": {
             "selected": {
                 "provider": "gemini",
-                "interface": "api",
+                "interface": "cli",
                 "model": "gemini-2.0-flash",
             }
         },
@@ -71,18 +80,18 @@ def mock_managers():
 @pytest.fixture
 def processor(mock_managers):
     """Create processor with mocked dependencies."""
-    # Patch ScrapeRunner and provider creation to avoid creating real instances
+    # Patch ScrapeRunner and AgentManager to avoid creating real instances
     with (
         patch(
             "job_finder.job_queue.processors.job_processor.ScrapeRunner"
         ) as mock_scrape_runner_class,
         patch(
-            "job_finder.job_queue.processors.job_processor.create_provider_from_config"
-        ) as mock_create_provider,
+            "job_finder.job_queue.processors.job_processor.AgentManager"
+        ) as mock_agent_manager_class,
     ):
         mock_scrape_runner_instance = MagicMock()
         mock_scrape_runner_class.return_value = mock_scrape_runner_instance
-        mock_create_provider.return_value = MagicMock()  # Mock provider
+        mock_agent_manager_class.return_value = MagicMock()  # Mock AgentManager
 
         processor_instance = QueueItemProcessor(**mock_managers)
 

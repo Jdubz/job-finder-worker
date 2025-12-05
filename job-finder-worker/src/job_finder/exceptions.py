@@ -94,6 +94,29 @@ class QuotaExhaustedError(AIProviderError):
         super().__init__(message)
 
 
+class NoAgentsAvailableError(AIProviderError):
+    """Raised when no agents are available to handle a task.
+
+    This is a critical error that should stop queue processing.
+    The current task should be reset to pending and the queue stopped
+    until agents are re-enabled or budget is reset.
+
+    Examples:
+    - All agents in fallback chain are disabled
+    - All agents in fallback chain are over budget
+    - No fallback chain configured for task type
+
+    Attributes:
+        task_type: The agent task type that had no available agents
+        tried_agents: List of agent IDs that were checked
+    """
+
+    def __init__(self, message: str, task_type: str = "unknown", tried_agents: list = None):
+        self.task_type = task_type
+        self.tried_agents = tried_agents or []
+        super().__init__(message)
+
+
 class ExtractionError(JobFinderError):
     """Raised when AI extraction fails.
 

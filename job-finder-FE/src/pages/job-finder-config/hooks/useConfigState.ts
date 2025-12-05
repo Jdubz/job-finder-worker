@@ -185,21 +185,8 @@ export function useConfigState() {
     setIsSaving(true)
     setError(null)
     try {
-      // Preserve any existing per-task settings even if UI doesn't edit them yet
-      const merged: AISettings = {
-        ...aiSettings,
-        worker: {
-          ...(aiSettings.worker ?? {}),
-          tasks: aiSettings.worker?.tasks ?? originalAI?.worker?.tasks,
-        },
-        documentGenerator: {
-          ...(aiSettings.documentGenerator ?? {}),
-          tasks: aiSettings.documentGenerator?.tasks ?? originalAI?.documentGenerator?.tasks,
-        },
-      }
-
-      await configClient.updateAISettings(merged)
-      setOriginalAI(deepClone(merged))
+      await configClient.updateAISettings(aiSettings)
+      setOriginalAI(deepClone(aiSettings))
       setSuccess("AI settings saved")
     } catch (_err) {
       setError("Failed to save AI settings")

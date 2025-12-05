@@ -30,6 +30,12 @@ export type AIProviderType = "codex" | "claude" | "openai" | "gemini"
 /** Interface types for connecting to providers */
 export type AIInterfaceType = "cli" | "api"
 
+/** Agent task types - abstract categories describing the nature of AI work */
+export type AgentTaskType = "extraction" | "analysis"
+
+/** Agent ID format: "{provider}.{interface}" (e.g., "gemini.cli", "codex.cli") */
+export type AgentId = `${AIProviderType}.${AIInterfaceType}`
+
 /** Available models per provider and interface */
 export const AI_PROVIDER_MODELS = {
   codex: {
@@ -52,6 +58,7 @@ export const AI_PROVIDER_MODELS = {
   },
 } as const
 
+/** Interface availability option (used by backend to report CLI/API availability) */
 export interface AIInterfaceOption {
   value: AIInterfaceType
   models: string[]
@@ -59,46 +66,55 @@ export interface AIInterfaceOption {
   reason?: string
 }
 
+/** Provider availability option (used by backend to report provider availability) */
 export interface AIProviderOption {
   value: AIProviderType
   interfaces: AIInterfaceOption[]
 }
 
-/** Selected provider configuration */
-export interface AIProviderSelection {
+/** Configuration for a single AI agent (provider/interface combination) */
+export interface AgentConfig {
+  /** AI provider type */
   provider: AIProviderType
+  /** Interface type (CLI or API) */
   interface: AIInterfaceType
-  model: string
+  /** Default model for this agent */
+  defaultModel: string
+  /** Whether agent can be used */
+  enabled: boolean
+  /**
+   * Why disabled (null if enabled). Prefix determines recovery:
+   * - "quota_exhausted:*" - auto-enabled by midnight cron
+   * - "error:*" - requires manual re-enable via UI
+   */
+  reason: string | null
+  /** Maximum daily usage units */
+  dailyBudget: number
+  /** Current usage (reset at midnight) */
+  dailyUsage: number
 }
 
-/** Task names that can have per-task AI provider overrides */
-export type AITaskName = "jobMatch" | "companyDiscovery" | "sourceDiscovery"
-
-/** Per-task AI provider override (all fields optional - falls back to section default) */
-export interface AITaskConfig {
-  provider?: AIProviderType
-  interface?: AIInterfaceType
-  model?: string | null
-}
-
-/** Per-task AI configuration overrides */
-export interface AITasksConfig {
-  jobMatch?: AITaskConfig | null
-  companyDiscovery?: AITaskConfig | null
-  sourceDiscovery?: AITaskConfig | null
-}
-
-export interface AISettingsSection {
-  selected: AIProviderSelection
-  /** Per-task overrides (optional - falls back to selected) */
-  tasks?: AITasksConfig
-}
-
-/** AI Settings with worker and document generator sections */
+/** AI Settings with agent manager configuration */
 export interface AISettings {
-  worker: AISettingsSection
-  documentGenerator: AISettingsSection
-  /** Tiered provider/interface/model options validated against CLI/API */
+  /** Configured agents keyed by agent ID (e.g., "gemini.cli", "codex.cli") */
+  agents: Partial<Record<AgentId, AgentConfig>>
+
+  /** Fallback chains per task type - ordered list of agent IDs to try */
+  taskFallbacks: Record<AgentTaskType, AgentId[]>
+
+  /** Model cost rates - how much budget each model consumes (default: 1.0) */
+  modelRates: Record<string, number>
+
+  /** Document generator selection (until backend uses AgentManager) */
+  documentGenerator: {
+    selected: {
+      provider: AIProviderType
+      interface: AIInterfaceType
+      model: string
+    }
+  }
+
+  /** Provider availability metadata (populated by backend) */
   options: AIProviderOption[]
 }
 
@@ -552,6 +568,8 @@ export interface CronConfig {
     scrape: CronJobSchedule
     maintenance: CronJobSchedule
     logrotate: CronJobSchedule
+    /** Reset agent daily budgets and re-enable quota-exhausted agents at midnight */
+    agentReset: CronJobSchedule
   }
 }
 

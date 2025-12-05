@@ -11,10 +11,15 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, cast, get_args
 
 from job_finder.ai.extraction_prompts import build_extraction_prompt
-from job_finder.ai.providers import AIProvider
 from job_finder.exceptions import ExtractionError
 
 logger = logging.getLogger(__name__)
+
+# Type checking import to avoid circular dependency
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from job_finder.ai.agent_manager import AgentManager
 
 # Type aliases matching TypeScript definitions
 SeniorityLevel = Literal["junior", "mid", "senior", "staff", "lead", "principal", "unknown"]
@@ -215,7 +220,7 @@ class JobExtractor:
     """
     Extract structured semantic data from job postings using AI.
 
-    The extractor uses an AI provider to parse job descriptions and extract:
+    The extractor uses an AgentManager to parse job descriptions and extract:
     - Seniority level
     - Work arrangement (remote/hybrid/onsite)
     - Location/timezone
@@ -225,14 +230,14 @@ class JobExtractor:
     - Employment type
     """
 
-    def __init__(self, provider: AIProvider):
+    def __init__(self, agent_manager: "AgentManager"):
         """
         Initialize the extractor.
 
         Args:
-            provider: AI provider for generating extractions
+            agent_manager: AgentManager for executing AI tasks
         """
-        self.provider = provider
+        self.agent_manager = agent_manager
 
     def extract(
         self,
@@ -257,12 +262,13 @@ class JobExtractor:
             raise ExtractionError("Empty title or description provided for extraction")
 
         prompt = build_extraction_prompt(title, description, location, posted_date)
-        response = self.provider.generate(
+        result = self.agent_manager.execute(
+            task_type="extraction",
             prompt=prompt,
             max_tokens=500,
             temperature=0.1,  # Low temperature for consistent extraction
         )
-        return self._parse_response(response)
+        return self._parse_response(result.text)
 
     def _parse_response(self, response: str) -> JobExtractionResult:
         """

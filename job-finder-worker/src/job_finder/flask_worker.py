@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
 from job_finder.ai import AIJobMatcher
-from job_finder.ai.providers import create_provider_from_config
+from job_finder.ai.agent_manager import AgentManager
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.logging_config import get_structured_logger, setup_logging
 from job_finder.maintenance import run_maintenance
@@ -41,7 +41,7 @@ from job_finder.storage import JobStorage, JobListingStorage
 from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
-from job_finder.exceptions import InitializationError, QuotaExhaustedError
+from job_finder.exceptions import InitializationError, NoAgentsAvailableError
 
 # Load environment variables
 load_dotenv()
@@ -221,14 +221,11 @@ def load_config() -> Dict[str, Any]:
 
 
 def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
-    """Reload dynamic settings from the database into in-memory components."""
-    # Load AI provider settings (must use task="jobMatch" to respect per-task config)
-    try:
-        ai_settings = config_loader.get_ai_settings()
-        ai_matcher.provider = create_provider_from_config(ai_settings, task="jobMatch")
-    except Exception as exc:  # pragma: no cover - defensive
-        slogger.worker_status("ai_provider_reload_failed", {"error": str(exc)})
+    """Reload dynamic settings from the database into in-memory components.
 
+    Note: AgentManager reads fresh config on each call, so AI provider settings
+    don't need explicit reloading here.
+    """
     # Load match policy (min_match_score comes from deterministic scoring)
     try:
         match_policy = config_loader.get_match_policy()
@@ -279,47 +276,23 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
             preferences=None,
         )
 
-    # Initialize AI components with defaults (will be overridden by DB settings)
+    # Initialize config loader and agent manager
     config_loader = ConfigLoader(db_path)
-
-    # Get AI provider settings (defaults to codex/cli/gpt-4o for both worker and doc gen)
-    ai_settings = {
-        "worker": {"selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}},
-        "documentGenerator": {
-            "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
-        },
-        "options": [],
-    }
-    try:
-        ai_settings = config_loader.get_ai_settings()
-    except Exception as exc:
-        slogger.worker_status("ai_settings_init_failed", {"error": str(exc)})
-
-    # Create task-specific providers (falls back to default if no task override)
-    job_match_provider = create_provider_from_config(ai_settings, task="jobMatch")
-    company_discovery_provider = create_provider_from_config(ai_settings, task="companyDiscovery")
-
-    # Use the same AI settings section for all downstream AI users (matcher + company fetcher)
-    worker_ai_config: Dict[str, Any] = {}
-    if isinstance(ai_settings, dict):
-        candidate = ai_settings.get("worker") or ai_settings
-        if isinstance(candidate, dict):
-            worker_ai_config = candidate
+    agent_manager = AgentManager(config_loader)
 
     # Get match policy (deterministic scoring settings) - required, fail loud
     match_policy = config_loader.get_match_policy()
 
     ai_matcher = AIJobMatcher(
-        provider=job_match_provider,
+        agent_manager=agent_manager,
         profile=profile,
         min_match_score=match_policy["minScore"],
         generate_intake=True,
     )
 
-    # Respect AI settings when fetching/extracting company info
+    # Company info fetcher uses AgentManager for AI calls
     company_info_fetcher = CompanyInfoFetcher(
-        ai_provider=company_discovery_provider,
-        ai_config=worker_ai_config,
+        agent_manager=agent_manager,
         db_path=db_path,
         sources_manager=job_sources_manager,
     )
@@ -462,28 +435,28 @@ def worker_loop():
                                 error_details=msg,
                             )
                             worker_state["last_error"] = msg
-                        except QuotaExhaustedError as qe:
-                            # Critical: quota exhausted - stop queue and reset item
+                        except NoAgentsAvailableError as nae:
+                            # Critical: no agents available - stop queue and reset item
                             slogger.worker_status(
-                                "quota_exhausted",
+                                "no_agents_available",
                                 {
                                     "item_id": item.id,
-                                    "provider": qe.provider,
-                                    "reset_info": qe.reset_info,
+                                    "task_type": nae.task_type,
+                                    "tried_agents": nae.tried_agents,
                                 },
                             )
-                            # Reset item to pending for retry after quota resets
+                            # Reset item to pending for retry after agents become available
                             queue_manager.update_status(
                                 item.id,
                                 QueueStatus.PENDING,
-                                f"Reset to pending: {qe.provider} quota exhausted",
+                                f"Reset to pending: no agents available for {nae.task_type}",
                             )
                             # Disable processing with reason
-                            stop_reason = f"{qe.provider} daily quota exhausted"
-                            if qe.reset_info:
-                                stop_reason += f" (resets {qe.reset_info})"
+                            stop_reason = f"No agents available for {nae.task_type}"
+                            if nae.tried_agents:
+                                stop_reason += f" (tried: {', '.join(nae.tried_agents)})"
                             config_loader.set_processing_disabled_with_reason(stop_reason)
-                            worker_state["last_error"] = str(qe)
+                            worker_state["last_error"] = str(nae)
                             # Break out of item loop to stop processing
                             pause_requested = True
                             break

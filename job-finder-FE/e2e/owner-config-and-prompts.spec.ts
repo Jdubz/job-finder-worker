@@ -43,8 +43,8 @@ test.describe("Owner configuration and prompts", () => {
 
     // AI settings tab
     await page.getByRole("tab", { name: "AI" }).click()
-    // There are multiple Provider comboboxes - just check the first one is visible
-    await expect(getActiveTab().getByRole("combobox", { name: /Provider/i }).first()).toBeVisible()
+    // New AgentManager UI - verify agent configuration section is visible
+    await expect(getActiveTab().getByRole("heading", { name: /Configured Agents/i })).toBeVisible()
 
     // AI prompts page
     await page.goto("/ai-prompts")

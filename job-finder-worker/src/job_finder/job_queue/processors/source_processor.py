@@ -13,7 +13,7 @@ import traceback
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-from job_finder.ai.providers import create_provider_from_config
+from job_finder.ai.agent_manager import AgentManager
 from job_finder.ai.source_discovery import SourceDiscovery
 from job_finder.exceptions import DuplicateSourceError, QueueProcessingError, ScrapeBlockedError
 from job_finder.filters.prefilter import PreFilter
@@ -61,6 +61,7 @@ class SourceProcessor(BaseProcessor):
 
         self.sources_manager = sources_manager
         self.companies_manager = companies_manager
+        self.agent_manager = AgentManager(config_loader)
 
         # Create filters from prefilter-policy for early rejection
         prefilter_policy = config_loader.get_prefilter_policy()
@@ -125,23 +126,8 @@ class SourceProcessor(BaseProcessor):
         )
 
         try:
-            from job_finder.ai.providers import create_provider_from_config
-            from job_finder.ai.source_discovery import SourceDiscovery
-
-            # Get AI settings and create provider (tolerate missing/invalid config)
-            try:
-                ai_settings = self.config_loader.get_ai_settings()
-                provider = create_provider_from_config(ai_settings, task="sourceDiscovery")
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.warning(
-                    "AI provider unavailable (%s); falling back to heuristic discovery for %s",
-                    exc,
-                    url,
-                )
-                provider = None
-
-            # Run AI-powered discovery
-            discovery = SourceDiscovery(provider)
+            # Run AI-powered discovery (AgentManager handles fallbacks internally)
+            discovery = SourceDiscovery(self.agent_manager)
             discovery_result = discovery.discover(url)
             if isinstance(discovery_result, tuple) and len(discovery_result) == 2:
                 source_config, validation_meta = discovery_result
@@ -633,14 +619,7 @@ class SourceProcessor(BaseProcessor):
 
         Returns a new config dict or None if healing failed/disabled.
         """
-        try:
-            ai_settings = self.config_loader.get_ai_settings()
-            provider = create_provider_from_config(ai_settings, task="sourceDiscovery")
-        except Exception as exc:  # pragma: no cover - defensive path
-            logger.warning("AI provider unavailable for self-heal: %s", exc)
-            return None
-
-        discovery = SourceDiscovery(provider)
+        discovery = SourceDiscovery(self.agent_manager)
         discovery_result = discovery.discover(url)
         if isinstance(discovery_result, tuple):
             healed_config, validation_meta = discovery_result
