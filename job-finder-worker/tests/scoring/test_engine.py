@@ -139,7 +139,9 @@ class TestScoringEngine:
 
         result = engine.score(extraction, "WordPress Developer", "TypeScript React job")
 
-        assert any(adj.category == "skills" and "Matched" in adj.reason for adj in result.adjustments)
+        assert any(
+            adj.category == "skills" and "Matched" in adj.reason for adj in result.adjustments
+        )
 
     def test_onsite_rejected_when_not_allowed(self, engine_factory):
         """Onsite job fails when allowOnsite is False."""

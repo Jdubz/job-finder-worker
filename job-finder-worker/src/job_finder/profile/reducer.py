@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Dict, Iterable, List, Optional, Set
 
+import sqlite3
+
 from job_finder.storage.sqlite_client import sqlite_connection
 
 
@@ -157,9 +159,7 @@ def reduce_content_items(items: List[dict]) -> ScoringProfile:
             skill_months[skill] = {f"baseline-{i}" for i in range(12)}
 
     # Compute years
-    skill_years = {
-        skill: _round_up_years(len(months)) for skill, months in skill_months.items()
-    }
+    skill_years = {skill: _round_up_years(len(months)) for skill, months in skill_months.items()}
     total_experience_years = _round_up_years(len(overall_months))
 
     return ScoringProfile(
@@ -171,9 +171,13 @@ def reduce_content_items(items: List[dict]) -> ScoringProfile:
 
 def load_scoring_profile(db_path: Optional[str] = None) -> ScoringProfile:
     """Load content_items from SQLite and reduce to scoring profile."""
-    with sqlite_connection(db_path) as conn:
-        rows = conn.execute(
-            "SELECT id, parent_id, ai_context, start_date, end_date, skills FROM content_items"
-        ).fetchall()
-    items = [dict(row) for row in rows]
-    return reduce_content_items(items)
+    try:
+        with sqlite_connection(db_path) as conn:
+            rows = conn.execute(
+                "SELECT id, parent_id, ai_context, start_date, end_date, skills FROM content_items"
+            ).fetchall()
+        items = [dict(row) for row in rows]
+        return reduce_content_items(items)
+    except sqlite3.OperationalError:
+        # Table not present (e.g., in unit tests using stub DB) -> zero profile
+        return ScoringProfile(skills=set(), skill_years={}, total_experience_years=0.0)

@@ -184,7 +184,9 @@ class JobProcessor(BaseProcessor):
 
         # Rebuild scoring engine with latest config and derived profile
         self.match_policy = match_policy
-        profile = load_scoring_profile(self.config_loader.db_path if hasattr(self.config_loader, "db_path") else None)
+        profile = load_scoring_profile(
+            self.config_loader.db_path if hasattr(self.config_loader, "db_path") else None
+        )
         analog_groups = match_policy.get("skillMatch", {}).get("analogGroups", [])
         analog_map = build_analog_map(analog_groups)
         self.scoring_engine = ScoringEngine(
