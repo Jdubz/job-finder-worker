@@ -14,7 +14,8 @@ const generatorRequestSchema = z.object({
     company: z.string().min(1),
     companyWebsite: z.string().url().optional(),
     jobDescriptionUrl: z.string().url().optional(),
-    jobDescriptionText: z.string().optional()
+    jobDescriptionText: z.string().optional(),
+    location: z.string().optional()
   }),
   preferences: z
     .object({

@@ -52,7 +52,8 @@ describe('buildResumePrompt', () => {
           company: 'Acme',
           companyWebsite: 'https://acme.test',
           jobDescriptionUrl: 'https://jobs.acme.test/123',
-          jobDescriptionText: 'Build great products'
+          jobDescriptionText: 'Build great products',
+          location: 'Remote, USA'
         }
       },
       personalInfo,
@@ -61,6 +62,7 @@ describe('buildResumePrompt', () => {
 
     expect(prompt).toMatch(/Company Website: https:\/\/acme\.test/i)
     expect(prompt).toMatch(/Job Post URL: https:\/\/jobs\.acme\.test\/123/i)
+    expect(prompt).toMatch(/Job Location: Remote, USA/i)
     expect(prompt).toMatch(/Candidate Location: Portland, OR/i)
   })
 })
@@ -75,7 +77,8 @@ describe('buildCoverLetterPrompt', () => {
           company: 'Acme',
           companyWebsite: 'https://acme.test',
           jobDescriptionUrl: 'https://jobs.acme.test/123',
-          jobDescriptionText: 'Build great products'
+          jobDescriptionText: 'Build great products',
+          location: 'Remote, USA'
         }
       },
       personalInfo,
@@ -84,6 +87,7 @@ describe('buildCoverLetterPrompt', () => {
 
     expect(prompt).toMatch(/Company Website: https:\/\/acme\.test/i)
     expect(prompt).toMatch(/Job Post URL: https:\/\/jobs\.acme\.test\/123/i)
+    expect(prompt).toMatch(/Job Location: Remote, USA/i)
     expect(prompt).toMatch(/Candidate Location: Portland, OR/i)
   })
 })
