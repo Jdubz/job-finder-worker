@@ -83,9 +83,11 @@ describe('job match contract', () => {
     const parsed = jobMatchWithListingSchema.safeParse(res.body.data.match)
     if (!parsed.success) {
       console.error(parsed.error.format())
+      throw parsed.error
     }
-    expect(parsed.success).toBe(true)
-    expect(parsed.data.status).toBe('ignored')
-    expect(parsed.data.listing.title).toBeTruthy()
+
+    const match = parsed.data
+    expect(match.status).toBe('ignored')
+    expect(match.listing.title).toBeTruthy()
   })
 })
