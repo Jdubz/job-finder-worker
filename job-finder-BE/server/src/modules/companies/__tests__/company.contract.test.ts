@@ -34,8 +34,7 @@ describe('company contract', () => {
       headquartersLocation: null,
       companySizeCategory: 'small',
       techStack: ['typescript'],
-      createdAt: new Date(),
-      updatedAt: new Date()
+      // timestamps set by repository
     })
 
     const res = await request(app).get('/companies')

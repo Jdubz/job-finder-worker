@@ -28,12 +28,14 @@ describe('job source contract', () => {
       name: 'Contract Source',
       sourceType: 'rss',
       status: 'active',
-      configJson: { url: 'https://example.com/rss' },
+      configJson: {
+        type: 'rss',
+        url: 'https://example.com/rss',
+        fields: { title: 'title', link: 'link' },
+      },
       tags: ['contract'],
       companyId: null,
       aggregatorDomain: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
       lastScrapedAt: null
     })
 

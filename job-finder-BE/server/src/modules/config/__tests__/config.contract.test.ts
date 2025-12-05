@@ -56,8 +56,9 @@ describe('config contract', () => {
     const parsed = configEntrySchema.safeParse(res.body.data.config)
     if (!parsed.success) {
       console.error(parsed.error.format())
+      expect(parsed.success).toBe(true)
+      return
     }
-    expect(parsed.success).toBe(true)
 
     const payloadParse = aiSettingsSchema.safeParse(parsed.data.payload)
     if (!payloadParse.success) {
@@ -185,13 +186,18 @@ describe('config contract', () => {
     const fetchAndValidate = async (id: string, schema: any) => {
       const res = await request(app).get(`/config/${id}`)
       expect(res.status).toBe(200)
-      const parsed = configEntrySchema.safeParse(res.body.data.config)
+    const parsed = configEntrySchema.safeParse(res.body.data.config)
+    if (!parsed.success) {
+      console.error(parsed.error.format())
       expect(parsed.success).toBe(true)
-      const payloadParse = schema.safeParse(parsed.data.payload)
-      if (!payloadParse.success) {
-        console.error(payloadParse.error.format())
-      }
-      expect(payloadParse.success).toBe(true)
+      return
+    }
+
+    const payloadParse = schema.safeParse(parsed.data.payload)
+    if (!payloadParse.success) {
+      console.error(payloadParse.error.format())
+    }
+    expect(payloadParse.success).toBe(true)
     }
 
     await fetchAndValidate('ai-prompts', promptConfigSchema)
