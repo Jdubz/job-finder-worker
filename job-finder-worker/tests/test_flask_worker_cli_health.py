@@ -13,7 +13,11 @@ class TestCheckCliHealth:
     @pytest.fixture(autouse=True)
     def setup(self):
         """Import the function fresh for each test."""
-        from job_finder.flask_worker import check_cli_health
+        # Import here to avoid module-level import issues with mocking
+        try:
+            from job_finder.flask_worker import check_cli_health
+        except ModuleNotFoundError as exc:  # flask not installed in lightweight envs
+            pytest.skip(f"flask not available: {exc}")
 
         self.check_cli_health = check_cli_health
 
@@ -53,7 +57,10 @@ class TestCodexConfigCheck:
     @pytest.fixture(autouse=True)
     def setup(self):
         """Import the function fresh for each test."""
-        from job_finder.flask_worker import _check_codex_config
+        try:
+            from job_finder.flask_worker import _check_codex_config
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"flask not available: {exc}")
 
         self._check_codex_config = _check_codex_config
 
@@ -199,7 +206,10 @@ class TestGeminiConfigCheck:
     @pytest.fixture(autouse=True)
     def setup(self):
         """Import the function fresh for each test."""
-        from job_finder.flask_worker import _check_gemini_config
+        try:
+            from job_finder.flask_worker import _check_gemini_config
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"flask not available: {exc}")
 
         self._check_gemini_config = _check_gemini_config
 

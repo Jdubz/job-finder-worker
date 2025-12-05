@@ -11,11 +11,6 @@ def default_config():
     """Return a complete match-policy configuration (all sections required)."""
     return {
         "minScore": 60,
-        "weights": {
-            "skillMatch": 40,
-            "experienceMatch": 30,
-            "seniorityMatch": 30,
-        },
         "seniority": {
             "preferred": ["senior", "staff", "lead"],
             "acceptable": ["mid", ""],
@@ -33,14 +28,15 @@ def default_config():
             "perHourScore": -3,
             "hybridSameCityScore": 10,
         },
-        "technology": {
-            "required": ["typescript", "react"],
-            "preferred": ["node", "python"],
-            "disliked": ["angular"],
-            "rejected": ["wordpress", "php"],
-            "requiredScore": 10,
-            "preferredScore": 5,
-            "dislikedScore": -5,
+        "skillMatch": {
+            "baseMatchScore": 1,
+            "yearsMultiplier": 0.5,
+            "maxYearsBonus": 5,
+            "missingScore": -1,
+            "analogScore": 0,
+            "maxBonus": 25,
+            "maxPenalty": -15,
+            "analogGroups": [["aws", "gcp"], ["node", "node.js"]],
         },
         "salary": {
             "minimum": 150000,
@@ -48,7 +44,6 @@ def default_config():
             "belowTargetScore": -2,
         },
         "experience": {
-            "userYears": 12,
             "maxRequired": 15,
             "overqualifiedScore": -5,
         },
@@ -84,17 +79,41 @@ def default_config():
 
 
 @pytest.fixture
-def user_skills():
-    """Return user skills for testing."""
-    return ["typescript", "react", "node", "python", "aws"]
+def profile():
+    """Return derived profile inputs."""
+    return {
+        "skill_years": {
+            "typescript": 5,
+            "react": 5,
+            "node": 4,
+            "python": 3,
+            "aws": 2,
+        },
+        "total_years": 12,
+        "analogs": {"node": {"node.js"}, "node.js": {"node"}},
+    }
+
+
+@pytest.fixture
+def engine_factory(default_config, profile):
+    def _create(config_override=None):
+        cfg = default_config if config_override is None else config_override
+        return ScoringEngine(
+            cfg,
+            skill_years=profile["skill_years"],
+            user_experience_years=profile["total_years"],
+            skill_analogs=profile["analogs"],
+        )
+
+    return _create
 
 
 class TestScoringEngine:
     """Tests for ScoringEngine class."""
 
-    def test_preferred_seniority_gets_bonus(self, default_config, user_skills):
+    def test_preferred_seniority_gets_bonus(self, engine_factory):
         """Preferred seniority level gets bonus points."""
-        engine = ScoringEngine(default_config, user_skills)
+        engine = engine_factory()
         extraction = JobExtractionResult(seniority="senior")
 
         result = engine.score(extraction, "Senior Engineer", "Job description")
@@ -103,9 +122,9 @@ class TestScoringEngine:
         assert result.final_score > 50  # Above neutral
         assert any("senior" in adj.reason.lower() for adj in result.adjustments)
 
-    def test_rejected_seniority_fails(self, default_config, user_skills):
+    def test_rejected_seniority_fails(self, engine_factory):
         """Rejected seniority level causes failure."""
-        engine = ScoringEngine(default_config, user_skills)
+        engine = engine_factory()
         extraction = JobExtractionResult(seniority="junior")
 
         result = engine.score(extraction, "Junior Developer", "Job description")
@@ -113,19 +132,20 @@ class TestScoringEngine:
         assert result.passed is False
         assert "seniority" in result.rejection_reason.lower()
 
-    def test_rejected_technology_fails(self, default_config, user_skills):
-        """Rejected technology causes failure."""
-        engine = ScoringEngine(default_config, user_skills)
-        extraction = JobExtractionResult(technologies=["wordpress", "php"])
+    def test_skill_match_bonus(self, engine_factory):
+        """Matched skills add weighted bonus."""
+        engine = engine_factory()
+        extraction = JobExtractionResult(technologies=["typescript", "react"])
 
-        result = engine.score(extraction, "WordPress Developer", "WordPress job")
+        result = engine.score(extraction, "WordPress Developer", "TypeScript React job")
 
-        assert result.passed is False
-        assert "technology" in result.rejection_reason.lower()
+        assert any(
+            adj.category == "skills" and "Matched" in adj.reason for adj in result.adjustments
+        )
 
-    def test_onsite_rejected_when_not_allowed(self, default_config, user_skills):
+    def test_onsite_rejected_when_not_allowed(self, engine_factory):
         """Onsite job fails when allowOnsite is False."""
-        engine = ScoringEngine(default_config, user_skills)
+        engine = engine_factory()
         extraction = JobExtractionResult(work_arrangement="onsite")
 
         result = engine.score(extraction, "Engineer", "Office position")
@@ -133,9 +153,9 @@ class TestScoringEngine:
         assert result.passed is False
         assert "onsite" in result.rejection_reason.lower()
 
-    def test_remote_allowed(self, default_config, user_skills):
+    def test_remote_allowed(self, engine_factory):
         """Remote job passes when allowRemote is True."""
-        engine = ScoringEngine(default_config, user_skills)
+        engine = engine_factory()
         extraction = JobExtractionResult(
             work_arrangement="remote",
             seniority="senior",
@@ -146,9 +166,9 @@ class TestScoringEngine:
 
         assert result.passed is True
 
-    def test_required_tech_bonus(self, default_config, user_skills):
-        """Required technologies add bonus points."""
-        engine = ScoringEngine(default_config, user_skills)
+    def test_skill_bonus_with_years(self, engine_factory):
+        """Matched skills consider experience years."""
+        engine = engine_factory()
         extraction = JobExtractionResult(
             technologies=["typescript", "react"],
             work_arrangement="remote",
@@ -156,37 +176,13 @@ class TestScoringEngine:
 
         result = engine.score(extraction, "Frontend Engineer", "React TypeScript job")
 
-        # Should have bonuses for required tech
+        # Should have bonuses for matched skills
         assert result.final_score > 50
 
-    def test_preferred_tech_bonus(self, default_config, user_skills):
-        """Preferred technologies add bonus points."""
-        engine = ScoringEngine(default_config, user_skills)
-        extraction = JobExtractionResult(
-            technologies=["node", "python"],
-            work_arrangement="remote",
-        )
-
-        result = engine.score(extraction, "Backend Engineer", "Node Python job")
-
-        assert any("preferred" in adj.reason.lower() for adj in result.adjustments)
-
-    def test_disliked_tech_penalty(self, default_config, user_skills):
-        """Disliked technologies deduct points."""
-        engine = ScoringEngine(default_config, user_skills)
-        extraction = JobExtractionResult(
-            technologies=["angular", "typescript"],
-            work_arrangement="remote",
-        )
-
-        result = engine.score(extraction, "Frontend Engineer", "Angular job")
-
-        assert any("angular" in adj.reason.lower() for adj in result.adjustments)
-
-    def test_below_min_score_fails(self, default_config, user_skills):
+    def test_below_min_score_fails(self, default_config, profile, engine_factory):
         """Score below minScore causes failure."""
         config = {**default_config, "minScore": 90}  # Very high threshold
-        engine = ScoringEngine(config, user_skills)
+        engine = engine_factory(config)
         extraction = JobExtractionResult(work_arrangement="remote")
 
         result = engine.score(extraction, "Engineer", "Basic job")
@@ -196,9 +192,9 @@ class TestScoringEngine:
             assert result.passed is False
             assert "below threshold" in result.rejection_reason.lower()
 
-    def test_score_breakdown_structure(self, default_config, user_skills):
+    def test_score_breakdown_structure(self, engine_factory):
         """ScoreBreakdown has correct structure."""
-        engine = ScoringEngine(default_config, user_skills)
+        engine = engine_factory()
         extraction = JobExtractionResult(work_arrangement="remote")
 
         result = engine.score(extraction, "Engineer", "Job description")
@@ -210,9 +206,50 @@ class TestScoringEngine:
         assert isinstance(result.passed, bool)
         assert 0 <= result.final_score <= 100
 
-    def test_timezone_penalty(self, default_config, user_skills):
+    def test_skill_match_does_not_double_count_keywords(self, default_config, profile):
+        """Skills already matched should not double count in keyword scoring."""
+        engine = ScoringEngine(
+            default_config,
+            skill_years={"python": 3, "typescript": 2},
+            user_experience_years=profile["total_years"],
+            skill_analogs=profile["analogs"],
+        )
+
+        extraction = JobExtractionResult(
+            seniority="senior",
+            technologies=["python"],
+            role_types=[],
+        )
+
+        description = "We use Python heavily for backend services."
+        result = engine.score(
+            extraction, job_title="Fullstack Engineer", job_description=description
+        )
+
+        skill_adjustments = [a for a in result.adjustments if a.category == "skills"]
+        assert len(skill_adjustments) == 1
+
+    def test_analog_skill_applies_score(self, default_config, engine_factory):
+        """Analog skills are treated as matches when configured."""
+        cfg = {
+            **default_config,
+            "skillMatch": {
+                **default_config["skillMatch"],
+                "analogScore": 1,
+            },
+        }
+        engine = engine_factory(cfg)
+        extraction = JobExtractionResult(technologies=["node.js"])
+
+        result = engine.score(extraction, "Backend Engineer", "Node.js role")
+
+        analog_adjustments = [a for a in result.adjustments if "Analog" in a.reason]
+        assert analog_adjustments, "Expected analog adjustment when equivalent skill exists"
+        assert any(adj.points == cfg["skillMatch"]["analogScore"] for adj in analog_adjustments)
+
+    def test_timezone_penalty(self, engine_factory):
         """Timezone difference within max adds penalty (not hard reject)."""
-        engine = ScoringEngine(default_config, user_skills)
+        engine = engine_factory()
         # User is UTC-8, max diff is 4h, so UTC-4 gives exactly 4h diff
         # which is within bounds but incurs per-hour penalty
         extraction = JobExtractionResult(

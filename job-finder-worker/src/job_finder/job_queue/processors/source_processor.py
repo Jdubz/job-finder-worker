@@ -153,10 +153,13 @@ class SourceProcessor(BaseProcessor):
                 error_details = validation_meta.get("error_details", "")
 
                 normalized_reason = error or "discovery_failed"
-                if normalized_reason == "discovery_failed" and isinstance(error_details, str):
+                if isinstance(error_details, str):
                     details_lower = error_details.lower()
-                    if "cloudflare" in details_lower or "vercel" in details_lower:
-                        normalized_reason = "bot_protection"
+                    if normalized_reason == "discovery_failed":
+                        if "cloudflare" in details_lower or "vercel" in details_lower:
+                            normalized_reason = "bot_protection"
+                    elif normalized_reason == "api_probe_failed" and "resolve" in details_lower:
+                        normalized_reason = "dns_error"
 
                 placeholder_config = {
                     "type": "html",
@@ -171,7 +174,7 @@ class SourceProcessor(BaseProcessor):
                     existing_pair = self.sources_manager.get_source_by_company_and_aggregator(
                         company_id, aggregator_domain
                     )
-                    if existing_pair:
+                    if isinstance(existing_pair, dict) and existing_pair:
                         self._handle_existing_source(
                             item,
                             {

@@ -113,7 +113,7 @@ export function JobFinderConfigPage() {
               <h3 className="text-lg font-semibold mb-2">Scoring Configuration Required</h3>
               <p className="text-muted-foreground">
                 The match-policy configuration has not been set up yet. This configuration defines how jobs are scored
-                based on your preferences for seniority, location, technology, salary, and other factors.
+                based on your preferences for seniority, location, skill matching, salary, and other factors.
               </p>
               <p className="text-muted-foreground mt-2">
                 Please run the database migration or manually configure the match-policy in the database.

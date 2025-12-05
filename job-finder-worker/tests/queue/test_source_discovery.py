@@ -68,7 +68,6 @@ def mock_dependencies() -> Dict[str, Any]:
     }
     config_loader.get_match_policy.return_value = {
         "minScore": 60,
-        "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
         "seniority": {
             "preferred": ["senior"],
             "acceptable": ["mid"],
@@ -86,17 +85,18 @@ def mock_dependencies() -> Dict[str, Any]:
             "perHourScore": -3,
             "hybridSameCityScore": 10,
         },
-        "technology": {
-            "required": [],
-            "preferred": [],
-            "disliked": [],
-            "rejected": [],
-            "requiredScore": 10,
-            "preferredScore": 5,
-            "dislikedScore": -5,
+        "skillMatch": {
+            "baseMatchScore": 1,
+            "yearsMultiplier": 0.5,
+            "maxYearsBonus": 5,
+            "missingScore": -1,
+            "analogScore": 0,
+            "maxBonus": 25,
+            "maxPenalty": -15,
+            "analogGroups": [],
         },
         "salary": {"minimum": None, "target": None, "belowTargetScore": -2},
-        "experience": {"userYears": 10, "maxRequired": 15, "overqualifiedScore": -5},
+        "experience": {"maxRequired": 15, "overqualifiedScore": -5},
         "freshness": {
             "freshDays": 2,
             "freshScore": 10,

@@ -49,6 +49,7 @@ from job_finder.job_queue.models import (
 from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
+from job_finder.profile.reducer import build_analog_map, load_scoring_profile
 from job_finder.scrape_runner import ScrapeRunner
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_listing_storage import JobListingStorage
@@ -132,7 +133,8 @@ class JobProcessor(BaseProcessor):
 
         match_policy = config_loader.get_match_policy()
         self.match_policy = match_policy
-        self.scoring_engine = ScoringEngine(match_policy)
+
+        self.scoring_engine = self._build_scoring_engine(match_policy)
 
         # Initialize AgentManager for AI operations
         self.agent_manager = AgentManager(config_loader)
@@ -170,9 +172,9 @@ class JobProcessor(BaseProcessor):
         # Rebuild prefilter with latest config
         self.prefilter = PreFilter(prefilter_policy)
 
-        # Rebuild scoring engine with latest config
+        # Rebuild scoring engine with latest config and derived profile
         self.match_policy = match_policy
-        self.scoring_engine = ScoringEngine(match_policy)
+        self.scoring_engine = self._build_scoring_engine(match_policy)
 
         # Propagate new title filter into downstream helpers
         if hasattr(self.scrape_runner, "title_filter"):
@@ -186,6 +188,21 @@ class JobProcessor(BaseProcessor):
 
         # Update AI matcher min score from match policy (required, no default)
         self.ai_matcher.min_match_score = match_policy["minScore"]
+
+    def _build_scoring_engine(self, match_policy: Dict[str, Any]) -> ScoringEngine:
+        """Create ScoringEngine with derived profile and analog map."""
+        db_path = (
+            self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
+        )
+        profile = load_scoring_profile(db_path)
+        analog_groups = match_policy.get("skillMatch", {}).get("analogGroups", [])
+        analog_map = build_analog_map(analog_groups)
+        return ScoringEngine(
+            match_policy,
+            skill_years=profile.skill_years,
+            user_experience_years=profile.total_experience_years,
+            skill_analogs=analog_map,
+        )
 
     def _emit_event(self, event: str, item_id: str, data: Dict[str, Any]) -> None:
         """Emit a pipeline progress event via WebSocket (if notifier is available)."""

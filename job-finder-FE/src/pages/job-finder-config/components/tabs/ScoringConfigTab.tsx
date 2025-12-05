@@ -5,9 +5,15 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription, For
 import { Input } from "@/components/ui/input"
 import { TabCard } from "../shared"
 import { StringListField, NumericField, CheckboxRow, ImpactBadge, InfoTooltip } from "../shared/form-fields"
-import type { MatchPolicy } from "@shared/types"
+import type { MatchPolicy, SkillMatchConfig } from "@shared/types"
 
-type MatchPolicyFormValues = MatchPolicy
+type SkillMatchFormValues = Omit<SkillMatchConfig, "analogGroups"> & {
+  analogGroups: string[]
+}
+
+type MatchPolicyFormValues = Omit<MatchPolicy, "skillMatch"> & {
+  skillMatch: SkillMatchFormValues
+}
 
 type MatchPolicyTabProps = {
   isSaving: boolean
@@ -18,16 +24,31 @@ type MatchPolicyTabProps = {
 
 const cleanList = (items?: string[]) => (items ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)
 
+const defaultSkillMatch: SkillMatchFormValues = {
+  baseMatchScore: 1,
+  yearsMultiplier: 0.5,
+  maxYearsBonus: 5,
+  missingScore: -1,
+  analogScore: 0,
+  maxBonus: 25,
+  maxPenalty: -15,
+  analogGroups: [],
+}
+
 // No defaults - config is required and validated by backend
-const mapConfigToForm = (config: MatchPolicy): MatchPolicyFormValues => config
+const mapConfigToForm = (config: MatchPolicy): MatchPolicyFormValues => ({
+  ...config,
+  skillMatch: {
+    ...(config.skillMatch || defaultSkillMatch),
+    analogGroups: ((config.skillMatch || defaultSkillMatch).analogGroups || []).map((group) =>
+      group.join(", ")
+    ),
+  },
+})
 
 const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
+  ...values,
   minScore: values.minScore,
-  weights: {
-    skillMatch: values.weights.skillMatch,
-    experienceMatch: values.weights.experienceMatch,
-    seniorityMatch: values.weights.seniorityMatch,
-  },
   seniority: {
     preferred: cleanList(values.seniority.preferred),
     acceptable: cleanList(values.seniority.acceptable),
@@ -47,22 +68,30 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     userCity: values.location.userCity?.trim() || undefined,
     relocationScore: values.location.relocationScore,
   },
-  technology: {
-    required: cleanList(values.technology.required),
-    preferred: cleanList(values.technology.preferred),
-    disliked: cleanList(values.technology.disliked),
-    rejected: cleanList(values.technology.rejected),
-    requiredScore: values.technology.requiredScore,
-    preferredScore: values.technology.preferredScore,
-    dislikedScore: values.technology.dislikedScore,
-  },
+  skillMatch: (() => {
+    const skillValues = values.skillMatch || defaultSkillMatch
+    return {
+      baseMatchScore: skillValues.baseMatchScore,
+      yearsMultiplier: skillValues.yearsMultiplier,
+      maxYearsBonus: skillValues.maxYearsBonus,
+      missingScore: skillValues.missingScore,
+      analogScore: skillValues.analogScore,
+      maxBonus: skillValues.maxBonus,
+      maxPenalty: skillValues.maxPenalty,
+      analogGroups: (skillValues.analogGroups || []).map((line: string) =>
+        line
+          .split(",")
+          .map((item: string) => item.trim())
+          .filter(Boolean)
+      ),
+    }
+  })(),
   salary: {
     minimum: values.salary.minimum,
     target: values.salary.target,
     belowTargetScore: values.salary.belowTargetScore,
   },
   experience: {
-    userYears: values.experience.userYears,
     maxRequired: values.experience.maxRequired,
     overqualifiedScore: values.experience.overqualifiedScore,
   },
@@ -343,72 +372,81 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
               />
             </section>
 
-            {/* Technology Preferences */}
+            {/* Skill Matching */}
             <section className="space-y-4">
               <div className="flex items-center gap-3">
-                <h3 className="text-lg font-semibold">Technology Stack</h3>
-                <ImpactBadge label="Score or Reject" tone="neutral" />
+                <h3 className="text-lg font-semibold">Skill Matching</h3>
+                <ImpactBadge label="Score adjustment" tone="neutral" />
               </div>
               <p className="text-sm text-muted-foreground">
-                Configure technology preferences. Required techs boost score, rejected techs can fail a job.
+                Skills and experience are derived from your content items. Configure how matches and gaps are scored.
               </p>
-              <div className="grid gap-6 md:grid-cols-2">
-                <StringListField
+              <div className="grid gap-6 md:grid-cols-3">
+                <NumericField
                   control={form.control}
-                  name="technology.required"
-                  label="Required Technologies"
-                  placeholder="typescript"
-                  description="Must have at least one of these."
-                  info="Jobs must mention at least one of these technologies to score well."
+                  name="skillMatch.baseMatchScore"
+                  label="Base Match Score"
+                  description="Points per matched skill."
+                  info="Added for every job skill you have."
                 />
-                <StringListField
+                <NumericField
                   control={form.control}
-                  name="technology.preferred"
-                  label="Preferred Technologies"
-                  placeholder="react"
-                  description="Bonus points for these."
-                  info="Each of these technologies adds bonus points to the score."
+                  name="skillMatch.yearsMultiplier"
+                  label="Years Multiplier"
+                  description="Points per year (per skill)."
+                  info="Multiplied by your years with that skill, capped by Max Years Bonus."
                 />
-                <StringListField
+                <NumericField
                   control={form.control}
-                  name="technology.disliked"
-                  label="Disliked Technologies"
-                  placeholder="angular"
-                  description="Penalty points for these."
-                  info="Each of these technologies deducts points from the score."
-                />
-                <StringListField
-                  control={form.control}
-                  name="technology.rejected"
-                  label="Rejected Technologies"
-                  placeholder="wordpress"
-                  description="Hard reject jobs with these."
-                  info="Jobs prominently featuring these technologies are heavily penalized or rejected."
+                  name="skillMatch.maxYearsBonus"
+                  label="Max Years Bonus"
+                  description="Years cap per skill."
+                  info="Years above this do not increase the score."
                 />
               </div>
               <div className="grid gap-6 md:grid-cols-3">
                 <NumericField
                   control={form.control}
-                  name="technology.requiredScore"
-                  label="Required Tech Score"
-                  description="Per required tech found (positive)."
-                  info="Score adjustment per required technology found in the job."
+                  name="skillMatch.missingScore"
+                  label="Missing Skill Penalty"
+                  description="Penalty applied for each job skill that is missing."
+                  info="Applied for every job skill not present in your profile."
                 />
                 <NumericField
                   control={form.control}
-                  name="technology.preferredScore"
-                  label="Preferred Tech Score"
-                  description="Per preferred tech found (positive)."
-                  info="Score adjustment per preferred technology found in the job."
+                  name="skillMatch.analogScore"
+                  label="Analog Skill Score"
+                  description="Points when an equivalent skill exists."
+                  info="Neutral or slight bonus when you have an analog skill."
                 />
                 <NumericField
                   control={form.control}
-                  name="technology.dislikedScore"
-                  label="Disliked Tech Score"
-                  description="Per disliked tech found (negative)."
-                  info="Score adjustment per disliked technology found in the job."
+                  name="skillMatch.maxPenalty"
+                  label="Max Penalty"
+                  description="Minimum total skill score."
+                  info="Caps how negative skill matching can go."
                 />
               </div>
+              <div className="grid gap-6 md:grid-cols-2">
+                <NumericField
+                  control={form.control}
+                  name="skillMatch.maxBonus"
+                  label="Max Bonus"
+                  description="Maximum total skill bonus."
+                  info="Caps total positive points from skill matching."
+                />
+                <StringListField
+                  control={form.control}
+                  name="skillMatch.analogGroups"
+                  label="Analog Skill Groups"
+                  placeholder="aws, gcp, azure"
+                  description="Enter comma-separated groups of equivalent skills (one group per line)."
+                  info="Skills in the same group are treated as equivalents."
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Skills and experience years are derived automatically from your content items.
+              </p>
             </section>
 
             {/* Salary Preferences */}
@@ -480,14 +518,7 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 <h3 className="text-lg font-semibold">Experience Level</h3>
                 <ImpactBadge label="Score adjustment" tone="neutral" />
               </div>
-              <div className="grid gap-6 md:grid-cols-3">
-                <NumericField
-                  control={form.control}
-                  name="experience.userYears"
-                  label="Your Experience (years)"
-                  description="Your years of professional experience."
-                  info="Used to calculate over/under-qualification penalties."
-                />
+              <div className="grid gap-6 md:grid-cols-2">
                 <NumericField
                   control={form.control}
                   name="experience.maxRequired"

@@ -129,11 +129,6 @@ def test_job_pipeline_full_path(tmp_path: Path):
                 json.dumps(
                     {
                         "minScore": 50,
-                        "weights": {
-                            "skillMatch": 40,
-                            "experienceMatch": 30,
-                            "seniorityMatch": 30,
-                        },
                         "seniority": {
                             "preferred": ["senior"],
                             "acceptable": ["mid"],
@@ -151,14 +146,15 @@ def test_job_pipeline_full_path(tmp_path: Path):
                             "perHourScore": -3,
                             "hybridSameCityScore": 10,
                         },
-                        "technology": {
-                            "required": [],
-                            "preferred": [],
-                            "disliked": [],
-                            "rejected": [],
-                            "requiredScore": 10,
-                            "preferredScore": 5,
-                            "dislikedScore": -5,
+                        "skillMatch": {
+                            "baseMatchScore": 1,
+                            "yearsMultiplier": 0.5,
+                            "maxYearsBonus": 5,
+                            "missingScore": -1,
+                            "analogScore": 0,
+                            "maxBonus": 25,
+                            "maxPenalty": -15,
+                            "analogGroups": [],
                         },
                         "salary": {
                             "minimum": None,
@@ -166,7 +162,6 @@ def test_job_pipeline_full_path(tmp_path: Path):
                             "belowTargetScore": -2,
                         },
                         "experience": {
-                            "userYears": 12,
                             "maxRequired": 15,
                             "overqualifiedScore": -5,
                         },

@@ -62,6 +62,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+const isString = (value: unknown): value is string => typeof value === "string"
+
 /**
  * Helper: Check if value is a string array
  */
@@ -249,17 +251,6 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
   // Check minScore
   if (typeof v.minScore !== "number") return false
 
-  // Check weights
-  if (!isObject(v.weights)) return false
-  const weights = v.weights as any
-  if (
-    typeof weights.skillMatch !== "number" ||
-    typeof weights.experienceMatch !== "number" ||
-    typeof weights.seniorityMatch !== "number"
-  ) {
-    return false
-  }
-
   // Check seniority
   if (!isObject(v.seniority)) return false
   const seniority = v.seniority as any
@@ -289,18 +280,22 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     return false
   }
 
-  // Check technology
-  if (!isObject(v.technology)) return false
-  const technology = v.technology as any
+  // Check skillMatch
+  if (!isObject(v.skillMatch)) return false
+  const skillMatch = v.skillMatch as any
   if (
-    !isStringArray(technology.required) ||
-    !isStringArray(technology.preferred) ||
-    !isStringArray(technology.disliked) ||
-    !isStringArray(technology.rejected) ||
-    typeof technology.requiredScore !== "number" ||
-    typeof technology.preferredScore !== "number" ||
-    typeof technology.dislikedScore !== "number"
+    typeof skillMatch.baseMatchScore !== "number" ||
+    typeof skillMatch.yearsMultiplier !== "number" ||
+    typeof skillMatch.maxYearsBonus !== "number" ||
+    typeof skillMatch.missingScore !== "number" ||
+    typeof skillMatch.analogScore !== "number" ||
+    typeof skillMatch.maxBonus !== "number" ||
+    typeof skillMatch.maxPenalty !== "number" ||
+    !Array.isArray(skillMatch.analogGroups)
   ) {
+    return false
+  }
+  if (!skillMatch.analogGroups.every((g: unknown) => Array.isArray(g) && g.every(isString))) {
     return false
   }
 
@@ -319,7 +314,6 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
   if (!isObject(v.experience)) return false
   const experience = v.experience as any
   if (
-    typeof experience.userYears !== "number" ||
     typeof experience.maxRequired !== "number" ||
     typeof experience.overqualifiedScore !== "number"
   ) {

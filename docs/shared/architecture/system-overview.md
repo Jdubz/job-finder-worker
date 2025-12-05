@@ -2,7 +2,7 @@
 
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-25
+> Last Updated: 2025-12-05
 
 ## Overview
 
@@ -56,6 +56,7 @@ The Job Finder application is a containerized monorepo with three main services:
 - **Authentication**: Google OAuth ID token verification
 - **Authorization**: Role-based access control (admin, viewer)
 - **Logging**: Pino (structured JSON)
+- **Operational Stats**: Server-side stats endpoints for queue, job sources, job listings, and job matches to keep UI pill totals accurate beyond pagination limits
 - **Port**: 8080
 
 ### Worker (job-finder-worker/)
@@ -66,12 +67,14 @@ The Job Finder application is a containerized monorepo with three main services:
 - **Scraping**: Selenium, BeautifulSoup
 - **AI Integration**: Anthropic Claude, OpenAI
 - **Data Processing**: pandas
+- **Scoring Engine**: Deterministic scoring with de-duplicated tech vs. skill scoring and configurable `missingRequiredScore` penalty (weights section removed)
 
 ### Shared Types (shared/)
 
 - **Language**: TypeScript
 - **Purpose**: Shared type definitions across frontend and backend
 - **Package**: `@shared/types` workspace dependency
+- **Contracts in Use**: Shared stats contracts (queue, job listings, job matches) and exported queue enums consumed directly by backend Zod validators to avoid drift
 
 ## Data Flow
 
@@ -108,16 +111,22 @@ SQLite database with migrations managed in `/infra/sqlite/migrations/`.
 
 ```
 /api/
-  ├── /content-items    (authenticated)
-  ├── /queue            (authenticated)
-  ├── /job-matches      (authenticated)
-  ├── /config           (admin-only)
-  ├── /generator        (authenticated)
+  ├── /content-items          (authenticated)
+  ├── /queue                  (authenticated)
+  │   └── /stats              (server-side queue totals)
+  ├── /job-sources            (authenticated)
+  │   └── /stats              (source-level totals)
+  ├── /job-listings           (authenticated)
+  │   └── /stats              (listing status totals)
+  ├── /job-matches            (authenticated)
+  │   └── /stats              (score buckets + averages)
+  ├── /config                 (admin-only)
+  ├── /generator              (authenticated)
   │   ├── /artifacts
   │   └── /workflow
-  ├── /prompts          (public GET, authenticated mutations)
-  ├── /healthz          (health check)
-  └── /readyz           (readiness check)
+  ├── /prompts                (public GET, authenticated mutations)
+  ├── /healthz                (health check)
+  └── /readyz                 (readiness check)
 ```
 
 ## Infrastructure

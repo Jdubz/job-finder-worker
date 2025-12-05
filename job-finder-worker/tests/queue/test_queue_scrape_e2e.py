@@ -151,11 +151,6 @@ def test_queue_scrape_end_to_end(temp_db):
                 json.dumps(
                     {
                         "minScore": 60,
-                        "weights": {
-                            "skillMatch": 40,
-                            "experienceMatch": 30,
-                            "seniorityMatch": 30,
-                        },
                         "seniority": {
                             "preferred": ["senior"],
                             "acceptable": ["mid"],
@@ -173,14 +168,15 @@ def test_queue_scrape_end_to_end(temp_db):
                             "perHourScore": -3,
                             "hybridSameCityScore": 10,
                         },
-                        "technology": {
-                            "required": [],
-                            "preferred": [],
-                            "disliked": [],
-                            "rejected": [],
-                            "requiredScore": 10,
-                            "preferredScore": 5,
-                            "dislikedScore": -5,
+                        "skillMatch": {
+                            "baseMatchScore": 1,
+                            "yearsMultiplier": 0.5,
+                            "maxYearsBonus": 5,
+                            "missingScore": -1,
+                            "analogScore": 0,
+                            "maxBonus": 25,
+                            "maxPenalty": -15,
+                            "analogGroups": [],
                         },
                         "salary": {
                             "minimum": None,
@@ -188,7 +184,6 @@ def test_queue_scrape_end_to_end(temp_db):
                             "belowTargetScore": -2,
                         },
                         "experience": {
-                            "userYears": 12,
                             "maxRequired": 15,
                             "overqualifiedScore": -5,
                         },

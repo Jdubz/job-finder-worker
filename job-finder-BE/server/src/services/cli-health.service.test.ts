@@ -54,25 +54,6 @@ describe('cli-health.service', () => {
   })
 
   describe('codex (config-based)', () => {
-    // Helper to set up Gemini as healthy for codex-focused tests
-    const setupGeminiHealthy = () => {
-      const originalImpl = mockedReadFile.getMockImplementation()
-      mockedReadFile.mockImplementation((path: string) => {
-        if (path.includes('.gemini')) {
-          if (path.includes('settings.json')) {
-            return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
-          }
-          if (path.includes('oauth_creds.json')) {
-            return Promise.resolve(JSON.stringify({ refresh_token: 'test-token' }))
-          }
-        }
-        if (originalImpl) {
-          return originalImpl(path)
-        }
-        return Promise.reject(new Error('File not found'))
-      })
-    }
-
     it('should return healthy when OAuth credentials are configured with email', async () => {
       // Create a mock JWT with email in payload
       const payload = { email: 'user@example.com', exp: Date.now() / 1000 + 3600 }
@@ -258,22 +239,6 @@ describe('cli-health.service', () => {
   })
 
   describe('gemini (config-based)', () => {
-    // Helper to set up Codex as healthy for gemini-focused tests
-    const setupCodexHealthy = () => {
-      const originalImpl = mockedReadFile.getMockImplementation()
-      mockedReadFile.mockImplementation((path: string) => {
-        if (path.includes('.codex/auth.json')) {
-          return Promise.resolve(JSON.stringify({
-            tokens: { refresh_token: 'test' }
-          }))
-        }
-        if (originalImpl) {
-          return originalImpl(path)
-        }
-        return Promise.reject(new Error('File not found'))
-      })
-    }
-
     it('should return healthy when OAuth credentials are configured with active account', async () => {
       mockedReadFile.mockImplementation((path: string) => {
         if (path.includes('.codex/auth.json')) {

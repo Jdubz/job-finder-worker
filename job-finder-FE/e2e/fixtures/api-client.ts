@@ -21,7 +21,6 @@ const MIN_PREFILTER = {
 
 const MIN_MATCH = {
   minScore: 50,
-  weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
   seniority: {
     preferred: ["senior"],
     acceptable: ["mid"],
@@ -39,17 +38,18 @@ const MIN_MATCH = {
     perHourScore: -1,
     hybridSameCityScore: 0,
   },
-  technology: {
-    required: [],
-    preferred: [],
-    disliked: [],
-    rejected: [],
-    requiredScore: 1,
-    preferredScore: 1,
-    dislikedScore: -1,
+  skillMatch: {
+    baseMatchScore: 1,
+    yearsMultiplier: 0.5,
+    maxYearsBonus: 5,
+    missingScore: -1,
+    analogScore: 0,
+    maxBonus: 25,
+    maxPenalty: -15,
+    analogGroups: [],
   },
   salary: { minimum: null, target: null, belowTargetScore: 0 },
-  experience: { userYears: 5, maxRequired: 20, overqualifiedScore: 0 },
+  experience: { maxRequired: 20, overqualifiedScore: 0 },
   freshness: {
     freshDays: 30,
     freshScore: 0,

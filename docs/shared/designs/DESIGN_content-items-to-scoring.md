@@ -2,6 +2,19 @@
 > Owner: @jdubz
 > Last Updated: 2025-12-04
 
+## Clarifications (2025-12-05)
+
+- Overlaps: per calendar month, count only one job (longest coverage), so overlapping jobs do not double-count total experience or skill years.
+- Open-ended roles: when end_date is missing, use today’s date at runtime to close the range.
+- Skill accrual: a skill can accrue experience from only one job at a time; overlapping jobs with the same skill share the month’s credit.
+- ai_context parity: all ai_context items contribute; if an item has no dates and the skill does not appear in any dated item, count that skill as 1 year (baseline). Otherwise, dated items drive experience.
+- Highlights: inherit the full duration of the parent work item for skill years.
+- Normalization: normalize all skills (case/punctuation/plurals/synonyms) before aggregation.
+- Validation: add structured validation to content-items to reject/flag malformed `skills` fields.
+- Granularity/rounding: month-level granularity; totals rounded up to whole years; all months weighted equally; no min/max caps.
+- Empty data: if content_items is empty, emit a zeroed profile.
+- Caching: recompute reduced profile on content-items update and persist it to the DB for reuse.
+
 # Derive Scoring Profile from Content-Items
 
 Scope: Replace manual technology/experience config with data derived from content-items.
