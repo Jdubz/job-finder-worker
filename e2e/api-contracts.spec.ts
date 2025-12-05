@@ -6,13 +6,17 @@ import {
   jobMatchStatsSchema,
   queueItemSchema,
   queueStatsSchema,
+  companySchema,
+  jobSourceSchema,
+  jobSourceStatsSchema,
+  contentItemSchema,
 } from "@shared/types"
 
 const API_BASE = process.env.JF_E2E_API_BASE || "http://127.0.0.1:5080/api"
 const AUTH_TOKEN = process.env.JF_E2E_AUTH_TOKEN || "dev-admin-token"
 
 test.describe("API contract (shared schemas)", () => {
-  test("API contract :: listings/matches/queue conform to shared schemas", async ({ request }) => {
+  test("API contract :: listings/matches/queue/companies/sources/content conform to shared schemas", async ({ request }) => {
     // Seed one listing so listing schema validation hits real data
     const unique = `e2e-contract-${Date.now()}`
     const createRes = await request.post(`${API_BASE}/job-listings`, {
@@ -84,5 +88,40 @@ test.describe("API contract (shared schemas)", () => {
     const queueStatsBody = await queueStats.json()
     const queueStatsParse = queueStatsSchema.safeParse(queueStatsBody.data.stats)
     expect(queueStatsParse.success).toBe(true)
+
+    // Companies: list should conform even if empty
+    const companiesRes = await request.get(`${API_BASE}/companies`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(companiesRes.ok()).toBeTruthy()
+    const companiesBody = await companiesRes.json()
+    const companiesParse = companySchema.array().safeParse(companiesBody.data.items)
+    expect(companiesParse.success).toBe(true)
+
+    // Job sources: list + stats
+    const sourcesRes = await request.get(`${API_BASE}/job-sources`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(sourcesRes.ok()).toBeTruthy()
+    const sourcesBody = await sourcesRes.json()
+    const sourcesParse = jobSourceSchema.array().safeParse(sourcesBody.data.items)
+    expect(sourcesParse.success).toBe(true)
+
+    const sourcesStatsRes = await request.get(`${API_BASE}/job-sources/stats`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(sourcesStatsRes.ok()).toBeTruthy()
+    const sourcesStatsBody = await sourcesStatsRes.json()
+    const sourcesStatsParse = jobSourceStatsSchema.safeParse(sourcesStatsBody.data.stats)
+    expect(sourcesStatsParse.success).toBe(true)
+
+    // Content items: list returns a tree; validate shape
+    const contentRes = await request.get(`${API_BASE}/content-items`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(contentRes.ok()).toBeTruthy()
+    const contentBody = await contentRes.json()
+    const contentParse = contentItemSchema.array().safeParse(contentBody.data.items)
+    expect(contentParse.success).toBe(true)
   })
 })
