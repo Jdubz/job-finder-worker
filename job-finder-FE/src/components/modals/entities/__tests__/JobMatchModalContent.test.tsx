@@ -74,7 +74,7 @@ describe("JobMatchModalContent", () => {
     expect(screen.getByText(/Frontend Engineer @ ACME/)).toBeInTheDocument()
   })
 
-  it("toggles ignore status and shows badge", async () => {
+  it("updates status via select and shows badge", async () => {
     vi.spyOn(generatorClientModule.generatorClient, "listDocumentsForMatch").mockResolvedValue([])
     vi.spyOn(jobMatchesClientModule.jobMatchesClient, "updateStatus").mockResolvedValue({
       ...baseMatch,
@@ -83,11 +83,12 @@ describe("JobMatchModalContent", () => {
 
     render(<JobMatchModalContent match={baseMatch} />)
 
-    const ignoreBtn = await screen.findByRole("button", { name: /Ignore/i })
-    fireEvent.click(ignoreBtn)
+    const statusSelect = await screen.findByRole("combobox", { name: /Match status/i })
+    fireEvent.click(statusSelect)
+    fireEvent.click(screen.getByRole("option", { name: /Ignored/i }))
 
     await waitFor(() => expect(jobMatchesClientModule.jobMatchesClient.updateStatus).toHaveBeenCalled())
-    expect(screen.getByText(/Ignored/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getAllByText(/Ignored/i).length).toBeGreaterThan(0))
     expect(toast.success).toHaveBeenCalled()
   })
 
