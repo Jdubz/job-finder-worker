@@ -96,7 +96,6 @@ export function buildJobListingRouter() {
         postedDate: payload.postedDate ?? null,
         status: payload.status ?? 'pending',
         filterResult: payload.filterResult ?? null,
-        analysisResult: null,
         matchScore: null
       })
       const response: CreateJobListingResponse = { listing }

@@ -39,7 +39,6 @@ const mockListingRecord: JobListingRecord = {
   postedDate: null,
   status: "pending",
   filterResult: null,
-  analysisResult: null,
   matchScore: null,
   createdAt: now(),
   updatedAt: now(),
