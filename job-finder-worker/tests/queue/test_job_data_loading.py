@@ -172,7 +172,12 @@ class TestJobDataLoadingFromScrapedData:
         # Simulate the loading logic from process_job
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
+            while (
+                isinstance(job_data, dict)
+                and "job_data" in job_data
+                and "title" not in job_data
+                and isinstance(job_data.get("job_data"), dict)
+            ):
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
@@ -208,7 +213,12 @@ class TestJobDataLoadingFromScrapedData:
         # Simulate the loading logic from process_job
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
+            while (
+                isinstance(job_data, dict)
+                and "job_data" in job_data
+                and "title" not in job_data
+                and isinstance(job_data.get("job_data"), dict)
+            ):
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
@@ -239,7 +249,12 @@ class TestJobDataLoadingFromScrapedData:
         # Simulate the loading logic from process_job
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
+            while (
+                isinstance(job_data, dict)
+                and "job_data" in job_data
+                and "title" not in job_data
+                and isinstance(job_data.get("job_data"), dict)
+            ):
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
@@ -269,7 +284,12 @@ class TestJobDataLoadingFromScrapedData:
         # Simulate the loading logic from process_job
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
+            while (
+                isinstance(job_data, dict)
+                and "job_data" in job_data
+                and "title" not in job_data
+                and isinstance(job_data.get("job_data"), dict)
+            ):
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
@@ -277,14 +297,14 @@ class TestJobDataLoadingFromScrapedData:
         assert ctx.job_data is not None
         assert ctx.job_data.get("title") == "DevOps Engineer"
 
-    def test_stops_unwrapping_when_multiple_keys(self, job_processor):
-        """Test that unwrapping stops when dict has multiple keys.
+    def test_stops_unwrapping_when_title_present(self, job_processor):
+        """Test that unwrapping stops when 'title' is present at current level.
 
-        The unwrapping logic checks len(job_data) == 1 to detect wrappers.
-        If a dict has multiple keys (even if one is 'job_data'), it's not
-        a wrapper and should not be unwrapped further.
+        The unwrapping logic checks 'title' not in job_data to detect wrappers.
+        If the current level has 'title', it's the actual job data and should
+        not be unwrapped further, even if it also contains a 'job_data' key.
         """
-        # This structure has multiple keys at the first level, shouldn't unwrap
+        # This structure has title at the first level, shouldn't unwrap further
         item = JobQueueItem(
             id="test-edge",
             type=QueueItemType.JOB,
@@ -305,7 +325,12 @@ class TestJobDataLoadingFromScrapedData:
         # Simulate the loading logic from process_job
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
+            while (
+                isinstance(job_data, dict)
+                and "job_data" in job_data
+                and "title" not in job_data
+                and isinstance(job_data.get("job_data"), dict)
+            ):
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
@@ -313,6 +338,54 @@ class TestJobDataLoadingFromScrapedData:
         assert ctx.job_data.get("title") == "Principal Engineer"
         # Should NOT have unwrapped to the nested job_data
         assert "nested" not in ctx.job_data
+
+    def test_unwraps_job_data_with_sibling_metadata(self, job_processor):
+        """Test unwrapping when job_data has sibling keys like company/company_id.
+
+        Real-world case: scraped_data.job_data contains both the nested job_data
+        AND metadata like company, company_id at the same level. Should still
+        unwrap to get to the actual job data with title.
+        """
+        actual_job_data = {
+            "title": "Senior Software Engineer",
+            "description": "Build amazing products",
+            "location": "Remote",
+            "url": "https://example.com/job/123",
+        }
+
+        # Structure with nested job_data alongside metadata (real production case)
+        item = JobQueueItem(
+            id="test-metadata",
+            type=QueueItemType.JOB,
+            url="https://example.com/job/metadata",
+            company_name="Tech Corp",
+            source="scraper",
+            scraped_data={
+                "job_data": {
+                    "job_data": actual_job_data,
+                    "company": "Tech Corp",
+                    "company_id": "abc123",
+                }
+            },
+        )
+
+        ctx = PipelineContext(item=item)
+
+        # Simulate the loading logic from process_job
+        if item.scraped_data:
+            job_data = item.scraped_data.get("job_data", item.scraped_data)
+            while (
+                isinstance(job_data, dict)
+                and "job_data" in job_data
+                and "title" not in job_data
+                and isinstance(job_data.get("job_data"), dict)
+            ):
+                job_data = job_data["job_data"]
+            ctx.job_data = job_data
+
+        assert ctx.job_data is not None
+        assert ctx.job_data.get("title") == "Senior Software Engineer"
+        assert ctx.job_data.get("description") == "Build amazing products"
 
 
 class TestPipelineContextJobDataExtraction:
@@ -364,7 +437,12 @@ class TestPipelineContextJobDataExtraction:
         ctx = PipelineContext(item=item)
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
+            while (
+                isinstance(job_data, dict)
+                and "job_data" in job_data
+                and "title" not in job_data
+                and isinstance(job_data.get("job_data"), dict)
+            ):
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
