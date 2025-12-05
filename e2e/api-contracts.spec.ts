@@ -15,6 +15,7 @@ import {
   generatorStartResponseSchema,
   generatorStepResponseSchema,
   generatorAssetUploadSchema,
+  lifecycleEventSchema,
 } from "@shared/types"
 
 const API_BASE = process.env.JF_E2E_API_BASE || "http://127.0.0.1:5080/api"
@@ -188,5 +189,21 @@ test.describe("API contract (shared schemas)", () => {
     const uploadBody = await uploadRes.json()
     const uploadParse = generatorAssetUploadSchema.safeParse(uploadBody)
     expect(uploadParse.success).toBe(true)
+
+    // Lifecycle SSE: fetch first event and validate shape
+    const lifecycleRes = await request.get(`${API_BASE}/lifecycle/events`, {
+      headers: { Accept: "text/event-stream" },
+    })
+    expect(lifecycleRes.ok()).toBeTruthy()
+    const bodyText = await lifecycleRes.text()
+    // Extract last data line
+    const dataLine = bodyText
+      .split("\n")
+      .find((line) => line.startsWith("data:"))
+    if (dataLine) {
+      const json = JSON.parse(dataLine.replace(/^data:\s*/, ""))
+      const eventParse = lifecycleEventSchema.safeParse(json)
+      expect(eventParse.success).toBe(true)
+    }
   })
 })
