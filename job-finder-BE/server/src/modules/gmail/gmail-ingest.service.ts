@@ -4,23 +4,13 @@ import { logger } from "../../logger"
 import { ConfigRepository } from "../config/config.repository"
 import { JobQueueService } from "../job-queue/job-queue.service"
 import type { SubmitJobInput } from "../job-queue/job-queue.service"
+import type { GmailIngestConfig } from "./gmail.types"
 
 export type IngestJobResult = {
   gmailEmail: string
   jobsFound: number
   jobsQueued: number
   error?: string
-}
-
-type GmailIngestSettings = {
-  enabled?: boolean
-  label?: string
-  query?: string
-  maxMessages?: number
-  allowedSenders?: string[]
-  remoteSourceDefault?: boolean
-  aiFallbackEnabled?: boolean
-  allowedDomains?: string[]
 }
 
 type GmailMessage = {
@@ -46,7 +36,7 @@ export class GmailIngestService {
   private readonly auth = new GmailAuthService()
   private readonly config = new ConfigRepository()
   private readonly queue = new JobQueueService()
-  private readonly allowedDomains = [
+  private readonly defaultAllowedDomains = [
     "greenhouse.io",
     "lever.co",
     "ashbyhq.com",
@@ -91,15 +81,15 @@ export class GmailIngestService {
     return results
   }
 
-  private getSettings(): GmailIngestSettings | null {
-    const cfg = this.config.get<GmailIngestSettings>("gmail-ingest")
+  private getSettings(): GmailIngestConfig | null {
+    const cfg = this.config.get<GmailIngestConfig>("gmail-ingest")
     return cfg?.payload ?? null
   }
 
   private async ingestAccount(
     gmailEmail: string,
     tokens: GmailTokenPayload,
-    settings: GmailIngestSettings | null
+    settings: GmailIngestConfig | null
   ): Promise<IngestJobResult> {
     if (!settings) {
       throw new Error("gmail-ingest config missing")
