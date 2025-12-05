@@ -39,18 +39,18 @@ const matchPolicy: MatchPolicy = {
     perHourScore: -1,
     hybridSameCityScore: 0,
   },
-  technology: {
-    required: [],
-    preferred: [],
-    disliked: [],
-    rejected: [],
-    requiredScore: 1,
-    preferredScore: 1,
-    dislikedScore: -1,
-    missingRequiredScore: -15,
+  skillMatch: {
+    baseMatchScore: 1,
+    yearsMultiplier: 0.5,
+    maxYearsBonus: 5,
+    missingScore: -1,
+    analogScore: 0,
+    maxBonus: 25,
+    maxPenalty: -15,
+    analogGroups: [],
   },
   salary: { minimum: null, target: null, belowTargetScore: 0 },
-  experience: { userYears: 5, maxRequired: 20, overqualifiedScore: 0 },
+  experience: { maxRequired: 20, overqualifiedScore: 0 },
   freshness: {
     freshDays: 30,
     freshScore: 0,
@@ -82,7 +82,7 @@ const matchPolicy: MatchPolicy = {
 }
 
 describe("JobFinderConfigPage", () => {
-  it("renders missing required score field", async () => {
+  it("renders missing skill penalty field", async () => {
     const user = userEvent.setup()
     render(
       <MemoryRouter>
@@ -93,7 +93,7 @@ describe("JobFinderConfigPage", () => {
     // Switch to Scoring tab so the field is rendered
     await user.click(screen.getByRole("tab", { name: /scoring/i }))
 
-    expect(screen.getByLabelText(/missing required score/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/missing skill penalty/i)).toBeInTheDocument()
   })
 })
 

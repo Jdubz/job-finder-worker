@@ -221,9 +221,8 @@ export interface PreFilterSalaryConfig {
 export interface PreFilterTechnologyConfig {
   /**
    * Technologies that cause immediate rejection if found in structured tags.
-   * Should be SUBSET of match-policy.technology.rejected (most egregious only).
    * Only applies when source provides structured tags (e.g., Remotive).
-   * Example: ["php", "wordpress"] (prefilter) vs ["php", "wordpress", "drupal", "magento"] (match-policy)
+   * Keep list short for high-confidence rejects (e.g., ["php", "wordpress"]).
    */
   rejected: string[]
 }
@@ -290,24 +289,24 @@ export interface LocationConfig {
   unknownTimezoneScore?: number
 }
 
-/** Technology stack preferences */
-export interface TechnologyConfig {
-  /** Required technologies - must have at least one */
-  required: string[]
-  /** Preferred technologies - bonus points */
-  preferred: string[]
-  /** Disliked technologies - penalty points */
-  disliked: string[]
-  /** Rejected technologies - hard reject */
-  rejected: string[]
-  /** Score adjustment per required technology found (positive) */
-  requiredScore: number
-  /** Score adjustment per preferred technology found (positive) */
-  preferredScore: number
-  /** Score adjustment per disliked technology found (negative) */
-  dislikedScore: number
-  /** Score adjustment when no required tech found (negative) */
-  missingRequiredScore: number
+/** Skill/technology matching with experience weighting */
+export interface SkillMatchConfig {
+  /** Base points per matched skill */
+  baseMatchScore: number
+  /** Multiplier per year of experience for a matched skill */
+  yearsMultiplier: number
+  /** Max years counted per skill (caps experience bonus) */
+  maxYearsBonus: number
+  /** Penalty per missing job skill (negative) */
+  missingScore: number
+  /** Points when an analog skill is present */
+  analogScore: number
+  /** Cap on total bonus from skill matching */
+  maxBonus: number
+  /** Cap on total penalty from missing skills */
+  maxPenalty: number
+  /** Groups of equivalent skills (each inner array is a group) */
+  analogGroups: string[][]
 }
 
 /** Salary preferences */
@@ -326,8 +325,6 @@ export interface SalaryConfig {
 
 /** Experience level preferences */
 export interface ExperienceConfig {
-  /** User's years of experience */
-  userYears: number
   /** Maximum years required by job before rejection */
   maxRequired: number
   /** Score adjustment per year user is overqualified (negative) */
@@ -398,8 +395,8 @@ export interface MatchPolicy {
   seniority: SeniorityConfig
   /** Location and remote work preferences */
   location: LocationConfig
-  /** Technology stack preferences */
-  technology: TechnologyConfig
+  /** Skill/technology matching */
+  skillMatch: SkillMatchConfig
   /** Salary preferences */
   salary: SalaryConfig
   /** Experience level preferences */

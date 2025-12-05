@@ -123,15 +123,15 @@ const locationConfigSchema = z.object({
   unknownTimezoneScore: z.number().optional(),
 })
 
-const technologyConfigSchema = z.object({
-  required: z.array(z.string()),
-  preferred: z.array(z.string()),
-  disliked: z.array(z.string()),
-  rejected: z.array(z.string()),
-  requiredScore: z.number(),
-  preferredScore: z.number(),
-  dislikedScore: z.number(),
-  missingRequiredScore: z.number(),
+const skillMatchConfigSchema = z.object({
+  baseMatchScore: z.number(),
+  yearsMultiplier: z.number(),
+  maxYearsBonus: z.number(),
+  missingScore: z.number(),
+  analogScore: z.number(),
+  maxBonus: z.number(),
+  maxPenalty: z.number(),
+  analogGroups: z.array(z.array(z.string())),
 })
 
 const salaryConfigSchema = z.object({
@@ -143,7 +143,6 @@ const salaryConfigSchema = z.object({
 })
 
 const experienceConfigSchema = z.object({
-  userYears: z.number(),
   maxRequired: z.number(),
   overqualifiedScore: z.number(),
 })
@@ -183,7 +182,7 @@ export const matchPolicySchema = z.object({
   minScore: z.number(),
   seniority: seniorityConfigSchema,
   location: locationConfigSchema,
-  technology: technologyConfigSchema,
+  skillMatch: skillMatchConfigSchema,
   salary: salaryConfigSchema,
   experience: experienceConfigSchema,
   freshness: freshnessConfigSchema,
