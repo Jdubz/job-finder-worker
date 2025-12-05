@@ -35,7 +35,7 @@ const mapConfigToForm = (config: MatchPolicy): MatchPolicyFormValues => ({
   skillMatch: {
     ...(config.skillMatch || defaultSkillMatch),
     analogGroups: ((config.skillMatch || defaultSkillMatch).analogGroups || []).map((group) =>
-      Array.isArray(group) ? group.join(", ") : String(group)
+      group.join(", ")
     ),
   },
 })

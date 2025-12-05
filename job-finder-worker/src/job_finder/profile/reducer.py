@@ -31,9 +31,8 @@ class ScoringProfile:
 
 
 def _normalize_skill(skill: str) -> str:
-    """Lowercase + trim; strip common punctuation and collapse whitespace."""
+    """Lowercase + trim; remove common punctuation and collapse whitespace."""
     cleaned = skill.strip().lower()
-    # Remove trailing punctuation that commonly surrounds skills
     for ch in [",", ".", ";", ":", "(", ")", "[", "]", "{", "}"]:
         cleaned = cleaned.replace(ch, " ")
     cleaned = " ".join(cleaned.split())
@@ -101,17 +100,20 @@ def reduce_content_items(items: List[dict]) -> ScoringProfile:
     skill_months: Dict[str, Set[str]] = {}
     all_skills: Set[str] = set()
     overall_months: Set[str] = set()
+    undated_skills: Set[str] = set()
 
-    # First pass: handle items with dates (or inherited dates)
     for raw in items:
-        skills_raw = raw.get("skills") or []
-        if isinstance(skills_raw, str):
-            # naive split if stored as comma-separated; json parsing handled upstream
+        skills_raw = raw.get("skills")
+        if not skills_raw:
+            normalized_skills: Set[str] = set()
+        elif isinstance(skills_raw, str):
             skills_list = [s.strip() for s in skills_raw.split(",") if s.strip()]
+            normalized_skills = {_normalize_skill(s) for s in skills_list if s}
+        elif isinstance(skills_raw, (list, tuple)):
+            normalized_skills = {_normalize_skill(s) for s in skills_raw if s}
         else:
-            skills_list = list(skills_raw) if isinstance(skills_raw, Iterable) else []
+            normalized_skills = set()
 
-        normalized_skills = {_normalize_skill(s) for s in skills_list if s}
         all_skills.update(normalized_skills)
 
         start = _parse_date(raw.get("start_date"))
@@ -132,38 +134,19 @@ def reduce_content_items(items: List[dict]) -> ScoringProfile:
             overall_months |= months
             for skill in normalized_skills:
                 skill_months.setdefault(skill, set()).update(months)
+        elif not end:
+            undated_skills.update(normalized_skills)
 
-    # Second pass: undated-only skills get 1-year baseline if no dated months
-    undated_skills: Set[str] = set()
-    for raw in items:
-        skills_raw = raw.get("skills") or []
-        if isinstance(skills_raw, str):
-            skills_list = [s.strip() for s in skills_raw.split(",") if s.strip()]
-        else:
-            skills_list = list(skills_raw) if isinstance(skills_raw, Iterable) else []
-        normalized_skills = {_normalize_skill(s) for s in skills_list if s}
-        start = _parse_date(raw.get("start_date"))
-        end = _parse_date(raw.get("end_date"))
-        if raw.get("ai_context") == "highlight" and raw.get("parent_id") and not start:
-            parent = by_id.get(raw.get("parent_id"))
-            if parent:
-                start = _parse_date(parent.get("start_date")) or start
-                end = _parse_date(parent.get("end_date")) or end
-        if not start and not end:
-            undated_skills |= normalized_skills
-
+    # Add baseline for skills that only appear in undated items
     for skill in undated_skills:
         if skill not in skill_months:
-            skill_months[skill] = _month_span(today, today.replace(year=today.year)) or {"baseline"}
-            # replace with 12 months baseline
             skill_months[skill] = {f"baseline-{i}" for i in range(12)}
 
-    # Compute years
     skill_years = {skill: _round_up_years(len(months)) for skill, months in skill_months.items()}
     total_experience_years = _round_up_years(len(overall_months))
 
     return ScoringProfile(
-        skills=set(skill_years.keys()) | all_skills,
+        skills=all_skills,
         skill_years=skill_years,
         total_experience_years=total_experience_years,
     )

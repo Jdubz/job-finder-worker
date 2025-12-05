@@ -229,6 +229,24 @@ class TestScoringEngine:
         skill_adjustments = [a for a in result.adjustments if a.category == "skills"]
         assert len(skill_adjustments) == 1
 
+    def test_analog_skill_applies_score(self, default_config, engine_factory):
+        """Analog skills are treated as matches when configured."""
+        cfg = {
+            **default_config,
+            "skillMatch": {
+                **default_config["skillMatch"],
+                "analogScore": 1,
+            },
+        }
+        engine = engine_factory(cfg)
+        extraction = JobExtractionResult(technologies=["node.js"])
+
+        result = engine.score(extraction, "Backend Engineer", "Node.js role")
+
+        analog_adjustments = [a for a in result.adjustments if "Analog" in a.reason]
+        assert analog_adjustments, "Expected analog adjustment when equivalent skill exists"
+        assert any(adj.points == cfg["skillMatch"]["analogScore"] for adj in analog_adjustments)
+
     def test_timezone_penalty(self, engine_factory):
         """Timezone difference within max adds penalty (not hard reject)."""
         engine = engine_factory()
