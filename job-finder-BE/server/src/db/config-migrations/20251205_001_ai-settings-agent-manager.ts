@@ -1,0 +1,207 @@
+/**
+ * Migration: ai-settings to AgentManager structure
+ *
+ * Converts the old ai-settings structure (worker/documentGenerator sections)
+ * to the new structure (agents map, taskFallbacks, modelRates).
+ */
+
+import type Database from 'better-sqlite3'
+import type { AIProviderType, AIInterfaceType, AgentId, AgentConfig, AgentTaskType } from '@shared/types'
+
+export const description = 'Convert ai-settings to AgentManager structure'
+
+type OldAISettings = {
+  worker?: {
+    selected?: { provider: AIProviderType; interface: AIInterfaceType; model: string }
+    tasks?: {
+      jobMatch?: { provider: AIProviderType; interface: AIInterfaceType; model: string }
+      companyDiscovery?: { provider: AIProviderType; interface: AIInterfaceType; model: string }
+      sourceDiscovery?: { provider: AIProviderType; interface: AIInterfaceType; model: string }
+    }
+  }
+  documentGenerator?: {
+    selected?: { provider: AIProviderType; interface: AIInterfaceType; model: string }
+  }
+  options?: unknown[]
+}
+
+type NewAISettings = {
+  agents: Partial<Record<AgentId, AgentConfig>>
+  taskFallbacks: Record<AgentTaskType, AgentId[]>
+  modelRates: Record<string, number>
+  documentGenerator: {
+    selected: { provider: AIProviderType; interface: AIInterfaceType; model: string }
+  }
+  options: unknown[]
+}
+
+const DEFAULT_MODEL_RATES: Record<string, number> = {
+  'gpt-4o': 1.0,
+  'gpt-4o-mini': 0.5,
+  'gpt-4': 1.5,
+  'claude-3-opus': 1.5,
+  'claude-3-sonnet': 1.0,
+  'claude-3-haiku': 0.3,
+  'gemini-2.0-flash': 0.5,
+  'gemini-1.5-pro': 1.0,
+  'gemini-1.5-flash': 0.3,
+}
+
+function isAlreadyMigrated(payload: unknown): payload is NewAISettings {
+  if (!payload || typeof payload !== 'object') return false
+  const p = payload as Record<string, unknown>
+  return 'agents' in p && typeof p.agents === 'object' && 'taskFallbacks' in p && typeof p.taskFallbacks === 'object'
+}
+
+function makeAgentId(provider: AIProviderType, iface: AIInterfaceType): AgentId {
+  return `${provider}.${iface}` as AgentId
+}
+
+function migrateToNew(old: OldAISettings): NewAISettings {
+  const agents: Partial<Record<AgentId, AgentConfig>> = {}
+  const extractionFallbacks: AgentId[] = []
+  const analysisFallbacks: AgentId[] = []
+
+  const ensureAgent = (provider: AIProviderType, iface: AIInterfaceType, model: string): AgentId => {
+    const agentId = makeAgentId(provider, iface)
+    if (!agents[agentId]) {
+      agents[agentId] = {
+        provider,
+        interface: iface,
+        defaultModel: model,
+        enabled: true,
+        reason: null,
+        dailyBudget: 100,
+        dailyUsage: 0,
+      }
+    }
+    return agentId
+  }
+
+  const workerSelected = old.worker?.selected
+  const tasks = old.worker?.tasks
+
+  if (workerSelected) {
+    const agentId = ensureAgent(workerSelected.provider, workerSelected.interface, workerSelected.model)
+    if (!extractionFallbacks.includes(agentId)) extractionFallbacks.push(agentId)
+    if (!analysisFallbacks.includes(agentId)) analysisFallbacks.push(agentId)
+  }
+
+  if (tasks?.jobMatch) {
+    const agentId = ensureAgent(tasks.jobMatch.provider, tasks.jobMatch.interface, tasks.jobMatch.model)
+    if (!analysisFallbacks.includes(agentId)) analysisFallbacks.unshift(agentId)
+  }
+
+  if (tasks?.companyDiscovery) {
+    const agentId = ensureAgent(tasks.companyDiscovery.provider, tasks.companyDiscovery.interface, tasks.companyDiscovery.model)
+    if (!extractionFallbacks.includes(agentId)) extractionFallbacks.unshift(agentId)
+  }
+
+  if (tasks?.sourceDiscovery) {
+    const agentId = ensureAgent(tasks.sourceDiscovery.provider, tasks.sourceDiscovery.interface, tasks.sourceDiscovery.model)
+    if (!extractionFallbacks.includes(agentId)) extractionFallbacks.unshift(agentId)
+  }
+
+  const docGen = old.documentGenerator?.selected ?? {
+    provider: 'codex' as AIProviderType,
+    interface: 'cli' as AIInterfaceType,
+    model: 'gpt-4o',
+  }
+
+  return {
+    agents,
+    taskFallbacks: { extraction: extractionFallbacks, analysis: analysisFallbacks },
+    modelRates: DEFAULT_MODEL_RATES,
+    documentGenerator: { selected: docGen },
+    options: old.options ?? [],
+  }
+}
+
+export function up(db: Database.Database): void {
+  const row = db
+    .prepare('SELECT payload_json FROM job_finder_config WHERE id = ?')
+    .get('ai-settings') as { payload_json: string } | undefined
+
+  if (!row) {
+    // Create default new structure
+    const defaultSettings: NewAISettings = {
+      agents: {
+        'gemini.cli': {
+          provider: 'gemini',
+          interface: 'cli',
+          defaultModel: 'gemini-2.0-flash',
+          enabled: true,
+          reason: null,
+          dailyBudget: 100,
+          dailyUsage: 0,
+        },
+        'codex.cli': {
+          provider: 'codex',
+          interface: 'cli',
+          defaultModel: 'gpt-4o',
+          enabled: true,
+          reason: null,
+          dailyBudget: 100,
+          dailyUsage: 0,
+        },
+      },
+      taskFallbacks: {
+        extraction: ['gemini.cli', 'codex.cli'],
+        analysis: ['gemini.cli', 'codex.cli'],
+      },
+      modelRates: DEFAULT_MODEL_RATES,
+      documentGenerator: { selected: { provider: 'codex', interface: 'cli', model: 'gpt-4o' } },
+      options: [],
+    }
+
+    db.prepare(
+      `INSERT INTO job_finder_config (id, payload_json, updated_at, updated_by) VALUES (?, ?, ?, ?)`
+    ).run('ai-settings', JSON.stringify(defaultSettings), new Date().toISOString(), 'config-migration')
+    return
+  }
+
+  const parsed = JSON.parse(row.payload_json)
+
+  if (isAlreadyMigrated(parsed)) {
+    // Already migrated, nothing to do
+    return
+  }
+
+  const newSettings = migrateToNew(parsed as OldAISettings)
+
+  db.prepare(
+    `UPDATE job_finder_config SET payload_json = ?, updated_at = ?, updated_by = ? WHERE id = ?`
+  ).run(JSON.stringify(newSettings), new Date().toISOString(), 'config-migration', 'ai-settings')
+}
+
+export function down(db: Database.Database): void {
+  // Rollback is not fully reversible - we can't recover the original worker.tasks structure
+  // Best effort: remove the new fields, keeping documentGenerator and options
+  const row = db
+    .prepare('SELECT payload_json FROM job_finder_config WHERE id = ?')
+    .get('ai-settings') as { payload_json: string } | undefined
+
+  if (!row) return
+
+  const parsed = JSON.parse(row.payload_json) as NewAISettings
+
+  // Convert back to old structure (best effort)
+  const firstAgent = Object.values(parsed.agents ?? {})[0]
+  const oldSettings: OldAISettings = {
+    worker: firstAgent
+      ? {
+          selected: {
+            provider: firstAgent.provider,
+            interface: firstAgent.interface,
+            model: firstAgent.defaultModel,
+          },
+        }
+      : undefined,
+    documentGenerator: parsed.documentGenerator,
+    options: parsed.options,
+  }
+
+  db.prepare(
+    `UPDATE job_finder_config SET payload_json = ?, updated_at = ?, updated_by = ? WHERE id = ?`
+  ).run(JSON.stringify(oldSettings), new Date().toISOString(), 'config-migration-rollback', 'ai-settings')
+}

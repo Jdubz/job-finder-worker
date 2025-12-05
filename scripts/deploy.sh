@@ -120,21 +120,12 @@ for i in $(seq 1 30); do
 done
 
 echo "[deploy] Running config migrations..."
-# ai-settings migration (AgentManager schema)
-if docker exec job-finder-api node dist/scripts/migrate-ai-settings.js 2>&1; then
-  echo "[deploy] ai-settings migration completed"
+# Auto-discover and run pending config migrations from src/db/config-migrations/
+if docker exec job-finder-api node dist/scripts/run-config-migrations.js 2>&1; then
+  echo "[deploy] Config migrations completed successfully"
 else
-  echo "[deploy] WARNING: ai-settings migration failed (may already be migrated)"
+  echo "[deploy] WARNING: Config migrations failed - check logs for details"
 fi
-
-# tech-ranks migration (rank schema normalization)
-if docker exec job-finder-api node dist/scripts/migrate-tech-ranks.js 2>&1; then
-  echo "[deploy] tech-ranks migration completed"
-else
-  echo "[deploy] WARNING: tech-ranks migration failed (may already be migrated)"
-fi
-
-echo "[deploy] Config migrations complete"
 EOF
 
 echo "[deploy] Executing remote deployment…"
