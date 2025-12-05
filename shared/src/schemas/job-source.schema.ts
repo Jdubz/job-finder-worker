@@ -19,10 +19,12 @@ export const jobSourceSchema = z
 
 export const jobSourceStatsSchema = z.object({
   total: z.number(),
-  byStatus: z.object({
-    active: z.number(),
-    paused: z.number(),
-    disabled: z.number(),
-    error: z.number(),
-  }),
+  byStatus: z
+    .object({
+      active: z.number().optional().default(0),
+      paused: z.number().optional().default(0),
+      disabled: z.number().optional().default(0),
+      error: z.number().optional().default(0),
+    })
+    .passthrough(),
 })
