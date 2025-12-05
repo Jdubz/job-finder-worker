@@ -87,7 +87,6 @@ class ScoringEngine:
 
         # Required top-level config - fail loudly if missing
         self.min_score = config["minScore"]
-        self.weights = config["weights"]
         self.seniority_config = config["seniority"]
         self.location_config = config["location"]
         self.tech_config = config["technology"]
@@ -178,6 +177,9 @@ class ScoringEngine:
         score += tech_result["points"]
         adjustments.extend(tech_result.get("adjustments", []))
 
+        # Track technologies already scored to avoid double-counting in skills
+        scored_tech_set = {t.lower() for t in extraction.technologies}
+
         # Hard reject on technology
         if tech_result.get("hard_reject"):
             return ScoreBreakdown(
@@ -214,7 +216,7 @@ class ScoringEngine:
         adjustments.extend(exp_result.get("adjustments", []))
 
         # 6. Skill match scoring (from description text matching)
-        skill_result = self._score_skills(job_description)
+        skill_result = self._score_skills(job_description, scored_tech_set)
         score += skill_result["points"]
         adjustments.extend(skill_result.get("adjustments", []))
 
@@ -491,7 +493,7 @@ class ScoringEngine:
         # Check required technologies
         required_found = tech_set & self._required_tech
         if required_found:
-            score = len(required_found) * self.tech_config.get("requiredScore", 10)
+            score = len(required_found) * self.tech_config["requiredScore"]
             points += score
             adjustments.append(
                 ScoreAdjustment(
@@ -502,7 +504,7 @@ class ScoringEngine:
             )
         elif self._required_tech:
             # None of the required tech found - configurable adjustment
-            missing_score = self.tech_config.get("missingRequiredScore", -15)
+            missing_score = self.tech_config["missingRequiredScore"]
             points += missing_score
             adjustments.append(
                 ScoreAdjustment(
@@ -515,7 +517,7 @@ class ScoringEngine:
         # Check preferred technologies
         preferred_found = tech_set & self._preferred_tech
         if preferred_found:
-            score = len(preferred_found) * self.tech_config.get("preferredScore", 5)
+            score = len(preferred_found) * self.tech_config["preferredScore"]
             points += score
             adjustments.append(
                 ScoreAdjustment(
@@ -528,7 +530,7 @@ class ScoringEngine:
         # Check disliked technologies
         disliked_found = tech_set & self._disliked_tech
         if disliked_found:
-            score = len(disliked_found) * self.tech_config.get("dislikedScore", -5)
+            score = len(disliked_found) * self.tech_config["dislikedScore"]
             points += score
             adjustments.append(
                 ScoreAdjustment(
@@ -717,16 +719,28 @@ class ScoringEngine:
             ],
         }
 
-    def _score_skills(self, description: str) -> Dict[str, Any]:
-        """Score based on skill keywords in description using word-boundary matching."""
+    def _score_skills(
+        self, description: str, scored_technologies: Optional[Set[str]] = None
+    ) -> Dict[str, Any]:
+        """Score based on skill keywords in description using word-boundary matching.
+
+        Technologies that have already been scored in _score_technology are
+        excluded to prevent double-counting when they also appear as skills.
+        """
         if not self.user_skills or not description:
             return {"points": 0, "adjustments": []}
 
         desc_lower = description.lower()
+
+        skills_to_check = set(self.user_skills)
+        if scored_technologies:
+            # scored_technologies is already lowercased at call site
+            skills_to_check = skills_to_check - scored_technologies
+
         # Use word boundary matching to avoid false positives
         # e.g., "go" shouldn't match "going", "good", etc.
         matched_skills = [
-            skill for skill in self.user_skills if re.search(rf"\b{re.escape(skill)}\b", desc_lower)
+            skill for skill in skills_to_check if re.search(rf"\b{re.escape(skill)}\b", desc_lower)
         ]
 
         if not matched_skills:

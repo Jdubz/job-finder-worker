@@ -156,7 +156,6 @@ class TestConfigLoaderIntegration:
         # Complete match-policy (all sections required, no defaults)
         match_policy_payload = {
             "minScore": 60,
-            "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
             "seniority": {
                 "preferred": ["senior"],
                 "acceptable": ["mid"],
@@ -182,6 +181,7 @@ class TestConfigLoaderIntegration:
                 "requiredScore": 10,
                 "preferredScore": 5,
                 "dislikedScore": -5,
+                "missingRequiredScore": -15,
             },
             "salary": {"minimum": None, "target": None, "belowTargetScore": -2},
             "experience": {"userYears": 12, "maxRequired": 15, "overqualifiedScore": -5},

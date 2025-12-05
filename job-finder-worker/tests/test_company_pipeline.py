@@ -21,7 +21,6 @@ class TestCompanyPipeline:
         # Complete match-policy (all sections required, no defaults)
         config_loader.get_match_policy.return_value = {
             "minScore": 60,
-            "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
             "seniority": {
                 "preferred": ["senior"],
                 "acceptable": ["mid"],
@@ -47,6 +46,7 @@ class TestCompanyPipeline:
                 "requiredScore": 10,
                 "preferredScore": 5,
                 "dislikedScore": -5,
+                "missingRequiredScore": -15,
             },
             "salary": {
                 "minimum": None,

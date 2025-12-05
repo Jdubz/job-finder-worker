@@ -21,7 +21,6 @@ const MIN_PREFILTER = {
 
 const MIN_MATCH = {
   minScore: 50,
-  weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
   seniority: {
     preferred: ["senior"],
     acceptable: ["mid"],
@@ -47,6 +46,7 @@ const MIN_MATCH = {
     requiredScore: 1,
     preferredScore: 1,
     dislikedScore: -1,
+    missingRequiredScore: -15,
   },
   salary: { minimum: null, target: null, belowTargetScore: 0 },
   experience: { userYears: 5, maxRequired: 20, overqualifiedScore: 0 },

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import { JobFinderConfigPage } from "../JobFinderConfigPage"
@@ -21,7 +22,6 @@ const prefilterPolicy: PreFilterPolicy = {
 
 const matchPolicy: MatchPolicy = {
   minScore: 50,
-  weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
   seniority: {
     preferred: ["senior"],
     acceptable: ["mid"],
@@ -47,6 +47,7 @@ const matchPolicy: MatchPolicy = {
     requiredScore: 1,
     preferredScore: 1,
     dislikedScore: -1,
+    missingRequiredScore: -15,
   },
   salary: { minimum: null, target: null, belowTargetScore: 0 },
   experience: { userYears: 5, maxRequired: 20, overqualifiedScore: 0 },
@@ -79,6 +80,22 @@ const matchPolicy: MatchPolicy = {
     startupScore: 0,
   },
 }
+
+describe("JobFinderConfigPage", () => {
+  it("renders missing required score field", async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <JobFinderConfigPage />
+      </MemoryRouter>
+    )
+
+    // Switch to Scoring tab so the field is rendered
+    await user.click(screen.getByRole("tab", { name: /scoring/i }))
+
+    expect(screen.getByLabelText(/missing required score/i)).toBeInTheDocument()
+  })
+})
 
 const workerSettings: WorkerSettings = {
   scraping: { requestTimeoutSeconds: 30, maxHtmlSampleLength: 20000 },

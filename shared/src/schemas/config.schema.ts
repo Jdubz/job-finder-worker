@@ -100,12 +100,6 @@ export const prefilterPolicySchema = z.object({
 // -----------------------------
 // Match policy (scoring config)
 // -----------------------------
-const scoringWeightsSchema = z.object({
-  skillMatch: z.number(),
-  experienceMatch: z.number(),
-  seniorityMatch: z.number(),
-})
-
 const seniorityConfigSchema = z.object({
   preferred: z.array(z.string()),
   acceptable: z.array(z.string()),
@@ -137,7 +131,7 @@ const technologyConfigSchema = z.object({
   requiredScore: z.number(),
   preferredScore: z.number(),
   dislikedScore: z.number(),
-  missingRequiredScore: z.number().optional(),
+  missingRequiredScore: z.number(),
 })
 
 const salaryConfigSchema = z.object({
@@ -187,7 +181,6 @@ const companyConfigSchema = z.object({
 
 export const matchPolicySchema = z.object({
   minScore: z.number(),
-  weights: scoringWeightsSchema,
   seniority: seniorityConfigSchema,
   location: locationConfigSchema,
   technology: technologyConfigSchema,

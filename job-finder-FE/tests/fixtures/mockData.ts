@@ -150,7 +150,6 @@ export const mockAISettings: AISettings = {
 
 export const baseMatchPolicy: MatchPolicy = {
   minScore: 60,
-  weights: { skillMatch: 40, experienceMatch: 30, seniorityMatch: 30 },
   seniority: {
     preferred: ["senior"],
     acceptable: ["mid"],
@@ -176,6 +175,7 @@ export const baseMatchPolicy: MatchPolicy = {
     requiredScore: 10,
     preferredScore: 5,
     dislikedScore: -5,
+    missingRequiredScore: -15,
   },
   salary: { minimum: 100000, target: 170000, belowTargetScore: -10 },
   experience: { userYears: 10, maxRequired: 12, overqualifiedScore: -5 },

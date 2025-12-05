@@ -156,11 +156,6 @@ def test_queue_scrape_end_to_end(temp_db):
                 json.dumps(
                     {
                         "minScore": 60,
-                        "weights": {
-                            "skillMatch": 40,
-                            "experienceMatch": 30,
-                            "seniorityMatch": 30,
-                        },
                         "seniority": {
                             "preferred": ["senior"],
                             "acceptable": ["mid"],
@@ -186,6 +181,7 @@ def test_queue_scrape_end_to_end(temp_db):
                             "requiredScore": 10,
                             "preferredScore": 5,
                             "dislikedScore": -5,
+                            "missingRequiredScore": -15,
                         },
                         "salary": {
                             "minimum": None,

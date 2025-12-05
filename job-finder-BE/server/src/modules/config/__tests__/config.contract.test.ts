@@ -96,7 +96,6 @@ describe('config contract', () => {
 
     repo.upsert('match-policy', {
       minScore: 60,
-      weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
       seniority: {
         preferred: ['senior'],
         acceptable: ['mid'],
@@ -123,6 +122,7 @@ describe('config contract', () => {
         requiredScore: 5,
         preferredScore: 3,
         dislikedScore: -2,
+        missingRequiredScore: -15,
       },
       salary: { minimum: 90000, target: 150000, belowTargetScore: -2 },
       experience: { userYears: 8, maxRequired: 12, overqualifiedScore: -1 },
