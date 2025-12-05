@@ -16,6 +16,17 @@ vi.mock("@/components/ui/tabs", () => ({
   TabsContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
+// Mock lucide-react icons
+vi.mock("lucide-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("lucide-react")>()
+  return {
+    ...actual,
+    X: () => <span data-testid="x-icon">X</span>,
+    RotateCcw: () => <span data-testid="rotate-icon">↻</span>,
+    AlertCircle: () => <span data-testid="alert-icon">!</span>,
+  }
+})
+
 describe("AISettingsTab", () => {
   const mockAISettings: AISettings = {
     agents: {
@@ -142,5 +153,47 @@ describe("AISettingsTab", () => {
     render(<AISettingsTab {...defaultProps} aiSettings={null} />)
 
     expect(screen.getByText("Configuration Missing")).toBeInTheDocument()
+  })
+
+  it("displays model selection dropdown for agents", () => {
+    render(<AISettingsTab {...defaultProps} />)
+
+    // Model label should be present
+    expect(screen.getAllByText("Model:").length).toBeGreaterThan(0)
+  })
+
+  it("shows clear error button for agents with errors", () => {
+    render(<AISettingsTab {...defaultProps} />)
+
+    // The codex.cli agent has a quota_exhausted reason, so Clear button should appear
+    expect(screen.getByText("Clear")).toBeInTheDocument()
+  })
+
+  it("shows reset usage button when usage > 0", () => {
+    render(<AISettingsTab {...defaultProps} />)
+
+    // Both agents have usage > 0, so reset buttons should be present
+    const rotateIcons = screen.getAllByTestId("rotate-icon")
+    expect(rotateIcons.length).toBeGreaterThan(0)
+  })
+
+  it("shows remove buttons on fallback chain agents", () => {
+    render(<AISettingsTab {...defaultProps} />)
+
+    // X icons should be present for removing agents from fallback chains
+    const xIcons = screen.getAllByTestId("x-icon")
+    expect(xIcons.length).toBeGreaterThan(0)
+  })
+
+  it("calls setAISettings when clearing agent error", async () => {
+    const user = userEvent.setup()
+    const setAISettings = vi.fn()
+
+    render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+    const clearButton = screen.getByText("Clear")
+    await user.click(clearButton)
+
+    expect(setAISettings).toHaveBeenCalled()
   })
 })
