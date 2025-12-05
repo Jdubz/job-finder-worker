@@ -45,7 +45,7 @@ const INTERFACE_LABELS: Record<AIInterfaceType, string> = {
 
 const TASK_LABELS: Record<AgentTaskType, string> = {
   extraction: "Data Extraction",
-  analysis: "Match Analysis",
+  analysis: "Analysis",
 }
 
 function formatAgentId(agentId: AgentId): string {
