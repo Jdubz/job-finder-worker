@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AISettingsTab } from "../AISettingsTab"
-import type { AISettings } from "@shared/types"
+import type { AISettings, AgentConfig } from "@shared/types"
 
 // Mock TabsContent to render children directly
 vi.mock("@/components/ui/tabs", () => ({
@@ -239,9 +239,9 @@ describe("AISettingsTab", () => {
         agents: {
           ...mockAISettings.agents,
           "gemini.cli": {
-            ...mockAISettings.agents["gemini.cli"],
+            ...mockAISettings.agents["gemini.cli"]!,
             dailyUsage: 0,
-          },
+          } as AgentConfig,
         },
       }
 
@@ -275,13 +275,13 @@ describe("AISettingsTab", () => {
         ...mockAISettings,
         agents: {
           "gemini.cli": {
-            ...mockAISettings.agents["gemini.cli"],
+            ...mockAISettings.agents["gemini.cli"]!,
             dailyUsage: 0,
-          },
+          } as AgentConfig,
           "codex.cli": {
-            ...mockAISettings.agents["codex.cli"],
+            ...mockAISettings.agents["codex.cli"]!,
             dailyUsage: 0,
-          },
+          } as AgentConfig,
         },
       }
 
@@ -306,13 +306,13 @@ describe("AISettingsTab", () => {
         ...mockAISettings,
         agents: {
           "gemini.cli": {
-            ...mockAISettings.agents["gemini.cli"],
+            ...mockAISettings.agents["gemini.cli"]!,
             reason: null,
-          },
+          } as AgentConfig,
           "codex.cli": {
-            ...mockAISettings.agents["codex.cli"],
+            ...mockAISettings.agents["codex.cli"]!,
             reason: null,
-          },
+          } as AgentConfig,
         },
       }
 
@@ -353,9 +353,9 @@ describe("AISettingsTab", () => {
         agents: {
           ...mockAISettings.agents,
           "codex.cli": {
-            ...mockAISettings.agents["codex.cli"],
+            ...mockAISettings.agents["codex.cli"]!,
             reason: "error: API connection failed",
-          },
+          } as AgentConfig,
         },
       }
 
@@ -437,7 +437,7 @@ describe("AISettingsTab", () => {
 
       // Find the switches - there should be 2 (one for each agent)
       const switches = screen.getAllByRole("switch")
-      // The second switch is for codex.cli which is disabled
+      // The second switch is for codex.cli which is disabled and has a reason
       await user.click(switches[1])
 
       expect(setAISettings).toHaveBeenCalledTimes(1)
@@ -445,14 +445,28 @@ describe("AISettingsTab", () => {
       // Verify the updater clears reason when enabling
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(mockAISettings)
+      expect(result.agents["codex.cli"].enabled).toBe(true)
       expect(result.agents["codex.cli"].reason).toBeNull()
     })
 
-    it("clears reason when agent is toggled off", async () => {
+    it("preserves reason when agent is toggled off", async () => {
+      // Test with an enabled agent that has a reason set
+      const settingsWithReason: AISettings = {
+        ...mockAISettings,
+        agents: {
+          ...mockAISettings.agents,
+          "gemini.cli": {
+            ...mockAISettings.agents["gemini.cli"]!,
+            enabled: true,
+            reason: "some_status: previously set",
+          } as AgentConfig,
+        },
+      }
+
       const user = userEvent.setup()
       const setAISettings = vi.fn()
 
-      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+      render(<AISettingsTab {...defaultProps} aiSettings={settingsWithReason} setAISettings={setAISettings} />)
 
       // Find the switches and click the first one (gemini.cli which is enabled)
       const switches = screen.getAllByRole("switch")
@@ -460,11 +474,12 @@ describe("AISettingsTab", () => {
 
       expect(setAISettings).toHaveBeenCalledTimes(1)
 
-      // Verify the updater sets enabled to false and clears reason
+      // Verify the updater sets enabled to false but preserves reason
       const updaterFn = setAISettings.mock.calls[0][0]
-      const result = updaterFn(mockAISettings)
+      const result = updaterFn(settingsWithReason)
       expect(result.agents["gemini.cli"].enabled).toBe(false)
-      expect(result.agents["gemini.cli"].reason).toBeNull()
+      // Reason should be preserved when disabling
+      expect(result.agents["gemini.cli"].reason).toBe("some_status: previously set")
     })
   })
 
@@ -476,7 +491,7 @@ describe("AISettingsTab", () => {
       expect(screen.getAllByText("Budget:").length).toBe(2)
     })
 
-    it("updates budget when input value changes", async () => {
+    it("updates budget on blur after typing", async () => {
       const user = userEvent.setup()
       const setAISettings = vi.fn()
 
@@ -485,37 +500,58 @@ describe("AISettingsTab", () => {
       // Find budget inputs
       const budgetInputs = screen.getAllByRole("spinbutton")
       // Filter to just the budget inputs (value 100 or 50)
-      const geminibudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
+      const geminiBudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
 
-      if (geminibudgetInput) {
-        await user.clear(geminibudgetInput)
-        await user.type(geminibudgetInput, "200")
+      if (geminiBudgetInput) {
+        await user.clear(geminiBudgetInput)
+        await user.type(geminiBudgetInput, "200")
+        // Blur the input to trigger validation
+        await user.tab()
 
-        // setAISettings should have been called multiple times (once per keystroke)
+        // setAISettings should be called once on blur with the new value
         expect(setAISettings).toHaveBeenCalled()
+        const updaterFn = setAISettings.mock.calls[0][0]
+        const result = updaterFn(mockAISettings)
+        expect(result.agents["gemini.cli"].dailyBudget).toBe(200)
       }
     })
 
-    it("enforces minimum budget of 1", async () => {
+    it("resets to previous value on blur if input is invalid", async () => {
       const user = userEvent.setup()
       const setAISettings = vi.fn()
 
       render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
 
       const budgetInputs = screen.getAllByRole("spinbutton")
-      const geminibudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
+      const geminiBudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
 
-      if (geminibudgetInput) {
-        await user.clear(geminibudgetInput)
-        // When cleared, should set to 1
+      if (geminiBudgetInput) {
+        await user.clear(geminiBudgetInput)
+        // Type invalid value (0)
+        await user.type(geminiBudgetInput, "0")
+        await user.tab()
 
-        // Find the call that would set budget to 1
-        const calls = setAISettings.mock.calls
-        if (calls.length > 0) {
-          const lastCall = calls[calls.length - 1][0]
-          const result = lastCall(mockAISettings)
-          expect(result.agents["gemini.cli"].dailyBudget).toBeGreaterThanOrEqual(1)
-        }
+        // setAISettings should NOT be called because 0 is invalid
+        // The input should reset to the previous value
+        expect((geminiBudgetInput as HTMLInputElement).value).toBe("100")
+      }
+    })
+
+    it("does not call setAISettings during typing (only on blur)", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      const budgetInputs = screen.getAllByRole("spinbutton")
+      const geminiBudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
+
+      if (geminiBudgetInput) {
+        await user.clear(geminiBudgetInput)
+        await user.type(geminiBudgetInput, "50")
+
+        // setAISettings should NOT be called yet (only on blur)
+        expect(setAISettings).not.toHaveBeenCalled()
       }
     })
   })
