@@ -49,6 +49,7 @@ Add Gmail ingestion to capture job listings delivered by email and feed them int
 - `worker-settings` (or dedicated `gmail-ingest` entry) fields:
   - `enabled`, `label`, `query`, `maxMessages`, `allowedSenders`, `remoteSourceDefault`, `aiFallbackEnabled`.
 - Env vars: `GOOGLE_APPLICATION_CREDENTIALS`, `GMAIL_USER`, optional `GMAIL_TOKEN_PATH`, `GMAIL_LABEL` default fallback.
+- **Fail fast, no defaults:** do not seed `gmail-ingest` with defaults. If the config entry or required env (GMAIL_OAUTH_CLIENT_ID/SECRET, GMAIL_TOKEN_KEY) are missing, ingest triggers (cron/manual) should error loudly rather than silently skipping.
 
 ## Data Model Changes
 - Migration (API DB): create `email_ingest_state` table and optional `ingest_cursor` row for `last_history_id`.
