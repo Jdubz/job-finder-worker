@@ -68,4 +68,24 @@ describe('job match contract', () => {
     }
     expect(parsed.success).toBe(true)
   })
+
+  it('PATCH /job-matches/:id/status returns JobMatchWithListing shape', async () => {
+    createTestListing('listing-contract-3')
+    const seeded = repo.upsert(
+      buildJobMatchInput({ queueItemId: 'queue-contract-3', jobListingId: 'listing-contract-3', status: 'active' })
+    )
+
+    const res = await request(app)
+      .patch(`/job-matches/${seeded.id}/status`)
+      .send({ status: 'ignored' })
+
+    expect(res.status).toBe(200)
+    const parsed = jobMatchWithListingSchema.safeParse(res.body.data.match)
+    if (!parsed.success) {
+      console.error(parsed.error.format())
+    }
+    expect(parsed.success).toBe(true)
+    expect(parsed.data.status).toBe('ignored')
+    expect(parsed.data.listing.title).toBeTruthy()
+  })
 })
