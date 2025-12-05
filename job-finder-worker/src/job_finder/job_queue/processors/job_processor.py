@@ -324,14 +324,17 @@ class JobProcessor(BaseProcessor):
                 )
                 item.scraped_data = None
             elif job_data and "title" in job_data:
-                # Valid data - make a copy to avoid mutation issues
+                # Valid wrapped structure - make a copy to avoid mutation issues
                 ctx.job_data = dict(job_data)
             elif job_data:
-                # Has job_data but no title - invalid, clear it
+                # Has job_data key but no title - invalid, clear it
                 logger.warning(
                     f"[{item.id}] Invalid job_data missing 'title', clearing and will re-scrape"
                 )
                 item.scraped_data = None
+            elif "title" in item.scraped_data:
+                # Flat structure - job data fields at top level (no job_data wrapper)
+                ctx.job_data = dict(item.scraped_data)
         if not ctx.job_data and "job_data" in state:
             ctx.job_data = state["job_data"]
 

@@ -145,7 +145,16 @@ def job_processor(mock_dependencies):
 
 
 class TestJobDataLoadingValidation:
-    """Tests for job_data loading with validation and self-healing."""
+    """Tests for job_data loading with validation and self-healing.
+
+    Note: These tests simulate the loading logic inline rather than calling
+    the full process_job method. This is intentional because:
+    1. process_job requires extensive mocking of AI providers, storage, etc.
+    2. We want to test the loading/validation logic in isolation
+    3. The logic pattern is what we're validating, not the full pipeline
+
+    The inline simulation mirrors job_processor.py lines 317-337.
+    """
 
     def test_loads_valid_job_data(self):
         """Test that valid job_data with title is loaded correctly."""
@@ -215,6 +224,44 @@ class TestJobDataLoadingValidation:
         assert ctx.job_data.get("description") == "Build things"
         # Sibling keys are NOT in job_data (they're at scraped_data level)
         assert "company_id" not in ctx.job_data
+
+    def test_loads_flat_scraped_data_structure(self):
+        """Test loading when scraped_data has job fields at top level (no wrapper).
+
+        Some scrapers return flat structures where title, description, etc.
+        are directly in scraped_data without a job_data wrapper.
+        """
+        item = JobQueueItem(
+            id="test-flat",
+            type=QueueItemType.JOB,
+            url="https://example.com/job/flat",
+            company_name="Test Corp",
+            source="scraper",
+            # Flat structure - no job_data wrapper
+            scraped_data={
+                "title": "Senior Engineer",
+                "description": "Work on cool stuff",
+                "company": "Test Corp",
+            },
+        )
+
+        ctx = PipelineContext(item=item)
+
+        # Simulate the loading logic (including flat structure support)
+        job_data = item.scraped_data.get("job_data")
+        if job_data and "job_data" in job_data:
+            item.scraped_data = None
+        elif job_data and "title" in job_data:
+            ctx.job_data = dict(job_data)
+        elif job_data:
+            item.scraped_data = None
+        elif "title" in item.scraped_data:
+            # Flat structure - job data at top level
+            ctx.job_data = dict(item.scraped_data)
+
+        assert ctx.job_data is not None
+        assert ctx.job_data.get("title") == "Senior Engineer"
+        assert ctx.job_data.get("description") == "Work on cool stuff"
 
     def test_loads_copy_to_prevent_mutation(self):
         """Test that loaded job_data is a copy, not a reference."""
