@@ -315,18 +315,25 @@ class JobProcessor(BaseProcessor):
         # Bootstrap from existing state if available
         state = item.pipeline_state or {}
         if item.scraped_data:
-            # scraped_data is {"job_data": {...}}, extract the nested job_data
-            # Handle nesting: unwrap if current level lacks 'title' but nested job_data has it
-            job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while (
-                isinstance(job_data, dict)
-                and "job_data" in job_data
-                and "title" not in job_data
-                and isinstance(job_data.get("job_data"), dict)
-            ):
-                job_data = job_data["job_data"]
-            ctx.job_data = job_data
-        elif "job_data" in state:
+            job_data = item.scraped_data.get("job_data")
+            if job_data and "job_data" in job_data:
+                # Corrupted nested data from previous bug - clear and re-scrape
+                logger.warning(
+                    f"[{item.id}] Detected corrupted nested job_data structure, "
+                    "clearing and will re-scrape"
+                )
+                item.scraped_data = None
+                job_data = None
+            elif job_data and "title" in job_data:
+                # Valid data - make a copy to avoid mutation issues
+                ctx.job_data = dict(job_data)
+            elif job_data:
+                # Has job_data but no title - invalid, clear it
+                logger.warning(
+                    f"[{item.id}] Invalid job_data missing 'title', clearing and will re-scrape"
+                )
+                item.scraped_data = None
+        if not ctx.job_data and "job_data" in state:
             ctx.job_data = state["job_data"]
 
         # Attach listing_id if one was pre-created during intake
@@ -928,17 +935,13 @@ class JobProcessor(BaseProcessor):
         """Build final scraped_data dict for queue item."""
         data: Dict[str, Any] = {}
         if ctx.job_data:
-            # Ensure we're storing actual job data, not a wrapper
-            # Unwrap any nested job_data wrappers to get to the actual data with 'title'
-            job_data = ctx.job_data
-            while (
-                isinstance(job_data, dict)
-                and "job_data" in job_data
-                and "title" not in job_data
-                and isinstance(job_data.get("job_data"), dict)
-            ):
-                job_data = job_data["job_data"]
-            data["job_data"] = job_data
+            # Validate structure - fail fast if corrupted
+            if "job_data" in ctx.job_data and "title" not in ctx.job_data:
+                raise ValueError(
+                    f"BUG: Attempted to save nested job_data structure. "
+                    f"Keys: {list(ctx.job_data.keys())}. This indicates a bug in the pipeline."
+                )
+            data["job_data"] = ctx.job_data
         if ctx.extraction:
             data["filter_result"] = {"extraction": ctx.extraction.to_dict()}
         if ctx.score_result:

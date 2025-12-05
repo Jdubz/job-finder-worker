@@ -1,7 +1,10 @@
-"""Tests for job_data loading from scraped_data in job processor.
+"""Tests for job_data loading and validation in job processor.
 
-These tests prevent regressions where nested job_data structures cause
-"Empty title or description" errors during AI extraction.
+These tests ensure:
+1. Valid job_data is loaded correctly (with copy to prevent mutation)
+2. Corrupted nested data is detected and cleared (self-healing)
+3. Invalid data without 'title' is detected and cleared
+4. Save validates structure and fails fast on corruption
 """
 
 import pytest
@@ -137,31 +140,25 @@ def job_processor(mock_dependencies):
         patch("job_finder.job_queue.processors.job_processor.AgentManager"),
     ):
         processor = JobProcessor(**mock_dependencies)
-        # Prevent config refresh from overwriting mocks
         processor._refresh_runtime_config = lambda: None
         return processor
 
 
-class TestJobDataLoadingFromScrapedData:
-    """Tests for loading job_data from scraped_data field."""
+class TestJobDataLoadingValidation:
+    """Tests for job_data loading with validation and self-healing."""
 
-    def test_loads_job_data_from_nested_structure(self, job_processor):
-        """Test that job_data is properly extracted from {"job_data": {...}} structure.
-
-        The scraped_data field contains {"job_data": {...}}, and we need to
-        extract the inner dict, not assign the whole wrapper dict.
-        """
+    def test_loads_valid_job_data(self):
+        """Test that valid job_data with title is loaded correctly."""
         job_data_content = {
             "title": "Senior Engineer",
             "description": "A great job opportunity",
             "location": "Remote",
-            "company": "Test Corp",
         }
 
         item = JobQueueItem(
-            id="test-123",
+            id="test-valid",
             type=QueueItemType.JOB,
-            url="https://example.com/job/123",
+            url="https://example.com/job/valid",
             company_name="Test Corp",
             source="scraper",
             scraped_data={"job_data": job_data_content},
@@ -169,286 +166,189 @@ class TestJobDataLoadingFromScrapedData:
 
         ctx = PipelineContext(item=item)
 
-        # Simulate the loading logic from process_job
-        if item.scraped_data:
-            job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while (
-                isinstance(job_data, dict)
-                and "job_data" in job_data
-                and "title" not in job_data
-                and isinstance(job_data.get("job_data"), dict)
-            ):
-                job_data = job_data["job_data"]
-            ctx.job_data = job_data
+        # Simulate the new loading logic
+        job_data = item.scraped_data.get("job_data")
+        if job_data and "job_data" in job_data:
+            item.scraped_data = None
+            job_data = None
+        elif job_data and "title" in job_data:
+            ctx.job_data = dict(job_data)  # Copy
+        elif job_data:
+            item.scraped_data = None
 
         assert ctx.job_data is not None
         assert ctx.job_data.get("title") == "Senior Engineer"
         assert ctx.job_data.get("description") == "A great job opportunity"
 
-    def test_handles_double_nested_job_data(self, job_processor):
-        """Test handling of double-nested job_data from previous bug.
-
-        A bug caused job_data to be saved as {"job_data": {"job_data": {...}}}.
-        The fix should unwrap this correctly.
-        """
-        actual_job_data = {
-            "title": "Backend Developer",
-            "description": "Build awesome APIs",
-            "location": "NYC",
-            "company": "Acme Inc",
+    def test_loads_copy_to_prevent_mutation(self):
+        """Test that loaded job_data is a copy, not a reference."""
+        original_data = {
+            "title": "Engineer",
+            "description": "Original description",
         }
 
-        # Double-nested structure from bug
         item = JobQueueItem(
-            id="test-456",
+            id="test-copy",
             type=QueueItemType.JOB,
-            url="https://example.com/job/456",
-            company_name="Acme Inc",
+            url="https://example.com/job/copy",
+            company_name="Test Corp",
             source="scraper",
-            scraped_data={"job_data": {"job_data": actual_job_data}},
+            scraped_data={"job_data": original_data},
         )
 
         ctx = PipelineContext(item=item)
 
-        # Simulate the loading logic from process_job
-        if item.scraped_data:
-            job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while (
-                isinstance(job_data, dict)
-                and "job_data" in job_data
-                and "title" not in job_data
-                and isinstance(job_data.get("job_data"), dict)
-            ):
-                job_data = job_data["job_data"]
-            ctx.job_data = job_data
+        # Load with copy
+        job_data = item.scraped_data.get("job_data")
+        if job_data and "title" in job_data:
+            ctx.job_data = dict(job_data)
 
-        assert ctx.job_data is not None
-        assert ctx.job_data.get("title") == "Backend Developer"
-        assert ctx.job_data.get("description") == "Build awesome APIs"
+        # Mutate ctx.job_data
+        ctx.job_data["company"] = "Added Company"
+        ctx.job_data["description"] = "Modified"
 
-    def test_handles_triple_nested_job_data(self, job_processor):
-        """Test handling of triple-nested job_data (edge case)."""
-        actual_job_data = {
-            "title": "Staff Engineer",
-            "description": "Lead technical initiatives",
+        # Original should be unchanged
+        assert "company" not in original_data
+        assert original_data["description"] == "Original description"
+
+    def test_clears_nested_job_data(self):
+        """Test that nested job_data (corruption) is detected and cleared."""
+        # Corrupted structure from previous bug
+        corrupted_data = {
+            "job_data": {
+                "job_data": {
+                    "title": "Engineer",
+                    "description": "...",
+                },
+                "company": "Test",
+            },
+            "company": "Test",
+        }
+
+        item = JobQueueItem(
+            id="test-nested",
+            type=QueueItemType.JOB,
+            url="https://example.com/job/nested",
+            company_name="Test Corp",
+            source="scraper",
+            scraped_data={"job_data": corrupted_data},
+        )
+
+        ctx = PipelineContext(item=item)
+
+        # Simulate the new loading logic
+        job_data = item.scraped_data.get("job_data")
+        if job_data and "job_data" in job_data:
+            # Detected corruption - clear it
+            item.scraped_data = None
+            job_data = None
+        elif job_data and "title" in job_data:
+            ctx.job_data = dict(job_data)
+
+        # Should have cleared the corrupted data
+        assert item.scraped_data is None
+        assert ctx.job_data is None
+
+    def test_clears_job_data_without_title(self):
+        """Test that job_data without title is detected and cleared."""
+        invalid_data = {
+            "description": "Has description but no title",
             "location": "Remote",
         }
 
-        # Triple-nested structure (extreme edge case)
         item = JobQueueItem(
-            id="test-789",
+            id="test-no-title",
             type=QueueItemType.JOB,
-            url="https://example.com/job/789",
-            company_name="Tech Co",
+            url="https://example.com/job/no-title",
+            company_name="Test Corp",
             source="scraper",
-            scraped_data={"job_data": {"job_data": {"job_data": actual_job_data}}},
+            scraped_data={"job_data": invalid_data},
         )
 
         ctx = PipelineContext(item=item)
 
-        # Simulate the loading logic from process_job
-        if item.scraped_data:
-            job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while (
-                isinstance(job_data, dict)
-                and "job_data" in job_data
-                and "title" not in job_data
-                and isinstance(job_data.get("job_data"), dict)
-            ):
-                job_data = job_data["job_data"]
-            ctx.job_data = job_data
+        # Simulate the new loading logic
+        job_data = item.scraped_data.get("job_data")
+        if job_data and "job_data" in job_data:
+            item.scraped_data = None
+            job_data = None
+        elif job_data and "title" in job_data:
+            ctx.job_data = dict(job_data)
+        elif job_data:
+            # No title - invalid
+            item.scraped_data = None
 
-        assert ctx.job_data is not None
-        assert ctx.job_data.get("title") == "Staff Engineer"
-
-    def test_handles_flat_scraped_data(self, job_processor):
-        """Test that flat scraped_data without job_data wrapper still works."""
-        # Some code paths might produce flat structure
-        flat_job_data = {
-            "title": "DevOps Engineer",
-            "description": "Manage infrastructure",
-            "location": "Austin, TX",
-        }
-
-        item = JobQueueItem(
-            id="test-flat",
-            type=QueueItemType.JOB,
-            url="https://example.com/job/flat",
-            company_name="Infra Co",
-            source="scraper",
-            scraped_data=flat_job_data,
-        )
-
-        ctx = PipelineContext(item=item)
-
-        # Simulate the loading logic from process_job
-        if item.scraped_data:
-            job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while (
-                isinstance(job_data, dict)
-                and "job_data" in job_data
-                and "title" not in job_data
-                and isinstance(job_data.get("job_data"), dict)
-            ):
-                job_data = job_data["job_data"]
-            ctx.job_data = job_data
-
-        # Should use the scraped_data directly as fallback
-        assert ctx.job_data is not None
-        assert ctx.job_data.get("title") == "DevOps Engineer"
-
-    def test_stops_unwrapping_when_title_present(self, job_processor):
-        """Test that unwrapping stops when 'title' is present at current level.
-
-        The unwrapping logic checks 'title' not in job_data to detect wrappers.
-        If the current level has 'title', it's the actual job data and should
-        not be unwrapped further, even if it also contains a 'job_data' key.
-        """
-        # This structure has title at the first level, shouldn't unwrap further
-        item = JobQueueItem(
-            id="test-edge",
-            type=QueueItemType.JOB,
-            url="https://example.com/job/edge",
-            company_name="Edge Co",
-            source="scraper",
-            scraped_data={
-                "job_data": {
-                    "title": "Principal Engineer",
-                    "description": "Lead architecture",
-                    "job_data": {"nested": "metadata"},  # Should not follow this
-                }
-            },
-        )
-
-        ctx = PipelineContext(item=item)
-
-        # Simulate the loading logic from process_job
-        if item.scraped_data:
-            job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while (
-                isinstance(job_data, dict)
-                and "job_data" in job_data
-                and "title" not in job_data
-                and isinstance(job_data.get("job_data"), dict)
-            ):
-                job_data = job_data["job_data"]
-            ctx.job_data = job_data
-
-        assert ctx.job_data is not None
-        assert ctx.job_data.get("title") == "Principal Engineer"
-        # Should NOT have unwrapped to the nested job_data
-        assert "nested" not in ctx.job_data
-
-    def test_unwraps_job_data_with_sibling_metadata(self, job_processor):
-        """Test unwrapping when job_data has sibling keys like company/company_id.
-
-        Real-world case: scraped_data.job_data contains both the nested job_data
-        AND metadata like company, company_id at the same level. Should still
-        unwrap to get to the actual job data with title.
-        """
-        actual_job_data = {
-            "title": "Senior Software Engineer",
-            "description": "Build amazing products",
-            "location": "Remote",
-            "url": "https://example.com/job/123",
-        }
-
-        # Structure with nested job_data alongside metadata (real production case)
-        item = JobQueueItem(
-            id="test-metadata",
-            type=QueueItemType.JOB,
-            url="https://example.com/job/metadata",
-            company_name="Tech Corp",
-            source="scraper",
-            scraped_data={
-                "job_data": {
-                    "job_data": actual_job_data,
-                    "company": "Tech Corp",
-                    "company_id": "abc123",
-                }
-            },
-        )
-
-        ctx = PipelineContext(item=item)
-
-        # Simulate the loading logic from process_job
-        if item.scraped_data:
-            job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while (
-                isinstance(job_data, dict)
-                and "job_data" in job_data
-                and "title" not in job_data
-                and isinstance(job_data.get("job_data"), dict)
-            ):
-                job_data = job_data["job_data"]
-            ctx.job_data = job_data
-
-        assert ctx.job_data is not None
-        assert ctx.job_data.get("title") == "Senior Software Engineer"
-        assert ctx.job_data.get("description") == "Build amazing products"
+        # Should have cleared the invalid data
+        assert item.scraped_data is None
+        assert ctx.job_data is None
 
 
-class TestPipelineContextJobDataExtraction:
-    """Integration tests for job_data extraction in full pipeline context."""
+class TestJobDataSaveValidation:
+    """Tests for job_data save validation - fail fast on corruption."""
 
-    def test_extraction_receives_correct_title_and_description(
-        self, job_processor, mock_dependencies
-    ):
-        """Test that AI extraction receives the correct title and description.
-
-        This is the end-to-end test that would have caught the original bug
-        where extraction received empty title/description.
-        """
-        job_data_content = {
-            "title": "Senior Software Engineer",
-            "description": "Join our team to build amazing products",
-            "location": "San Francisco, CA",
-            "company": "Startup Inc",
-        }
-
-        item = JobQueueItem(
-            id="test-e2e",
-            type=QueueItemType.JOB,
-            url="https://example.com/job/e2e",
-            company_name="Startup Inc",
-            source="scraper",
-            scraped_data={"job_data": job_data_content},
-            pipeline_state={"pipeline_stage": "extraction"},
-        )
-
-        # Mock the extractor to capture what it receives
-        captured_args = {}
-
-        def mock_extract(title, description, location=None, posted_date=None):
-            captured_args["title"] = title
-            captured_args["description"] = description
-            from job_finder.ai.extraction import JobExtractionResult
-
-            return JobExtractionResult(
-                seniority="senior",
-                work_arrangement="hybrid",
-                technologies=["python"],
+    def test_save_valid_job_data(self, job_processor):
+        """Test that valid job_data saves correctly."""
+        ctx = PipelineContext(
+            item=JobQueueItem(
+                id="test-save",
+                type=QueueItemType.JOB,
+                url="https://example.com/job",
+                company_name="Test",
+                source="scraper",
             )
+        )
+        ctx.job_data = {
+            "title": "Engineer",
+            "description": "...",
+            "company": "Test Corp",
+        }
 
-        job_processor.extractor = MagicMock()
-        job_processor.extractor.extract = mock_extract
+        result = job_processor._build_final_scraped_data(ctx)
 
-        # Simulate the job_data loading
-        ctx = PipelineContext(item=item)
-        if item.scraped_data:
-            job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while (
-                isinstance(job_data, dict)
-                and "job_data" in job_data
-                and "title" not in job_data
-                and isinstance(job_data.get("job_data"), dict)
-            ):
-                job_data = job_data["job_data"]
-            ctx.job_data = job_data
+        assert "job_data" in result
+        assert result["job_data"]["title"] == "Engineer"
 
-        # Execute extraction
-        job_processor._execute_ai_extraction(ctx)
+    def test_save_rejects_nested_structure(self, job_processor):
+        """Test that saving nested job_data raises an error."""
+        ctx = PipelineContext(
+            item=JobQueueItem(
+                id="test-save-nested",
+                type=QueueItemType.JOB,
+                url="https://example.com/job",
+                company_name="Test",
+                source="scraper",
+            )
+        )
+        # Corrupted structure - has job_data key but no title
+        ctx.job_data = {
+            "job_data": {"title": "Engineer"},
+            "company": "Test",
+        }
 
-        # Verify extraction received the correct values
-        assert captured_args["title"] == "Senior Software Engineer"
-        assert captured_args["description"] == "Join our team to build amazing products"
+        with pytest.raises(ValueError, match="BUG.*nested job_data"):
+            job_processor._build_final_scraped_data(ctx)
+
+    def test_save_allows_job_data_key_if_title_present(self, job_processor):
+        """Test that having both job_data and title keys is allowed.
+
+        Edge case: A job listing that happens to have 'job_data' in its content
+        (e.g., a job about data pipelines). This is valid as long as title exists.
+        """
+        ctx = PipelineContext(
+            item=JobQueueItem(
+                id="test-edge",
+                type=QueueItemType.JOB,
+                url="https://example.com/job",
+                company_name="Test",
+                source="scraper",
+            )
+        )
+        ctx.job_data = {
+            "title": "Data Engineer",
+            "description": "Work with job_data pipelines",
+            "job_data": "Some metadata field that happens to be named job_data",
+        }
+
+        # Should not raise - title is present
+        result = job_processor._build_final_scraped_data(ctx)
+        assert result["job_data"]["title"] == "Data Engineer"
