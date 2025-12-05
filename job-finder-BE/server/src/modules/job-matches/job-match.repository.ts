@@ -66,8 +66,14 @@ export type CreateJobMatchInput = Omit<JobMatch, 'id'> & { id?: string }
 
 const toIsoString = (value: TimestampLike | string | Date | undefined): string => {
   if (!value) return new Date().toISOString()
-  if (value instanceof Date) return value.toISOString()
-  if (typeof value === 'string') return new Date(value).toISOString()
+  if (value instanceof Date) {
+    const time = value.getTime()
+    return Number.isNaN(time) ? new Date().toISOString() : value.toISOString()
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString()
+  }
   if ('toDate' in value) return value.toDate().toISOString()
   return new Date().toISOString()
 }
@@ -195,6 +201,12 @@ export class JobMatchRepository {
   upsert(match: CreateJobMatchInput): JobMatch {
     const id = match.id ?? randomUUID()
     const now = new Date().toISOString()
+    const existing = match.id ? this.getById(match.id) : null
+
+    const isIgnored = match.status === 'ignored'
+    const ignoredAt = isIgnored
+      ? toIsoString(match.ignoredAt ?? existing?.ignoredAt)
+      : null
 
     const stmt = this.db.prepare(`
       INSERT INTO job_matches (
@@ -241,7 +253,7 @@ export class JobMatchRepository {
       toIsoString(match.createdAt),
       now,
       match.status ?? 'active',
-      match.status === 'ignored' ? toIsoString(match.ignoredAt) : null
+      ignoredAt
     )
 
     return this.getById(id) as JobMatch
@@ -269,7 +281,7 @@ export class JobMatchRepository {
    * Used for summary pills in the UI.
    */
   getStats(includeIgnored = false): JobMatchStats {
-    const whereClause = includeIgnored ? '' : 'WHERE status = "active"'
+    const whereClause = includeIgnored ? '' : "WHERE status = 'active'"
     const result = this.db
       .prepare(`
         SELECT

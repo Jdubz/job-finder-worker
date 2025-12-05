@@ -28,6 +28,7 @@ describe('cron - getWorkerCliHealth', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     originalFetch = global.fetch
+    process.env.WORKER_MAINTENANCE_URL = 'http://localhost:5555/maintenance'
 
     // Re-import the module to get fresh state
     const module = await import('./cron')
@@ -36,6 +37,7 @@ describe('cron - getWorkerCliHealth', () => {
 
   afterEach(() => {
     global.fetch = originalFetch
+    delete process.env.WORKER_MAINTENANCE_URL
     vi.resetModules()
   })
 

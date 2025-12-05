@@ -74,8 +74,9 @@ export class JobMatchesClient extends BaseApiClient {
       `/job-matches/${matchId}/status`,
       { status }
     )
-    const payload = "data" in response ? response.data : (response as any)
-    return payload.match as JobMatchWithListing
+    const payload: { match: JobMatchWithListing } =
+      "data" in response ? response.data : (response as { match: JobMatchWithListing })
+    return payload.match
   }
 
   subscribeToMatches(

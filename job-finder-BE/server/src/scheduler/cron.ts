@@ -390,7 +390,8 @@ export const __cronTestInternals = {
 }
 
 function getWorkerBaseUrl() {
-  const maintenanceUrl = new URL(env.WORKER_MAINTENANCE_URL)
+  const maintenanceUrlValue = process.env.WORKER_MAINTENANCE_URL ?? env.WORKER_MAINTENANCE_URL
+  const maintenanceUrl = new URL(maintenanceUrlValue)
   maintenanceUrl.pathname = maintenanceUrl.pathname.replace(/\/[^/]+$/, '')
   return maintenanceUrl.href.replace(/\/$/, '')
 }

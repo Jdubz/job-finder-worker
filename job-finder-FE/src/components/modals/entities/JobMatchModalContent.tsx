@@ -77,13 +77,13 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
           role: localMatch.listing.title,
           company: localMatch.listing.companyName,
           jobDescriptionText: localMatch.listing.description,
-          location: localMatch.listing.location,
+          location: localMatch.listing.location || undefined,
         },
         jobMatchId: localMatch.id,
         date: new Date().toLocaleDateString(),
       }
 
-      const start = await generatorClient.startGeneration(request as any)
+      const start = await generatorClient.startGeneration(request)
       if (!start.success) {
         toast.error({ title: "Could not start generation" })
         setGenerating(false)

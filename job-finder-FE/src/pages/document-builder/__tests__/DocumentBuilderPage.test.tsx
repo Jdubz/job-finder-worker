@@ -157,10 +157,10 @@ describe("DocumentBuilderPage", () => {
     it("should load job matches on mount", async () => {
       renderWithRouter(<DocumentBuilderPage />)
 
-    await waitFor(() => {
-      expect(jobMatchesClient.listMatches).toHaveBeenCalled()
+      await waitFor(() => {
+        expect(jobMatchesClient.listMatches).toHaveBeenCalled()
+      })
     })
-  })
   })
 
   describe("form interactions", () => {

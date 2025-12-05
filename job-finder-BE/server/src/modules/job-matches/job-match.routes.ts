@@ -11,6 +11,7 @@ import type {
   GetJobMatchStatsResponse
 } from '@shared/types'
 import { JobMatchRepository } from './job-match.repository'
+import { logger } from '../../logger'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 
@@ -87,6 +88,10 @@ const listQuerySchema = z.object({
   status: z.enum(['active', 'ignored', 'all']).optional()
 })
 
+const statsQuerySchema = z.object({
+  includeIgnored: z.coerce.boolean().optional().default(false)
+})
+
 export function buildJobMatchRouter() {
   const router = Router()
   const repo = new JobMatchRepository()
@@ -104,10 +109,22 @@ export function buildJobMatchRouter() {
   router.get(
     '/stats',
     asyncHandler((req, res) => {
-      const includeIgnored = req.query.includeIgnored === 'true'
-      const stats = repo.getStats(includeIgnored)
-      const response: GetJobMatchStatsResponse = { stats }
-      res.json(success(response))
+      const parsed = statsQuerySchema.safeParse(req.query)
+      const includeIgnored = parsed.success ? parsed.data.includeIgnored : false
+      try {
+        const stats = repo.getStats(includeIgnored)
+        const response: GetJobMatchStatsResponse = { stats }
+        res.json(success(response))
+      } catch (error) {
+        logger.error(
+          {
+            error: error instanceof Error ? error.message : error,
+            includeIgnored
+          },
+          'Failed to fetch job match stats'
+        )
+        res.status(500).json(failure(ApiErrorCode.INTERNAL_ERROR, 'Failed to fetch job match stats'))
+      }
     })
   )
 

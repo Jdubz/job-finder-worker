@@ -39,6 +39,7 @@ export interface GenerateDocumentRequest {
     companyWebsite?: string
     jobDescriptionUrl?: string
     jobDescriptionText?: string
+    location?: string
   }
   preferences?: {
     style?: "modern" | "traditional" | "technical" | "executive"
