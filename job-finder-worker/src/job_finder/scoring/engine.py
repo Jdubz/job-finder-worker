@@ -493,7 +493,7 @@ class ScoringEngine:
         # Check required technologies
         required_found = tech_set & self._required_tech
         if required_found:
-            score = len(required_found) * self.tech_config.get("requiredScore", 10)
+            score = len(required_found) * self.tech_config["requiredScore"]
             points += score
             adjustments.append(
                 ScoreAdjustment(
@@ -504,7 +504,7 @@ class ScoringEngine:
             )
         elif self._required_tech:
             # None of the required tech found - configurable adjustment
-        missing_score = self.tech_config["missingRequiredScore"]
+            missing_score = self.tech_config["missingRequiredScore"]
             points += missing_score
             adjustments.append(
                 ScoreAdjustment(
@@ -517,7 +517,7 @@ class ScoringEngine:
         # Check preferred technologies
         preferred_found = tech_set & self._preferred_tech
         if preferred_found:
-            score = len(preferred_found) * self.tech_config.get("preferredScore", 5)
+            score = len(preferred_found) * self.tech_config["preferredScore"]
             points += score
             adjustments.append(
                 ScoreAdjustment(
@@ -530,7 +530,7 @@ class ScoringEngine:
         # Check disliked technologies
         disliked_found = tech_set & self._disliked_tech
         if disliked_found:
-            score = len(disliked_found) * self.tech_config.get("dislikedScore", -5)
+            score = len(disliked_found) * self.tech_config["dislikedScore"]
             points += score
             adjustments.append(
                 ScoreAdjustment(
@@ -719,7 +719,9 @@ class ScoringEngine:
             ],
         }
 
-    def _score_skills(self, description: str, scored_technologies: Optional[Set[str]] = None) -> Dict[str, Any]:
+    def _score_skills(
+        self, description: str, scored_technologies: Optional[Set[str]] = None
+    ) -> Dict[str, Any]:
         """Score based on skill keywords in description using word-boundary matching.
 
         Technologies that have already been scored in _score_technology are

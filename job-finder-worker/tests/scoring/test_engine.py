@@ -227,7 +227,9 @@ class TestScoringEngine:
         )
 
         description = "We use Python heavily for backend services."
-        result = engine.score(extraction, job_title="Fullstack Engineer", job_description=description)
+        result = engine.score(
+            extraction, job_title="Fullstack Engineer", job_description=description
+        )
 
         tech_adjust = next(a for a in result.adjustments if a.category == "technology")
         assert tech_adjust.points == default_config["technology"]["requiredScore"]
