@@ -315,7 +315,12 @@ class JobProcessor(BaseProcessor):
         # Bootstrap from existing state if available
         state = item.pipeline_state or {}
         if item.scraped_data:
-            ctx.job_data = item.scraped_data
+            # scraped_data is {"job_data": {...}}, extract the nested job_data
+            # Handle potential double-nesting from previous bug
+            job_data = item.scraped_data.get("job_data", item.scraped_data)
+            while isinstance(job_data, dict) and "job_data" in job_data and "title" not in job_data:
+                job_data = job_data["job_data"]
+            ctx.job_data = job_data
         elif "job_data" in state:
             ctx.job_data = state["job_data"]
 

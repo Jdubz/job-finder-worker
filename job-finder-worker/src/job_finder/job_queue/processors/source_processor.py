@@ -367,22 +367,98 @@ class SourceProcessor(BaseProcessor):
             return url
 
     def _extract_company_from_url(self, url: str) -> str:
-        """Extract company name from URL."""
+        """Extract company name from URL.
+
+        Handles various URL patterns:
+        - Aggregator APIs: boards-api.greenhouse.io/v1/boards/COMPANY/jobs
+        - Lever API: api.lever.co/v0/postings/COMPANY
+        - SmartRecruiters: api.smartrecruiters.com/v1/companies/COMPANY/postings
+        - Subdomain patterns: jobs.COMPANY.com, careers.COMPANY.com
+        - Direct company sites: www.COMPANY.com/careers
+        """
         try:
-            parsed = urlparse(url)
-            domain = parsed.netloc
+            parsed = urlparse(url.lower())
+            host = parsed.netloc
+            path = parsed.path
 
-            # Remove www. and common TLDs
-            name = domain.replace("www.", "")
-            name = name.split(".")[0]
+            # Pattern 1: Greenhouse API - extract board token from path
+            # e.g., boards-api.greenhouse.io/v1/boards/anthropic/jobs
+            if "greenhouse.io" in host:
+                match = re.search(r"/boards/([^/]+)", path)
+                if match:
+                    return self._format_company_name(match.group(1))
 
-            # Convert hyphens to spaces and capitalize
-            parts = re.split(r"[-_]", name)
-            capitalized = [part.capitalize() for part in parts if part]
+            # Pattern 2: Lever API - extract company from path
+            # e.g., api.lever.co/v0/postings/binance
+            if "lever.co" in host:
+                match = re.search(r"/postings/([^/?]+)", path)
+                if match:
+                    return self._format_company_name(match.group(1))
 
-            return " ".join(capitalized) if len(capitalized) > 2 else "".join(capitalized)
+            # Pattern 3: SmartRecruiters API - extract company from path
+            # e.g., api.smartrecruiters.com/v1/companies/Experian/postings
+            if "smartrecruiters.com" in host:
+                match = re.search(r"/companies/([^/]+)", path)
+                if match:
+                    return self._format_company_name(match.group(1))
+
+            # Pattern 4: Workday - extract company from subdomain
+            # e.g., gevernova.wd5.myworkdayjobs.com
+            if "myworkdayjobs.com" in host:
+                # First segment before .wd is the company
+                match = re.match(r"([^.]+)\.wd\d*\.", host)
+                if match:
+                    return self._format_company_name(match.group(1))
+
+            # Pattern 5: jobs.X.com or careers.X.com subdomain pattern
+            # e.g., jobs.dropbox.com -> Dropbox
+            subdomain_match = re.match(r"(jobs?|careers?)\.([^.]+)\.", host)
+            if subdomain_match:
+                company_part = subdomain_match.group(2)
+                # Avoid extracting generic names
+                if company_part not in {"www", "api", "app", "dev", "staging"}:
+                    return self._format_company_name(company_part)
+
+            # Pattern 6: Direct company site - extract from domain
+            # e.g., www.toggl.com/jobs -> Toggl
+            # Remove www. and common subdomains
+            host = re.sub(r"^(www|api|app|jobs|careers)\.", "", host)
+            # Get base domain (before TLD)
+            domain_parts = host.split(".")
+            if len(domain_parts) >= 2:
+                # Handle .co.uk, .com.au etc.
+                if domain_parts[-2] in {"co", "com", "org", "net"} and len(domain_parts) >= 3:
+                    name = domain_parts[-3]
+                else:
+                    name = domain_parts[-2]
+
+                # Validate it's not a generic/invalid name
+                invalid_names = {"jobs", "careers", "www", "api", "app", "greenhouse", "lever"}
+                if name and name not in invalid_names:
+                    return self._format_company_name(name)
+
+            return ""
         except Exception:
             return ""
+
+    def _format_company_name(self, slug: str) -> str:
+        """Format a URL slug into a proper company name.
+
+        Args:
+            slug: URL slug like 'anthropic', 'ge-vernova', 'acme_corp'
+
+        Returns:
+            Formatted name like 'Anthropic', 'GE Vernova', 'Acme Corp'
+        """
+        if not slug:
+            return ""
+
+        # Split on hyphens and underscores
+        parts = re.split(r"[-_]", slug)
+        capitalized = [part.capitalize() for part in parts if part]
+
+        # Join with spaces, but handle single-part names
+        return " ".join(capitalized) if len(capitalized) > 1 else "".join(capitalized)
 
     def _detect_aggregator_domain(self, url: str) -> Optional[str]:
         """Detect if URL belongs to a known job aggregator.
