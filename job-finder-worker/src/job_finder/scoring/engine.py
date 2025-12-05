@@ -732,7 +732,7 @@ class ScoringEngine:
 
         desc_lower = description.lower()
 
-        skills_to_check = self.user_skills
+        skills_to_check = set(self.user_skills)
         if scored_technologies:
             # scored_technologies is already lowercased at call site
             skills_to_check = skills_to_check - scored_technologies
