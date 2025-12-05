@@ -23,14 +23,17 @@ interface LogEntry {
 class FrontendLogger {
   private sessionId: string
   private logBuffer: LogEntry[] = []
-  private flushTimer?: number
+  private flushTimer?: ReturnType<typeof setTimeout>
 
   constructor() {
     this.sessionId = this.generateSessionId()
 
+    // Skip timer setup in non-browser environments (e.g., tests)
+    if (typeof window === 'undefined') return
+
     // Use recursive setTimeout to prevent overlapping flushes
     const scheduleNextFlush = () => {
-      this.flushTimer = window.setTimeout(async () => {
+      this.flushTimer = setTimeout(async () => {
         await this.flush()
         // If not destroyed, schedule the next flush
         if (this.flushTimer) {
