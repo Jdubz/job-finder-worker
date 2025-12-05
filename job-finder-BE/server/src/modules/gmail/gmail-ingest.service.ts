@@ -103,6 +103,9 @@ export class GmailIngestService {
     const maxResults = settings?.maxMessages ?? 25
 
     const messages = await this.listMessages(accessToken, q || undefined, maxResults)
+    if (!messages.length) {
+      return { gmailEmail, jobsFound: 0, jobsQueued: 0 }
+    }
     let jobsFound = 0
     let jobsQueued = 0
 
@@ -139,7 +142,21 @@ export class GmailIngestService {
       }
     }
 
+    // Persist latest historyId to reduce future scans (best-effort)
+    const latestHistoryId = messages
+      .map((m) => Number(m.historyId ?? fullHistoryId(m.id)))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => b - a)[0]
+    if (latestHistoryId) {
+      this.auth.saveHistoryId(gmailEmail, String(latestHistoryId))
+    }
+
     return { gmailEmail, jobsFound, jobsQueued }
+
+    function fullHistoryId(msgId: string): number | null {
+      const match = messages.find((m) => m.id === msgId)
+      return match?.historyId ? Number(match.historyId) : null
+    }
   }
 
   private async ensureAccessToken(tokens: GmailTokenPayload) {

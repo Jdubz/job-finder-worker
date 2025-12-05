@@ -73,4 +73,19 @@ export class GmailAuthService {
     if (!first.gmailAuthJson) return null
     return decryptJson<GmailTokenPayload>(first.gmailAuthJson)
   }
+
+  saveHistoryId(gmailEmail: string, historyId: string) {
+    const users = this.users.findUsersWithGmailAuth().filter((u) => u.gmailEmail === gmailEmail)
+    if (!users.length) return
+    const first = users[0]
+    if (!first.gmailAuthJson) return
+    try {
+      const payload = decryptJson<GmailTokenPayload>(first.gmailAuthJson)
+      payload.historyId = historyId
+      const encrypted = encryptJson(payload)
+      this.users.saveGmailAuth(first.id, gmailEmail, encrypted)
+    } catch (error) {
+      logger.warn({ gmailEmail, error: String(error) }, "Failed to save historyId for gmail auth")
+    }
+  }
 }
