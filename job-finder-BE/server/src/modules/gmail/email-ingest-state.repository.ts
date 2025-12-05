@@ -91,7 +91,11 @@ export class EmailIngestStateRepository {
         params.error ?? null
       )
 
-    return this.findByMessageId(params.messageId)!
+    const record = this.findByMessageId(params.messageId)
+    if (!record) {
+      throw new Error(`Failed to retrieve record for messageId ${params.messageId} after upsert`)
+    }
+    return record
   }
 
   getLastSyncTime(gmailEmail?: string): string | null {

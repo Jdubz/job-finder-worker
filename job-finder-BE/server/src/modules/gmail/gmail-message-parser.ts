@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process"
+import { runCliProvider } from "../generator/workflow/services/cli-runner"
 import { logger } from "../../logger"
 
 const TITLE_PATTERNS = [
@@ -35,25 +35,11 @@ export type ParseOptions = {
   aiFallbackEnabled?: boolean
 }
 
-export function parseEmailBody(body: string, urls: string[], options?: ParseOptions): ParsedEmailJob[] {
+export function parseEmailBody(body: string, urls: string[]): ParsedEmailJob[] {
   return urls.map((url) => {
     const title = extractFirst(body, TITLE_PATTERNS)
     const company = extractFirst(body, COMPANY_PATTERNS)
     const location = extractFirst(body, LOCATION_PATTERNS)
-
-    // If AI fallback is enabled and we're missing key fields, try AI parsing
-    if (options?.aiFallbackEnabled && (!title || !company)) {
-      // Return with a flag that AI parsing should be attempted
-      // The actual AI call will be async and handled separately
-      return {
-        url,
-        title,
-        company,
-        location,
-        description: truncate(body, 6000),
-        _needsAiFallback: true
-      } as ParsedEmailJob & { _needsAiFallback?: boolean }
-    }
 
     return {
       url,
@@ -70,17 +56,14 @@ export async function parseEmailBodyWithAiFallback(
   urls: string[],
   options?: ParseOptions
 ): Promise<ParsedEmailJob[]> {
-  const results = parseEmailBody(body, urls, options)
+  const results = parseEmailBody(body, urls)
 
   if (!options?.aiFallbackEnabled) {
     return results
   }
 
-  // Check if any results need AI fallback
-  const needsAi = results.some((r) => {
-    const job = r as ParsedEmailJob & { _needsAiFallback?: boolean }
-    return job._needsAiFallback || (!r.title && !r.company)
-  })
+  // Check if any results are missing key fields
+  const needsAi = results.some((r) => !r.title && !r.company)
 
   if (!needsAi) {
     return results
@@ -108,11 +91,7 @@ export async function parseEmailBodyWithAiFallback(
     logger.warn({ error: String(error) }, "AI fallback parsing failed, using regex results")
   }
 
-  // Remove internal flag before returning
-  return results.map((r) => {
-    const { _needsAiFallback, ...rest } = r as ParsedEmailJob & { _needsAiFallback?: boolean }
-    return rest
-  })
+  return results
 }
 
 async function parseWithAi(body: string, urls: string[]): Promise<ParsedEmailJob[] | null> {
@@ -127,7 +106,7 @@ URLs found: ${urls.join(", ")}
 Return ONLY valid JSON array, no other text. Example: [{"title": "Software Engineer", "company": "Acme Corp", "location": "Remote"}]`
 
   try {
-    const result = await runAiCommand(prompt)
+    const result = await runCliProvider(prompt)
     if (!result.success || !result.output) {
       return null
     }
@@ -152,54 +131,6 @@ Return ONLY valid JSON array, no other text. Example: [{"title": "Software Engin
     logger.debug({ error: String(error) }, "Failed to parse AI response as JSON")
     return null
   }
-}
-
-interface AiResult {
-  success: boolean
-  output: string
-  error?: string
-}
-
-async function runAiCommand(prompt: string): Promise<AiResult> {
-  return new Promise((resolve) => {
-    // Try codex CLI first (OpenAI)
-    const child = spawn("codex", ["exec", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", prompt], {
-      env: process.env,
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 30000
-    })
-
-    let stdout = ""
-    let stderr = ""
-
-    child.stdout?.on("data", (data) => {
-      stdout += data.toString()
-    })
-
-    child.stderr?.on("data", (data) => {
-      stderr += data.toString()
-    })
-
-    child.on("error", (err) => {
-      logger.debug({ error: err.message }, "AI CLI command failed to spawn")
-      resolve({ success: false, output: "", error: err.message })
-    })
-
-    child.on("close", (code) => {
-      if (code === 0 && stdout) {
-        resolve({ success: true, output: stdout.trim() })
-      } else {
-        resolve({ success: false, output: "", error: stderr || `Exit code ${code}` })
-      }
-    })
-
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      child.kill()
-      resolve({ success: false, output: "", error: "AI command timed out" })
-    }, 30000)
-  })
 }
 
 function extractFirst(text: string, patterns: RegExp[]): string | undefined {

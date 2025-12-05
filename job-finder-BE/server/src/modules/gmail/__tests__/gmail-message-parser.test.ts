@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { parseEmailBody, parseEmailBodyWithAiFallback, type ParsedEmailJob } from "../gmail-message-parser"
+import { parseEmailBody, parseEmailBodyWithAiFallback } from "../gmail-message-parser"
 
 // Mock the logger to avoid console output in tests
 vi.mock("../../../logger", () => ({
@@ -9,6 +9,11 @@ vi.mock("../../../logger", () => ({
     info: vi.fn(),
     error: vi.fn()
   }
+}))
+
+// Mock the CLI runner
+vi.mock("../../generator/workflow/services/cli-runner", () => ({
+  runCliProvider: vi.fn()
 }))
 
 describe("gmail-message-parser", () => {

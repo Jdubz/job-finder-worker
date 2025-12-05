@@ -116,6 +116,24 @@ describe("EmailIngestStateRepository", () => {
       expect(result.jobsEnqueued).toBe(1)
     })
 
+    it("should throw error when record not found after upsert", () => {
+      const mockRun = vi.fn()
+      const mockGet = vi.fn().mockReturnValue(undefined)
+
+      mockDb.prepare
+        .mockReturnValueOnce({ run: mockRun })
+        .mockReturnValueOnce({ get: mockGet })
+
+      expect(() =>
+        repo.recordProcessed({
+          messageId: "msg-missing",
+          gmailEmail: "test@gmail.com",
+          jobsFound: 0,
+          jobsEnqueued: 0
+        })
+      ).toThrow("Failed to retrieve record for messageId msg-missing after upsert")
+    })
+
     it("should handle error field", () => {
       const mockRun = vi.fn()
       const mockGet = vi.fn().mockReturnValue({
@@ -170,7 +188,10 @@ describe("EmailIngestStateRepository", () => {
 
       const result = repo.getLastSyncTime("specific@gmail.com")
 
-      expect(mockGet).toHaveBeenCalledWith("specific@gmail.com")
+      // Verify prepare was called with the filtered query
+      expect(mockDb.prepare).toHaveBeenCalledWith(
+        "SELECT MAX(processed_at) as last_sync FROM email_ingest_state WHERE gmail_email = ?"
+      )
       expect(result).toBe("2025-01-01T12:00:00Z")
     })
   })
