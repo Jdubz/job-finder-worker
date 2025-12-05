@@ -65,7 +65,7 @@ const jobMatchSchema = z.object({
   updatedAt: z.union([z.string(), z.date()]).optional(),
   submittedBy: z.string().nullable().optional(),
   queueItemId: z.string(),
-  status: z.enum(['active', 'ignored']).optional(),
+  status: z.enum(['active', 'ignored', 'applied']).optional(),
   ignoredAt: z.union([z.string(), z.date()]).optional()
 })
 
@@ -85,7 +85,7 @@ const listQuerySchema = z.object({
   jobListingId: z.string().min(1).optional(),
   sortBy: z.enum(['score', 'date', 'updated']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
-  status: z.enum(['active', 'ignored', 'all']).optional()
+  status: z.enum(['active', 'ignored', 'applied', 'all']).optional()
 })
 
 const statsQuerySchema = z.object({
@@ -179,7 +179,7 @@ export function buildJobMatchRouter() {
   router.patch(
     '/:id/status',
     asyncHandler((req, res) => {
-      const statusSchema = z.object({ status: z.enum(['active', 'ignored']) })
+      const statusSchema = z.object({ status: z.enum(['active', 'ignored', 'applied']) })
       const { status } = statusSchema.parse(req.body)
       const updated = repo.updateStatus(req.params.id, status)
       if (!updated) {

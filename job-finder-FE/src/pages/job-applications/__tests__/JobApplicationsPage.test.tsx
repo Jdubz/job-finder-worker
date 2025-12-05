@@ -95,7 +95,7 @@ describe("JobApplicationsPage", () => {
     mocks.getStats.mockResolvedValue({ total: 0, highScore: 0, mediumScore: 0, lowScore: 0, averageScore: 0 })
   })
 
-  it("subscribes with active status by default and all when showing ignored", async () => {
+  it("subscribes with active status by default and all when filtering", async () => {
     render(
       <MemoryRouter>
         <JobApplicationsPage />
@@ -105,15 +105,12 @@ describe("JobApplicationsPage", () => {
     await waitFor(() => expect(mocks.subscribeToMatches).toHaveBeenCalled())
     expect(mocks.subscribeToMatches.mock.calls[0][1]).toMatchObject({ status: "active" })
 
-    const toggle = await screen.findByRole("button", { name: /Hide ignored/i })
-    fireEvent.click(toggle)
-    await screen.findByRole("button", { name: /Showing all/i })
+    const statusSelect = screen.getByRole("combobox", { name: /status filter/i })
+    fireEvent.click(statusSelect)
+    fireEvent.click(screen.getByRole("option", { name: /All/i }))
 
-    // Subscribe again with include-all status (effects may run twice in strict mode)
     await waitFor(() => {
-      expect(
-        mocks.subscribeToMatches.mock.calls.some(([, filters]) => filters?.status === "all")
-      ).toBe(true)
+      expect(mocks.subscribeToMatches.mock.calls.some(([, filters]) => filters?.status === "all")).toBe(true)
     })
   })
 

@@ -86,7 +86,7 @@ interface JobMatchListOptions {
   jobListingId?: string
   sortBy?: 'score' | 'date' | 'updated'
   sortOrder?: 'asc' | 'desc'
-  status?: 'active' | 'ignored' | 'all'
+  status?: 'active' | 'ignored' | 'applied' | 'all'
 }
 
 export class JobMatchRepository {
@@ -281,7 +281,7 @@ export class JobMatchRepository {
    * Used for summary pills in the UI.
    */
   getStats(includeIgnored = false): JobMatchStats {
-    const whereClause = includeIgnored ? '' : "WHERE status = 'active'"
+    const whereClause = includeIgnored ? '' : "WHERE status != 'ignored'"
     const result = this.db
       .prepare(`
         SELECT

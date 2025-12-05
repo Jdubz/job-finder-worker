@@ -17,7 +17,7 @@ export interface JobMatchFilters {
   offset?: number
   sortBy?: "score" | "date" | "updated"
   sortOrder?: "asc" | "desc"
-  status?: "active" | "ignored" | "all"
+  status?: "active" | "ignored" | "applied" | "all"
 }
 
 type JobMatchesResponseShape =

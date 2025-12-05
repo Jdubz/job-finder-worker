@@ -392,7 +392,7 @@ export interface JobMatch {
   queueItemId: string
 
   /** Workflow status for this match (e.g., ignored by user) */
-  status?: "active" | "ignored"
+  status?: "active" | "ignored" | "applied"
 
   /** When the match was ignored (if applicable) */
   ignoredAt?: TimestampLike

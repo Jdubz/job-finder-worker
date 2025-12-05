@@ -45,18 +45,18 @@ export function JobApplicationsPage() {
   // Filter state
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState<string>("updated")
-  const [showIgnored, setShowIgnored] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<"active" | "ignored" | "applied" | "all">("active")
 
   // Fetch stats from server
   const fetchStats = useCallback(async () => {
     if (!user) return
     try {
-      const serverStats = await jobMatchesClient.getStats(showIgnored)
+      const serverStats = await jobMatchesClient.getStats(statusFilter === "all" || statusFilter === "ignored")
       setStats(serverStats)
     } catch (err) {
       console.error("Failed to fetch job match stats:", err)
     }
-  }, [user, showIgnored])
+  }, [user, statusFilter])
 
   // Subscribe to real-time job matches
   useEffect(() => {
@@ -104,7 +104,7 @@ export function JobApplicationsPage() {
         setLoading(false)
         setError(null) // Clear any previous errors
       },
-      { sortBy: "updated", sortOrder: "desc", status: showIgnored ? "all" : "active" },
+      { sortBy: "updated", sortOrder: "desc", status: statusFilter },
       (err) => {
         logger.error("database", "failed", "JobApplicationsPage: Job matches subscription error", {
           error: {
@@ -122,7 +122,7 @@ export function JobApplicationsPage() {
       logger.debug("database", "stopped", "JobApplicationsPage: Unsubscribing from job matches")
       unsubscribe()
     }
-  }, [user, fetchStats, showIgnored])
+  }, [user, fetchStats, statusFilter])
 
   const getUpdatedDate = (match: JobMatchWithListing) =>
     toDate(match.updatedAt ?? match.createdAt ?? match.listing.updatedAt ?? match.listing.createdAt)
@@ -189,14 +189,14 @@ export function JobApplicationsPage() {
         <p className="text-muted-foreground mt-2">AI-ranked roles with quick filters and doc generation</p>
       </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => navigate(ROUTES.DOCUMENT_BUILDER)}>
-            Build Documents
-          </Button>
-          <Button variant="secondary" onClick={() => navigate(ROUTES.JOB_LISTINGS)}>
-            Add New Job
-          </Button>
-        </div>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={() => navigate(ROUTES.DOCUMENT_BUILDER)}>
+          Build Documents
+        </Button>
+        <Button variant="secondary" onClick={() => navigate(ROUTES.JOB_LISTINGS)}>
+          Add New Job
+        </Button>
+      </div>
 
       {/* Stats Overview (using server-side stats for accuracy) */}
       {!loading && stats && (
@@ -263,19 +263,24 @@ export function JobApplicationsPage() {
                   <SelectItem value="company">Company</SelectItem>
                 </SelectContent>
               </Select>
-              <Button
-                variant={showIgnored ? "secondary" : "ghost"}
-                onClick={() => setShowIgnored((prev) => !prev)}
-              >
-                {showIgnored ? "Showing all" : "Hide ignored"}
-              </Button>
+              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+                <SelectTrigger className="w-full sm:w-[160px]" aria-label="Status filter">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="applied">Applied</SelectItem>
+                  <SelectItem value="ignored">Ignored</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
+                </SelectContent>
+              </Select>
               {(searchQuery.trim() || sortBy !== "updated") && (
                 <Button
                   variant="ghost"
                   onClick={() => {
                     setSearchQuery("")
                     setSortBy("updated")
-                    setShowIgnored(false)
+                    setStatusFilter("active")
                   }}
                 >
                   Clear Filters
