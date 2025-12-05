@@ -49,6 +49,11 @@ describe('cli-health.service', () => {
     const childProcess = await import('node:child_process')
     mockedExecFile = vi.mocked(childProcess.execFile)
 
+    // Default safety: fail fast if a test forgets to mock a command (prevents real CLI execution)
+    mockedExecFile.mockImplementation(() =>
+      Promise.reject(new Error('execFile should be mocked in tests'))
+    )
+
     const module = await import('./cli-health.service')
     getLocalCliHealth = module.getLocalCliHealth
   })
