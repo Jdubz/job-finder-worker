@@ -52,16 +52,18 @@ export class GmailIngestService {
     "jobs.lever.co",
     "wellfound.com",
     "angel.co",
-    "reecruitee.com",
+    "recruitee.com",
     "jobvite.com",
     "breezy.hr"
   ]
 
   async ingestAll(): Promise<IngestJobResult[]> {
     const settings = this.getSettings()
-    if (settings && settings.enabled === false) {
-      logger.info("Gmail ingest disabled; skipping")
-      return []
+    if (!settings) {
+      throw new Error("gmail-ingest config missing")
+    }
+    if (settings.enabled === false) {
+      throw new Error("gmail-ingest disabled")
     }
 
     const accounts = this.auth.listAccounts()
@@ -89,6 +91,12 @@ export class GmailIngestService {
     return cfg?.payload ?? null
   }
 
+  private resolveAllowedDomains(settings: GmailIngestConfig): string[] {
+    const configured = settings.allowedDomains?.map((d) => d.toLowerCase().trim()).filter(Boolean)
+    if (configured && configured.length > 0) return configured
+    return this.defaultAllowedDomains
+  }
+
   private async ingestAccount(
     gmailEmail: string,
     tokens: GmailTokenPayload,
@@ -112,6 +120,7 @@ export class GmailIngestService {
     if (settings?.query) queryParts.push(settings.query)
     const q = queryParts.join(" ").trim()
     const maxResults = settings?.maxMessages ?? 25
+    const allowedDomains = this.resolveAllowedDomains(settings)
     const messages = await this.fetchMessages(accessToken, ensured.historyId, q || undefined, maxResults)
     if (!messages.items.length) {
       return { gmailEmail, jobsFound: 0, jobsQueued: 0 }
@@ -127,14 +136,15 @@ export class GmailIngestService {
         if (!allowed) continue
       }
       const body = this.extractBody(full)
-      const links = this.extractLinks(body)
+      const links = this.extractLinks(body, allowedDomains)
       if (!links.length) continue
 
       const parsedJobs = parseEmailBody(body, links)
       jobsFound += parsedJobs.length
 
       for (const job of parsedJobs) {
-        if (this.isDuplicate(job.url, full.id)) {
+        const dedupKey = `${full.id}::${job.url}`
+        if (this.isDuplicate(job.url, full.id, dedupKey)) {
           continue
         }
         const jobInput: SubmitJobInput = {
@@ -148,7 +158,9 @@ export class GmailIngestService {
             gmailThreadId: full.threadId,
             gmailFrom: sender,
             gmailSnippet: full.snippet,
-            gmailEmail
+            gmailEmail,
+            gmailDedupKey: dedupKey,
+            remoteSourceDefault: settings.remoteSourceDefault ?? false
           }
         }
         try {
@@ -169,12 +181,12 @@ export class GmailIngestService {
     return { gmailEmail, jobsFound, jobsQueued }
   }
 
-  private isDuplicate(url: string, messageId: string): boolean {
-    const dedupKey = `${messageId}::${url}`
+  private isDuplicate(url: string, messageId: string, dedupKey?: string): boolean {
+    const key = dedupKey ?? `${messageId}::${url}`
     const items = this.queueRepo.list({ limit: 100 }) // small recent window
     return items.some((item) => {
       const meta = (item.metadata || {}) as any
-      return item.url === url || meta.gmailMessageId === messageId || meta.gmailDedupKey === dedupKey
+      return item.url === url || meta.gmailMessageId === messageId || meta.gmailDedupKey === key
     })
   }
 
@@ -307,24 +319,24 @@ export class GmailIngestService {
     return buf.toString("utf8")
   }
 
-  private extractLinks(text: string): string[] {
+  private extractLinks(text: string, allowedDomains: string[]): string[] {
     if (!text) return []
     const regex = /https?:\/\/[^\s"'>)]+/gi
     const found = text.match(regex) ?? []
     const cleaned = found
       .map((url) => url.replace(/[.,;]+$/, ""))
-      .filter((url) => this.isLikelyJobLink(url))
+      .filter((url) => this.isLikelyJobLink(url, allowedDomains))
 
     // dedupe
     return Array.from(new Set(cleaned))
   }
 
-  private isLikelyJobLink(url: string): boolean {
+  private isLikelyJobLink(url: string, allowedDomains: string[]): boolean {
     try {
       const parsed = new URL(url)
       const host = parsed.hostname.toLowerCase()
       const domainAllowed =
-        this.allowedDomains.some((d) => host === d || host.endsWith(`.${d}`)) ||
+        allowedDomains.some((d) => host === d || host.endsWith(`.${d}`)) ||
         (parsed.pathname && parsed.pathname.toLowerCase().includes("/careers")) ||
         (parsed.pathname && parsed.pathname.toLowerCase().includes("/jobs"))
       return domainAllowed

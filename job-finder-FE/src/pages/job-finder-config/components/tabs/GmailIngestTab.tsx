@@ -34,8 +34,10 @@ type ConfigPayload = {
 export function GmailIngestTab() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
+  const [revoking, setRevoking] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<GmailAccount[]>([])
   const [config, setConfig] = useState<ConfigPayload | null>(null)
+  const [clientId, setClientId] = useState<string | null>(null)
   const { user } = useAuth()
 
   const allowedSenders = useMemo(
@@ -50,6 +52,7 @@ export function GmailIngestTab() {
   useEffect(() => {
     void loadConfig()
     void loadAccounts()
+    void loadClient()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -68,6 +71,16 @@ export function GmailIngestTab() {
       setAccounts(res.data.accounts as GmailAccount[])
     } catch (error) {
       toast({ title: "Failed to load linked inboxes", description: String(error), variant: "destructive" })
+    }
+  }
+
+  async function loadClient() {
+    try {
+      const res = await apiClient.get("/gmail/oauth/client")
+      setClientId((res.data.clientId as string) ?? null)
+    } catch (error) {
+      setClientId(null)
+      toast({ title: "Failed to load Gmail OAuth client", description: String(error), variant: "destructive" })
     }
   }
 
@@ -99,12 +112,21 @@ export function GmailIngestTab() {
   }
 
   const startOAuth = () => {
+    const effectiveClientId = clientId ?? import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
+    if (!effectiveClientId) {
+      toast({
+        title: "Gmail client ID missing",
+        description: "Set GMAIL_OAUTH_CLIENT_ID on the API or VITE_GOOGLE_OAUTH_CLIENT_ID for local dev.",
+        variant: "destructive"
+      })
+      return
+    }
+
     const redirectUri = `${window.location.origin}${ROUTES.GMAIL_OAUTH_CALLBACK}`
-    const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
     const scope = encodeURIComponent("https://www.googleapis.com/auth/gmail.readonly")
     const url = [
       "https://accounts.google.com/o/oauth2/v2/auth",
-      `?client_id=${clientId}`,
+      `?client_id=${effectiveClientId}`,
       `&redirect_uri=${encodeURIComponent(redirectUri)}`,
       "&response_type=code",
       "&access_type=offline",
@@ -113,6 +135,19 @@ export function GmailIngestTab() {
       user?.email ? `&login_hint=${encodeURIComponent(user.email)}` : ""
     ].join("")
     window.location.href = url
+  }
+
+  async function revokeAccount(gmailEmail: string) {
+    setRevoking(gmailEmail)
+    try {
+      await apiClient.post(`/gmail/accounts/${encodeURIComponent(gmailEmail)}/revoke`)
+      toast({ title: "Revoked Gmail access", description: gmailEmail })
+      await loadAccounts()
+    } catch (error) {
+      toast({ title: "Revoke failed", description: String(error), variant: "destructive" })
+    } finally {
+      setRevoking(null)
+    }
   }
 
   if (!config) {
@@ -217,6 +252,7 @@ export function GmailIngestTab() {
             </Button>
             <p className="text-xs text-muted-foreground">
               Uses your Google OAuth to grant read-only access for job alerts (offline access for cron).
+              {clientId ? ` Client: ${clientId}` : " No client configured."}
             </p>
           </div>
 
@@ -249,6 +285,16 @@ export function GmailIngestTab() {
               {acct.historyId && (
                 <div className="text-xs text-muted-foreground">History ID: {acct.historyId}</div>
               )}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={revoking === acct.gmailEmail}
+                  onClick={() => revokeAccount(acct.gmailEmail)}
+                >
+                  {revoking === acct.gmailEmail ? "Revoking…" : "Revoke access"}
+                </Button>
+              </div>
             </div>
           ))}
         </CardContent>

@@ -9,9 +9,11 @@ export function GmailOauthCallbackPage() {
   const { toast } = useToast()
   const location = useLocation()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
 
   useEffect(() => {
+    if (loading) return
+
     const params = new URLSearchParams(location.search)
     const code = params.get("code")
     const _scope = params.get("scope") // informational only
@@ -21,9 +23,15 @@ export function GmailOauthCallbackPage() {
       return
     }
 
+    if (!user?.email) {
+      toast({ title: "Login required to finish Gmail auth", variant: "destructive" })
+      navigate(ROUTES.LOGIN, { replace: true })
+      return
+    }
+
     const redirectUri = `${window.location.origin}${ROUTES.GMAIL_OAUTH_CALLBACK}`
-    const gmailEmail = params.get("hd") || user?.email || undefined
-    const userEmail = user?.email
+    const gmailEmail = params.get("hd") || user.email || undefined
+    const userEmail = user.email
 
     void apiClient
       .post("/gmail/oauth/exchange", { code, redirectUri, userEmail, gmailEmail })
@@ -35,7 +43,7 @@ export function GmailOauthCallbackPage() {
         toast({ title: "Gmail auth failed", description: String(error), variant: "destructive" })
         navigate(ROUTES.JOB_FINDER_CONFIG, { replace: true })
       })
-  }, [location.search, navigate, toast, user?.email])
+  }, [loading, location.search, navigate, toast, user?.email])
 
   return <p className="text-sm text-muted-foreground">Completing Gmail authorization…</p>
 }
