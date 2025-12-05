@@ -83,8 +83,16 @@ export class GmailIngestService {
     tokens: GmailTokenPayload,
     settings: GmailIngestSettings | null
   ): Promise<IngestJobResult> {
-    const { access_token, refresh_token } = await this.ensureAccessToken(tokens)
-    if (!access_token) {
+    if (!settings) {
+      throw new Error("gmail-ingest config missing")
+    }
+    if (!settings.enabled) {
+      throw new Error("gmail-ingest disabled")
+    }
+
+    const ensured = await this.ensureAccessToken(tokens)
+    const accessToken = ensured.access_token
+    if (!accessToken) {
       throw new Error("No access token after refresh")
     }
 
@@ -94,12 +102,12 @@ export class GmailIngestService {
     const q = queryParts.join(" ").trim()
     const maxResults = settings?.maxMessages ?? 25
 
-    const messages = await this.listMessages(access_token, q || undefined, maxResults)
+    const messages = await this.listMessages(accessToken, q || undefined, maxResults)
     let jobsFound = 0
     let jobsQueued = 0
 
     for (const msg of messages) {
-      const full = await this.getMessage(access_token, msg.id)
+      const full = await this.getMessage(accessToken, msg.id)
       const sender = this.getHeader(full, "From")
       if (settings?.allowedSenders?.length) {
         const allowed = settings.allowedSenders.some((s) => sender?.toLowerCase().includes(s.toLowerCase()))
@@ -180,7 +188,6 @@ export class GmailIngestService {
   }
 
   private extractBody(msg: GmailMessage): string {
-    const parts = msg.payload?.parts ?? []
     const buffers: string[] = []
 
     const walk = (p: GmailPart | undefined) => {

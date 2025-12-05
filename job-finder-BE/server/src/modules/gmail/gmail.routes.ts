@@ -59,7 +59,7 @@ export function buildGmailRouter() {
     }
 
     const gmailAddress = gmailEmail ?? userEmail
-    const stored = service.upsertUserToken(userEmail, gmailAddress, {
+    service.upsertUserToken(userEmail, gmailAddress, {
       refresh_token: tokenResponse.refresh_token,
       access_token: tokenResponse.access_token,
       scope: tokenResponse.scope,
