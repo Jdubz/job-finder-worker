@@ -11,9 +11,9 @@ type CliCheck = { cmd: string; args: string[]; successPattern: RegExp }
 
 /**
  * Health checks should be lightweight, non‑interactive, and actually hit the
- * remote service so expired/invalid tokens are detected. Using `gemini auth status`
- * can block waiting for interactive input, so we instead run a tiny models list
- * call in non‑interactive mode.
+ * remote service so expired/invalid tokens are detected. For Gemini, we use
+ * `gemini auth status --quiet` in non‑interactive mode to avoid blocking for input
+ * and to avoid quota burn from model requests.
  */
 const CHECKS: Record<AgentCliProvider, CliCheck> = {
   codex: { cmd: 'codex', args: ['login', 'status'], successPattern: /logged in/i },
