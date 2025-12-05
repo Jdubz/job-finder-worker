@@ -110,13 +110,13 @@ export class GmailIngestService {
     const q = queryParts.join(" ").trim()
     const maxResults = settings?.maxMessages ?? 25
     const messages = await this.fetchMessages(accessToken, ensured.historyId, q || undefined, maxResults)
-    if (!messages.length) {
+    if (!messages.items.length) {
       return { gmailEmail, jobsFound: 0, jobsQueued: 0 }
     }
     let jobsFound = 0
     let jobsQueued = 0
 
-    for (const msg of messages) {
+    for (const msg of messages.items) {
       const full = await this.getMessage(accessToken, msg.id)
       const sender = this.getHeader(full, "From")
       if (settings?.allowedSenders?.length) {
@@ -125,12 +125,18 @@ export class GmailIngestService {
       }
       const body = this.extractBody(full)
       const links = this.extractLinks(body)
-      jobsFound += links.length
+      if (!links.length) continue
 
-      for (const url of links) {
+      const parsedJobs = parseEmailBody(body, links)
+      jobsFound += parsedJobs.length
+
+      for (const job of parsedJobs) {
         const jobInput: SubmitJobInput = {
-          url,
+          url: job.url,
           source: "email",
+          title: job.title,
+          companyName: job.company,
+          description: job.description,
           metadata: {
             gmailMessageId: full.id,
             gmailThreadId: full.threadId,
@@ -144,7 +150,7 @@ export class GmailIngestService {
           jobsQueued += 1
         } catch (error) {
           const msgErr = error instanceof Error ? error.message : String(error)
-          logger.debug({ url, error: msgErr }, "Failed to enqueue job from Gmail link")
+          logger.debug({ url: job.url, error: msgErr }, "Failed to enqueue job from Gmail link")
         }
       }
     }
