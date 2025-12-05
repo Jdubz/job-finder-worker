@@ -82,7 +82,7 @@ const matchPolicy: MatchPolicy = {
 }
 
 describe("JobFinderConfigPage", () => {
-  it("renders missing required score field", async () => {
+  it("renders missing skill penalty field", async () => {
     const user = userEvent.setup()
     render(
       <MemoryRouter>
@@ -93,7 +93,7 @@ describe("JobFinderConfigPage", () => {
     // Switch to Scoring tab so the field is rendered
     await user.click(screen.getByRole("tab", { name: /scoring/i }))
 
-    expect(screen.getByLabelText(/missing required score/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/missing skill penalty/i)).toBeInTheDocument()
   })
 })
 

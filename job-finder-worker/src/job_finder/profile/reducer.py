@@ -134,7 +134,8 @@ def reduce_content_items(items: List[dict]) -> ScoringProfile:
             overall_months |= months
             for skill in normalized_skills:
                 skill_months.setdefault(skill, set()).update(months)
-        elif not end:
+        elif not start:
+            # Items with only end_date (or neither) count as undated for baseline handling
             undated_skills.update(normalized_skills)
 
     # Add baseline for skills that only appear in undated items

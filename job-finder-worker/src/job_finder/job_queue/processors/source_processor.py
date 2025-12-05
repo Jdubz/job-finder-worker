@@ -172,7 +172,7 @@ class SourceProcessor(BaseProcessor):
                     if normalized_reason == "discovery_failed":
                         if "cloudflare" in details_lower or "vercel" in details_lower:
                             normalized_reason = "bot_protection"
-                    if normalized_reason == "api_probe_failed" and "resolve" in details_lower:
+                    elif normalized_reason == "api_probe_failed" and "resolve" in details_lower:
                         normalized_reason = "dns_error"
 
                 placeholder_config = {
