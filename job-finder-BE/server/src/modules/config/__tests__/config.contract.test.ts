@@ -73,11 +73,114 @@ describe('config contract', () => {
       jobScraping: 'c',
       jobMatching: 'd',
     })
-    repo.upsert('personal-info', { name: 'Test User' })
-    repo.upsert('prefilter-policy', { title: {}, freshness: {}, workArrangement: {}, employmentType: {}, salary: {}, technology: {} })
-    repo.upsert('match-policy', { minScore: 50, weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 }, seniority: {}, location: {}, technology: {}, salary: {}, experience: {}, freshness: {}, roleFit: {}, company: {} })
-    repo.upsert('worker-settings', { scraping: {}, textLimits: {}, runtime: {} })
-    repo.upsert('cron-config', { jobs: { scrape: { enabled: true, hours: [0] }, maintenance: { enabled: true, hours: [1] }, logrotate: { enabled: true, hours: [2] } } })
+
+    repo.upsert('personal-info', { name: 'Test User', email: 'user@example.com' })
+
+    repo.upsert('prefilter-policy', {
+      title: { requiredKeywords: ['engineer'], excludedKeywords: ['intern'] },
+      freshness: { maxAgeDays: 30 },
+      workArrangement: {
+        allowRemote: true,
+        allowHybrid: true,
+        allowOnsite: false,
+        willRelocate: false,
+        userLocation: 'Portland, OR',
+        userTimezone: -8,
+        maxTimezoneDiffHours: 4,
+      },
+      employmentType: { allowFullTime: true, allowPartTime: false, allowContract: true },
+      salary: { minimum: 80000 },
+      technology: { rejected: ['php'] },
+    })
+
+    repo.upsert('match-policy', {
+      minScore: 60,
+      weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
+      seniority: {
+        preferred: ['senior'],
+        acceptable: ['mid'],
+        rejected: ['junior'],
+        preferredScore: 10,
+        acceptableScore: 0,
+        rejectedScore: -100,
+      },
+      location: {
+        allowRemote: true,
+        allowHybrid: true,
+        allowOnsite: true,
+        userTimezone: -8,
+        maxTimezoneDiffHours: 4,
+        perHourScore: -1,
+        hybridSameCityScore: 5,
+        userCity: 'Portland',
+      },
+      technology: {
+        required: ['typescript'],
+        preferred: ['react'],
+        disliked: ['php'],
+        rejected: ['wordpress'],
+        requiredScore: 5,
+        preferredScore: 3,
+        dislikedScore: -2,
+      },
+      salary: { minimum: 90000, target: 150000, belowTargetScore: -2 },
+      experience: { userYears: 8, maxRequired: 12, overqualifiedScore: -1 },
+      freshness: {
+        freshDays: 7,
+        freshScore: 5,
+        staleDays: 30,
+        staleScore: -5,
+        veryStaleDays: 60,
+        veryStaleScore: -10,
+        repostScore: -3,
+      },
+      roleFit: {
+        preferred: ['backend'],
+        acceptable: ['fullstack'],
+        penalized: ['frontend'],
+        rejected: ['management'],
+        preferredScore: 5,
+        penalizedScore: -5,
+      },
+      company: {
+        preferredCityScore: 5,
+        preferredCity: 'Portland',
+        remoteFirstScore: 3,
+        aiMlFocusScore: 2,
+        largeCompanyScore: 1,
+        smallCompanyScore: -1,
+        largeCompanyThreshold: 1000,
+        smallCompanyThreshold: 50,
+        startupScore: 2,
+      },
+    })
+
+    repo.upsert('worker-settings', {
+      scraping: { requestTimeoutSeconds: 30, maxHtmlSampleLength: 20000 },
+      textLimits: {
+        minCompanyPageLength: 200,
+        minSparseCompanyInfoLength: 100,
+        maxIntakeTextLength: 500,
+        maxIntakeDescriptionLength: 2000,
+        maxIntakeFieldLength: 400,
+        maxDescriptionPreviewLength: 500,
+        maxCompanyInfoTextLength: 1000,
+      },
+      runtime: {
+        processingTimeoutSeconds: 60,
+        isProcessingEnabled: true,
+        taskDelaySeconds: 1,
+        pollIntervalSeconds: 5,
+      },
+    })
+
+    repo.upsert('cron-config', {
+      jobs: {
+        scrape: { enabled: true, hours: [0], lastRun: null },
+        maintenance: { enabled: true, hours: [1], lastRun: null },
+        logrotate: { enabled: true, hours: [2], lastRun: null },
+      },
+    })
 
     const fetchAndValidate = async (id: string, schema: any) => {
       const res = await request(app).get(`/config/${id}`)
