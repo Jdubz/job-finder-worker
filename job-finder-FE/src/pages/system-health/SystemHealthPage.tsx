@@ -35,6 +35,7 @@ const CRON_JOB_LABELS: Record<CronJobKey, string> = {
   scrape: "Scrape Jobs",
   maintenance: "Maintenance",
   logrotate: "Log Rotation",
+  agentReset: "Agent Reset",
 }
 
 function formatHoursInput(hours: number[]): string {
@@ -94,6 +95,7 @@ export function SystemHealthPage() {
               scrape: formatHoursInput(derivedConfig.jobs.scrape.hours),
               maintenance: formatHoursInput(derivedConfig.jobs.maintenance.hours),
               logrotate: formatHoursInput(derivedConfig.jobs.logrotate.hours),
+              agentReset: formatHoursInput(derivedConfig.jobs.agentReset.hours),
             }
           : {}
       )

@@ -143,7 +143,24 @@ export const mockWorkerSettings: WorkerSettings = {
 }
 
 export const mockAISettings: AISettings = {
-  worker: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
+  agents: {
+    "gemini.api": {
+      provider: "gemini",
+      interface: "api",
+      defaultModel: "gemini-2.0-flash",
+      enabled: true,
+      reason: null,
+      dailyBudget: 100,
+      dailyUsage: 0,
+    },
+  },
+  taskFallbacks: {
+    extraction: ["gemini.api"],
+    analysis: ["gemini.api"],
+  },
+  modelRates: {
+    "gemini-2.0-flash": 0.5,
+  },
   documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
   options: [],
 }

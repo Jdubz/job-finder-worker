@@ -41,25 +41,32 @@ export class ConfigClient extends BaseApiClient {
     const existing = await this.getAISettings()
     await this.updateConfigEntry("ai-settings", {
       ...existing,
-      options: existing.options, // Preserve options from existing config
-      worker: {
-        ...existing.worker,
-        ...settings.worker,
-        selected: {
-          ...existing.worker?.selected,
-          ...settings.worker?.selected,
-        },
-        tasks: settings.worker?.tasks ?? existing.worker?.tasks,
-      },
-      documentGenerator: {
-        ...existing.documentGenerator,
-        ...settings.documentGenerator,
-        selected: {
-          ...existing.documentGenerator?.selected,
-          ...settings.documentGenerator?.selected,
-        },
-        tasks: settings.documentGenerator?.tasks ?? existing.documentGenerator?.tasks,
-      },
+      ...settings,
+      // Preserve options from existing config
+      options: existing.options,
+      // Merge agents if provided
+      agents: settings.agents
+        ? { ...existing.agents, ...settings.agents }
+        : existing.agents,
+      // Merge taskFallbacks if provided
+      taskFallbacks: settings.taskFallbacks
+        ? { ...existing.taskFallbacks, ...settings.taskFallbacks }
+        : existing.taskFallbacks,
+      // Merge modelRates if provided
+      modelRates: settings.modelRates
+        ? { ...existing.modelRates, ...settings.modelRates }
+        : existing.modelRates,
+      // Merge documentGenerator if provided
+      documentGenerator: settings.documentGenerator
+        ? {
+            ...existing.documentGenerator,
+            ...settings.documentGenerator,
+            selected: {
+              ...existing.documentGenerator?.selected,
+              ...settings.documentGenerator?.selected,
+            },
+          }
+        : existing.documentGenerator,
     })
   }
 

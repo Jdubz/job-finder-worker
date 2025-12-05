@@ -161,6 +161,7 @@ export interface CronStatus {
     scrape: CronJobStatus
     maintenance: CronJobStatus
     logrotate: CronJobStatus
+    agentReset: CronJobStatus
   }
   workerMaintenanceUrl: string
   logDir: string
