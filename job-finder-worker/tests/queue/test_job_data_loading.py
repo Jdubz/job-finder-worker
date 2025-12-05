@@ -172,7 +172,7 @@ class TestJobDataLoadingFromScrapedData:
         # Simulate the loading logic from process_job
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and "title" not in job_data:
+            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
@@ -208,7 +208,7 @@ class TestJobDataLoadingFromScrapedData:
         # Simulate the loading logic from process_job
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and "title" not in job_data:
+            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
@@ -239,7 +239,7 @@ class TestJobDataLoadingFromScrapedData:
         # Simulate the loading logic from process_job
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and "title" not in job_data:
+            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
@@ -269,7 +269,7 @@ class TestJobDataLoadingFromScrapedData:
         # Simulate the loading logic from process_job
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and "title" not in job_data:
+            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
@@ -277,13 +277,14 @@ class TestJobDataLoadingFromScrapedData:
         assert ctx.job_data is not None
         assert ctx.job_data.get("title") == "DevOps Engineer"
 
-    def test_stops_unwrapping_when_title_found(self, job_processor):
-        """Test that unwrapping stops when title is found at current level.
+    def test_stops_unwrapping_when_multiple_keys(self, job_processor):
+        """Test that unwrapping stops when dict has multiple keys.
 
-        Edge case: a job_data dict that has both 'title' and 'job_data' keys
-        (e.g., job_data contains metadata about another job_data source).
+        The unwrapping logic checks len(job_data) == 1 to detect wrappers.
+        If a dict has multiple keys (even if one is 'job_data'), it's not
+        a wrapper and should not be unwrapped further.
         """
-        # This structure has title at the first level, shouldn't unwrap further
+        # This structure has multiple keys at the first level, shouldn't unwrap
         item = JobQueueItem(
             id="test-edge",
             type=QueueItemType.JOB,
@@ -304,7 +305,7 @@ class TestJobDataLoadingFromScrapedData:
         # Simulate the loading logic from process_job
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and "title" not in job_data:
+            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 
@@ -363,7 +364,7 @@ class TestPipelineContextJobDataExtraction:
         ctx = PipelineContext(item=item)
         if item.scraped_data:
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and "title" not in job_data:
+            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
 

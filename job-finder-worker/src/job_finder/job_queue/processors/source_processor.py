@@ -366,6 +366,34 @@ class SourceProcessor(BaseProcessor):
         except Exception:
             return url
 
+    # Invalid names that should not be extracted as company names
+    _INVALID_COMPANY_NAMES = frozenset(
+        {
+            "www",
+            "api",
+            "app",
+            "dev",
+            "staging",
+            "jobs",
+            "careers",
+            "greenhouse",
+            "lever",
+            "smartrecruiters",
+        }
+    )
+
+    # API path patterns: (domain_substring, path_regex)
+    _API_PATH_PATTERNS = [
+        ("greenhouse.io", r"/boards/([^/]+)"),
+        ("lever.co", r"/postings/([^/?]+)"),
+        ("smartrecruiters.com", r"/companies/([^/]+)"),
+    ]
+
+    # Host/subdomain patterns: (domain_substring, host_regex)
+    _HOST_PATTERNS = [
+        ("myworkdayjobs.com", r"([^.]+)\.wd\d*\."),
+    ]
+
     def _extract_company_from_url(self, url: str) -> str:
         """Extract company name from URL.
 
@@ -381,45 +409,29 @@ class SourceProcessor(BaseProcessor):
             host = parsed.netloc
             path = parsed.path
 
-            # Pattern 1: Greenhouse API - extract board token from path
-            # e.g., boards-api.greenhouse.io/v1/boards/anthropic/jobs
-            if "greenhouse.io" in host:
-                match = re.search(r"/boards/([^/]+)", path)
-                if match:
-                    return self._format_company_name(match.group(1))
+            # Check API path patterns (Greenhouse, Lever, SmartRecruiters)
+            for domain_part, path_regex in self._API_PATH_PATTERNS:
+                if domain_part in host:
+                    match = re.search(path_regex, path)
+                    if match:
+                        return self._format_company_name(match.group(1))
 
-            # Pattern 2: Lever API - extract company from path
-            # e.g., api.lever.co/v0/postings/binance
-            if "lever.co" in host:
-                match = re.search(r"/postings/([^/?]+)", path)
-                if match:
-                    return self._format_company_name(match.group(1))
+            # Check host/subdomain patterns (Workday)
+            for domain_part, host_regex in self._HOST_PATTERNS:
+                if domain_part in host:
+                    match = re.match(host_regex, host)
+                    if match:
+                        return self._format_company_name(match.group(1))
 
-            # Pattern 3: SmartRecruiters API - extract company from path
-            # e.g., api.smartrecruiters.com/v1/companies/Experian/postings
-            if "smartrecruiters.com" in host:
-                match = re.search(r"/companies/([^/]+)", path)
-                if match:
-                    return self._format_company_name(match.group(1))
-
-            # Pattern 4: Workday - extract company from subdomain
-            # e.g., gevernova.wd5.myworkdayjobs.com
-            if "myworkdayjobs.com" in host:
-                # First segment before .wd is the company
-                match = re.match(r"([^.]+)\.wd\d*\.", host)
-                if match:
-                    return self._format_company_name(match.group(1))
-
-            # Pattern 5: jobs.X.com or careers.X.com subdomain pattern
+            # Pattern: jobs.X.com or careers.X.com subdomain pattern
             # e.g., jobs.dropbox.com -> Dropbox
             subdomain_match = re.match(r"(jobs?|careers?)\.([^.]+)\.", host)
             if subdomain_match:
                 company_part = subdomain_match.group(2)
-                # Avoid extracting generic names
-                if company_part not in {"www", "api", "app", "dev", "staging"}:
+                if company_part not in self._INVALID_COMPANY_NAMES:
                     return self._format_company_name(company_part)
 
-            # Pattern 6: Direct company site - extract from domain
+            # Fallback: Direct company site - extract from domain
             # e.g., www.toggl.com/jobs -> Toggl
             # Remove www. and common subdomains
             host = re.sub(r"^(www|api|app|jobs|careers)\.", "", host)
@@ -432,9 +444,7 @@ class SourceProcessor(BaseProcessor):
                 else:
                     name = domain_parts[-2]
 
-                # Validate it's not a generic/invalid name
-                invalid_names = {"jobs", "careers", "www", "api", "app", "greenhouse", "lever"}
-                if name and name not in invalid_names:
+                if name and name not in self._INVALID_COMPANY_NAMES:
                     return self._format_company_name(name)
 
             return ""
@@ -457,8 +467,7 @@ class SourceProcessor(BaseProcessor):
         parts = re.split(r"[-_]", slug)
         capitalized = [part.capitalize() for part in parts if part]
 
-        # Join with spaces, but handle single-part names
-        return " ".join(capitalized) if len(capitalized) > 1 else "".join(capitalized)
+        return " ".join(capitalized)
 
     def _detect_aggregator_domain(self, url: str) -> Optional[str]:
         """Detect if URL belongs to a known job aggregator.

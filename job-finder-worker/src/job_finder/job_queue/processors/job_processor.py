@@ -316,9 +316,10 @@ class JobProcessor(BaseProcessor):
         state = item.pipeline_state or {}
         if item.scraped_data:
             # scraped_data is {"job_data": {...}}, extract the nested job_data
-            # Handle potential double-nesting from previous bug
+            # Handle potential double-nesting from previous bug by checking if
+            # the dict is a wrapper (only contains "job_data" key)
             job_data = item.scraped_data.get("job_data", item.scraped_data)
-            while isinstance(job_data, dict) and "job_data" in job_data and "title" not in job_data:
+            while isinstance(job_data, dict) and "job_data" in job_data and len(job_data) == 1:
                 job_data = job_data["job_data"]
             ctx.job_data = job_data
         elif "job_data" in state:
