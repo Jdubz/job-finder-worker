@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { execFile } from 'node:child_process'
 import type { getLocalCliHealth as GetLocalCliHealthFn } from './cli-health.service'
 
 // Mock child_process before importing the module
