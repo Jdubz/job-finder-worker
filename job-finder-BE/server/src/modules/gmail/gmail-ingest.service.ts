@@ -312,7 +312,7 @@ export class GmailIngestService {
         this.allowedDomains.some((d) => host === d || host.endsWith(`.${d}`)) ||
         (parsed.pathname && parsed.pathname.toLowerCase().includes("/careers")) ||
         (parsed.pathname && parsed.pathname.toLowerCase().includes("/jobs"))
-    return domainAllowed
+      return domainAllowed
     } catch {
       return false
     }
