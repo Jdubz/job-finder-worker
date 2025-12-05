@@ -402,9 +402,9 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 <NumericField
                   control={form.control}
                   name="skillMatch.missingScore"
-                  label="Missing Skill Penalty"
-                  description="Penalty per missing job skill."
-                  info="Applied for each job skill you lack."
+                  label="Missing Required Score"
+                  description="Penalty applied for each required job skill that is missing."
+                  info="Keeps backwards compatibility with legacy configs expecting a 'missing required' field label."
                 />
                 <NumericField
                   control={form.control}
