@@ -29,6 +29,10 @@ const EnvSchema = z.object({
   // Machine-to-machine auth
   CRON_API_KEY: z.string().optional(),
 
+  // Gmail OAuth (reuse Google client if set; secret required for token exchange)
+  GMAIL_OAUTH_CLIENT_ID: z.string().optional(),
+  GMAIL_OAUTH_CLIENT_SECRET: z.string().optional(),
+
   // Encryption key for Gmail token storage (32 bytes base64 or hex recommended)
   GMAIL_TOKEN_KEY: z.string().optional()
 })
