@@ -118,7 +118,11 @@ export function buildJobMatchRouter() {
         if (error instanceof z.ZodError) {
           res
             .status(400)
-            .json(failure(ApiErrorCode.BAD_REQUEST, 'Invalid query parameters', error.errors))
+            .json(
+              failure(ApiErrorCode.INVALID_REQUEST, 'Invalid query parameters', {
+                issues: error.errors
+              })
+            )
           return
         }
         logger.error(

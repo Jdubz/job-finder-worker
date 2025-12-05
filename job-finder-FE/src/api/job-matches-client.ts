@@ -69,7 +69,7 @@ export class JobMatchesClient extends BaseApiClient {
     return this.unwrapMatch(response)
   }
 
-  async updateStatus(matchId: string, status: "active" | "ignored") {
+  async updateStatus(matchId: string, status: "active" | "ignored" | "applied") {
     const response = await this.patch<ApiSuccessResponse<{ match: JobMatchWithListing }>>(
       `/job-matches/${matchId}/status`,
       { status }
