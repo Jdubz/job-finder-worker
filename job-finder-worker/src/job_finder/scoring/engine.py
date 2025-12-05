@@ -732,7 +732,8 @@ class ScoringEngine:
 
         skills_to_check = self.user_skills
         if scored_technologies:
-            skills_to_check = skills_to_check - {t.lower() for t in scored_technologies}
+            # scored_technologies is already lowercased at call site
+            skills_to_check = skills_to_check - scored_technologies
 
         # Use word boundary matching to avoid false positives
         # e.g., "go" shouldn't match "going", "good", etc.
