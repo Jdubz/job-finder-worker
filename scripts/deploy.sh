@@ -105,6 +105,36 @@ fi
 # Pull and restart stack
 docker compose -f docker-compose.yml pull
 docker compose -f docker-compose.yml up -d --remove-orphans
+
+# --- Run config/data migrations ---
+echo "[deploy] Waiting for API container to be healthy..."
+for i in $(seq 1 30); do
+  if docker exec job-finder-api curl -sf http://localhost:8080/healthz > /dev/null 2>&1; then
+    echo "[deploy] API container is healthy"
+    break
+  fi
+  if [ "$i" -eq 30 ]; then
+    echo "[deploy] WARNING: API health check timed out after 30s, attempting migrations anyway..."
+  fi
+  sleep 1
+done
+
+echo "[deploy] Running config migrations..."
+# ai-settings migration (AgentManager schema)
+if docker exec job-finder-api node dist/scripts/migrate-ai-settings.js 2>&1; then
+  echo "[deploy] ai-settings migration completed"
+else
+  echo "[deploy] WARNING: ai-settings migration failed (may already be migrated)"
+fi
+
+# tech-ranks migration (rank schema normalization)
+if docker exec job-finder-api node dist/scripts/migrate-tech-ranks.js 2>&1; then
+  echo "[deploy] tech-ranks migration completed"
+else
+  echo "[deploy] WARNING: tech-ranks migration failed (may already be migrated)"
+fi
+
+echo "[deploy] Config migrations complete"
 EOF
 
 echo "[deploy] Executing remote deployment…"
