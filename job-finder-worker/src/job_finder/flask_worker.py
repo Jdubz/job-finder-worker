@@ -41,7 +41,7 @@ from job_finder.storage import JobStorage, JobListingStorage
 from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
-from job_finder.exceptions import InitializationError
+from job_finder.exceptions import InitializationError, QuotaExhaustedError
 
 # Load environment variables
 load_dotenv()
@@ -385,6 +385,9 @@ def worker_loop():
                     time.sleep(worker_state["poll_interval"])
                     continue
 
+                # Clear any stop reason now that processing is enabled
+                config_loader.clear_stop_reason()
+
                 # Drain the queue before sleeping
                 items = queue_manager.get_pending_items()
                 if not items:
@@ -459,6 +462,31 @@ def worker_loop():
                                 error_details=msg,
                             )
                             worker_state["last_error"] = msg
+                        except QuotaExhaustedError as qe:
+                            # Critical: quota exhausted - stop queue and reset item
+                            slogger.worker_status(
+                                "quota_exhausted",
+                                {
+                                    "item_id": item.id,
+                                    "provider": qe.provider,
+                                    "reset_info": qe.reset_info,
+                                },
+                            )
+                            # Reset item to pending for retry after quota resets
+                            queue_manager.update_status(
+                                item.id,
+                                QueueStatus.PENDING,
+                                f"Reset to pending: {qe.provider} quota exhausted",
+                            )
+                            # Disable processing with reason
+                            stop_reason = f"{qe.provider} daily quota exhausted"
+                            if qe.reset_info:
+                                stop_reason += f" (resets {qe.reset_info})"
+                            config_loader.set_processing_disabled_with_reason(stop_reason)
+                            worker_state["last_error"] = str(qe)
+                            # Break out of item loop to stop processing
+                            pause_requested = True
+                            break
                         except Exception as e:
                             slogger.logger.error(
                                 f"Error processing item {item.id}: {e}", exc_info=True

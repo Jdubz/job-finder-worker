@@ -45,6 +45,7 @@ export function QueueManagementPage() {
   const [processingConflictCount, setProcessingConflictCount] = useState<number>(0)
   const conflictRefetched = useRef(false)
   const [isProcessingEnabled, setIsProcessingEnabled] = useState<boolean | null>(null)
+  const [stopReason, setStopReason] = useState<string | null>(null)
   const [isTogglingProcessing, setIsTogglingProcessing] = useState(false)
   const [confirmToggleOpen, setConfirmToggleOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
@@ -127,6 +128,7 @@ export function QueueManagementPage() {
         const settings = await configClient.getWorkerSettings()
         const runtime = settings.runtime
         setIsProcessingEnabled(runtime.isProcessingEnabled ?? true)
+        setStopReason(runtime.stopReason ?? null)
       } catch (err) {
         console.error("Failed to load worker settings:", err)
         setIsProcessingEnabled(true) // Default to enabled
@@ -143,6 +145,10 @@ export function QueueManagementPage() {
       const runtime = { ...current.runtime, isProcessingEnabled: newValue }
       await configClient.updateWorkerSettings({ ...current, runtime })
       setIsProcessingEnabled(newValue)
+      if (newValue) {
+        // Worker clears stopReason when it starts processing; clear local state for UI
+        setStopReason(null)
+      }
       setAlert({
         type: "success",
         message: newValue ? "Queue processing started" : "Queue processing paused",
@@ -383,6 +389,15 @@ export function QueueManagementPage() {
         <Alert variant={alert.type === "error" ? "destructive" : "default"}>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{alert.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {stopReason && isProcessingEnabled === false && (
+        <Alert variant="destructive" className="border-amber-500 bg-amber-50 text-amber-900 [&>svg]:text-amber-600">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <span className="font-medium">Queue stopped automatically:</span> {stopReason}
+          </AlertDescription>
         </Alert>
       )}
 

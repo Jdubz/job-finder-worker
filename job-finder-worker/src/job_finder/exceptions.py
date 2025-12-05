@@ -72,6 +72,28 @@ class AIProviderError(JobFinderError):
     pass
 
 
+class QuotaExhaustedError(AIProviderError):
+    """Raised when an AI provider's quota or rate limit is exhausted.
+
+    This is a critical error that should stop queue processing immediately
+    and reset the current task to pending for retry after quota resets.
+
+    Examples:
+    - Gemini daily quota exhausted
+    - OpenAI rate limit exceeded
+    - Anthropic usage limit reached
+
+    Attributes:
+        provider: The AI provider that hit the quota limit
+        reset_info: Optional info about when quota resets (e.g., "midnight Pacific")
+    """
+
+    def __init__(self, message: str, provider: str = "unknown", reset_info: str = None):
+        self.provider = provider
+        self.reset_info = reset_info
+        super().__init__(message)
+
+
 class ExtractionError(JobFinderError):
     """Raised when AI extraction fails.
 

@@ -261,6 +261,42 @@ class ConfigLoader:
 
         return payload
 
+    def _set_config(self, key: str, payload: Dict[str, Any]) -> None:
+        """Update a config entry in the database."""
+        with sqlite_connection(self.db_path) as conn:
+            from datetime import datetime, timezone
+
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """
+                UPDATE job_finder_config
+                SET payload_json = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (json.dumps(payload), now, key),
+            )
+
+    def set_processing_disabled_with_reason(self, reason: str) -> None:
+        """
+        Disable processing and set a stop reason.
+
+        This is used when a critical error (like quota exhaustion) requires
+        stopping the queue and recording why.
+        """
+        settings = self.get_worker_settings()
+        settings["runtime"]["isProcessingEnabled"] = False
+        settings["runtime"]["stopReason"] = reason
+        self._set_config("worker-settings", settings)
+        logger.warning(f"Processing disabled with reason: {reason}")
+
+    def clear_stop_reason(self) -> None:
+        """Clear the stop reason when processing is re-enabled."""
+        settings = self.get_worker_settings()
+        if settings["runtime"].get("stopReason"):
+            settings["runtime"]["stopReason"] = None
+            self._set_config("worker-settings", settings)
+            logger.info("Cleared stop reason")
+
     def get_worker_settings(self) -> Dict[str, Any]:
         settings = self._get_config("worker-settings")
 
