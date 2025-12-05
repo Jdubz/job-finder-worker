@@ -198,7 +198,9 @@ class JobProcessor(BaseProcessor):
 
     def _build_scoring_engine(self, match_policy: Dict[str, Any]) -> ScoringEngine:
         """Create ScoringEngine with derived profile and analog map."""
-        db_path = self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
+        db_path = (
+            self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
+        )
         profile = load_scoring_profile(db_path)
         analog_groups = match_policy.get("skillMatch", {}).get("analogGroups", [])
         analog_map = build_analog_map(analog_groups)
