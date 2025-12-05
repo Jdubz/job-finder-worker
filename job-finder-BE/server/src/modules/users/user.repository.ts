@@ -15,6 +15,8 @@ export interface UserRecord {
   sessionToken?: string | null
   sessionExpiresAt?: string | null
   sessionExpiresAtMs?: number | null
+  gmailEmail?: string | null
+  gmailAuthJson?: string | null
 }
 
 type UserRow = {
@@ -29,6 +31,8 @@ type UserRow = {
   session_token: string | null
   session_expires_at: string | null
   session_expires_at_ms: number | null
+  gmail_email: string | null
+  gmail_auth_json: string | null
 }
 
 function parseRoles(value: string | null): UserRole[] {
@@ -53,7 +57,9 @@ function mapRow(row: UserRow): UserRecord {
     lastLoginAt: row.last_login_at ?? undefined,
     sessionToken: row.session_token,
     sessionExpiresAt: row.session_expires_at,
-    sessionExpiresAtMs: row.session_expires_at_ms ?? null
+    sessionExpiresAtMs: row.session_expires_at_ms ?? null,
+    gmailEmail: row.gmail_email,
+    gmailAuthJson: row.gmail_auth_json
   }
 }
 
@@ -68,7 +74,7 @@ export class UserRepository {
     const row = this.db
       .prepare(
         [
-          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms",
+          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms, gmail_email, gmail_auth_json",
           "FROM users",
           "WHERE lower(email) = lower(?)"
         ].join(" ")
@@ -86,7 +92,7 @@ export class UserRepository {
     const row = this.db
       .prepare(
         [
-          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms",
+          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms, gmail_email, gmail_auth_json",
           "FROM users",
           "WHERE instr(lower(ifnull(roles, '')), 'admin') > 0",
           "ORDER BY created_at ASC",
@@ -150,10 +156,36 @@ export class UserRepository {
   findBySessionToken(token: string): UserRecord | null {
     const row = this.db
       .prepare(
-        "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms FROM users WHERE session_token = ?"
+        "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms, gmail_email, gmail_auth_json FROM users WHERE session_token = ?"
       )
       .get(token) as UserRow | undefined
     if (!row) return null
     return mapRow(row)
+  }
+
+  saveGmailAuth(userId: string, gmailEmail: string, encryptedJson: string): void {
+    this.db
+      .prepare(
+        "UPDATE users SET gmail_email = ?, gmail_auth_json = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(gmailEmail, encryptedJson, userId)
+  }
+
+  clearGmailAuthByEmail(gmailEmail: string): void {
+    this.db
+      .prepare(
+        "UPDATE users SET gmail_email = NULL, gmail_auth_json = NULL, updated_at = datetime('now') WHERE gmail_email = ?"
+      )
+      .run(gmailEmail)
+  }
+
+  findUsersWithGmailAuth(): UserRecord[] {
+    const rows = this.db
+      .prepare(
+        "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms, gmail_email, gmail_auth_json FROM users WHERE gmail_auth_json IS NOT NULL"
+      )
+      .all() as UserRow[]
+
+    return rows.map(mapRow)
   }
 }

@@ -27,7 +27,10 @@ const EnvSchema = z.object({
   LOG_ROTATE_RETENTION_DAYS: z.coerce.number().positive().int().default(7),
 
   // Machine-to-machine auth
-  CRON_API_KEY: z.string().optional()
+  CRON_API_KEY: z.string().optional(),
+
+  // Encryption key for Gmail token storage (32 bytes base64 or hex recommended)
+  GMAIL_TOKEN_KEY: z.string().optional()
 })
 
 export type Env = z.infer<typeof EnvSchema>
