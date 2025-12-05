@@ -10,13 +10,14 @@ import {
   jobSourceSchema,
   jobSourceStatsSchema,
   contentItemSchema,
+  configEntrySchema,
 } from "@shared/types"
 
 const API_BASE = process.env.JF_E2E_API_BASE || "http://127.0.0.1:5080/api"
 const AUTH_TOKEN = process.env.JF_E2E_AUTH_TOKEN || "dev-admin-token"
 
 test.describe("API contract (shared schemas)", () => {
-  test("API contract :: listings/matches/queue/companies/sources/content conform to shared schemas", async ({ request }) => {
+  test("API contract :: listings/matches/queue/companies/sources/content/config conform to shared schemas", async ({ request }) => {
     // Seed one listing so listing schema validation hits real data
     const unique = `e2e-contract-${Date.now()}`
     const createRes = await request.post(`${API_BASE}/job-listings`, {
@@ -123,5 +124,14 @@ test.describe("API contract (shared schemas)", () => {
     const contentBody = await contentRes.json()
     const contentParse = contentItemSchema.array().safeParse(contentBody.data.items)
     expect(contentParse.success).toBe(true)
+
+    // Config: list returns config entries matching shared schema
+    const configRes = await request.get(`${API_BASE}/config`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(configRes.ok()).toBeTruthy()
+    const configBody = await configRes.json()
+    const configParse = configEntrySchema.array().safeParse(configBody.data.configs)
+    expect(configParse.success).toBe(true)
   })
 })
