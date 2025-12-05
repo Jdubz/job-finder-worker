@@ -236,7 +236,7 @@ class TestAgentManagerBudgetEnforcement:
         mock_get_provider.return_value = lambda model: mock_provider
 
         config_loader = MagicMock()
-        # Agent usage + cost (0.5 default) would exceed budget
+        # Agent usage + cost (0.5 for gemini-2.0-flash) would exceed budget
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={"gemini.cli": make_agent_config(daily_budget=50, daily_usage=50)},
             task_fallbacks={"extraction": ["gemini.cli"]},
