@@ -127,18 +127,21 @@ class AgentManager:
                 logger.debug(f"Skipping disabled agent {agent_id}: {reason}")
                 continue
 
-            # Budget enforcement - check before calling
+            # Determine model first so we can calculate cost for budget check
+            model = model_override or agent_config.get("defaultModel")
+            cost = model_rates.get(model, 1.0)
+
+            # Budget enforcement - check before calling (using model cost)
             daily_usage = agent_config.get("dailyUsage", 0)
             daily_budget = agent_config.get("dailyBudget", float("inf"))
-            if daily_usage >= daily_budget:
+            if daily_usage + cost > daily_budget:
                 logger.info(
-                    f"Agent {agent_id} over budget ({daily_usage}/{daily_budget}), disabling"
+                    f"Agent {agent_id} over budget ({daily_usage}+{cost}/{daily_budget}), disabling"
                 )
                 self._disable_agent(agent_id, "quota_exhausted: daily budget reached")
                 continue
 
             # Try to call the agent
-            model = model_override or agent_config.get("defaultModel")
             try:
                 result = self._call_agent(
                     agent_id, agent_config, prompt, model, max_tokens, temperature

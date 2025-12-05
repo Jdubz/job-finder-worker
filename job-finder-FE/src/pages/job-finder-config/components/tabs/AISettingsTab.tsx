@@ -224,8 +224,14 @@ export function AISettingsTab({
                           <Label className="text-xs">Budget:</Label>
                           <Input
                             type="number"
+                            min="1"
                             value={config.dailyBudget}
-                            onChange={(e) => updateAgent(agentId as AgentId, { dailyBudget: parseInt(e.target.value) || 0 })}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value, 10)
+                              if (value > 0) {
+                                updateAgent(agentId as AgentId, { dailyBudget: value })
+                              }
+                            }}
                             className="w-20 h-7 text-sm"
                           />
                         </div>

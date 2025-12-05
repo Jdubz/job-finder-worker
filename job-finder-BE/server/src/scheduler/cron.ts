@@ -217,7 +217,7 @@ export async function triggerAgentReset() {
       try {
         const workerEntry = repo.get<WorkerSettings>('worker-settings')
         const runtime = workerEntry?.payload?.runtime
-        if (runtime?.stopReason?.includes('No agents available')) {
+        if (runtime?.stopReason?.startsWith('No agents available')) {
           // Clear the stopReason to allow queue restart
           runtime.stopReason = null
           repo.upsert('worker-settings', workerEntry!.payload, { updatedBy: 'cron-agent-reset' })
