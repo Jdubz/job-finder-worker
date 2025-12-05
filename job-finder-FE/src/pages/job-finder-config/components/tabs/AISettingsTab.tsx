@@ -1,8 +1,10 @@
+import { useState, useEffect } from "react"
 import { TabsContent } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Select,
   SelectContent,
@@ -11,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { TabCard } from "../shared"
+import { X, RotateCcw, AlertCircle } from "lucide-react"
 import type {
   AISettings,
   AIProviderType,
@@ -21,6 +24,42 @@ import type {
   AgentConfig,
   AgentTaskType,
 } from "@shared/types"
+
+/** Budget input with local state to allow typing without immediate validation */
+function BudgetInput({
+  value,
+  onChange,
+}: {
+  value: number
+  onChange: (value: number) => void
+}) {
+  const [localValue, setLocalValue] = useState(String(value))
+
+  useEffect(() => {
+    setLocalValue(String(value))
+  }, [value])
+
+  const handleBlur = () => {
+    const parsed = parseInt(localValue, 10)
+    if (!isNaN(parsed) && parsed >= 1) {
+      onChange(parsed)
+    } else {
+      // Reset to last valid value if invalid (includes negative numbers)
+      setLocalValue(String(value))
+    }
+  }
+
+  return (
+    <Input
+      type="number"
+      min="1"
+      value={localValue}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onBlur={handleBlur}
+      className="w-20 h-8 text-sm"
+    />
+  )
+}
 
 type AISettingsTabProps = {
   isSaving: boolean
@@ -197,49 +236,84 @@ export function AISettingsTab({
               {Object.entries(agents).map(([agentId, config]) => {
                 if (!config) return null
                 const reasonBadge = getReasonBadge(config.reason)
+                const [provider, iface] = agentId.split(".") as [AIProviderType, AIInterfaceType]
+                const availableModels = resolveInterface(provider, iface)?.models ?? []
+                const hasReason = !!config.reason
                 return (
-                  <div key={agentId} className="flex items-center justify-between border rounded-md p-4">
-                    <div className="flex items-center gap-4">
-                      <Switch
-                        checked={config.enabled}
-                        onCheckedChange={(enabled) => updateAgent(agentId as AgentId, { enabled })}
-                        disabled={!!config.reason?.startsWith("error:")}
-                      />
-                      <div>
+                  <div key={agentId} className="border rounded-md p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <Switch
+                          checked={config.enabled}
+                          onCheckedChange={(enabled) =>
+                            updateAgent(agentId as AgentId, {
+                              enabled,
+                              // Only clear reason when enabling a disabled agent
+                              ...(enabled && config.reason ? { reason: null } : {}),
+                            })
+                          }
+                        />
                         <div className="font-medium">{formatAgentId(agentId as AgentId)}</div>
-                        <div className="text-sm text-muted-foreground">
-                          Model: {config.defaultModel || "Not set"}
-                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {reasonBadge && (
+                          <Badge variant={reasonBadge.variant}>{reasonBadge.label}</Badge>
+                        )}
+                        {hasReason && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => updateAgent(agentId as AgentId, { enabled: true, reason: null })}
+                            title="Clear status and re-enable"
+                          >
+                            <AlertCircle className="h-4 w-4 mr-1" />
+                            Clear
+                          </Button>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      {reasonBadge && (
-                        <Badge variant={reasonBadge.variant}>{reasonBadge.label}</Badge>
-                      )}
-                      <div className="text-right">
-                        <div className="text-sm">
+                    <div className="flex items-center gap-6 pl-12">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm">Model:</Label>
+                        <Select
+                          value={availableModels.includes(config.defaultModel) ? config.defaultModel : ""}
+                          onValueChange={(model) => updateAgent(agentId as AgentId, { defaultModel: model })}
+                        >
+                          <SelectTrigger className={`w-48 h-8 ${!availableModels.includes(config.defaultModel) && config.defaultModel ? "border-destructive" : ""}`}>
+                            <SelectValue placeholder={config.defaultModel && !availableModels.includes(config.defaultModel) ? `${config.defaultModel} (invalid)` : "Select model..."} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableModels.map((model) => (
+                              <SelectItem key={model} value={model}>
+                                {model}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm">Budget:</Label>
+                        <BudgetInput
+                          value={config.dailyBudget}
+                          onChange={(value) => updateAgent(agentId as AgentId, { dailyBudget: value })}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">
                           Usage: {config.dailyUsage} / {config.dailyBudget}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Label className="text-xs">Budget:</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            value={config.dailyBudget}
-                            onChange={(e) => {
-                              const input = e.target.value
-                              if (input === "") {
-                                updateAgent(agentId as AgentId, { dailyBudget: 1 })
-                              } else {
-                                const value = Number(input)
-                                if (Number.isInteger(value) && value > 0) {
-                                  updateAgent(agentId as AgentId, { dailyBudget: value })
-                                }
-                              }
-                            }}
-                            className="w-20 h-7 text-sm"
-                          />
-                        </div>
+                        </span>
+                        {config.dailyUsage > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => updateAgent(agentId as AgentId, { dailyUsage: 0 })}
+                            title="Reset daily usage"
+                            aria-label="Reset daily usage"
+                            className="h-7 px-2"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -268,8 +342,22 @@ export function AISettingsTab({
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {fallbacks.map((agentId, index) => (
-                        <Badge key={`${agentId}-${index}`} variant="outline" className="text-sm">
+                        <Badge key={`${agentId}-${index}`} variant="outline" className="text-sm flex items-center gap-1">
                           {index + 1}. {formatAgentId(agentId)}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const updated = fallbacks.filter((_, i) => i !== index)
+                              updateTaskFallback(taskType, updated)
+                            }}
+                            className="ml-1 h-4 w-4 p-0 hover:text-destructive"
+                            title="Remove from chain"
+                            aria-label="Remove from chain"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
                         </Badge>
                       ))}
                       {fallbacks.length === 0 && (
