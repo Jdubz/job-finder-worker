@@ -10,6 +10,9 @@ interface PromptVariables {
   jobTitle: string
   companyName: string
   jobDescription: string
+  jobDescriptionUrl?: string
+  companyWebsite?: string
+  jobLocation?: string
   userExperience: string
   userSkills: string
   additionalInstructions: string
@@ -17,6 +20,7 @@ interface PromptVariables {
   matchedSkills?: string
   keyStrengths?: string
   atsKeywords?: string
+  candidateLocation?: string
 }
 
 function replaceVariables(template: string, variables: PromptVariables): string {
@@ -32,6 +36,10 @@ function replaceVariables(template: string, variables: PromptVariables): string 
     .replace(/\{\{matchedSkills\}\}/g, variables.matchedSkills || '')
     .replace(/\{\{keyStrengths\}\}/g, variables.keyStrengths || '')
     .replace(/\{\{atsKeywords\}\}/g, variables.atsKeywords || '')
+    .replace(/\{\{jobLocation\}\}/g, variables.jobLocation || '')
+    .replace(/\{\{companyWebsite\}\}/g, variables.companyWebsite || '')
+    .replace(/\{\{jobDescriptionUrl\}\}/g, variables.jobDescriptionUrl || '')
+    .replace(/\{\{candidateLocation\}\}/g, variables.candidateLocation || '')
 }
 
 /** Build a lookup of children by parent ID */
@@ -134,6 +142,10 @@ ${header}
 Candidate: ${variables.candidateName}
 Target Role: ${variables.jobTitle}
 Company: ${variables.companyName}
+Company Website: ${variables.companyWebsite || 'None provided'}
+Job Location: ${variables.jobLocation || 'None provided'}
+Job Post URL: ${variables.jobDescriptionUrl || 'None provided'}
+Candidate Location: ${variables.candidateLocation || 'Unknown'}
 
 Job Description:
 ${variables.jobDescription}
@@ -258,6 +270,10 @@ export function buildResumePrompt(
     jobTitle: payload.job.role,
     companyName: payload.job.company,
     jobDescription: payload.job.jobDescriptionText || 'No job description provided',
+    jobDescriptionUrl: payload.job.jobDescriptionUrl,
+    companyWebsite: payload.job.companyWebsite,
+    jobLocation: payload.job.location || jobMatch?.listing?.location || undefined,
+    candidateLocation: personalInfo.location || '',
     userExperience: content.workFormatted || 'No experience data available',
     userSkills: content.skillsFromCategories || content.allSkills || 'No skills data available',
     additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
@@ -312,6 +328,10 @@ export function buildCoverLetterPrompt(
     jobTitle: payload.job.role,
     companyName: payload.job.company,
     jobDescription: payload.job.jobDescriptionText || 'No job description provided',
+    jobDescriptionUrl: payload.job.jobDescriptionUrl,
+    companyWebsite: payload.job.companyWebsite,
+    jobLocation: payload.job.location || jobMatch?.listing?.location || undefined,
+    candidateLocation: personalInfo.location || '',
     userExperience: content.workFormatted || 'No experience data available',
     userSkills: content.allSkills || 'No skills data available',
     additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
