@@ -58,6 +58,29 @@ Add Gmail ingestion to capture job listings delivered by email and feed them int
 - New admin route: `POST /cron/trigger/gmail-ingest` (mirrors existing scrape trigger).
 - No public API surface change; queue items already exposed with source metadata.
 
+## Admin Configuration UI
+- Add an **admin-only Gmail tab** in the existing config area (job-finder-config page) to surface:
+  - Status (connected/not connected), last sync time, and label/query preview.
+  - Editable settings: label/query, max messages, allowed senders, remoteSourceDefault, AI fallback toggle.
+  - “Authorize Gmail” button that kicks off the OAuth consent flow using the existing OAuth client; on success, it stores `refresh_token` (and `access_token` if present) plus token expiry in the backend config store.
+- Backend adds a new `job_finder_config` record, e.g., key `gmail-ingest`, holding:
+  ```json
+  {
+    "enabled": true,
+    "label": "job-alerts",
+    "query": "label:job-alerts newer_than:2d",
+    "maxMessages": 100,
+    "allowedSenders": ["alerts@example.com"],
+    "remoteSourceDefault": false,
+    "aiFallbackEnabled": false,
+    "oauth": {
+      "refreshToken": "<stored securely>",
+      "tokenExpiry": "<iso8601>"
+    }
+  }
+  ```
+- Authorization flow: FE opens OAuth window → receives auth code → POSTs to a new admin endpoint (e.g., `POST /admin/gmail/oauth/callback`) to exchange code for tokens and persist them into the `gmail-ingest` config record. The poller reads tokens from that record (or secure secret store) to refresh access tokens headlessly.
+
 ## Deprecations / Removals
 - Earlier idea to run Gmail ingest in the worker: **superseded** by this API-side plan; no worker endpoints to be added. Avoid adding any Gmail logic to `job-finder-worker`.
 - No other components marked for removal.
