@@ -159,10 +159,6 @@ class TestCodexConfigCheck:
             patch("builtins.open", side_effect=FileNotFoundError("No such file")),
             patch.dict("os.environ", {}, clear=True),
         ):
-            import os
-
-            os.environ.pop("OPENAI_API_KEY", None)
-
             result = self._check_codex_config()
 
             assert result["healthy"] is False
@@ -178,10 +174,6 @@ class TestCodexConfigCheck:
             raise FileNotFoundError(f"No such file: {path}")
 
         with patch("builtins.open", mock_open_files), patch.dict("os.environ", {}, clear=True):
-            import os
-
-            os.environ.pop("OPENAI_API_KEY", None)
-
             result = self._check_codex_config()
 
             assert result["healthy"] is False
@@ -327,11 +319,6 @@ class TestGeminiConfigCheck:
             raise FileNotFoundError(f"No such file: {path}")
 
         with patch("builtins.open", mock_open_files), patch.dict("os.environ", {}, clear=True):
-            import os
-
-            os.environ.pop("GEMINI_API_KEY", None)
-            os.environ.pop("GOOGLE_API_KEY", None)
-
             result = self._check_gemini_config()
 
             assert result["healthy"] is False

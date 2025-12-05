@@ -8,6 +8,7 @@ This worker provides:
 - Process status and statistics
 - Same job processing logic as the daemon worker
 """
+import base64
 import json
 import os
 import signal
@@ -76,8 +77,6 @@ worker_state = {
     "iteration": 0,
     "current_item_id": None,
 }
-
-import base64
 
 
 def _extract_email_from_jwt(id_token: str) -> Optional[str]:
@@ -180,66 +179,12 @@ def _check_gemini_config() -> Dict[str, Any]:
     We verify that auth was configured and credentials exist.
     """
     gemini_dir = Path.home() / ".gemini"
+    settings_path = gemini_dir / "settings.json"
 
+    # First, try to read and parse settings.json
     try:
-        # Check settings.json for auth type
-        settings_path = gemini_dir / "settings.json"
         with open(settings_path, "r", encoding="utf-8") as f:
             settings = json.load(f)
-
-        auth_type = settings.get("security", {}).get("auth", {}).get("selectedType")
-        if not auth_type:
-            return {
-                "healthy": False,
-                "message": "Gemini CLI not configured: no auth type selected",
-            }
-
-        # For OAuth auth types, verify credentials file exists with refresh token
-        if auth_type.startswith("oauth"):
-            creds_path = gemini_dir / "oauth_creds.json"
-            with open(creds_path, "r", encoding="utf-8") as f:
-                creds = json.load(f)
-
-            if not creds.get("refresh_token"):
-                return {
-                    "healthy": False,
-                    "message": "Gemini OAuth credentials missing refresh token",
-                }
-
-            # Check for active account
-            accounts_path = gemini_dir / "google_accounts.json"
-            try:
-                with open(accounts_path, "r", encoding="utf-8") as f:
-                    accounts = json.load(f)
-                if accounts.get("active"):
-                    return {
-                        "healthy": True,
-                        "message": f"Authenticated as {accounts['active']}",
-                    }
-            except (FileNotFoundError, json.JSONDecodeError):
-                pass  # Account file is optional
-
-            return {
-                "healthy": True,
-                "message": "OAuth credentials configured",
-            }
-
-        # For API key auth, check environment variables
-        if auth_type == "api-key":
-            has_key = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
-            return {
-                "healthy": has_key,
-                "message": (
-                    "API key configured" if has_key else "Gemini API key not found in environment"
-                ),
-            }
-
-        # For other auth types (like gcloud), assume configured if settings exist
-        return {
-            "healthy": True,
-            "message": f"Auth type '{auth_type}' configured",
-        }
-
     except FileNotFoundError:
         return {
             "healthy": False,
@@ -248,13 +193,82 @@ def _check_gemini_config() -> Dict[str, Any]:
     except json.JSONDecodeError as exc:
         return {
             "healthy": False,
-            "message": f"Gemini config file invalid: {exc}",
+            "message": f"Gemini settings file invalid: {exc}",
         }
     except Exception as exc:  # pragma: no cover - defensive
         return {
             "healthy": False,
-            "message": f"Failed to check Gemini config: {exc}",
+            "message": f"Failed to read Gemini settings: {exc}",
         }
+
+    auth_type = settings.get("security", {}).get("auth", {}).get("selectedType")
+    if not auth_type:
+        return {
+            "healthy": False,
+            "message": "Gemini CLI not configured: no auth type selected",
+        }
+
+    # For OAuth auth types, verify credentials file exists with refresh token
+    if auth_type.startswith("oauth"):
+        creds_path = gemini_dir / "oauth_creds.json"
+        try:
+            with open(creds_path, "r", encoding="utf-8") as f:
+                creds = json.load(f)
+        except FileNotFoundError:
+            return {
+                "healthy": False,
+                "message": "Gemini OAuth credentials file not found",
+            }
+        except json.JSONDecodeError as exc:
+            return {
+                "healthy": False,
+                "message": f"Gemini OAuth credentials file invalid: {exc}",
+            }
+        except Exception as exc:  # pragma: no cover - defensive
+            return {
+                "healthy": False,
+                "message": f"Failed to read Gemini OAuth credentials: {exc}",
+            }
+
+        if not creds.get("refresh_token"):
+            return {
+                "healthy": False,
+                "message": "Gemini OAuth credentials missing refresh token",
+            }
+
+        # Check for active account
+        accounts_path = gemini_dir / "google_accounts.json"
+        try:
+            with open(accounts_path, "r", encoding="utf-8") as f:
+                accounts = json.load(f)
+            if accounts.get("active"):
+                return {
+                    "healthy": True,
+                    "message": f"Authenticated as {accounts['active']}",
+                }
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass  # Account file is optional
+
+        return {
+            "healthy": True,
+            "message": "OAuth credentials configured",
+        }
+
+    # For API key auth, check environment variables
+    if auth_type == "api-key":
+        has_key = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+        return {
+            "healthy": has_key,
+            "message": (
+                "API key configured" if has_key else "Gemini API key not found in environment"
+            ),
+        }
+
+    # For other auth types (like gcloud), assume configured if settings exist
+    return {
+        "healthy": True,
+        "message": f"Auth type '{auth_type}' configured",
+    }
 
 
 def check_cli_health() -> Dict[str, Dict[str, Any]]:

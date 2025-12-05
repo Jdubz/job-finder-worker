@@ -55,9 +55,9 @@ describe('cli-health.service', () => {
 
   describe('codex (config-based)', () => {
     it('should return healthy when OAuth credentials are configured with email', async () => {
-      // Create a mock JWT with email in payload
+      // Create a mock JWT with email in payload (JWTs use base64url encoding)
       const payload = { email: 'user@example.com', exp: Date.now() / 1000 + 3600 }
-      const mockIdToken = `header.${Buffer.from(JSON.stringify(payload)).toString('base64')}.signature`
+      const mockIdToken = `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`
 
       mockedReadFile.mockImplementation((path: string) => {
         if (path.includes('.codex/auth.json')) {
