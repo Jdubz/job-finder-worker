@@ -804,23 +804,16 @@ class JobProcessor(BaseProcessor):
 
     def _execute_save_match(self, ctx: PipelineContext) -> str:
         """Execute save match stage."""
-        # Build merged analysis result
-        merged_analysis = {
-            "scoringResult": ctx.score_result.to_dict() if ctx.score_result else {},
-            "detailedAnalysis": ctx.match_result.to_dict() if ctx.match_result else {},
-        }
-
-        # Update listing to matched status
+        # Update listing to matched status (analysis data goes ONLY to job_matches)
         self._update_listing_status(
             ctx.listing_id,
             "matched",
             filter_result={
                 "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
             },
-            analysis_result=merged_analysis,
         )
 
-        # Save to job_matches table
+        # Save to job_matches table (single source of truth for analysis)
         doc_id = self.job_storage.save_job_match(
             job_listing_id=ctx.listing_id,
             match_result=ctx.match_result,
@@ -849,21 +842,14 @@ class JobProcessor(BaseProcessor):
         job_data = ctx.job_data or {}
         logger.info(f"[PIPELINE] SKIPPED: '{job_data.get('title')}' - {reason}")
 
-        # Build analysis result
-        analysis_result: Dict[str, Any] = {}
-        if ctx.score_result:
-            analysis_result["scoringResult"] = ctx.score_result.to_dict()
-        if ctx.match_result:
-            analysis_result["detailedAnalysis"] = ctx.match_result.to_dict()
-
-        # Update listing
+        # Update listing (analysis data not stored for skipped jobs)
         self._update_listing_status(
             ctx.listing_id,
             "skipped",
             filter_result={
                 "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
+                "skip_reason": reason,
             },
-            analysis_result=analysis_result,
         )
 
         self.queue_manager.update_status(
@@ -878,22 +864,17 @@ class JobProcessor(BaseProcessor):
         job_data = ctx.job_data or {}
         logger.error(f"[PIPELINE] FAILED: '{job_data.get('title', ctx.item.url)}' - {error}")
 
-        # Build whatever data we have
-        filter_data: Dict[str, Any] = {}
+        # Build filter data with error info
+        filter_data: Dict[str, Any] = {"error": error}
         if ctx.extraction:
             filter_data["extraction"] = ctx.extraction.to_dict()
 
-        analysis_data: Dict[str, Any] = {"error": error}
-        if ctx.score_result:
-            analysis_data["scoringResult"] = ctx.score_result.to_dict()
-
-        # Update listing if we have one
+        # Update listing if we have one (analysis data not stored for failed jobs)
         if ctx.listing_id:
             self._update_listing_status(
                 ctx.listing_id,
                 "skipped",
-                filter_result=filter_data if filter_data else None,
-                analysis_result=analysis_data,
+                filter_result=filter_data,
             )
 
         self.queue_manager.update_status(

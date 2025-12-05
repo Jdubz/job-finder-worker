@@ -15,8 +15,8 @@ import type { ScoreBreakdown } from "./config.types"
 /**
  * Full analysis result from AI job matching.
  *
- * This is stored in job_listings.analysis_result as JSON and contains
- * all the details about why a job did or didn't match.
+ * This is stored in job_matches table (NOT job_listings).
+ * Contains all the details about why a job did or didn't match.
  */
 export interface JobAnalysisResult {
   /** Job title being analyzed */
@@ -204,10 +204,7 @@ export interface JobListingRecord {
   /** Filter/extraction result details */
   filterResult?: Record<string, unknown> | null
 
-  /** Full analysis result with score breakdown, matched/missing skills, and reasons */
-  analysisResult?: JobAnalysisResult | null
-
-  /** AI match score (0-100), extracted from analysisResult for quick filtering */
+  /** AI match score (0-100) from job_matches for quick filtering */
   matchScore?: number | null
 
   /** When record was created */

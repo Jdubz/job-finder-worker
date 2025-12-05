@@ -47,7 +47,6 @@ class JobListingStorage:
         posted_date: Optional[str] = None,
         status: str = "pending",
         filter_result: Optional[Dict[str, Any]] = None,
-        analysis_result: Optional[Dict[str, Any]] = None,
         listing_id: Optional[str] = None,
     ) -> str:
         """
@@ -55,6 +54,8 @@ class JobListingStorage:
 
         Returns the primary key of the created record.
         Raises StorageError if URL already exists (use get_or_create_listing instead).
+
+        Note: Analysis data is stored in job_matches, not job_listings.
         """
         normalized_url = normalize_url(url) if url else ""
         listing_id = listing_id or str(uuid4())
@@ -67,8 +68,8 @@ class JobListingStorage:
                     INSERT INTO job_listings (
                         id, url, source_id, company_id, title, company_name,
                         location, salary_range, description, posted_date,
-                        status, filter_result, analysis_result, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        status, filter_result, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         listing_id,
@@ -83,7 +84,6 @@ class JobListingStorage:
                         posted_date,
                         status,
                         _serialize_json(filter_result),
-                        _serialize_json(analysis_result),
                         now,
                         now,
                     ),
@@ -115,7 +115,6 @@ class JobListingStorage:
         posted_date: Optional[str] = None,
         status: str = "pending",
         filter_result: Optional[Dict[str, Any]] = None,
-        analysis_result: Optional[Dict[str, Any]] = None,
     ) -> tuple[str, bool]:
         """
         Get existing listing by URL or create a new one.
@@ -148,7 +147,6 @@ class JobListingStorage:
             posted_date=posted_date,
             status=status,
             filter_result=filter_result,
-            analysis_result=analysis_result,
         )
         return listing_id, True
 
@@ -208,7 +206,6 @@ class JobListingStorage:
         listing_id: str,
         status: str,
         filter_result: Optional[Dict[str, Any]] = None,
-        analysis_result: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Update job listing status.
@@ -218,8 +215,8 @@ class JobListingStorage:
         Note: There is no "filtered" status - jobs that fail prefilter are never
         created as listings. Filtering happens at intake before listing creation.
 
-        When analysis_result is provided, also extracts and saves match_score
-        directly for efficient querying/sorting.
+        Analysis data (scoringResult, detailedAnalysis) is stored in job_matches,
+        not in job_listings.
         """
         now = utcnow_iso()
 
@@ -230,20 +227,6 @@ class JobListingStorage:
             if filter_result is not None:
                 sets.insert(1, "filter_result = ?")
                 params.insert(1, _serialize_json(filter_result))
-
-            if analysis_result is not None:
-                sets.insert(1, "analysis_result = ?")
-                params.insert(1, _serialize_json(analysis_result))
-
-                # Extract match_score for direct column storage
-                # Only use scoringResult.finalScore - the deterministic score
-                match_score = None
-                scoring = analysis_result.get("scoringResult")
-                if scoring and isinstance(scoring, dict):
-                    match_score = scoring.get("finalScore")
-                if match_score is not None:
-                    sets.insert(1, "match_score = ?")
-                    params.insert(1, float(match_score))
 
             set_clause = ", ".join(sets)
             conn.execute(
@@ -265,20 +248,6 @@ class JobListingStorage:
                 WHERE id = ?
                 """,
                 (company_id, now, listing_id),
-            )
-            return conn.total_changes > 0
-
-    def update_analysis(self, listing_id: str, analysis_result: Dict[str, Any]) -> bool:
-        """Persist AI analysis breakdown (JSON) for a job listing."""
-        now = utcnow_iso()
-        with sqlite_connection(self.db_path) as conn:
-            conn.execute(
-                """
-                UPDATE job_listings
-                SET analysis_result = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (_serialize_json(analysis_result), now, listing_id),
             )
             return conn.total_changes > 0
 
