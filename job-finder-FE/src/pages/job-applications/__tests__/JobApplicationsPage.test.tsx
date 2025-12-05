@@ -26,10 +26,7 @@ vi.mock("@/contexts/EntityModalContext", () => ({
 describe("JobApplicationsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.subscribeToMatches.mockImplementation((cb, _filters) => {
-      cb([])
-      return () => {}
-    })
+    mocks.subscribeToMatches.mockImplementation((_cb, _filters) => () => {})
     mocks.getStats.mockResolvedValue({ total: 0, highScore: 0, mediumScore: 0, lowScore: 0, averageScore: 0 })
   })
 
