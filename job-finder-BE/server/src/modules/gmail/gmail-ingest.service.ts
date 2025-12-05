@@ -128,8 +128,9 @@ export class GmailIngestService {
     let jobsFound = 0
     let jobsQueued = 0
 
-    for (const msg of messages.items) {
-      const full = await this.getMessage(accessToken, msg.id)
+    const fullMessages = await this.fetchFullMessages(accessToken, messages.items)
+
+    for (const full of fullMessages) {
       const sender = this.getHeader(full, "From")
       if (settings?.allowedSenders?.length) {
         const allowed = settings.allowedSenders.some((s) => sender?.toLowerCase().includes(s.toLowerCase()))
@@ -183,7 +184,7 @@ export class GmailIngestService {
 
   private isDuplicate(url: string, messageId: string, dedupKey?: string): boolean {
     const key = dedupKey ?? `${messageId}::${url}`
-    const items = this.queueRepo.list({ limit: 100 }) // small recent window
+    const items = this.queueRepo.list({ limit: 500 }) // larger window to reduce misses
     return items.some((item) => {
       const meta = (item.metadata || {}) as any
       return item.url === url || meta.gmailMessageId === messageId || meta.gmailDedupKey === key
@@ -234,6 +235,17 @@ export class GmailIngestService {
     }
     const json = (await res.json()) as { messages?: Array<{ id: string; threadId: string }>; resultSizeEstimate?: number }
     return { items: json.messages ?? [], latestHistoryId: undefined }
+  }
+
+  private async fetchFullMessages(accessToken: string, items: Array<{ id: string; threadId: string }>): Promise<GmailMessage[]> {
+    const messages: GmailMessage[] = []
+    const concurrency = 8
+    for (let i = 0; i < items.length; i += concurrency) {
+      const batch = items.slice(i, i + concurrency)
+      const resolved = await Promise.all(batch.map((m) => this.getMessage(accessToken, m.id)))
+      messages.push(...resolved)
+    }
+    return messages
   }
 
   private async listHistory(

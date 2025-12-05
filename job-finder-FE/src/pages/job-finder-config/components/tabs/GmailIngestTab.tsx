@@ -34,7 +34,7 @@ type ConfigPayload = {
 
 export function GmailIngestTab() {
   const { toast } = useToast()
-  const apiClient = useMemo(() => new BaseApiClient(() => API_CONFIG.baseUrl), [])
+  const apiClient = new BaseApiClient(() => API_CONFIG.baseUrl)
   const [loading, setLoading] = useState(false)
   const [revoking, setRevoking] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<GmailAccount[]>([])

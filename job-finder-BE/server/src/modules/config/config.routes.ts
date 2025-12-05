@@ -24,10 +24,11 @@ import {
 } from '@shared/types'
 import { ConfigRepository } from './config.repository'
 import { asyncHandler } from '../../utils/async-handler'
-  import { success, failure } from '../../utils/api-response'
-  import { env } from '../../config/env'
-  import { logger } from '../../logger'
+import { success, failure } from '../../utils/api-response'
+import { env } from '../../config/env'
+import { logger } from '../../logger'
 import type { GmailIngestConfig } from '../gmail/gmail.types'
+import { isGmailIngestConfig } from '../gmail/gmail.types'
 
 const updateSchema = z.object({
   payload: z.record(z.unknown())
@@ -138,7 +139,7 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
     case 'cron-config':
       return isCronConfig(payload)
     case 'gmail-ingest':
-      return typeof (payload as GmailIngestConfig).enabled === 'boolean'
+      return isGmailIngestConfig(payload)
     case 'personal-info':
       return isPersonalInfo(payload)
     default:

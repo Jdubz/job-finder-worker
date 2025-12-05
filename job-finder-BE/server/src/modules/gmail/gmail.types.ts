@@ -9,3 +9,9 @@ export type GmailIngestConfig = {
   aiFallbackEnabled?: boolean
   defaultLabelOwner?: string | null
 }
+
+export function isGmailIngestConfig(value: unknown): value is GmailIngestConfig {
+  if (!value || typeof value !== 'object') return false
+  const v = value as GmailIngestConfig
+  return typeof v.enabled === 'boolean'
+}

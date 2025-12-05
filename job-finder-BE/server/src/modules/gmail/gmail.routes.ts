@@ -8,6 +8,7 @@ import { exchangeAuthCode } from "./gmail-oauth"
 import { GmailIngestService } from "./gmail-ingest.service"
 import { env } from "../../config/env"
 import { asyncHandler } from "../../utils/async-handler"
+import type { AuthenticatedRequest } from "../../middleware/firebase-auth"
 
 const service = new GmailAuthService()
 const ingest = new GmailIngestService()
@@ -66,6 +67,10 @@ export function buildGmailRouter() {
     }
 
     const { code, redirectUri, userEmail, gmailEmail, clientId, clientSecret } = parsed.data
+    const authed = (req as AuthenticatedRequest).user
+    if (!authed || authed.email.toLowerCase() !== userEmail.toLowerCase()) {
+      throw new ApiHttpError(ApiErrorCode.FORBIDDEN, "userEmail must match authenticated user", { status: 403 })
+    }
     const tokenResponse = await exchangeAuthCode({ code, redirectUri, clientId, clientSecret })
 
     if (!tokenResponse.refresh_token) {
@@ -105,6 +110,10 @@ export function buildGmailRouter() {
     }
 
     const { userEmail, gmailEmail, tokens } = parsed.data
+    const authed = (req as AuthenticatedRequest).user
+    if (!authed || authed.email.toLowerCase() !== userEmail.toLowerCase()) {
+      throw new ApiHttpError(ApiErrorCode.FORBIDDEN, "userEmail must match authenticated user", { status: 403 })
+    }
     const result = service.upsertUserToken(userEmail, gmailEmail, tokens as GmailTokenPayload)
     res.json(success({ stored: true, ...result }))
   })

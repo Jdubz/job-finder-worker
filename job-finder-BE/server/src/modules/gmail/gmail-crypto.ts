@@ -13,19 +13,12 @@ function getKey(): Buffer {
   if (!raw) {
     throw new Error("GMAIL_TOKEN_KEY is required for Gmail token encryption")
   }
-  const candidates = [
-    () => Buffer.from(raw, "base64"),
-    () => Buffer.from(raw, "hex"),
-    () => Buffer.from(raw, "utf8")
-  ]
-  for (const fn of candidates) {
-    const key = fn()
-    if (key.length === 32) {
-      cachedKey = key
-      return key
-    }
+  const key = Buffer.from(raw, "base64")
+  if (key.length !== 32) {
+    throw new Error("GMAIL_TOKEN_KEY must be a base64-encoded 32-byte key (AES-256)")
   }
-  throw new Error("GMAIL_TOKEN_KEY must decode to 32 bytes (AES-256)")
+  cachedKey = key
+  return key
 }
 
 type EncryptedPayload = {
@@ -63,9 +56,6 @@ export function encryptJson(value: unknown): string {
 export function decryptJson<T = unknown>(payload: string): T {
   const KEY = getKey()
   const parsed = EncryptedPayloadSchema.parse(JSON.parse(payload)) as EncryptedPayload
-  if (!parsed || parsed.v !== 1) {
-    throw new Error("Unsupported token payload version")
-  }
 
   const iv = Buffer.from(parsed.iv, "base64")
   const tag = Buffer.from(parsed.tag, "base64")

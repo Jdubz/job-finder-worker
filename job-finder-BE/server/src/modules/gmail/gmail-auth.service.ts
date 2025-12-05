@@ -78,9 +78,12 @@ export class GmailAuthService {
   }
 
   saveHistoryId(gmailEmail: string, historyId: string) {
-    const users = this.users.findUsersWithGmailAuth().filter((u) => u.gmailEmail === gmailEmail)
-    if (!users.length) return
-    const first = users[0]
+    const matches = this.users.findUsersWithGmailAuth().filter((u) => u.gmailEmail === gmailEmail)
+    if (!matches.length) return
+    if (matches.length > 1) {
+      logger.warn({ gmailEmail, userIds: matches.map((u) => u.id) }, "Multiple users share gmailEmail; enforcing first")
+    }
+    const first = matches[0]
     if (!first.gmailAuthJson) return
     try {
       const payload = decryptJson<GmailTokenPayload>(first.gmailAuthJson)
