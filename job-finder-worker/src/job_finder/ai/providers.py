@@ -18,6 +18,20 @@ from job_finder.exceptions import AIProviderError, QuotaExhaustedError
 
 logger = logging.getLogger(__name__)
 
+# Patterns that indicate quota/rate limit exhaustion
+QUOTA_EXHAUSTION_PATTERNS = [
+    "exhausted your daily quota",
+    "quota exceeded",
+    "rate limit exceeded",
+    "resource exhausted",
+]
+
+
+def _is_quota_exhausted(message: str) -> bool:
+    """Check if an error message indicates quota exhaustion."""
+    msg_lower = message.lower()
+    return any(pattern in msg_lower for pattern in QUOTA_EXHAUSTION_PATTERNS)
+
 
 class AIProvider(ABC):
     """Abstract base class for AI providers."""
@@ -205,8 +219,7 @@ class GeminiCLIProvider(AIProvider):
             if json_start == -1:
                 if result.returncode != 0:
                     error_output = result.stderr.strip() or stdout
-                    # Detect quota exhausted error
-                    if "exhausted your daily quota" in error_output.lower():
+                    if _is_quota_exhausted(error_output):
                         raise QuotaExhaustedError(
                             "Gemini daily quota exhausted",
                             provider="gemini",
@@ -228,6 +241,12 @@ class GeminiCLIProvider(AIProvider):
                 error_info = output["error"]
                 error_msg = error_info.get("message", str(error_info))
                 error_code = error_info.get("code", "unknown")
+                if _is_quota_exhausted(error_msg):
+                    raise QuotaExhaustedError(
+                        "Gemini daily quota exhausted",
+                        provider="gemini",
+                        reset_info="midnight Pacific time",
+                    )
                 raise AIProviderError(f"Gemini CLI error ({error_code}): {error_msg}")
 
             # Extract response text
