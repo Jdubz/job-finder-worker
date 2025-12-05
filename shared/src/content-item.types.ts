@@ -1,4 +1,4 @@
-import type { TimestampLike } from './time.types'
+import type { TimestampJson } from './schemas/timestamp.schema'
 
 /**
  * Context hint for how a content item should be used in document generation.
@@ -26,8 +26,8 @@ export interface ContentItem {
   skills?: string[] | null
   /** Context for document generation. See ContentItemAIContext for values. */
   aiContext?: ContentItemAIContext | null
-  createdAt: TimestampLike
-  updatedAt: TimestampLike
+  createdAt: TimestampJson
+  updatedAt: TimestampJson
   createdBy: string
   updatedBy: string
 }

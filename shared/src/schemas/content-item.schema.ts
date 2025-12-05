@@ -2,7 +2,7 @@ import { z } from "zod"
 import type { ContentItemNode } from "../content-item.types"
 import { timestampJsonSchema } from "./timestamp.schema"
 
-export const contentItemSchema = z.lazy(() =>
+export const contentItemSchema: z.ZodType<ContentItemNode> = z.lazy(() =>
   z
     .object({
       id: z.string(),
