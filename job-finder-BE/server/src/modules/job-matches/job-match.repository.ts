@@ -124,9 +124,9 @@ export class JobMatchRepository {
       params.push(jobListingId)
     }
 
-    if (options.status && options.status !== 'all') {
+    if (status && status !== 'all') {
       conditions.push('status = ?')
-      params.push(options.status)
+      params.push(status)
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''

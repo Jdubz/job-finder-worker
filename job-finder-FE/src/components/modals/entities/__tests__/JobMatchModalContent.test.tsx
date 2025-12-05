@@ -135,7 +135,6 @@ describe("JobMatchModalContent", () => {
 
     await waitFor(() => expect(generatorClientModule.generatorClient.startGeneration).toHaveBeenCalled())
     await waitFor(() => expect(screen.getByText(/Documents ready/i)).toBeInTheDocument())
-    expect(screen.getByText(/Resume/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Resume/).length).toBeGreaterThan(0)
   })
 })
-
