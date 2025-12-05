@@ -122,7 +122,16 @@ def test_submit_jobs_handles_errors(scraper_intake, mock_queue_manager):
     assert count == 1  # Only first succeeded
 
 
-def test_submit_jobs_skips_linkedin_suppression(scraper_intake, mock_queue_manager):
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Do cool things #LI-DNI",
+        "Do cool things #li_dni",
+        "Do cool things #li dnp",
+        "Do cool things #LI-DNP and more",
+    ],
+)
+def test_submit_jobs_skips_linkedin_suppression(description, scraper_intake, mock_queue_manager):
     """Jobs carrying LinkedIn suppression tags should be skipped before queueing."""
 
     jobs = [
@@ -130,7 +139,7 @@ def test_submit_jobs_skips_linkedin_suppression(scraper_intake, mock_queue_manag
             "title": "Software Engineer",
             "url": "https://example.com/job/1",
             "company": "Test Corp",
-            "description": "Do cool things #LI-DNI",
+            "description": description,
         }
     ]
 

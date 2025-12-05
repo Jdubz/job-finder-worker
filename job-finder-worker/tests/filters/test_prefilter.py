@@ -827,41 +827,26 @@ class TestPreFilterLinkedInHashtags:
             "technology": {"rejected": []},
         }
 
-    def test_li_remote_detected_in_description(self, base_config):
-        pf = PreFilter(base_config)
-        result = pf.filter(
-            {
-                "title": "Engineer",
-                "description": "Great role #LI-Remote with global team",
-            }
-        )
-        assert result.passed is False
-        assert "Remote" in result.reason
+    @pytest.mark.parametrize(
+        "description, arrangement_to_reject, expected_reason",
+        [
+            ("Great role #LI-Remote with global team", "allowRemote", "Remote"),
+            ("Join us #li_Hybrid in NYC", "allowHybrid", "Hybrid"),
+            ("Office-first culture #LI Onsite", "allowOnsite", "Onsite"),
+            ("Another role with #li-REMOTE tag", "allowRemote", "Remote"),
+        ],
+    )
+    def test_li_work_arrangement_detected_in_description(
+        self, base_config, description, arrangement_to_reject, expected_reason
+    ):
+        """Hashtags for LI remote/hybrid/onsite should override allow flags."""
 
-    def test_li_hybrid_detected_in_description(self, base_config):
-        # Reject hybrid to validate detection
-        base_config["workArrangement"]["allowHybrid"] = False
+        base_config["workArrangement"][arrangement_to_reject] = False
         pf = PreFilter(base_config)
-        result = pf.filter(
-            {
-                "title": "Engineer",
-                "description": "Join us #li_Hybrid in NYC",
-            }
-        )
-        assert result.passed is False
-        assert "Hybrid" in result.reason
+        result = pf.filter({"title": "Engineer", "description": description})
 
-    def test_li_onsite_detected_in_description(self, base_config):
-        base_config["workArrangement"]["allowOnsite"] = False
-        pf = PreFilter(base_config)
-        result = pf.filter(
-            {
-                "title": "Engineer",
-                "description": "Office-first culture #LI Onsite",
-            }
-        )
         assert result.passed is False
-        assert "Onsite" in result.reason
+        assert expected_reason in result.reason
 
 
 class TestPreFilterRemoteSource:
