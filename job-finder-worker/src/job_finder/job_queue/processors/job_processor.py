@@ -928,7 +928,17 @@ class JobProcessor(BaseProcessor):
         """Build final scraped_data dict for queue item."""
         data: Dict[str, Any] = {}
         if ctx.job_data:
-            data["job_data"] = ctx.job_data
+            # Ensure we're storing actual job data, not a wrapper
+            # Unwrap any nested job_data wrappers to get to the actual data with 'title'
+            job_data = ctx.job_data
+            while (
+                isinstance(job_data, dict)
+                and "job_data" in job_data
+                and "title" not in job_data
+                and isinstance(job_data.get("job_data"), dict)
+            ):
+                job_data = job_data["job_data"]
+            data["job_data"] = job_data
         if ctx.extraction:
             data["filter_result"] = {"extraction": ctx.extraction.to_dict()}
         if ctx.score_result:
