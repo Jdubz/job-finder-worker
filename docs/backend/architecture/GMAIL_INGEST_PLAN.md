@@ -73,13 +73,23 @@ Add Gmail ingestion to capture job listings delivered by email and feed them int
     "allowedSenders": ["alerts@example.com"],
     "remoteSourceDefault": false,
     "aiFallbackEnabled": false,
-    "oauth": {
-      "refreshToken": "<stored securely>",
-      "tokenExpiry": "<iso8601>"
-    }
+    "defaultLabelOwner": null
   }
   ```
 - Authorization flow: FE opens OAuth window → receives auth code → POSTs to a new admin endpoint (e.g., `POST /admin/gmail/oauth/callback`) to exchange code for tokens and persist them into the `gmail-ingest` config record. The poller reads tokens from that record (or secure secret store) to refresh access tokens headlessly.
+
+## Multi-Inbox & User-Scoped Tokens
+- Goal: ingest from multiple admin mailboxes; tokens are user-scoped.
+- Schema change: add columns to `users` table (migration):
+  - `gmail_email` TEXT NULL (mailbox authenticated)
+  - `gmail_auth_json` TEXT NULL (stores `refresh_token`, optional `access_token`, `expiry_date`, `history_id`, `scopes`)
+  - Index on `gmail_email` for lookup.
+- Admin Gmail tab behavior:
+  - On successful OAuth callback, upsert the user (by email) in `users`; set `gmail_email` to the authorized mailbox and store tokens in `gmail_auth_json`.
+  - Show a list of linked inboxes (users with gmail_auth_json present); allow revoke (clears those columns).
+- Poller behavior:
+  - Load all users with `gmail_auth_json` and `gmail_email` set.
+  - For each, run ingest with that user’s tokens + the shared `gmail-ingest` settings (label/query). History checkpoint can live inside `gmail_auth_json.history_id` per mailbox.
 
 ## Deprecations / Removals
 - Earlier idea to run Gmail ingest in the worker: **superseded** by this API-side plan; no worker endpoints to be added. Avoid adding any Gmail logic to `job-finder-worker`.
