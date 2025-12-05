@@ -33,3 +33,6 @@ export * from "./api/job-source.types"
 
 // Type guards and utilities
 export * from "./guards"
+
+// Runtime schemas (Zod)
+export * from "./schemas"

@@ -49,6 +49,11 @@ describe('cli-health.service', () => {
     const childProcess = await import('node:child_process')
     mockedExecFile = vi.mocked(childProcess.execFile)
 
+    // Default safety: fail fast if a test forgets to mock a command (prevents real CLI execution)
+    mockedExecFile.mockImplementation(() =>
+      Promise.reject(new Error('execFile should be mocked in tests'))
+    )
+
     const module = await import('./cli-health.service')
     getLocalCliHealth = module.getLocalCliHealth
   })
@@ -60,12 +65,13 @@ describe('cli-health.service', () => {
   describe('getLocalCliHealth', () => {
     it('should return healthy status when CLI commands succeed with authenticated output', async () => {
       // Mock successful authenticated responses for both CLIs
-      mockedExecFile.mockImplementation((cmd: string, _args: string[], _options: unknown) => {
+      mockedExecFile.mockImplementation((cmd: string, args: string[] = []) => {
+        const joined = [cmd, ...args].join(' ')
         if (cmd === 'codex') {
           return Promise.resolve({ stdout: 'You are logged in as user@example.com', stderr: '' })
         }
-        if (cmd === 'gemini') {
-          return Promise.resolve({ stdout: 'You are authenticated as user@example.com', stderr: '' })
+        if (joined.includes('gemini auth status')) {
+          return Promise.resolve({ stdout: 'Authenticated as user@example.com', stderr: '' })
         }
         return Promise.reject(new Error('Unknown command'))
       })
@@ -79,11 +85,12 @@ describe('cli-health.service', () => {
     })
 
     it('should return unhealthy status when CLI indicates not authenticated', async () => {
-      mockedExecFile.mockImplementation((cmd: string) => {
+      mockedExecFile.mockImplementation((cmd: string, args: string[] = []) => {
+        const joined = [cmd, ...args].join(' ')
         if (cmd === 'codex') {
           return Promise.resolve({ stdout: 'You are not logged in', stderr: '' })
         }
-        if (cmd === 'gemini') {
+        if (joined.includes('gemini auth status')) {
           return Promise.resolve({ stdout: 'Not authenticated. Please run gemini auth login', stderr: '' })
         }
         return Promise.reject(new Error('Unknown command'))
