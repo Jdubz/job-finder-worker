@@ -162,6 +162,7 @@ export interface CronStatus {
     maintenance: CronJobStatus
     logrotate: CronJobStatus
     agentReset: CronJobStatus
+    gmailIngest: CronJobStatus
   }
   workerMaintenanceUrl: string
   logDir: string

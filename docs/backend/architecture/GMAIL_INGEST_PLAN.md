@@ -49,6 +49,7 @@ Add Gmail ingestion to capture job listings delivered by email and feed them int
 - `worker-settings` (or dedicated `gmail-ingest` entry) fields:
   - `enabled`, `label`, `query`, `maxMessages`, `allowedSenders`, `remoteSourceDefault`, `aiFallbackEnabled`.
 - Env vars: `GOOGLE_APPLICATION_CREDENTIALS`, `GMAIL_USER`, optional `GMAIL_TOKEN_PATH`, `GMAIL_LABEL` default fallback.
+- **Fail fast, no defaults:** do not seed `gmail-ingest` with defaults. If the config entry or required env (GMAIL_OAUTH_CLIENT_ID/SECRET, GMAIL_TOKEN_KEY) are missing, ingest triggers (cron/manual) should error loudly rather than silently skipping.
 
 ## Data Model Changes
 - Migration (API DB): create `email_ingest_state` table and optional `ingest_cursor` row for `last_history_id`.
@@ -62,7 +63,8 @@ Add Gmail ingestion to capture job listings delivered by email and feed them int
 - Add an **admin-only Gmail tab** in the existing config area (job-finder-config page) to surface:
   - Status (connected/not connected), last sync time, and label/query preview.
   - Editable settings: label/query, max messages, allowed senders, remoteSourceDefault, AI fallback toggle.
-  - “Authorize Gmail” button that kicks off the OAuth consent flow using the existing OAuth client; on success, it stores `refresh_token` (and `access_token` if present) plus token expiry in the backend config store.
+  - “Authorize Gmail” button that kicks off the OAuth consent flow using the existing OAuth client ID fetched from `/api/gmail/oauth/client`; if the client is missing the UI fails loudly (no silent defaults). On success, it stores `refresh_token` (and `access_token` if present) plus token expiry in the backend config store.
+  - Linked inbox list shows per-inbox “Revoke access” (clears the encrypted Gmail auth on the user record) to manage multi-inbox auth securely.
 - Backend adds a new `job_finder_config` record, e.g., key `gmail-ingest`, holding:
   ```json
   {

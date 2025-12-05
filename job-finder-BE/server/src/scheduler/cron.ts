@@ -16,7 +16,8 @@ const DEFAULT_CRON_CONFIG: CronConfig = {
     scrape: { enabled: true, hours: [0, 6, 12, 18], lastRun: null },
     maintenance: { enabled: true, hours: [0], lastRun: null },
     logrotate: { enabled: true, hours: [0], lastRun: null },
-    agentReset: { enabled: true, hours: [0], lastRun: null }
+    agentReset: { enabled: true, hours: [0], lastRun: null },
+    gmailIngest: { enabled: false, hours: [1, 7, 13, 19], lastRun: null }
   }
 }
 
@@ -81,6 +82,7 @@ function loadScrapeConfig() {
     source_ids: sourceIds
   }
 }
+
 
 export async function enqueueScrapeJob() {
   try {
@@ -235,12 +237,31 @@ export async function triggerAgentReset() {
   }
 }
 
+async function runGmailIngestJob() {
+  const { GmailIngestService } = await import('../modules/gmail/gmail-ingest.service')
+  const svc = new GmailIngestService()
+  return svc.ingestAll()
+}
+
+export async function triggerGmailIngest() {
+  try {
+    logger.info({ at: utcNowIso() }, 'Gmail ingest cron starting')
+    const results = await runGmailIngestJob()
+    logger.info({ at: utcNowIso(), results }, 'Gmail ingest cron completed')
+    return { success: true, results }
+  } catch (error) {
+    logger.error({ error, at: utcNowIso() }, 'Cron gmail ingest failed')
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 let schedulerStarted = false
 const lastRunHourKey: Record<CronJobKey, string | null> = {
   scrape: null,
   maintenance: null,
   logrotate: null,
-  agentReset: null
+  agentReset: null,
+  gmailIngest: null
 }
 
 function getContainerTimezone(): string {
@@ -262,7 +283,8 @@ function loadCronConfig(): CronConfig {
         scrape: { ...payload.jobs.scrape, hours: normalizeHours(payload.jobs.scrape.hours) },
         maintenance: { ...payload.jobs.maintenance, hours: normalizeHours(payload.jobs.maintenance.hours) },
         logrotate: { ...payload.jobs.logrotate, hours: normalizeHours(payload.jobs.logrotate.hours) },
-        agentReset: { ...payload.jobs.agentReset, hours: normalizeHours(payload.jobs.agentReset.hours) }
+        agentReset: { ...payload.jobs.agentReset, hours: normalizeHours(payload.jobs.agentReset.hours) },
+        gmailIngest: { ...payload.jobs.gmailIngest, hours: normalizeHours(payload.jobs.gmailIngest.hours) }
       }
     }
   }
@@ -273,7 +295,8 @@ function loadCronConfig(): CronConfig {
       scrape: { ...DEFAULT_CRON_CONFIG.jobs.scrape, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.scrape.hours) },
       maintenance: { ...DEFAULT_CRON_CONFIG.jobs.maintenance, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.maintenance.hours) },
       logrotate: { ...DEFAULT_CRON_CONFIG.jobs.logrotate, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.logrotate.hours) },
-      agentReset: { ...DEFAULT_CRON_CONFIG.jobs.agentReset, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.agentReset.hours) }
+      agentReset: { ...DEFAULT_CRON_CONFIG.jobs.agentReset, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.agentReset.hours) },
+      gmailIngest: { ...DEFAULT_CRON_CONFIG.jobs.gmailIngest, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.gmailIngest.hours) }
     }
   }
   persistCronConfig(defaults, 'system-bootstrap')
@@ -300,7 +323,8 @@ async function maybeRunJob(jobKey: CronJobKey, config: CronConfig, now: Date) {
     scrape: enqueueScrapeJob,
     maintenance: triggerMaintenance,
     logrotate: rotateLogs,
-    agentReset: triggerAgentReset
+    agentReset: triggerAgentReset,
+    gmailIngest: triggerGmailIngest
   })
 }
 
