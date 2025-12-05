@@ -273,6 +273,7 @@ export interface GenerateDocumentsRequest {
     companyWebsite?: string
     jobDescriptionUrl?: string
     jobDescriptionText?: string
+    location?: string
   }
   preferences?: {
     style?: string

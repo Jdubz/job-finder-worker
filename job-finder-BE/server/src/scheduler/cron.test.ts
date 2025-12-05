@@ -20,6 +20,7 @@ describe('cron - getWorkerCliHealth', () => {
     vi.resetModules()
     vi.clearAllMocks()
     originalFetch = global.fetch
+    process.env.WORKER_MAINTENANCE_URL = 'http://localhost:5555/maintenance'
 
     // Mock env config after reset
     vi.doMock('../config/env', () => ({
@@ -39,6 +40,7 @@ describe('cron - getWorkerCliHealth', () => {
 
   afterEach(() => {
     global.fetch = originalFetch
+    delete process.env.WORKER_MAINTENANCE_URL
     vi.resetModules()
   })
 

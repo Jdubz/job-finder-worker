@@ -39,6 +39,7 @@ export interface GenerateDocumentRequest {
     companyWebsite?: string
     jobDescriptionUrl?: string
     jobDescriptionText?: string
+    location?: string
   }
   preferences?: {
     style?: "modern" | "traditional" | "technical" | "executive"
@@ -139,9 +140,19 @@ export class GeneratorClient extends BaseApiClient {
   /**
    * List document generation history
    */
-  async listDocuments(): Promise<GeneratorRequestRecord[]> {
+  async listDocuments(filters?: { jobMatchId?: string }): Promise<GeneratorRequestRecord[]> {
     type HistoryResponse = { requests: GeneratorRequestRecord[]; count: number }
-    const response = await this.get<HistoryResponse | ApiEnvelope<HistoryResponse>>(`/requests`)
+    const query = filters?.jobMatchId ? `?jobMatchId=${filters.jobMatchId}` : ""
+    const response = await this.get<HistoryResponse | ApiEnvelope<HistoryResponse>>(`/requests${query}`)
+    const data = unwrapResponse(response)
+    return data.requests ?? []
+  }
+
+  async listDocumentsForMatch(matchId: string): Promise<GeneratorRequestRecord[]> {
+    type HistoryResponse = { requests: GeneratorRequestRecord[]; count: number }
+    const response = await this.get<HistoryResponse | ApiEnvelope<HistoryResponse>>(
+      `/job-matches/${matchId}/documents`
+    )
     const data = unwrapResponse(response)
     return data.requests ?? []
   }

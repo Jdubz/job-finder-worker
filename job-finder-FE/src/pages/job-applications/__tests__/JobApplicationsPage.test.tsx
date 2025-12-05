@@ -1,140 +1,151 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { BrowserRouter } from "react-router-dom"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
+import { vi } from "vitest"
 import { JobApplicationsPage } from "../JobApplicationsPage"
-import { useAuth } from "@/contexts/AuthContext"
-import { jobMatchesClient } from "@/api/job-matches-client"
-import { useEntityModal } from "@/contexts/EntityModalContext"
+import type { JobMatchWithListing } from "@shared/types"
 
-vi.mock("@/contexts/AuthContext")
-vi.mock("@/api/job-matches-client")
-vi.mock("@/contexts/EntityModalContext")
-vi.mock("@/services/logging", () => ({ logger: { info: vi.fn(), debug: vi.fn(), error: vi.fn() } }))
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>()
-  return {
-    ...actual,
-    useNavigate: () => vi.fn(),
-  }
-})
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "user-1" } }),
+}))
 
-describe("JobApplicationsPage sorting", () => {
-  const mockUser = { uid: "user-1" }
-  const matches = [
+const mocks = vi.hoisted(() => ({
+  subscribeToMatches: vi.fn(),
+  getStats: vi.fn(),
+}))
+
+vi.mock("@/api", () => ({
+  jobMatchesClient: {
+    subscribeToMatches: mocks.subscribeToMatches,
+    getStats: mocks.getStats,
+  },
+}))
+
+vi.mock("@/contexts/EntityModalContext", () => ({
+  useEntityModal: () => ({ openModal: vi.fn() }),
+}))
+
+describe("JobApplicationsPage", () => {
+  const matches: JobMatchWithListing[] = [
     {
-      id: "m1",
-      matchScore: 80,
+      id: "1",
       jobListingId: "l1",
-      listing: {
-        id: "l1",
-        title: "Backend Engineer",
-        companyName: "Beta Co",
-        companyId: "c1",
-        location: "Remote",
-        description: "desc",
-        url: "https://b.io",
-        status: "matched",
-        createdAt: new Date("2024-01-02"),
-        updatedAt: new Date("2024-01-04"),
-      },
-      analyzedAt: new Date(),
-      createdAt: new Date("2024-01-02"),
-      updatedAt: new Date("2024-01-07"),
+      matchScore: 72,
       matchedSkills: [],
       missingSkills: [],
       matchReasons: [],
       keyStrengths: [],
       potentialConcerns: [],
+      experienceMatch: 60,
       customizationRecommendations: [],
-      experienceMatch: 80,
+      analyzedAt: new Date("2024-01-01"),
+      createdAt: new Date("2024-01-01"),
+      updatedAt: new Date("2024-01-02"),
       submittedBy: null,
       queueItemId: "q1",
+      status: "active",
+      listing: {
+        id: "l1",
+        url: "https://jobs/1",
+        title: "A Engineer",
+        companyName: "Alpha",
+        location: "NY",
+        description: "desc",
+        status: "matched",
+        createdAt: new Date("2024-01-01"),
+        updatedAt: new Date("2024-01-02"),
+      },
     },
     {
-      id: "m2",
-      matchScore: 92,
+      id: "2",
       jobListingId: "l2",
-      listing: {
-        id: "l2",
-        title: "Frontend Engineer",
-        companyName: "Acme",
-        companyId: "c2",
-        location: "NYC",
-        description: "desc",
-        url: "https://a.io",
-        status: "pending",
-        createdAt: new Date("2024-01-01"),
-        updatedAt: new Date("2024-01-05"),
-      },
-      analyzedAt: new Date(),
-      createdAt: new Date("2024-01-01"),
-      updatedAt: new Date("2024-01-08"),
+      matchScore: 88,
       matchedSkills: [],
       missingSkills: [],
       matchReasons: [],
       keyStrengths: [],
       potentialConcerns: [],
+      experienceMatch: 70,
       customizationRecommendations: [],
-      experienceMatch: 90,
+      analyzedAt: new Date("2024-01-03"),
+      createdAt: new Date("2024-01-03"),
+      updatedAt: new Date("2024-01-03"),
       submittedBy: null,
       queueItemId: "q2",
+      status: "active",
+      listing: {
+        id: "l2",
+        url: "https://jobs/2",
+        title: "B Engineer",
+        companyName: "Beta",
+        location: "SF",
+        description: "desc",
+        status: "matched",
+        createdAt: new Date("2024-01-03"),
+        updatedAt: new Date("2024-01-03"),
+      },
     },
-  ] as any
+  ]
 
   beforeEach(() => {
     vi.clearAllMocks()
-
-    vi.mocked(useAuth).mockReturnValue({
-      user: mockUser as any,
-      loading: false,
-      isOwner: true,
-      signOut: vi.fn(),
-      signInWithGoogle: vi.fn(),
-    } as any)
-
-    vi.mocked(useEntityModal).mockReturnValue({ openModal: vi.fn(), closeModal: vi.fn() } as any)
-
-    vi.mocked(jobMatchesClient.subscribeToMatches).mockImplementation((callback) => {
-      callback(matches)
+    mocks.subscribeToMatches.mockImplementation((cb) => {
+      cb(matches)
       return () => {}
     })
+    mocks.getStats.mockResolvedValue({ total: 0, highScore: 0, mediumScore: 0, lowScore: 0, averageScore: 0 })
   })
 
-  const renderPage = () =>
+  it("subscribes with active status by default and all when filtering", async () => {
     render(
-      <BrowserRouter>
+      <MemoryRouter>
         <JobApplicationsPage />
-      </BrowserRouter>
+      </MemoryRouter>
     )
 
-  it("shows updated sort default and orders rows by latest update", async () => {
-    renderPage()
+    await waitFor(() => expect(mocks.subscribeToMatches).toHaveBeenCalled())
+    expect(mocks.subscribeToMatches.mock.calls[0][1]).toMatchObject({ status: "active" })
+
+    const statusSelect = screen.getByRole("combobox", { name: /status filter/i })
+    fireEvent.click(statusSelect)
+    fireEvent.click(screen.getByRole("option", { name: /All/i }))
 
     await waitFor(() => {
-      expect(screen.getByText("Updated")).toBeInTheDocument()
+      expect(mocks.subscribeToMatches.mock.calls.some(([, filters]) => filters?.status === "all")).toBe(true)
     })
-
-    const rows = screen.getAllByRole("row")
-    const firstDataRow = rows[1]
-    expect(within(firstDataRow).getByText("Frontend Engineer")).toBeInTheDocument()
   })
 
-  it("changes ordering when sort switched to company", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 })
-    renderPage()
+  it("sorts by score when selected", async () => {
+    render(
+      <MemoryRouter>
+        <JobApplicationsPage />
+      </MemoryRouter>
+    )
 
-    await waitFor(() => expect(screen.getByText("Updated")).toBeInTheDocument())
+    // Wait for table rows
+    await screen.findByText("A Engineer")
+    const sortSelect = screen.getByRole("combobox", { name: /sort by/i })
+    fireEvent.click(sortSelect)
+    fireEvent.click(screen.getByRole("option", { name: /Score/i }))
 
-    const [sortFieldCombobox] = screen.getAllByRole("combobox")
-    await user.click(sortFieldCombobox)
-    await user.click(await screen.findByRole("option", { name: "Company" }))
+    const rows = screen.getAllByRole("row").slice(1) // skip header row
+    expect(rows[0]).toHaveTextContent("B Engineer")
+    expect(rows[1]).toHaveTextContent("A Engineer")
+  })
 
-    await waitFor(() => {
-      const rows = screen.getAllByRole("row")
-      const firstDataRow = rows[1]
-      // Alphabetical company ordering should put Acme first
-      expect(within(firstDataRow).getByText("Frontend Engineer")).toBeInTheDocument()
-    })
+  it("sorts by company when selected", async () => {
+    render(
+      <MemoryRouter>
+        <JobApplicationsPage />
+      </MemoryRouter>
+    )
+
+    await screen.findByText("A Engineer")
+    const sortSelect = screen.getByRole("combobox", { name: /sort by/i })
+    fireEvent.click(sortSelect)
+    fireEvent.click(screen.getByRole("option", { name: /Company/i }))
+
+    const rows = screen.getAllByRole("row").slice(1)
+    expect(rows[0]).toHaveTextContent("Alpha")
+    expect(rows[1]).toHaveTextContent("Beta")
   })
 })

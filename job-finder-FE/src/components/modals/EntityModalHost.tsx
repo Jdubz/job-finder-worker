@@ -29,7 +29,12 @@ export function EntityModalHost() {
           />
         )
       case "jobMatch":
-        return <JobMatchModalContent match={modal.match} handlers={{ onGenerateResume: modal.onGenerateResume }} />
+        return (
+          <JobMatchModalContent
+            match={modal.match}
+            handlers={{ onGenerateResume: modal.onGenerateResume, onStatusChange: modal.onStatusChange }}
+          />
+        )
       case "jobSource":
         return (
           <JobSourceModalContent

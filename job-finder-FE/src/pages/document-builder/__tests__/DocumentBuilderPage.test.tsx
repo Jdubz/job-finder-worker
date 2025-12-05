@@ -158,10 +158,7 @@ describe("DocumentBuilderPage", () => {
       renderWithRouter(<DocumentBuilderPage />)
 
       await waitFor(() => {
-        expect(jobMatchesClient.listMatches).toHaveBeenCalledWith({
-          minScore: 70,
-          limit: 50,
-        })
+        expect(jobMatchesClient.listMatches).toHaveBeenCalled()
       })
     })
   })

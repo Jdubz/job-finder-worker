@@ -130,4 +130,46 @@ describe('job match routes', () => {
       expect(res.body.data.stats.averageScore).toBe(0)
     })
   })
+
+  describe('status and ignore', () => {
+    it('excludes ignored matches by default and includes when requested', async () => {
+      createTestListing('listing-active')
+      createTestListing('listing-ignored')
+
+      repo.upsert(
+        buildJobMatchInput({ queueItemId: 'queue-a', jobListingId: 'listing-active', matchScore: 80, status: 'active' as const })
+      )
+      repo.upsert(
+        buildJobMatchInput({ queueItemId: 'queue-b', jobListingId: 'listing-ignored', matchScore: 90, status: 'ignored' as const })
+      )
+
+      const defaultList = await request(app).get('/job-matches')
+      expect(defaultList.status).toBe(200)
+      expect(defaultList.body.data.matches).toHaveLength(1)
+      expect(defaultList.body.data.matches[0].jobListingId).toBe('listing-active')
+
+      const allList = await request(app).get('/job-matches?status=all')
+      expect(allList.status).toBe(200)
+      expect(allList.body.data.matches).toHaveLength(2)
+
+      const statsDefault = await request(app).get('/job-matches/stats')
+      expect(statsDefault.body.data.stats.total).toBe(1)
+
+      const statsInclude = await request(app).get('/job-matches/stats?includeIgnored=true')
+      expect(statsInclude.body.data.stats.total).toBe(2)
+    })
+
+    it('PATCH /job-matches/:id/status toggles status', async () => {
+      createTestListing('listing-toggle')
+      const seeded = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-toggle', jobListingId: 'listing-toggle', status: 'active' as const }))
+
+      const res = await request(app).patch(`/job-matches/${seeded.id}/status`).send({ status: 'ignored' })
+      expect(res.status).toBe(200)
+      expect(res.body.data.match.status).toBe('ignored')
+
+      const updated = repo.getById(seeded.id!)
+      expect(updated?.status).toBe('ignored')
+      expect(updated?.ignoredAt).toBeInstanceOf(Date)
+    })
+  })
 })

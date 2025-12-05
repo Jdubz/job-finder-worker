@@ -119,14 +119,16 @@ export class GeneratorWorkflowRepository {
     return this.getRequest(id)
   }
 
-  listRequests(limit = 50): GeneratorRequestRecord[] {
+  listRequests(limit = 50, jobMatchId?: string): GeneratorRequestRecord[] {
+    const whereClause = jobMatchId ? 'WHERE job_match_id = ?' : ''
     const rows = this.db
       .prepare(
         `SELECT * FROM generator_requests
+         ${whereClause}
          ORDER BY created_at DESC
          LIMIT ?`
       )
-      .all(limit) as GeneratorRequestRow[]
+      .all(...(jobMatchId ? [jobMatchId, limit] : [limit])) as GeneratorRequestRow[]
 
     return rows.map((row) => this.mapRequest(row))
   }
