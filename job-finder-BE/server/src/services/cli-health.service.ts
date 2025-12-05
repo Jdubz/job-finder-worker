@@ -35,7 +35,7 @@ async function runCheck(provider: AgentCliProvider): Promise<AgentCliStatus> {
     const { stdout, stderr } = await execFileAsync(check.cmd, check.args, { timeout: 7_000 })
     const output = `${stdout} ${stderr}`.trim()
     const lower = output.toLowerCase()
-    const unauthenticated = /unauthorized|permission|auth required|login required|unavailable/i.test(lower)
+    const unauthenticated = /unauthorized|permission|auth required|login required|not logged in|not authenticated|unavailable/i.test(lower)
     const healthy = check.successPattern.test(lower) && !unauthenticated
 
     return {
