@@ -1,10 +1,11 @@
 import { z } from "zod"
 import { promptConfigSchema } from "./prompts.schema"
+import { timestampJsonSchema } from "./timestamp.schema"
 
 export const configEntrySchema = z.object({
   id: z.string(),
   payload: z.unknown(),
-  updatedAt: z.string(),
+  updatedAt: timestampJsonSchema,
   updatedBy: z.string().nullable().optional(),
 })
 
@@ -247,7 +248,7 @@ export const workerSettingsSchema = z.object({
 export const cronJobScheduleSchema = z.object({
   enabled: z.boolean(),
   hours: z.array(z.number().int().min(0).max(23)),
-  lastRun: z.string().nullable().optional(),
+  lastRun: timestampJsonSchema.nullable().optional(),
 })
 
 export const cronConfigSchema = z.object({

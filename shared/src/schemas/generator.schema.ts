@@ -30,8 +30,8 @@ export const generatorRequestRecordSchema = z.object({
   jobMatchId: z.string().nullable().optional(),
   createdBy: z.string().nullable().optional(),
   steps: z.array(generationStepSchema).nullable().optional(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createdAt: timestampJsonSchema,
+  updatedAt: timestampJsonSchema,
 })
 
 export const generatorArtifactSchema = z.object({
@@ -41,7 +41,7 @@ export const generatorArtifactSchema = z.object({
   filename: z.string(),
   storagePath: z.string(),
   sizeBytes: z.number().nullable().optional(),
-  createdAt: z.string(),
+  createdAt: timestampJsonSchema,
 })
 
 export const generatorStartResponseSchema = z.object({

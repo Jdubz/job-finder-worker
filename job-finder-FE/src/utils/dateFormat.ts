@@ -60,11 +60,6 @@ export function toDate(timestamp: TimestampLike | string | number | null | undef
   const normalized = normalizeDateValue(timestamp)
   if (normalized) return normalized
 
-  // Fallbacks to avoid runtime crashes if an unexpected type sneaks through
-  if (typeof timestamp === "string" || typeof timestamp === "number") {
-    return new Date(timestamp)
-  }
-
   // Last resort: return an invalid date instead of throwing, so consumers can handle it
   return new Date(NaN)
 }

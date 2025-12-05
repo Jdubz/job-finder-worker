@@ -19,5 +19,10 @@ export const jobSourceSchema = z
 
 export const jobSourceStatsSchema = z.object({
   total: z.number(),
-  byStatus: z.record(z.enum(["active", "paused", "disabled", "error"]), z.number()),
+  byStatus: z.object({
+    active: z.number(),
+    paused: z.number(),
+    disabled: z.number(),
+    error: z.number(),
+  }),
 })
