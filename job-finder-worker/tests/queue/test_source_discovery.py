@@ -53,7 +53,6 @@ def mock_dependencies() -> Dict[str, Any]:
     }
     config_loader.get_match_policy.return_value = {
         "minScore": 60,
-        "weights": {"skillMatch": 40, "experienceMatch": 30, "seniorityMatch": 30},
         "seniority": {
             "preferred": ["senior"],
             "acceptable": ["mid"],
@@ -79,6 +78,7 @@ def mock_dependencies() -> Dict[str, Any]:
             "requiredScore": 10,
             "preferredScore": 5,
             "dislikedScore": -5,
+            "missingRequiredScore": -15,
         },
         "salary": {"minimum": None, "target": None, "belowTargetScore": -2},
         "experience": {"userYears": 10, "maxRequired": 15, "overqualifiedScore": -5},

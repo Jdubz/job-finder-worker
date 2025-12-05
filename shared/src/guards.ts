@@ -206,17 +206,6 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
   // Check minScore
   if (typeof v.minScore !== "number") return false
 
-  // Check weights
-  if (!isObject(v.weights)) return false
-  const weights = v.weights as any
-  if (
-    typeof weights.skillMatch !== "number" ||
-    typeof weights.experienceMatch !== "number" ||
-    typeof weights.seniorityMatch !== "number"
-  ) {
-    return false
-  }
-
   // Check seniority
   if (!isObject(v.seniority)) return false
   const seniority = v.seniority as any
@@ -256,7 +245,8 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     !isStringArray(technology.rejected) ||
     typeof technology.requiredScore !== "number" ||
     typeof technology.preferredScore !== "number" ||
-    typeof technology.dislikedScore !== "number"
+    typeof technology.dislikedScore !== "number" ||
+    typeof technology.missingRequiredScore !== "number"
   ) {
     return false
   }

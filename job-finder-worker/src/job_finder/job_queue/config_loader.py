@@ -80,7 +80,6 @@ class ConfigLoader:
         # Validate all required top-level sections exist
         required_sections = [
             "minScore",
-            "weights",
             "seniority",
             "location",
             "technology",
@@ -95,6 +94,25 @@ class ConfigLoader:
             raise InitializationError(
                 f"match-policy missing required sections: {missing}. "
                 "Update the match-policy config record to include all required fields."
+            )
+
+        # Enforce required technology fields (no defaults)
+        tech = config.get("technology", {})
+        tech_required = [
+            "required",
+            "preferred",
+            "disliked",
+            "rejected",
+            "requiredScore",
+            "preferredScore",
+            "dislikedScore",
+            "missingRequiredScore",
+        ]
+        tech_missing = [k for k in tech_required if k not in tech]
+        if tech_missing:
+            raise InitializationError(
+                f"match-policy.technology missing required keys: {tech_missing}. "
+                "Add missingRequiredScore and related tech fields to match-policy."
             )
 
         return config

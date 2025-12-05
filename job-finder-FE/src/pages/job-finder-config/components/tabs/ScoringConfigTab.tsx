@@ -23,11 +23,6 @@ const mapConfigToForm = (config: MatchPolicy): MatchPolicyFormValues => config
 
 const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
   minScore: values.minScore,
-  weights: {
-    skillMatch: values.weights.skillMatch,
-    experienceMatch: values.weights.experienceMatch,
-    seniorityMatch: values.weights.seniorityMatch,
-  },
   seniority: {
     preferred: cleanList(values.seniority.preferred),
     acceptable: cleanList(values.seniority.acceptable),
@@ -55,6 +50,7 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     requiredScore: values.technology.requiredScore,
     preferredScore: values.technology.preferredScore,
     dislikedScore: values.technology.dislikedScore,
+    missingRequiredScore: values.technology.missingRequiredScore,
   },
   salary: {
     minimum: values.salary.minimum,
@@ -386,7 +382,7 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                   info="Jobs prominently featuring these technologies are heavily penalized or rejected."
                 />
               </div>
-              <div className="grid gap-6 md:grid-cols-3">
+              <div className="grid gap-6 md:grid-cols-4">
                 <NumericField
                   control={form.control}
                   name="technology.requiredScore"
@@ -407,6 +403,13 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                   label="Disliked Tech Score"
                   description="Per disliked tech found (negative)."
                   info="Score adjustment per disliked technology found in the job."
+                />
+                <NumericField
+                  control={form.control}
+                  name="technology.missingRequiredScore"
+                  label="Missing Required Score"
+                  description="Penalty when no required tech found (negative)."
+                  info="Applied once when none of your required technologies are present."
                 />
               </div>
             </section>

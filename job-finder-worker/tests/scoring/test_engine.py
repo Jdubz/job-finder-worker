@@ -11,11 +11,6 @@ def default_config():
     """Return a complete match-policy configuration (all sections required)."""
     return {
         "minScore": 60,
-        "weights": {
-            "skillMatch": 40,
-            "experienceMatch": 30,
-            "seniorityMatch": 30,
-        },
         "seniority": {
             "preferred": ["senior", "staff", "lead"],
             "acceptable": ["mid", ""],
@@ -41,6 +36,7 @@ def default_config():
             "requiredScore": 10,
             "preferredScore": 5,
             "dislikedScore": -5,
+            "missingRequiredScore": -15,
         },
         "salary": {
             "minimum": 150000,
@@ -209,6 +205,64 @@ class TestScoringEngine:
         assert isinstance(result.adjustments, list)
         assert isinstance(result.passed, bool)
         assert 0 <= result.final_score <= 100
+
+    def test_double_weighting_prevented(self, default_config):
+        """Technologies already scored should not double count in skill scoring."""
+        engine = ScoringEngine(default_config, user_skills=["python", "typescript"])
+
+        extraction = JobExtractionResult(
+            title="Fullstack Engineer",
+            seniority="senior",
+            location=None,
+            technologies=["python"],
+            salary_min=None,
+            salary_max=None,
+            includes_equity=False,
+            is_contract=False,
+            experience_min=None,
+            experience_max=None,
+            days_old=None,
+            is_repost=False,
+            role_types=[],
+        )
+
+        description = "We use Python heavily for backend services."
+        result = engine.score(extraction, job_title="Fullstack Engineer", job_description=description)
+
+        tech_adjust = next(a for a in result.adjustments if a.category == "technology")
+        assert tech_adjust.points == default_config["technology"]["requiredScore"]
+
+        skill_adjustments = [a for a in result.adjustments if a.category == "skills"]
+        assert skill_adjustments == []
+
+    def test_missing_required_score_applied_once(self, default_config):
+        """When no required techs are present, missingRequiredScore applies once."""
+        engine = ScoringEngine(default_config, user_skills=["typescript", "react"])
+
+        extraction = JobExtractionResult(
+            title="Data Engineer",
+            seniority="senior",
+            location=None,
+            technologies=["spark"],
+            salary_min=None,
+            salary_max=None,
+            includes_equity=False,
+            is_contract=False,
+            experience_min=None,
+            experience_max=None,
+            days_old=None,
+            is_repost=False,
+            role_types=[],
+        )
+
+        result = engine.score(
+            extraction,
+            job_title="Data Engineer",
+            job_description="Work with Spark and Kafka",
+        )
+
+        tech_adjust = next(a for a in result.adjustments if a.category == "technology")
+        assert tech_adjust.points == default_config["technology"]["missingRequiredScore"]
 
     def test_timezone_penalty(self, default_config, user_skills):
         """Timezone difference within max adds penalty (not hard reject)."""

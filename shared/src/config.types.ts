@@ -232,16 +232,6 @@ export interface PreFilterPolicy {
 // Scoring Configuration (deterministic scoring engine)
 // -----------------------------------------------------------
 
-/** Weight distribution for scoring components */
-export interface ScoringWeights {
-  /** Weight for skill alignment (0-100) */
-  skillMatch: number
-  /** Weight for experience fit (0-100) */
-  experienceMatch: number
-  /** Weight for seniority alignment (0-100) */
-  seniorityMatch: number
-}
-
 /** Seniority level preferences */
 export interface SeniorityConfig {
   /** Preferred seniority levels (e.g., ["senior", "staff", "lead"]) */
@@ -301,7 +291,7 @@ export interface TechnologyConfig {
   /** Score adjustment per disliked technology found (negative) */
   dislikedScore: number
   /** Score adjustment when no required tech found (negative) */
-  missingRequiredScore?: number
+  missingRequiredScore: number
 }
 
 /** Salary preferences */
@@ -388,8 +378,6 @@ export interface CompanyConfig {
 export interface MatchPolicy {
   /** Minimum score threshold to pass (0-100) */
   minScore: number
-  /** Weight distribution for scoring components */
-  weights: ScoringWeights
   /** Seniority level preferences */
   seniority: SeniorityConfig
   /** Location and remote work preferences */
