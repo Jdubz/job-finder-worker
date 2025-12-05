@@ -11,6 +11,7 @@ services:
     image: ghcr.io/jdubz/job-finder-worker/api:latest
     container_name: job-finder-api
     restart: unless-stopped
+    stop_grace_period: 30s
     env_file:
       - /srv/job-finder/secrets/api.env
     environment:
