@@ -1,6 +1,12 @@
 import { z } from "zod"
 import type { ContentItemNode } from "../content-item.types"
+import type { TimestampLike } from "../time.types"
 import { timestampJsonSchema } from "./timestamp.schema"
+
+// Align output type with ContentItem.TimestampLike expectations
+const timestampLikeSchema: z.ZodType<TimestampLike> = timestampJsonSchema.transform(
+  (value) => value as TimestampLike
+)
 
 export const contentItemSchema: z.ZodType<ContentItemNode> = z.lazy(() =>
   z
@@ -20,8 +26,8 @@ export const contentItemSchema: z.ZodType<ContentItemNode> = z.lazy(() =>
         .enum(["work", "highlight", "project", "education", "skills", "narrative", "section"])
         .nullable()
         .optional(),
-      createdAt: timestampJsonSchema,
-      updatedAt: timestampJsonSchema,
+      createdAt: timestampLikeSchema,
+      updatedAt: timestampLikeSchema,
       createdBy: z.string(),
       updatedBy: z.string(),
       children: z.array(contentItemSchema).optional(),
