@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 from anthropic import Anthropic
 from openai import OpenAI
 
-from job_finder.exceptions import AIProviderError
+from job_finder.exceptions import AIProviderError, QuotaExhaustedError
 
 logger = logging.getLogger(__name__)
 
@@ -204,9 +204,16 @@ class GeminiCLIProvider(AIProvider):
             json_start = stdout.find("{")
             if json_start == -1:
                 if result.returncode != 0:
+                    error_output = result.stderr.strip() or stdout
+                    # Detect quota exhausted error
+                    if "exhausted your daily quota" in error_output.lower():
+                        raise QuotaExhaustedError(
+                            "Gemini daily quota exhausted",
+                            provider="gemini",
+                            reset_info="midnight Pacific time",
+                        )
                     raise AIProviderError(
-                        f"Gemini CLI failed (exit {result.returncode}): "
-                        f"{result.stderr.strip() or stdout}"
+                        f"Gemini CLI failed (exit {result.returncode}): {error_output}"
                     )
                 raise AIProviderError("Gemini CLI returned no JSON output")
 

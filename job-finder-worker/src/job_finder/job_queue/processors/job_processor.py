@@ -31,7 +31,12 @@ from job_finder.ai.extraction import JobExtractor, JobExtractionResult
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 from job_finder.ai.providers import create_provider_from_config
 from job_finder.company_info_fetcher import CompanyInfoFetcher
-from job_finder.exceptions import AIProviderError, DuplicateQueueItemError, ExtractionError
+from job_finder.exceptions import (
+    AIProviderError,
+    DuplicateQueueItemError,
+    ExtractionError,
+    QuotaExhaustedError,
+)
 from job_finder.filters.title_filter import TitleFilter
 from job_finder.filters.prefilter import PreFilter
 from job_finder.job_queue.config_loader import ConfigLoader
@@ -371,6 +376,9 @@ class JobProcessor(BaseProcessor):
             self._update_status(item, "Extracting job data", ctx.stage)
             try:
                 ctx.extraction = self._execute_ai_extraction(ctx)
+            except QuotaExhaustedError:
+                # Critical error - let it propagate to worker loop to stop queue
+                raise
             except (ExtractionError, AIProviderError) as e:
                 self._finalize_failed(ctx, f"AI extraction failed: {e}")
                 return
@@ -489,6 +497,9 @@ class JobProcessor(BaseProcessor):
                 },
             )
 
+        except QuotaExhaustedError:
+            # Critical error - let it propagate to worker loop to stop queue
+            raise
         except Exception as e:
             logger.error(f"[PIPELINE] ERROR in stage {ctx.stage}: {e}", exc_info=True)
             ctx.error = str(e)

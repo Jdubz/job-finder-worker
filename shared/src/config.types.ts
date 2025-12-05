@@ -544,6 +544,8 @@ export interface WorkerSettings {
       max_sources?: number | null
       source_ids?: string[]
     }
+    /** Reason the worker was stopped (set automatically on critical errors) */
+    stopReason?: string | null
   }
 }
 
