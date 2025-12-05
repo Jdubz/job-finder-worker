@@ -10,26 +10,29 @@ vi.mock('../logger', () => ({
   }
 }))
 
-// Mock the env config
-vi.mock('../config/env', () => ({
-  env: {
-    WORKER_MAINTENANCE_URL: 'http://localhost:5555/maintenance',
-    NODE_ENV: 'test',
-    LOG_DIR: '/tmp/logs',
-    LOG_ROTATE_MAX_BYTES: 10485760,
-    LOG_ROTATE_RETENTION_DAYS: 7
-  }
-}))
+const MOCK_WORKER_URL = 'http://localhost:5555'
 
 describe('cron - getWorkerCliHealth', () => {
   let getWorkerCliHealth: typeof GetWorkerCliHealthFn
   let originalFetch: typeof global.fetch
 
   beforeEach(async () => {
+    vi.resetModules()
     vi.clearAllMocks()
     originalFetch = global.fetch
 
-    // Re-import the module to get fresh state
+    // Mock env config after reset
+    vi.doMock('../config/env', () => ({
+      env: {
+        WORKER_MAINTENANCE_URL: `${MOCK_WORKER_URL}/maintenance`,
+        NODE_ENV: 'test',
+        LOG_DIR: '/tmp/logs',
+        LOG_ROTATE_MAX_BYTES: 10485760,
+        LOG_ROTATE_RETENTION_DAYS: 7
+      }
+    }))
+
+    // Re-import the module to get fresh state with mocked env
     const module = await import('./cron')
     getWorkerCliHealth = module.getWorkerCliHealth
   })
@@ -54,7 +57,7 @@ describe('cron - getWorkerCliHealth', () => {
 
     expect(result.reachable).toBe(true)
     expect(result.providers).toEqual(mockProviders)
-    expect(result.workerUrl).toBe('http://localhost:5555')
+    expect(result.workerUrl).toBe(MOCK_WORKER_URL)
     expect(result.error).toBeUndefined()
   })
 
@@ -83,7 +86,7 @@ describe('cron - getWorkerCliHealth', () => {
 
     expect(result.reachable).toBe(false)
     expect(result.error).toBe('Network request failed')
-    expect(result.workerUrl).toBe('http://localhost:5555')
+    expect(result.workerUrl).toBe(MOCK_WORKER_URL)
     expect(result.providers).toBeUndefined()
   })
 
@@ -129,7 +132,7 @@ describe('cron - getWorkerCliHealth', () => {
     const result = await getWorkerCliHealth()
 
     // The worker base URL should strip the /maintenance path
-    expect(result.workerUrl).toBe('http://localhost:5555')
+    expect(result.workerUrl).toBe(MOCK_WORKER_URL)
     expect(global.fetch).toHaveBeenCalledWith(
       'http://localhost:5555/cli/health',
       expect.objectContaining({ signal: expect.any(AbortSignal) })

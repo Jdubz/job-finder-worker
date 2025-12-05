@@ -1,23 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { getLocalCliHealth as GetLocalCliHealthFn } from './cli-health.service'
 
-vi.mock('node:fs/promises', () => ({
-  readFile: vi.fn()
-}))
-
-vi.mock('node:os', () => ({
-  homedir: vi.fn(() => '/home/testuser')
-}))
-
-// Mock the logger to prevent console output during tests
-vi.mock('../logger', () => ({
-  logger: {
-    warn: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn()
-  }
-}))
-
 describe('cli-health.service', () => {
   let getLocalCliHealth: typeof GetLocalCliHealthFn
   let mockedReadFile: ReturnType<typeof vi.fn>
