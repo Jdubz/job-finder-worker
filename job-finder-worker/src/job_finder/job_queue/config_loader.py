@@ -290,11 +290,12 @@ class ConfigLoader:
         logger.warning(f"Processing disabled with reason: {reason}")
 
     def clear_stop_reason(self) -> None:
-        """Clear the stop reason (called when processing is re-enabled)."""
+        """Clear the stop reason when processing is re-enabled."""
         settings = self.get_worker_settings()
         if settings["runtime"].get("stopReason"):
             settings["runtime"]["stopReason"] = None
             self._set_config("worker-settings", settings)
+            logger.info("Cleared stop reason")
 
     def get_worker_settings(self) -> Dict[str, Any]:
         settings = self._get_config("worker-settings")

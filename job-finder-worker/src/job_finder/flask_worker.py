@@ -385,6 +385,9 @@ def worker_loop():
                     time.sleep(worker_state["poll_interval"])
                     continue
 
+                # Clear any stop reason now that processing is enabled
+                config_loader.clear_stop_reason()
+
                 # Drain the queue before sleeping
                 items = queue_manager.get_pending_items()
                 if not items:

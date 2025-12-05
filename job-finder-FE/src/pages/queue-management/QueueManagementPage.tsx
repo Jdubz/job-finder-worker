@@ -142,16 +142,12 @@ export function QueueManagementPage() {
     setIsTogglingProcessing(true)
     try {
       const current = await configClient.getWorkerSettings()
-      // Clear stopReason when starting the queue
-      const runtime = {
-        ...current.runtime,
-        isProcessingEnabled: newValue,
-        ...(newValue ? { stopReason: null } : {}),
-      }
+      const runtime = { ...current.runtime, isProcessingEnabled: newValue }
       await configClient.updateWorkerSettings({ ...current, runtime })
       setIsProcessingEnabled(newValue)
       if (newValue) {
-        setStopReason(null) // Clear local state when starting
+        // Worker clears stopReason when it starts processing; clear local state for UI
+        setStopReason(null)
       }
       setAlert({
         type: "success",
