@@ -12,13 +12,16 @@ import {
   contentItemSchema,
   configEntrySchema,
   structuredLogEntrySchema,
+  generatorStartResponseSchema,
+  generatorStepResponseSchema,
+  generatorAssetUploadSchema,
 } from "@shared/types"
 
 const API_BASE = process.env.JF_E2E_API_BASE || "http://127.0.0.1:5080/api"
 const AUTH_TOKEN = process.env.JF_E2E_AUTH_TOKEN || "dev-admin-token"
 
 test.describe("API contract (shared schemas)", () => {
-  test("API contract :: listings/matches/queue/companies/sources/content/config/logging conform to shared schemas", async ({ request }) => {
+  test("API contract :: listings/matches/queue/companies/sources/content/config/logging/generator conform to shared schemas", async ({ request }) => {
     // Seed one listing so listing schema validation hits real data
     const unique = `e2e-contract-${Date.now()}`
     const createRes = await request.post(`${API_BASE}/job-listings`, {
@@ -148,5 +151,42 @@ test.describe("API contract (shared schemas)", () => {
       data: logPayload,
     })
     expect(logRes.ok()).toBeTruthy()
+
+    // Generator start/step (fire-and-validate; may be mocked in backend)
+    const startRes = await request.post(`${API_BASE}/generator/start`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}`, "Content-Type": "application/json" },
+      data: {
+        generateType: "resume",
+        job: { role: "Engineer", company: "Contract Co", jobDescriptionUrl: "https://example.com" },
+      },
+    })
+    expect(startRes.ok()).toBeTruthy()
+    const startBody = await startRes.json()
+    const startParse = generatorStartResponseSchema.safeParse(startBody.data)
+    expect(startParse.success).toBe(true)
+
+    if (startBody.data?.requestId) {
+      const stepRes = await request.post(`${API_BASE}/generator/step/${startBody.data.requestId}`, {
+        headers: { Authorization: `Bearer ${AUTH_TOKEN}`, "Content-Type": "application/json" },
+      })
+      expect(stepRes.ok()).toBeTruthy()
+      const stepBody = await stepRes.json()
+      const stepParse = generatorStepResponseSchema.safeParse(stepBody.data)
+      expect(stepParse.success).toBe(true)
+    }
+
+    // Generator asset upload (simple data URL)
+    const uploadRes = await request.post(`${API_BASE}/generator/assets/upload`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}`, "Content-Type": "application/json" },
+      data: {
+        type: "avatar",
+        dataUrl:
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAhUBAO8e0b0AAAAASUVORK5CYII=",
+      },
+    })
+    expect(uploadRes.ok()).toBeTruthy()
+    const uploadBody = await uploadRes.json()
+    const uploadParse = generatorAssetUploadSchema.safeParse(uploadBody)
+    expect(uploadParse.success).toBe(true)
   })
 })

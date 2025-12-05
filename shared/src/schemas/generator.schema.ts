@@ -61,3 +61,8 @@ export const generatorStepResponseSchema = z.object({
   resumeUrl: z.string().nullable().optional(),
   coverLetterUrl: z.string().nullable().optional(),
 })
+
+export const generatorAssetUploadSchema = z.object({
+  path: z.string(),
+  publicUrl: z.string().optional(),
+})
