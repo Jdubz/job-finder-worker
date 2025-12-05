@@ -22,6 +22,7 @@ export const ROUTES = {
   // Auth
   LOGIN: "/login",
   UNAUTHORIZED: "/unauthorized",
+  GMAIL_OAUTH_CALLBACK: "/gmail/oauth/callback",
 } as const
 
 export type RouteKey = keyof typeof ROUTES
@@ -56,4 +57,5 @@ export const PUBLIC_ROUTES: RoutePath[] = [
   ROUTES.DISCLAIMER,
   ROUTES.LOGIN,
   ROUTES.UNAUTHORIZED,
+  ROUTES.GMAIL_OAUTH_CALLBACK,
 ]

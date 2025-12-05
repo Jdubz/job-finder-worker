@@ -76,6 +76,9 @@ const CookiePolicyPage = lazyWithRetry(() =>
 const DisclaimerPage = lazyWithRetry(() =>
   import("@/pages/legal/DisclaimerPage").then((m) => ({ default: m.DisclaimerPage }))
 )
+const GmailOauthCallbackPage = lazyWithRetry(() =>
+  import("@/pages/GmailOauthCallbackPage").then((m) => ({ default: m.GmailOauthCallbackPage }))
+)
 
 export const router = createBrowserRouter([
   {
@@ -129,6 +132,14 @@ export const router = createBrowserRouter([
         element: (
           <LazyPage>
             <UnauthorizedPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.GMAIL_OAUTH_CALLBACK,
+        element: (
+          <LazyPage>
+            <GmailOauthCallbackPage />
           </LazyPage>
         ),
       },

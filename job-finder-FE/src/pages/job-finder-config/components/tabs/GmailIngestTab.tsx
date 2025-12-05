@@ -6,6 +6,8 @@ import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
 import { apiClient } from "@/api/base-client"
+import { ROUTES } from "@/types/routes"
+import { useAuth } from "@/contexts/AuthContext"
 
 type GmailAccount = {
   userEmail: string
@@ -34,6 +36,7 @@ export function GmailIngestTab() {
   const [loading, setLoading] = useState(false)
   const [accounts, setAccounts] = useState<GmailAccount[]>([])
   const [config, setConfig] = useState<ConfigPayload | null>(null)
+  const { user } = useAuth()
 
   const allowedSenders = useMemo(
     () => (config?.allowedSenders ?? []).join(", "),
@@ -93,6 +96,23 @@ export function GmailIngestTab() {
           }
         : prev
     )
+  }
+
+  const startOAuth = () => {
+    const redirectUri = `${window.location.origin}${ROUTES.GMAIL_OAUTH_CALLBACK}`
+    const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
+    const scope = encodeURIComponent("https://www.googleapis.com/auth/gmail.readonly")
+    const url = [
+      "https://accounts.google.com/o/oauth2/v2/auth",
+      `?client_id=${clientId}`,
+      `&redirect_uri=${encodeURIComponent(redirectUri)}`,
+      "&response_type=code",
+      "&access_type=offline",
+      "&prompt=consent",
+      `&scope=${scope}`,
+      user?.email ? `&login_hint=${encodeURIComponent(user.email)}` : ""
+    ].join("")
+    window.location.href = url
   }
 
   if (!config) {
@@ -189,6 +209,15 @@ export function GmailIngestTab() {
               onCheckedChange={(checked) => setConfig((c) => (c ? { ...c, aiFallbackEnabled: checked } : c))}
             />
             <Label htmlFor="aiFallback">Enable AI fallback parsing</Label>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button type="button" variant="secondary" onClick={startOAuth} disabled={!user?.email}>
+              Authorize Gmail
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Uses your Google OAuth to grant read-only access for job alerts (offline access for cron).
+            </p>
           </div>
 
           <Button onClick={saveConfig} disabled={loading}>
