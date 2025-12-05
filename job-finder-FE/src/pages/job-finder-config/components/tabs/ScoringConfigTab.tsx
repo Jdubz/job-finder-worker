@@ -7,7 +7,13 @@ import { TabCard } from "../shared"
 import { StringListField, NumericField, CheckboxRow, ImpactBadge, InfoTooltip } from "../shared/form-fields"
 import type { MatchPolicy, SkillMatchConfig } from "@shared/types"
 
-type MatchPolicyFormValues = MatchPolicy
+type SkillMatchFormValues = Omit<SkillMatchConfig, "analogGroups"> & {
+  analogGroups: string[]
+}
+
+type MatchPolicyFormValues = Omit<MatchPolicy, "skillMatch"> & {
+  skillMatch: SkillMatchFormValues
+}
 
 type MatchPolicyTabProps = {
   isSaving: boolean
@@ -18,7 +24,7 @@ type MatchPolicyTabProps = {
 
 const cleanList = (items?: string[]) => (items ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)
 
-const defaultSkillMatch: SkillMatchConfig = {
+const defaultSkillMatch: SkillMatchFormValues = {
   baseMatchScore: 1,
   yearsMultiplier: 0.5,
   maxYearsBonus: 5,
@@ -72,11 +78,11 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
       analogScore: skillValues.analogScore,
       maxBonus: skillValues.maxBonus,
       maxPenalty: skillValues.maxPenalty,
-      analogGroups: (skillValues.analogGroups || []).map((line) =>
+      analogGroups: (skillValues.analogGroups || []).map((line: string) =>
         line
           .split(",")
-          .map((item) => item.trim())
-        .filter(Boolean)
+          .map((item: string) => item.trim())
+          .filter(Boolean)
       ),
     }
   })(),
