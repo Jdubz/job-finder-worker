@@ -5,6 +5,8 @@ import { ConfigRepository } from "../config/config.repository"
 import { JobQueueService } from "../job-queue/job-queue.service"
 import type { SubmitJobInput } from "../job-queue/job-queue.service"
 import type { GmailIngestConfig } from "./gmail.types"
+import { parseEmailBody } from "./gmail-message-parser"
+import { JobQueueRepository } from "../job-queue/job-queue.repository"
 
 export type IngestJobResult = {
   gmailEmail: string
@@ -36,6 +38,7 @@ export class GmailIngestService {
   private readonly auth = new GmailAuthService()
   private readonly config = new ConfigRepository()
   private readonly queue = new JobQueueService()
+  private readonly queueRepo = new JobQueueRepository()
   private readonly defaultAllowedDomains = [
     "greenhouse.io",
     "lever.co",
@@ -131,6 +134,9 @@ export class GmailIngestService {
       jobsFound += parsedJobs.length
 
       for (const job of parsedJobs) {
+        if (this.isDuplicate(job.url, full.id)) {
+          continue
+        }
         const jobInput: SubmitJobInput = {
           url: job.url,
           source: "email",
@@ -161,6 +167,15 @@ export class GmailIngestService {
     }
 
     return { gmailEmail, jobsFound, jobsQueued }
+  }
+
+  private isDuplicate(url: string, messageId: string): boolean {
+    const dedupKey = `${messageId}::${url}`
+    const items = this.queueRepo.list({ limit: 100 }) // small recent window
+    return items.some((item) => {
+      const meta = (item.metadata || {}) as any
+      return item.url === url || meta.gmailMessageId === messageId || meta.gmailDedupKey === dedupKey
+    })
   }
 
   private async ensureAccessToken(tokens: GmailTokenPayload) {
