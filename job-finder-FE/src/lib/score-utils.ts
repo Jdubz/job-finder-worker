@@ -29,7 +29,7 @@ export function getScoreColor(score: number): string {
  *
  * Checks in order:
  * 1. Direct matchScore column (populated by worker from deterministic scoring)
- * 2. Fallback: scoringResult.finalScore
+ * 2. Fallback: filterResult.scoring.finalScore
  *
  * @returns The match score (0-100) or null if not available
  */
@@ -37,9 +37,9 @@ export function extractMatchScore(listing: JobListingRecord): number | null {
   // Use direct matchScore column first (populated by worker from deterministic scoring)
   if (typeof listing.matchScore === "number") return listing.matchScore
 
-  // Fallback: extract from scoringResult.finalScore
-  if (listing.scoringResult?.finalScore != null) {
-    return listing.scoringResult.finalScore
+  // Fallback: extract from filterResult.scoring.finalScore
+  if (listing.filterResult?.scoring?.finalScore != null) {
+    return listing.filterResult.scoring.finalScore
   }
 
   return null

@@ -73,7 +73,7 @@ export function JobDetailsDialog({
               </div>
 
               {/* Scoring Breakdown */}
-              {match.listing.scoringResult && (
+              {match.listing.filterResult?.scoring && (
                 <>
                   <Separator className="my-4" />
                   <div>
@@ -84,21 +84,21 @@ export function JobDetailsDialog({
                     <div className="grid grid-cols-2 gap-2 mb-3">
                       <div className="text-center p-2 bg-secondary/50 rounded">
                         <div className="text-lg font-medium">
-                          {match.listing.scoringResult.baseScore}
+                          {match.listing.filterResult.scoring.baseScore}
                         </div>
                         <div className="text-xs text-muted-foreground">Base Score</div>
                       </div>
                       <div className="text-center p-2 bg-secondary/50 rounded">
                         <div className="text-lg font-medium">
-                          {match.listing.scoringResult.finalScore}
+                          {match.listing.filterResult.scoring.finalScore}
                         </div>
                         <div className="text-xs text-muted-foreground">Final Score</div>
                       </div>
                     </div>
-                    {match.listing.scoringResult.adjustments.length > 0 && (
+                    {match.listing.filterResult.scoring.adjustments.length > 0 && (
                       <div className="space-y-1.5">
                         <p className="text-xs text-muted-foreground mb-2">Adjustments Applied:</p>
-                        {match.listing.scoringResult.adjustments.map((adj, idx) => (
+                        {match.listing.filterResult.scoring.adjustments.map((adj, idx) => (
                           <div
                             key={idx}
                             className="flex items-center justify-between text-sm bg-secondary/30 px-2 py-1.5 rounded"

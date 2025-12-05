@@ -251,21 +251,6 @@ class JobListingStorage:
             )
             return conn.total_changes > 0
 
-    def update_scoring_result(self, listing_id: str, scoring_result: Dict[str, Any]) -> bool:
-        """Update the scoring_result JSON for a job listing (full breakdown with adjustments)."""
-        now = utcnow_iso()
-
-        with sqlite_connection(self.db_path) as conn:
-            conn.execute(
-                """
-                UPDATE job_listings
-                SET scoring_result = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (_serialize_json(scoring_result), now, listing_id),
-            )
-            return conn.total_changes > 0
-
     def update_company_id(self, listing_id: str, company_id: str) -> bool:
         """Update the company_id for a job listing."""
         now = utcnow_iso()

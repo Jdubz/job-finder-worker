@@ -805,23 +805,21 @@ class JobProcessor(BaseProcessor):
     def _execute_save_match(self, ctx: PipelineContext) -> str:
         """Execute save match stage."""
         # Update listing to matched status (analysis data goes ONLY to job_matches)
+        # Scoring breakdown is stored in filter_result.scoring
         self._update_listing_status(
             ctx.listing_id,
             "matched",
             filter_result={
                 "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
+                "scoring": ctx.score_result.to_dict() if ctx.score_result else None,
             },
         )
 
-        # Update match_score and scoring_result on listing
+        # Update match_score on listing for quick filtering/sorting
         if ctx.listing_id and ctx.score_result:
             self.job_listing_storage.update_match_score(
                 ctx.listing_id,
                 ctx.score_result.final_score,
-            )
-            self.job_listing_storage.update_scoring_result(
-                ctx.listing_id,
-                ctx.score_result.to_dict(),
             )
 
         # Save to job_matches table (single source of truth for analysis)

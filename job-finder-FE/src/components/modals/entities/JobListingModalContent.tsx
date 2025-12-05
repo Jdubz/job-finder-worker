@@ -166,15 +166,15 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
                 {matchScore !== null ? <Badge variant="outline">Score: {matchScore}</Badge> : null}
               </Label>
               <div className="mt-2">
-                {listing.scoringResult ? (
+                {listing.filterResult?.scoring ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-sm">
-                      <Badge variant="outline">Base: {listing.scoringResult.baseScore}</Badge>
-                      <Badge>Final: {listing.scoringResult.finalScore}</Badge>
+                      <Badge variant="outline">Base: {listing.filterResult.scoring.baseScore}</Badge>
+                      <Badge>Final: {listing.filterResult.scoring.finalScore}</Badge>
                     </div>
-                    {listing.scoringResult.adjustments.length > 0 && (
+                    {listing.filterResult.scoring.adjustments.length > 0 && (
                       <div className="space-y-1">
-                        {listing.scoringResult.adjustments.map((adj, idx) => (
+                        {listing.filterResult.scoring.adjustments.map((adj, idx) => (
                           <div
                             key={idx}
                             className="flex items-center justify-between text-sm bg-secondary/30 px-2 py-1 rounded"

@@ -201,11 +201,16 @@ export interface JobListingRecord {
   /** Pipeline status */
   status: JobListingStatus
 
-  /** Filter/extraction result details */
-  filterResult?: Record<string, unknown> | null
-
-  /** Deterministic scoring result with breakdown (baseScore, finalScore, adjustments) */
-  scoringResult?: ScoreBreakdown | null
+  /**
+   * Filter/extraction result details.
+   * Contains extraction data and scoring breakdown.
+   * Structure: { extraction: {...}, scoring: ScoreBreakdown }
+   */
+  filterResult?: {
+    extraction?: Record<string, unknown>
+    scoring?: ScoreBreakdown | null
+    [key: string]: unknown
+  } | null
 
   /** AI match score (0-100) for quick filtering */
   matchScore?: number | null
