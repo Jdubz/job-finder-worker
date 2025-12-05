@@ -1,39 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { getLocalCliHealth as GetLocalCliHealthFn } from './cli-health.service'
 
-// Mock child_process before importing the module
-vi.mock('node:child_process', () => ({
-  execFile: vi.fn()
-}))
-
-vi.mock('node:util', () => ({
-  promisify: vi.fn((fn) => fn)
-}))
-
-// Mock the logger to prevent console output during tests
-vi.mock('../logger', () => ({
-  logger: {
-    warn: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn()
-  }
-}))
-
 describe('cli-health.service', () => {
   let getLocalCliHealth: typeof GetLocalCliHealthFn
-  let mockedExecFile: ReturnType<typeof vi.fn>
+  let mockedReadFile: ReturnType<typeof vi.fn>
 
   beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
 
-    // Re-mock modules for fresh state
-    vi.doMock('node:child_process', () => ({
-      execFile: vi.fn()
+    vi.doMock('node:fs/promises', () => ({
+      readFile: vi.fn()
     }))
 
-    vi.doMock('node:util', () => ({
-      promisify: vi.fn((fn) => fn)
+    vi.doMock('node:os', () => ({
+      homedir: vi.fn(() => '/home/testuser')
     }))
 
     vi.doMock('../logger', () => ({
@@ -44,14 +25,8 @@ describe('cli-health.service', () => {
       }
     }))
 
-    // Re-import the module to get fresh mocks
-    const childProcess = await import('node:child_process')
-    mockedExecFile = vi.mocked(childProcess.execFile)
-
-    // Default safety: fail fast if a test forgets to mock a command (prevents real CLI execution)
-    mockedExecFile.mockImplementation(() =>
-      Promise.reject(new Error('execFile should be mocked in tests'))
-    )
+    const fsPromises = await import('node:fs/promises')
+    mockedReadFile = vi.mocked(fsPromises.readFile)
 
     const module = await import('./cli-health.service')
     getLocalCliHealth = module.getLocalCliHealth
@@ -61,110 +36,347 @@ describe('cli-health.service', () => {
     vi.resetModules()
   })
 
-  describe('getLocalCliHealth', () => {
-    it('should return healthy status when CLI commands succeed with authenticated output', async () => {
-      // Mock successful authenticated responses for both CLIs
-      mockedExecFile.mockImplementation((cmd: string, args: string[] = []) => {
-        const joined = [cmd, ...args].join(' ')
-        if (cmd === 'codex') {
-          return Promise.resolve({ stdout: 'You are logged in as user@example.com', stderr: '' })
+  describe('codex (config-based)', () => {
+    it('should return healthy when OAuth credentials are configured with email', async () => {
+      // Create a mock JWT with email in payload (JWTs use base64url encoding)
+      const payload = { email: 'user@example.com', exp: Date.now() / 1000 + 3600 }
+      const mockIdToken = `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`
+
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({
+            OPENAI_API_KEY: null,
+            tokens: {
+              refresh_token: 'rt_test',
+              id_token: mockIdToken
+            }
+          }))
         }
-        if (joined.includes('gemini auth status')) {
-          return Promise.resolve({ stdout: 'Authenticated as user@example.com', stderr: '' })
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
         }
-        return Promise.reject(new Error('Unknown command'))
+        if (path.includes('.gemini/oauth_creds.json')) {
+          return Promise.resolve(JSON.stringify({ refresh_token: 'test-token' }))
+        }
+        return Promise.reject(new Error('File not found'))
       })
 
       const result = await getLocalCliHealth()
 
       expect(result.codex.healthy).toBe(true)
-      expect(result.codex.message.toLowerCase()).toContain('logged in')
+      expect(result.codex.message).toContain('user@example.com')
+    })
+
+    it('should return healthy when OAuth credentials exist without email in JWT', async () => {
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({
+            OPENAI_API_KEY: null,
+            tokens: {
+              refresh_token: 'rt_test',
+              id_token: 'invalid.jwt.token'
+            }
+          }))
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
+        }
+        if (path.includes('.gemini/oauth_creds.json')) {
+          return Promise.resolve(JSON.stringify({ refresh_token: 'test-token' }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
+
+      const result = await getLocalCliHealth()
+
+      expect(result.codex.healthy).toBe(true)
+      expect(result.codex.message).toBe('OAuth credentials configured')
+    })
+
+    it('should return healthy when API key is in auth file', async () => {
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({
+            OPENAI_API_KEY: 'sk-test-key',
+            tokens: null
+          }))
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
+        }
+        if (path.includes('.gemini/oauth_creds.json')) {
+          return Promise.resolve(JSON.stringify({ refresh_token: 'test-token' }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
+
+      const result = await getLocalCliHealth()
+
+      expect(result.codex.healthy).toBe(true)
+      expect(result.codex.message).toBe('API key configured')
+    })
+
+    it('should return healthy when API key is in environment', async () => {
+      process.env.OPENAI_API_KEY = 'sk-test-key'
+
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({
+            OPENAI_API_KEY: null,
+            tokens: null
+          }))
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
+        }
+        if (path.includes('.gemini/oauth_creds.json')) {
+          return Promise.resolve(JSON.stringify({ refresh_token: 'test-token' }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
+
+      const result = await getLocalCliHealth()
+
+      expect(result.codex.healthy).toBe(true)
+      expect(result.codex.message).toContain('environment')
+
+      delete process.env.OPENAI_API_KEY
+    })
+
+    it('should return healthy when auth file missing but API key in environment', async () => {
+      process.env.OPENAI_API_KEY = 'sk-test-key'
+
+      const err = new Error('ENOENT') as NodeJS.ErrnoException
+      err.code = 'ENOENT'
+
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.reject(err)
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
+        }
+        if (path.includes('.gemini/oauth_creds.json')) {
+          return Promise.resolve(JSON.stringify({ refresh_token: 'test-token' }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
+
+      const result = await getLocalCliHealth()
+
+      expect(result.codex.healthy).toBe(true)
+      expect(result.codex.message).toContain('environment')
+
+      delete process.env.OPENAI_API_KEY
+    })
+
+    it('should return unhealthy when auth file is missing and no env var', async () => {
+      delete process.env.OPENAI_API_KEY
+
+      const err = new Error('ENOENT') as NodeJS.ErrnoException
+      err.code = 'ENOENT'
+
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.reject(err)
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
+        }
+        if (path.includes('.gemini/oauth_creds.json')) {
+          return Promise.resolve(JSON.stringify({ refresh_token: 'test-token' }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
+
+      const result = await getLocalCliHealth()
+
+      expect(result.codex.healthy).toBe(false)
+      expect(result.codex.message).toContain('auth file not found')
+    })
+
+    it('should return unhealthy when no credentials found in auth file', async () => {
+      delete process.env.OPENAI_API_KEY
+
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({
+            OPENAI_API_KEY: null,
+            tokens: {}
+          }))
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
+        }
+        if (path.includes('.gemini/oauth_creds.json')) {
+          return Promise.resolve(JSON.stringify({ refresh_token: 'test-token' }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
+
+      const result = await getLocalCliHealth()
+
+      expect(result.codex.healthy).toBe(false)
+      expect(result.codex.message).toContain('no credentials found')
+    })
+  })
+
+  describe('gemini (config-based)', () => {
+    it('should return healthy when OAuth credentials are configured with active account', async () => {
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({ tokens: { refresh_token: 'test' } }))
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
+        }
+        if (path.includes('.gemini/oauth_creds.json')) {
+          return Promise.resolve(JSON.stringify({ refresh_token: 'test-refresh-token' }))
+        }
+        if (path.includes('.gemini/google_accounts.json')) {
+          return Promise.resolve(JSON.stringify({ active: 'user@gmail.com' }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
+
+      const result = await getLocalCliHealth()
+
       expect(result.gemini.healthy).toBe(true)
-      expect(result.gemini.message.toLowerCase()).toContain('authenticated')
+      expect(result.gemini.message).toContain('user@gmail.com')
     })
 
-    it('should return unhealthy status when CLI indicates not authenticated', async () => {
-      mockedExecFile.mockImplementation((cmd: string, args: string[] = []) => {
-        const joined = [cmd, ...args].join(' ')
-        if (cmd === 'codex') {
-          return Promise.resolve({ stdout: 'You are not logged in', stderr: '' })
+    it('should return healthy when OAuth credentials exist without accounts file', async () => {
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({ tokens: { refresh_token: 'test' } }))
         }
-        if (joined.includes('gemini auth status')) {
-          return Promise.resolve({ stdout: 'Not authenticated. Please run gemini auth login', stderr: '' })
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
         }
-        return Promise.reject(new Error('Unknown command'))
+        if (path.includes('.gemini/oauth_creds.json')) {
+          return Promise.resolve(JSON.stringify({ refresh_token: 'test-refresh-token' }))
+        }
+        const err = new Error('ENOENT') as NodeJS.ErrnoException
+        err.code = 'ENOENT'
+        return Promise.reject(err)
       })
 
       const result = await getLocalCliHealth()
 
-      expect(result.codex.healthy).toBe(false)
-      expect(result.gemini.healthy).toBe(false)
+      expect(result.gemini.healthy).toBe(true)
+      expect(result.gemini.message).toBe('OAuth credentials configured')
     })
 
-    it('should return unhealthy status when CLI binary is not found', async () => {
-      const notFoundError = new Error('spawn codex ENOENT') as Error & { code?: string }
-      notFoundError.code = 'ENOENT'
+    it('should return unhealthy when settings file is missing', async () => {
+      const err = new Error('ENOENT') as NodeJS.ErrnoException
+      err.code = 'ENOENT'
 
-      mockedExecFile.mockImplementation(() => Promise.reject(notFoundError))
-
-      const result = await getLocalCliHealth()
-
-      expect(result.codex.healthy).toBe(false)
-      expect(result.codex.message).toContain('ENOENT')
-      expect(result.gemini.healthy).toBe(false)
-    })
-
-    it('should return unhealthy status when CLI command times out', async () => {
-      const timeoutError = new Error('Command timed out')
-      timeoutError.name = 'TimeoutError'
-
-      mockedExecFile.mockImplementation(() => Promise.reject(timeoutError))
-
-      const result = await getLocalCliHealth()
-
-      expect(result.codex.healthy).toBe(false)
-      expect(result.codex.message).toContain('timed out')
-      expect(result.gemini.healthy).toBe(false)
-    })
-
-    it('should handle CLI returning error in stderr', async () => {
-      mockedExecFile.mockImplementation((cmd: string) => {
-        if (cmd === 'codex') {
-          return Promise.resolve({ stdout: '', stderr: 'Error: API key invalid' })
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({ tokens: { refresh_token: 'test' } }))
         }
-        if (cmd === 'gemini') {
-          return Promise.resolve({ stdout: '', stderr: 'Authentication failed' })
-        }
-        return Promise.reject(new Error('Unknown command'))
+        return Promise.reject(err)
       })
 
       const result = await getLocalCliHealth()
 
-      expect(result.codex.healthy).toBe(false)
-      expect(result.codex.message).toContain('API key invalid')
       expect(result.gemini.healthy).toBe(false)
+      expect(result.gemini.message).toContain('settings file not found')
     })
 
-    it('should format error messages correctly when stderr is available', async () => {
-      const errorWithStderr = new Error('Command failed') as Error & { stderr?: string }
-      errorWithStderr.stderr = 'CLI not configured properly'
-
-      mockedExecFile.mockImplementation(() => Promise.reject(errorWithStderr))
+    it('should return unhealthy when no auth type is selected', async () => {
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({ tokens: { refresh_token: 'test' } }))
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: {} }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
 
       const result = await getLocalCliHealth()
 
-      expect(result.codex.healthy).toBe(false)
-      expect(result.codex.message).toBe('CLI not configured properly')
+      expect(result.gemini.healthy).toBe(false)
+      expect(result.gemini.message).toContain('no auth type selected')
     })
 
-    it('should return default message when command succeeds with empty output', async () => {
-      mockedExecFile.mockImplementation(() => Promise.resolve({ stdout: '', stderr: '' }))
+    it('should return unhealthy when OAuth credentials are missing refresh token', async () => {
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({ tokens: { refresh_token: 'test' } }))
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }))
+        }
+        if (path.includes('.gemini/oauth_creds.json')) {
+          return Promise.resolve(JSON.stringify({ access_token: 'test-token' })) // No refresh_token
+        }
+        return Promise.reject(new Error('File not found'))
+      })
 
       const result = await getLocalCliHealth()
 
-      // Empty output without success terms means unhealthy
-      expect(result.codex.healthy).toBe(false)
       expect(result.gemini.healthy).toBe(false)
+      expect(result.gemini.message).toContain('missing refresh token')
+    })
+
+    it('should return healthy when API key auth is configured with env var', async () => {
+      process.env.GEMINI_API_KEY = 'test-api-key'
+
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({ tokens: { refresh_token: 'test' } }))
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'api-key' } } }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
+
+      const result = await getLocalCliHealth()
+
+      expect(result.gemini.healthy).toBe(true)
+      expect(result.gemini.message).toBe('API key configured')
+
+      delete process.env.GEMINI_API_KEY
+    })
+
+    it('should return unhealthy when API key auth is configured but env var missing', async () => {
+      delete process.env.GEMINI_API_KEY
+      delete process.env.GOOGLE_API_KEY
+
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({ tokens: { refresh_token: 'test' } }))
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'api-key' } } }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
+
+      const result = await getLocalCliHealth()
+
+      expect(result.gemini.healthy).toBe(false)
+      expect(result.gemini.message).toContain('API key not found')
+    })
+
+    it('should return healthy for other auth types (like gcloud)', async () => {
+      mockedReadFile.mockImplementation((path: string) => {
+        if (path.includes('.codex/auth.json')) {
+          return Promise.resolve(JSON.stringify({ tokens: { refresh_token: 'test' } }))
+        }
+        if (path.includes('.gemini/settings.json')) {
+          return Promise.resolve(JSON.stringify({ security: { auth: { selectedType: 'gcloud' } } }))
+        }
+        return Promise.reject(new Error('File not found'))
+      })
+
+      const result = await getLocalCliHealth()
+
+      expect(result.gemini.healthy).toBe(true)
+      expect(result.gemini.message).toContain('gcloud')
     })
   })
 })

@@ -1,65 +1,18 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, beforeEach } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import { BrowserRouter } from "react-router-dom"
-import { jobMatchWithListingSchema, jobMatchStatsSchema } from "@shared/types"
 import { JobApplicationsPage } from "../JobApplicationsPage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useEntityModal } from "@/contexts/EntityModalContext"
+import { jobMatchesClient } from "@/api/job-matches-client"
+import type { JobMatchWithListing } from "@shared/types"
 
-const { mockMatches, mockStats } = vi.hoisted(() => ({
-  mockMatches: [
-    {
-      id: "m100",
-      jobListingId: "l100",
-      matchScore: 87,
-      matchedSkills: ["TypeScript", "React"],
-      missingSkills: [],
-      matchReasons: [],
-      keyStrengths: [],
-      potentialConcerns: [],
-      experienceMatch: 90,
-      customizationRecommendations: [],
-      analyzedAt: "2024-02-01T12:00:00.000Z",
-      createdAt: "2024-02-01T12:00:00.000Z",
-      updatedAt: "2024-02-02T12:00:00.000Z",
-      submittedBy: null,
-      queueItemId: "q100",
-      listing: {
-        id: "l100",
-        url: "https://example.com/jobs/l100",
-        title: "Fullstack Engineer",
-        companyName: "Example Co",
-        description: "Do things",
-        status: "matched",
-        createdAt: "2024-02-01T12:00:00.000Z",
-        updatedAt: "2024-02-02T12:00:00.000Z",
-      },
-    },
-  ],
-  mockStats: {
-    total: 1,
-    highScore: 1,
-    mediumScore: 0,
-    lowScore: 0,
-    averageScore: 87,
+vi.mock("@/api/job-matches-client", () => ({
+  jobMatchesClient: {
+    subscribeToMatches: vi.fn(),
+    getStats: vi.fn(),
   },
 }))
-
-vi.mock("@/api/job-matches-client", async () => {
-  const actual = await vi.importActual<typeof import("@/api/job-matches-client")>("@/api/job-matches-client")
-  return {
-    ...actual,
-    jobMatchesClient: {
-      ...actual.jobMatchesClient,
-      subscribeToMatches: (callback: (matches: any[]) => void) => {
-        const parsed = jobMatchWithListingSchema.array().parse(mockMatches)
-        callback(parsed)
-        return () => {}
-      },
-      getStats: vi.fn().mockResolvedValue(jobMatchStatsSchema.parse(mockStats)),
-    },
-  }
-})
 
 vi.mock("@/contexts/AuthContext")
 vi.mock("@/contexts/EntityModalContext")
@@ -71,9 +24,54 @@ vi.mock("react-router-dom", async (importOriginal) => {
     useNavigate: () => vi.fn(),
   }
 })
-describe("JobApplicationsPage contract", () => {
 
-  it("renders matches when API responses align with shared schemas (ISO timestamps)", async () => {
+describe("JobApplicationsPage contract", () => {
+  // Use type assertion for test mock data - timestamps are strings from API
+  const mockMatches: JobMatchWithListing[] = [
+    {
+      id: "m100",
+      jobListingId: "l100",
+      matchScore: 87,
+      matchedSkills: ["TypeScript", "React"],
+      missingSkills: [],
+      matchReasons: [],
+      keyStrengths: [],
+      potentialConcerns: [],
+      experienceMatch: 90,
+      customizationRecommendations: [],
+      analyzedAt: new Date("2024-02-01T12:00:00.000Z"),
+      createdAt: new Date("2024-02-01T12:00:00.000Z"),
+      updatedAt: new Date("2024-02-02T12:00:00.000Z"),
+      submittedBy: null,
+      queueItemId: "q100",
+      listing: {
+        id: "l100",
+        url: "https://example.com/jobs/l100",
+        title: "Fullstack Engineer",
+        companyName: "Example Co",
+        description: "Do things",
+        status: "matched",
+        createdAt: new Date("2024-02-01T12:00:00.000Z"),
+        updatedAt: new Date("2024-02-02T12:00:00.000Z"),
+      },
+    },
+  ]
+
+  const mockStats = {
+    total: 1,
+    highScore: 1,
+    mediumScore: 0,
+    lowScore: 0,
+    averageScore: 87,
+  }
+
+  beforeEach(() => {
+    vi.mocked(jobMatchesClient.subscribeToMatches).mockImplementation((callback) => {
+      callback(mockMatches)
+      return () => {}
+    })
+    vi.mocked(jobMatchesClient.getStats).mockResolvedValue(mockStats)
+
     vi.mocked(useAuth).mockReturnValue({
       user: { uid: "user-100" } as any,
       loading: false,
@@ -83,7 +81,9 @@ describe("JobApplicationsPage contract", () => {
     } as any)
 
     vi.mocked(useEntityModal).mockReturnValue({ openModal: vi.fn(), closeModal: vi.fn() } as any)
+  })
 
+  it("renders matches when API responses align with shared schemas (ISO timestamps)", async () => {
     render(
       <BrowserRouter>
         <JobApplicationsPage />

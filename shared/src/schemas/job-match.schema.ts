@@ -14,7 +14,7 @@ export const jobMatchSchema = z
     potentialConcerns: z.array(z.string()),
     experienceMatch: z.number(),
     customizationRecommendations: z.array(z.string()),
-    resumeIntakeData: z.record(z.unknown()).optional(),
+    resumeIntakeData: z.record(z.string(), z.unknown()).optional(),
     analyzedAt: timestampJsonSchema,
     createdAt: timestampJsonSchema,
     updatedAt: timestampJsonSchema,
@@ -25,7 +25,7 @@ export const jobMatchSchema = z
 
 export const jobMatchWithListingSchema = jobMatchSchema.extend({
   listing: jobListingRecordSchema,
-  company: z.record(z.unknown()).nullable().optional(),
+  company: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 
 export const jobMatchStatsSchema = z.object({

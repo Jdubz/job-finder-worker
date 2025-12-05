@@ -22,7 +22,7 @@ export const structuredLogEntrySchema = z.object({
       duration: z.number().optional(),
     })
     .optional(),
-  details: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  details: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
   error: z
     .object({
       type: z.string(),
@@ -38,5 +38,5 @@ export const fileLogEntrySchema = structuredLogEntrySchema.extend({
   environment: z.string(),
   service: z.string(),
   version: z.string().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 })

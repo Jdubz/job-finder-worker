@@ -7,7 +7,7 @@ export const jobSourceSchema = z
     name: z.string(),
     sourceType: z.string(),
     status: z.enum(["active", "paused", "disabled", "error"]),
-    configJson: z.record(z.unknown()),
+    configJson: z.record(z.string(), z.unknown()),
     tags: z.array(z.string()).nullable().optional(),
     companyId: z.string().nullable().optional(),
     aggregatorDomain: z.string().nullable().optional(),

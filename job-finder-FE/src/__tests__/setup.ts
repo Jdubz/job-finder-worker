@@ -288,13 +288,7 @@ vi.mock("@/types/generator", () => ({
   UserDefaults: {},
 }))
 
-// Mock shared types - passthrough real exports
-vi.mock("@shared/types", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@shared/types")>()
-  return {
-    ...actual,
-  }
-})
+// Note: @shared/types is NOT mocked - use real schemas in tests
 
 // Setup test cleanup and memory monitoring
 setupTestCleanup()
