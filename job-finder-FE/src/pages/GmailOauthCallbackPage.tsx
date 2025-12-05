@@ -1,9 +1,12 @@
 import { useEffect } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useToast } from "@/components/ui/use-toast"
-import { apiClient } from "@/api/base-client"
+import { BaseApiClient } from "@/api/base-client"
+import { API_CONFIG } from "@/config/api"
 import { useAuth } from "@/contexts/AuthContext"
 import { ROUTES } from "@/types/routes"
+
+const apiClient = new BaseApiClient(() => API_CONFIG.baseUrl)
 
 export function GmailOauthCallbackPage() {
   const { toast } = useToast()
@@ -16,7 +19,6 @@ export function GmailOauthCallbackPage() {
 
     const params = new URLSearchParams(location.search)
     const code = params.get("code")
-    const _scope = params.get("scope") // informational only
     if (!code) {
       toast({ title: "Missing authorization code", variant: "destructive" })
       navigate(ROUTES.JOB_FINDER_CONFIG, { replace: true })
@@ -39,7 +41,7 @@ export function GmailOauthCallbackPage() {
         toast({ title: "Gmail authorized" })
         navigate(ROUTES.JOB_FINDER_CONFIG, { replace: true })
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         toast({ title: "Gmail auth failed", description: String(error), variant: "destructive" })
         navigate(ROUTES.JOB_FINDER_CONFIG, { replace: true })
       })

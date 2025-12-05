@@ -5,7 +5,8 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
-import { apiClient } from "@/api/base-client"
+import { BaseApiClient } from "@/api/base-client"
+import { API_CONFIG } from "@/config/api"
 import { ROUTES } from "@/types/routes"
 import { useAuth } from "@/contexts/AuthContext"
 
@@ -33,6 +34,7 @@ type ConfigPayload = {
 
 export function GmailIngestTab() {
   const { toast } = useToast()
+  const apiClient = useMemo(() => new BaseApiClient(() => API_CONFIG.baseUrl), [])
   const [loading, setLoading] = useState(false)
   const [revoking, setRevoking] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<GmailAccount[]>([])
@@ -58,8 +60,10 @@ export function GmailIngestTab() {
 
   async function loadConfig() {
     try {
-      const res = await apiClient.get("/config/gmail-ingest")
-      setConfig(res.data.config.payload as ConfigPayload)
+      const res = await apiClient.get<{ data: { config: { payload: ConfigPayload } } }>(
+        "/config/gmail-ingest"
+      )
+      setConfig(res.data.config.payload)
     } catch (error) {
       toast({ title: "Failed to load Gmail config", description: String(error), variant: "destructive" })
     }
@@ -67,8 +71,8 @@ export function GmailIngestTab() {
 
   async function loadAccounts() {
     try {
-      const res = await apiClient.get("/gmail/accounts")
-      setAccounts(res.data.accounts as GmailAccount[])
+      const res = await apiClient.get<{ data: { accounts: GmailAccount[] } }>("/gmail/accounts")
+      setAccounts(res.data.accounts)
     } catch (error) {
       toast({ title: "Failed to load linked inboxes", description: String(error), variant: "destructive" })
     }
@@ -76,8 +80,8 @@ export function GmailIngestTab() {
 
   async function loadClient() {
     try {
-      const res = await apiClient.get("/gmail/oauth/client")
-      setClientId((res.data.clientId as string) ?? null)
+      const res = await apiClient.get<{ data: { clientId: string | null } }>("/gmail/oauth/client")
+      setClientId(res.data.clientId ?? null)
     } catch (error) {
       setClientId(null)
       toast({ title: "Failed to load Gmail OAuth client", description: String(error), variant: "destructive" })

@@ -335,10 +335,11 @@ export class GmailIngestService {
     try {
       const parsed = new URL(url)
       const host = parsed.hostname.toLowerCase()
+      const path = (parsed.pathname || "").toLowerCase()
       const domainAllowed =
         allowedDomains.some((d) => host === d || host.endsWith(`.${d}`)) ||
-        (parsed.pathname && parsed.pathname.toLowerCase().includes("/careers")) ||
-        (parsed.pathname && parsed.pathname.toLowerCase().includes("/jobs"))
+        path.includes("/careers") ||
+        path.includes("/jobs")
       return domainAllowed
     } catch {
       return false

@@ -7,7 +7,6 @@ import type {
   UpsertConfigEntryResponse,
   AISettings,
   JobFinderConfigId,
-  GmailIngestConfig,
   PromptConfig,
   WorkerSettings,
   MatchPolicy,

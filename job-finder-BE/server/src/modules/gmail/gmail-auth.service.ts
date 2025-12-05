@@ -42,29 +42,28 @@ export class GmailAuthService {
 
   listAccounts(): GmailAccountInfo[] {
     const users = this.users.findUsersWithGmailAuth()
-    return users
-      .map((u) => {
-        if (!u.gmailEmail) {
-          logger.warn({ email: u.email }, "Skipping Gmail account without gmail_email set")
-          return null
-        }
-        let payload: GmailTokenPayload | null = null
-        try {
-          payload = u.gmailAuthJson ? decryptJson<GmailTokenPayload>(u.gmailAuthJson) : null
-        } catch (error) {
-          logger.warn({ email: u.email, err: String(error) }, "Failed to decrypt gmail_auth_json")
-        }
-        return {
-          userEmail: u.email,
-          gmailEmail: u.gmailEmail,
-          updatedAt: u.updatedAt,
-          hasRefreshToken: Boolean(payload?.refresh_token),
-          expiryDate: payload?.expiry_date,
-          scopes: payload?.scope ? payload.scope.split(" ") : undefined,
-          historyId: payload?.historyId
-        }
-      })
-      .filter((item): item is GmailAccountInfo => item !== null)
+    return users.flatMap((u) => {
+      if (!u.gmailEmail) {
+        logger.warn({ email: u.email }, "Skipping Gmail account without gmail_email set")
+        return []
+      }
+      let payload: GmailTokenPayload | null = null
+      try {
+        payload = u.gmailAuthJson ? decryptJson<GmailTokenPayload>(u.gmailAuthJson) : null
+      } catch (error) {
+        logger.warn({ email: u.email, err: String(error) }, "Failed to decrypt gmail_auth_json")
+      }
+      const account: GmailAccountInfo = {
+        userEmail: u.email,
+        gmailEmail: u.gmailEmail,
+        updatedAt: u.updatedAt,
+        hasRefreshToken: Boolean(payload?.refresh_token),
+        expiryDate: payload?.expiry_date,
+        scopes: payload?.scope ? payload.scope.split(" ") : undefined,
+        historyId: payload?.historyId
+      }
+      return [account]
+    })
   }
 
   revokeByGmailEmail(gmailEmail: string) {

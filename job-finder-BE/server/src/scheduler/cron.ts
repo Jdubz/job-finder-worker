@@ -83,11 +83,6 @@ function loadScrapeConfig() {
   }
 }
 
-async function runGmailIngestJob() {
-  const { GmailIngestService } = await import('../modules/gmail/gmail-ingest.service')
-  const svc = new GmailIngestService()
-  return svc.ingestAll()
-}
 
 export async function enqueueScrapeJob() {
   try {
