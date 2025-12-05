@@ -527,7 +527,8 @@ export function isCronConfig(value: unknown): value is CronConfig {
     isCronJobSchedule((jobs as any).scrape) &&
     isCronJobSchedule((jobs as any).maintenance) &&
     isCronJobSchedule((jobs as any).logrotate) &&
-    isCronJobSchedule((jobs as any).agentReset)
+    isCronJobSchedule((jobs as any).agentReset) &&
+    isCronJobSchedule((jobs as any).gmailIngest)
   )
 }
 
