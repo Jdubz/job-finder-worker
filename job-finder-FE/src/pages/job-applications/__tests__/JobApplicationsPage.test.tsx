@@ -107,10 +107,14 @@ describe("JobApplicationsPage", () => {
 
     const toggle = await screen.findByRole("button", { name: /Hide ignored/i })
     fireEvent.click(toggle)
-    expect(screen.getByRole("button", { name: /Showing all/i })).toBeInTheDocument()
+    await screen.findByRole("button", { name: /Showing all/i })
 
-    // Subscribe again with include-all status
-    expect(mocks.subscribeToMatches.mock.calls[1][1]).toMatchObject({ status: "all" })
+    // Subscribe again with include-all status (effects may run twice in strict mode)
+    await waitFor(() => {
+      expect(
+        mocks.subscribeToMatches.mock.calls.some(([, filters]) => filters?.status === "all")
+      ).toBe(true)
+    })
   })
 
   it("sorts by score when selected", async () => {
