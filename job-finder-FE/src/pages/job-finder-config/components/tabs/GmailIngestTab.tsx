@@ -20,6 +20,15 @@ type GmailAccount = {
   historyId?: string
 }
 
+type IngestStatus = {
+  lastSyncTime: string | null
+  stats: {
+    totalProcessed: number
+    totalJobsFound: number
+    totalJobsEnqueued: number
+  }
+}
+
 type ConfigPayload = {
   enabled: boolean
   label?: string
@@ -40,6 +49,7 @@ export function GmailIngestTab() {
   const [accounts, setAccounts] = useState<GmailAccount[]>([])
   const [config, setConfig] = useState<ConfigPayload | null>(null)
   const [clientId, setClientId] = useState<string | null>(null)
+  const [ingestStatus, setIngestStatus] = useState<IngestStatus | null>(null)
   const { user } = useAuth()
 
   const allowedSenders = useMemo(
@@ -55,6 +65,7 @@ export function GmailIngestTab() {
     void loadConfig()
     void loadAccounts()
     void loadClient()
+    void loadIngestStatus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -85,6 +96,16 @@ export function GmailIngestTab() {
     } catch (error) {
       setClientId(null)
       toast({ title: "Failed to load Gmail OAuth client", description: String(error), variant: "destructive" })
+    }
+  }
+
+  async function loadIngestStatus() {
+    try {
+      const res = await apiClient.get<{ data: IngestStatus }>("/gmail/ingest/status")
+      setIngestStatus(res.data)
+    } catch {
+      // Silently fail - status is optional/nice-to-have
+      setIngestStatus(null)
     }
   }
 
@@ -164,6 +185,38 @@ export function GmailIngestTab() {
 
   return (
     <div className="space-y-6">
+      {ingestStatus && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Ingest Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-4">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Last Sync</p>
+                <p className="text-lg font-semibold">
+                  {ingestStatus.lastSyncTime
+                    ? new Date(ingestStatus.lastSyncTime).toLocaleString()
+                    : "Never"}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Emails Processed</p>
+                <p className="text-lg font-semibold">{ingestStatus.stats.totalProcessed}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Jobs Found</p>
+                <p className="text-lg font-semibold">{ingestStatus.stats.totalJobsFound}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Jobs Enqueued</p>
+                <p className="text-lg font-semibold">{ingestStatus.stats.totalJobsEnqueued}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Gmail Ingest Settings</CardTitle>

@@ -140,5 +140,14 @@ export function buildGmailRouter() {
     })
   )
 
+  router.get(
+    "/ingest/status",
+    asyncHandler(async (_req, res) => {
+      const lastSyncTime = ingest.getLastSyncTime()
+      const stats = ingest.getStats()
+      res.json(success({ lastSyncTime, stats }))
+    })
+  )
+
   return router
 }

@@ -5,8 +5,8 @@ import { ConfigRepository } from "../config/config.repository"
 import { JobQueueService } from "../job-queue/job-queue.service"
 import type { SubmitJobInput } from "../job-queue/job-queue.service"
 import type { GmailIngestConfig } from "./gmail.types"
-import { parseEmailBody } from "./gmail-message-parser"
-import { JobQueueRepository } from "../job-queue/job-queue.repository"
+import { parseEmailBody, parseEmailBodyWithAiFallback } from "./gmail-message-parser"
+import { EmailIngestStateRepository } from "./email-ingest-state.repository"
 
 export type IngestJobResult = {
   gmailEmail: string
@@ -38,7 +38,7 @@ export class GmailIngestService {
   private readonly auth = new GmailAuthService()
   private readonly config = new ConfigRepository()
   private readonly queue = new JobQueueService()
-  private readonly queueRepo = new JobQueueRepository()
+  private readonly ingestState = new EmailIngestStateRepository()
   private readonly defaultAllowedDomains = [
     "greenhouse.io",
     "lever.co",
@@ -131,23 +131,54 @@ export class GmailIngestService {
     const fullMessages = await this.fetchFullMessages(accessToken, messages.items)
 
     for (const full of fullMessages) {
+      // Skip already-processed messages using the state table
+      if (this.ingestState.isMessageProcessed(full.id)) {
+        logger.debug({ messageId: full.id }, "Skipping already-processed Gmail message")
+        continue
+      }
+
       const sender = this.getHeader(full, "From")
       if (settings?.allowedSenders?.length) {
         const allowed = settings.allowedSenders.some((s) => sender?.toLowerCase().includes(s.toLowerCase()))
-        if (!allowed) continue
-      }
-      const body = this.extractBody(full)
-      const links = this.extractLinks(body, allowedDomains)
-      if (!links.length) continue
-
-      const parsedJobs = parseEmailBody(body, links)
-      jobsFound += parsedJobs.length
-
-      for (const job of parsedJobs) {
-        const dedupKey = `${full.id}::${job.url}`
-        if (this.isDuplicate(job.url, full.id, dedupKey)) {
+        if (!allowed) {
+          // Record as processed with 0 jobs (filtered by sender)
+          this.ingestState.recordProcessed({
+            messageId: full.id,
+            threadId: full.threadId,
+            gmailEmail,
+            historyId: full.historyId,
+            jobsFound: 0,
+            jobsEnqueued: 0
+          })
           continue
         }
+      }
+
+      const body = this.extractBody(full)
+      const links = this.extractLinks(body, allowedDomains)
+
+      if (!links.length) {
+        // Record as processed with 0 jobs (no links found)
+        this.ingestState.recordProcessed({
+          messageId: full.id,
+          threadId: full.threadId,
+          gmailEmail,
+          historyId: full.historyId,
+          jobsFound: 0,
+          jobsEnqueued: 0
+        })
+        continue
+      }
+
+      const parsedJobs = settings.aiFallbackEnabled
+        ? await parseEmailBodyWithAiFallback(body, links, { aiFallbackEnabled: true })
+        : parseEmailBody(body, links)
+      const messageJobsFound = parsedJobs.length
+      let messageJobsQueued = 0
+
+      jobsFound += messageJobsFound
+
+      for (const job of parsedJobs) {
         const jobInput: SubmitJobInput = {
           url: job.url,
           source: "email",
@@ -160,18 +191,28 @@ export class GmailIngestService {
             gmailFrom: sender,
             gmailSnippet: full.snippet,
             gmailEmail,
-            gmailDedupKey: dedupKey,
             remoteSourceDefault: settings.remoteSourceDefault ?? false
           }
         }
         try {
           this.queue.submitJob(jobInput)
+          messageJobsQueued += 1
           jobsQueued += 1
         } catch (error) {
           const msgErr = error instanceof Error ? error.message : String(error)
           logger.debug({ url: job.url, error: msgErr }, "Failed to enqueue job from Gmail link")
         }
       }
+
+      // Record message as processed with stats
+      this.ingestState.recordProcessed({
+        messageId: full.id,
+        threadId: full.threadId,
+        gmailEmail,
+        historyId: full.historyId,
+        jobsFound: messageJobsFound,
+        jobsEnqueued: messageJobsQueued
+      })
     }
 
     // Persist latest historyId to reduce future scans (best-effort)
@@ -182,13 +223,12 @@ export class GmailIngestService {
     return { gmailEmail, jobsFound, jobsQueued }
   }
 
-  private isDuplicate(url: string, messageId: string, dedupKey?: string): boolean {
-    const key = dedupKey ?? `${messageId}::${url}`
-    const items = this.queueRepo.list({ limit: 500 }) // larger window to reduce misses
-    return items.some((item) => {
-      const meta = (item.metadata || {}) as any
-      return item.url === url || meta.gmailMessageId === messageId || meta.gmailDedupKey === key
-    })
+  getLastSyncTime(gmailEmail?: string): string | null {
+    return this.ingestState.getLastSyncTime(gmailEmail)
+  }
+
+  getStats(gmailEmail?: string) {
+    return this.ingestState.getStats(gmailEmail)
   }
 
   private async ensureAccessToken(tokens: GmailTokenPayload) {

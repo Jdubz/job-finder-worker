@@ -4,10 +4,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { useConfigState } from "./hooks/useConfigState"
-import { QueueSettingsTab, AISettingsTab, PersonalInfoTab, PrefilterPolicyTab, MatchPolicyTab } from "./components/tabs"
+import { QueueSettingsTab, AISettingsTab, PersonalInfoTab, PrefilterPolicyTab, MatchPolicyTab, GmailIngestTab } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
 
-type TabType = "prefilter" | "scoring" | "queue" | "ai" | "personal"
+type TabType = "prefilter" | "scoring" | "queue" | "ai" | "personal" | "gmail"
 
 export function JobFinderConfigPage() {
   const { user, isOwner } = useAuth()
@@ -82,12 +82,13 @@ export function JobFinderConfigPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="prefilter">Pre-Filter</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="queue">Worker Runtime</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
           <TabsTrigger value="personal">Personal</TabsTrigger>
+          <TabsTrigger value="gmail">Gmail</TabsTrigger>
         </TabsList>
 
         <div className="space-y-4 py-4">
@@ -155,6 +156,8 @@ export function JobFinderConfigPage() {
               handleResetPersonalInfo={configState.resetPersonal}
             />
           )}
+
+          {activeTab === "gmail" && <GmailIngestTab />}
         </div>
       </Tabs>
     </div>

@@ -31,7 +31,8 @@ import {
   getWorkerHealth,
   getWorkerCliHealth,
   triggerLogRotation,
-  triggerAgentReset
+  triggerAgentReset,
+  triggerGmailIngest
 } from '../../scheduler/cron'
 import { getLocalCliHealth } from '../../services/cli-health.service'
 
@@ -335,6 +336,19 @@ export function buildJobQueueRouter() {
     requireRole('admin'),
     asyncHandler(async (_req, res) => {
       const result = await triggerAgentReset()
+      if (result.success) {
+        res.json(success(result))
+      } else {
+        res.status(500).json(failure('CRON_TRIGGER_FAILED', result.error ?? 'Unknown error'))
+      }
+    })
+  )
+
+  router.post(
+    '/cron/trigger/gmail-ingest',
+    requireRole('admin'),
+    asyncHandler(async (_req, res) => {
+      const result = await triggerGmailIngest()
       if (result.success) {
         res.json(success(result))
       } else {
