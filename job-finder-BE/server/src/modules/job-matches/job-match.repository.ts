@@ -201,12 +201,8 @@ export class JobMatchRepository {
   upsert(match: CreateJobMatchInput): JobMatch {
     const id = match.id ?? randomUUID()
     const now = new Date().toISOString()
-    const existing = match.id ? this.getById(match.id) : null
-
     const isIgnored = match.status === 'ignored'
-    const ignoredAt = isIgnored
-      ? toIsoString(match.ignoredAt ?? existing?.ignoredAt)
-      : null
+    const ignoredAt = isIgnored ? toIsoString(match.ignoredAt ?? now) : null
 
     const stmt = this.db.prepare(`
       INSERT INTO job_matches (
@@ -268,10 +264,12 @@ export class JobMatchRepository {
     this.db
       .prepare(
         `UPDATE job_matches
-         SET status = ?, ignored_at = CASE WHEN ? = 'ignored' THEN ? ELSE NULL END, updated_at = ?
-         WHERE id = ?`
+         SET status = @status,
+             ignored_at = CASE WHEN @status = 'ignored' THEN @now ELSE NULL END,
+             updated_at = @now
+         WHERE id = @id`
       )
-      .run(status, status, now, now, id)
+      .run({ status, now, id })
 
     return this.getById(id)
   }

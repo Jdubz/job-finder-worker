@@ -109,17 +109,22 @@ export function buildJobMatchRouter() {
   router.get(
     '/stats',
     asyncHandler((req, res) => {
-      const parsed = statsQuerySchema.safeParse(req.query)
-      const includeIgnored = parsed.success ? parsed.data.includeIgnored : false
       try {
+        const { includeIgnored } = statsQuerySchema.parse(req.query)
         const stats = repo.getStats(includeIgnored)
         const response: GetJobMatchStatsResponse = { stats }
         res.json(success(response))
       } catch (error) {
+        if (error instanceof z.ZodError) {
+          res
+            .status(400)
+            .json(failure(ApiErrorCode.BAD_REQUEST, 'Invalid query parameters', error.errors))
+          return
+        }
         logger.error(
           {
             error: error instanceof Error ? error.message : error,
-            includeIgnored
+            query: req.query
           },
           'Failed to fetch job match stats'
         )

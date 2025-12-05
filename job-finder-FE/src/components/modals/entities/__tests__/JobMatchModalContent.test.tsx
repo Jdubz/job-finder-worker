@@ -31,16 +31,17 @@ const baseMatch: JobMatchWithListing = {
   submittedBy: null,
   queueItemId: "q1",
   status: "active",
-  listing: {
-    id: "listing-1",
-    url: "https://example.com",
-    title: "Frontend Engineer",
-    companyName: "ACME",
-    description: "Build stuff",
-    status: "matched",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
+    listing: {
+      id: "listing-1",
+      url: "https://example.com",
+      title: "Frontend Engineer",
+      companyName: "ACME",
+      location: "Remote",
+      description: "Build stuff",
+      status: "matched",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
 }
 
 describe("JobMatchModalContent", () => {
@@ -135,6 +136,8 @@ describe("JobMatchModalContent", () => {
     fireEvent.click(generateBtn)
 
     await waitFor(() => expect(generatorClientModule.generatorClient.startGeneration).toHaveBeenCalled())
+    const requestArg = vi.mocked(generatorClientModule.generatorClient.startGeneration).mock.calls[0][0]
+    expect(requestArg.job.location).toBe(baseMatch.listing.location)
     await waitFor(() => expect(screen.getByText(/Documents ready/i)).toBeInTheDocument())
     expect(screen.getAllByText(/Resume/).length).toBeGreaterThan(0)
   })
