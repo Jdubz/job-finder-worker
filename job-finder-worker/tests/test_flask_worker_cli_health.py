@@ -1,6 +1,7 @@
 """Tests for CLI health check functionality in flask_worker."""
 
-import subprocess
+import base64
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,173 +13,30 @@ class TestCheckCliHealth:
     @pytest.fixture(autouse=True)
     def setup(self):
         """Import the function fresh for each test."""
-        # Import here to avoid module-level import issues with mocking
         from job_finder.flask_worker import check_cli_health
 
         self.check_cli_health = check_cli_health
 
-    def test_healthy_codex_logged_in(self):
-        """Test codex CLI returns healthy when user is logged in."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "You are logged in as user@example.com"
-        mock_result.stderr = ""
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
-
-            result = self.check_cli_health()
-
-            assert result["codex"]["healthy"] is True
-            assert "logged in" in result["codex"]["message"].lower()
-
-    def test_healthy_gemini_authenticated(self):
-        """Test gemini CLI returns healthy when authenticated."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "You are authenticated as user@example.com"
-        mock_result.stderr = ""
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
-
-            result = self.check_cli_health()
-
-            assert result["gemini"]["healthy"] is True
-            assert "authenticated" in result["gemini"]["message"].lower()
-
-    def test_unhealthy_codex_not_logged_in(self):
-        """Test codex CLI returns unhealthy when not logged in."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "You are not logged in. Run 'codex login' to authenticate."
-        mock_result.stderr = ""
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
-
-            result = self.check_cli_health()
-
-            assert result["codex"]["healthy"] is False
-
-    def test_unhealthy_gemini_not_authenticated(self):
-        """Test gemini CLI returns unhealthy when not authenticated."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Not authenticated. Please run gemini auth login."
-        mock_result.stderr = ""
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
-
-            result = self.check_cli_health()
-
-            assert result["gemini"]["healthy"] is False
-
-    def test_unhealthy_login_required(self):
-        """Test CLI returns unhealthy when login is required."""
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = "Login required to continue"
-        mock_result.stderr = ""
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
-
-            result = self.check_cli_health()
-
-            assert result["codex"]["healthy"] is False
-
-    def test_unhealthy_nonzero_return_code(self):
-        """Test CLI returns unhealthy when command returns non-zero."""
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = "Some error occurred"
-        mock_result.stderr = "Error details"
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
-
-            result = self.check_cli_health()
-
-            assert result["codex"]["healthy"] is False
-            assert result["gemini"]["healthy"] is False
-
-    def test_cli_not_installed_file_not_found(self):
-        """Test handling when CLI binary is not found."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = FileNotFoundError("No such file or directory: 'codex'")
-
-            result = self.check_cli_health()
-
-            assert result["codex"]["healthy"] is False
-            assert "not installed" in result["codex"]["message"].lower()
-            assert result["gemini"]["healthy"] is False
-            assert "not installed" in result["gemini"]["message"].lower()
-
-    def test_cli_timeout_expired(self):
-        """Test handling when CLI command times out."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=5)
-
-            result = self.check_cli_health()
-
-            assert result["codex"]["healthy"] is False
-            assert "timed out" in result["codex"]["message"].lower()
-            assert result["gemini"]["healthy"] is False
-            assert "timed out" in result["gemini"]["message"].lower()
-
-    def test_generic_exception_handling(self):
-        """Test handling of unexpected exceptions."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = RuntimeError("Unexpected error")
-
-            result = self.check_cli_health()
-
-            assert result["codex"]["healthy"] is False
-            assert "Unexpected error" in result["codex"]["message"]
-            assert result["gemini"]["healthy"] is False
-
-    def test_message_includes_stderr(self):
-        """Test that error message includes stderr content."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = ""
-        mock_result.stderr = "Warning: API key expired"
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
-
-            result = self.check_cli_health()
-
-            assert "API key expired" in result["codex"]["message"]
-
-    def test_empty_output_command_succeeded(self):
-        """Test that empty output returns appropriate message."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = ""
-        mock_result.stderr = ""
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
-
-            result = self.check_cli_health()
-
-            # Empty output without success terms should be unhealthy
-            assert result["codex"]["healthy"] is False
-            assert result["codex"]["message"] == "Command succeeded"
-
     def test_both_clis_checked(self):
         """Test that both codex and gemini CLIs are checked."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "You are logged in"
-        mock_result.stderr = ""
+        codex_auth = json.dumps({"tokens": {"refresh_token": "test"}})
+        gemini_settings = json.dumps({"security": {"auth": {"selectedType": "oauth-personal"}}})
+        gemini_creds = json.dumps({"refresh_token": "test-token"})
+        gemini_accounts = json.dumps({"active": "user@gmail.com"})
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
+        def mock_open_files(path, *args, **kwargs):
+            path_str = str(path)
+            if ".codex/auth.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: codex_auth))
+            if "settings.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: gemini_settings))
+            if "oauth_creds.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: gemini_creds))
+            if "google_accounts.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: gemini_accounts))
+            raise FileNotFoundError(f"No such file: {path}")
 
+        with patch("builtins.open", mock_open_files):
             result = self.check_cli_health()
 
             assert "codex" in result
@@ -188,46 +46,311 @@ class TestCheckCliHealth:
             assert "healthy" in result["gemini"]
             assert "message" in result["gemini"]
 
-    def test_subprocess_called_with_correct_args(self):
-        """Test that subprocess.run is called with correct arguments."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "logged in"
-        mock_result.stderr = ""
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
+class TestCodexConfigCheck:
+    """Tests for Codex config-based health check."""
 
-            self.check_cli_health()
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Import the function fresh for each test."""
+        from job_finder.flask_worker import _check_codex_config
 
-            # Check that both commands were called
-            calls = mock_run.call_args_list
-            assert len(calls) == 2
+        self._check_codex_config = _check_codex_config
 
-            # Verify codex call
-            codex_call = [c for c in calls if c[0][0] == ["codex", "login", "status"]]
-            assert len(codex_call) == 1
-            assert codex_call[0][1]["check"] is False
-            assert codex_call[0][1]["capture_output"] is True
-            assert codex_call[0][1]["timeout"] == 5
+    def test_healthy_oauth_with_email_in_jwt(self):
+        """Test Codex returns healthy when OAuth is configured with email in JWT."""
+        # Create a mock JWT with email in payload
+        payload = {"email": "user@example.com", "exp": 9999999999}
+        payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+        mock_id_token = f"header.{payload_b64}.signature"
 
-            # Verify gemini call
-            gemini_call = [c for c in calls if c[0][0] == ["gemini", "auth", "status"]]
-            assert len(gemini_call) == 1
-            assert gemini_call[0][1]["check"] is False
-            assert gemini_call[0][1]["capture_output"] is True
-            assert gemini_call[0][1]["timeout"] == 5
+        auth_data = json.dumps(
+            {
+                "OPENAI_API_KEY": None,
+                "tokens": {"refresh_token": "rt_test", "id_token": mock_id_token},
+            }
+        )
 
-    def test_success_terms_case_insensitive(self):
-        """Test that success term matching is case insensitive."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "LOGGED IN as user@example.com"
-        mock_result.stderr = ""
+        def mock_open_files(path, *args, **kwargs):
+            if ".codex/auth.json" in str(path):
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: auth_data))
+            raise FileNotFoundError(f"No such file: {path}")
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock_result
+        with patch("builtins.open", mock_open_files):
+            result = self._check_codex_config()
 
-            result = self.check_cli_health()
+            assert result["healthy"] is True
+            assert "user@example.com" in result["message"]
 
-            assert result["codex"]["healthy"] is True
+    def test_healthy_oauth_without_email_in_jwt(self):
+        """Test Codex returns healthy when OAuth creds exist but JWT is invalid."""
+        auth_data = json.dumps(
+            {
+                "OPENAI_API_KEY": None,
+                "tokens": {"refresh_token": "rt_test", "id_token": "invalid.jwt.token"},
+            }
+        )
+
+        def mock_open_files(path, *args, **kwargs):
+            if ".codex/auth.json" in str(path):
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: auth_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with patch("builtins.open", mock_open_files):
+            result = self._check_codex_config()
+
+            assert result["healthy"] is True
+            assert "OAuth credentials configured" in result["message"]
+
+    def test_healthy_api_key_in_file(self):
+        """Test Codex returns healthy when API key is in auth file."""
+        auth_data = json.dumps({"OPENAI_API_KEY": "sk-test-key", "tokens": None})
+
+        def mock_open_files(path, *args, **kwargs):
+            if ".codex/auth.json" in str(path):
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: auth_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with patch("builtins.open", mock_open_files):
+            result = self._check_codex_config()
+
+            assert result["healthy"] is True
+            assert "API key configured" in result["message"]
+
+    def test_healthy_api_key_in_env(self):
+        """Test Codex returns healthy when API key is in environment."""
+        auth_data = json.dumps({"OPENAI_API_KEY": None, "tokens": {}})
+
+        def mock_open_files(path, *args, **kwargs):
+            if ".codex/auth.json" in str(path):
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: auth_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with (
+            patch("builtins.open", mock_open_files),
+            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
+        ):
+            result = self._check_codex_config()
+
+            assert result["healthy"] is True
+            assert "environment" in result["message"]
+
+    def test_healthy_auth_file_missing_but_env_key(self):
+        """Test Codex returns healthy when auth file missing but API key in env."""
+        with (
+            patch("builtins.open", side_effect=FileNotFoundError("No such file")),
+            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
+        ):
+            result = self._check_codex_config()
+
+            assert result["healthy"] is True
+            assert "environment" in result["message"]
+
+    def test_unhealthy_auth_file_missing_no_env(self):
+        """Test Codex returns unhealthy when auth file missing and no env var."""
+        with (
+            patch("builtins.open", side_effect=FileNotFoundError("No such file")),
+            patch.dict("os.environ", {}, clear=True),
+        ):
+            import os
+
+            os.environ.pop("OPENAI_API_KEY", None)
+
+            result = self._check_codex_config()
+
+            assert result["healthy"] is False
+            assert "auth file not found" in result["message"]
+
+    def test_unhealthy_no_credentials(self):
+        """Test Codex returns unhealthy when no credentials in auth file."""
+        auth_data = json.dumps({"OPENAI_API_KEY": None, "tokens": {}})
+
+        def mock_open_files(path, *args, **kwargs):
+            if ".codex/auth.json" in str(path):
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: auth_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with patch("builtins.open", mock_open_files), patch.dict("os.environ", {}, clear=True):
+            import os
+
+            os.environ.pop("OPENAI_API_KEY", None)
+
+            result = self._check_codex_config()
+
+            assert result["healthy"] is False
+            assert "no credentials found" in result["message"]
+
+    def test_unhealthy_invalid_json(self):
+        """Test Codex returns unhealthy when config file has invalid JSON."""
+
+        def mock_open_files(path, *args, **kwargs):
+            return MagicMock(__enter__=lambda s: MagicMock(read=lambda: "invalid json{"))
+
+        with patch("builtins.open", mock_open_files):
+            result = self._check_codex_config()
+
+            assert result["healthy"] is False
+            assert "invalid" in result["message"].lower()
+
+
+class TestGeminiConfigCheck:
+    """Tests for Gemini config-based health check."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Import the function fresh for each test."""
+        from job_finder.flask_worker import _check_gemini_config
+
+        self._check_gemini_config = _check_gemini_config
+
+    def test_healthy_oauth_with_active_account(self):
+        """Test Gemini returns healthy when OAuth is configured with active account."""
+        settings_data = json.dumps({"security": {"auth": {"selectedType": "oauth-personal"}}})
+        creds_data = json.dumps({"refresh_token": "test-refresh-token"})
+        accounts_data = json.dumps({"active": "user@gmail.com"})
+
+        def mock_open_files(path, *args, **kwargs):
+            path_str = str(path)
+            if "settings.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
+            if "oauth_creds.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: creds_data))
+            if "google_accounts.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: accounts_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with patch("builtins.open", mock_open_files):
+            result = self._check_gemini_config()
+
+            assert result["healthy"] is True
+            assert "user@gmail.com" in result["message"]
+
+    def test_healthy_oauth_without_accounts_file(self):
+        """Test Gemini returns healthy when OAuth creds exist but no accounts file."""
+        settings_data = json.dumps({"security": {"auth": {"selectedType": "oauth-personal"}}})
+        creds_data = json.dumps({"refresh_token": "test-refresh-token"})
+
+        def mock_open_files(path, *args, **kwargs):
+            path_str = str(path)
+            if "settings.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
+            if "oauth_creds.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: creds_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with patch("builtins.open", mock_open_files):
+            result = self._check_gemini_config()
+
+            assert result["healthy"] is True
+            assert "OAuth credentials configured" in result["message"]
+
+    def test_unhealthy_settings_file_missing(self):
+        """Test Gemini returns unhealthy when settings file is missing."""
+        with patch("builtins.open", side_effect=FileNotFoundError("No such file")):
+            result = self._check_gemini_config()
+
+            assert result["healthy"] is False
+            assert "settings file not found" in result["message"]
+
+    def test_unhealthy_no_auth_type_selected(self):
+        """Test Gemini returns unhealthy when no auth type is selected."""
+        settings_data = json.dumps({"security": {}})
+
+        def mock_open_files(path, *args, **kwargs):
+            path_str = str(path)
+            if "settings.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with patch("builtins.open", mock_open_files):
+            result = self._check_gemini_config()
+
+            assert result["healthy"] is False
+            assert "no auth type selected" in result["message"]
+
+    def test_unhealthy_oauth_missing_refresh_token(self):
+        """Test Gemini returns unhealthy when OAuth creds are missing refresh token."""
+        settings_data = json.dumps({"security": {"auth": {"selectedType": "oauth-personal"}}})
+        creds_data = json.dumps({"access_token": "test-token"})  # No refresh_token
+
+        def mock_open_files(path, *args, **kwargs):
+            path_str = str(path)
+            if "settings.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
+            if "oauth_creds.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: creds_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with patch("builtins.open", mock_open_files):
+            result = self._check_gemini_config()
+
+            assert result["healthy"] is False
+            assert "missing refresh token" in result["message"]
+
+    def test_healthy_api_key_with_env_var(self):
+        """Test Gemini returns healthy when API key auth with env var set."""
+        settings_data = json.dumps({"security": {"auth": {"selectedType": "api-key"}}})
+
+        def mock_open_files(path, *args, **kwargs):
+            path_str = str(path)
+            if "settings.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with (
+            patch("builtins.open", mock_open_files),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
+        ):
+            result = self._check_gemini_config()
+
+            assert result["healthy"] is True
+            assert "API key configured" in result["message"]
+
+    def test_unhealthy_api_key_without_env_var(self):
+        """Test Gemini returns unhealthy when API key auth but no env var."""
+        settings_data = json.dumps({"security": {"auth": {"selectedType": "api-key"}}})
+
+        def mock_open_files(path, *args, **kwargs):
+            path_str = str(path)
+            if "settings.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with patch("builtins.open", mock_open_files), patch.dict("os.environ", {}, clear=True):
+            import os
+
+            os.environ.pop("GEMINI_API_KEY", None)
+            os.environ.pop("GOOGLE_API_KEY", None)
+
+            result = self._check_gemini_config()
+
+            assert result["healthy"] is False
+            assert "API key not found" in result["message"]
+
+    def test_healthy_gcloud_auth_type(self):
+        """Test Gemini returns healthy for gcloud auth type."""
+        settings_data = json.dumps({"security": {"auth": {"selectedType": "gcloud"}}})
+
+        def mock_open_files(path, *args, **kwargs):
+            path_str = str(path)
+            if "settings.json" in path_str:
+                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
+            raise FileNotFoundError(f"No such file: {path}")
+
+        with patch("builtins.open", mock_open_files):
+            result = self._check_gemini_config()
+
+            assert result["healthy"] is True
+            assert "gcloud" in result["message"]
+
+    def test_unhealthy_invalid_json(self):
+        """Test Gemini returns unhealthy when config file has invalid JSON."""
+
+        def mock_open_files(path, *args, **kwargs):
+            return MagicMock(__enter__=lambda s: MagicMock(read=lambda: "invalid json{"))
+
+        with patch("builtins.open", mock_open_files):
+            result = self._check_gemini_config()
+
+            assert result["healthy"] is False
+            assert "invalid" in result["message"].lower()

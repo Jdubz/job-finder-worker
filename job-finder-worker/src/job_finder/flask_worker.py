@@ -8,6 +8,7 @@ This worker provides:
 - Process status and statistics
 - Same job processing logic as the daemon worker
 """
+import json
 import os
 import signal
 import sys
@@ -76,71 +77,198 @@ worker_state = {
     "current_item_id": None,
 }
 
-CLI_CHECKS = {
-    "codex": {
-        "cmd": ["codex", "login", "status"],
-        "success_terms": ["logged in"],
-    },
-    "gemini": {
-        "cmd": ["gemini", "auth", "status"],
-        "success_terms": ["logged in", "authenticated"],
-    },
-}
+import base64
+
+
+def _extract_email_from_jwt(id_token: str) -> Optional[str]:
+    """Extract email from JWT id_token payload."""
+    try:
+        # JWT format: header.payload.signature - we need the payload
+        parts = id_token.split(".")
+        if len(parts) != 3:
+            return None
+
+        # Add padding if needed for base64 decoding
+        payload_b64 = parts[1]
+        padding = 4 - len(payload_b64) % 4
+        if padding != 4:
+            payload_b64 += "=" * padding
+
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64).decode("utf-8"))
+        return payload.get("email")
+    except Exception:
+        return None
+
+
+def _check_codex_config() -> Dict[str, Any]:
+    """Check Codex CLI auth by inspecting config files.
+
+    This avoids running 'codex login status' command.
+    We verify that auth credentials exist in ~/.codex/auth.json.
+    """
+    codex_dir = Path.home() / ".codex"
+    auth_path = codex_dir / "auth.json"
+
+    try:
+        with open(auth_path, "r", encoding="utf-8") as f:
+            auth = json.load(f)
+
+        # Check for API key in file
+        if auth.get("OPENAI_API_KEY"):
+            return {
+                "healthy": True,
+                "message": "API key configured",
+            }
+
+        # Check for API key in environment
+        if os.getenv("OPENAI_API_KEY"):
+            return {
+                "healthy": True,
+                "message": "API key configured (from environment)",
+            }
+
+        # Check for OAuth tokens
+        tokens = auth.get("tokens", {})
+        if tokens.get("refresh_token"):
+            # Try to extract email from id_token
+            id_token = tokens.get("id_token")
+            if id_token:
+                email = _extract_email_from_jwt(id_token)
+                if email:
+                    return {
+                        "healthy": True,
+                        "message": f"Authenticated as {email}",
+                    }
+
+            return {
+                "healthy": True,
+                "message": "OAuth credentials configured",
+            }
+
+        return {
+            "healthy": False,
+            "message": "Codex CLI not authenticated: no credentials found",
+        }
+
+    except FileNotFoundError:
+        # If auth file doesn't exist, check for API key in environment
+        if os.getenv("OPENAI_API_KEY"):
+            return {
+                "healthy": True,
+                "message": "API key configured (from environment)",
+            }
+        return {
+            "healthy": False,
+            "message": "Codex CLI not configured: auth file not found",
+        }
+    except json.JSONDecodeError as exc:
+        return {
+            "healthy": False,
+            "message": f"Codex config file invalid: {exc}",
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        return {
+            "healthy": False,
+            "message": f"Failed to check Codex config: {exc}",
+        }
+
+
+def _check_gemini_config() -> Dict[str, Any]:
+    """Check Gemini CLI auth by inspecting config files.
+
+    This avoids launching the interactive CLI or consuming API quota.
+    We verify that auth was configured and credentials exist.
+    """
+    gemini_dir = Path.home() / ".gemini"
+
+    try:
+        # Check settings.json for auth type
+        settings_path = gemini_dir / "settings.json"
+        with open(settings_path, "r", encoding="utf-8") as f:
+            settings = json.load(f)
+
+        auth_type = settings.get("security", {}).get("auth", {}).get("selectedType")
+        if not auth_type:
+            return {
+                "healthy": False,
+                "message": "Gemini CLI not configured: no auth type selected",
+            }
+
+        # For OAuth auth types, verify credentials file exists with refresh token
+        if auth_type.startswith("oauth"):
+            creds_path = gemini_dir / "oauth_creds.json"
+            with open(creds_path, "r", encoding="utf-8") as f:
+                creds = json.load(f)
+
+            if not creds.get("refresh_token"):
+                return {
+                    "healthy": False,
+                    "message": "Gemini OAuth credentials missing refresh token",
+                }
+
+            # Check for active account
+            accounts_path = gemini_dir / "google_accounts.json"
+            try:
+                with open(accounts_path, "r", encoding="utf-8") as f:
+                    accounts = json.load(f)
+                if accounts.get("active"):
+                    return {
+                        "healthy": True,
+                        "message": f"Authenticated as {accounts['active']}",
+                    }
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass  # Account file is optional
+
+            return {
+                "healthy": True,
+                "message": "OAuth credentials configured",
+            }
+
+        # For API key auth, check environment variables
+        if auth_type == "api-key":
+            has_key = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+            return {
+                "healthy": has_key,
+                "message": (
+                    "API key configured" if has_key else "Gemini API key not found in environment"
+                ),
+            }
+
+        # For other auth types (like gcloud), assume configured if settings exist
+        return {
+            "healthy": True,
+            "message": f"Auth type '{auth_type}' configured",
+        }
+
+    except FileNotFoundError:
+        return {
+            "healthy": False,
+            "message": "Gemini CLI not configured: settings file not found",
+        }
+    except json.JSONDecodeError as exc:
+        return {
+            "healthy": False,
+            "message": f"Gemini config file invalid: {exc}",
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        return {
+            "healthy": False,
+            "message": f"Failed to check Gemini config: {exc}",
+        }
 
 
 def check_cli_health() -> Dict[str, Dict[str, Any]]:
     """Run lightweight auth/availability checks for agent CLIs.
 
-    We treat the CLI as healthy when the command exits cleanly and the output
-    indicates an authenticated session. If the binary is missing or the
-    command errors, the error text is returned for quick diagnosis.
+    Both codex and gemini use config-file based checks to avoid:
+    - Running commands that might launch interactive terminals
+    - Consuming API quota
+    - Slow subprocess execution
     """
-
-    results: Dict[str, Dict[str, Any]] = {}
-    for name, cfg in CLI_CHECKS.items():
-        try:
-            proc = subprocess.run(
-                cfg["cmd"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            output = f"{proc.stdout} {proc.stderr}".strip()
-            normalized = output.lower()
-            unauthenticated = (
-                "not logged" in normalized
-                or "not authenticated" in normalized
-                or "login required" in normalized
-            )
-            success_terms_lower = [t.lower() for t in cfg["success_terms"]]
-            healthy = (
-                proc.returncode == 0
-                and any(term in normalized for term in success_terms_lower)
-                and not unauthenticated
-            )
-
-            results[name] = {
-                "healthy": healthy,
-                "message": output or "Command succeeded",
-            }
-        except FileNotFoundError as exc:
-            results[name] = {
-                "healthy": False,
-                "message": f"{name} CLI not installed: {exc}",
-            }
-        except subprocess.TimeoutExpired:
-            results[name] = {
-                "healthy": False,
-                "message": "CLI health check timed out",
-            }
-        except Exception as exc:  # pragma: no cover - defensive
-            results[name] = {
-                "healthy": False,
-                "message": str(exc),
-            }
-
-    return results
+    return {
+        "codex": _check_codex_config(),
+        "gemini": _check_gemini_config(),
+    }
 
 
 def reset_stuck_processing_items(
