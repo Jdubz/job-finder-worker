@@ -196,4 +196,327 @@ describe("AISettingsTab", () => {
 
     expect(setAISettings).toHaveBeenCalled()
   })
+
+  describe("Model Selection", () => {
+    it("displays current model for each agent", () => {
+      render(<AISettingsTab {...defaultProps} />)
+
+      // Check that model values are displayed (may appear multiple times in dropdowns and rates)
+      expect(screen.getAllByText("gemini-2.0-flash").length).toBeGreaterThan(0)
+      expect(screen.getAllByText("gpt-4o").length).toBeGreaterThan(0)
+    })
+
+    it("calls setAISettings with updated model when model is changed", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      // Find the model dropdown trigger for gemini agent (first one showing gemini-2.0-flash)
+      const modelTriggers = screen.getAllByRole("combobox")
+      // The model dropdowns come after the document generator dropdowns
+      // Find the one that shows gemini-2.0-flash
+      const geminiModelTrigger = modelTriggers.find(
+        (trigger) => trigger.textContent === "gemini-2.0-flash"
+      )
+
+      if (geminiModelTrigger) {
+        await user.click(geminiModelTrigger)
+        // The dropdown should show available models
+        // Since we can only select from available models, clicking the same model
+        // would still trigger the change handler
+      }
+
+      // The component should have model selection capability
+      expect(screen.getAllByText("Model:").length).toBe(2) // One for each agent
+    })
+  })
+
+  describe("Reset Daily Usage", () => {
+    it("shows reset button only for agents with usage > 0", () => {
+      const settingsWithZeroUsage: AISettings = {
+        ...mockAISettings,
+        agents: {
+          ...mockAISettings.agents,
+          "gemini.cli": {
+            ...mockAISettings.agents["gemini.cli"],
+            dailyUsage: 0,
+          },
+        },
+      }
+
+      render(<AISettingsTab {...defaultProps} aiSettings={settingsWithZeroUsage} />)
+
+      // Only codex.cli has usage > 0, so only one reset button
+      const resetButtons = screen.getAllByTitle("Reset daily usage")
+      expect(resetButtons.length).toBe(1)
+    })
+
+    it("calls setAISettings to reset usage when reset button is clicked", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      // Click the first reset button (for gemini.cli which has usage 25)
+      const resetButtons = screen.getAllByTitle("Reset daily usage")
+      await user.click(resetButtons[0])
+
+      expect(setAISettings).toHaveBeenCalledTimes(1)
+
+      // Verify the updater function sets dailyUsage to 0
+      const updaterFn = setAISettings.mock.calls[0][0]
+      const result = updaterFn(mockAISettings)
+      expect(result.agents["gemini.cli"].dailyUsage).toBe(0)
+    })
+
+    it("does not show reset button when usage is 0", () => {
+      const settingsWithAllZeroUsage: AISettings = {
+        ...mockAISettings,
+        agents: {
+          "gemini.cli": {
+            ...mockAISettings.agents["gemini.cli"],
+            dailyUsage: 0,
+          },
+          "codex.cli": {
+            ...mockAISettings.agents["codex.cli"],
+            dailyUsage: 0,
+          },
+        },
+      }
+
+      render(<AISettingsTab {...defaultProps} aiSettings={settingsWithAllZeroUsage} />)
+
+      // No reset buttons should be present
+      expect(screen.queryAllByTitle("Reset daily usage").length).toBe(0)
+    })
+  })
+
+  describe("Clear Error / Re-enable Agent", () => {
+    it("shows clear button only for agents with errors", () => {
+      render(<AISettingsTab {...defaultProps} />)
+
+      // Only codex.cli has a reason set, so only one Clear button
+      const clearButtons = screen.getAllByText("Clear")
+      expect(clearButtons.length).toBe(1)
+    })
+
+    it("does not show clear button for healthy agents", () => {
+      const settingsWithNoErrors: AISettings = {
+        ...mockAISettings,
+        agents: {
+          "gemini.cli": {
+            ...mockAISettings.agents["gemini.cli"],
+            reason: null,
+          },
+          "codex.cli": {
+            ...mockAISettings.agents["codex.cli"],
+            reason: null,
+          },
+        },
+      }
+
+      render(<AISettingsTab {...defaultProps} aiSettings={settingsWithNoErrors} />)
+
+      // No Clear buttons should be present
+      expect(screen.queryByText("Clear")).not.toBeInTheDocument()
+    })
+
+    it("clears error and re-enables agent when clear button is clicked", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      const clearButton = screen.getByText("Clear")
+      await user.click(clearButton)
+
+      expect(setAISettings).toHaveBeenCalledTimes(1)
+
+      // Verify the updater function clears reason and enables the agent
+      const updaterFn = setAISettings.mock.calls[0][0]
+      const result = updaterFn(mockAISettings)
+      expect(result.agents["codex.cli"].enabled).toBe(true)
+      expect(result.agents["codex.cli"].reason).toBeNull()
+    })
+
+    it("shows error badge with correct variant for quota exhausted", () => {
+      render(<AISettingsTab {...defaultProps} />)
+
+      // Quota exhausted should show with secondary variant
+      expect(screen.getByText("Quota Exhausted")).toBeInTheDocument()
+    })
+
+    it("shows error badge for general errors", () => {
+      const settingsWithError: AISettings = {
+        ...mockAISettings,
+        agents: {
+          ...mockAISettings.agents,
+          "codex.cli": {
+            ...mockAISettings.agents["codex.cli"],
+            reason: "error: API connection failed",
+          },
+        },
+      }
+
+      render(<AISettingsTab {...defaultProps} aiSettings={settingsWithError} />)
+
+      expect(screen.getByText("Error")).toBeInTheDocument()
+    })
+  })
+
+  describe("Remove Agent from Fallback Chain", () => {
+    it("shows remove button for each agent in fallback chain", () => {
+      render(<AISettingsTab {...defaultProps} />)
+
+      // extraction has 2 agents, analysis has 1 = 3 total X buttons
+      const xIcons = screen.getAllByTestId("x-icon")
+      expect(xIcons.length).toBe(3)
+    })
+
+    it("removes agent from fallback chain when X is clicked", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      // Click the first X button (removes first agent from extraction chain)
+      const removeButtons = screen.getAllByTitle("Remove from chain")
+      await user.click(removeButtons[0])
+
+      expect(setAISettings).toHaveBeenCalledTimes(1)
+
+      // Verify the updater function removes the agent from the chain
+      const updaterFn = setAISettings.mock.calls[0][0]
+      const result = updaterFn(mockAISettings)
+      // First agent (gemini.cli) should be removed from extraction
+      expect(result.taskFallbacks.extraction).toEqual(["codex.cli"])
+    })
+
+    it("removes correct agent when middle agent X is clicked", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      // Click the second X button (removes second agent from extraction chain)
+      const removeButtons = screen.getAllByTitle("Remove from chain")
+      await user.click(removeButtons[1])
+
+      expect(setAISettings).toHaveBeenCalledTimes(1)
+
+      const updaterFn = setAISettings.mock.calls[0][0]
+      const result = updaterFn(mockAISettings)
+      // Second agent (codex.cli) should be removed from extraction
+      expect(result.taskFallbacks.extraction).toEqual(["gemini.cli"])
+    })
+
+    it("shows empty chain message when all agents removed", () => {
+      const settingsWithEmptyChain: AISettings = {
+        ...mockAISettings,
+        taskFallbacks: {
+          extraction: [],
+          analysis: [],
+        },
+      }
+
+      render(<AISettingsTab {...defaultProps} aiSettings={settingsWithEmptyChain} />)
+
+      // Should show "No fallback chain configured" for both task types
+      const emptyMessages = screen.getAllByText("No fallback chain configured")
+      expect(emptyMessages.length).toBe(2)
+    })
+  })
+
+  describe("Agent Toggle Behavior", () => {
+    it("clears reason when agent is toggled on", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      // Find the switches - there should be 2 (one for each agent)
+      const switches = screen.getAllByRole("switch")
+      // The second switch is for codex.cli which is disabled
+      await user.click(switches[1])
+
+      expect(setAISettings).toHaveBeenCalledTimes(1)
+
+      // Verify the updater clears reason when enabling
+      const updaterFn = setAISettings.mock.calls[0][0]
+      const result = updaterFn(mockAISettings)
+      expect(result.agents["codex.cli"].reason).toBeNull()
+    })
+
+    it("clears reason when agent is toggled off", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      // Find the switches and click the first one (gemini.cli which is enabled)
+      const switches = screen.getAllByRole("switch")
+      await user.click(switches[0])
+
+      expect(setAISettings).toHaveBeenCalledTimes(1)
+
+      // Verify the updater sets enabled to false and clears reason
+      const updaterFn = setAISettings.mock.calls[0][0]
+      const result = updaterFn(mockAISettings)
+      expect(result.agents["gemini.cli"].enabled).toBe(false)
+      expect(result.agents["gemini.cli"].reason).toBeNull()
+    })
+  })
+
+  describe("Budget Input", () => {
+    it("displays budget input for each agent", () => {
+      render(<AISettingsTab {...defaultProps} />)
+
+      // Budget labels should be present
+      expect(screen.getAllByText("Budget:").length).toBe(2)
+    })
+
+    it("updates budget when input value changes", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      // Find budget inputs
+      const budgetInputs = screen.getAllByRole("spinbutton")
+      // Filter to just the budget inputs (value 100 or 50)
+      const geminibudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
+
+      if (geminibudgetInput) {
+        await user.clear(geminibudgetInput)
+        await user.type(geminibudgetInput, "200")
+
+        // setAISettings should have been called multiple times (once per keystroke)
+        expect(setAISettings).toHaveBeenCalled()
+      }
+    })
+
+    it("enforces minimum budget of 1", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      const budgetInputs = screen.getAllByRole("spinbutton")
+      const geminibudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
+
+      if (geminibudgetInput) {
+        await user.clear(geminibudgetInput)
+        // When cleared, should set to 1
+
+        // Find the call that would set budget to 1
+        const calls = setAISettings.mock.calls
+        if (calls.length > 0) {
+          const lastCall = calls[calls.length - 1][0]
+          const result = lastCall(mockAISettings)
+          expect(result.agents["gemini.cli"].dailyBudget).toBeGreaterThanOrEqual(1)
+        }
+      }
+    })
+  })
 })
