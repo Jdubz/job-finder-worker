@@ -1,7 +1,4 @@
 -- Add status and ignored_at to job_matches for ignore support
-PRAGMA foreign_keys = OFF;
-BEGIN TRANSACTION;
-
 -- Recreate job_matches with new columns (SQLite lacks add column with default+not null easily for existing data)
 CREATE TABLE IF NOT EXISTS job_matches_new (
   id TEXT PRIMARY KEY,
@@ -45,6 +42,3 @@ ALTER TABLE job_matches_new RENAME TO job_matches;
 CREATE INDEX IF NOT EXISTS idx_job_matches_listing ON job_matches(job_listing_id);
 CREATE INDEX IF NOT EXISTS idx_job_matches_score ON job_matches(match_score);
 CREATE INDEX IF NOT EXISTS idx_job_matches_status ON job_matches(status);
-
-COMMIT;
-PRAGMA foreign_keys = ON;
