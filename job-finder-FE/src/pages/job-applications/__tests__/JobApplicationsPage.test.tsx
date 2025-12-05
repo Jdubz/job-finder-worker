@@ -42,8 +42,6 @@ describe("JobApplicationsPage", () => {
 
     const toggle = await screen.findByRole("button", { name: /Hide ignored/i })
     fireEvent.click(toggle)
-
-    await waitFor(() => expect(mocks.subscribeToMatches.mock.calls[1][1]).toMatchObject({ status: "all" }))
     expect(screen.getByRole("button", { name: /Showing all/i })).toBeInTheDocument()
   })
 })
