@@ -7,6 +7,7 @@ import { GmailAuthService, type GmailTokenPayload } from "./gmail-auth.service"
 import { exchangeAuthCode } from "./gmail-oauth"
 import { GmailIngestService } from "./gmail-ingest.service"
 import { env } from "../../config/env"
+import { asyncHandler } from "../../utils/async-handler"
 
 const service = new GmailAuthService()
 const ingest = new GmailIngestService()
@@ -27,10 +28,13 @@ const StoreSchema = z.object({
 export function buildGmailRouter() {
   const router = Router()
 
-  router.get("/accounts", (_req, res) => {
-    const accounts = service.listAccounts()
-    res.json(success({ accounts }))
-  })
+  router.get(
+    "/accounts",
+    asyncHandler(async (_req, res) => {
+      const accounts = service.listAccounts()
+      res.json(success({ accounts }))
+    })
+  )
 
   router.get("/oauth/client", (_req, res) => {
     res.json(
@@ -41,7 +45,9 @@ export function buildGmailRouter() {
     )
   })
 
-  router.post("/oauth/exchange", async (req, res) => {
+  router.post(
+    "/oauth/exchange",
+    asyncHandler(async (req, res) => {
     const schema = z.object({
       code: z.string().min(1),
       redirectUri: z.string().url(),
@@ -69,12 +75,13 @@ export function buildGmailRouter() {
     }
 
     const gmailAddress = gmailEmail ?? userEmail
+    const safetyMarginMs = Math.max(0, tokenResponse.expires_in * 1000 - 60_000)
     service.upsertUserToken(userEmail, gmailAddress, {
       refresh_token: tokenResponse.refresh_token,
       access_token: tokenResponse.access_token,
       scope: tokenResponse.scope,
       token_type: tokenResponse.token_type,
-      expiry_date: Date.now() + tokenResponse.expires_in * 1000
+      expiry_date: Date.now() + safetyMarginMs
     })
 
     res.json(
@@ -85,7 +92,8 @@ export function buildGmailRouter() {
         scopes: tokenResponse.scope?.split(" ")
       })
     )
-  })
+    })
+  )
 
   router.post("/oauth/store", (req, res) => {
     const parsed = StoreSchema.safeParse(req.body)
@@ -103,17 +111,25 @@ export function buildGmailRouter() {
 
   router.post("/accounts/:gmailEmail/revoke", (req, res) => {
     const gmailEmail = req.params.gmailEmail
-    if (!gmailEmail) {
-      throw new ApiHttpError(ApiErrorCode.INVALID_REQUEST, "gmailEmail is required", { status: 400 })
+    const emailSchema = z.string().email()
+    const parsed = emailSchema.safeParse(gmailEmail)
+    if (!parsed.success) {
+      throw new ApiHttpError(ApiErrorCode.INVALID_REQUEST, "Invalid gmailEmail format", {
+        status: 400,
+        details: parsed.error.flatten()
+      })
     }
-    service.revokeByGmailEmail(gmailEmail)
-    res.json(success({ revoked: true, gmailEmail }))
+    service.revokeByGmailEmail(parsed.data)
+    res.json(success({ revoked: true, gmailEmail: parsed.data }))
   })
 
-  router.post("/ingest", async (_req, res) => {
-    const results = await ingest.ingestAll()
-    res.json(success({ results }))
-  })
+  router.post(
+    "/ingest",
+    asyncHandler(async (_req, res) => {
+      const results = await ingest.ingestAll()
+      res.json(success({ results }))
+    })
+  )
 
   return router
 }

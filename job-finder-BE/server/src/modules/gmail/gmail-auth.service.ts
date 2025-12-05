@@ -42,23 +42,29 @@ export class GmailAuthService {
 
   listAccounts(): GmailAccountInfo[] {
     const users = this.users.findUsersWithGmailAuth()
-    return users.map((u) => {
-      let payload: GmailTokenPayload | null = null
-      try {
-        payload = u.gmailAuthJson ? decryptJson<GmailTokenPayload>(u.gmailAuthJson) : null
-      } catch (error) {
-        logger.warn({ email: u.email, err: String(error) }, "Failed to decrypt gmail_auth_json")
-      }
-      return {
-        userEmail: u.email,
-        gmailEmail: u.gmailEmail ?? "",
-        updatedAt: u.updatedAt,
-        hasRefreshToken: Boolean(payload?.refresh_token),
-        expiryDate: payload?.expiry_date,
-        scopes: payload?.scope ? payload.scope.split(" ") : undefined,
-        historyId: payload?.historyId
-      }
-    })
+    return users
+      .map((u) => {
+        if (!u.gmailEmail) {
+          logger.warn({ email: u.email }, "Skipping Gmail account without gmail_email set")
+          return null
+        }
+        let payload: GmailTokenPayload | null = null
+        try {
+          payload = u.gmailAuthJson ? decryptJson<GmailTokenPayload>(u.gmailAuthJson) : null
+        } catch (error) {
+          logger.warn({ email: u.email, err: String(error) }, "Failed to decrypt gmail_auth_json")
+        }
+        return {
+          userEmail: u.email,
+          gmailEmail: u.gmailEmail,
+          updatedAt: u.updatedAt,
+          hasRefreshToken: Boolean(payload?.refresh_token),
+          expiryDate: payload?.expiry_date,
+          scopes: payload?.scope ? payload.scope.split(" ") : undefined,
+          historyId: payload?.historyId
+        }
+      })
+      .filter((item): item is GmailAccountInfo => item !== null)
   }
 
   revokeByGmailEmail(gmailEmail: string) {
@@ -67,11 +73,9 @@ export class GmailAuthService {
   }
 
   getTokensForGmailEmail(gmailEmail: string): GmailTokenPayload | null {
-    const users = this.users.findUsersWithGmailAuth().filter((u) => u.gmailEmail === gmailEmail)
-    if (!users.length) return null
-    const first = users[0]
-    if (!first.gmailAuthJson) return null
-    return decryptJson<GmailTokenPayload>(first.gmailAuthJson)
+    const user = this.users.findByGmailEmail(gmailEmail)
+    if (!user || !user.gmailAuthJson) return null
+    return decryptJson<GmailTokenPayload>(user.gmailAuthJson)
   }
 
   saveHistoryId(gmailEmail: string, historyId: string) {

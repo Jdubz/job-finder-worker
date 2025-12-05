@@ -1,5 +1,10 @@
+// AES-256-GCM envelope encryption for Gmail OAuth tokens.
+// Payload layout (versioned): { v:1, iv:base64, tag:base64, ct:base64 }.
+// To change algorithms/lengths, bump `v` and keep backward-compatible
+// decryption for older rows before migrating.
 import crypto from "crypto"
 import { env } from "../../config/env"
+import { z } from "zod"
 
 let cachedKey: Buffer | null = null
 function getKey(): Buffer {
@@ -30,6 +35,13 @@ type EncryptedPayload = {
   ct: string
 }
 
+const EncryptedPayloadSchema = z.object({
+  v: z.literal(1),
+  iv: z.string().min(1),
+  tag: z.string().min(1),
+  ct: z.string().min(1)
+})
+
 export function encryptJson(value: unknown): string {
   const KEY = getKey()
   const iv = crypto.randomBytes(12)
@@ -50,7 +62,7 @@ export function encryptJson(value: unknown): string {
 
 export function decryptJson<T = unknown>(payload: string): T {
   const KEY = getKey()
-  const parsed = JSON.parse(payload) as EncryptedPayload
+  const parsed = EncryptedPayloadSchema.parse(JSON.parse(payload)) as EncryptedPayload
   if (!parsed || parsed.v !== 1) {
     throw new Error("Unsupported token payload version")
   }

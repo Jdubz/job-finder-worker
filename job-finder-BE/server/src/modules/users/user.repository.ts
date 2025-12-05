@@ -188,4 +188,14 @@ export class UserRepository {
 
     return rows.map(mapRow)
   }
+
+  findByGmailEmail(gmailEmail: string): UserRecord | null {
+    const row = this.db
+      .prepare(
+        "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms, gmail_email, gmail_auth_json FROM users WHERE gmail_email = ?"
+      )
+      .get(gmailEmail) as UserRow | undefined
+
+    return row ? mapRow(row) : null
+  }
 }
