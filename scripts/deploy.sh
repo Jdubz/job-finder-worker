@@ -105,6 +105,28 @@ fi
 # Pull and restart stack
 docker compose -f docker-compose.yml pull
 docker compose -f docker-compose.yml up -d --remove-orphans
+
+# --- Run config/data migrations ---
+echo "[deploy] Waiting for API container to be healthy..."
+for i in $(seq 1 30); do
+  if docker exec job-finder-api curl -sf http://localhost:8080/healthz > /dev/null 2>&1; then
+    echo "[deploy] API container is healthy"
+    break
+  fi
+  if [ "$i" -eq 30 ]; then
+    echo "[deploy] WARNING: API health check timed out after 30s, attempting migrations anyway..."
+    break
+  fi
+  sleep 1
+done
+
+echo "[deploy] Running config migrations..."
+# Auto-discover and run pending config migrations from src/db/config-migrations/
+if docker exec job-finder-api node dist/scripts/run-config-migrations.js 2>&1; then
+  echo "[deploy] Config migrations completed successfully"
+else
+  echo "[deploy] WARNING: Config migrations failed - check logs for details"
+fi
 EOF
 
 echo "[deploy] Executing remote deployment…"
