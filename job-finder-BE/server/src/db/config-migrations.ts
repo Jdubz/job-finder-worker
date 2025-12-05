@@ -221,13 +221,13 @@ export async function runConfigMigrations(
     let toRollback: string[] = []
 
     if (target) {
-      // Roll back to specific target (normalize target name)
+      // Roll back all migrations down to and including the target
       const normalizedTarget = getMigrationName(target)
       const targetIndex = appliedList.indexOf(normalizedTarget)
       if (targetIndex === -1) {
         throw new Error(`Target migration '${normalizedTarget}' not found in applied migrations`)
       }
-      toRollback = appliedList.slice(0, targetIndex)
+      toRollback = appliedList.slice(0, targetIndex + 1)
     } else {
       // Roll back N steps
       toRollback = appliedList.slice(0, steps)

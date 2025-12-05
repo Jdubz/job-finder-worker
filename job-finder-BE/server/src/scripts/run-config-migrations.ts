@@ -35,11 +35,19 @@ function parseArgs(): {
   target?: string
 } {
   const args = process.argv.slice(2)
+
+  // Parse and validate --steps
+  const stepsArg = args.find((a) => a.startsWith('--steps='))?.split('=')[1] ?? '1'
+  const steps = parseInt(stepsArg, 10)
+  if (isNaN(steps) || steps < 0) {
+    throw new Error(`Invalid --steps value: '${stepsArg}'. Must be a non-negative integer.`)
+  }
+
   return {
     dryRun: args.includes('--dry-run'),
     status: args.includes('--status'),
     down: args.includes('--down'),
-    steps: parseInt(args.find((a) => a.startsWith('--steps='))?.split('=')[1] ?? '1', 10),
+    steps,
     target: args.find((a) => a.startsWith('--target='))?.split('=')[1],
   }
 }
