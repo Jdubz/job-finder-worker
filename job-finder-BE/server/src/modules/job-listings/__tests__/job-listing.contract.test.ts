@@ -36,8 +36,6 @@ describe('job listing contract', () => {
       location: null,
       salaryRange: null,
       postedDate: null,
-      filterResult: null,
-      analysisResult: null,
       matchScore: null
     })
 
@@ -64,8 +62,6 @@ describe('job listing contract', () => {
       location: null,
       salaryRange: null,
       postedDate: null,
-      filterResult: null,
-      analysisResult: null,
       matchScore: null
     })
 
