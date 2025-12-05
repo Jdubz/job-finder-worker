@@ -17,7 +17,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
-from job_finder.exceptions import AIProviderError, NoAgentsAvailableError
+from job_finder.exceptions import AIProviderError, NoAgentsAvailableError, QuotaExhaustedError
 
 if TYPE_CHECKING:
     from job_finder.job_queue.config_loader import ConfigLoader
@@ -154,15 +154,21 @@ class AgentManager:
 
                 return result
 
+            except QuotaExhaustedError as e:
+                # Quota/rate limit errors - disable agent but continue to next
+                error_msg = str(e)
+                logger.warning(f"Agent {agent_id} quota exhausted: {error_msg}")
+                self._disable_agent(agent_id, f"quota_exhausted: {error_msg}")
+                errors.append((agent_id, error_msg))
+                continue  # Try next agent in fallback chain
+
             except AIProviderError as e:
+                # Other API errors - disable agent and stop (requires investigation)
                 error_msg = str(e)
                 logger.error(f"Agent {agent_id} failed: {error_msg}")
-
-                # Disable agent on any error (requires manual re-enable)
                 self._disable_agent(agent_id, f"error: {error_msg}")
                 errors.append((agent_id, error_msg))
-
-                # Don't continue to next agent - errors require manual intervention
+                # Don't continue - non-quota errors may indicate systemic issues
                 break
 
         # All agents exhausted

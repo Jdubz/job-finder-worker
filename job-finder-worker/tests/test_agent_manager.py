@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from job_finder.ai.agent_manager import AgentManager, AgentResult
-from job_finder.exceptions import AIProviderError, NoAgentsAvailableError
+from job_finder.exceptions import AIProviderError, NoAgentsAvailableError, QuotaExhaustedError
 
 
 def make_ai_settings(
@@ -166,6 +166,46 @@ class TestAgentManagerExecute:
         # Should disable the failed agent with error reason
         config_loader.update_agent_status.assert_called_with(
             "gemini.cli", enabled=False, reason="error: API rate limit"
+        )
+
+    @patch("job_finder.ai.agent_manager._get_provider_class")
+    def test_continues_to_next_agent_on_quota_exhausted(self, mock_get_provider):
+        """Should continue to next agent when QuotaExhaustedError is raised."""
+        # First agent raises QuotaExhaustedError, second succeeds
+        gemini_provider = MagicMock()
+        gemini_provider.generate.side_effect = QuotaExhaustedError(
+            "Gemini quota exhausted", provider="gemini"
+        )
+
+        codex_provider = MagicMock()
+        codex_provider.generate.return_value = "success from codex"
+
+        def get_provider(provider, interface):
+            if provider == "gemini":
+                return lambda model: gemini_provider
+            return lambda model: codex_provider
+
+        mock_get_provider.side_effect = get_provider
+
+        config_loader = MagicMock()
+        config_loader.get_ai_settings.return_value = make_ai_settings(
+            agents={
+                "gemini.cli": make_agent_config(),
+                "codex.cli": make_agent_config(provider="codex"),
+            },
+            task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},
+        )
+
+        manager = AgentManager(config_loader)
+        result = manager.execute("extraction", "test prompt")
+
+        # Should have succeeded with second agent
+        assert result.agent_id == "codex.cli"
+        assert result.text == "success from codex"
+
+        # First agent should be disabled with quota reason
+        config_loader.update_agent_status.assert_any_call(
+            "gemini.cli", enabled=False, reason="quota_exhausted: Gemini quota exhausted"
         )
 
     def test_raises_when_no_fallback_chain(self):
