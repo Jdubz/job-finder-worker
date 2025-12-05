@@ -82,7 +82,7 @@ Add Gmail ingestion to capture job listings delivered by email and feed them int
 - Goal: ingest from multiple admin mailboxes; tokens are user-scoped.
 - Schema change: add columns to `users` table (migration):
   - `gmail_email` TEXT NULL (mailbox authenticated)
-  - `gmail_auth_json` TEXT NULL (stores `refresh_token`, optional `access_token`, `expiry_date`, `history_id`, `scopes`)
+  - `gmail_auth_json` TEXT NULL **encrypted at rest** (stores `refresh_token`, optional `access_token`, `expiry_date`, `history_id`, `scopes`)
   - Index on `gmail_email` for lookup.
 - Admin Gmail tab behavior:
   - On successful OAuth callback, upsert the user (by email) in `users`; set `gmail_email` to the authorized mailbox and store tokens in `gmail_auth_json`.
@@ -91,11 +91,17 @@ Add Gmail ingestion to capture job listings delivered by email and feed them int
   - Load all users with `gmail_auth_json` and `gmail_email` set.
   - For each, run ingest with that user’s tokens + the shared `gmail-ingest` settings (label/query). History checkpoint can live inside `gmail_auth_json.history_id` per mailbox.
 
+## Auth Strategy (recommended)
+- Primary: reuse the existing OAuth client (same as current sign-in) and request `gmail.readonly` (optionally `gmail.modify` only if we label/archive). This supports multiple inboxes and avoids new keys.
+- Encryption: store refresh tokens only, encrypted using app-level envelope encryption (e.g., AES-256 key from env or GCP KMS); never store plaintext tokens in SQLite. Decrypt in memory only when polling.
+- Fallback (only if Workspace admin approves): service account + domain delegation for a dedicated shared inbox; still store delegated subject + key path in config, not in DB.
+
 ## Deprecations / Removals
 - Earlier idea to run Gmail ingest in the worker: **superseded** by this API-side plan; no worker endpoints to be added. Avoid adding any Gmail logic to `job-finder-worker`.
 - No other components marked for removal.
 
 ## Risks & Mitigations
+- **Token security**: refresh tokens are sensitive—**must be encrypted at rest** (envelope or KMS) and redacted from logs; add revocation flow in admin UI. Rotate encryption key via env/KMS and document recovery.
 - **PII handling**: store only `messageId/threadId/from/subject/snippet`; discard full bodies after parse.
 - **Duplicate URLs**: rely on queue + `job_listings` URL dedupe; also record `message_id` to avoid reprocessing digests.
 - **Gmail quota**: batch `messages.get` and respect `maxMessages`; use history checkpoints to reduce calls.
