@@ -38,6 +38,14 @@ const CONFIG_MIGRATIONS_TABLE = 'config_migrations'
 const defaultConfigMigrationsDir = path.resolve(__dirname, 'config-migrations')
 
 /**
+ * Get the canonical migration name (without extension) for tracking.
+ * This ensures .ts (dev) and .js (prod) are treated as the same migration.
+ */
+function getMigrationName(filename: string): string {
+  return filename.replace(/\.(ts|js)$/, '')
+}
+
+/**
  * Ensure the config_migrations tracking table exists
  */
 function ensureConfigMigrationsTable(db: Database.Database): void {
@@ -77,10 +85,17 @@ function removeMigrationRecord(db: Database.Database, name: string): void {
   db.prepare(`DELETE FROM ${CONFIG_MIGRATIONS_TABLE} WHERE name = ?`).run(name)
 }
 
+interface DiscoveredMigration {
+  /** The actual filename on disk (with extension) */
+  filename: string
+  /** Canonical name for tracking (without extension) */
+  name: string
+}
+
 /**
  * Discover migration files in the migrations directory
  */
-function discoverMigrations(migrationsDir: string): string[] {
+function discoverMigrations(migrationsDir: string): DiscoveredMigration[] {
   if (!fs.existsSync(migrationsDir)) {
     return []
   }
@@ -89,7 +104,8 @@ function discoverMigrations(migrationsDir: string): string[] {
     .readdirSync(migrationsDir)
     .filter((file) => file.endsWith('.ts') || file.endsWith('.js'))
     .filter((file) => !file.startsWith('_')) // Allow _helpers.ts etc
-    .sort((a, b) => a.localeCompare(b)) // Lexicographic sort ensures YYYYMMDD_NNN order
+    .map((filename) => ({ filename, name: getMigrationName(filename) }))
+    .sort((a, b) => a.name.localeCompare(b.name)) // Lexicographic sort ensures YYYYMMDD_NNN order
 }
 
 /**
@@ -165,8 +181,8 @@ export async function runConfigMigrations(
   const allMigrations = discoverMigrations(migrationsDir)
 
   if (direction === 'up') {
-    // Apply pending migrations
-    const pending = allMigrations.filter((name) => !applied.has(name))
+    // Apply pending migrations (compare by canonical name, not filename)
+    const pending = allMigrations.filter((m) => !applied.has(m.name))
 
     if (!pending.length) {
       logger.info({ appliedCount: applied.size }, '[config-migrations] all migrations already applied')
@@ -175,25 +191,25 @@ export async function runConfigMigrations(
 
     logger.info({ count: pending.length }, '[config-migrations] found pending migrations')
 
-    for (const filename of pending) {
+    for (const { filename, name } of pending) {
       try {
         const migration = await loadMigration(migrationsDir, filename)
-        const desc = migration.description ?? filename
+        const desc = migration.description ?? name
 
         if (dryRun) {
-          logger.info({ migration: filename }, '[config-migrations] would apply (dry-run)')
-          result.skipped.push(filename)
+          logger.info({ migration: name }, '[config-migrations] would apply (dry-run)')
+          result.skipped.push(name)
           continue
         }
 
-        logger.info({ migration: filename, description: desc }, '[config-migrations] applying')
+        logger.info({ migration: name, description: desc }, '[config-migrations] applying')
         migration.up(db)
-        recordMigration(db, filename)
-        result.applied.push(filename)
-        logger.info({ migration: filename }, '[config-migrations] applied successfully')
+        recordMigration(db, name) // Record canonical name (without extension)
+        result.applied.push(name)
+        logger.info({ migration: name }, '[config-migrations] applied successfully')
       } catch (error) {
-        logger.error({ migration: filename, error }, '[config-migrations] failed to apply')
-        result.failed = filename
+        logger.error({ migration: name, error }, '[config-migrations] failed to apply')
+        result.failed = name
         result.error = error instanceof Error ? error : new Error(String(error))
         break // Stop on first failure
       }
@@ -205,10 +221,11 @@ export async function runConfigMigrations(
     let toRollback: string[] = []
 
     if (target) {
-      // Roll back to specific target
-      const targetIndex = appliedList.indexOf(target)
+      // Roll back to specific target (normalize target name)
+      const normalizedTarget = getMigrationName(target)
+      const targetIndex = appliedList.indexOf(normalizedTarget)
       if (targetIndex === -1) {
-        throw new Error(`Target migration '${target}' not found in applied migrations`)
+        throw new Error(`Target migration '${normalizedTarget}' not found in applied migrations`)
       }
       toRollback = appliedList.slice(0, targetIndex)
     } else {
@@ -223,24 +240,30 @@ export async function runConfigMigrations(
 
     logger.info({ count: toRollback.length }, '[config-migrations] rolling back migrations')
 
-    for (const filename of toRollback) {
+    for (const name of toRollback) {
       try {
-        const migration = await loadMigration(migrationsDir, filename)
+        // Find the migration file by canonical name
+        const migrationFile = allMigrations.find((m) => m.name === name)
+        if (!migrationFile) {
+          throw new Error(`Migration file for '${name}' not found in ${migrationsDir}`)
+        }
+
+        const migration = await loadMigration(migrationsDir, migrationFile.filename)
 
         if (dryRun) {
-          logger.info({ migration: filename }, '[config-migrations] would rollback (dry-run)')
-          result.skipped.push(filename)
+          logger.info({ migration: name }, '[config-migrations] would rollback (dry-run)')
+          result.skipped.push(name)
           continue
         }
 
-        logger.info({ migration: filename }, '[config-migrations] rolling back')
+        logger.info({ migration: name }, '[config-migrations] rolling back')
         migration.down(db)
-        removeMigrationRecord(db, filename)
-        result.applied.push(filename)
-        logger.info({ migration: filename }, '[config-migrations] rolled back successfully')
+        removeMigrationRecord(db, name)
+        result.applied.push(name)
+        logger.info({ migration: name }, '[config-migrations] rolled back successfully')
       } catch (error) {
-        logger.error({ migration: filename, error }, '[config-migrations] failed to rollback')
-        result.failed = filename
+        logger.error({ migration: name, error }, '[config-migrations] failed to rollback')
+        result.failed = name
         result.error = error instanceof Error ? error : new Error(String(error))
         break
       }
@@ -263,11 +286,11 @@ export function getConfigMigrationStatus(
   migrationsDir: string = defaultConfigMigrationsDir
 ): { applied: string[]; pending: string[] } {
   ensureConfigMigrationsTable(db)
-  const applied = loadAppliedMigrations(db)
+  const appliedSet = loadAppliedMigrations(db)
   const all = discoverMigrations(migrationsDir)
 
   return {
-    applied: all.filter((name) => applied.has(name)),
-    pending: all.filter((name) => !applied.has(name)),
+    applied: all.filter((m) => appliedSet.has(m.name)).map((m) => m.name),
+    pending: all.filter((m) => !appliedSet.has(m.name)).map((m) => m.name),
   }
 }
