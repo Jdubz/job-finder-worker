@@ -203,8 +203,12 @@ export async function runConfigMigrations(
         }
 
         logger.info({ migration: name, description: desc }, '[config-migrations] applying')
-        migration.up(db)
-        recordMigration(db, name) // Record canonical name (without extension)
+        // Wrap migration + record in a transaction for atomicity
+        const applyMigration = db.transaction(() => {
+          migration.up(db)
+          recordMigration(db, name)
+        })
+        applyMigration()
         result.applied.push(name)
         logger.info({ migration: name }, '[config-migrations] applied successfully')
       } catch (error) {
@@ -257,8 +261,12 @@ export async function runConfigMigrations(
         }
 
         logger.info({ migration: name }, '[config-migrations] rolling back')
-        migration.down(db)
-        removeMigrationRecord(db, name)
+        // Wrap rollback + record removal in a transaction for atomicity
+        const rollbackMigration = db.transaction(() => {
+          migration.down(db)
+          removeMigrationRecord(db, name)
+        })
+        rollbackMigration()
         result.applied.push(name)
         logger.info({ migration: name }, '[config-migrations] rolled back successfully')
       } catch (error) {

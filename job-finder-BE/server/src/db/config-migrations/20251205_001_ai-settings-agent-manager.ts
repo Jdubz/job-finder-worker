@@ -175,8 +175,9 @@ export function up(db: Database.Database): void {
 }
 
 export function down(db: Database.Database): void {
-  // Rollback is not fully reversible - we can't recover the original worker.tasks structure
-  // Best effort: remove the new fields, keeping documentGenerator and options
+  // Rollback is not fully reversible - task-specific agent assignments (jobMatch,
+  // companyDiscovery, sourceDiscovery) are lost and cannot be recovered. We convert
+  // the first available agent back to worker.selected as a best effort.
   const row = db
     .prepare('SELECT payload_json FROM job_finder_config WHERE id = ?')
     .get('ai-settings') as { payload_json: string } | undefined

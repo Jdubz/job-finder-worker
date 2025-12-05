@@ -57,9 +57,10 @@ async function main() {
 
   console.log(`[config-migrations] Using database: ${DB_PATH}`)
 
-  const db = sqlite3(DB_PATH)
-
+  let db: ReturnType<typeof sqlite3> | undefined
   try {
+    db = sqlite3(DB_PATH)
+
     if (opts.status) {
       // Show status only
       const status = getConfigMigrationStatus(db)
@@ -107,7 +108,7 @@ async function main() {
       }
     }
   } finally {
-    db.close()
+    db?.close()
   }
 }
 

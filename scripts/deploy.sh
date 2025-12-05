@@ -115,6 +115,7 @@ for i in $(seq 1 30); do
   fi
   if [ "$i" -eq 30 ]; then
     echo "[deploy] WARNING: API health check timed out after 30s, attempting migrations anyway..."
+    break
   fi
   sleep 1
 done
