@@ -5,8 +5,10 @@ import { ApiHttpError } from "../../middleware/api-error"
 import { ApiErrorCode } from "@shared/types"
 import { GmailAuthService, type GmailTokenPayload } from "./gmail-auth.service"
 import { exchangeAuthCode } from "./gmail-oauth"
+import { GmailIngestService } from "./gmail-ingest.service"
 
 const service = new GmailAuthService()
+const ingest = new GmailIngestService()
 
 const StoreSchema = z.object({
   userEmail: z.string().email(),
@@ -96,6 +98,11 @@ export function buildGmailRouter() {
     }
     service.revokeByGmailEmail(gmailEmail)
     res.json(success({ revoked: true, gmailEmail }))
+  })
+
+  router.post("/ingest", async (_req, res) => {
+    const results = await ingest.ingestAll()
+    res.json(success({ results }))
   })
 
   return router

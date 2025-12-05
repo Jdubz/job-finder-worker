@@ -47,3 +47,35 @@ export async function exchangeAuthCode(input: ExchangeInput): Promise<OAuthToken
 
   return (await res.json()) as OAuthTokenResponse
 }
+
+export async function refreshAccessToken(
+  refreshToken: string,
+  clientId?: string,
+  clientSecret?: string
+): Promise<OAuthTokenResponse> {
+  const client_id = clientId ?? env.GMAIL_OAUTH_CLIENT_ID ?? env.GOOGLE_OAUTH_CLIENT_ID
+  const client_secret = clientSecret ?? env.GMAIL_OAUTH_CLIENT_SECRET
+  if (!client_id || !client_secret) {
+    throw new Error("GMAIL_OAUTH_CLIENT_ID and GMAIL_OAUTH_CLIENT_SECRET are required for token refresh")
+  }
+
+  const body = new URLSearchParams({
+    refresh_token: refreshToken,
+    client_id,
+    client_secret,
+    grant_type: "refresh_token"
+  })
+
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Failed to refresh access token: ${res.status} ${text}`)
+  }
+
+  return (await res.json()) as OAuthTokenResponse
+}
