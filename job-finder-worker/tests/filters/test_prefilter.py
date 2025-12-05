@@ -807,6 +807,63 @@ class TestPreFilterRemoteKeywords:
         assert "Remote" in result.reason
 
 
+class TestPreFilterLinkedInHashtags:
+    """Tests for LinkedIn work-arrangement hashtags inside descriptions."""
+
+    @pytest.fixture
+    def base_config(self):
+        return {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": False,  # Flip to see rejection when detected
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+
+    def test_li_remote_detected_in_description(self, base_config):
+        pf = PreFilter(base_config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "description": "Great role #LI-Remote with global team",
+            }
+        )
+        assert result.passed is False
+        assert "Remote" in result.reason
+
+    def test_li_hybrid_detected_in_description(self, base_config):
+        # Reject hybrid to validate detection
+        base_config["workArrangement"]["allowHybrid"] = False
+        pf = PreFilter(base_config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "description": "Join us #li_Hybrid in NYC",
+            }
+        )
+        assert result.passed is False
+        assert "Hybrid" in result.reason
+
+    def test_li_onsite_detected_in_description(self, base_config):
+        base_config["workArrangement"]["allowOnsite"] = False
+        pf = PreFilter(base_config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "description": "Office-first culture #LI Onsite",
+            }
+        )
+        assert result.passed is False
+        assert "Onsite" in result.reason
+
+
 class TestPreFilterRemoteSource:
     """Tests for is_remote_source flag (set on source config, not prefilter-policy)."""
 

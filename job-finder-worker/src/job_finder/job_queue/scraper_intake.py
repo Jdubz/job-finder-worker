@@ -21,6 +21,7 @@ Job Listings Integration:
 """
 
 import logging
+import re
 import uuid
 from typing import Any, Dict, List, Optional, get_args
 
@@ -84,6 +85,10 @@ class ScraperIntake:
         # Legacy fallback - will be removed in future version
         self._legacy_job_storage = job_storage
 
+        # LinkedIn control tags (e.g., #LI-DNI / #LI-DNP) appear inside descriptions
+        # for wrapped jobs; use them to avoid ingesting posts that should be skipped.
+        self._li_suppression_pattern = re.compile(r"#\s*li[-_ ]?(dni|dnp)\b", re.IGNORECASE)
+
     def _is_aggregator_domain(self, url: str) -> bool:
         if not self.sources_manager:
             return False
@@ -115,6 +120,16 @@ class ScraperIntake:
             "/job-board",
         ]
         return any(token in lower for token in board_path_tokens)
+
+    def _has_linkedin_suppression_tag(self, job: Dict[str, Any]) -> Optional[str]:
+        """Return suppression tag (#LI-DNI or #LI-DNP) if present in description."""
+
+        description = job.get("description", "")
+        if isinstance(description, str) and description:
+            match = self._li_suppression_pattern.search(description)
+            if match:
+                return f"#LI-{match.group(1).upper()}"
+        return None
 
     def _check_job_exists(self, normalized_url: str) -> bool:
         """Check if job URL already exists in job_listings (or legacy job_matches)."""
@@ -261,6 +276,13 @@ class ScraperIntake:
                             normalized_url,
                         )
                         continue
+
+                # Respect LinkedIn suppression/control tags embedded in descriptions
+                suppression_tag = self._has_linkedin_suppression_tag(job)
+                if suppression_tag:
+                    skipped_count += 1
+                    logger.info("Skipping job marked %s: %s", suppression_tag, normalized_url)
+                    continue
 
                 # Check if URL already in queue
                 if self.queue_manager.url_exists_in_queue(canonical_url):
