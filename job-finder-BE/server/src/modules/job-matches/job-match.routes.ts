@@ -63,7 +63,9 @@ const jobMatchSchema = z.object({
   createdAt: z.union([z.string(), z.date()]).optional(),
   updatedAt: z.union([z.string(), z.date()]).optional(),
   submittedBy: z.string().nullable().optional(),
-  queueItemId: z.string()
+  queueItemId: z.string(),
+  status: z.enum(['active', 'ignored']).optional(),
+  ignoredAt: z.union([z.string(), z.date()]).optional()
 })
 
 function toTimestamp(value?: string | Date) {
@@ -81,7 +83,8 @@ const listQuerySchema = z.object({
   maxScore: z.coerce.number().int().min(0).max(100).optional(),
   jobListingId: z.string().min(1).optional(),
   sortBy: z.enum(['score', 'date', 'updated']).optional(),
-  sortOrder: z.enum(['asc', 'desc']).optional()
+  sortOrder: z.enum(['asc', 'desc']).optional(),
+  status: z.enum(['active', 'ignored', 'all']).optional()
 })
 
 export function buildJobMatchRouter() {
@@ -92,7 +95,7 @@ export function buildJobMatchRouter() {
     '/',
     asyncHandler((req, res) => {
       const filters = listQuerySchema.parse(req.query)
-      const matches = repo.listWithListings(filters)
+      const matches = repo.listWithListings({ ...filters, status: filters.status ?? 'active' })
       const response: ListJobMatchesResponse = { matches, count: matches.length }
       res.json(success(response))
     })
@@ -100,8 +103,9 @@ export function buildJobMatchRouter() {
 
   router.get(
     '/stats',
-    asyncHandler((_req, res) => {
-      const stats = repo.getStats()
+    asyncHandler((req, res) => {
+      const includeIgnored = req.query.includeIgnored === 'true'
+      const stats = repo.getStats(includeIgnored)
       const response: GetJobMatchStatsResponse = { stats }
       res.json(success(response))
     })
@@ -135,7 +139,9 @@ export function buildJobMatchRouter() {
         keyStrengths: payload.keyStrengths ?? [],
         potentialConcerns: payload.potentialConcerns ?? [],
         customizationRecommendations: payload.customizationRecommendations ?? [],
-        submittedBy: payload.submittedBy ?? null
+        submittedBy: payload.submittedBy ?? null,
+        status: payload.status ?? 'active',
+        ignoredAt: payload.ignoredAt ? toTimestamp(payload.ignoredAt) : undefined
       }
 
       const match = repo.upsert(matchRequest)
@@ -150,6 +156,20 @@ export function buildJobMatchRouter() {
       repo.delete(req.params.id)
       const response: DeleteJobMatchResponse = { matchId: req.params.id, deleted: true }
       res.json(success(response))
+    })
+  )
+
+  router.patch(
+    '/:id/status',
+    asyncHandler((req, res) => {
+      const statusSchema = z.object({ status: z.enum(['active', 'ignored']) })
+      const { status } = statusSchema.parse(req.body)
+      const updated = repo.updateStatus(req.params.id, status)
+      if (!updated) {
+        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Job match not found'))
+        return
+      }
+      res.json(success({ match: updated }))
     })
   )
 

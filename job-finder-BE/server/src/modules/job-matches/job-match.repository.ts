@@ -22,6 +22,8 @@ type JobMatchRow = {
   queue_item_id: string
   created_at: string
   updated_at: string
+  status: string
+  ignored_at: string | null
 }
 
 const parseTimestamp = (value: string | null): Date => {
@@ -55,7 +57,9 @@ const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   createdAt: parseTimestamp(row.created_at),
   updatedAt: parseTimestamp(row.updated_at),
   submittedBy: row.submitted_by,
-  queueItemId: row.queue_item_id
+  queueItemId: row.queue_item_id,
+  status: (row.status as JobMatch['status']) ?? 'active',
+  ignoredAt: row.ignored_at ? parseTimestamp(row.ignored_at) : undefined
 })
 
 export type CreateJobMatchInput = Omit<JobMatch, 'id'> & { id?: string }
@@ -76,6 +80,7 @@ interface JobMatchListOptions {
   jobListingId?: string
   sortBy?: 'score' | 'date' | 'updated'
   sortOrder?: 'asc' | 'desc'
+  status?: 'active' | 'ignored' | 'all'
 }
 
 export class JobMatchRepository {
@@ -97,7 +102,8 @@ export class JobMatchRepository {
       maxScore,
       jobListingId,
       sortBy = 'updated',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      status
     } = options
 
     const conditions: string[] = []
@@ -116,6 +122,11 @@ export class JobMatchRepository {
     if (jobListingId) {
       conditions.push('job_listing_id = ?')
       params.push(jobListingId)
+    }
+
+    if (options.status && options.status !== 'all') {
+      conditions.push('status = ?')
+      params.push(options.status)
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -190,8 +201,9 @@ export class JobMatchRepository {
         id, job_listing_id, match_score, matched_skills, missing_skills,
         match_reasons, key_strengths, potential_concerns, experience_match,
         customization_recommendations, resume_intake_json,
-        analyzed_at, submitted_by, queue_item_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        analyzed_at, submitted_by, queue_item_id, created_at, updated_at,
+        status, ignored_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         job_listing_id = excluded.job_listing_id,
         match_score = excluded.match_score,
@@ -206,7 +218,9 @@ export class JobMatchRepository {
         analyzed_at = excluded.analyzed_at,
         submitted_by = excluded.submitted_by,
         queue_item_id = excluded.queue_item_id,
-        updated_at = excluded.updated_at
+        updated_at = excluded.updated_at,
+        status = excluded.status,
+        ignored_at = excluded.ignored_at
     `)
 
     stmt.run(
@@ -225,7 +239,9 @@ export class JobMatchRepository {
       match.submittedBy ?? null,
       match.queueItemId,
       toIsoString(match.createdAt),
-      now
+      now,
+      match.status ?? 'active',
+      match.status === 'ignored' ? toIsoString(match.ignoredAt) : null
     )
 
     return this.getById(id) as JobMatch
@@ -235,11 +251,25 @@ export class JobMatchRepository {
     this.db.prepare('DELETE FROM job_matches WHERE id = ?').run(id)
   }
 
+  updateStatus(id: string, status: 'active' | 'ignored'): JobMatch | null {
+    const now = new Date().toISOString()
+    this.db
+      .prepare(
+        `UPDATE job_matches
+         SET status = ?, ignored_at = CASE WHEN ? = 'ignored' THEN ? ELSE NULL END, updated_at = ?
+         WHERE id = ?`
+      )
+      .run(status, status, now, now, id)
+
+    return this.getById(id)
+  }
+
   /**
    * Get stats for job matches grouped by score range.
    * Used for summary pills in the UI.
    */
-  getStats(): JobMatchStats {
+  getStats(includeIgnored = false): JobMatchStats {
+    const whereClause = includeIgnored ? '' : 'WHERE status = "active"'
     const result = this.db
       .prepare(`
         SELECT
@@ -249,6 +279,7 @@ export class JobMatchRepository {
           SUM(CASE WHEN match_score < 50 THEN 1 ELSE 0 END) as lowScore,
           AVG(match_score) as averageScore
         FROM job_matches
+        ${whereClause}
       `)
       .get() as {
       total: number

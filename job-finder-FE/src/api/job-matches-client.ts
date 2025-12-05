@@ -17,6 +17,7 @@ export interface JobMatchFilters {
   offset?: number
   sortBy?: "score" | "date" | "updated"
   sortOrder?: "asc" | "desc"
+  status?: "active" | "ignored" | "all"
 }
 
 type JobMatchesResponseShape =
@@ -38,6 +39,7 @@ export class JobMatchesClient extends BaseApiClient {
     if (filters.offset !== undefined) params.set("offset", String(filters.offset))
     if (filters.sortBy) params.set("sortBy", filters.sortBy)
     if (filters.sortOrder) params.set("sortOrder", filters.sortOrder)
+    if (filters.status) params.set("status", filters.status)
     return params.toString()
   }
 
@@ -65,6 +67,15 @@ export class JobMatchesClient extends BaseApiClient {
   async getMatch(matchId: string): Promise<JobMatchWithListing> {
     const response = await this.get<JobMatchResponseShape>(`/job-matches/${matchId}`)
     return this.unwrapMatch(response)
+  }
+
+  async updateStatus(matchId: string, status: "active" | "ignored") {
+    const response = await this.patch<ApiSuccessResponse<{ match: JobMatchWithListing }>>(
+      `/job-matches/${matchId}/status`,
+      { status }
+    )
+    const payload = "data" in response ? response.data : (response as any)
+    return payload.match as JobMatchWithListing
   }
 
   subscribeToMatches(
@@ -103,9 +114,10 @@ export class JobMatchesClient extends BaseApiClient {
    * Get stats for job matches grouped by score range.
    * Uses server-side aggregation for accurate totals.
    */
-  async getStats(): Promise<JobMatchStats> {
+  async getStats(includeIgnored = false): Promise<JobMatchStats> {
+    const query = includeIgnored ? "?includeIgnored=true" : ""
     const response = await this.get<ApiSuccessResponse<GetJobMatchStatsResponse>>(
-      "/job-matches/stats"
+      `/job-matches/stats${query}`
     )
     const payload = "data" in response ? response.data : response
     return (payload as GetJobMatchStatsResponse).stats

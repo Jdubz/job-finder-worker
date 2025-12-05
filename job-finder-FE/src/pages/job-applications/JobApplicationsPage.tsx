@@ -45,17 +45,18 @@ export function JobApplicationsPage() {
   // Filter state
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState<string>("updated")
+  const [showIgnored, setShowIgnored] = useState(false)
 
   // Fetch stats from server
   const fetchStats = useCallback(async () => {
     if (!user) return
     try {
-      const serverStats = await jobMatchesClient.getStats()
+      const serverStats = await jobMatchesClient.getStats(showIgnored)
       setStats(serverStats)
     } catch (err) {
       console.error("Failed to fetch job match stats:", err)
     }
-  }, [user])
+  }, [user, showIgnored])
 
   // Subscribe to real-time job matches
   useEffect(() => {
@@ -103,7 +104,7 @@ export function JobApplicationsPage() {
         setLoading(false)
         setError(null) // Clear any previous errors
       },
-      { sortBy: "updated", sortOrder: "desc" },
+      { sortBy: "updated", sortOrder: "desc", status: showIgnored ? "all" : "active" },
       (err) => {
         logger.error("database", "failed", "JobApplicationsPage: Job matches subscription error", {
           error: {
@@ -121,7 +122,7 @@ export function JobApplicationsPage() {
       logger.debug("database", "stopped", "JobApplicationsPage: Unsubscribing from job matches")
       unsubscribe()
     }
-  }, [user, fetchStats])
+  }, [user, fetchStats, showIgnored])
 
   const getUpdatedDate = (match: JobMatchWithListing) =>
     toDate(match.updatedAt ?? match.createdAt ?? match.listing.updatedAt ?? match.listing.createdAt)
@@ -164,6 +165,9 @@ export function JobApplicationsPage() {
       type: "jobMatch",
       match,
       onGenerateResume: handleGenerateResume,
+      onStatusChange: (updated) => {
+        setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
+      },
     })
   }
 
@@ -259,12 +263,19 @@ export function JobApplicationsPage() {
                   <SelectItem value="company">Company</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                variant={showIgnored ? "secondary" : "ghost"}
+                onClick={() => setShowIgnored((prev) => !prev)}
+              >
+                {showIgnored ? "Showing all" : "Hide ignored"}
+              </Button>
               {(searchQuery.trim() || sortBy !== "updated") && (
                 <Button
                   variant="ghost"
                   onClick={() => {
                     setSearchQuery("")
                     setSortBy("updated")
+                    setShowIgnored(false)
                   }}
                 >
                   Clear Filters

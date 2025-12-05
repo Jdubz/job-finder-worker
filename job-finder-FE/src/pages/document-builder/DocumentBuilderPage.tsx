@@ -169,6 +169,7 @@ export function DocumentBuilderPage() {
         const matches = await jobMatchesClient.listMatches({
           minScore: 70, // Only show good matches
           limit: 50,
+          status: "active",
         })
         setJobMatches(matches)
       } catch (error) {

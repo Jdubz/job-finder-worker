@@ -43,8 +43,9 @@ export function buildGeneratorWorkflowRouter() {
 
   router.get(
     '/requests',
-    asyncHandler((_req, res) => {
-      const documents = repo.listRequests().map((request: GeneratorRequestRecord) => ({
+    asyncHandler((req, res) => {
+      const jobMatchId = typeof req.query.jobMatchId === 'string' ? req.query.jobMatchId : undefined
+      const documents = repo.listRequests(50, jobMatchId).map((request: GeneratorRequestRecord) => ({
         ...request,
         artifacts: repo.listArtifacts(request.id)
       }))
@@ -94,6 +95,18 @@ export function buildGeneratorWorkflowRouter() {
         return
       }
       res.json(success(stepResult))
+    })
+  )
+
+  router.get(
+    '/job-matches/:id/documents',
+    asyncHandler((req, res) => {
+      const jobMatchId = req.params.id
+      const documents = repo.listRequests(50, jobMatchId).map((request: GeneratorRequestRecord) => ({
+        ...request,
+        artifacts: repo.listArtifacts(request.id)
+      }))
+      res.json(success({ requests: documents, count: documents.length }))
     })
   )
 

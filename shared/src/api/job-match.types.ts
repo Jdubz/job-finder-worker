@@ -7,6 +7,7 @@ export interface ListJobMatchesRequest extends PaginationParams {
   jobListingId?: string
   sortBy?: "score" | "date" | "updated"
   sortOrder?: "asc" | "desc"
+  status?: "active" | "ignored" | "all"
 }
 
 export interface ListJobMatchesResponse {

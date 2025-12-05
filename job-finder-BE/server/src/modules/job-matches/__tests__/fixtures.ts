@@ -67,6 +67,8 @@ export const buildJobMatchInput = (
     updatedAt: overrides.updatedAt ?? analyzedDate,
     submittedBy: overrides.submittedBy ?? 'user-123',
     queueItemId: overrides.queueItemId ?? `queue-${counter}`,
+    status: overrides.status ?? 'active',
+    ignoredAt: overrides.ignoredAt,
     id: overrides.id
   }
 }
