@@ -20,6 +20,7 @@ type GmailIngestSettings = {
   allowedSenders?: string[]
   remoteSourceDefault?: boolean
   aiFallbackEnabled?: boolean
+  allowedDomains?: string[]
 }
 
 type GmailMessage = {
@@ -45,6 +46,23 @@ export class GmailIngestService {
   private readonly auth = new GmailAuthService()
   private readonly config = new ConfigRepository()
   private readonly queue = new JobQueueService()
+  private readonly allowedDomains = [
+    "greenhouse.io",
+    "lever.co",
+    "ashbyhq.com",
+    "workday.com",
+    "smartrecruiters.com",
+    "jobs.ashbyhq.com",
+    "boards.greenhouse.io",
+    "boards.eu.greenhouse.io",
+    "myworkdayjobs.com",
+    "jobs.lever.co",
+    "wellfound.com",
+    "angel.co",
+    "reecruitee.com",
+    "jobvite.com",
+    "breezy.hr"
+  ]
 
   async ingestAll(): Promise<IngestJobResult[]> {
     const settings = this.getSettings()
@@ -101,8 +119,7 @@ export class GmailIngestService {
     if (settings?.query) queryParts.push(settings.query)
     const q = queryParts.join(" ").trim()
     const maxResults = settings?.maxMessages ?? 25
-
-    const messages = await this.listMessages(accessToken, q || undefined, maxResults)
+    const messages = await this.fetchMessages(accessToken, ensured.historyId, q || undefined, maxResults)
     if (!messages.length) {
       return { gmailEmail, jobsFound: 0, jobsQueued: 0 }
     }
@@ -143,20 +160,11 @@ export class GmailIngestService {
     }
 
     // Persist latest historyId to reduce future scans (best-effort)
-    const latestHistoryId = messages
-      .map((m) => Number(m.historyId ?? fullHistoryId(m.id)))
-      .filter((n) => Number.isFinite(n))
-      .sort((a, b) => b - a)[0]
-    if (latestHistoryId) {
-      this.auth.saveHistoryId(gmailEmail, String(latestHistoryId))
+    if (messages.latestHistoryId) {
+      this.auth.saveHistoryId(gmailEmail, String(messages.latestHistoryId))
     }
 
     return { gmailEmail, jobsFound, jobsQueued }
-
-    function fullHistoryId(msgId: string): number | null {
-      const match = messages.find((m) => m.id === msgId)
-      return match?.historyId ? Number(match.historyId) : null
-    }
   }
 
   private async ensureAccessToken(tokens: GmailTokenPayload) {
@@ -173,11 +181,24 @@ export class GmailIngestService {
     }
   }
 
-  private async listMessages(
+  private async fetchMessages(
     accessToken: string,
+    historyId?: string,
     q?: string,
     maxResults: number = 25
-  ): Promise<Array<{ id: string; threadId: string }>> {
+  ): Promise<{ items: Array<{ id: string; threadId: string; historyId?: string }>; latestHistoryId?: number }> {
+    // Prefer history API when we have a checkpoint
+    if (historyId) {
+      try {
+        const hist = await this.listHistory(accessToken, historyId, maxResults)
+        if (hist.items.length > 0) {
+          return hist
+        }
+      } catch (error) {
+        logger.warn({ error: String(error), historyId }, "History API failed; falling back to message list")
+      }
+    }
+
     const params = new URLSearchParams({ maxResults: String(maxResults), includeSpamTrash: "false" })
     if (q) params.set("q", q)
     const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`
@@ -188,8 +209,53 @@ export class GmailIngestService {
       const text = await res.text()
       throw new Error(`Gmail list failed: ${res.status} ${text}`)
     }
-    const json = (await res.json()) as { messages?: Array<{ id: string; threadId: string }> }
-    return json.messages ?? []
+    const json = (await res.json()) as { messages?: Array<{ id: string; threadId: string }>; resultSizeEstimate?: number }
+    return { items: json.messages ?? [], latestHistoryId: undefined }
+  }
+
+  private async listHistory(
+    accessToken: string,
+    startHistoryId: string,
+    maxResults: number
+  ): Promise<{ items: Array<{ id: string; threadId: string; historyId?: string }>; latestHistoryId?: number }> {
+    const params = new URLSearchParams({
+      startHistoryId,
+      historyTypes: "messageAdded",
+      maxResults: String(maxResults)
+    })
+    const url = `https://gmail.googleapis.com/gmail/v1/users/me/history?${params.toString()}`
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Gmail history failed: ${res.status} ${text}`)
+    }
+    const json = (await res.json()) as {
+      history?: Array<{ id?: string; messagesAdded?: Array<{ message?: { id: string; threadId: string } }> }>
+      historyId?: string
+      nextPageToken?: string
+    }
+
+    const items: Array<{ id: string; threadId: string; historyId?: string }> = []
+    let latest = json.historyId ? Number(json.historyId) : undefined
+
+    const history = json.history ?? []
+    for (const h of history) {
+      if (h.id) {
+        const idNum = Number(h.id)
+        if (!Number.isNaN(idNum) && (latest === undefined || idNum > latest)) latest = idNum
+      }
+      const added = h.messagesAdded ?? []
+      for (const ma of added) {
+        if (ma.message?.id && ma.message.threadId) {
+          items.push({ id: ma.message.id, threadId: ma.message.threadId, historyId: h.id })
+        }
+      }
+    }
+
+    // Pagination not implemented for brevity; maxResults keeps batches small.
+    return { items, latestHistoryId: latest }
   }
 
   private async getMessage(accessToken: string, id: string): Promise<GmailMessage> {
@@ -234,9 +300,26 @@ export class GmailIngestService {
     if (!text) return []
     const regex = /https?:\/\/[^\s"'>)]+/gi
     const found = text.match(regex) ?? []
-    const cleaned = found.map((url) => url.replace(/[.,;]+$/, ""))
+    const cleaned = found
+      .map((url) => url.replace(/[.,;]+$/, ""))
+      .filter((url) => this.isLikelyJobLink(url))
+
     // dedupe
     return Array.from(new Set(cleaned))
+  }
+
+  private isLikelyJobLink(url: string): boolean {
+    try {
+      const parsed = new URL(url)
+      const host = parsed.hostname.toLowerCase()
+      const domainAllowed =
+        this.allowedDomains.some((d) => host === d || host.endsWith(`.${d}`)) ||
+        (parsed.pathname && parsed.pathname.toLowerCase().includes("/careers")) ||
+        (parsed.pathname && parsed.pathname.toLowerCase().includes("/jobs"))
+    return domainAllowed
+    } catch {
+      return false
+    }
   }
 
   private getHeader(msg: GmailMessage, name: string): string | undefined {
