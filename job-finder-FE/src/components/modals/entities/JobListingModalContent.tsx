@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Trash2, ExternalLink, Database, AlertCircle } from "lucide-react"
-import { MatchBreakdown } from "@/pages/job-listings/components/MatchBreakdown"
 import { statusBadgeClass } from "@/lib/status-badge"
 import { formatDate, formatDateTime } from "@/lib/formatDate"
 import { extractMatchScore } from "@/lib/score-utils"
@@ -163,11 +162,49 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
 
             <div>
               <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-2">
-                Match Analysis
+                Scoring Breakdown
                 {matchScore !== null ? <Badge variant="outline">Score: {matchScore}</Badge> : null}
               </Label>
               <div className="mt-2">
-                <MatchBreakdown analysis={listing.analysisResult ?? undefined} />
+                {listing.scoringResult ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Badge variant="outline">Base: {listing.scoringResult.baseScore}</Badge>
+                      <Badge>Final: {listing.scoringResult.finalScore}</Badge>
+                    </div>
+                    {listing.scoringResult.adjustments.length > 0 && (
+                      <div className="space-y-1">
+                        {listing.scoringResult.adjustments.map((adj, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between text-sm bg-secondary/30 px-2 py-1 rounded"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs font-normal">
+                                {adj.category}
+                              </Badge>
+                              <span className="text-muted-foreground text-xs">{adj.reason}</span>
+                            </div>
+                            <span
+                              className={`font-mono font-medium text-xs ${
+                                adj.points > 0
+                                  ? "text-green-600"
+                                  : adj.points < 0
+                                    ? "text-red-600"
+                                    : "text-muted-foreground"
+                              }`}
+                            >
+                              {adj.points > 0 ? "+" : ""}
+                              {adj.points}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No scoring data available</p>
+                )}
               </div>
             </div>
           </div>

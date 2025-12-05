@@ -204,7 +204,10 @@ export interface JobListingRecord {
   /** Filter/extraction result details */
   filterResult?: Record<string, unknown> | null
 
-  /** AI match score (0-100) from job_matches for quick filtering */
+  /** Deterministic scoring result with breakdown (baseScore, finalScore, adjustments) */
+  scoringResult?: ScoreBreakdown | null
+
+  /** AI match score (0-100) for quick filtering */
   matchScore?: number | null
 
   /** When record was created */

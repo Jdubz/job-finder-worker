@@ -813,11 +813,15 @@ class JobProcessor(BaseProcessor):
             },
         )
 
-        # Update match_score on listing for sorting/filtering (deterministic score)
+        # Update match_score and scoring_result on listing
         if ctx.listing_id and ctx.score_result:
             self.job_listing_storage.update_match_score(
                 ctx.listing_id,
                 ctx.score_result.final_score,
+            )
+            self.job_listing_storage.update_scoring_result(
+                ctx.listing_id,
+                ctx.score_result.to_dict(),
             )
 
         # Save to job_matches table (single source of truth for analysis)

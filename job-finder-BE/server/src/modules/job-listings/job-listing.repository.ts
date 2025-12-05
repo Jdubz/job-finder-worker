@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { JobListingRecord, JobListingStatus, JobListingStats } from '@shared/types'
+import type { JobListingRecord, JobListingStatus, JobListingStats, ScoreBreakdown } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 
 type JobListingRow = {
@@ -16,6 +16,7 @@ type JobListingRow = {
   posted_date: string | null
   status: string
   filter_result: string | null
+  scoring_result: string | null
   match_score: number | null
   created_at: string
   updated_at: string
@@ -48,6 +49,7 @@ const buildJobListing = (row: JobListingRow): JobListingRecord => ({
   postedDate: row.posted_date,
   status: row.status as JobListingStatus,
   filterResult: parseJson<Record<string, unknown>>(row.filter_result),
+  scoringResult: parseJson<ScoreBreakdown>(row.scoring_result),
   matchScore: row.match_score,
   createdAt: parseTimestamp(row.created_at),
   updatedAt: parseTimestamp(row.updated_at)
