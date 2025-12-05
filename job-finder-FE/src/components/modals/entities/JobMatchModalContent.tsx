@@ -6,7 +6,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ExternalLink, FileText, Download, Eye, Ban, CheckCircle } from "lucide-react"
+import { ExternalLink, FileText, Download, Eye, CheckCircle } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { JobMatchWithListing } from "@shared/types"
 import {
   generatorClient,
@@ -39,14 +40,18 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
   const [generating, setGenerating] = useState(false)
   const companyInfo = localMatch.company?.about || localMatch.company?.culture || localMatch.company?.mission
 
-  const handleToggleIgnore = async () => {
+  const handleStatusChange = async (status: "active" | "ignored" | "applied") => {
     if (!localMatch.id) return
-    const nextStatus = localMatch.status === "ignored" ? "active" : "ignored"
     try {
-      const updated = await jobMatchesClient.updateStatus(localMatch.id, nextStatus)
+      const updated = await jobMatchesClient.updateStatus(localMatch.id, status)
       setLocalMatch(updated)
       handlers?.onStatusChange?.(updated)
-      toast.success({ title: nextStatus === "ignored" ? "Match ignored" : "Match restored" })
+      const messages: Record<typeof status, string> = {
+        active: "Match marked active",
+        applied: "Marked as applied",
+        ignored: "Match ignored",
+      }
+      toast.success({ title: messages[status] })
     } catch (err) {
       console.error("Failed to update match status", err)
       toast.error({ title: "Could not update match status" })
@@ -171,15 +176,25 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
             {localMatch.listing.salaryRange && <span>• {localMatch.listing.salaryRange}</span>}
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap justify-end">
+        <div className="flex gap-2 flex-wrap justify-end items-center">
           {typeof localMatch.matchScore === "number" && (
             <Badge variant="outline">Score: {localMatch.matchScore}%</Badge>
           )}
           {localMatch.status === "ignored" && <Badge variant="destructive">Ignored</Badge>}
-          <Button size="sm" variant={localMatch.status === "ignored" ? "secondary" : "outline"} onClick={handleToggleIgnore}>
-            <Ban className="mr-2 h-4 w-4" />
-            {localMatch.status === "ignored" ? "Unignore" : "Ignore"}
-          </Button>
+          {localMatch.status === "applied" && <Badge variant="secondary">Applied</Badge>}
+          <Select
+            value={localMatch.status ?? "active"}
+            onValueChange={(value) => handleStatusChange(value as "active" | "ignored" | "applied")}
+          >
+            <SelectTrigger className="w-[140px]" aria-label="Match status">
+              <SelectValue placeholder="Set status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="applied">Applied</SelectItem>
+              <SelectItem value="ignored">Ignored</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
