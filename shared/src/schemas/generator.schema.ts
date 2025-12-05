@@ -43,3 +43,21 @@ export const generatorArtifactSchema = z.object({
   sizeBytes: z.number().nullable().optional(),
   createdAt: z.string(),
 })
+
+export const generatorStartResponseSchema = z.object({
+  requestId: z.string(),
+  status: z.enum(["pending", "processing", "completed", "failed"]),
+  steps: z.array(z.record(z.unknown())).optional(),
+  nextStep: z.string().nullable().optional(),
+  stepCompleted: z.string().nullable().optional(),
+  resumeUrl: z.string().nullable().optional(),
+  coverLetterUrl: z.string().nullable().optional(),
+})
+
+export const generatorStepResponseSchema = z.object({
+  status: z.enum(["pending", "processing", "completed", "failed"]),
+  steps: z.array(z.record(z.unknown())).optional(),
+  nextStep: z.string().nullable().optional(),
+  resumeUrl: z.string().nullable().optional(),
+  coverLetterUrl: z.string().nullable().optional(),
+})
