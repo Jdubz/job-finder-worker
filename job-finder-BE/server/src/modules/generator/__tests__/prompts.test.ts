@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { buildResumePrompt } from '../workflow/prompts'
+import { buildResumePrompt, buildCoverLetterPrompt } from '../workflow/prompts'
+import type { ContentItem, PersonalInfo } from '@shared/types'
 
 // Minimal fixtures
-const personalInfo = {
+const personalInfo: PersonalInfo = {
   name: 'Test User',
   email: 'test@example.com',
   location: 'Portland, OR'
-} as const
+}
 
-const contentItems = [
+const contentItems: ContentItem[] = [
   {
     id: 'work-1',
     parentId: null,
@@ -24,7 +25,7 @@ const contentItems = [
     createdBy: 'me',
     updatedBy: 'me'
   }
-] as any
+]
 
 describe('buildResumePrompt', () => {
   it('includes company website, job URL, and candidate location in the data block', () => {
@@ -39,7 +40,7 @@ describe('buildResumePrompt', () => {
           jobDescriptionText: 'Build great products'
         }
       },
-      personalInfo as any,
+      personalInfo,
       contentItems
     )
 
@@ -49,3 +50,25 @@ describe('buildResumePrompt', () => {
   })
 })
 
+describe('buildCoverLetterPrompt', () => {
+  it('includes company website, job URL, and candidate location in the data block', () => {
+    const prompt = buildCoverLetterPrompt(
+      {
+        generateType: 'coverLetter',
+        job: {
+          role: 'Senior Engineer',
+          company: 'Acme',
+          companyWebsite: 'https://acme.test',
+          jobDescriptionUrl: 'https://jobs.acme.test/123',
+          jobDescriptionText: 'Build great products'
+        }
+      },
+      personalInfo,
+      contentItems
+    )
+
+    expect(prompt).toMatch(/Company Website: https:\/\/acme\.test/i)
+    expect(prompt).toMatch(/Job Post URL: https:\/\/jobs\.acme\.test\/123/i)
+    expect(prompt).toMatch(/Candidate Location: Portland, OR/i)
+  })
+})
