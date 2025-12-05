@@ -33,7 +33,7 @@ const aiProviderOptionSchema = z.object({
 
 const aiSettingsSectionSchema = z.object({
   selected: aiProviderSelectionSchema,
-  tasks: z.record(z.unknown()).optional(),
+  tasks: z.record(z.string(), z.unknown()).optional(),
 })
 
 export const aiSettingsSchema = z.object({

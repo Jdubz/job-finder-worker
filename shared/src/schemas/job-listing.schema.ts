@@ -16,7 +16,7 @@ export const jobListingRecordSchema = z
     description: z.string(),
     postedDate: nullableString,
     status: z.enum(["pending", "analyzing", "analyzed", "skipped", "matched"]),
-    filterResult: z.record(z.unknown()).nullable().optional(),
+    filterResult: z.record(z.string(), z.unknown()).nullable().optional(),
     analysisResult: z.unknown().nullable().optional(),
     matchScore: z.number().nullable().optional(),
     createdAt: timestampJsonSchema,

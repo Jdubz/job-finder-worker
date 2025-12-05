@@ -9,7 +9,7 @@ export const generationStepSchema = z.object({
   startedAt: timestampJsonSchema.optional(),
   completedAt: timestampJsonSchema.optional(),
   duration: z.number().optional(),
-  result: z.record(z.unknown()).optional(),
+  result: z.record(z.string(), z.unknown()).optional(),
   error: z
     .object({
       message: z.string(),
@@ -21,9 +21,9 @@ export const generationStepSchema = z.object({
 export const generatorRequestRecordSchema = z.object({
   id: z.string(),
   generateType: z.enum(["resume", "coverLetter", "both"]),
-  job: z.record(z.unknown()),
-  preferences: z.record(z.unknown()).nullable().optional(),
-  personalInfo: z.record(z.unknown()).nullable().optional(),
+  job: z.record(z.string(), z.unknown()),
+  preferences: z.record(z.string(), z.unknown()).nullable().optional(),
+  personalInfo: z.record(z.string(), z.unknown()).nullable().optional(),
   status: z.enum(["pending", "processing", "completed", "failed"]),
   resumeUrl: z.string().nullable().optional(),
   coverLetterUrl: z.string().nullable().optional(),
@@ -47,7 +47,7 @@ export const generatorArtifactSchema = z.object({
 export const generatorStartResponseSchema = z.object({
   requestId: z.string(),
   status: z.enum(["pending", "processing", "completed", "failed"]),
-  steps: z.array(z.record(z.unknown())).optional(),
+  steps: z.array(z.record(z.string(), z.unknown())).optional(),
   nextStep: z.string().nullable().optional(),
   stepCompleted: z.string().nullable().optional(),
   resumeUrl: z.string().nullable().optional(),
@@ -56,7 +56,7 @@ export const generatorStartResponseSchema = z.object({
 
 export const generatorStepResponseSchema = z.object({
   status: z.enum(["pending", "processing", "completed", "failed"]),
-  steps: z.array(z.record(z.unknown())).optional(),
+  steps: z.array(z.record(z.string(), z.unknown())).optional(),
   nextStep: z.string().nullable().optional(),
   resumeUrl: z.string().nullable().optional(),
   coverLetterUrl: z.string().nullable().optional(),
