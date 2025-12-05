@@ -1,7 +1,10 @@
-"""Tests for AI provider creation and configuration.
+"""Tests for AI provider classes.
 
-Tests the create_provider_from_config function which creates AI providers
-based on the ai-settings configuration.
+Tests individual provider classes (CodexCLIProvider, ClaudeProvider, etc.)
+for correct initialization, API key handling, and response parsing.
+
+Note: Tests for provider selection and fallback logic are in test_agent_manager.py.
+The create_provider_from_config function was removed in the AgentManager refactor.
 """
 
 import pytest
@@ -13,393 +16,8 @@ from job_finder.ai.providers import (
     GeminiCLIProvider,
     GeminiProvider,
     OpenAIProvider,
-    create_provider_from_config,
 )
 from job_finder.exceptions import AIProviderError
-
-
-class TestCreateProviderFromConfig:
-    """Test create_provider_from_config with various configurations."""
-
-    def test_creates_codex_cli_provider(self):
-        """Should create CodexCLIProvider for codex/cli combination."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                }
-            }
-        }
-
-        provider = create_provider_from_config(ai_settings)
-
-        assert isinstance(provider, CodexCLIProvider)
-        assert provider.model == "gpt-5-codex"
-
-    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"})
-    @patch("job_finder.ai.providers.Anthropic")
-    def test_creates_claude_api_provider(self, mock_anthropic):
-        """Should create ClaudeProvider for claude/api combination."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "claude",
-                    "interface": "api",
-                    "model": "claude-sonnet-4-5-20250929",
-                }
-            }
-        }
-
-        provider = create_provider_from_config(ai_settings)
-
-        assert isinstance(provider, ClaudeProvider)
-        assert provider.model == "claude-sonnet-4-5-20250929"
-
-    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
-    @patch("job_finder.ai.providers.OpenAI")
-    def test_creates_openai_api_provider(self, mock_openai):
-        """Should create OpenAIProvider for openai/api combination."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "openai",
-                    "interface": "api",
-                    "model": "gpt-4o",
-                }
-            }
-        }
-
-        provider = create_provider_from_config(ai_settings)
-
-        assert isinstance(provider, OpenAIProvider)
-        assert provider.model == "gpt-4o"
-
-    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"})
-    def test_creates_gemini_api_provider(self):
-        """Should create GeminiProvider for gemini/api combination."""
-        try:
-            import google.generativeai  # noqa: F401
-        except ImportError:
-            pytest.skip("google-generativeai package not installed")
-
-            with (
-                patch("google.generativeai.configure"),
-                patch("google.generativeai.GenerativeModel"),
-            ):
-                ai_settings = {
-                    "worker": {
-                        "selected": {
-                            "provider": "gemini",
-                            "interface": "api",
-                            "model": "gemini-2.0-flash",
-                        }
-                    }
-                }
-
-            provider = create_provider_from_config(ai_settings)
-
-            assert isinstance(provider, GeminiProvider)
-            assert provider.model == "gemini-2.0-flash"
-
-    def test_raises_error_for_unsupported_provider_interface(self):
-        """Should raise AIProviderError for unsupported combinations."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "unknown",
-                    "interface": "api",
-                    "model": "some-model",
-                }
-            }
-        }
-
-        with pytest.raises(AIProviderError, match="Unsupported provider/interface"):
-            create_provider_from_config(ai_settings)
-
-    def test_raises_error_for_codex_api_combination(self):
-        """Should raise error for codex/api (not supported)."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "api",  # Codex only supports CLI
-                    "model": "gpt-4o-mini",
-                }
-            }
-        }
-
-        with pytest.raises(AIProviderError, match="Unsupported provider/interface"):
-            create_provider_from_config(ai_settings)
-
-    def test_raises_error_for_claude_cli_combination(self):
-        """Should raise error for claude/cli (not supported)."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "claude",
-                    "interface": "cli",  # Claude only supports API
-                    "model": "claude-sonnet-4-5-20250929",
-                }
-            }
-        }
-
-        with pytest.raises(AIProviderError, match="Unsupported provider/interface"):
-            create_provider_from_config(ai_settings)
-
-    def test_raises_error_when_provider_not_configured(self):
-        """Should raise error when provider is not configured (no silent defaults)."""
-        ai_settings = {}  # Empty config
-
-        with pytest.raises(AIProviderError, match="AI provider not configured"):
-            create_provider_from_config(ai_settings)
-
-    def test_uses_defaults_for_partial_selected(self):
-        """Should use defaults for missing fields in selected config."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    # interface and model missing
-                }
-            }
-        }
-
-        provider = create_provider_from_config(ai_settings)
-
-        # Defaults interface to cli and model to gpt-5-codex
-        assert isinstance(provider, CodexCLIProvider)
-        assert provider.model == "gpt-5-codex"
-
-
-class TestTaskSpecificProviderCreation:
-    """Test create_provider_from_config with per-task overrides."""
-
-    def test_task_override_uses_different_provider(self):
-        """Should use task-specific provider when task override is specified."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                },
-                "tasks": {
-                    "jobMatch": {
-                        "provider": "gemini",
-                        "interface": "cli",
-                    }
-                },
-            }
-        }
-
-        # Without task parameter - should use default (codex)
-        default_provider = create_provider_from_config(ai_settings)
-        assert isinstance(default_provider, CodexCLIProvider)
-
-        # With task parameter - should use task override (gemini cli)
-        task_provider = create_provider_from_config(ai_settings, task="jobMatch")
-        assert isinstance(task_provider, GeminiCLIProvider)
-
-    def test_task_without_override_uses_default(self):
-        """Should fall back to selected when no task override exists."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                },
-                "tasks": {
-                    "jobMatch": {
-                        "provider": "gemini",
-                        "interface": "cli",
-                    }
-                    # sourceDiscovery not specified
-                },
-            }
-        }
-
-        # sourceDiscovery has no override, should use default
-        provider = create_provider_from_config(ai_settings, task="sourceDiscovery")
-        assert isinstance(provider, CodexCLIProvider)
-        assert provider.model == "gpt-5-codex"
-
-    def test_task_null_override_uses_default(self):
-        """Should fall back to selected when task override is null."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                },
-                "tasks": {"sourceDiscovery": None},  # Explicitly null
-            }
-        }
-
-        provider = create_provider_from_config(ai_settings, task="sourceDiscovery")
-        assert isinstance(provider, CodexCLIProvider)
-
-    def test_task_partial_override_merges_with_default(self):
-        """Should merge partial task override with default config."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                },
-                "tasks": {
-                    "companyDiscovery": {
-                        "provider": "gemini",
-                        # interface and model not specified - should inherit defaults
-                    }
-                },
-            }
-        }
-
-        provider = create_provider_from_config(ai_settings, task="companyDiscovery")
-        # Should use gemini but with cli interface (inferred for gemini)
-        assert isinstance(provider, GeminiCLIProvider)
-
-    def test_task_override_with_model_null_uses_provider_default(self):
-        """Should allow model=null to use provider's default model."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                },
-                "tasks": {
-                    "jobMatch": {
-                        "provider": "gemini",
-                        "interface": "cli",
-                        "model": None,  # Explicitly null - use provider default
-                    }
-                },
-            }
-        }
-
-        provider = create_provider_from_config(ai_settings, task="jobMatch")
-        assert isinstance(provider, GeminiCLIProvider)
-        # model=None passed to provider, which handles its own default
-
-    def test_all_three_tasks_can_have_different_providers(self):
-        """Should support different providers for each task."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                },
-                "tasks": {
-                    "jobMatch": {
-                        "provider": "gemini",
-                        "interface": "cli",
-                    },
-                    "companyDiscovery": {
-                        "provider": "gemini",
-                        "interface": "cli",
-                    },
-                    "sourceDiscovery": {
-                        "provider": "codex",
-                        "interface": "cli",
-                        "model": "o4-mini",
-                    },
-                },
-            }
-        }
-
-        job_match = create_provider_from_config(ai_settings, task="jobMatch")
-        company = create_provider_from_config(ai_settings, task="companyDiscovery")
-        source = create_provider_from_config(ai_settings, task="sourceDiscovery")
-
-        assert isinstance(job_match, GeminiCLIProvider)
-        assert isinstance(company, GeminiCLIProvider)
-        assert isinstance(source, CodexCLIProvider)
-        assert source.model == "o4-mini"
-
-    def test_empty_tasks_section_uses_default(self):
-        """Should use default when tasks section is empty."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                },
-                "tasks": {},  # Empty tasks section
-            }
-        }
-
-        provider = create_provider_from_config(ai_settings, task="jobMatch")
-        assert isinstance(provider, CodexCLIProvider)
-
-    def test_no_tasks_section_uses_default(self):
-        """Should use default when tasks section is missing entirely."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                }
-                # No tasks section at all
-            }
-        }
-
-        provider = create_provider_from_config(ai_settings, task="jobMatch")
-        assert isinstance(provider, CodexCLIProvider)
-
-    def test_task_override_provider_only_infers_correct_interface(self):
-        """Should infer correct interface when task overrides provider but not interface."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                },
-                "tasks": {
-                    "jobMatch": {
-                        "provider": "gemini",
-                        # interface NOT specified - should be inferred as cli for gemini
-                    }
-                },
-            }
-        }
-
-        # Should successfully create GeminiCLIProvider (not fail with codex/cli mismatch)
-        provider = create_provider_from_config(ai_settings, task="jobMatch")
-        assert isinstance(provider, GeminiCLIProvider)
-
-    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"})
-    @patch("job_finder.ai.providers.Anthropic")
-    def test_task_override_to_api_provider_infers_api_interface(self, mock_anthropic):
-        """Should infer API interface when task overrides to API-only provider."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                },
-                "tasks": {
-                    "jobMatch": {
-                        "provider": "claude",
-                        # interface NOT specified - should be inferred as api for claude
-                    }
-                },
-            }
-        }
-
-        # Should successfully create ClaudeProvider (infers api interface)
-        provider = create_provider_from_config(ai_settings, task="jobMatch")
-        assert isinstance(provider, ClaudeProvider)
 
 
 class TestCodexCLIProvider:
@@ -640,129 +258,71 @@ class TestGeminiProvider:
             GeminiProvider()
 
 
-class TestAPIKeyFallback:
-    """Test graceful fallback when API keys are missing."""
+class TestGeminiCLIProvider:
+    """Test GeminiCLIProvider behavior."""
 
-    @patch.dict("os.environ", {}, clear=True)
-    def test_gemini_api_falls_back_to_cli_when_no_key(self, caplog):
-        """Should fall back to gemini/cli when GOOGLE_API_KEY is missing."""
-        import logging
-        import os
+    def test_init_with_model(self):
+        """Should initialize with specified model."""
+        provider = GeminiCLIProvider(model="gemini-2.0-flash")
+        assert provider.model == "gemini-2.0-flash"
 
-        os.environ.pop("GOOGLE_API_KEY", None)
-        os.environ.pop("GEMINI_API_KEY", None)
+    def test_init_with_timeout(self):
+        """Should accept custom timeout."""
+        provider = GeminiCLIProvider(timeout=180)
+        assert provider.timeout == 180
 
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "gemini",
-                    "interface": "api",  # Requests API but no key available
-                    "model": "gemini-2.0-flash",
-                }
-            }
-        }
+    @patch("subprocess.run")
+    def test_generate_success(self, mock_run):
+        """Should parse JSON response from gemini CLI."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"response": "Test response from Gemini"}',
+            stderr="",
+        )
 
-        # Should not raise, should fall back to CLI
-        with caplog.at_level(logging.WARNING):
-            provider = create_provider_from_config(ai_settings)
-        assert isinstance(provider, GeminiCLIProvider)
-        assert "Falling back to gemini/cli" in caplog.text
+        provider = GeminiCLIProvider()
+        result = provider.generate("Test prompt")
 
-    @patch.dict("os.environ", {}, clear=True)
-    def test_claude_api_raises_when_no_key_and_no_fallback(self):
-        """Should raise error for claude/api when no key (no CLI fallback available)."""
-        import os
+        assert result == "Test response from Gemini"
 
-        os.environ.pop("ANTHROPIC_API_KEY", None)
+    @patch("subprocess.run")
+    def test_generate_handles_yolo_prefix(self, mock_run):
+        """Should handle 'YOLO mode...' prefix in output."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='YOLO mode enabled\n{"response": "Test response"}',
+            stderr="",
+        )
 
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "claude",
-                    "interface": "api",
-                    "model": "claude-sonnet-4-5-20250929",
-                }
-            }
-        }
+        provider = GeminiCLIProvider()
+        result = provider.generate("Test prompt")
 
-        # Claude has no CLI fallback, should raise descriptive error
-        with pytest.raises(AIProviderError, match="Missing API key"):
-            create_provider_from_config(ai_settings)
+        assert result == "Test response"
 
-    @patch.dict("os.environ", {}, clear=True)
-    def test_openai_api_raises_when_no_key_and_no_fallback(self):
-        """Should raise error for openai/api when no key (no CLI fallback available)."""
-        import os
+    @patch("subprocess.run")
+    def test_generate_quota_exhausted(self, mock_run):
+        """Should raise QuotaExhaustedError when quota is exceeded."""
+        from job_finder.exceptions import QuotaExhaustedError
 
-        os.environ.pop("OPENAI_API_KEY", None)
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="Error: You have exhausted your daily quota",
+        )
 
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "openai",
-                    "interface": "api",
-                    "model": "gpt-4o",
-                }
-            }
-        }
+        provider = GeminiCLIProvider()
 
-        # OpenAI has no CLI fallback, should raise descriptive error
-        with pytest.raises(AIProviderError, match="Missing API key"):
-            create_provider_from_config(ai_settings)
+        with pytest.raises(QuotaExhaustedError):
+            provider.generate("Test prompt")
 
-    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"})
-    def test_gemini_api_uses_api_when_key_present(self):
-        """Should use gemini/api when API key is available."""
-        try:
-            import google.generativeai  # noqa: F401
-        except ImportError:
-            pytest.skip("google-generativeai package not installed")
+    @patch("subprocess.run")
+    def test_generate_timeout(self, mock_run):
+        """Should raise AIProviderError on timeout."""
+        import subprocess
 
-        with (
-            patch("google.generativeai.configure"),
-            patch("google.generativeai.GenerativeModel"),
-        ):
-            ai_settings = {
-                "worker": {
-                    "selected": {
-                        "provider": "gemini",
-                        "interface": "api",
-                        "model": "gemini-2.0-flash",
-                    }
-                }
-            }
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="gemini", timeout=120)
 
-            provider = create_provider_from_config(ai_settings)
-            assert isinstance(provider, GeminiProvider)
+        provider = GeminiCLIProvider()
 
-    def test_codex_cli_works_without_any_api_keys(self):
-        """Should create codex/cli provider without any API keys."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "codex",
-                    "interface": "cli",
-                    "model": "gpt-5-codex",
-                }
-            }
-        }
-
-        # CLI providers don't need API keys
-        provider = create_provider_from_config(ai_settings)
-        assert isinstance(provider, CodexCLIProvider)
-
-    def test_gemini_cli_works_without_any_api_keys(self):
-        """Should create gemini/cli provider without any API keys."""
-        ai_settings = {
-            "worker": {
-                "selected": {
-                    "provider": "gemini",
-                    "interface": "cli",
-                    "model": "gemini-2.0-flash",
-                }
-            }
-        }
-
-        # CLI providers don't need API keys
-        provider = create_provider_from_config(ai_settings)
-        assert isinstance(provider, GeminiCLIProvider)
+        with pytest.raises(AIProviderError, match="timed out"):
+            provider.generate("Test prompt")

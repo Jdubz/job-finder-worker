@@ -209,17 +209,26 @@ def test_job_pipeline_full_path(tmp_path: Path):
                 "ai-settings",
                 json.dumps(
                     {
-                        "worker": {
-                            "selected": {
+                        "agents": {
+                            "gemini.cli": {
                                 "provider": "gemini",
-                                "interface": "api",
-                                "model": "gemini-2.0-flash",
+                                "interface": "cli",
+                                "defaultModel": "gemini-2.0-flash",
+                                "enabled": True,
+                                "reason": None,
+                                "dailyBudget": 100,
+                                "dailyUsage": 0,
                             }
                         },
+                        "taskFallbacks": {
+                            "extraction": ["gemini.cli"],
+                            "analysis": ["gemini.cli"],
+                        },
+                        "modelRates": {"gemini-2.0-flash": 0.5},
                         "documentGenerator": {
                             "selected": {
                                 "provider": "gemini",
-                                "interface": "api",
+                                "interface": "cli",
                                 "model": "gemini-2.0-flash",
                             }
                         },
@@ -250,13 +259,6 @@ def test_job_pipeline_full_path(tmp_path: Path):
             )
 
     ai_matcher = DummyMatcher()
-
-    # Avoid real provider initialization (no API keys in tests)
-    from job_finder.ai import providers as ai_providers
-    import job_finder.job_queue.processors.job_processor as jp_module
-
-    ai_providers.create_provider_from_config = lambda cfg, task=None: "stub-provider"  # type: ignore
-    jp_module.create_provider_from_config = lambda cfg, task=None: "stub-provider"  # type: ignore
 
     processor = QueueItemProcessor(
         queue_manager=queue_manager,

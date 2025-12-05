@@ -27,15 +27,15 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse, quote_plus
 
+from job_finder.ai.agent_manager import AgentManager
 from job_finder.ai.extraction import JobExtractor, JobExtractionResult
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
-from job_finder.ai.providers import create_provider_from_config
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import (
     AIProviderError,
     DuplicateQueueItemError,
     ExtractionError,
-    QuotaExhaustedError,
+    NoAgentsAvailableError,
 )
 from job_finder.filters.title_filter import TitleFilter
 from job_finder.filters.prefilter import PreFilter
@@ -134,10 +134,9 @@ class JobProcessor(BaseProcessor):
         self.match_policy = match_policy
         self.scoring_engine = ScoringEngine(match_policy)
 
-        # Initialize AI provider for extraction
-        ai_settings = config_loader.get_ai_settings()
-        extraction_provider = create_provider_from_config(ai_settings, task="jobMatch")
-        self.extractor = JobExtractor(extraction_provider)
+        # Initialize AgentManager for AI operations
+        self.agent_manager = AgentManager(config_loader)
+        self.extractor = JobExtractor(self.agent_manager)
 
         # Initialize scrape runner with title filter for pre-filtering
         self.scrape_runner = ScrapeRunner(
@@ -159,7 +158,6 @@ class JobProcessor(BaseProcessor):
 
     def _refresh_runtime_config(self) -> None:
         """Reload config-driven components so the next item uses fresh settings."""
-        ai_settings = self.config_loader.get_ai_settings()
         prefilter_policy = self.config_loader.get_prefilter_policy()
         title_filter_config = (
             prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
@@ -182,14 +180,9 @@ class JobProcessor(BaseProcessor):
         if hasattr(self.scraper_intake, "title_filter"):
             self.scraper_intake.title_filter = self.title_filter
 
-        # Refresh AI providers per task
-        extraction_provider = create_provider_from_config(ai_settings, task="jobMatch")
-        self.extractor = JobExtractor(extraction_provider)
-        self.ai_matcher.provider = create_provider_from_config(ai_settings, task="jobMatch")
-
-        company_provider = create_provider_from_config(ai_settings, task="companyDiscovery")
-        if hasattr(self.company_info_fetcher, "ai_provider"):
-            self.company_info_fetcher.ai_provider = company_provider
+        # AgentManager reads config fresh on each call, so extractor is always current
+        # Just recreate the extractor with the same agent_manager
+        self.extractor = JobExtractor(self.agent_manager)
 
         # Update AI matcher min score from match policy (required, no default)
         self.ai_matcher.min_match_score = match_policy["minScore"]
@@ -376,7 +369,7 @@ class JobProcessor(BaseProcessor):
             self._update_status(item, "Extracting job data", ctx.stage)
             try:
                 ctx.extraction = self._execute_ai_extraction(ctx)
-            except QuotaExhaustedError:
+            except NoAgentsAvailableError:
                 # Critical error - let it propagate to worker loop to stop queue
                 raise
             except (ExtractionError, AIProviderError) as e:
@@ -497,7 +490,7 @@ class JobProcessor(BaseProcessor):
                 },
             )
 
-        except QuotaExhaustedError:
+        except NoAgentsAvailableError:
             # Critical error - let it propagate to worker loop to stop queue
             raise
         except Exception as e:

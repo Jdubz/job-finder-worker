@@ -88,11 +88,6 @@ def test_queue_scrape_end_to_end(temp_db):
     config_loader = ConfigLoader(db_path)
     company_info_fetcher = CompanyInfoFetcher()
     ai_matcher = DummyMatcher(score=88)
-    import job_finder.job_queue.processors.job_processor as jp_module
-    from job_finder.ai import providers as ai_providers
-
-    ai_providers.create_provider_from_config = lambda cfg, task=None: "stub-provider"  # type: ignore
-    jp_module.create_provider_from_config = lambda cfg, task=None: "stub-provider"  # type: ignore
 
     # Pre-populate a company with good data so the job pipeline doesn't spawn a company task
     # Note: name_lower must match normalize_company_name("E2E Co") = "e2e"
@@ -236,17 +231,26 @@ def test_queue_scrape_end_to_end(temp_db):
                 "ai-settings",
                 json.dumps(
                     {
-                        "worker": {
-                            "selected": {
+                        "agents": {
+                            "gemini.cli": {
                                 "provider": "gemini",
-                                "interface": "api",
-                                "model": "gemini-2.0-flash",
+                                "interface": "cli",
+                                "defaultModel": "gemini-2.0-flash",
+                                "enabled": True,
+                                "reason": None,
+                                "dailyBudget": 100,
+                                "dailyUsage": 0,
                             }
                         },
+                        "taskFallbacks": {
+                            "extraction": ["gemini.cli"],
+                            "analysis": ["gemini.cli"],
+                        },
+                        "modelRates": {"gemini-2.0-flash": 0.5},
                         "documentGenerator": {
                             "selected": {
                                 "provider": "gemini",
-                                "interface": "api",
+                                "interface": "cli",
                                 "model": "gemini-2.0-flash",
                             }
                         },

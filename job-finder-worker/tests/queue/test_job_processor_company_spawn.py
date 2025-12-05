@@ -41,7 +41,7 @@ def _make_job_processor():
         return None
 
     with patch(
-        "job_finder.job_queue.processors.job_processor.create_provider_from_config",
+        "job_finder.job_queue.processors.job_processor.AgentManager",
         return_value=MagicMock(),
     ):
         processor = JobProcessor(

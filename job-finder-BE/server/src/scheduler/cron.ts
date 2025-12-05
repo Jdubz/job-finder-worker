@@ -7,7 +7,7 @@ import { logger } from '../logger'
 import { env } from '../config/env'
 import { JobQueueService } from '../modules/job-queue/job-queue.service'
 import { ConfigRepository } from '../modules/config/config.repository'
-import { isWorkerSettings, isCronConfig, type WorkerSettings, type CronConfig } from '@shared/types'
+import { isWorkerSettings, isCronConfig, type WorkerSettings, type CronConfig, type AISettings } from '@shared/types'
 
 type CronJobKey = keyof CronConfig['jobs']
 
@@ -15,7 +15,8 @@ const DEFAULT_CRON_CONFIG: CronConfig = {
   jobs: {
     scrape: { enabled: true, hours: [0, 6, 12, 18], lastRun: null },
     maintenance: { enabled: true, hours: [0], lastRun: null },
-    logrotate: { enabled: true, hours: [0], lastRun: null }
+    logrotate: { enabled: true, hours: [0], lastRun: null },
+    agentReset: { enabled: true, hours: [0], lastRun: null }
   }
 }
 
@@ -175,11 +176,71 @@ export async function triggerLogRotation() {
   }
 }
 
+export async function triggerAgentReset() {
+  try {
+    logger.info({ at: utcNowIso() }, 'Agent reset starting')
+    const repo = getConfigRepo()
+    const entry = repo.get<AISettings>('ai-settings')
+
+    if (!entry?.payload?.agents) {
+      logger.info({ at: utcNowIso() }, 'No agents configured, nothing to reset')
+      return { success: true, message: 'No agents to reset' }
+    }
+
+    const agents = entry.payload.agents
+    let resetCount = 0
+    let reenabledCount = 0
+
+    // Reset daily usage and re-enable quota-exhausted agents
+    for (const [agentId, config] of Object.entries(agents)) {
+      if (!config) continue
+
+      const updates: Partial<typeof config> = { dailyUsage: 0 }
+
+      // Re-enable agents disabled due to quota exhaustion
+      if (!config.enabled && config.reason?.startsWith('quota_exhausted:')) {
+        updates.enabled = true
+        updates.reason = null
+        reenabledCount++
+        logger.info({ agentId, at: utcNowIso() }, 'Re-enabling agent after quota reset')
+      }
+
+      Object.assign(config, updates)
+      resetCount++
+    }
+
+    repo.upsert('ai-settings', entry.payload, { updatedBy: 'cron-agent-reset' })
+    logger.info({ resetCount, reenabledCount, at: utcNowIso() }, 'Agent reset completed')
+
+    // Attempt to restart queue if it was stopped due to agent unavailability
+    if (reenabledCount > 0) {
+      try {
+        const workerEntry = repo.get<WorkerSettings>('worker-settings')
+        const runtime = workerEntry?.payload?.runtime
+        if (runtime?.stopReason?.includes('No agents available')) {
+          // Clear the stopReason to allow queue restart
+          runtime.stopReason = null
+          repo.upsert('worker-settings', workerEntry!.payload, { updatedBy: 'cron-agent-reset' })
+          logger.info({ at: utcNowIso() }, 'Cleared stopReason after re-enabling agents')
+        }
+      } catch (restartError) {
+        logger.warn({ error: restartError, at: utcNowIso() }, 'Failed to clear queue stopReason')
+      }
+    }
+
+    return { success: true, resetCount, reenabledCount }
+  } catch (error) {
+    logger.error({ error, at: utcNowIso() }, 'Agent reset failed')
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 let schedulerStarted = false
 const lastRunHourKey: Record<CronJobKey, string | null> = {
   scrape: null,
   maintenance: null,
-  logrotate: null
+  logrotate: null,
+  agentReset: null
 }
 
 function getContainerTimezone(): string {
@@ -200,7 +261,8 @@ function loadCronConfig(): CronConfig {
       jobs: {
         scrape: { ...payload.jobs.scrape, hours: normalizeHours(payload.jobs.scrape.hours) },
         maintenance: { ...payload.jobs.maintenance, hours: normalizeHours(payload.jobs.maintenance.hours) },
-        logrotate: { ...payload.jobs.logrotate, hours: normalizeHours(payload.jobs.logrotate.hours) }
+        logrotate: { ...payload.jobs.logrotate, hours: normalizeHours(payload.jobs.logrotate.hours) },
+        agentReset: { ...payload.jobs.agentReset, hours: normalizeHours(payload.jobs.agentReset.hours) }
       }
     }
   }
@@ -210,7 +272,8 @@ function loadCronConfig(): CronConfig {
     jobs: {
       scrape: { ...DEFAULT_CRON_CONFIG.jobs.scrape, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.scrape.hours) },
       maintenance: { ...DEFAULT_CRON_CONFIG.jobs.maintenance, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.maintenance.hours) },
-      logrotate: { ...DEFAULT_CRON_CONFIG.jobs.logrotate, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.logrotate.hours) }
+      logrotate: { ...DEFAULT_CRON_CONFIG.jobs.logrotate, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.logrotate.hours) },
+      agentReset: { ...DEFAULT_CRON_CONFIG.jobs.agentReset, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.agentReset.hours) }
     }
   }
   persistCronConfig(defaults, 'system-bootstrap')
@@ -236,7 +299,8 @@ async function maybeRunJob(jobKey: CronJobKey, config: CronConfig, now: Date) {
   return maybeRunJobWithState(jobKey, config, now, lastRunHourKey, {
     scrape: enqueueScrapeJob,
     maintenance: triggerMaintenance,
-    logrotate: rotateLogs
+    logrotate: rotateLogs,
+    agentReset: triggerAgentReset
   })
 }
 

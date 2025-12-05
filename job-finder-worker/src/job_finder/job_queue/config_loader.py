@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional
 
 from job_finder.exceptions import InitializationError
 from job_finder.storage.sqlite_client import sqlite_connection
@@ -106,160 +106,99 @@ class ConfigLoader:
         return bool(runtime["isProcessingEnabled"])
 
     def get_ai_settings(self) -> Dict[str, Any]:
-        """Get AI provider configuration (provider selection only)."""
-        default_selection = {
-            "provider": "gemini",
-            "interface": "api",
-            "model": "gemini-2.0-flash",
-        }
-        default_options = [
-            {
-                "value": "codex",
-                "interfaces": [
-                    {
-                        "value": "cli",
-                        "models": [
-                            "gpt-5.1-codex",
-                            "gpt-5-codex",
-                            "o3",
-                            "o4-mini",
-                            "gpt-4o",
-                            "gpt-4o-mini",
-                        ],
-                        "enabled": True,
-                    }
-                ],
-            },
-            {
-                "value": "claude",
-                "interfaces": [
-                    {
-                        "value": "api",
-                        "models": [
-                            "claude-sonnet-4-5-20250929",
-                            "claude-sonnet-4-20250514",
-                            "claude-3-5-sonnet-20241022",
-                            "claude-3-5-haiku-20241022",
-                        ],
-                        "enabled": True,
-                    }
-                ],
-            },
-            {
-                "value": "openai",
-                "interfaces": [
-                    {
-                        "value": "api",
-                        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
-                        "enabled": True,
-                    }
-                ],
-            },
-            {
-                "value": "gemini",
-                "interfaces": [
-                    {
-                        "value": "api",
-                        "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
-                        "enabled": True,
-                    },
-                    {
-                        "value": "cli",
-                        "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
-                        "enabled": True,
-                    },
-                ],
-            },
-        ]
-        raw = self._get_config("ai-settings")
-        return self._normalize_ai_settings(raw, default_selection, default_options)
+        """
+        Get AI settings configuration.
 
-    @staticmethod
-    def _normalize_ai_settings(
-        settings: Dict[str, Any],
-        default_selection: Dict[str, str],
-        default_options: list,
-    ) -> Dict[str, Any]:
-        """Upgrade legacy AI settings into tiered provider/interface/model schema."""
+        Returns the new agent manager structure:
+        - agents: Dict of agent configs keyed by agent ID (e.g., "gemini.cli")
+        - taskFallbacks: Dict of fallback chains per task type
+        - modelRates: Dict of model cost rates
+        - documentGenerator: Document generator selection
+        - options: Provider availability metadata
+        """
+        settings = self._get_config("ai-settings")
+
         if not isinstance(settings, dict):
             raise InitializationError("ai-settings must be an object")
 
-        if not isinstance(settings.get("worker"), dict):
-            raise InitializationError("ai-settings.worker missing or invalid")
-        if not isinstance(settings.get("documentGenerator"), dict):
-            raise InitializationError("ai-settings.documentGenerator missing or invalid")
+        # Validate required top-level keys
+        required_keys = ["agents", "taskFallbacks", "modelRates", "documentGenerator", "options"]
+        missing = [k for k in required_keys if k not in settings]
+        if missing:
+            raise InitializationError(
+                f"ai-settings missing required keys: {missing}. "
+                "Run the migration to upgrade from legacy ai-settings format."
+            )
 
-        legacy_selected = (
-            settings.get("selected") if isinstance(settings.get("selected"), dict) else None
-        )
+        # Validate agents structure
+        agents = settings.get("agents")
+        if not isinstance(agents, dict):
+            raise InitializationError("ai-settings.agents must be an object")
 
-        def pick_interface(provider: str, requested: Optional[str]) -> str:
-            provider_opt = next((p for p in default_options if p.get("value") == provider), None)
-            interfaces = provider_opt.get("interfaces", []) if provider_opt else []
-            if requested and any(i.get("value") == requested for i in interfaces):
-                return requested
-            if interfaces:
-                return cast(str, interfaces[0].get("value") or default_selection["interface"])
-            return cast(str, default_selection["interface"])
+        # Validate taskFallbacks structure
+        task_fallbacks = settings.get("taskFallbacks")
+        if not isinstance(task_fallbacks, dict):
+            raise InitializationError("ai-settings.taskFallbacks must be an object")
 
-        def pick_model(provider: str, interface: str, requested: Optional[str]) -> str:
-            provider_opt = next((p for p in default_options if p.get("value") == provider), None)
-            iface_opt = None
-            if provider_opt:
-                iface_opt = next(
-                    (i for i in provider_opt.get("interfaces", []) if i.get("value") == interface),
-                    None,
-                )
-            raw_models = iface_opt.get("models", []) if iface_opt else []
-            models = [str(m) for m in raw_models] if isinstance(raw_models, list) else []
-            if requested in models:
-                return requested
-            if models:
-                return models[0]
-            return default_selection["model"]
+        # Validate modelRates structure
+        model_rates = settings.get("modelRates")
+        if not isinstance(model_rates, dict):
+            raise InitializationError("ai-settings.modelRates must be an object")
 
-        def build_selection(selected: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-            provider = (selected or {}).get("provider")
-            if not provider:
-                raise InitializationError("ai-settings selection missing provider")
-            interface = pick_interface(provider, (selected or {}).get("interface"))
-            model = pick_model(provider, interface, (selected or {}).get("model"))
-            return {"provider": provider, "interface": interface, "model": model}
+        # Validate documentGenerator structure
+        doc_gen = settings.get("documentGenerator")
+        if not isinstance(doc_gen, dict) or not isinstance(doc_gen.get("selected"), dict):
+            raise InitializationError("ai-settings.documentGenerator.selected must be an object")
 
-        worker_selected = build_selection(
-            (settings.get("worker") or {}).get("selected") or legacy_selected
-        )
-        doc_selected = build_selection(
-            (settings.get("documentGenerator") or {}).get("selected")
-            or (settings.get("document_generator") or {}).get("selected")
-            or legacy_selected
-            or worker_selected
-        )
+        return settings
 
-        options = (
-            settings.get("options")
-            if isinstance(settings.get("options"), list)
-            else default_options
-        )
+    def increment_agent_usage(self, agent_id: str, model: str) -> None:
+        """
+        Increment an agent's daily usage counter.
 
-        worker_tasks = None
-        doc_tasks = None
-        if isinstance(settings.get("worker"), dict):
-            worker_tasks = settings.get("worker", {}).get("tasks")
-        if isinstance(settings.get("documentGenerator"), dict):
-            doc_tasks = settings.get("documentGenerator", {}).get("tasks")
+        Args:
+            agent_id: The agent ID (e.g., "gemini.cli")
+            model: The model used (for cost rate lookup)
+        """
+        settings = self._get_config("ai-settings")
+        agents = settings.get("agents", {})
+        model_rates = settings.get("modelRates", {})
 
-        payload: Dict[str, Any] = {
-            "worker": {"selected": worker_selected},
-            "documentGenerator": {"selected": doc_selected},
-            "options": options,
-        }
-        if worker_tasks:
-            payload["worker"]["tasks"] = worker_tasks
-        if doc_tasks:
-            payload["documentGenerator"]["tasks"] = doc_tasks
+        if agent_id not in agents:
+            logger.warning(f"Agent {agent_id} not found in ai-settings, skipping usage increment")
+            return
 
-        return payload
+        agent = agents[agent_id]
+        cost = model_rates.get(model, 1.0)
+        agent["dailyUsage"] = agent.get("dailyUsage", 0) + cost
+
+        self._set_config("ai-settings", settings)
+        logger.debug(f"Incremented {agent_id} usage by {cost} (model: {model})")
+
+    def update_agent_status(
+        self, agent_id: str, enabled: bool, reason: Optional[str] = None
+    ) -> None:
+        """
+        Update an agent's enabled status and reason.
+
+        Args:
+            agent_id: The agent ID (e.g., "gemini.cli")
+            enabled: Whether the agent should be enabled
+            reason: Why the agent is disabled (None if enabled)
+        """
+        settings = self._get_config("ai-settings")
+        agents = settings.get("agents", {})
+
+        if agent_id not in agents:
+            logger.warning(f"Agent {agent_id} not found in ai-settings, skipping status update")
+            return
+
+        agent = agents[agent_id]
+        agent["enabled"] = enabled
+        agent["reason"] = reason if not enabled else None
+
+        self._set_config("ai-settings", settings)
+        logger.info(f"Updated agent {agent_id}: enabled={enabled}, reason={reason}")
 
     def _set_config(self, key: str, payload: Dict[str, Any]) -> None:
         """Update a config entry in the database."""

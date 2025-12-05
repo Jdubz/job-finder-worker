@@ -220,10 +220,16 @@ export function buildConfigRouter() {
       // Log AI settings changes for visibility
       if (id === 'ai-settings') {
         const aiPayload = coerced as AISettings
+        const configuredAgents = Object.keys(aiPayload.agents ?? {})
+        const enabledAgents = Object.entries(aiPayload.agents ?? {})
+          .filter(([, config]) => config?.enabled)
+          .map(([id]) => id)
         logger.info({
           configId: id,
-          workerProvider: `${aiPayload.worker?.selected?.provider ?? 'unknown'}/${aiPayload.worker?.selected?.interface ?? 'unknown'}`,
-          workerModel: aiPayload.worker?.selected?.model ?? 'unknown',
+          configuredAgents,
+          enabledAgents,
+          extractionFallbacks: aiPayload.taskFallbacks?.extraction ?? [],
+          analysisFallbacks: aiPayload.taskFallbacks?.analysis ?? [],
           docGenProvider: `${aiPayload.documentGenerator?.selected?.provider ?? 'unknown'}/${aiPayload.documentGenerator?.selected?.interface ?? 'unknown'}`,
           docGenModel: aiPayload.documentGenerator?.selected?.model ?? 'unknown',
           updatedBy: userEmail,

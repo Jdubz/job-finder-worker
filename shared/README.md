@@ -205,14 +205,19 @@ Queue processing configuration.
 - `processingTimeoutSeconds: number` - Max processing time (seconds)
 
 #### `AISettings`
-AI provider configuration with multi-tier selection.
+AI agent configuration with fallback chains and budget management.
 
 **Fields:**
-- `worker.selected: AIProviderSelection` - Provider/interface/model used by the worker pipeline
-- `documentGenerator.selected: AIProviderSelection` - Provider/interface/model for document generation
-- `options: AIProviderOption[]` - Tiered provider → interface → models list (each interface has `enabled`/`reason`)
-- `updatedAt?: TimestampLike` - Last update timestamp
-- `updatedBy?: string | null` - User who last updated
+- `agents: Record<AgentId, AgentConfig>` - Configured agents keyed by ID (e.g., "gemini.cli", "codex.cli")
+- `taskFallbacks: Record<AgentTaskType, AgentId[]>` - Ordered fallback chains per task type
+- `modelRates: Record<string, number>` - Cost multiplier per model (default 1.0)
+- `documentGenerator.selected` - Provider/interface/model for document generation
+- `options: AIProviderOption[]` - Provider availability metadata
+
+**Agent Types:**
+- `AgentId`: Format `{provider}.{interface}` (e.g., "gemini.cli", "codex.api")
+- `AgentTaskType`: "extraction" | "analysis"
+- `AgentConfig`: Contains enabled, reason, dailyBudget, dailyUsage, defaultModel
 
 #### `JobMatchConfig`
 Job matching configuration.

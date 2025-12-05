@@ -167,11 +167,14 @@ def execute(self, task_type: str, prompt: str, ...):
 
         try:
             result = self._call_agent(agent_id, agent, prompt, ...)
-            self._increment_usage(agent_id, agent, model)
+            self._increment_usage(agent_id, model)  # ConfigLoader handles model rate lookup
             return result
         except AIProviderError as e:
             self._disable_agent(agent_id, reason=f"error: {str(e)}")
-            break  # Errors require manual intervention
+            # BREAK, not continue: API errors (auth failures, invalid requests)
+            # often indicate systemic issues that won't be fixed by trying
+            # another agent. Quota exhaustion continues; errors stop.
+            break
 
     raise NoAgentsAvailableError(...)
 ```
@@ -238,10 +241,12 @@ class AgentManager:
                 model = model_override or agent["defaultModel"]
                 provider = self._create_provider(agent, model)
                 response = provider.generate(prompt, **kwargs)
-                self._increment_usage(agent_id, model)
+                self._increment_usage(agent_id, model)  # ConfigLoader handles model rate lookup
                 return AgentResult(text=response, agent_id=agent_id, model=model)
             except AIProviderError as e:
                 self._disable_agent(agent_id, f"error: {str(e)}")
+                # BREAK, not continue: API errors indicate systemic issues
+                # that won't be fixed by trying another agent
                 break
 
         raise NoAgentsAvailableError(f"No agents available for task '{task_type}'")
@@ -255,9 +260,14 @@ class AgentManager:
             ("openai", "api"): OpenAIProvider,
         }
         cls = provider_map.get((agent["provider"], agent["interface"]))
+        if not cls:
+            raise AIProviderError(
+                f"No provider class for {agent['provider']}/{agent['interface']}"
+            )
         return cls(model=model)
 
     def _increment_usage(self, agent_id: str, model: str):
+        """Increment agent usage. ConfigLoader handles model rate lookup from modelRates."""
         self.config_loader.increment_agent_usage(agent_id, model)
 
     def _disable_agent(self, agent_id: str, reason: str):
@@ -299,9 +309,12 @@ async function resetAgents() {
   configRepo.upsert('ai-settings', aiSettings, { updatedBy: 'cron-agent-reset' })
 
   // Attempt queue restart if stopped due to agent availability
+  // Clear stopReason to allow queue to process items again
   const workerSettings = configRepo.get<WorkerSettings>('worker-settings')
   if (workerSettings.runtime.stopReason?.includes('No agents available')) {
-    await attemptQueueRestart()
+    workerSettings.runtime.stopReason = null
+    configRepo.upsert('worker-settings', workerSettings, { updatedBy: 'cron-agent-reset' })
+    // Queue will automatically resume on next worker poll since stopReason is cleared
   }
 }
 ```

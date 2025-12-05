@@ -2,13 +2,12 @@
 
 import json
 import logging
-from typing import Any, Dict, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple, List, TYPE_CHECKING
 from urllib.parse import urlparse
 
 import feedparser
 import requests
 
-from job_finder.ai.providers import AIProvider
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.ai.search_client import get_search_client, SearchResult
 from job_finder.scrapers.generic_scraper import GenericScraper
@@ -20,6 +19,9 @@ from job_finder.scrapers.platform_patterns import (
 )
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.settings import get_scraping_settings
+
+if TYPE_CHECKING:
+    from job_finder.ai.agent_manager import AgentManager
 
 logger = logging.getLogger(__name__)
 
@@ -44,15 +46,15 @@ class SourceDiscovery:
     falling back to AI analysis for unknown sources.
     """
 
-    def __init__(self, provider: Optional[AIProvider]):
+    def __init__(self, agent_manager: Optional["AgentManager"]):
         """
         Initialize source discovery.
 
         Args:
-            provider: AI provider instance to use for analysis (optional when
+            agent_manager: AgentManager for AI-powered analysis (optional when
                 pattern-based discovery is sufficient).
         """
-        self.provider = provider
+        self.agent_manager = agent_manager
 
     def discover(self, url: str) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
         """
@@ -365,15 +367,20 @@ class SourceDiscovery:
             }
 
         # Fall back to AI for unknown sources
-        if not self.provider:
-            logger.warning("AI provider unavailable; cannot generate config for %s", url)
+        if not self.agent_manager:
+            logger.warning("AgentManager unavailable; cannot generate config for %s", url)
             return None
 
         prompt = self._build_prompt(url, source_type, sample)
 
         try:
-            response = self.provider.generate(prompt, max_tokens=2000, temperature=0.1)
-            return self._parse_response(response, source_type, url)
+            result = self.agent_manager.execute(
+                task_type="extraction",
+                prompt=prompt,
+                max_tokens=2000,
+                temperature=0.1,
+            )
+            return self._parse_response(result.text, source_type, url)
         except Exception as e:
             logger.error(f"Error generating config: {e}")
             return None
@@ -390,9 +397,9 @@ class SourceDiscovery:
         """
         meta: Dict[str, Any] = {"success": False, "source": "search"}
 
-        if not self.provider:
-            logger.warning("AI provider unavailable; cannot run search-assisted discovery")
-            meta["error"] = "ai_provider_unavailable"
+        if not self.agent_manager:
+            logger.warning("AgentManager unavailable; cannot run search-assisted discovery")
+            meta["error"] = "agent_manager_unavailable"
             return None, meta
 
         search_client = get_search_client()
@@ -440,8 +447,13 @@ Return a JSON config with the fields described earlier (type, url, response_path
 """
 
         try:
-            response = self.provider.generate(prompt, max_tokens=1200, temperature=0.1)
-            config = self._parse_response(response, source_type="unknown", url=url)
+            result = self.agent_manager.execute(
+                task_type="extraction",
+                prompt=prompt,
+                max_tokens=1200,
+                temperature=0.1,
+            )
+            config = self._parse_response(result.text, source_type="unknown", url=url)
             if config:
                 meta["success"] = True
             else:
@@ -697,17 +709,17 @@ Return ONLY valid JSON with no explanation. Ensure all required fields are prese
 
 
 def discover_source(
-    url: str, provider: AIProvider
+    url: str, agent_manager: "AgentManager"
 ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
     """
     Convenience function to discover source configuration.
 
     Args:
         url: URL to analyze
-        provider: AI provider instance to use
+        agent_manager: AgentManager for AI-powered analysis
 
     Returns:
         Tuple of SourceConfig dict (or None) and validation metadata
     """
-    discovery = SourceDiscovery(provider)
+    discovery = SourceDiscovery(agent_manager)
     return discovery.discover(url)

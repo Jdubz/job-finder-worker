@@ -14,13 +14,16 @@ import os
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+from typing import TYPE_CHECKING
 
 from job_finder.ai.prompts import JobMatchPrompts
-from job_finder.ai.providers import AIProvider
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import AIProviderError
 from job_finder.profile.schema import Profile
 from job_finder.settings import get_text_limits
+
+if TYPE_CHECKING:
+    from job_finder.ai.agent_manager import AgentManager
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +95,7 @@ class AIJobMatcher:
 
     def __init__(
         self,
-        provider: AIProvider,
+        agent_manager: "AgentManager",
         profile: Profile,
         min_match_score: int = 50,
         generate_intake: bool = True,
@@ -105,13 +108,13 @@ class AIJobMatcher:
         Scoring is handled by the deterministic ScoringEngine (see scoring/engine.py).
 
         Args:
-            provider: AI provider instance for analysis.
+            agent_manager: AgentManager for executing AI tasks.
             profile: User profile for matching context.
             min_match_score: Minimum score threshold (from deterministic scoring).
             generate_intake: Whether to generate resume intake data.
             company_weights: Weights for priority thresholds only.
         """
-        self.provider = provider
+        self.agent_manager = agent_manager
         self.profile = profile
         self.min_match_score = min_match_score
         self.generate_intake = generate_intake
@@ -305,11 +308,18 @@ class AIJobMatcher:
         Returns:
             Dictionary with match analysis, or None if failed.
         """
+        response = None
         try:
             prompt = self.prompts.analyze_job_match(self.profile, job)
 
-            # Use sensible defaults for AI generation
-            response = self.provider.generate(prompt, max_tokens=4096, temperature=0.3)
+            # Use AgentManager for AI execution (analysis task type)
+            result = self.agent_manager.execute(
+                task_type="analysis",
+                prompt=prompt,
+                max_tokens=4096,
+                temperature=0.3,
+            )
+            response = result.text
 
             # Parse JSON response (handles markdown code blocks)
             json_str = extract_json_from_response(response)
@@ -374,11 +384,18 @@ class AIJobMatcher:
         Returns:
             Dictionary with resume intake data, or None if failed.
         """
+        response = None
         try:
             prompt = self.prompts.generate_resume_intake_data(self.profile, job, match_analysis)
 
-            # Use slightly higher temperature for creative intake data generation
-            response = self.provider.generate(prompt, max_tokens=4096, temperature=0.4)
+            # Use AgentManager for AI execution (analysis task type)
+            result = self.agent_manager.execute(
+                task_type="analysis",
+                prompt=prompt,
+                max_tokens=4096,
+                temperature=0.4,  # Slightly higher for creative intake data
+            )
+            response = result.text
 
             # Parse JSON response (handles markdown code blocks)
             json_str = extract_json_from_response(response)

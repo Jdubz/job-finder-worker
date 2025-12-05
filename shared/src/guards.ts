@@ -130,30 +130,88 @@ export function isAIInterfaceType(value: unknown): value is AIInterfaceType {
 }
 
 /**
+ * Type guard for AgentConfig
+ */
+function isAgentConfig(value: unknown): boolean {
+  if (!isObject(value)) return false
+  const agent = value as Record<string, unknown>
+  return (
+    isAIProviderType(agent.provider) &&
+    isAIInterfaceType(agent.interface) &&
+    typeof agent.defaultModel === "string" &&
+    typeof agent.enabled === "boolean" &&
+    (agent.reason === null || typeof agent.reason === "string") &&
+    typeof agent.dailyBudget === "number" &&
+    typeof agent.dailyUsage === "number"
+  )
+}
+
+/**
+ * Type guard for AgentId format (provider.interface)
+ */
+function isAgentId(value: unknown): boolean {
+  if (typeof value !== "string") return false
+  const parts = value.split(".")
+  if (parts.length !== 2) return false
+  return isAIProviderType(parts[0]) && isAIInterfaceType(parts[1])
+}
+
+/**
+ * Type guard for AgentTaskType
+ */
+function isAgentTaskType(value: unknown): boolean {
+  return typeof value === "string" && ["extraction", "analysis"].includes(value)
+}
+
+/**
  * Type guard for AISettings
  */
 export function isAISettings(value: unknown): value is AISettings {
   if (!isObject(value)) return false
 
-  const settings = value as Partial<AISettings>
+  const settings = value as Record<string, unknown>
 
-  const sections: Array<keyof AISettings> = ["worker", "documentGenerator"]
-
-  const isValidSelection = (sel: any): sel is AISettings["worker"]["selected"] =>
-    isObject(sel) &&
-    isAIProviderType(sel.provider) &&
-    isAIInterfaceType(sel.interface) &&
-    typeof sel.model === "string"
-
-  for (const section of sections) {
-    const payload = (settings as any)[section]
-    if (!isObject(payload) || !isValidSelection((payload as any).selected)) return false
+  // Validate agents
+  if (!isObject(settings.agents)) return false
+  const agents = settings.agents as Record<string, unknown>
+  for (const [agentId, agentConfig] of Object.entries(agents)) {
+    if (!isAgentId(agentId) || !isAgentConfig(agentConfig)) return false
   }
 
+  // Validate taskFallbacks
+  if (!isObject(settings.taskFallbacks)) return false
+  const taskFallbacks = settings.taskFallbacks as Record<string, unknown>
+  for (const [taskType, fallbackChain] of Object.entries(taskFallbacks)) {
+    if (!isAgentTaskType(taskType)) return false
+    if (!Array.isArray(fallbackChain)) return false
+    for (const agentId of fallbackChain) {
+      if (!isAgentId(agentId)) return false
+    }
+  }
+
+  // Validate modelRates
+  if (!isObject(settings.modelRates)) return false
+  const modelRates = settings.modelRates as Record<string, unknown>
+  for (const [, rate] of Object.entries(modelRates)) {
+    if (typeof rate !== "number") return false
+  }
+
+  // Validate documentGenerator.selected
+  if (!isObject(settings.documentGenerator)) return false
+  const docGen = settings.documentGenerator as Record<string, unknown>
+  if (!isObject(docGen.selected)) return false
+  const docGenSelected = docGen.selected as Record<string, unknown>
+  if (
+    !isAIProviderType(docGenSelected.provider) ||
+    !isAIInterfaceType(docGenSelected.interface) ||
+    typeof docGenSelected.model !== "string"
+  ) {
+    return false
+  }
+
+  // Validate options array
   if (!Array.isArray(settings.options)) return false
-
   const options = settings.options as AIProviderOption[]
-
   for (const provider of options) {
     if (
       !isObject(provider) ||
@@ -162,7 +220,6 @@ export function isAISettings(value: unknown): value is AISettings {
     ) {
       return false
     }
-
     for (const iface of provider.interfaces) {
       if (
         !isObject(iface) ||
@@ -179,21 +236,7 @@ export function isAISettings(value: unknown): value is AISettings {
     }
   }
 
-  // Ensure selections match available tiered options
-  const hasValidCombination = (sel: AISettings["worker"]["selected"]) =>
-    options.some(
-      (provider: AIProviderOption) =>
-        provider.value === sel.provider &&
-        provider.interfaces.some(
-          (iface) => iface.value === sel.interface && iface.models.includes(sel.model)
-        )
-    )
-
-  return (
-    hasValidCombination((settings.worker as any).selected) &&
-    hasValidCombination((settings.documentGenerator as any).selected)
-  )
-
+  return true
 }
 
 /**
@@ -489,7 +532,8 @@ export function isCronConfig(value: unknown): value is CronConfig {
   return (
     isCronJobSchedule((jobs as any).scrape) &&
     isCronJobSchedule((jobs as any).maintenance) &&
-    isCronJobSchedule((jobs as any).logrotate)
+    isCronJobSchedule((jobs as any).logrotate) &&
+    isCronJobSchedule((jobs as any).agentReset)
   )
 }
 

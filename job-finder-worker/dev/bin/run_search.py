@@ -17,8 +17,7 @@ from dotenv import load_dotenv
 # Add src to path (go up from dev/bin to worker root, then into src)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from job_finder.ai import AIJobMatcher
-from job_finder.ai.providers import create_provider_from_config
+from job_finder.ai import AIJobMatcher, AgentManager
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue import ConfigLoader, QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, ScrapeConfig
@@ -93,22 +92,19 @@ def main():
     config_loader = ConfigLoader(db_path)
     profile = SQLiteProfileLoader(db_path).load_profile()
 
-    # Load AI settings from config
-    ai_settings = config_loader.get_ai_settings()
+    # Load job match settings from config
     job_match = config_loader.get_job_match()
 
-    # Create provider from AI settings
-    provider = create_provider_from_config(ai_settings)
-    worker_ai_config = (
-        (ai_settings.get("worker") or ai_settings) if isinstance(ai_settings, dict) else {}
-    )
+    # Create AgentManager for AI calls
+    agent_manager = AgentManager(config_loader)
+
     ai_matcher = AIJobMatcher(
-        provider=provider,
+        agent_manager=agent_manager,
         profile=profile,
         min_match_score=job_match.get("minMatchScore", 70),
         generate_intake=job_match.get("generateIntakeData", True),
     )
-    company_info_fetcher = CompanyInfoFetcher(provider, worker_ai_config)
+    company_info_fetcher = CompanyInfoFetcher(agent_manager=agent_manager)
 
     processor = QueueItemProcessor(
         queue_manager=queue_manager,
