@@ -72,12 +72,18 @@ export function RestartOverlay() {
 
     // Handle SSE connection errors - the server may have died without sending 'restarting'
     // This catches cases where watchtower/docker kills the container abruptly
+    const CONSECUTIVE_ERROR_THRESHOLD = 2
     let errorCount = 0
     source.onerror = () => {
+      // If a restart is already in progress (polling), reset counter and ignore.
+      // This prevents re-triggering immediately if polling times out.
+      if (restartTriggered.current) {
+        errorCount = 0
+        return
+      }
       errorCount++
-      // After 2 consecutive errors (EventSource retries automatically at 1.5s intervals),
-      // assume the server is down and trigger the restart flow
-      if (errorCount >= 2 && !restartTriggered.current) {
+      // After consecutive errors, assume the server is down and trigger the restart flow
+      if (errorCount >= CONSECUTIVE_ERROR_THRESHOLD) {
         void beginBlocking("connection-lost")
       }
     }
