@@ -38,15 +38,15 @@ class TestCompanyPipeline:
                 "perHourScore": -3,
                 "hybridSameCityScore": 10,
             },
-            "technology": {
-                "required": [],
-                "preferred": [],
-                "disliked": [],
-                "rejected": [],
-                "requiredScore": 10,
-                "preferredScore": 5,
-                "dislikedScore": -5,
-                "missingRequiredScore": -15,
+            "skillMatch": {
+                "baseMatchScore": 1,
+                "yearsMultiplier": 0.5,
+                "maxYearsBonus": 5,
+                "missingScore": -1,
+                "analogScore": 0,
+                "maxBonus": 25,
+                "maxPenalty": -15,
+                "analogGroups": [],
             },
             "salary": {
                 "minimum": None,
@@ -54,7 +54,6 @@ class TestCompanyPipeline:
                 "belowTargetScore": -2,
             },
             "experience": {
-                "userYears": 10,
                 "maxRequired": 15,
                 "overqualifiedScore": -5,
             },

@@ -64,7 +64,7 @@ class ScoringEngine:
     The engine evaluates jobs based on:
     - Seniority alignment
     - Location/remote preferences
-    - Technology stack match
+    - Skill/technology overlap with experience weighting
     - Salary requirements
     - Experience level fit
     - Skill keyword matching
@@ -72,13 +72,21 @@ class ScoringEngine:
     All scoring is transparent and config-driven with no AI involved.
     """
 
-    def __init__(self, config: Dict[str, Any], user_skills: Optional[List[str]] = None):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        skill_years: Optional[Dict[str, float]] = None,
+        user_experience_years: float = 0.0,
+        skill_analogs: Optional[Dict[str, Set[str]]] = None,
+    ):
         """
         Initialize the scoring engine.
 
         Args:
             config: MatchPolicy dictionary from config loader (required, no defaults)
-            user_skills: Optional list of user's skills for matching
+            skill_years: Derived mapping of skill -> years of experience
+            user_experience_years: Total years of experience
+            skill_analogs: Map of skill -> set of equivalent skills
 
         Raises:
             KeyError: If required config sections are missing
@@ -89,23 +97,18 @@ class ScoringEngine:
         self.min_score = config["minScore"]
         self.seniority_config = config["seniority"]
         self.location_config = config["location"]
-        self.tech_config = config["technology"]
+        self.skill_match_config = config["skillMatch"]
         self.salary_config = config["salary"]
         self.experience_config = config["experience"]
         self.freshness_config = config["freshness"]
         self.role_fit_config = config["roleFit"]
         self.company_config = config["company"]
 
-        # Normalize user skills to lowercase for matching
-        self.user_skills: Set[str] = set()
-        if user_skills:
-            self.user_skills = {s.lower().strip() for s in user_skills if s}
-
-        # Pre-process technology lists for efficient lookup (required fields)
-        self._required_tech = {t.lower() for t in self.tech_config["required"]}
-        self._preferred_tech = {t.lower() for t in self.tech_config["preferred"]}
-        self._disliked_tech = {t.lower() for t in self.tech_config["disliked"]}
-        self._rejected_tech = {t.lower() for t in self.tech_config["rejected"]}
+        # Derived profile
+        self.skill_years = skill_years or {}
+        self.user_skills: Set[str] = {s.lower().strip() for s in self.skill_years.keys()}
+        self.user_experience_years = user_experience_years
+        self.skill_analogs = skill_analogs or {}
 
         # Pre-process seniority lists (required fields)
         self._preferred_seniority = {s.lower() for s in self.seniority_config["preferred"]}
@@ -172,23 +175,10 @@ class ScoringEngine:
                 ),
             )
 
-        # 3. Technology scoring
-        tech_result = self._score_technology(extraction.technologies)
-        score += tech_result["points"]
-        adjustments.extend(tech_result.get("adjustments", []))
-
-        # Track technologies already scored to avoid double-counting in skills
-        scored_tech_set = {t.lower() for t in extraction.technologies}
-
-        # Hard reject on technology
-        if tech_result.get("hard_reject"):
-            return ScoreBreakdown(
-                base_score=50,
-                final_score=0,
-                adjustments=adjustments,
-                passed=False,
-                rejection_reason=f"Rejected technology detected: {tech_result.get('rejected_tech')}",
-            )
+        # 3. Skill match scoring (experience-weighted)
+        skill_match_result = self._score_skill_match(extraction.technologies)
+        score += skill_match_result["points"]
+        adjustments.extend(skill_match_result.get("adjustments", []))
 
         # 4. Salary scoring (including equity and contract status)
         salary_result = self._score_salary(
@@ -214,6 +204,9 @@ class ScoringEngine:
         exp_result = self._score_experience(extraction.experience_min, extraction.experience_max)
         score += exp_result["points"]
         adjustments.extend(exp_result.get("adjustments", []))
+
+        # Track technologies already scored to avoid double-counting in keyword scan
+        scored_tech_set = {t.lower() for t in extraction.technologies}
 
         # 6. Skill match scoring (from description text matching)
         skill_result = self._score_skills(job_description, scored_tech_set)
@@ -465,82 +458,80 @@ class ScoringEngine:
             }
         return {"points": 0, "adjustments": []}
 
-    def _score_technology(self, technologies: List[str]) -> Dict[str, Any]:
-        """Score based on technology match."""
-        if not technologies:
+    def _score_skill_match(self, job_technologies: List[str]) -> Dict[str, Any]:
+        """Experience-weighted skill matching with analog support."""
+        if not job_technologies:
             return {"points": 0, "adjustments": []}
 
-        tech_set = {t.lower() for t in technologies}
-        points = 0
+        base_score = self.skill_match_config["baseMatchScore"]
+        years_mult = self.skill_match_config["yearsMultiplier"]
+        max_years = self.skill_match_config["maxYearsBonus"]
+        missing_score = self.skill_match_config["missingScore"]
+        analog_score = self.skill_match_config["analogScore"]
+        max_bonus = self.skill_match_config["maxBonus"]
+        max_penalty = self.skill_match_config["maxPenalty"]
+
+        matched: List[tuple[str, float, float]] = []
+        analogs: List[tuple[str, str]] = []
+        missing: List[str] = []
+        total_bonus = 0.0
+
+        for skill in job_technologies:
+            skill_lower = skill.lower()
+            if skill_lower in self.user_skills:
+                years = self.skill_years.get(skill_lower, 0.0)
+                capped_years = min(years, max_years)
+                points = base_score + (capped_years * years_mult)
+                matched.append((skill, years, points))
+                total_bonus += points
+            elif self._has_analog(skill_lower):
+                analog = self._get_analog(skill_lower)
+                analogs.append((skill, analog))
+            else:
+                missing.append(skill)
+
+        bonus = min(total_bonus, max_bonus)
+        analog_points = len(analogs) * analog_score
+        penalty = max(len(missing) * missing_score, max_penalty)
+
         adjustments: List[ScoreAdjustment] = []
-
-        # Check for rejected technologies (hard reject)
-        rejected_found = tech_set & self._rejected_tech
-        if rejected_found:
-            return {
-                "points": 0,
-                "adjustments": [
-                    ScoreAdjustment(
-                        category="technology",
-                        reason=f"Rejected tech: {', '.join(rejected_found)}",
-                        points=0,
-                    )
-                ],
-                "hard_reject": True,
-                "rejected_tech": ", ".join(rejected_found),
-            }
-
-        # Check required technologies
-        required_found = tech_set & self._required_tech
-        if required_found:
-            score = len(required_found) * self.tech_config["requiredScore"]
-            points += score
+        if matched:
+            details = [f"{s} ({y:.1f}y → +{p:.1f})" for s, y, p in matched]
             adjustments.append(
                 ScoreAdjustment(
-                    category="technology",
-                    reason=f"Required tech matched: {', '.join(required_found)}",
-                    points=score,
+                    category="skills",
+                    reason=f"Matched: {', '.join(details)}",
+                    points=bonus,
                 )
             )
-        elif self._required_tech:
-            # None of the required tech found - configurable adjustment
-            missing_score = self.tech_config["missingRequiredScore"]
-            points += missing_score
+        if analogs:
+            details = [f"{s}→{a}" for s, a in analogs]
             adjustments.append(
                 ScoreAdjustment(
-                    category="technology",
-                    reason=f"Missing required tech: {', '.join(self._required_tech)}",
-                    points=missing_score,
+                    category="skills",
+                    reason=f"Analog: {', '.join(details)}",
+                    points=analog_points,
+                )
+            )
+        if missing:
+            adjustments.append(
+                ScoreAdjustment(
+                    category="skills",
+                    reason=f"Missing: {', '.join(missing)}",
+                    points=penalty,
                 )
             )
 
-        # Check preferred technologies
-        preferred_found = tech_set & self._preferred_tech
-        if preferred_found:
-            score = len(preferred_found) * self.tech_config["preferredScore"]
-            points += score
-            adjustments.append(
-                ScoreAdjustment(
-                    category="technology",
-                    reason=f"Preferred tech: {', '.join(preferred_found)}",
-                    points=score,
-                )
-            )
+        return {"points": bonus + analog_points + penalty, "adjustments": adjustments}
 
-        # Check disliked technologies
-        disliked_found = tech_set & self._disliked_tech
-        if disliked_found:
-            score = len(disliked_found) * self.tech_config["dislikedScore"]
-            points += score
-            adjustments.append(
-                ScoreAdjustment(
-                    category="technology",
-                    reason=f"Disliked tech: {', '.join(disliked_found)}",
-                    points=score,
-                )
-            )
+    def _has_analog(self, skill: str) -> bool:
+        analogs = self.skill_analogs.get(skill, set())
+        return bool(analogs & self.user_skills)
 
-        return {"points": points, "adjustments": adjustments}
+    def _get_analog(self, skill: str) -> str:
+        analogs = self.skill_analogs.get(skill, set())
+        match = analogs & self.user_skills
+        return next(iter(match)) if match else ""
 
     def _score_salary(
         self,
@@ -641,7 +632,7 @@ class ScoringEngine:
 
     def _score_experience(self, min_exp: Optional[int], max_exp: Optional[int]) -> Dict[str, Any]:
         """Score based on experience requirements."""
-        user_years = self.experience_config.get("userYears", 0)
+        user_years = self.user_experience_years
         max_required = self.experience_config.get("maxRequired", 15)
         overqualified_score = self.experience_config.get("overqualifiedScore", -5)
 
@@ -724,8 +715,7 @@ class ScoringEngine:
     ) -> Dict[str, Any]:
         """Score based on skill keywords in description using word-boundary matching.
 
-        Technologies that have already been scored in _score_technology are
-        excluded to prevent double-counting when they also appear as skills.
+        Technologies already counted in skill matching are excluded to avoid double-counting.
         """
         if not self.user_skills or not description:
             return {"points": 0, "adjustments": []}
@@ -734,8 +724,7 @@ class ScoringEngine:
 
         skills_to_check = set(self.user_skills)
         if scored_technologies:
-            # scored_technologies is already lowercased at call site
-            skills_to_check = skills_to_check - scored_technologies
+            skills_to_check -= scored_technologies
 
         # Use word boundary matching to avoid false positives
         # e.g., "go" shouldn't match "going", "good", etc.

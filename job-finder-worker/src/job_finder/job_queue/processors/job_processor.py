@@ -49,6 +49,7 @@ from job_finder.job_queue.models import (
 from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
+from job_finder.profile.reducer import build_analog_map, load_scoring_profile
 from job_finder.scrape_runner import ScrapeRunner
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_listing_storage import JobListingStorage
@@ -132,7 +133,16 @@ class JobProcessor(BaseProcessor):
 
         match_policy = config_loader.get_match_policy()
         self.match_policy = match_policy
-        self.scoring_engine = ScoringEngine(match_policy)
+
+        profile = load_scoring_profile()
+        analog_groups = match_policy.get("skillMatch", {}).get("analogGroups", [])
+        analog_map = build_analog_map(analog_groups)
+        self.scoring_engine = ScoringEngine(
+            match_policy,
+            skill_years=profile.skill_years,
+            user_experience_years=profile.total_experience_years,
+            skill_analogs=analog_map,
+        )
 
         # Initialize AI provider for extraction
         ai_settings = config_loader.get_ai_settings()
@@ -172,9 +182,17 @@ class JobProcessor(BaseProcessor):
         # Rebuild prefilter with latest config
         self.prefilter = PreFilter(prefilter_policy)
 
-        # Rebuild scoring engine with latest config
+        # Rebuild scoring engine with latest config and derived profile
         self.match_policy = match_policy
-        self.scoring_engine = ScoringEngine(match_policy)
+        profile = load_scoring_profile(self.config_loader.db_path if hasattr(self.config_loader, "db_path") else None)
+        analog_groups = match_policy.get("skillMatch", {}).get("analogGroups", [])
+        analog_map = build_analog_map(analog_groups)
+        self.scoring_engine = ScoringEngine(
+            match_policy,
+            skill_years=profile.skill_years,
+            user_experience_years=profile.total_experience_years,
+            skill_analogs=analog_map,
+        )
 
         # Propagate new title filter into downstream helpers
         if hasattr(self.scrape_runner, "title_filter"):

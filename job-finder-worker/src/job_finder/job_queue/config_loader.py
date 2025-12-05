@@ -82,7 +82,7 @@ class ConfigLoader:
             "minScore",
             "seniority",
             "location",
-            "technology",
+            "skillMatch",
             "salary",
             "experience",
             "freshness",
@@ -96,23 +96,23 @@ class ConfigLoader:
                 "Update the match-policy config record to include all required fields."
             )
 
-        # Enforce required technology fields (no defaults)
-        tech = config.get("technology", {})
-        tech_required = [
-            "required",
-            "preferred",
-            "disliked",
-            "rejected",
-            "requiredScore",
-            "preferredScore",
-            "dislikedScore",
-            "missingRequiredScore",
+        # Enforce required skillMatch fields (no defaults)
+        skill_match = config.get("skillMatch", {})
+        skill_required = [
+            "baseMatchScore",
+            "yearsMultiplier",
+            "maxYearsBonus",
+            "missingScore",
+            "analogScore",
+            "maxBonus",
+            "maxPenalty",
+            "analogGroups",
         ]
-        tech_missing = [k for k in tech_required if k not in tech]
-        if tech_missing:
+        skill_missing = [k for k in skill_required if k not in skill_match]
+        if skill_missing:
             raise InitializationError(
-                f"match-policy.technology missing required keys: {tech_missing}. "
-                "Add missingRequiredScore and related tech fields to match-policy."
+                f"match-policy.skillMatch missing required keys: {skill_missing}. "
+                "Add skillMatch fields to match-policy."
             )
 
         return config
