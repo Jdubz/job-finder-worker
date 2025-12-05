@@ -236,6 +236,21 @@ class JobListingStorage:
 
             return conn.total_changes > 0
 
+    def update_match_score(self, listing_id: str, score: float) -> bool:
+        """Update the match_score for a job listing (deterministic score for sorting/filtering)."""
+        now = utcnow_iso()
+
+        with sqlite_connection(self.db_path) as conn:
+            conn.execute(
+                """
+                UPDATE job_listings
+                SET match_score = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (score, now, listing_id),
+            )
+            return conn.total_changes > 0
+
     def update_company_id(self, listing_id: str, company_id: str) -> bool:
         """Update the company_id for a job listing."""
         now = utcnow_iso()
