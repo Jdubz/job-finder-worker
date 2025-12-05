@@ -42,7 +42,7 @@ test.describe("Owner configuration and prompts", () => {
     await expect(getActiveTab().getByLabel(/Processing Timeout/)).toBeVisible()
 
     // AI settings tab
-    await page.getByRole("tab", { name: "AI" }).click()
+    await page.getByRole("tab", { name: "AI", exact: true }).click()
     // New AgentManager UI - verify agent configuration section is visible
     await expect(getActiveTab().getByRole("heading", { name: /Configured Agents/i })).toBeVisible()
 
