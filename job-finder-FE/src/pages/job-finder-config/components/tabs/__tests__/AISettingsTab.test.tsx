@@ -501,22 +501,21 @@ describe("AISettingsTab", () => {
       const budgetInputs = screen.getAllByRole("spinbutton")
       // Filter to just the budget inputs (value 100 or 50)
       const geminiBudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
+      expect(geminiBudgetInput).toBeDefined()
 
-      if (geminiBudgetInput) {
-        await user.clear(geminiBudgetInput)
-        await user.type(geminiBudgetInput, "200")
-        // Blur the input to trigger validation
-        await user.tab()
+      await user.clear(geminiBudgetInput!)
+      await user.type(geminiBudgetInput!, "200")
+      // Blur the input to trigger validation
+      await user.tab()
 
-        // setAISettings should be called once on blur with the new value
-        expect(setAISettings).toHaveBeenCalled()
-        const updaterFn = setAISettings.mock.calls[0][0]
-        const result = updaterFn(mockAISettings)
-        expect(result.agents["gemini.cli"].dailyBudget).toBe(200)
-      }
+      // setAISettings should be called once on blur with the new value
+      expect(setAISettings).toHaveBeenCalled()
+      const updaterFn = setAISettings.mock.calls[0][0]
+      const result = updaterFn(mockAISettings)
+      expect(result.agents["gemini.cli"].dailyBudget).toBe(200)
     })
 
-    it("resets to previous value on blur if input is invalid", async () => {
+    it("resets to previous value on blur if input is zero", async () => {
       const user = userEvent.setup()
       const setAISettings = vi.fn()
 
@@ -524,17 +523,36 @@ describe("AISettingsTab", () => {
 
       const budgetInputs = screen.getAllByRole("spinbutton")
       const geminiBudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
+      expect(geminiBudgetInput).toBeDefined()
 
-      if (geminiBudgetInput) {
-        await user.clear(geminiBudgetInput)
-        // Type invalid value (0)
-        await user.type(geminiBudgetInput, "0")
-        await user.tab()
+      await user.clear(geminiBudgetInput!)
+      // Type invalid value (0)
+      await user.type(geminiBudgetInput!, "0")
+      await user.tab()
 
-        // setAISettings should NOT be called because 0 is invalid
-        // The input should reset to the previous value
-        expect((geminiBudgetInput as HTMLInputElement).value).toBe("100")
-      }
+      // setAISettings should NOT be called because 0 is invalid
+      // The input should reset to the previous value
+      expect((geminiBudgetInput as HTMLInputElement).value).toBe("100")
+    })
+
+    it("resets to previous value on blur if input is negative", async () => {
+      const user = userEvent.setup()
+      const setAISettings = vi.fn()
+
+      render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
+
+      const budgetInputs = screen.getAllByRole("spinbutton")
+      const geminiBudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
+      expect(geminiBudgetInput).toBeDefined()
+
+      await user.clear(geminiBudgetInput!)
+      // Type invalid negative value
+      await user.type(geminiBudgetInput!, "-5")
+      await user.tab()
+
+      // setAISettings should NOT be called because -5 is invalid
+      // The input should reset to the previous value
+      expect((geminiBudgetInput as HTMLInputElement).value).toBe("100")
     })
 
     it("does not call setAISettings during typing (only on blur)", async () => {
@@ -545,14 +563,13 @@ describe("AISettingsTab", () => {
 
       const budgetInputs = screen.getAllByRole("spinbutton")
       const geminiBudgetInput = budgetInputs.find((input) => (input as HTMLInputElement).value === "100")
+      expect(geminiBudgetInput).toBeDefined()
 
-      if (geminiBudgetInput) {
-        await user.clear(geminiBudgetInput)
-        await user.type(geminiBudgetInput, "50")
+      await user.clear(geminiBudgetInput!)
+      await user.type(geminiBudgetInput!, "50")
 
-        // setAISettings should NOT be called yet (only on blur)
-        expect(setAISettings).not.toHaveBeenCalled()
-      }
+      // setAISettings should NOT be called yet (only on blur)
+      expect(setAISettings).not.toHaveBeenCalled()
     })
   })
 })

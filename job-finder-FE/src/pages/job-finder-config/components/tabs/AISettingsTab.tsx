@@ -41,10 +41,10 @@ function BudgetInput({
 
   const handleBlur = () => {
     const parsed = parseInt(localValue, 10)
-    if (!isNaN(parsed) && parsed > 0) {
+    if (!isNaN(parsed) && parsed >= 1) {
       onChange(parsed)
     } else {
-      // Reset to last valid value if invalid
+      // Reset to last valid value if invalid (includes negative numbers)
       setLocalValue(String(value))
     }
   }
@@ -276,11 +276,11 @@ export function AISettingsTab({
                       <div className="flex items-center gap-2">
                         <Label className="text-sm">Model:</Label>
                         <Select
-                          value={config.defaultModel}
+                          value={availableModels.includes(config.defaultModel) ? config.defaultModel : ""}
                           onValueChange={(model) => updateAgent(agentId as AgentId, { defaultModel: model })}
                         >
-                          <SelectTrigger className="w-48 h-8">
-                            <SelectValue placeholder="Select model..." />
+                          <SelectTrigger className={`w-48 h-8 ${!availableModels.includes(config.defaultModel) && config.defaultModel ? "border-destructive" : ""}`}>
+                            <SelectValue placeholder={config.defaultModel && !availableModels.includes(config.defaultModel) ? `${config.defaultModel} (invalid)` : "Select model..."} />
                           </SelectTrigger>
                           <SelectContent>
                             {availableModels.map((model) => (
@@ -308,6 +308,7 @@ export function AISettingsTab({
                             size="sm"
                             onClick={() => updateAgent(agentId as AgentId, { dailyUsage: 0 })}
                             title="Reset daily usage"
+                            aria-label="Reset daily usage"
                             className="h-7 px-2"
                           >
                             <RotateCcw className="h-3 w-3" />
@@ -353,6 +354,7 @@ export function AISettingsTab({
                             }}
                             className="ml-1 h-4 w-4 p-0 hover:text-destructive"
                             title="Remove from chain"
+                            aria-label="Remove from chain"
                           >
                             <X className="h-3 w-3" />
                           </Button>
