@@ -5,6 +5,7 @@ import { JobApplicationsPage } from "../JobApplicationsPage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 import { jobMatchesClient } from "@/api/job-matches-client"
+import type { JobMatchWithListing } from "@shared/types"
 
 vi.mock("@/api/job-matches-client", () => ({
   jobMatchesClient: {
@@ -25,7 +26,8 @@ vi.mock("react-router-dom", async (importOriginal) => {
 })
 
 describe("JobApplicationsPage contract", () => {
-  const mockMatches = [
+  // Use type assertion for test mock data - timestamps are strings from API
+  const mockMatches: JobMatchWithListing[] = [
     {
       id: "m100",
       jobListingId: "l100",
@@ -37,9 +39,9 @@ describe("JobApplicationsPage contract", () => {
       potentialConcerns: [],
       experienceMatch: 90,
       customizationRecommendations: [],
-      analyzedAt: "2024-02-01T12:00:00.000Z",
-      createdAt: "2024-02-01T12:00:00.000Z",
-      updatedAt: "2024-02-02T12:00:00.000Z",
+      analyzedAt: new Date("2024-02-01T12:00:00.000Z"),
+      createdAt: new Date("2024-02-01T12:00:00.000Z"),
+      updatedAt: new Date("2024-02-02T12:00:00.000Z"),
       submittedBy: null,
       queueItemId: "q100",
       listing: {
@@ -49,8 +51,8 @@ describe("JobApplicationsPage contract", () => {
         companyName: "Example Co",
         description: "Do things",
         status: "matched",
-        createdAt: "2024-02-01T12:00:00.000Z",
-        updatedAt: "2024-02-02T12:00:00.000Z",
+        createdAt: new Date("2024-02-01T12:00:00.000Z"),
+        updatedAt: new Date("2024-02-02T12:00:00.000Z"),
       },
     },
   ]
