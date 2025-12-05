@@ -86,11 +86,7 @@ describe("JobFinderConfigPage", () => {
     const user = userEvent.setup()
     render(
       <MemoryRouter>
-        <JobFinderConfigPage
-          prefilterPolicy={prefilterPolicy}
-          matchPolicy={matchPolicy}
-          workerSettings={workerSettings}
-        />
+        <JobFinderConfigPage />
       </MemoryRouter>
     )
 
