@@ -38,7 +38,7 @@ ENV CHROMIUM_PATH=/usr/bin/chromium
 RUN apt-get update && apt-get install -y --no-install-recommends gosu ca-certificates chromium tzdata \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g npm@11.6.3 @openai/codex@0.63.0 @google/gemini-cli@0.18.4 \
+    && npm install -g npm@11.6.3 @openai/codex@0.63.0 @google/gemini-cli@0.18.4 @anthropic-ai/claude-code@2.0.52 \
     && npm cache clean --force \
     && mkdir -p /home/node/.codex /home/node/.gemini /data/artifacts /data/sqlite \
     && chown -R node:node /home/node/.codex /home/node/.gemini /data
