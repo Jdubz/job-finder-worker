@@ -327,14 +327,15 @@ def test_job_pipeline_full_path(tmp_path: Path):
     processed = _process_all(queue_manager, processor, limit=25)
     assert processed > 0
 
-    # Verify queue item reached terminal SUCCESS with match result
+    # Verify queue item reached terminal SUCCESS with summary data
     final_item = queue_manager.get_item(item_id)
     assert final_item is not None
     assert final_item.status == QueueStatus.SUCCESS
-    # Single-task pipeline stores results in scraped_data, not pipeline_state
+    # scraped_data now contains a summary (job_listings is source of truth)
     assert final_item.scraped_data
-    # Per hybrid scoring migration: analysis_result contains { scoringResult, detailedAnalysis }
-    assert final_item.scraped_data["analysis_result"]["detailedAnalysis"]["match_score"] == 92
+    assert final_item.scraped_data["job_data"]["title"] == job_data["title"]
+    # Score summary is included (full analysis is in job_matches)
+    assert final_item.scraped_data["score"] == 92
 
     # Verify job_listing was created
     with sqlite3.connect(db_path) as conn:

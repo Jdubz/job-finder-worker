@@ -388,8 +388,12 @@ class TestJobDataSaveValidation:
         assert "job_data" in result
         assert result["job_data"]["title"] == "Engineer"
 
-    def test_save_rejects_nested_structure(self, job_processor):
-        """Test that saving nested job_data raises an error."""
+    def test_save_handles_missing_title_gracefully(self, job_processor):
+        """Test that missing title returns empty string in summary.
+
+        Since job_listings is now the source of truth, _build_final_scraped_data
+        only builds a summary and doesn't validate the structure.
+        """
         ctx = PipelineContext(
             item=JobQueueItem(
                 id="test-save-nested",
@@ -399,14 +403,16 @@ class TestJobDataSaveValidation:
                 source="scraper",
             )
         )
-        # Corrupted structure - has job_data key but no title
+        # Structure without title at top level
         ctx.job_data = {
             "job_data": {"title": "Engineer"},
             "company": "Test",
         }
 
-        with pytest.raises(ValueError, match="BUG.*nested job_data"):
-            job_processor._build_final_scraped_data(ctx)
+        # Should not raise - just returns summary with empty title
+        result = job_processor._build_final_scraped_data(ctx)
+        assert result["job_data"]["title"] == ""
+        assert result["job_data"]["company"] == "Test"
 
     def test_save_allows_job_data_key_if_title_present(self, job_processor):
         """Test that having both job_data and title keys is allowed.
