@@ -36,7 +36,6 @@ const CRON_JOB_LABELS: Record<CronJobKey, string> = {
   maintenance: "Maintenance",
   logrotate: "Log Rotation",
   agentReset: "Agent Reset",
-  gmailIngest: "Gmail Ingest",
 }
 
 function formatHoursInput(hours: number[]): string {
@@ -86,16 +85,7 @@ export function SystemHealthPage() {
         configClient.getCronConfig().catch(() => null)
       ])
 
-      const defaultConfig: CronConfig | null = cron
-        ? {
-            jobs: {
-              ...cron.jobs,
-              gmailIngest: cron.jobs.gmailIngest ?? { enabled: false, hours: [], lastRun: null }
-            }
-          }
-        : null
-
-      const derivedConfig: CronConfig | null = cfg ?? defaultConfig
+      const derivedConfig: CronConfig | null = cfg ?? cron ?? null
 
       setCronStatus(cron)
       setCronConfig(derivedConfig)
@@ -106,7 +96,6 @@ export function SystemHealthPage() {
               maintenance: formatHoursInput(derivedConfig.jobs.maintenance.hours),
               logrotate: formatHoursInput(derivedConfig.jobs.logrotate.hours),
               agentReset: formatHoursInput(derivedConfig.jobs.agentReset.hours),
-              gmailIngest: formatHoursInput(derivedConfig.jobs.gmailIngest.hours),
             }
           : {}
       )

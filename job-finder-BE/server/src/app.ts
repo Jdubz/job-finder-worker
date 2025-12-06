@@ -21,7 +21,6 @@ import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError, apiErrorHandler } from './middleware/api-error'
 import { buildAuthRouter } from './routes/auth.routes'
-import { buildGmailRouter } from './modules/gmail/gmail.routes'
 
 export function buildApp() {
   const app = express()
@@ -118,7 +117,6 @@ export function buildApp() {
   app.use('/api/job-listings', buildJobListingRouter())
   app.use('/api/companies', buildCompanyRouter())
   app.use('/api/job-sources', buildJobSourceRouter())
-  app.use('/api/gmail', requireRole('admin'), buildGmailRouter())
   app.use('/api/config', requireRole('admin'), buildConfigRouter())
 
   app.get('/healthz', healthHandler)

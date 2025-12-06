@@ -242,6 +242,7 @@ export const cronConfigSchema = z.object({
     scrape: cronJobScheduleSchema,
     maintenance: cronJobScheduleSchema,
     logrotate: cronJobScheduleSchema,
+    agentReset: cronJobScheduleSchema,
   }),
 })
 
@@ -262,17 +263,6 @@ export const personalInfoSchema = z.object({
   accentColor: z.string().optional(),
 })
 
-const gmailIngestSchema = z.object({
-  enabled: z.boolean().default(false),
-  label: z.string().optional(),
-  query: z.string().optional(),
-  maxMessages: z.number().int().positive().optional(),
-  allowedSenders: z.array(z.string().email()).optional(),
-  remoteSourceDefault: z.boolean().optional(),
-  aiFallbackEnabled: z.boolean().optional(),
-  defaultLabelOwner: z.string().email().nullable().optional(),
-})
-
 export const configPayloadSchemaMap = {
   "ai-settings": aiSettingsSchema,
   "ai-prompts": promptConfigSchema,
@@ -281,5 +271,4 @@ export const configPayloadSchemaMap = {
   "match-policy": matchPolicySchema,
   "worker-settings": workerSettingsSchema,
   "cron-config": cronConfigSchema,
-  "gmail-ingest": gmailIngestSchema,
 } as const

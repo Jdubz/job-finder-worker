@@ -553,8 +553,6 @@ export interface CronConfig {
     logrotate: CronJobSchedule
     /** Reset agent daily budgets and re-enable quota-exhausted agents at midnight */
     agentReset: CronJobSchedule
-    /** Gmail ingest cron for email-sourced listings */
-    gmailIngest: CronJobSchedule
   }
 }
 
@@ -570,7 +568,6 @@ export type JobFinderConfigId =
   | "match-policy"
   | "worker-settings"
   | "cron-config"
-  | "gmail-ingest"
 
 export type JobFinderConfigPayloadMap = {
   "ai-settings": AISettings
@@ -580,5 +577,4 @@ export type JobFinderConfigPayloadMap = {
   "match-policy": MatchPolicy
   "worker-settings": WorkerSettings
   "cron-config": CronConfig
-  "gmail-ingest": unknown
 }

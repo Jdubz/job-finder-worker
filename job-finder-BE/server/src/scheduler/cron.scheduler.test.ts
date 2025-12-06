@@ -7,8 +7,7 @@ const baseConfig: CronConfig = {
     scrape: { enabled: true, hours: [0, 6, 12], lastRun: null },
     maintenance: { enabled: true, hours: [3], lastRun: null },
     logrotate: { enabled: true, hours: [3], lastRun: null },
-    agentReset: { enabled: true, hours: [0], lastRun: null },
-    gmailIngest: { enabled: true, hours: [1, 7, 13, 19], lastRun: null }
+    agentReset: { enabled: true, hours: [0], lastRun: null }
   }
 }
 
@@ -29,12 +28,11 @@ describe('cron scheduler logic', () => {
       scrape: vi.fn().mockResolvedValue({}),
       maintenance: vi.fn(),
       logrotate: vi.fn(),
-      agentReset: vi.fn(),
-      gmailIngest: vi.fn()
+      agentReset: vi.fn()
     }
 
     const config: CronConfig = JSON.parse(JSON.stringify(baseConfig))
-    const state = { scrape: null, maintenance: null, logrotate: null, agentReset: null, gmailIngest: null }
+    const state = { scrape: null, maintenance: null, logrotate: null, agentReset: null }
     const now = new Date(2025, 1, 1, 6, 5)
 
     const first = await cronTest.maybeRunJobWithState('scrape', config, now, state, actions)
@@ -52,12 +50,11 @@ describe('cron scheduler logic', () => {
       scrape: vi.fn(),
       maintenance: vi.fn(),
       logrotate: vi.fn(),
-      agentReset: vi.fn(),
-      gmailIngest: vi.fn()
+      agentReset: vi.fn()
     }
     const config: CronConfig = JSON.parse(JSON.stringify(baseConfig))
     config.jobs.maintenance.enabled = false
-    const state = { scrape: null, maintenance: null, logrotate: null, agentReset: null, gmailIngest: null }
+    const state = { scrape: null, maintenance: null, logrotate: null, agentReset: null }
     const now = new Date('2025-02-01T03:00:00Z')
 
     const ran = await cronTest.maybeRunJobWithState('maintenance', config, now, state, actions)
@@ -71,11 +68,10 @@ describe('cron scheduler logic', () => {
       scrape: vi.fn().mockResolvedValue({}),
       maintenance: vi.fn(),
       logrotate: vi.fn(),
-      agentReset: vi.fn(),
-      gmailIngest: vi.fn()
+      agentReset: vi.fn()
     }
     const config: CronConfig = JSON.parse(JSON.stringify(baseConfig))
-    const state = { scrape: null, maintenance: null, logrotate: null, agentReset: null, gmailIngest: null }
+    const state = { scrape: null, maintenance: null, logrotate: null, agentReset: null }
 
     const sixAm = new Date(2025, 1, 1, 6, 0)
     const noon = new Date(2025, 1, 1, 12, 0)
