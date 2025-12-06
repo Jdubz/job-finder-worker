@@ -162,6 +162,7 @@ class AgentManager:
                 )
             required_env = auth_req.get("requiredEnv") or []
             required_files = auth_req.get("requiredFiles") or []
+            # Fail fast on empty auth requirements to comply with hard cutover (no implicit defaults)
             if not required_env and not required_files:
                 raise NoAgentsAvailableError(
                     f"Agent {agent_id} authRequirements empty",

@@ -477,7 +477,7 @@ def _check_cli_auth(provider: str) -> Tuple[bool, str]:
 
     env_ok = any(os.getenv(var) for var in cfg["env_vars"])
     file_path = cfg.get("file_path")
-    file_ok = file_path.exists() if file_path else False
+    file_ok = file_path.exists() if file_path is not None else False
 
     return env_ok or file_ok, cfg["hint"]
 
