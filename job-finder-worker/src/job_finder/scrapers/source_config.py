@@ -72,6 +72,14 @@ class SourceConfig:
     # Use for remote-only job boards like RemoteOK, WeWorkRemotely, Remotive, etc.
     is_remote_source: bool = False
 
+    # Company filter - only keep jobs from companies matching these names (case-insensitive)
+    # Used for company-specific sources on aggregator feeds (e.g., "Lemon.io" on WeWorkRemotely)
+    # Supports fuzzy matching: "Lemon.io" matches "Lemon.io", "Lemon", "lemon.io", etc.
+    company_filter: str = ""
+    # Query parameter name for server-side company filtering (e.g., "company_name" for Remotive)
+    # When set along with company_filter, appends ?{param}={company} to the URL
+    company_filter_param: str = ""
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any], company_name: Optional[str] = None) -> "SourceConfig":
         """
@@ -105,6 +113,8 @@ class SourceConfig:
             company_extraction=data.get("company_extraction", ""),
             follow_detail=bool(data.get("follow_detail", False)),
             is_remote_source=bool(data.get("is_remote_source", False)),
+            company_filter=data.get("company_filter", ""),
+            company_filter_param=data.get("company_filter_param", ""),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -150,6 +160,10 @@ class SourceConfig:
             result["follow_detail"] = self.follow_detail
         if self.is_remote_source:
             result["is_remote_source"] = self.is_remote_source
+        if self.company_filter:
+            result["company_filter"] = self.company_filter
+        if self.company_filter_param:
+            result["company_filter_param"] = self.company_filter_param
 
         return result
 

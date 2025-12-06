@@ -62,8 +62,6 @@ class ScraperIntake:
         sources_manager=None,
         title_filter=None,
         prefilter=None,
-        # Legacy parameter - still accepted but job_listing_storage takes precedence
-        job_storage=None,
     ):
         """
         Initialize scraper intake.
@@ -72,9 +70,9 @@ class ScraperIntake:
             queue_manager: Queue manager for adding items
             job_listing_storage: JobListingStorage for checking/storing job listings
             companies_manager: CompaniesManager for checking company existence (optional)
+            sources_manager: JobSourcesManager for checking aggregator domains (optional)
             title_filter: TitleFilter for pre-filtering jobs by title keywords (optional)
             prefilter: PreFilter for structured data filtering (freshness, location, etc.)
-            job_storage: DEPRECATED - use job_listing_storage instead
         """
         self.queue_manager = queue_manager
         self.job_listing_storage = job_listing_storage
@@ -82,8 +80,6 @@ class ScraperIntake:
         self.sources_manager = sources_manager
         self.title_filter = title_filter
         self.prefilter = prefilter
-        # Legacy fallback - will be removed in future version
-        self._legacy_job_storage = job_storage
 
         # LinkedIn control tags (e.g., #LI-DNI / #LI-DNP) appear inside descriptions
         # for wrapped jobs; use them to avoid ingesting posts that should be skipped.
@@ -132,12 +128,9 @@ class ScraperIntake:
         return None
 
     def _check_job_exists(self, normalized_url: str) -> bool:
-        """Check if job URL already exists in job_listings (or legacy job_matches)."""
+        """Check if job URL already exists in job_listings."""
         if self.job_listing_storage:
             return self.job_listing_storage.listing_exists(normalized_url)
-        # Legacy fallback
-        if self._legacy_job_storage:
-            return self._legacy_job_storage.job_exists(normalized_url)
         return False
 
     def _store_job_listing(
