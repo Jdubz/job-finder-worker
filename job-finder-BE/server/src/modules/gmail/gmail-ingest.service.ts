@@ -39,6 +39,9 @@ export class GmailIngestService {
   private readonly config = new ConfigRepository()
   private readonly queue = new JobQueueService()
   private readonly ingestState = new EmailIngestStateRepository()
+  private readonly maxLinksPerMessage = 30
+  private readonly maxResolvedLinksPerRun = 60
+  private readonly resolveTimeoutMs = 3500
 
   async ingestAll(): Promise<IngestJobResult[]> {
     const settings = this.getSettings()
@@ -126,26 +129,26 @@ export class GmailIngestService {
       }
 
       const sender = this.getHeader(full, "From")
-      if (settings?.allowedSenders?.length) {
-        const allowed = settings.allowedSenders.some((s) => sender?.toLowerCase().includes(s.toLowerCase()))
-        if (!allowed) {
-          // Record as processed with 0 jobs (filtered by sender)
-          this.ingestState.recordProcessed({
-            messageId: full.id,
-            threadId: full.threadId,
-            gmailEmail,
-            historyId: full.historyId,
-            jobsFound: 0,
-            jobsEnqueued: 0
-          })
-          continue
-        }
+      const subject = this.getHeader(full, "Subject")
+      const body = this.extractBody(full)
+
+      if (!this.isJobRelated(subject, body)) {
+        this.ingestState.recordProcessed({
+          messageId: full.id,
+          threadId: full.threadId,
+          gmailEmail,
+          historyId: full.historyId,
+          jobsFound: 0,
+          jobsEnqueued: 0
+        })
+        continue
       }
 
-      const body = this.extractBody(full)
       const links = this.extractLinks(body)
+      const resolvedLinks = await this.resolveLinksLimited(links)
+      const linkList = resolvedLinks.length ? resolvedLinks : links
 
-      if (!links.length) {
+      if (!linkList.length) {
         // Record as processed with 0 jobs (no links found)
         this.ingestState.recordProcessed({
           messageId: full.id,
@@ -159,8 +162,8 @@ export class GmailIngestService {
       }
 
       const parsedJobs = settings.aiFallbackEnabled
-        ? await parseEmailBodyWithAiFallback(body, links, { aiFallbackEnabled: true })
-        : parseEmailBody(body, links)
+        ? await parseEmailBodyWithAiFallback(body, linkList, { aiFallbackEnabled: true })
+        : parseEmailBody(body, linkList)
       const messageJobsFound = parsedJobs.length
       let messageJobsQueued = 0
 
@@ -173,15 +176,16 @@ export class GmailIngestService {
           title: job.title,
           companyName: job.company,
           description: job.description,
-          metadata: {
-            gmailMessageId: full.id,
-            gmailThreadId: full.threadId,
-            gmailFrom: sender,
-            gmailSnippet: full.snippet,
-            gmailEmail,
-            remoteSourceDefault: settings.remoteSourceDefault ?? false
+              metadata: {
+                gmailMessageId: full.id,
+                gmailThreadId: full.threadId,
+                gmailFrom: sender,
+                gmailSubject: subject,
+                gmailSnippet: full.snippet,
+                gmailEmail,
+                remoteSourceDefault: settings.remoteSourceDefault ?? false
+              }
           }
-        }
         try {
           this.queue.submitJob(jobInput)
           messageJobsQueued += 1
@@ -368,7 +372,7 @@ export class GmailIngestService {
       .filter((url) => this.isLikelyJobLink(url))
 
     // dedupe
-    return Array.from(new Set(cleaned))
+    return Array.from(new Set(cleaned)).slice(0, this.maxLinksPerMessage)
   }
 
   private isLikelyJobLink(url: string): boolean {
@@ -378,6 +382,47 @@ export class GmailIngestService {
     if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".gif")) return false
     // Prefer keeping most links to widen intake; only minimal filtering above
     return true
+  }
+
+  private isJobRelated(subject?: string, body?: string): boolean {
+    const haystack = `${subject ?? ""}\n${body ?? ""}`.toLowerCase()
+    const keywords = [
+      "job", "role", "opening", "position", "hiring", "opportunity", "match", "application", "applied",
+      "interview", "recruit", "careers", "offer", "head hunter", "headhunter"
+    ]
+    const atsDomains = ["lever.co", "greenhouse.io", "workday", "ashbyhq", "smartrecruiters", "breezy.hr"]
+    if (keywords.some((k) => haystack.includes(k))) return true
+    return atsDomains.some((d) => haystack.includes(d))
+  }
+
+  private async resolveLinksLimited(urls: string[]): Promise<string[]> {
+    if (!urls.length) return []
+    const limited = urls.slice(0, this.maxResolvedLinksPerRun)
+    const resolved: string[] = []
+    for (const url of limited) {
+      if (resolved.length >= this.maxResolvedLinksPerRun) break
+      try {
+        const finalUrl = await this.resolveOne(url)
+        resolved.push(finalUrl)
+      } catch {
+        resolved.push(url)
+      }
+    }
+    return resolved
+  }
+
+  private async resolveOne(url: string): Promise<string> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.resolveTimeoutMs)
+    try {
+      const res = await fetch(url, { method: "HEAD", redirect: "follow", signal: controller.signal })
+      clearTimeout(timer)
+      if (res.url) return res.url
+      return url
+    } catch {
+      clearTimeout(timer)
+      return url
+    }
   }
 
   private getHeader(msg: GmailMessage, name: string): string | undefined {
