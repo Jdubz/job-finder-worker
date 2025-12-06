@@ -1,4 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CheckCircle2, Circle, Loader2, XCircle, FileText } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 
@@ -167,76 +166,70 @@ export function GenerationProgress({ steps }: GenerationProgressProps) {
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-primary" />
-          <CardTitle className="text-base">
-            {hasFailed
-              ? "Generation Failed"
-              : isComplete
-                ? "Generation Complete"
-                : currentStep
-                  ? `Step ${completedCount + 1} of ${totalSteps}`
-                  : "Preparing..."}
-          </CardTitle>
-        </div>
-        {/* Progress summary */}
-        <div className="flex items-center gap-3 mt-2">
-          <Progress value={progressPercent} className="flex-1 h-2" />
-          <span className="text-sm text-muted-foreground whitespace-nowrap">
-            {completedCount}/{totalSteps} complete
-          </span>
-        </div>
-      </CardHeader>
+    <div>
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-2">
+        <FileText className="w-5 h-5 text-primary" />
+        <span className="text-sm font-medium">
+          {hasFailed
+            ? "Generation Failed"
+            : isComplete
+              ? "Generation Complete"
+              : currentStep
+                ? `Step ${completedCount + 1} of ${totalSteps}`
+                : "Preparing..."}
+        </span>
+      </div>
 
-      <CardContent className="pt-0">
-        <div className="space-y-3" data-testid="generation-progress">
-          {steps.map((step) => {
-            const styles = getStepStyles(step.status)
-            const description = getStepDescription(step)
+      {/* Progress bar */}
+      <div className="flex items-center gap-3 mb-3">
+        <Progress value={progressPercent} className="flex-1 h-2" />
+        <span className="text-sm text-muted-foreground whitespace-nowrap">
+          {completedCount}/{totalSteps} complete
+        </span>
+      </div>
 
-            return (
-              <div
-                key={step.id}
-                className={`flex items-start gap-3 py-2 ${
-                  step.status === "in_progress"
-                    ? "bg-primary/5 -mx-3 px-3 rounded-md"
-                    : ""
-                }`}
-                data-step-id={step.id}
-              >
-                {/* Icon */}
-                <div className="pt-0.5 flex-shrink-0">{getStepIcon(step.status)}</div>
+      {/* Steps */}
+      <div className="space-y-3" data-testid="generation-progress">
+        {steps.map((step) => {
+          const styles = getStepStyles(step.status)
+          const description = getStepDescription(step)
 
-                {/* Step Info - Always show name + description */}
-                <div className="flex-1 min-w-0">
-                  {/* Step name - always visible */}
-                  <span className={`text-sm ${styles.name}`}>{step.name}</span>
-                  {/* Description - what will/is/did happen */}
-                  <p className={`text-xs mt-0.5 ${styles.description}`}>{description}</p>
-                </div>
+          return (
+            <div
+              key={step.id}
+              className={`flex items-start gap-3 py-2 ${
+                step.status === "in_progress" ? "bg-primary/5 px-2 rounded-md" : ""
+              }`}
+              data-step-id={step.id}
+            >
+              {/* Icon */}
+              <div className="pt-0.5 flex-shrink-0">{getStepIcon(step.status)}</div>
+
+              {/* Step Info */}
+              <div className="flex-1 min-w-0">
+                <span className={`text-sm ${styles.name}`}>{step.name}</span>
+                <p className={`text-xs mt-0.5 ${styles.description}`}>{description}</p>
               </div>
-            )
-          })}
-        </div>
+            </div>
+          )
+        })}
+      </div>
 
-        {/* Summary message */}
-        {isComplete && !hasFailed && (
-          <div className="mt-4 pt-3 border-t">
-            <p className="text-sm text-green-600 font-medium">
-              Your documents are ready for download
-            </p>
-          </div>
-        )}
-        {hasFailed && (
-          <div className="mt-4 pt-3 border-t">
+      {/* Summary message */}
+      {(isComplete || hasFailed) && (
+        <div className="mt-4 pt-3 border-t">
+          {hasFailed ? (
             <p className="text-sm text-destructive">
               Generation encountered an error. Please try again.
             </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          ) : (
+            <p className="text-sm text-green-600 font-medium">
+              Your documents are ready for download
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
