@@ -106,96 +106,55 @@ def is_ats_provider_url(url: str) -> bool:
         return False
 
 
-# ATS probe endpoints - ordered by popularity/likelihood
-# Each tuple: (name, url_template, response_path, validation_key, fields)
-_ATS_PROBE_ENDPOINTS = [
-    (
-        "greenhouse",
-        "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
-        "jobs",
-        "jobs",
-        {
-            "title": "title",
-            "location": "location.name",
-            "description": "content",
-            "url": "absolute_url",
-            "posted_date": "updated_at",
-        },
-    ),
-    (
-        "lever",
-        "https://api.lever.co/v0/postings/{slug}?mode=json",
-        "",
-        "",  # Array response
-        {
-            "title": "text",
-            "location": "categories.location",
-            "description": "descriptionPlain",
-            "url": "hostedUrl",
-            "posted_date": "createdAt",
-        },
-    ),
-    (
-        "ashby",
-        "https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true",
-        "jobs",
-        "jobs",
-        {
-            "title": "title",
-            "location": "location",
-            "description": "descriptionHtml",
-            "url": "jobUrl",
-            "posted_date": "publishedAt",
-        },
-    ),
-    (
-        "smartrecruiters",
-        "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=200",
-        "content",
-        "content",
-        {
-            "title": "name",
-            "location": "location.fullLocation",
-            "url": "ref",
-            "posted_date": "releasedDate",
-        },
-    ),
-    (
-        "workable",
-        "https://apply.workable.com/api/v1/widget/accounts/{slug}",
-        "jobs",
-        "jobs",
-        {
-            "title": "title",
-            "location": "location",
-            "url": "url",
-        },
-    ),
-    (
-        "breezy",
-        "https://{slug}.breezy.hr/json",
-        "",
-        "",  # Array response
-        {
-            "title": "name",
-            "location": "location.name",
-            "url": "url",
-            "posted_date": "published_date",
-        },
-    ),
-    (
-        "recruitee",
-        "https://{slug}.recruitee.com/api/offers",
-        "offers",
-        "offers",
-        {
-            "title": "title",
-            "location": "location",
-            "url": "careers_url",
-            "posted_date": "published_at",
-        },
-    ),
-]
+# Build ATS probe endpoints dynamically from PLATFORM_PATTERNS to avoid duplication.
+# Maps pattern names to their probe order (lower = tried first, by popularity).
+_ATS_PROBE_ORDER = {
+    "greenhouse_api": 1,
+    "lever": 2,
+    "ashby_api": 3,
+    "smartrecruiters_api": 4,
+    "workable_api": 5,
+    "breezy_api": 6,
+    "recruitee_api": 7,
+}
+
+
+def _build_ats_probe_endpoints() -> List[Tuple[str, str, str, str, Dict[str, str]]]:
+    """
+    Build ATS probe endpoints from PLATFORM_PATTERNS.
+
+    This ensures field mappings are consistent between pattern detection
+    and company ATS probing, avoiding duplication.
+    """
+    endpoints = []
+    for pattern in PLATFORM_PATTERNS:
+        if pattern.name not in _ATS_PROBE_ORDER:
+            continue
+        if pattern.auth_required:
+            continue  # Skip patterns that require auth (e.g., jazzhr)
+
+        # Convert pattern's url_template placeholders to use {slug}
+        # Patterns use various names: {board_token}, {company}, {board_name}, etc.
+        url_template = pattern.api_url_template
+        for placeholder in ["board_token", "company", "board_name"]:
+            url_template = url_template.replace(f"{{{placeholder}}}", "{slug}")
+
+        endpoints.append(
+            (
+                pattern.name.replace("_api", "").replace("_html", ""),
+                url_template,
+                pattern.response_path,
+                pattern.validation_key,
+                pattern.fields.copy(),
+            )
+        )
+
+    # Sort by probe order
+    endpoints.sort(key=lambda x: _ATS_PROBE_ORDER.get(x[0], 999))
+    return endpoints
+
+
+_ATS_PROBE_ENDPOINTS = _build_ats_probe_endpoints()
 
 
 def _probe_single_ats_endpoint(

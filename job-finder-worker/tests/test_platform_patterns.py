@@ -31,6 +31,11 @@ class TestPlatformPatternRegistry:
             "weworkremotely_rss",
             "builtin_html",
             "jobicy_api",
+            # New patterns added
+            "breezy_api",
+            "workable_api",
+            "recruitee_api",
+            "jazzhr_stub",
         }
         assert expected.issubset(pattern_names)
 
@@ -269,6 +274,83 @@ class TestMatchPlatform:
         pattern, groups = result
         assert pattern.name == "smartrecruiters_api"
         assert groups["company"] == "Experian"
+
+    # Breezy tests
+    def test_breezy_api_url(self):
+        """Test matching Breezy.hr career pages."""
+        url = "https://search-atlas.breezy.hr"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "breezy_api"
+        assert groups["company"] == "search-atlas"
+
+    def test_breezy_api_url_with_path(self):
+        """Test Breezy URL with path."""
+        url = "https://acme-corp.breezy.hr/p/12345-software-engineer"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "breezy_api"
+        assert groups["company"] == "acme-corp"
+
+    # Workable tests
+    def test_workable_api_url(self):
+        """Test matching Workable career pages."""
+        url = "https://apply.workable.com/silverfin"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "workable_api"
+        assert groups["company"] == "silverfin"
+
+    def test_workable_api_url_with_job_path(self):
+        """Test Workable URL with job path."""
+        url = "https://apply.workable.com/cytora/j/ABC123-engineer"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "workable_api"
+        assert groups["company"] == "cytora"
+
+    # Recruitee tests
+    def test_recruitee_api_url(self):
+        """Test matching Recruitee career pages."""
+        url = "https://kodify.recruitee.com"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "recruitee_api"
+        assert groups["company"] == "kodify"
+
+    def test_recruitee_api_url_with_path(self):
+        """Test Recruitee URL with offer path."""
+        url = "https://acme.recruitee.com/o/senior-developer"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "recruitee_api"
+        assert groups["company"] == "acme"
+
+    # JazzHR tests
+    def test_jazzhr_stub_url(self):
+        """Test matching JazzHR/ApplyToJob pages."""
+        url = "https://bitovi.applytojob.com"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "jazzhr_stub"
+        assert groups["company"] == "bitovi"
+        assert pattern.auth_required is True
+
+    def test_jazzhr_stub_url_with_apply_path(self):
+        """Test JazzHR URL with apply path."""
+        url = "https://acme.applytojob.com/apply/12345"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "jazzhr_stub"
+        assert groups["company"] == "acme"
 
     # Avature tests
     def test_avature_rss_url(self):
