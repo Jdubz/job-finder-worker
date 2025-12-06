@@ -127,11 +127,24 @@ def reduce_content_items(items: List[dict]) -> ScoringProfile:
                 end = _parse_date(parent.get("end_date")) or end
 
         if start:
-            end = end or today
-            months = _month_span(start, end)
+            ai_context = raw.get("ai_context", "")
+            # Only work items use today as end_date for open-ended roles
+            # Education/projects/etc. without end_date get just the start month
+            if end:
+                effective_end = end
+            elif ai_context == "work":
+                effective_end = today
+            else:
+                # Non-work items without end_date: use start month only
+                effective_end = start
+
+            months = _month_span(start, effective_end)
             if not months:
                 continue
-            overall_months |= months
+            # Only count 'work' items toward overall experience years
+            # Education, projects, highlights, etc. contribute skills but not tenure
+            if ai_context == "work":
+                overall_months |= months
             for skill in normalized_skills:
                 skill_months.setdefault(skill, set()).update(months)
         elif not start:
