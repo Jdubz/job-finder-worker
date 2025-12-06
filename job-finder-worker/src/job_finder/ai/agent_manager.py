@@ -155,39 +155,21 @@ class AgentManager:
                 logger.warning(f"Agent {agent_id} missing provider/interface; skipping")
                 continue
 
-            # Auth requirements are enforced per-scope
-            auth_req = agent_config.get("authRequirements", {})
-            required_env = auth_req.get("requiredEnv", []) if isinstance(auth_req, dict) else []
-            required_files = auth_req.get("requiredFiles", []) if isinstance(auth_req, dict) else []
-
-            env_present = bool(required_env) and any(os.getenv(env) for env in required_env)
-            file_present = bool(required_files) and any(
-                Path(f).expanduser().exists() for f in required_files
-            )
-            if required_env and required_files:
-                auth_ok = env_present or file_present
-            elif required_env:
-                auth_ok = env_present
-            elif required_files:
-                auth_ok = file_present
-            else:
-                auth_ok = True
-
-            if not auth_ok:
-                reason_parts = []
-                if required_env:
-                    reason_parts.append(f"missing_env:any_of:{','.join(required_env)}")
-                if required_files:
-                    reason_parts.append(f"missing_file:any_of:{','.join(required_files)}")
-                reason = "|".join(reason_parts)
-                self._disable_agent(agent_id, active_scope, reason)
-                logger.info(
-                    "Skipping agent %s due to auth requirements failure (scope=%s, reason=%s)",
-                    agent_id,
-                    active_scope,
-                    reason,
+            auth_req = agent_config.get("authRequirements")
+            if not isinstance(auth_req, dict):
+                raise NoAgentsAvailableError(
+                    f"Agent {agent_id} missing authRequirements",
+                    task_type=task_type,
+                    tried_agents=tried_agents,
                 )
-                continue
+            required_env = auth_req.get("requiredEnv") or []
+            required_files = auth_req.get("requiredFiles") or []
+            if not required_env and not required_files:
+                raise NoAgentsAvailableError(
+                    f"Agent {agent_id} authRequirements empty",
+                    task_type=task_type,
+                    tried_agents=tried_agents,
+                )
 
             auth_ok, auth_reason = auth_status(provider, interface)
             if not auth_ok:

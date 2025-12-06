@@ -38,7 +38,7 @@ const agentRuntimeStateSchema = z.object({
 
 const agentAuthRequirementsSchema = z.object({
   type: z.enum(["cli", "api"]),
-  requiredEnv: z.array(z.string()),
+  requiredEnv: z.array(z.string()).min(1),
   requiredFiles: z.array(z.string()).optional(),
 })
 

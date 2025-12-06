@@ -450,27 +450,36 @@ _INTERFACE_FALLBACKS: Dict[str, str] = {
 }
 
 
+_CLI_AUTH_CONFIG = {
+    "codex": {
+        "env_vars": ["OPENAI_API_KEY"],
+        "file_path": Path.home().joinpath(".codex", "auth.json"),
+        "hint": "OPENAI_API_KEY or ~/.codex/auth.json",
+    },
+    "gemini": {
+        "env_vars": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        "file_path": Path.home().joinpath(".gemini", "settings.json"),
+        "hint": "GEMINI_API_KEY/GOOGLE_API_KEY or ~/.gemini/settings.json",
+    },
+    "claude": {
+        "env_vars": ["CLAUDE_CODE_OAUTH_TOKEN"],
+        "file_path": None,
+        "hint": "CLAUDE_CODE_OAUTH_TOKEN",
+    },
+}
+
+
 def _check_cli_auth(provider: str) -> Tuple[bool, str]:
     """Check CLI auth for provider returning (available, reason)."""
-    if provider == "codex":
-        ok = (
-            bool(os.getenv("OPENAI_API_KEY"))
-            or Path.home().joinpath(".codex", "auth.json").exists()
-        )
-        return ok, "OPENAI_API_KEY or ~/.codex/auth.json"
+    cfg = _CLI_AUTH_CONFIG.get(provider)
+    if not cfg:
+        return True, ""
 
-    if provider == "gemini":
-        ok = (
-            bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
-            or Path.home().joinpath(".gemini", "settings.json").exists()
-        )
-        return ok, "GEMINI_API_KEY/GOOGLE_API_KEY or ~/.gemini/settings.json"
+    env_ok = any(os.getenv(var) for var in cfg["env_vars"])
+    file_path = cfg.get("file_path")
+    file_ok = file_path.exists() if file_path else False
 
-    if provider == "claude":
-        ok = bool(os.getenv("CLAUDE_CODE_OAUTH_TOKEN"))
-        return ok, "CLAUDE_CODE_OAUTH_TOKEN"
-
-    return True, ""
+    return env_ok or file_ok, cfg["hint"]
 
 
 def _check_api_key_available(provider: str, interface: str) -> bool:
