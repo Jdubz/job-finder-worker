@@ -184,13 +184,17 @@ class ConfigLoader:
                 raise InitializationError(
                     f"agent {agent_id} authRequirements.type must be 'cli' or 'api'"
                 )
-            if not isinstance(auth_req.get("requiredEnv"), list) or not auth_req.get("requiredEnv"):
+            if not isinstance(auth_req.get("requiredEnv"), list):
+                raise InitializationError(
+                    f"agent {agent_id} authRequirements.requiredEnv must be a list"
+                )
+            if not auth_req.get("requiredEnv"):
                 raise InitializationError(
                     f"agent {agent_id} authRequirements.requiredEnv must be a non-empty list"
                 )
-            if not all(isinstance(v, str) for v in auth_req.get("requiredEnv", [])):
+            if not all(isinstance(v, str) and v for v in auth_req.get("requiredEnv", [])):
                 raise InitializationError(
-                    f"agent {agent_id} authRequirements.requiredEnv must be strings"
+                    f"agent {agent_id} authRequirements.requiredEnv must be non-empty strings"
                 )
             if "requiredFiles" in auth_req:
                 if not isinstance(auth_req.get("requiredFiles"), list) or not all(
