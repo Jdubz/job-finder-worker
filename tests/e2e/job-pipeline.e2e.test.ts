@@ -274,10 +274,16 @@ async function ensureBaseConfigs(configClient: any, userEmail: string) {
         provider: "gemini",
         interface: "api",
         defaultModel: "gemini-2.0-flash",
-        enabled: true,
-        reason: null,
         dailyBudget: 100,
         dailyUsage: 0,
+        runtimeState: {
+          worker: { enabled: true, reason: null },
+          backend: { enabled: true, reason: null },
+        },
+        authRequirements: {
+          type: "api",
+          requiredEnv: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        },
       },
     },
     taskFallbacks: {

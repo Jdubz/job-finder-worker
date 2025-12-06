@@ -10,7 +10,7 @@ import os
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from anthropic import Anthropic
 from openai import OpenAI
@@ -450,7 +450,7 @@ _INTERFACE_FALLBACKS: Dict[str, str] = {
 }
 
 
-_CLI_AUTH_CONFIG = {
+_CLI_AUTH_CONFIG: Dict[str, Dict[str, Any]] = {
     "codex": {
         "env_vars": ["OPENAI_API_KEY"],
         "file_path": Path.home().joinpath(".codex", "auth.json"),
