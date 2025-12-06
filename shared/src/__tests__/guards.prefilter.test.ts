@@ -15,7 +15,6 @@ const valid: PreFilterPolicy = {
   },
   employmentType: { allowFullTime: true, allowPartTime: false, allowContract: true },
   salary: { minimum: 80000 },
-  technology: { rejected: ["php"] },
 }
 
 describe("isPreFilterPolicy", () => {
@@ -127,8 +126,4 @@ describe("isPreFilterPolicy", () => {
     expect(isPreFilterPolicy(bad)).toBe(false)
   })
 
-  it("rejects invalid technology list", () => {
-    const bad = { ...valid, technology: { rejected: ["php", 123] } } as any
-    expect(isPreFilterPolicy(bad)).toBe(false)
-  })
 })

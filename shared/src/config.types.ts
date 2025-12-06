@@ -215,16 +215,6 @@ export interface PreFilterSalaryConfig {
   minimum: number | null
 }
 
-/** Technology rejection filtering */
-export interface PreFilterTechnologyConfig {
-  /**
-   * Technologies that cause immediate rejection if found in structured tags.
-   * Only applies when source provides structured tags (e.g., Remotive).
-   * Keep list short for high-confidence rejects (e.g., ["php", "wordpress"]).
-   */
-  rejected: string[]
-}
-
 /** Complete pre-filter policy configuration */
 export interface PreFilterPolicy {
   /** Title keyword filtering */
@@ -237,8 +227,6 @@ export interface PreFilterPolicy {
   employmentType: PreFilterEmploymentTypeConfig
   /** Salary floor filtering */
   salary: PreFilterSalaryConfig
-  /** Technology rejection filtering */
-  technology: PreFilterTechnologyConfig
 }
 
 // -----------------------------------------------------------

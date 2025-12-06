@@ -421,10 +421,6 @@ export function isPreFilterPolicy(value: unknown): value is PreFilterPolicy {
   const sal = v.salary as Record<string, unknown>
   if (sal.minimum !== null && typeof sal.minimum !== "number") return false
 
-  if (!isObject(v.technology)) return false
-  const tech = v.technology as Record<string, unknown>
-  if (!isStringArray(tech.rejected)) return false
-
   return true
 }
 

@@ -90,7 +90,6 @@ describe('config contract', () => {
       },
       employmentType: { allowFullTime: true, allowPartTime: false, allowContract: true },
       salary: { minimum: 80000 },
-      technology: { rejected: ['php'] },
     })
 
     repo.upsert('match-policy', {

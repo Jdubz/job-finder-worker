@@ -28,7 +28,6 @@ class TestTimezonePrefilterRegression:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
 
     def test_timezone_guard_uses_city_not_explicit_offset(self, base_config, mocker):

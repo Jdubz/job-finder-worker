@@ -83,17 +83,12 @@ const prefilterSalarySchema = z.object({
   minimum: z.number().nullable(),
 })
 
-const prefilterTechnologySchema = z.object({
-  rejected: z.array(z.string()),
-})
-
 export const prefilterPolicySchema = z.object({
   title: prefilterTitleSchema,
   freshness: prefilterFreshnessSchema,
   workArrangement: prefilterWorkArrangementSchema,
   employmentType: prefilterEmploymentTypeSchema,
   salary: prefilterSalarySchema,
-  technology: prefilterTechnologySchema,
 })
 
 // -----------------------------

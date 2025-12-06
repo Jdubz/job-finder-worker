@@ -62,7 +62,6 @@ def mock_managers():
         },
         "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
         "salary": {"minimum": None},
-        "technology": {"rejected": []},
     }
 
     return {

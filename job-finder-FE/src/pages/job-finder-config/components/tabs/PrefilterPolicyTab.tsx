@@ -43,9 +43,6 @@ const mapToForm = (config: PreFilterPolicy): PreFilterPolicy => {
     salary: {
       minimum: config.salary.minimum,
     },
-    technology: {
-      rejected: config.technology.rejected,
-    },
   }
 }
 
@@ -102,9 +99,6 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
         allowFullTime: Boolean(values.employmentType.allowFullTime),
         allowPartTime: Boolean(values.employmentType.allowPartTime),
         allowContract: Boolean(values.employmentType.allowContract),
-      },
-      technology: {
-        rejected: cleanList(values.technology.rejected ?? []),
       },
     }
 
@@ -297,23 +291,6 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
                 </div>
               </section>
 
-              <section className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-lg font-semibold">Technology Hard Rejections</h3>
-                  <ImpactBadge label="Instant reject" tone="negative" />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Structured tags only. Use for absolute no-gos (e.g., PHP if never considered). Should be a subset of
-                  match-policy technology rejects.
-                </p>
-                <StringListField
-                  control={form.control}
-                  name="technology.rejected"
-                  label="Rejected Technologies"
-                  placeholder="php"
-                  description="Jobs tagged with any of these are discarded before extraction."
-                />
-              </section>
             </div>
           </TabCard>
         </Form>

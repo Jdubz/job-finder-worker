@@ -59,7 +59,6 @@ class PreFilter:
     - Work arrangement (remote/hybrid/onsite)
     - Employment type (full-time/part-time/contract)
     - Salary floor (minimum acceptable)
-    - Technology rejection (from structured tags)
     """
 
     # Default keywords that indicate remote work (used if not configured)
@@ -154,10 +153,6 @@ class PreFilter:
         salary_config = config.get("salary", {})
         self.min_salary = salary_config.get("minimum")
 
-        # Technology config
-        tech_config = config.get("technology", {})
-        self.rejected_tech = {t.lower().strip() for t in tech_config.get("rejected", []) if t}
-
         logger.debug(
             f"PreFilter initialized: "
             f"title={len(self.required_keywords)}req/{len(self.excluded_keywords)}excl, "
@@ -166,8 +161,7 @@ class PreFilter:
             f"relocate={self.will_relocate}, userLocation={self.user_location}, "
             f"remoteKeywords={self.remote_keywords}, treatUnknownAsOnsite={self.treat_unknown_as_onsite}, "
             f"emp=FT{self.allow_full_time}/PT{self.allow_part_time}/C{self.allow_contract}, "
-            f"minSalary={self.min_salary}, "
-            f"rejectedTech={len(self.rejected_tech)}"
+            f"minSalary={self.min_salary}"
         )
 
     def filter(self, job_data: Dict[str, Any], is_remote_source: bool = False) -> PreFilterResult:
@@ -278,22 +272,6 @@ class PreFilter:
                     )
             else:
                 checks_skipped.append("salary")
-
-        # 6. Technology check (if tags available)
-        if self.rejected_tech:
-            tags = job_data.get("tags", [])
-            if tags:
-                checks_performed.append("technology")
-                result = self._check_technologies(tags)
-                if not result.passed:
-                    return PreFilterResult(
-                        passed=False,
-                        reason=result.reason,
-                        checks_performed=checks_performed,
-                        checks_skipped=checks_skipped,
-                    )
-            else:
-                checks_skipped.append("technology")
 
         # All checks passed (or were skipped due to missing data)
         return PreFilterResult(
@@ -721,22 +699,6 @@ class PreFilter:
             return PreFilterResult(
                 passed=False,
                 reason=f"Salary ${salary:,} below minimum ${self.min_salary:,}",
-            )
-
-        return PreFilterResult(passed=True)
-
-    def _check_technologies(self, tags: List[str]) -> PreFilterResult:
-        """Check if any rejected technologies are in the tags."""
-        if not isinstance(tags, list):
-            return PreFilterResult(passed=True)
-
-        tags_lower = {str(t).lower().strip() for t in tags if t}
-        rejected_found = tags_lower & self.rejected_tech
-
-        if rejected_found:
-            return PreFilterResult(
-                passed=False,
-                reason=f"Contains rejected technology: {', '.join(rejected_found)}",
             )
 
         return PreFilterResult(passed=True)

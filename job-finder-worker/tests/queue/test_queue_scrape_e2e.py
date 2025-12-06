@@ -138,7 +138,6 @@ def test_queue_scrape_end_to_end(temp_db):
                             "allowContract": True,
                         },
                         "salary": {"minimum": None},
-                        "technology": {"rejected": []},
                     }
                 ),
                 now_iso,
