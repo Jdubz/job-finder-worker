@@ -194,7 +194,9 @@ class JobProcessor(BaseProcessor):
         db_path = (
             self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
         )
-        profile = load_scoring_profile(db_path)
+        # Extract relevantExperienceStart from experience config (if set)
+        relevant_exp_start = match_policy.get("experience", {}).get("relevantExperienceStart")
+        profile = load_scoring_profile(db_path, relevant_experience_start=relevant_exp_start)
         analog_groups = match_policy.get("skillMatch", {}).get("analogGroups", [])
         analog_map = build_analog_map(analog_groups)
         return ScoringEngine(

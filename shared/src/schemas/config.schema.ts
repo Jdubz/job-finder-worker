@@ -139,6 +139,7 @@ const salaryConfigSchema = z.object({
 const experienceConfigSchema = z.object({
   maxRequired: z.number(),
   overqualifiedScore: z.number(),
+  relevantExperienceStart: z.string().nullable().optional(),
 })
 
 const freshnessConfigSchema = z.object({
