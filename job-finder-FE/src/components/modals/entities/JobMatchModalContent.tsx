@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ExternalLink, FileText, Download, Eye, CheckCircle } from "lucide-react"
+import { ExternalLink, FileText, Download, CheckCircle } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { JobMatchWithListing } from "@shared/types"
 import {
@@ -444,24 +444,22 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
                     </div>
                     <div className="flex items-center gap-1">
                       {doc.resumeUrl && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                        <Badge
+                          variant="secondary"
+                          className="cursor-pointer hover:bg-secondary/80"
                           onClick={() => window.open(getAbsoluteArtifactUrl(doc.resumeUrl) || "#", "_blank")}
-                          title="View Resume"
                         >
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                          Resume
+                        </Badge>
                       )}
                       {doc.coverLetterUrl && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                        <Badge
+                          variant="secondary"
+                          className="cursor-pointer hover:bg-secondary/80"
                           onClick={() => window.open(getAbsoluteArtifactUrl(doc.coverLetterUrl) || "#", "_blank")}
-                          title="View Cover Letter"
                         >
-                          <Download className="h-4 w-4" />
-                        </Button>
+                          Cover Letter
+                        </Badge>
                       )}
                     </div>
                   </div>
