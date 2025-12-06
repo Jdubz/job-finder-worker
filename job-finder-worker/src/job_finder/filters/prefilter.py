@@ -246,13 +246,39 @@ class PreFilter:
                 )
             # in_user_city is True or None (missing data) - allow
         else:
-            # For unknown arrangements: apply timezone check if remote is allowed
-            # (unknown could be remote, so we apply the guard as a safeguard)
-            if (
+            # For unknown arrangements: apply both location and timezone checks
+            # Unknown could be remote (apply timezone guard) OR hybrid/onsite
+            # (reject if clearly outside user's city when not willing to relocate)
+            if self.user_location and not self.will_relocate:
+                checks_performed.append("workArrangement")
+
+                # First check if job is clearly outside user's city
+                # (catches hybrid/onsite jobs that would otherwise slip through)
+                in_user_city = self._is_in_user_location(job_data, self.user_location)
+                if in_user_city is False:
+                    return PreFilterResult(
+                        passed=False,
+                        reason=f"Unknown work arrangement with location outside {self.user_location}",
+                        checks_performed=checks_performed,
+                        checks_skipped=checks_skipped,
+                    )
+
+                # Also apply timezone check for remote possibility
+                if self.allow_remote and self.max_timezone_diff_hours is not None:
+                    result = self._check_timezone(job_data)
+                    if not result.passed:
+                        return PreFilterResult(
+                            passed=False,
+                            reason=result.reason,
+                            checks_performed=checks_performed,
+                            checks_skipped=checks_skipped,
+                        )
+            elif (
                 self.allow_remote
                 and self.max_timezone_diff_hours is not None
                 and self.user_location
             ):
+                # willRelocate is True, just apply timezone check
                 checks_performed.append("workArrangement")
                 result = self._check_timezone(job_data)
                 if not result.passed:

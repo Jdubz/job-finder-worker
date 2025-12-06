@@ -830,8 +830,12 @@ class TestPreFilterTreatUnknownAsOnsite:
         result = pf.filter({"title": "Engineer", "location": "Portland, OR"})
         assert result.passed is True
 
-    def test_unknown_without_treatUnknownAsOnsite_passes(self):
-        """Without treatUnknownAsOnsite, unknown arrangement should be skipped."""
+    def test_unknown_outside_user_city_rejected_when_not_relocating(self):
+        """Unknown arrangement outside user's city should be rejected when willRelocate=False.
+
+        This catches hybrid/onsite jobs that would otherwise slip through because
+        the scraper couldn't detect the work arrangement from structured data.
+        """
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
@@ -847,10 +851,11 @@ class TestPreFilterTreatUnknownAsOnsite:
             "salary": {"minimum": None},
         }
         pf = PreFilter(config)
-        # No remote indicators, location outside - but treatUnknownAsOnsite is False
+        # No remote indicators, location clearly outside user's city
         result = pf.filter({"title": "Engineer", "location": "San Francisco, CA"})
-        assert result.passed is True
-        assert "workArrangement" in result.checks_skipped
+        assert result.passed is False
+        assert "outside Portland, OR" in result.reason
+        assert "workArrangement" in result.checks_performed
 
     def test_unknown_with_missing_location_passes(self):
         """Unknown work arrangement with no location data should pass (missing data = pass)."""

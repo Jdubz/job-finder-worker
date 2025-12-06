@@ -312,20 +312,26 @@ class TestTimezonePrefilterRegression:
         # Should use bare city name
         assert mock_tz_diff.call_args[0][1] == "Portland"
 
-    def test_timezone_check_applies_to_unknown_when_remote_allowed(self, base_config, mocker):
-        """Timezone check should apply to 'unknown' arrangements when remote is allowed."""
+    def test_unknown_arrangement_rejected_when_outside_user_city(self, base_config, mocker):
+        """Unknown arrangements outside user's city should be rejected (location check first).
+
+        When willRelocate=False, jobs with unknown work arrangement and location
+        clearly outside the user's city are rejected before timezone check runs.
+        This catches hybrid/onsite jobs that slip through work arrangement detection.
+        """
         mock_tz_diff = mocker.patch(
             "job_finder.filters.prefilter.get_timezone_diff_hours",
-            return_value=13.5,  # Large diff - would fail if checked
+            return_value=13.5,  # Would fail if checked, but location check runs first
         )
 
         pf = PreFilter(base_config)
 
         # Job with no explicit remote/onsite indicators - arrangement will be "unknown"
+        # Location is clearly outside user's city (Portland, OR)
         job = {"title": "Engineer", "city": "Hyderabad", "country": "India"}
         result = pf.filter(job, is_remote_source=False)
 
-        # Since allow_remote=True, unknown arrangements should be checked
-        mock_tz_diff.assert_called_once()
+        # Location check runs first and rejects - timezone check not reached
+        mock_tz_diff.assert_not_called()
         assert result.passed is False
-        assert "Timezone diff" in result.reason
+        assert "outside Portland, OR" in result.reason
