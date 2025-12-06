@@ -36,6 +36,9 @@ const pollUntilReady = async (healthUrl: string) => {
 
 export function RestartOverlay() {
   const [state, setState] = useState<RestartState>({ status: "idle" })
+  const stateRef = useRef(state)
+  stateRef.current = state
+
   const apiBase = useMemo(() => resolveApiBaseUrl().replace(/\/$/, ""), [])
   const healthUrl = `${apiBase}/healthz`
   const lifecycleUrl = `${apiBase}/api/lifecycle/events`
@@ -89,8 +92,19 @@ export function RestartOverlay() {
     }
 
     // Reset error count when connection is re-established
+    // If the modal is showing (we timed out waiting), retry polling now that the API is back
     source.onopen = () => {
       errorCount = 0
+      // If we previously timed out and the modal is still showing, retry the reload
+      // Delay briefly to let the server stabilize (SSE may connect before /healthz is ready)
+      if (!restartTriggered.current && stateRef.current.status === "waiting") {
+        setTimeout(() => {
+          // Re-check conditions after delay in case state changed
+          if (!restartTriggered.current && stateRef.current.status === "waiting") {
+            void beginBlocking(stateRef.current.reason)
+          }
+        }, 1500)
+      }
     }
 
     return () => {
