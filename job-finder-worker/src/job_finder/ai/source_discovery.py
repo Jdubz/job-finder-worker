@@ -3,7 +3,7 @@
 import json
 import logging
 import re
-from typing import Any, Dict, Optional, Tuple, List, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from urllib.parse import urlparse
 
 import feedparser
@@ -81,10 +81,7 @@ def is_single_job_listing_url(url: str) -> bool:
     Returns:
         True if URL is a single job listing
     """
-    for pattern in _SINGLE_JOB_PATTERNS:
-        if pattern.search(url):
-            return True
-    return False
+    return any(pattern.search(url) for pattern in _SINGLE_JOB_PATTERNS)
 
 
 def is_ats_provider_url(url: str) -> bool:
@@ -105,7 +102,7 @@ def is_ats_provider_url(url: str) -> bool:
         host = parsed.netloc.lower()
         # Check if host is an ATS provider domain (without subdomain prefix)
         return host in _ATS_PROVIDER_DOMAINS
-    except Exception:
+    except (AttributeError, TypeError):
         return False
 
 
@@ -201,6 +198,67 @@ _ATS_PROBE_ENDPOINTS = [
 ]
 
 
+def _probe_single_ats_endpoint(
+    ats_config: Tuple[str, str, str, str, Dict[str, str]],
+    slug_to_try: str,
+    company_slug: str,
+) -> Optional[Dict[str, Any]]:
+    """
+    Probe a single ATS endpoint for a company.
+
+    Args:
+        ats_config: Tuple of (name, url_template, response_path, validation_key, fields)
+        slug_to_try: The company slug variant to try
+        company_slug: Original company slug (for logging)
+
+    Returns:
+        Config dict if found, None otherwise
+    """
+    name, url_template, response_path, validation_key, fields = ats_config
+    try:
+        url = url_template.format(slug=slug_to_try)
+        resp = requests.get(
+            url,
+            headers={"Accept": "application/json"},
+            timeout=8,
+        )
+
+        if resp.status_code != 200:
+            return None
+
+        data = resp.json()
+
+        # Validate response structure
+        if validation_key:
+            if validation_key not in data:
+                return None
+            jobs = data[validation_key]
+        else:
+            # Array response
+            if not isinstance(data, list):
+                return None
+            jobs = data
+
+        # Check we got actual jobs (or allow empty for some)
+        if not isinstance(jobs, list):
+            return None
+
+        logger.info(f"Found {len(jobs)} jobs for '{company_slug}' on {name} (slug: {slug_to_try})")
+
+        config: Dict[str, Any] = {
+            "type": "api",
+            "url": url,
+            "fields": fields.copy(),
+        }
+        if response_path:
+            config["response_path"] = response_path
+
+        return config
+
+    except (requests.RequestException, json.JSONDecodeError, KeyError):
+        return None
+
+
 def probe_company_ats(company_slug: str) -> Optional[Dict[str, Any]]:
     """
     Probe multiple ATS endpoints to find a company's job board.
@@ -219,52 +277,11 @@ def probe_company_ats(company_slug: str) -> Optional[Dict[str, Any]]:
     # Also try without hyphens for some ATSes
     slug_compact = slug.replace("-", "")
 
-    for name, url_template, response_path, validation_key, fields in _ATS_PROBE_ENDPOINTS:
+    for ats_config in _ATS_PROBE_ENDPOINTS:
         for try_slug in [slug, slug_compact]:
-            try:
-                url = url_template.format(slug=try_slug)
-                resp = requests.get(
-                    url,
-                    headers={"Accept": "application/json"},
-                    timeout=8,
-                )
-
-                if resp.status_code != 200:
-                    continue
-
-                data = resp.json()
-
-                # Validate response structure
-                if validation_key:
-                    if validation_key not in data:
-                        continue
-                    jobs = data[validation_key]
-                else:
-                    # Array response
-                    if not isinstance(data, list):
-                        continue
-                    jobs = data
-
-                # Check we got actual jobs (or allow empty for some)
-                if not isinstance(jobs, list):
-                    continue
-
-                logger.info(
-                    f"Found {len(jobs)} jobs for '{company_slug}' on {name} (slug: {try_slug})"
-                )
-
-                config = {
-                    "type": "api",
-                    "url": url,
-                    "fields": fields.copy(),
-                }
-                if response_path:
-                    config["response_path"] = response_path
-
+            config = _probe_single_ats_endpoint(ats_config, try_slug, company_slug)
+            if config:
                 return config
-
-            except (requests.RequestException, json.JSONDecodeError, KeyError):
-                continue
 
     return None
 
