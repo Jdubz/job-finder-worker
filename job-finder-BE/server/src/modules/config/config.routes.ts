@@ -27,8 +27,6 @@ import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { env } from '../../config/env'
 import { logger } from '../../logger'
-import type { GmailIngestConfig } from '../gmail/gmail.types'
-import { isGmailIngestConfig } from '../gmail/gmail.types'
 
 const updateSchema = z.object({
   payload: z.record(z.unknown())
@@ -41,7 +39,6 @@ type KnownPayload =
   | WorkerSettings
   | PreFilterPolicy
   | CronConfig
-  | GmailIngestConfig
   | Record<string, unknown>
 
 /**
@@ -114,8 +111,6 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
       return normalizeKeys<WorkerSettings>(payload)
     case 'cron-config':
       return payload as unknown as CronConfig
-    case 'gmail-ingest':
-      return normalizeKeys<GmailIngestConfig>(payload)
     case 'personal-info':
     default:
       return payload
@@ -138,8 +133,6 @@ function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean 
       return isWorkerSettings(payload)
     case 'cron-config':
       return isCronConfig(payload)
-    case 'gmail-ingest':
-      return isGmailIngestConfig(payload)
     case 'personal-info':
       return isPersonalInfo(payload)
     default:
