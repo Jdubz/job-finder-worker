@@ -142,7 +142,9 @@ class AgentManager:
 
             if not runtime_state.get("enabled", False):
                 reason = runtime_state.get("reason", "unknown")
-                logger.debug(f"Skipping disabled agent {agent_id} for scope {active_scope}: {reason}")
+                logger.debug(
+                    f"Skipping disabled agent {agent_id} for scope {active_scope}: {reason}"
+                )
                 continue
 
             provider = agent_config.get("provider")
@@ -157,7 +159,9 @@ class AgentManager:
             required_files = auth_req.get("requiredFiles", []) if isinstance(auth_req, dict) else []
 
             env_present = bool(required_env) and any(os.getenv(env) for env in required_env)
-            file_present = bool(required_files) and any(Path(f).expanduser().exists() for f in required_files)
+            file_present = bool(required_files) and any(
+                Path(f).expanduser().exists() for f in required_files
+            )
             if required_env and required_files:
                 auth_ok = env_present or file_present
             elif required_env:

@@ -166,7 +166,9 @@ class ConfigLoader:
             ]:
                 if key not in agent:
                     raise InitializationError(f"agent {agent_id} missing required key: {key}")
-            if not isinstance(agent.get("provider"), str) or not isinstance(agent.get("interface"), str):
+            if not isinstance(agent.get("provider"), str) or not isinstance(
+                agent.get("interface"), str
+            ):
                 raise InitializationError(f"agent {agent_id} provider/interface must be strings")
             if not isinstance(agent.get("defaultModel"), str):
                 raise InitializationError(f"agent {agent_id} defaultModel must be a string")
@@ -179,11 +181,17 @@ class ConfigLoader:
             if not isinstance(auth_req, dict):
                 raise InitializationError(f"agent {agent_id} authRequirements must be an object")
             if auth_req.get("type") not in {"cli", "api"}:
-                raise InitializationError(f"agent {agent_id} authRequirements.type must be 'cli' or 'api'")
+                raise InitializationError(
+                    f"agent {agent_id} authRequirements.type must be 'cli' or 'api'"
+                )
             if not isinstance(auth_req.get("requiredEnv"), list) or not auth_req.get("requiredEnv"):
-                raise InitializationError(f"agent {agent_id} authRequirements.requiredEnv must be a non-empty list")
+                raise InitializationError(
+                    f"agent {agent_id} authRequirements.requiredEnv must be a non-empty list"
+                )
             if not all(isinstance(v, str) for v in auth_req.get("requiredEnv", [])):
-                raise InitializationError(f"agent {agent_id} authRequirements.requiredEnv must be strings")
+                raise InitializationError(
+                    f"agent {agent_id} authRequirements.requiredEnv must be strings"
+                )
             if "requiredFiles" in auth_req:
                 if not isinstance(auth_req.get("requiredFiles"), list) or not all(
                     isinstance(v, str) for v in auth_req.get("requiredFiles", [])
@@ -196,15 +204,23 @@ class ConfigLoader:
                 raise InitializationError(f"agent {agent_id} runtimeState must be an object")
             for scope in ["worker", "backend"]:
                 if scope not in runtime_state:
-                    raise InitializationError(f"agent {agent_id} missing runtimeState for scope '{scope}'")
+                    raise InitializationError(
+                        f"agent {agent_id} missing runtimeState for scope '{scope}'"
+                    )
                 scope_state = runtime_state[scope]
                 if not isinstance(scope_state, dict):
-                    raise InitializationError(f"agent {agent_id} runtimeState.{scope} must be an object")
+                    raise InitializationError(
+                        f"agent {agent_id} runtimeState.{scope} must be an object"
+                    )
                 if not isinstance(scope_state.get("enabled"), bool):
-                    raise InitializationError(f"agent {agent_id} runtimeState.{scope}.enabled must be a boolean")
+                    raise InitializationError(
+                        f"agent {agent_id} runtimeState.{scope}.enabled must be a boolean"
+                    )
                 reason = scope_state.get("reason")
                 if reason is not None and not isinstance(reason, str):
-                    raise InitializationError(f"agent {agent_id} runtimeState.{scope}.reason must be string or null")
+                    raise InitializationError(
+                        f"agent {agent_id} runtimeState.{scope}.reason must be string or null"
+                    )
 
         # Validate taskFallbacks structure
         task_fallbacks = settings.get("taskFallbacks")

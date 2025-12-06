@@ -109,12 +109,16 @@ class TestConfigLoaderAISettings:
             },
             "modelRates": {"gpt-4o": 1.0},
             "documentGenerator": {
-                "selected": {"provider": "claude", "interface": "api", "model": "claude-sonnet-4-5-20250929"}
+                "selected": {
+                    "provider": "claude",
+                    "interface": "api",
+                    "model": "claude-sonnet-4-5-20250929",
+                }
             },
             "options": [
                 {
                     "value": "openai",
-                    "interfaces": [{ "value": "api", "models": ["gpt-4o"], "enabled": True }],
+                    "interfaces": [{"value": "api", "models": ["gpt-4o"], "enabled": True}],
                 }
             ],
         }

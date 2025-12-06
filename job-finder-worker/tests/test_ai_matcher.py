@@ -26,6 +26,7 @@ def mock_agent_manager():
     manager.generate = manager.execute  # alias for legacy tests
     return manager
 
+
 @pytest.fixture
 def mock_provider(mock_agent_manager):
     """Backward-compatible alias for agent manager-based provider."""
@@ -132,7 +133,9 @@ class TestAnalyzeMatch:
         with pytest.raises(AIProviderError, match="Codex CLI failed"):
             matcher._analyze_match(sample_job)
 
-    def test_analyze_match_extracts_from_markdown(self, mock_agent_manager, mock_profile, sample_job):
+    def test_analyze_match_extracts_from_markdown(
+        self, mock_agent_manager, mock_profile, sample_job
+    ):
         """Test JSON extraction from markdown code blocks."""
         mock_agent_manager.execute.return_value = Mock(
             text="""
@@ -161,7 +164,9 @@ class TestAnalyzeMatch:
 
         assert analysis is None
 
-    def test_analyze_match_validates_required_fields(self, mock_agent_manager, mock_profile, sample_job):
+    def test_analyze_match_validates_required_fields(
+        self, mock_agent_manager, mock_profile, sample_job
+    ):
         """Test validation of required fields in response."""
         mock_agent_manager.execute.return_value = Mock(
             text="""
@@ -222,7 +227,9 @@ class TestGenerateIntakeData:
         with pytest.raises(AIProviderError, match="Codex CLI timed out"):
             matcher._generate_intake_data(sample_job, match_analysis)
 
-    def test_generate_intake_data_optimizes_size(self, mock_agent_manager, mock_profile, sample_job):
+    def test_generate_intake_data_optimizes_size(
+        self, mock_agent_manager, mock_profile, sample_job
+    ):
         """Test intake data size optimization is called."""
         match_analysis = {"match_score": 85}
         mock_agent_manager.execute.return_value = Mock(
@@ -354,7 +361,9 @@ class TestAnalyzeJob:
             """
         )
 
-        matcher = AIJobMatcher(agent_manager=mock_provider, profile=mock_profile, min_match_score=80)
+        matcher = AIJobMatcher(
+            agent_manager=mock_provider, profile=mock_profile, min_match_score=80
+        )
 
         # Deterministic score is below threshold
         job_with_score = {**sample_job, "deterministic_score": 50}
@@ -409,7 +418,9 @@ class TestAnalyzeJobs:
             {"title": "Job 3", "company": "C", "url": "url3", "description": "desc"},
         ]
 
-        matcher = AIJobMatcher(agent_manager=mock_provider, profile=mock_profile, min_match_score=80)
+        matcher = AIJobMatcher(
+            agent_manager=mock_provider, profile=mock_profile, min_match_score=80
+        )
 
         # Mock analyze_job to return results for first two jobs only
         with patch.object(matcher, "analyze_job") as mock_analyze:
