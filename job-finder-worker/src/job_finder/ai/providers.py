@@ -390,19 +390,24 @@ _INTERFACE_FALLBACKS: Dict[str, str] = {
 def _check_cli_auth(provider: str) -> Tuple[bool, str]:
     """Check CLI auth for provider returning (available, reason)."""
     if provider == "codex":
-        ok = bool(os.getenv("OPENAI_API_KEY")) or Path.home().joinpath(".codex", "auth.json").exists()
+        ok = (
+            bool(os.getenv("OPENAI_API_KEY"))
+            or Path.home().joinpath(".codex", "auth.json").exists()
+        )
         return ok, "OPENAI_API_KEY or ~/.codex/auth.json"
 
     if provider == "gemini":
-        ok = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")) or Path.home().joinpath(
-            ".gemini", "settings.json"
-        ).exists()
+        ok = (
+            bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+            or Path.home().joinpath(".gemini", "settings.json").exists()
+        )
         return ok, "GEMINI_API_KEY/GOOGLE_API_KEY or ~/.gemini/settings.json"
 
     if provider == "claude":
-        ok = bool(os.getenv("CLAUDE_CODE_OAUTH_TOKEN")) or Path.home().joinpath(
-            ".anthropic", "credentials.json"
-        ).exists()
+        ok = (
+            bool(os.getenv("CLAUDE_CODE_OAUTH_TOKEN"))
+            or Path.home().joinpath(".anthropic", "credentials.json").exists()
+        )
         return ok, "CLAUDE_CODE_OAUTH_TOKEN or ~/.anthropic/credentials.json"
 
     return True, ""

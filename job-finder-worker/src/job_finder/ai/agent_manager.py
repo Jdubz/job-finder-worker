@@ -140,7 +140,9 @@ class AgentManager:
                 agent_config["enabled"] = False
                 agent_config["reason"] = auth_reason
                 try:
-                    self.config_loader.update_agent_status(agent_id, enabled=False, reason=auth_reason)
+                    self.config_loader.update_agent_status(
+                        agent_id, enabled=False, reason=auth_reason
+                    )
                 except Exception as exc:  # best-effort, don't crash caller
                     logger.warning(f"Failed to persist disable for {agent_id}: {exc}")
                 logger.info(f"Skipping agent {agent_id}: {auth_reason}")
