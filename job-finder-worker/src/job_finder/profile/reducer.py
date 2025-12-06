@@ -13,6 +13,7 @@ Rules (2025-12-05 clarifications):
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -107,7 +108,18 @@ def reduce_content_items(items: List[dict]) -> ScoringProfile:
         if not skills_raw:
             normalized_skills: Set[str] = set()
         elif isinstance(skills_raw, str):
-            skills_list = [s.strip() for s in skills_raw.split(",") if s.strip()]
+            # Try parsing as JSON array first (e.g., '["React","Node.js"]')
+            skills_list: List[str] = []
+            if skills_raw.startswith("["):
+                try:
+                    parsed = json.loads(skills_raw)
+                    if isinstance(parsed, list):
+                        skills_list = [str(s).strip() for s in parsed if s]
+                except json.JSONDecodeError:
+                    pass
+            # Fall back to comma-separated string
+            if not skills_list:
+                skills_list = [s.strip() for s in skills_raw.split(",") if s.strip()]
             normalized_skills = {_normalize_skill(s) for s in skills_list if s}
         elif isinstance(skills_raw, (list, tuple)):
             normalized_skills = {_normalize_skill(s) for s in skills_raw if s}
