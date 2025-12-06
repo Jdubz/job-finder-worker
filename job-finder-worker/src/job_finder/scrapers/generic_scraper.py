@@ -4,6 +4,7 @@ import logging
 import re
 import time
 from datetime import datetime, timezone
+from functools import lru_cache
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
@@ -60,12 +61,15 @@ class GenericScraper:
         """
         self.config = config
 
+    @lru_cache(maxsize=1)
     def _get_effective_url(self) -> str:
         """
         Get the effective URL with any server-side filters applied.
 
         If company_filter and company_filter_param are both set, appends the
         filter as a query parameter for server-side filtering.
+
+        Cached to avoid redundant computation during a single scrape operation.
 
         Returns:
             URL with filters applied
@@ -734,20 +738,15 @@ class GenericScraper:
         min_length_for_substring = 3
 
         if len(filter_norm) >= min_length_for_substring:
-            # Check if filter is a word boundary match in company name
-            # "Proxify" should match "Proxify AB" but not "NotProxify"
-            if filter_norm in company_norm:
-                # Verify it's at a word boundary (start of string or after space)
-                idx = company_norm.find(filter_norm)
-                if idx == 0 or (idx > 0 and company_norm[idx - 1] == " "):
-                    return True
+            # Check if filter is a whole word in company name
+            # e.g. "Proxify" should match "Proxify AB" but not "NotProxify" or "ProxifyAB"
+            if re.search(r"\b" + re.escape(filter_norm) + r"\b", company_norm):
+                return True
 
         if len(company_norm) >= min_length_for_substring:
-            # Check if company is contained in filter (handles normalization differences)
-            if company_norm in filter_norm:
-                idx = filter_norm.find(company_norm)
-                if idx == 0 or (idx > 0 and filter_norm[idx - 1] == " "):
-                    return True
+            # Check if company is a whole word in filter (handles normalization differences)
+            if re.search(r"\b" + re.escape(company_norm) + r"\b", filter_norm):
+                return True
 
         return False
 
