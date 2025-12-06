@@ -199,10 +199,8 @@ class PreFilter:
         # Some APIs (e.g., Greenhouse) have updated_at mapped to posted_date, which can be
         # misleading - first_published is the authoritative publication date.
         if self.max_age_days > 0:
-            first_published = job_data.get("first_published")
-            posted_date = job_data.get("posted_date")
             # Prefer first_published as it's the true publication date
-            date_to_check = first_published or posted_date
+            date_to_check = job_data.get("first_published") or job_data.get("posted_date")
             if date_to_check:
                 result, was_parseable = self._check_freshness(date_to_check)
                 if was_parseable:
@@ -638,6 +636,28 @@ class PreFilter:
 
         return False
 
+    def _get_valid_location_from_string(self, location_string: Optional[str]) -> Optional[str]:
+        """Validate and extract a location from a string.
+
+        Handles composite locations like "Remote, Poland" and filters out generic locations.
+
+        Returns:
+            A valid location string, or None if the input is empty, generic, or not a string.
+        """
+        if not isinstance(location_string, str) or not location_string.strip():
+            return None
+
+        # First check if it's a composite location like "Remote, Poland"
+        extracted = self._extract_location_from_composite(location_string)
+        if extracted:
+            return extracted
+
+        # Otherwise use as-is if not generic
+        if not self._is_generic_location(location_string):
+            return location_string.strip()
+
+        return None
+
     def _extract_job_location(self, job_data: Dict[str, Any]) -> Optional[str]:
         """Extract a location string from job data for timezone lookup.
 
@@ -667,28 +687,15 @@ class PreFilter:
             return str(city)
 
         # Try location string
-        location = job_data.get("location")
-        if isinstance(location, str) and location.strip():
-            # First check if it's a composite location like "Remote, Poland"
-            extracted = self._extract_location_from_composite(location)
-            if extracted:
-                return extracted
-            # Otherwise use as-is if not generic
-            if not self._is_generic_location(location):
-                return location.strip()
+        if valid_loc := self._get_valid_location_from_string(job_data.get("location")):
+            return valid_loc
 
         # Try metadata fields
         metadata = job_data.get("metadata", {})
         if isinstance(metadata, dict):
             for key in ("Location", "location", "Office Location", "Office", "headquarters"):
-                value = metadata.get(key)
-                if isinstance(value, str) and value.strip():
-                    # First check if it's a composite location
-                    extracted = self._extract_location_from_composite(value)
-                    if extracted:
-                        return extracted
-                    if not self._is_generic_location(value):
-                        return value.strip()
+                if valid_loc := self._get_valid_location_from_string(metadata.get(key)):
+                    return valid_loc
 
         # Try offices array
         offices = job_data.get("offices", [])
@@ -699,13 +706,8 @@ class PreFilter:
                     office_name = office.get("name", "") or office.get("location", "")
                 elif isinstance(office, str):
                     office_name = office
-                if isinstance(office_name, str) and office_name.strip():
-                    # First check if it's a composite location
-                    extracted = self._extract_location_from_composite(office_name)
-                    if extracted:
-                        return extracted
-                    if not self._is_generic_location(office_name):
-                        return office_name.strip()
+                if valid_loc := self._get_valid_location_from_string(office_name):
+                    return valid_loc
 
         return None
 
