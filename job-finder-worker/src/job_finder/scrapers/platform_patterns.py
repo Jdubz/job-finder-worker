@@ -381,6 +381,69 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         validation_key="",
         follow_detail=True,
     ),
+    PlatformPattern(
+        name="breezy_api",
+        # Match company.breezy.hr career pages
+        # API endpoint: {company}.breezy.hr/json
+        url_pattern=r"https?://(?P<company>[^.]+)\.breezy\.hr",
+        api_url_template="https://{company}.breezy.hr/json",
+        response_path="",  # Returns array directly
+        fields={
+            "title": "name",
+            "location": "location.name",
+            "url": "url",
+            "posted_date": "published_date",
+            "department": "department",
+            "job_type": "type.name",
+        },
+        validation_key="",  # Array response
+    ),
+    PlatformPattern(
+        name="workable_api",
+        # Match apply.workable.com/company career pages
+        # API endpoint: apply.workable.com/api/v1/widget/accounts/{company}
+        url_pattern=r"apply\.workable\.com/(?:api/v1/widget/accounts/)?(?P<company>[^/?#]+)",
+        api_url_template="https://apply.workable.com/api/v1/widget/accounts/{company}",
+        response_path="jobs",
+        fields={
+            "title": "title",
+            "location": "location",
+            "url": "url",
+            "department": "department",
+        },
+        validation_key="jobs",
+    ),
+    PlatformPattern(
+        name="recruitee_api",
+        # Match company.recruitee.com career pages
+        # API endpoint: {company}.recruitee.com/api/offers
+        url_pattern=r"https?://(?P<company>[^.]+)\.recruitee\.com",
+        api_url_template="https://{company}.recruitee.com/api/offers",
+        response_path="offers",
+        fields={
+            "title": "title",
+            "location": "location",
+            "description": "description",
+            "url": "careers_url",
+            "posted_date": "published_at",
+            "department": "department",
+        },
+        validation_key="offers",
+    ),
+    PlatformPattern(
+        name="jazzhr_stub",
+        # Match JazzHR/ApplyToJob career pages (requires API key)
+        # These return HTML pages that require JS rendering
+        url_pattern=r"https?://(?P<company>[^.]+)\.applytojob\.com",
+        api_url_template="https://{company}.applytojob.com/apply/",
+        response_path="",
+        fields={
+            "title": "title",
+            "url": "url",
+        },
+        validation_key="",
+        auth_required=True,  # JazzHR API requires authentication
+    ),
 ]
 
 

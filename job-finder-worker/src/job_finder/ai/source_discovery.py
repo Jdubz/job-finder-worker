@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any, Dict, Optional, Tuple, List, TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -31,6 +32,241 @@ _DNS_ERROR_TOKENS = {
     "failed to resolve",
     "dns",
 }
+
+# Patterns for detecting single job listing URLs on aggregators (invalid as sources)
+# These URLs point to individual jobs, not company job boards
+_SINGLE_JOB_PATTERNS = [
+    # RemoteOK: /remote-jobs/remote-{title}-{company}-{id}
+    re.compile(r"remoteok\.(?:io|com)/remote-jobs/[^/]+-\d+$"),
+    # WeWorkRemotely: /remote-jobs/{category}/{id}
+    re.compile(r"weworkremotely\.com/remote-jobs/[^/]+/\d+"),
+    # Jobicy: /job/{id}
+    re.compile(r"jobicy\.com/job/\d+"),
+    # Remotive: /remote-jobs/detail/{id}
+    re.compile(r"remotive\.(?:com|io)/remote-jobs/detail/\d+"),
+]
+
+# ATS provider domains - URLs pointing to these are likely wrong (pointing to
+# the ATS provider's own careers page, not a customer's job board)
+_ATS_PROVIDER_DOMAINS = {
+    "greenhouse.com",
+    "www.greenhouse.com",
+    "lever.co",
+    "www.lever.co",
+    "ashbyhq.com",
+    "www.ashbyhq.com",
+    "smartrecruiters.com",
+    "www.smartrecruiters.com",
+    "workable.com",
+    "www.workable.com",
+    "breezy.hr",
+    "www.breezy.hr",
+    "recruitee.com",
+    "www.recruitee.com",
+    "applytojob.com",
+    "www.applytojob.com",
+}
+
+
+def is_single_job_listing_url(url: str) -> bool:
+    """
+    Check if URL points to a single job listing on an aggregator.
+
+    These URLs are invalid as sources because they point to individual jobs,
+    not company job boards or aggregator APIs.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        True if URL is a single job listing
+    """
+    for pattern in _SINGLE_JOB_PATTERNS:
+        if pattern.search(url):
+            return True
+    return False
+
+
+def is_ats_provider_url(url: str) -> bool:
+    """
+    Check if URL points to an ATS provider's own website (not a customer board).
+
+    URLs like greenhouse.com/careers or lever.co/jobs are the ATS provider's
+    own careers page, not a customer's job board.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        True if URL is an ATS provider's own site
+    """
+    try:
+        parsed = urlparse(url)
+        host = parsed.netloc.lower()
+        # Check if host is an ATS provider domain (without subdomain prefix)
+        return host in _ATS_PROVIDER_DOMAINS
+    except Exception:
+        return False
+
+
+# ATS probe endpoints - ordered by popularity/likelihood
+# Each tuple: (name, url_template, response_path, validation_key, fields)
+_ATS_PROBE_ENDPOINTS = [
+    (
+        "greenhouse",
+        "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
+        "jobs",
+        "jobs",
+        {
+            "title": "title",
+            "location": "location.name",
+            "description": "content",
+            "url": "absolute_url",
+            "posted_date": "updated_at",
+        },
+    ),
+    (
+        "lever",
+        "https://api.lever.co/v0/postings/{slug}?mode=json",
+        "",
+        "",  # Array response
+        {
+            "title": "text",
+            "location": "categories.location",
+            "description": "descriptionPlain",
+            "url": "hostedUrl",
+            "posted_date": "createdAt",
+        },
+    ),
+    (
+        "ashby",
+        "https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true",
+        "jobs",
+        "jobs",
+        {
+            "title": "title",
+            "location": "location",
+            "description": "descriptionHtml",
+            "url": "jobUrl",
+            "posted_date": "publishedAt",
+        },
+    ),
+    (
+        "smartrecruiters",
+        "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=200",
+        "content",
+        "content",
+        {
+            "title": "name",
+            "location": "location.fullLocation",
+            "url": "ref",
+            "posted_date": "releasedDate",
+        },
+    ),
+    (
+        "workable",
+        "https://apply.workable.com/api/v1/widget/accounts/{slug}",
+        "jobs",
+        "jobs",
+        {
+            "title": "title",
+            "location": "location",
+            "url": "url",
+        },
+    ),
+    (
+        "breezy",
+        "https://{slug}.breezy.hr/json",
+        "",
+        "",  # Array response
+        {
+            "title": "name",
+            "location": "location.name",
+            "url": "url",
+            "posted_date": "published_date",
+        },
+    ),
+    (
+        "recruitee",
+        "https://{slug}.recruitee.com/api/offers",
+        "offers",
+        "offers",
+        {
+            "title": "title",
+            "location": "location",
+            "url": "careers_url",
+            "posted_date": "published_at",
+        },
+    ),
+]
+
+
+def probe_company_ats(company_slug: str) -> Optional[Dict[str, Any]]:
+    """
+    Probe multiple ATS endpoints to find a company's job board.
+
+    This is useful when we have a company name but don't know which ATS they use.
+    Tries common ATSes in order of popularity.
+
+    Args:
+        company_slug: Company identifier (lowercase, hyphenated)
+
+    Returns:
+        Config dict if found, None otherwise
+    """
+    # Normalize slug: lowercase, replace spaces with hyphens
+    slug = company_slug.lower().replace(" ", "-").replace("_", "-")
+    # Also try without hyphens for some ATSes
+    slug_compact = slug.replace("-", "")
+
+    for name, url_template, response_path, validation_key, fields in _ATS_PROBE_ENDPOINTS:
+        for try_slug in [slug, slug_compact]:
+            try:
+                url = url_template.format(slug=try_slug)
+                resp = requests.get(
+                    url,
+                    headers={"Accept": "application/json"},
+                    timeout=8,
+                )
+
+                if resp.status_code != 200:
+                    continue
+
+                data = resp.json()
+
+                # Validate response structure
+                if validation_key:
+                    if validation_key not in data:
+                        continue
+                    jobs = data[validation_key]
+                else:
+                    # Array response
+                    if not isinstance(data, list):
+                        continue
+                    jobs = data
+
+                # Check we got actual jobs (or allow empty for some)
+                if not isinstance(jobs, list):
+                    continue
+
+                logger.info(
+                    f"Found {len(jobs)} jobs for '{company_slug}' on {name} (slug: {try_slug})"
+                )
+
+                config = {
+                    "type": "api",
+                    "url": url,
+                    "fields": fields.copy(),
+                }
+                if response_path:
+                    config["response_path"] = response_path
+
+                return config
+
+            except (requests.RequestException, json.JSONDecodeError, KeyError):
+                continue
+
+    return None
 
 
 class SourceDiscovery:
@@ -67,7 +303,24 @@ class SourceDiscovery:
             Tuple of (SourceConfig dict or None, metadata dict)
         """
         try:
-            # Step 0: Try pattern-based detection FIRST (no fetch required)
+            # Step 0a: Reject invalid URL patterns early
+            if is_single_job_listing_url(url):
+                logger.warning(f"URL is a single job listing, not a job board: {url}")
+                return None, {
+                    "success": False,
+                    "error": "single_job_listing",
+                    "message": "URL points to a single job listing, not a company job board",
+                }
+
+            if is_ats_provider_url(url):
+                logger.warning(f"URL is an ATS provider's own site, not a customer board: {url}")
+                return None, {
+                    "success": False,
+                    "error": "ats_provider_url",
+                    "message": "URL points to an ATS provider's own site, not a customer job board",
+                }
+
+            # Step 0b: Try pattern-based detection FIRST (no fetch required)
             # This handles JS-rendered pages where fetch returns unusable HTML
             pattern_config = self._try_pattern_detection(url)
             if pattern_config:
