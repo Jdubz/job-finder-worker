@@ -44,6 +44,7 @@ def _get_provider_class(provider: str, interface: str):
     """Get the provider class for a provider/interface combination."""
     from job_finder.ai.providers import (
         ClaudeProvider,
+        ClaudeCLIProvider,
         CodexCLIProvider,
         GeminiCLIProvider,
         GeminiProvider,
@@ -53,6 +54,7 @@ def _get_provider_class(provider: str, interface: str):
     provider_map = {
         ("codex", "cli"): CodexCLIProvider,
         ("claude", "api"): ClaudeProvider,
+        ("claude", "cli"): ClaudeCLIProvider,
         ("openai", "api"): OpenAIProvider,
         ("gemini", "api"): GeminiProvider,
         ("gemini", "cli"): GeminiCLIProvider,

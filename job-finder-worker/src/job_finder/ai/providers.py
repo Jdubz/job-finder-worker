@@ -364,9 +364,72 @@ class CodexCLIProvider(AIProvider):
             raise AIProviderError(f"Codex CLI timed out after {self.timeout}s") from exc
 
 
+class ClaudeCLIProvider(AIProvider):
+    """Claude Code CLI provider (CLI interface)."""
+
+    def __init__(self, model: Optional[str] = None, timeout: int = 120):
+        self.model = model or "claude-3-5-sonnet-20241022"
+        self.timeout = timeout
+
+    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+        cmd = [
+            "claude",
+            "--print",
+            "--output-format",
+            "json",
+            "--model",
+            self.model,
+            "--prompt",
+            prompt,
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AIProviderError(f"Claude CLI timed out after {self.timeout}s") from exc
+        except FileNotFoundError as exc:
+            raise AIProviderError("Claude CLI binary not found on PATH") from exc
+
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+
+        if result.returncode != 0:
+            err_msg = stderr or stdout or f"Claude CLI exited with code {result.returncode}"
+            raise AIProviderError(err_msg)
+
+        if not stdout:
+            raise AIProviderError("Claude CLI returned no output")
+
+        # Parse JSON output when available
+        try:
+            parsed = json.loads(stdout)
+            if isinstance(parsed, dict):
+                if isinstance(parsed.get("text"), str):
+                    return parsed["text"].strip()
+                if isinstance(parsed.get("completion"), str):
+                    return parsed["completion"].strip()
+                output = parsed.get("output")
+                if isinstance(output, dict) and isinstance(output.get("text"), str):
+                    return output["text"].strip()
+            if isinstance(parsed, list):
+                text_parts = [str(p) for p in parsed if isinstance(p, (str, int, float))]
+                if text_parts:
+                    return "\n".join(text_parts).strip()
+        except json.JSONDecodeError:
+            return stdout
+
+        return stdout
+
+
 # Provider dispatch map: (provider, interface) -> provider class
 _PROVIDER_MAP: Dict[tuple, type] = {
     ("codex", "cli"): CodexCLIProvider,
+    ("claude", "cli"): ClaudeCLIProvider,
     ("claude", "api"): ClaudeProvider,
     ("openai", "api"): OpenAIProvider,
     ("gemini", "api"): GeminiProvider,
