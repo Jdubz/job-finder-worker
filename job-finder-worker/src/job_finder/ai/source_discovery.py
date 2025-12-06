@@ -2,7 +2,8 @@
 
 import json
 import logging
-from typing import Any, Dict, Optional, Tuple, List, TYPE_CHECKING
+import re
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from urllib.parse import urlparse
 
 import feedparser
@@ -31,6 +32,217 @@ _DNS_ERROR_TOKENS = {
     "failed to resolve",
     "dns",
 }
+
+# Patterns for detecting single job listing URLs on aggregators (invalid as sources)
+# These URLs point to individual jobs, not company job boards
+_SINGLE_JOB_PATTERNS = [
+    # RemoteOK: /remote-jobs/remote-{title}-{company}-{id}
+    re.compile(r"remoteok\.(?:io|com)/remote-jobs/[^/]+-\d+$"),
+    # WeWorkRemotely: /remote-jobs/{category}/{id}
+    re.compile(r"weworkremotely\.com/remote-jobs/[^/]+/\d+"),
+    # Jobicy: /job/{id}
+    re.compile(r"jobicy\.com/job/\d+"),
+    # Remotive: /remote-jobs/detail/{id}
+    re.compile(r"remotive\.(?:com|io)/remote-jobs/detail/\d+"),
+]
+
+# ATS provider domains - URLs pointing to these are likely wrong (pointing to
+# the ATS provider's own careers page, not a customer's job board)
+_ATS_PROVIDER_DOMAINS = {
+    "greenhouse.com",
+    "www.greenhouse.com",
+    "lever.co",
+    "www.lever.co",
+    "ashbyhq.com",
+    "www.ashbyhq.com",
+    "smartrecruiters.com",
+    "www.smartrecruiters.com",
+    "workable.com",
+    "www.workable.com",
+    "breezy.hr",
+    "www.breezy.hr",
+    "recruitee.com",
+    "www.recruitee.com",
+    "applytojob.com",
+    "www.applytojob.com",
+}
+
+
+def is_single_job_listing_url(url: str) -> bool:
+    """
+    Check if URL points to a single job listing on an aggregator.
+
+    These URLs are invalid as sources because they point to individual jobs,
+    not company job boards or aggregator APIs.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        True if URL is a single job listing
+    """
+    return any(pattern.search(url) for pattern in _SINGLE_JOB_PATTERNS)
+
+
+def is_ats_provider_url(url: str) -> bool:
+    """
+    Check if URL points to an ATS provider's own website (not a customer board).
+
+    URLs like greenhouse.com/careers or lever.co/jobs are the ATS provider's
+    own careers page, not a customer's job board.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        True if URL is an ATS provider's own site
+    """
+    try:
+        parsed = urlparse(url)
+        host = parsed.netloc.lower()
+        # Check if host is an ATS provider domain (without subdomain prefix)
+        return host in _ATS_PROVIDER_DOMAINS
+    except (AttributeError, TypeError):
+        return False
+
+
+# Build ATS probe endpoints dynamically from PLATFORM_PATTERNS to avoid duplication.
+# Maps pattern names to their probe order (lower = tried first, by popularity).
+_ATS_PROBE_ORDER = {
+    "greenhouse_api": 1,
+    "lever": 2,
+    "ashby_api": 3,
+    "smartrecruiters_api": 4,
+    "workable_api": 5,
+    "breezy_api": 6,
+    "recruitee_api": 7,
+}
+
+
+def _build_ats_probe_endpoints() -> List[Tuple[str, str, str, str, Dict[str, str]]]:
+    """
+    Build ATS probe endpoints from PLATFORM_PATTERNS.
+
+    This ensures field mappings are consistent between pattern detection
+    and company ATS probing, avoiding duplication.
+    """
+    endpoints = []
+    for pattern in PLATFORM_PATTERNS:
+        if pattern.name not in _ATS_PROBE_ORDER:
+            continue
+        if pattern.auth_required:
+            continue  # Skip patterns that require auth (e.g., jazzhr)
+
+        # Convert pattern's url_template placeholders to use {slug}
+        # Patterns use various names: {board_token}, {company}, {board_name}, etc.
+        url_template = pattern.api_url_template
+        for placeholder in ["board_token", "company", "board_name"]:
+            url_template = url_template.replace(f"{{{placeholder}}}", "{slug}")
+
+        endpoints.append(
+            (
+                pattern.name.replace("_api", "").replace("_html", ""),
+                url_template,
+                pattern.response_path,
+                pattern.validation_key,
+                pattern.fields.copy(),
+            )
+        )
+
+    # Sort by probe order
+    endpoints.sort(key=lambda x: _ATS_PROBE_ORDER.get(x[0], 999))
+    return endpoints
+
+
+_ATS_PROBE_ENDPOINTS = _build_ats_probe_endpoints()
+
+
+def _probe_single_ats_endpoint(
+    ats_config: Tuple[str, str, str, str, Dict[str, str]],
+    slug_to_try: str,
+    company_slug: str,
+) -> Optional[Dict[str, Any]]:
+    """
+    Probe a single ATS endpoint for a company.
+
+    Args:
+        ats_config: Tuple of (name, url_template, response_path, validation_key, fields)
+        slug_to_try: The company slug variant to try
+        company_slug: Original company slug (for logging)
+
+    Returns:
+        Config dict if found, None otherwise
+    """
+    name, url_template, response_path, validation_key, fields = ats_config
+    try:
+        url = url_template.format(slug=slug_to_try)
+        resp = requests.get(
+            url,
+            headers={"Accept": "application/json"},
+            timeout=8,
+        )
+
+        if resp.status_code != 200:
+            return None
+
+        data = resp.json()
+
+        # Validate response structure
+        if validation_key:
+            if validation_key not in data:
+                return None
+            jobs = data[validation_key]
+        else:
+            # Array response
+            if not isinstance(data, list):
+                return None
+            jobs = data
+
+        # Check we got actual jobs (or allow empty for some)
+        if not isinstance(jobs, list):
+            return None
+
+        logger.info(f"Found {len(jobs)} jobs for '{company_slug}' on {name} (slug: {slug_to_try})")
+
+        config: Dict[str, Any] = {
+            "type": "api",
+            "url": url,
+            "fields": fields.copy(),
+        }
+        if response_path:
+            config["response_path"] = response_path
+
+        return config
+
+    except (requests.RequestException, json.JSONDecodeError, KeyError):
+        return None
+
+
+def probe_company_ats(company_slug: str) -> Optional[Dict[str, Any]]:
+    """
+    Probe multiple ATS endpoints to find a company's job board.
+
+    This is useful when we have a company name but don't know which ATS they use.
+    Tries common ATSes in order of popularity.
+
+    Args:
+        company_slug: Company identifier (lowercase, hyphenated)
+
+    Returns:
+        Config dict if found, None otherwise
+    """
+    # Normalize slug: lowercase, replace spaces with hyphens
+    slug = company_slug.lower().replace(" ", "-").replace("_", "-")
+    # Also try without hyphens for some ATSes
+    slug_compact = slug.replace("-", "")
+
+    for ats_config in _ATS_PROBE_ENDPOINTS:
+        for try_slug in [slug, slug_compact]:
+            config = _probe_single_ats_endpoint(ats_config, try_slug, company_slug)
+            if config:
+                return config
+
+    return None
 
 
 class SourceDiscovery:
@@ -67,7 +279,24 @@ class SourceDiscovery:
             Tuple of (SourceConfig dict or None, metadata dict)
         """
         try:
-            # Step 0: Try pattern-based detection FIRST (no fetch required)
+            # Step 0a: Reject invalid URL patterns early
+            if is_single_job_listing_url(url):
+                logger.warning(f"URL is a single job listing, not a job board: {url}")
+                return None, {
+                    "success": False,
+                    "error": "single_job_listing",
+                    "message": "URL points to a single job listing, not a company job board",
+                }
+
+            if is_ats_provider_url(url):
+                logger.warning(f"URL is an ATS provider's own site, not a customer board: {url}")
+                return None, {
+                    "success": False,
+                    "error": "ats_provider_url",
+                    "message": "URL points to an ATS provider's own site, not a customer job board",
+                }
+
+            # Step 0b: Try pattern-based detection FIRST (no fetch required)
             # This handles JS-rendered pages where fetch returns unusable HTML
             pattern_config = self._try_pattern_detection(url)
             if pattern_config:
