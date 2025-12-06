@@ -241,6 +241,21 @@ class PreFilter:
             # in_user_city is True or None (missing data) - allow
         else:
             checks_skipped.append("workArrangement")
+            # For unknown arrangements: apply timezone check if remote is allowed
+            # (unknown could be remote, so we apply the guard as a safeguard)
+            if (
+                self.allow_remote
+                and self.max_timezone_diff_hours is not None
+                and self.user_location
+            ):
+                result = self._check_timezone(job_data)
+                if not result.passed:
+                    return PreFilterResult(
+                        passed=False,
+                        reason=result.reason,
+                        checks_performed=checks_performed,
+                        checks_skipped=checks_skipped,
+                    )
 
         # 4. Employment type check (if employment_type or job_type available)
         employment_type = self._normalize_employment_type(job_data)
@@ -441,26 +456,75 @@ class PreFilter:
 
         # Optional timezone check for remote/hybrid roles using city-based comparison
         if (
-            self.max_timezone_diff_hours is not None
+            arrangement in ("remote", "hybrid")
+            and self.max_timezone_diff_hours is not None
             and self.user_location
-            and arrangement in ("remote", "hybrid")
         ):
-            job_location = self._extract_job_location(job_data)
-            if job_location:
-                tz_diff = get_timezone_diff_hours(self.user_location, job_location)
-                if tz_diff is not None and tz_diff > self.max_timezone_diff_hours:
-                    return PreFilterResult(
-                        passed=False,
-                        reason=f"Timezone diff {tz_diff:.1f}h > {self.max_timezone_diff_hours}h ({self.user_location} vs {job_location})",
-                    )
+            result = self._check_timezone(job_data)
+            if not result.passed:
+                return result
 
         return PreFilterResult(passed=True)
+
+    def _check_timezone(self, job_data: Dict[str, Any]) -> PreFilterResult:
+        """Check if job's timezone is within acceptable range of user's location.
+
+        Uses city-based geocoding to determine timezone difference. If timezone
+        lookup fails for either location, the check passes permissively.
+        """
+        job_location = self._extract_job_location(job_data)
+        if not job_location:
+            return PreFilterResult(passed=True)
+
+        tz_diff = get_timezone_diff_hours(self.user_location, job_location)
+        if tz_diff is not None and tz_diff > self.max_timezone_diff_hours:
+            return PreFilterResult(
+                passed=False,
+                reason=f"Timezone diff {tz_diff:.1f}h > {self.max_timezone_diff_hours}h ({self.user_location} vs {job_location})",
+            )
+
+        return PreFilterResult(passed=True)
+
+    # Generic location terms to skip when extracting job locations for timezone lookup
+    _GENERIC_LOCATIONS = frozenset(
+        {
+            "remote",
+            "worldwide",
+            "anywhere",
+            "global",
+            "work from home",
+            "wfh",
+            "fully remote",
+            "100% remote",
+            "distributed",
+            "virtual",
+        }
+    )
+
+    def _is_generic_location(self, location: str) -> bool:
+        """Check if a location string is generic (remote, worldwide, etc.)."""
+        loc_lower = location.lower().strip()
+        # Check exact match first
+        if loc_lower in self._GENERIC_LOCATIONS:
+            return True
+        # Check if "remote" appears as a substring (catches "Remote - US", "US Remote", etc.)
+        if "remote" in loc_lower:
+            return True
+        return False
 
     def _extract_job_location(self, job_data: Dict[str, Any]) -> Optional[str]:
         """Extract a location string from job data for timezone lookup.
 
-        Returns the first viable location string found, prioritizing structured fields.
-        Returns None if no location data is available.
+        Iterates through multiple data sources (city/country, location string, metadata,
+        offices) and returns the first viable location string found. Short-circuits on
+        first match for performance.
+
+        Note: Single city names without state/country (e.g., "Portland") may be ambiguous
+        and could geocode to unexpected locations. Structured fields (city + state/country)
+        are prioritized for accuracy.
+
+        Returns:
+            Location string suitable for geocoding, or None if no location data available.
         """
         # Try city + country first (most useful for timezone lookup)
         city = job_data.get("city")
@@ -471,14 +535,13 @@ class PreFilter:
             state = job_data.get("state") or job_data.get("state_code")
             if state:
                 return f"{city}, {state}"
+            # Bare city name - may be ambiguous but still useful
             return str(city)
 
         # Try location string
         location = job_data.get("location")
         if isinstance(location, str) and location.strip():
-            # Skip generic "Remote" locations
-            loc_lower = location.lower()
-            if loc_lower not in ("remote", "worldwide", "anywhere", "global"):
+            if not self._is_generic_location(location):
                 return location.strip()
 
         # Try metadata fields
@@ -487,8 +550,7 @@ class PreFilter:
             for key in ("Location", "location", "Office Location", "Office", "headquarters"):
                 value = metadata.get(key)
                 if isinstance(value, str) and value.strip():
-                    val_lower = value.lower()
-                    if val_lower not in ("remote", "worldwide", "anywhere", "global"):
+                    if not self._is_generic_location(value):
                         return value.strip()
 
         # Try offices array
@@ -501,8 +563,7 @@ class PreFilter:
                 elif isinstance(office, str):
                     office_name = office
                 if isinstance(office_name, str) and office_name.strip():
-                    name_lower = office_name.lower()
-                    if name_lower not in ("remote", "worldwide", "anywhere", "global"):
+                    if not self._is_generic_location(office_name):
                         return office_name.strip()
 
         return None

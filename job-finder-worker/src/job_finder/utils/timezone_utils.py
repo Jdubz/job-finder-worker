@@ -2,14 +2,35 @@
 
 Uses geopy for geocoding (city -> lat/lng) and timezonefinder for timezone lookup.
 Results are cached to minimize API calls to the geocoding service.
+
+IMPORTANT NOTES:
+
+Rate Limiting:
+    Uses OpenStreetMap's Nominatim service which has a usage policy of max 1 request/second.
+    The LRU cache (maxsize=500) helps reduce requests, but under high load with many unique
+    cities, rate limits may be hit. Consider adding explicit rate limiting if processing
+    large batches of jobs with diverse locations.
+
+DST Cache Behavior:
+    The LRU cache does not have a TTL, so cached timezone offsets may become stale across
+    DST transitions (e.g., a city cached in March with PST offset will still return PST in
+    November when PDT is active). The impact is minimal (max 1 hour difference) and only
+    affects cached entries during transition periods. Call clear_cache() if exact offsets
+    are required after DST changes.
+
+Ambiguous City Names:
+    Single city names without state/country (e.g., "Portland") may geocode to unexpected
+    locations. Portland exists in Oregon, Maine, and other places worldwide. For accurate
+    results, provide disambiguating information (e.g., "Portland, OR" or "Portland, Oregon").
 """
 
 import logging
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Optional
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
@@ -17,24 +38,30 @@ from timezonefinder import TimezoneFinder
 
 logger = logging.getLogger(__name__)
 
-# Singleton instances (created lazily)
+# Singleton instances (created lazily with thread-safe initialization)
 _geolocator: Optional[Nominatim] = None
 _timezone_finder: Optional[TimezoneFinder] = None
+_geolocator_lock = threading.Lock()
+_timezone_finder_lock = threading.Lock()
 
 
 def _get_geolocator() -> Nominatim:
-    """Get or create the geocoder instance."""
+    """Get or create the geocoder instance in a thread-safe way."""
     global _geolocator
     if _geolocator is None:
-        _geolocator = Nominatim(user_agent="job-finder-worker", timeout=5)
+        with _geolocator_lock:
+            if _geolocator is None:  # Double-checked locking
+                _geolocator = Nominatim(user_agent="job-finder-worker", timeout=5)
     return _geolocator
 
 
 def _get_timezone_finder() -> TimezoneFinder:
-    """Get or create the timezone finder instance."""
+    """Get or create the timezone finder instance in a thread-safe way."""
     global _timezone_finder
     if _timezone_finder is None:
-        _timezone_finder = TimezoneFinder()
+        with _timezone_finder_lock:
+            if _timezone_finder is None:  # Double-checked locking
+                _timezone_finder = TimezoneFinder()
     return _timezone_finder
 
 
@@ -94,7 +121,17 @@ def get_timezone_for_city(city: str) -> TimezoneResult:
             )
 
         # Get current UTC offset for this timezone
-        tz = ZoneInfo(tz_name)
+        try:
+            tz = ZoneInfo(tz_name)
+        except ZoneInfoNotFoundError:
+            logger.warning(f"Timezone '{tz_name}' not found in system database for city: {city}")
+            return TimezoneResult(
+                city=city,
+                timezone_name=tz_name,
+                utc_offset_hours=None,
+                error=f"Timezone {tz_name} not found in system database",
+            )
+
         now = datetime.now(timezone.utc)
         offset = now.astimezone(tz).utcoffset()
 

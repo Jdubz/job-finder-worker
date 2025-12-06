@@ -44,6 +44,7 @@ export function up(db: Database.Database): void {
   }
 
   // Remove the technology field
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { technology: _removed, ...rest } = parsed
 
   db.prepare(

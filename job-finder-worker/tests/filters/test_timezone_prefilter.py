@@ -64,12 +64,22 @@ class TestTimezonePrefilterRegression:
 
     def test_timezone_guard_only_applies_to_remote_hybrid(self, base_config, mocker):
         """Timezone guard should only apply to remote and hybrid jobs."""
-        mocker.patch(
+        mock_tz_diff = mocker.patch(
             "job_finder.filters.prefilter.get_timezone_diff_hours",
             return_value=13.5,  # Would fail if applied
         )
 
-        pf = PreFilter(base_config)
+        # Configure to require onsite jobs in user location (to isolate timezone check)
+        config = {
+            **base_config,
+            "workArrangement": {
+                **base_config["workArrangement"],
+                "allowOnsite": True,
+                "willRelocate": True,  # Allow any location so we can test timezone logic
+            },
+        }
+
+        pf = PreFilter(config)
 
         # Onsite job should not trigger timezone check
         job = {"title": "Engineer", "city": "Hyderabad", "country": "India", "is_remote": False}
@@ -78,12 +88,11 @@ class TestTimezonePrefilterRegression:
         result = pf.filter(job, is_remote_source=False)
 
         # Should not have called timezone diff for onsite job
-        # (onsite would fail the location check instead, but that's separate)
-        # This test verifies the logic path, not full behavior
-        assert (
-            "workArrangement" in result.checks_performed
-            or "workArrangement" in result.checks_skipped
-        )
+        mock_tz_diff.assert_not_called()
+
+        # The job might fail for other reasons, but the key is that
+        # the timezone logic was not invoked
+        assert "Timezone diff" not in (result.reason or "")
 
     def test_missing_job_location_passes_permissively(self, base_config, mocker):
         """Jobs without location data should pass (missing data = pass principle)."""
@@ -203,5 +212,120 @@ class TestTimezonePrefilterRegression:
         result = pf.filter(job, is_remote_source=True)
 
         # 4.1 > 4, should fail
+        assert result.passed is False
+        assert "Timezone diff" in result.reason
+
+    def test_location_extraction_from_metadata(self, base_config, mocker):
+        """Verify location can be extracted from metadata fields."""
+        mock_tz_diff = mocker.patch(
+            "job_finder.filters.prefilter.get_timezone_diff_hours",
+            return_value=1.0,
+        )
+
+        pf = PreFilter(base_config)
+
+        # Test metadata "Location" field
+        job = {"title": "Engineer", "metadata": {"Location": "Sydney, Australia"}}
+        pf.filter(job, is_remote_source=True)
+        assert mock_tz_diff.call_args[0][1] == "Sydney, Australia"
+
+        mock_tz_diff.reset_mock()
+
+        # Test metadata "Office Location" field
+        job2 = {"title": "Engineer", "metadata": {"Office Location": "Munich, Germany"}}
+        pf.filter(job2, is_remote_source=True)
+        assert mock_tz_diff.call_args[0][1] == "Munich, Germany"
+
+        mock_tz_diff.reset_mock()
+
+        # Test metadata "headquarters" field
+        job3 = {"title": "Engineer", "metadata": {"headquarters": "Tokyo, Japan"}}
+        pf.filter(job3, is_remote_source=True)
+        assert mock_tz_diff.call_args[0][1] == "Tokyo, Japan"
+
+    def test_location_extraction_from_offices_array(self, base_config, mocker):
+        """Verify location can be extracted from offices array."""
+        mock_tz_diff = mocker.patch(
+            "job_finder.filters.prefilter.get_timezone_diff_hours",
+            return_value=1.0,
+        )
+
+        pf = PreFilter(base_config)
+
+        # Test offices as list of dicts with "name"
+        job1 = {"title": "Engineer", "offices": [{"name": "Paris, France"}]}
+        pf.filter(job1, is_remote_source=True)
+        assert mock_tz_diff.call_args[0][1] == "Paris, France"
+
+        mock_tz_diff.reset_mock()
+
+        # Test offices as list of dicts with "location"
+        job2 = {"title": "Engineer", "offices": [{"location": "Singapore"}]}
+        pf.filter(job2, is_remote_source=True)
+        assert mock_tz_diff.call_args[0][1] == "Singapore"
+
+        mock_tz_diff.reset_mock()
+
+        # Test offices as list of strings
+        job3 = {"title": "Engineer", "offices": ["Amsterdam, Netherlands"]}
+        pf.filter(job3, is_remote_source=True)
+        assert mock_tz_diff.call_args[0][1] == "Amsterdam, Netherlands"
+
+    def test_generic_location_variations_ignored(self, base_config, mocker):
+        """Extended generic location variations should be ignored."""
+        mock_tz_diff = mocker.patch("job_finder.filters.prefilter.get_timezone_diff_hours")
+
+        pf = PreFilter(base_config)
+
+        # Test various generic location patterns
+        generic_locations = [
+            "Work from home",
+            "WFH",
+            "Fully Remote",
+            "100% Remote",
+            "Distributed",
+            "Virtual",
+            "Remote - US",  # Contains "remote" as substring
+            "US Remote",
+        ]
+        for loc in generic_locations:
+            mock_tz_diff.reset_mock()
+            job = {"title": "Engineer", "location": loc}
+            result = pf.filter(job, is_remote_source=True)
+            mock_tz_diff.assert_not_called()
+            assert result.passed is True, f"Expected pass for location: {loc}"
+
+    def test_ambiguous_city_name_without_state(self, base_config, mocker):
+        """Verify bare city names are still used (may be ambiguous but functional)."""
+        mock_tz_diff = mocker.patch(
+            "job_finder.filters.prefilter.get_timezone_diff_hours",
+            return_value=1.0,
+        )
+
+        pf = PreFilter(base_config)
+
+        # Job with only city name - no state or country
+        # This may geocode to wrong Portland, but should still attempt lookup
+        job = {"title": "Engineer", "city": "Portland"}
+        pf.filter(job, is_remote_source=True)
+
+        # Should use bare city name
+        assert mock_tz_diff.call_args[0][1] == "Portland"
+
+    def test_timezone_check_applies_to_unknown_when_remote_allowed(self, base_config, mocker):
+        """Timezone check should apply to 'unknown' arrangements when remote is allowed."""
+        mock_tz_diff = mocker.patch(
+            "job_finder.filters.prefilter.get_timezone_diff_hours",
+            return_value=13.5,  # Large diff - would fail if checked
+        )
+
+        pf = PreFilter(base_config)
+
+        # Job with no explicit remote/onsite indicators - arrangement will be "unknown"
+        job = {"title": "Engineer", "city": "Hyderabad", "country": "India"}
+        result = pf.filter(job, is_remote_source=False)
+
+        # Since allow_remote=True, unknown arrangements should be checked
+        mock_tz_diff.assert_called_once()
         assert result.passed is False
         assert "Timezone diff" in result.reason
