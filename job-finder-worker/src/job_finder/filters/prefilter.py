@@ -240,7 +240,6 @@ class PreFilter:
                 )
             # in_user_city is True or None (missing data) - allow
         else:
-            checks_skipped.append("workArrangement")
             # For unknown arrangements: apply timezone check if remote is allowed
             # (unknown could be remote, so we apply the guard as a safeguard)
             if (
@@ -248,6 +247,7 @@ class PreFilter:
                 and self.max_timezone_diff_hours is not None
                 and self.user_location
             ):
+                checks_performed.append("workArrangement")
                 result = self._check_timezone(job_data)
                 if not result.passed:
                     return PreFilterResult(
@@ -256,6 +256,8 @@ class PreFilter:
                         checks_performed=checks_performed,
                         checks_skipped=checks_skipped,
                     )
+            else:
+                checks_skipped.append("workArrangement")
 
         # 4. Employment type check (if employment_type or job_type available)
         employment_type = self._normalize_employment_type(job_data)

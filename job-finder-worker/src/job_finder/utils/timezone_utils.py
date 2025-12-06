@@ -13,10 +13,10 @@ Rate Limiting:
 
 DST Cache Behavior:
     The LRU cache does not have a TTL, so cached timezone offsets may become stale across
-    DST transitions (e.g., a city cached in March with PST offset will still return PST in
-    November when PDT is active). The impact is minimal (max 1 hour difference) and only
-    affects cached entries during transition periods. Call clear_cache() if exact offsets
-    are required after DST changes.
+    DST transitions (e.g., a city cached in summer with PDT offset -7 will still return -7
+    in winter when PST offset -8 is active). The impact is minimal (max 1 hour difference)
+    and only affects cached entries during transition periods. Call clear_cache() if exact
+    offsets are required after DST changes.
 
 Ambiguous City Names:
     Single city names without state/country (e.g., "Portland") may geocode to unexpected
