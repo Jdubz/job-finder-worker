@@ -45,3 +45,13 @@ def test_update_listing_status_calls_storage_with_expected_signature():
     processor._update_listing_status("listing-1", "matched", {"foo": "bar"})
 
     storage.update_status.assert_called_once_with("listing-1", "matched", {"foo": "bar"})
+
+
+def test_update_listing_status_noop_when_missing_listing_id():
+    storage = create_autospec(JobListingStorage)
+
+    processor = _build_processor(storage)
+
+    processor._update_listing_status(None, "matched", {"foo": "bar"})
+
+    storage.update_status.assert_not_called()
