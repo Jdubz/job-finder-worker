@@ -6,7 +6,7 @@
 
 ## Summary
 
-Implement an Agent Manager in the worker that abstracts AI agent selection from callers. The worker supplies a task type and prompt; the manager selects the appropriate agent based on configuration, availability, and budget. This centralizes agent lifecycle management including fallback chains, daily budgets, error handling, and automatic recovery.
+Implement an Agent Manager in the worker that abstracts AI agent selection from callers. The worker supplies a task type and prompt; the manager selects the appropriate agent based on configuration, availability, and budget. This centralizes agent lifecycle management including fallback chains, daily budgets, auth gating (disable agents missing credentials instead of crashing), error handling, and automatic recovery. Claude CLI is now a first-class agent (worker + backend) with auth via CLAUDE_CODE_OAUTH_TOKEN or logged-in anthropic credentials.
 
 This is a **hard cutover** - all legacy configuration fields will be removed, not deprecated.
 
@@ -119,6 +119,15 @@ interface AISettings {
       "dailyBudget": 50,
       "dailyUsage": 0
     },
+    "claude.cli": {
+      "provider": "claude",
+      "interface": "cli",
+      "defaultModel": "claude-3-5-sonnet",
+      "enabled": true,
+      "reason": null,
+      "dailyBudget": 50,
+      "dailyUsage": 0
+    },
     "gemini.api": {
       "provider": "gemini",
       "interface": "api",
@@ -130,8 +139,8 @@ interface AISettings {
     }
   },
   "taskFallbacks": {
-    "extraction": ["gemini.cli", "codex.cli", "gemini.api"],
-    "analysis": ["codex.cli", "gemini.cli"]
+    "extraction": ["gemini.cli", "codex.cli", "claude.cli", "gemini.api"],
+    "analysis": ["codex.cli", "gemini.cli", "claude.cli"]
   },
   "modelRates": {
     "gpt-4o": 1.0,

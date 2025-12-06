@@ -9,7 +9,8 @@ import logging
 import os
 import subprocess
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Dict, Optional, Tuple
 
 from anthropic import Anthropic
 from openai import OpenAI
@@ -386,6 +387,27 @@ _INTERFACE_FALLBACKS: Dict[str, str] = {
 }
 
 
+def _check_cli_auth(provider: str) -> Tuple[bool, str]:
+    """Check CLI auth for provider returning (available, reason)."""
+    if provider == "codex":
+        ok = bool(os.getenv("OPENAI_API_KEY")) or Path.home().joinpath(".codex", "auth.json").exists()
+        return ok, "OPENAI_API_KEY or ~/.codex/auth.json"
+
+    if provider == "gemini":
+        ok = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")) or Path.home().joinpath(
+            ".gemini", "settings.json"
+        ).exists()
+        return ok, "GEMINI_API_KEY/GOOGLE_API_KEY or ~/.gemini/settings.json"
+
+    if provider == "claude":
+        ok = bool(os.getenv("CLAUDE_CODE_OAUTH_TOKEN")) or Path.home().joinpath(
+            ".anthropic", "credentials.json"
+        ).exists()
+        return ok, "CLAUDE_CODE_OAUTH_TOKEN or ~/.anthropic/credentials.json"
+
+    return True, ""
+
+
 def _check_api_key_available(provider: str, interface: str) -> bool:
     """Check if the required API key(s) are available for this provider/interface."""
     key = (provider, interface)
@@ -401,3 +423,17 @@ def _get_missing_api_key_names(provider: str, interface: str) -> list:
     key = (provider, interface)
     required_vars = _API_KEY_REQUIREMENTS.get(key, [])
     return [var for var in required_vars if not os.getenv(var)]
+
+
+def auth_status(provider: str, interface: str) -> Tuple[bool, str]:
+    """Return (is_available, reason)."""
+    if interface == "api":
+        if _check_api_key_available(provider, interface):
+            return True, ""
+        missing = ",".join(_get_missing_api_key_names(provider, interface))
+        return False, f"missing_api_key:{missing}"
+
+    available, hint = _check_cli_auth(provider)
+    if available:
+        return True, ""
+    return False, f"missing_cli_auth:{hint}"

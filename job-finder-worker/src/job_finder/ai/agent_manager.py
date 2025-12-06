@@ -17,6 +17,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
+from job_finder.ai.providers import auth_status
+
 from job_finder.exceptions import AIProviderError, NoAgentsAvailableError, QuotaExhaustedError
 
 if TYPE_CHECKING:
@@ -125,6 +127,23 @@ class AgentManager:
             if not agent_config.get("enabled", True):
                 reason = agent_config.get("reason", "unknown")
                 logger.debug(f"Skipping disabled agent {agent_id}: {reason}")
+                continue
+
+            provider = agent_config.get("provider")
+            interface = agent_config.get("interface")
+            if not provider or not interface:
+                logger.warning(f"Agent {agent_id} missing provider/interface; skipping")
+                continue
+
+            auth_ok, auth_reason = auth_status(provider, interface)
+            if not auth_ok:
+                agent_config["enabled"] = False
+                agent_config["reason"] = auth_reason
+                try:
+                    self.config_loader.update_agent_status(agent_id, enabled=False, reason=auth_reason)
+                except Exception as exc:  # best-effort, don't crash caller
+                    logger.warning(f"Failed to persist disable for {agent_id}: {exc}")
+                logger.info(f"Skipping agent {agent_id}: {auth_reason}")
                 continue
 
             # Determine model first so we can calculate cost for budget check

@@ -128,8 +128,16 @@ export async function ensureCliProviderHealthy(provider: CliProvider): Promise<v
     case 'gemini':
       return checkGeminiConfig()
     case 'claude':
-      // No health check available for Claude yet
-      return
+      if (process.env.CLAUDE_CODE_OAUTH_TOKEN) return
+      try {
+        const credPath = join(homedir(), '.anthropic', 'credentials.json')
+        await readFile(credPath, 'utf-8')
+        return
+      } catch (err) {
+        throw new UserFacingError(
+          'Claude CLI not authenticated. Set CLAUDE_CODE_OAUTH_TOKEN or run "claude login" to configure credentials.'
+        )
+      }
     default:
       return
   }
