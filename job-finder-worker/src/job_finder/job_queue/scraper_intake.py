@@ -348,8 +348,9 @@ class ScraperIntake:
                 # Generate tracking_id for this root job (all spawned items will inherit it)
                 tracking_id = str(uuid.uuid4())
 
-                # Note: State-driven processor will determine next step based on pipeline_state
-                # If scraped_data provided, it will skip scraping and go to filtering
+                # Note: Job data lives in job_listings (source of truth).
+                # The processor queries job_listings by listing_id from metadata.
+                # scraped_data is no longer populated to avoid data duplication.
                 queue_item = JobQueueItem(
                     type=QueueItemType.JOB,
                     url=canonical_url,
@@ -358,9 +359,7 @@ class ScraperIntake:
                     source=source,
                     source_id=source_id,
                     source_type=source_type,
-                    scraped_data=(
-                        job_payload if len(job_payload) > 2 else None
-                    ),  # Include full job data if available
+                    scraped_data=None,  # Job data is in job_listings, queried by listing_id
                     tracking_id=tracking_id,  # Root tracking ID
                     ancestry_chain=[],  # Root has no ancestors
                     spawn_depth=0,  # Root starts at depth 0

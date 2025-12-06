@@ -7,8 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
 import { BaseApiClient } from "@/api/base-client"
 import { API_CONFIG } from "@/config/api"
-import { ROUTES } from "@/types/routes"
 import { useAuth } from "@/contexts/AuthContext"
+import { useGoogleLogin } from "@react-oauth/google"
 
 type GmailAccount = {
   userEmail: string
@@ -18,6 +18,15 @@ type GmailAccount = {
   expiryDate?: number
   scopes?: string[]
   historyId?: string
+}
+
+type IngestStatus = {
+  lastSyncTime: string | null
+  stats: {
+    totalProcessed: number
+    totalJobsFound: number
+    totalJobsEnqueued: number
+  }
 }
 
 type ConfigPayload = {
@@ -39,7 +48,7 @@ export function GmailIngestTab() {
   const [revoking, setRevoking] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<GmailAccount[]>([])
   const [config, setConfig] = useState<ConfigPayload | null>(null)
-  const [clientId, setClientId] = useState<string | null>(null)
+  const [ingestStatus, setIngestStatus] = useState<IngestStatus | null>(null)
   const { user } = useAuth()
 
   const allowedSenders = useMemo(
@@ -54,7 +63,7 @@ export function GmailIngestTab() {
   useEffect(() => {
     void loadConfig()
     void loadAccounts()
-    void loadClient()
+    void loadIngestStatus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -78,13 +87,13 @@ export function GmailIngestTab() {
     }
   }
 
-  async function loadClient() {
+  async function loadIngestStatus() {
     try {
-      const res = await apiClient.get<{ data: { clientId: string | null } }>("/gmail/oauth/client")
-      setClientId(res.data.clientId ?? null)
-    } catch (error) {
-      setClientId(null)
-      toast({ title: "Failed to load Gmail OAuth client", description: String(error), variant: "destructive" })
+      const res = await apiClient.get<{ data: IngestStatus }>("/gmail/ingest/status")
+      setIngestStatus(res.data)
+    } catch {
+      // Silently fail - status is optional/nice-to-have
+      setIngestStatus(null)
     }
   }
 
@@ -115,31 +124,33 @@ export function GmailIngestTab() {
     )
   }
 
-  const startOAuth = () => {
-    const effectiveClientId = clientId ?? import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
-    if (!effectiveClientId) {
-      toast({
-        title: "Gmail client ID missing",
-        description: "Set GMAIL_OAUTH_CLIENT_ID on the API or VITE_GOOGLE_OAUTH_CLIENT_ID for local dev.",
-        variant: "destructive"
-      })
-      return
+  const startOAuth = useGoogleLogin({
+    flow: "auth-code",
+    scope: "https://www.googleapis.com/auth/gmail.readonly",
+    onSuccess: async (response) => {
+      if (!user?.email) {
+        toast({ title: "Login required", variant: "destructive" })
+        return
+      }
+      try {
+        await apiClient.post("/gmail/oauth/exchange", {
+          code: response.code,
+          redirectUri: "postmessage",
+          userEmail: user.email,
+          gmailEmail: user.email
+        })
+        toast({ title: "Gmail authorized" })
+        await loadAccounts()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error"
+        toast({ title: "Gmail auth failed", description: message, variant: "destructive" })
+      }
+    },
+    onError: (errorResponse) => {
+      const message = errorResponse.error_description || errorResponse.error || "Authorization failed"
+      toast({ title: "Gmail auth failed", description: message, variant: "destructive" })
     }
-
-    const redirectUri = `${window.location.origin}${ROUTES.GMAIL_OAUTH_CALLBACK}`
-    const scope = encodeURIComponent("https://www.googleapis.com/auth/gmail.readonly")
-    const url = [
-      "https://accounts.google.com/o/oauth2/v2/auth",
-      `?client_id=${effectiveClientId}`,
-      `&redirect_uri=${encodeURIComponent(redirectUri)}`,
-      "&response_type=code",
-      "&access_type=offline",
-      "&prompt=consent",
-      `&scope=${scope}`,
-      user?.email ? `&login_hint=${encodeURIComponent(user.email)}` : ""
-    ].join("")
-    window.location.href = url
-  }
+  })
 
   async function revokeAccount(gmailEmail: string) {
     setRevoking(gmailEmail)
@@ -164,6 +175,38 @@ export function GmailIngestTab() {
 
   return (
     <div className="space-y-6">
+      {ingestStatus && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Ingest Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-4">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Last Sync</p>
+                <p className="text-lg font-semibold">
+                  {ingestStatus.lastSyncTime
+                    ? new Date(ingestStatus.lastSyncTime).toLocaleString()
+                    : "Never"}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Emails Processed</p>
+                <p className="text-lg font-semibold">{ingestStatus.stats.totalProcessed}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Jobs Found</p>
+                <p className="text-lg font-semibold">{ingestStatus.stats.totalJobsFound}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Jobs Enqueued</p>
+                <p className="text-lg font-semibold">{ingestStatus.stats.totalJobsEnqueued}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Gmail Ingest Settings</CardTitle>
@@ -251,12 +294,11 @@ export function GmailIngestTab() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <Button type="button" variant="secondary" onClick={startOAuth} disabled={!user?.email}>
+            <Button type="button" variant="secondary" onClick={() => startOAuth()} disabled={!user?.email}>
               Authorize Gmail
             </Button>
             <p className="text-xs text-muted-foreground">
               Uses your Google OAuth to grant read-only access for job alerts (offline access for cron).
-              {clientId ? ` Client: ${clientId}` : " No client configured."}
             </p>
           </div>
 

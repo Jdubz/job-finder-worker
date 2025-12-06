@@ -6,7 +6,6 @@ import { ApiErrorCode } from "@shared/types"
 import { GmailAuthService, type GmailTokenPayload } from "./gmail-auth.service"
 import { exchangeAuthCode } from "./gmail-oauth"
 import { GmailIngestService } from "./gmail-ingest.service"
-import { env } from "../../config/env"
 import { asyncHandler } from "../../utils/async-handler"
 import type { AuthenticatedRequest } from "../../middleware/firebase-auth"
 
@@ -37,21 +36,12 @@ export function buildGmailRouter() {
     })
   )
 
-  router.get("/oauth/client", (_req, res) => {
-    res.json(
-      success({
-        clientId: env.GMAIL_OAUTH_CLIENT_ID || env.GOOGLE_OAUTH_CLIENT_ID || null,
-        redirectUri: null // FE computes based on window.location
-      })
-    )
-  })
-
   router.post(
     "/oauth/exchange",
     asyncHandler(async (req, res) => {
     const schema = z.object({
       code: z.string().min(1),
-      redirectUri: z.string().url(),
+      redirectUri: z.union([z.literal("postmessage"), z.string().url()]),
       userEmail: z.string().email(),
       gmailEmail: z.string().email().optional(),
       clientId: z.string().optional(),
@@ -137,6 +127,15 @@ export function buildGmailRouter() {
     asyncHandler(async (_req, res) => {
       const results = await ingest.ingestAll()
       res.json(success({ results }))
+    })
+  )
+
+  router.get(
+    "/ingest/status",
+    asyncHandler(async (_req, res) => {
+      const lastSyncTime = ingest.getLastSyncTime()
+      const stats = ingest.getStats()
+      res.json(success({ lastSyncTime, stats }))
     })
   )
 

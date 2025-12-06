@@ -267,7 +267,11 @@ class JobProcessor(BaseProcessor):
         status: str,
         filter_result: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Update job listing status if listing_id is available."""
+        """Update job listing status if listing_id is available.
+
+        Note: Analysis data (scoringResult, detailedAnalysis) is stored in
+        job_matches, not job_listings. Only filter/extraction data goes here.
+        """
         if not listing_id:
             return
         self.job_listing_storage.update_status(listing_id, status, filter_result)
@@ -308,33 +312,15 @@ class JobProcessor(BaseProcessor):
 
         # Bootstrap from existing state if available
         state = item.pipeline_state or {}
-        if item.scraped_data:
-            job_data = item.scraped_data.get("job_data")
-            if job_data and "job_data" in job_data:
-                # Corrupted nested data from previous bug - clear and re-scrape
-                logger.warning(
-                    f"[{item.id}] Detected corrupted nested job_data structure, "
-                    "clearing and will re-scrape"
-                )
-                item.scraped_data = None
-            elif job_data and "title" in job_data:
-                # Valid wrapped structure - make a copy to avoid mutation issues
-                ctx.job_data = dict(job_data)
-            elif job_data:
-                # Has job_data key but no title - invalid, clear it
-                logger.warning(
-                    f"[{item.id}] Invalid job_data missing 'title', clearing and will re-scrape"
-                )
-                item.scraped_data = None
-            elif "title" in item.scraped_data:
-                # Flat structure - job data fields at top level (no job_data wrapper)
-                ctx.job_data = dict(item.scraped_data)
-        if not ctx.job_data and "job_data" in state:
-            ctx.job_data = state["job_data"]
-
-        # Attach listing_id if one was pre-created during intake
         metadata = item.metadata or {}
+
+        # Get listing_id from metadata (job data will be queried from job_listings)
         ctx.listing_id = metadata.get("job_listing_id") or state.get("job_listing_id")
+
+        # Legacy support: check if job_data was already loaded in a previous run
+        # (for jobs that were partially processed before this refactor)
+        if "job_data" in state and state["job_data"].get("title"):
+            ctx.job_data = state["job_data"]
 
         self.slogger.queue_item_processing(
             item.id,
@@ -533,31 +519,51 @@ class JobProcessor(BaseProcessor):
     # ============================================================
 
     def _execute_scrape(self, ctx: PipelineContext) -> Dict[str, Any]:
-        """Execute scrape stage - use data from scraper, no fallbacks."""
+        """Execute scrape stage - get job data from job_listings (source of truth).
+
+        Data sources in priority order:
+        1. Manual submission data (user-submitted jobs)
+        2. Job listing record (queried by listing_id from metadata)
+        3. Legacy scraped_data (for backwards compatibility during transition)
+        """
         item = ctx.item
+        metadata = item.metadata or {}
 
         # Manual job data (user-submitted) - check both title and description
-        manual_title = (item.metadata or {}).get("manualTitle")
-        manual_desc = (item.metadata or {}).get("manualDescription")
+        manual_title = metadata.get("manualTitle")
+        manual_desc = metadata.get("manualDescription")
         if manual_title or manual_desc:
             return {
                 "title": manual_title or "",
                 "description": manual_desc or "",
-                "company": (item.metadata or {}).get("manualCompanyName")
-                or item.company_name
-                or "",
-                "location": (item.metadata or {}).get("manualLocation") or "",
+                "company": metadata.get("manualCompanyName") or item.company_name or "",
+                "location": metadata.get("manualLocation") or "",
                 "url": item.url,
             }
 
-        # Scraped data MUST be present - scraper's responsibility
-        if not item.scraped_data:
-            raise ValueError(
-                f"No job data found for {item.url} - neither manual submission "
-                "(manualTitle/manualDescription) nor scraped_data present"
-            )
+        # Primary source: Query job_listings by listing_id (single source of truth)
+        listing_id = ctx.listing_id or metadata.get("job_listing_id")
+        if listing_id and self.job_listing_storage:
+            listing = self.job_listing_storage.get_by_id(listing_id)
+            if listing:
+                return {
+                    "title": listing.get("title", ""),
+                    "description": listing.get("description", ""),
+                    "company": listing.get("company_name", ""),
+                    "location": listing.get("location", ""),
+                    "url": listing.get("url") or item.url,
+                    "salary": listing.get("salary_range"),
+                    "posted_date": listing.get("posted_date"),
+                }
 
-        return item.scraped_data
+        # Legacy fallback: scraped_data (for backwards compatibility)
+        if item.scraped_data and item.scraped_data.get("title"):
+            return item.scraped_data
+
+        raise ValueError(
+            f"No job data found for {item.url} - no job_listing_id in metadata "
+            f"and no scraped_data present. listing_id={listing_id}"
+        )
 
     def _execute_company_lookup(self, ctx: PipelineContext) -> Optional[Dict[str, Any]]:
         """
@@ -928,27 +934,36 @@ class JobProcessor(BaseProcessor):
         )
 
     def _build_final_scraped_data(self, ctx: PipelineContext) -> Dict[str, Any]:
-        """Build final scraped_data dict for queue item."""
+        """Build final scraped_data dict for queue item.
+
+        Note: Full job data lives in job_listings (source of truth).
+        Analysis data lives in job_matches. This method returns minimal
+        summary data for queue status display and debugging.
+        """
         data: Dict[str, Any] = {}
+
+        # Include job summary (not full description) for display purposes
         if ctx.job_data:
-            # Validate structure - fail fast if corrupted
-            # Corruption: job_data contains a nested dict but no title at current level
-            if (
-                "job_data" in ctx.job_data
-                and isinstance(ctx.job_data["job_data"], dict)
-                and "title" not in ctx.job_data
-            ):
-                raise ValueError(
-                    f"BUG: Attempted to save nested job_data structure. "
-                    f"Keys: {list(ctx.job_data.keys())}. This indicates a bug in the pipeline."
-                )
-            data["job_data"] = ctx.job_data
+            data["job_data"] = {
+                "title": ctx.job_data.get("title", ""),
+                "company": ctx.job_data.get("company", ""),
+                "location": ctx.job_data.get("location", ""),
+            }
+
+        # Include extraction summary for filtering visibility
         if ctx.extraction:
-            data["filter_result"] = {"extraction": ctx.extraction.to_dict()}
-        if ctx.score_result:
-            data["analysis_result"] = {"scoringResult": ctx.score_result.to_dict()}
-            if ctx.match_result:
-                data["analysis_result"]["detailedAnalysis"] = ctx.match_result.to_dict()
+            data["extraction"] = {
+                "seniority": ctx.extraction.seniority,
+                "work_arrangement": ctx.extraction.work_arrangement,
+            }
+
+        # Include score summary (full analysis is in job_matches)
+        # Use AI match score if available, otherwise use deterministic score
+        if ctx.match_result:
+            data["score"] = ctx.match_result.match_score
+        elif ctx.score_result:
+            data["score"] = ctx.score_result.final_score
+
         return data
 
     def _extract_company_domain(self, url: str) -> str:
