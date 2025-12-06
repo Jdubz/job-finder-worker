@@ -7,12 +7,23 @@ import type { SubmitJobInput } from "../job-queue/job-queue.service"
 import type { GmailIngestConfig } from "./gmail.types"
 import { parseEmailBody, parseEmailBodyWithAiFallback } from "./gmail-message-parser"
 import { EmailIngestStateRepository } from "./email-ingest-state.repository"
+import zlib from "zlib"
 
 export type IngestJobResult = {
   gmailEmail: string
   jobsFound: number
   jobsQueued: number
   error?: string
+}
+
+type JobCandidate = {
+  url: string
+  title?: string
+  company?: string
+  location?: string
+  locationWorkType?: "remote" | "hybrid" | "onsite"
+  salary?: string
+  description?: string
 }
 
 type GmailMessage = {
@@ -39,9 +50,45 @@ export class GmailIngestService {
   private readonly config = new ConfigRepository()
   private readonly queue = new JobQueueService()
   private readonly ingestState = new EmailIngestStateRepository()
-  private readonly maxLinksPerMessage = 30
-  private readonly maxResolvedLinksPerRun = 60
-  private readonly resolveTimeoutMs = 3500
+  private maxLinksPerMessage = 30
+  private maxResolvedLinksPerRun = 60
+  private readonly resolveTimeoutMs = 4500
+  private readonly maxRedirectHops = 5
+  private readonly trackerHosts = ["cts.indeed.com", "trk.", "click."]
+
+  // Domains that strongly suggest job content (ATS / boards)
+  private readonly jobLinkHints = [
+    "greenhouse.io",
+    "lever.co",
+    "workday",
+    "ashbyhq.com",
+    "smartrecruiters",
+    "breezy.hr",
+    "jobs.ashbyhq.com",
+    "boards.greenhouse.io",
+    "jobs.lever.co",
+    "wellfound.com",
+    "builtin.com",
+    "indeed.com/viewjob",
+    "linkedin.com/jobs",
+    "ziprecruiter",
+    "monster.com",
+    "themuse.com",
+    "hitmarker",
+    "myworkdayjobs",
+    "icims.com",
+    "recruiting",
+    "workable.com",
+    "jobvite.com",
+    "indeed.com",
+    "simplify.jobs",
+    "ripplematch.com",
+    "himalayas.app",
+    "wellfound.com/jobs"
+  ]
+
+  // Known senders of job digests
+  private readonly jobSenderHints = ["indeed.com", "linkedin.com", "you.com", "ziprecruiter.com", "wellfound.com", "builtin.com"]
 
   async ingestAll(): Promise<IngestJobResult[]> {
     const settings = this.getSettings()
@@ -132,7 +179,7 @@ export class GmailIngestService {
       const subject = this.getHeader(full, "Subject")
       const body = this.extractBody(full)
 
-      if (!this.isJobRelated(subject, body)) {
+      if (!this.isJobRelated(subject, body, sender)) {
         this.ingestState.recordProcessed({
           messageId: full.id,
           threadId: full.threadId,
@@ -144,48 +191,71 @@ export class GmailIngestService {
         continue
       }
 
-      const links = this.extractLinks(body)
-      const resolvedLinks = await this.resolveLinksLimited(links)
-      const linkList = resolvedLinks.length ? resolvedLinks : links
+      const rawLinks = this.extractLinks(body)
+      const resolvedLinks = await this.resolveLinksLimited(rawLinks)
+      const linkList = resolvedLinks.length ? resolvedLinks.map((l) => l.resolved ?? l.original) : rawLinks
 
-      if (!linkList.length) {
-        // Record as processed with 0 jobs (no links found)
+      const jobLinks = linkList
+        .filter((url) => this.isLikelyJobLink(url, true))
+        .filter((url) => !this.isObviousAsset(url))
+        .filter((url) => !this.isTrackerHost(url))
+
+      // If no usable job links, try to extract companies and enqueue company discoveries
+      if (!jobLinks.length) {
+        const companies = settings.aiFallbackEnabled ? await this.extractCompanies(subject, body) : this.extractCompaniesHeuristic(subject, body)
+        let companyQueued = 0
+        for (const companyName of companies) {
+          try {
+            this.queue.submitCompany({ companyName, source: "email" })
+            companyQueued += 1
+            jobsQueued += 0 // company submissions not counted as jobs
+          } catch (error) {
+            logger.debug({ companyName, error: String(error) }, "Failed to enqueue company from Gmail body")
+          }
+        }
         this.ingestState.recordProcessed({
           messageId: full.id,
           threadId: full.threadId,
           gmailEmail,
           historyId: full.historyId,
           jobsFound: 0,
-          jobsEnqueued: 0
+          jobsEnqueued: companyQueued
         })
         continue
       }
 
-      const parsedJobs = settings.aiFallbackEnabled
-        ? await parseEmailBodyWithAiFallback(body, linkList, { aiFallbackEnabled: true })
-        : parseEmailBody(body, linkList)
+      const parsedJobs = await this.parseEmailForJobs(subject, body, jobLinks, settings.aiFallbackEnabled)
       const messageJobsFound = parsedJobs.length
       let messageJobsQueued = 0
 
       jobsFound += messageJobsFound
 
       for (const job of parsedJobs) {
+        const manualLocation =
+          job.location && job.locationWorkType
+            ? `${job.location} (${job.locationWorkType})`
+            : job.location ?? (job.locationWorkType ? job.locationWorkType : undefined)
+
         const jobInput: SubmitJobInput = {
           url: job.url,
           source: "email",
           title: job.title,
           companyName: job.company,
           description: job.description,
-              metadata: {
-                gmailMessageId: full.id,
-                gmailThreadId: full.threadId,
-                gmailFrom: sender,
-                gmailSubject: subject,
-                gmailSnippet: full.snippet,
-                gmailEmail,
-                remoteSourceDefault: settings.remoteSourceDefault ?? false
-              }
+          location: manualLocation,
+          metadata: {
+            gmailMessageId: full.id,
+            gmailThreadId: full.threadId,
+            gmailFrom: sender,
+            gmailSubject: subject,
+            gmailSnippet: full.snippet,
+            gmailEmail,
+            remoteSourceDefault: settings.remoteSourceDefault ?? false,
+            gmailParsedLocation: job.location,
+            gmailWorkType: job.locationWorkType,
+            gmailSalaryHint: job.salary
           }
+        }
         try {
           this.queue.submitJob(jobInput)
           messageJobsQueued += 1
@@ -375,54 +445,243 @@ export class GmailIngestService {
     return Array.from(new Set(cleaned)).slice(0, this.maxLinksPerMessage)
   }
 
-  private isLikelyJobLink(url: string): boolean {
+  private isLikelyJobLink(url: string, strict = false): boolean {
     const lower = url.toLowerCase()
     // Drop obvious non-job or footers
     if (lower.includes("unsubscribe") || lower.includes("/privacy") || lower.includes("/settings")) return false
-    if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".gif")) return false
+    if (this.isObviousAsset(url)) return false
+    if (strict) {
+      return this.jobLinkHints.some((hint) => lower.includes(hint))
+    }
     // Prefer keeping most links to widen intake; only minimal filtering above
     return true
   }
 
-  private isJobRelated(subject?: string, body?: string): boolean {
+  private isObviousAsset(url: string): boolean {
+    const lower = url.toLowerCase()
+    if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".gif") || lower.endsWith(".css") || lower.endsWith(".woff") || lower.endsWith(".woff2")) return true
+    if (lower.includes("fonts.googleapis") || lower.includes("statics.indeed.com") || lower.includes("gstatic.com")) return true
+    return false
+  }
+
+  private isJobRelated(subject?: string, body?: string, from?: string): boolean {
     const haystack = `${subject ?? ""}\n${body ?? ""}`.toLowerCase()
     const keywords = [
       "job", "role", "opening", "position", "hiring", "opportunity", "match", "application", "applied",
       "interview", "recruit", "careers", "offer", "head hunter", "headhunter"
     ]
-    const atsDomains = ["lever.co", "greenhouse.io", "workday", "ashbyhq", "smartrecruiters", "breezy.hr"]
+    const atsDomains = this.jobLinkHints
+    if (keywords.some((k) => haystack.includes(k))) return true
+    const senderDomain = from?.split("@")[1]?.toLowerCase()
+    if (senderDomain && this.jobSenderHints.some((d) => senderDomain.endsWith(d))) return true
     if (keywords.some((k) => haystack.includes(k))) return true
     return atsDomains.some((d) => haystack.includes(d))
   }
 
-  private async resolveLinksLimited(urls: string[]): Promise<string[]> {
+  private async parseEmailForJobs(
+    subject: string | undefined,
+    body: string,
+    links: string[],
+    aiFallbackEnabled?: boolean
+  ): Promise<JobCandidate[]> {
+    // Extract basic fields from subject/body
+    const parsedSubject = this.parseSubject(subject)
+    const salary = this.findSalary(body)
+    const location = this.findLocation(body)
+    const remoteFlag = this.findRemoteFlag(body)
+
+    // Start with URL-only jobs
+    const baseJobs = links.map((url) => ({
+      url,
+      title: parsedSubject?.title,
+      company: parsedSubject?.company,
+      location: location?.cityState,
+      locationWorkType: remoteFlag,
+      salary,
+      description: undefined as string | undefined
+    }))
+
+    // No AI enrichment for now; keep payload minimal
+    return baseJobs
+  }
+
+  private parseSubject(subject?: string): { title?: string; company?: string } | null {
+    if (!subject) return null
+    const m = subject.match(/(.+?)\s+@\s+(.+)/)
+    if (m) {
+      return { title: m[1].trim(), company: m[2].trim() }
+    }
+    return { title: subject.trim() }
+  }
+
+  private findSalary(text: string): string | undefined {
+    const m = text.match(/\$[0-9][^\s]*\s*-\s*\$[0-9][^\s]*/)
+    return m ? m[0] : undefined
+  }
+
+  private findRemoteFlag(text: string): "remote" | "hybrid" | "onsite" | undefined {
+    const lower = text.toLowerCase()
+    if (lower.includes("remote")) return "remote"
+    if (lower.includes("hybrid")) return "hybrid"
+    if (lower.includes("onsite") || lower.includes("on-site")) return "onsite"
+    return undefined
+  }
+
+  private findLocation(text: string): { cityState?: string } | null {
+    const m = text.match(/([A-Z][a-zA-Z]+),\s*([A-Z]{2})/) // City, ST
+    if (m) return { cityState: `${m[1]}, ${m[2]}` }
+    return null
+  }
+
+  private async resolveLinksLimited(urls: string[]): Promise<Array<{ original: string; resolved?: string }>> {
     if (!urls.length) return []
     const limited = urls.slice(0, this.maxResolvedLinksPerRun)
-    const resolved: string[] = []
+    const resolved: Array<{ original: string; resolved?: string }> = []
     for (const url of limited) {
       if (resolved.length >= this.maxResolvedLinksPerRun) break
       try {
         const finalUrl = await this.resolveOne(url)
-        resolved.push(finalUrl)
+        resolved.push({ original: url, resolved: finalUrl })
       } catch {
-        resolved.push(url)
+        resolved.push({ original: url })
       }
     }
     return resolved
   }
 
   private async resolveOne(url: string): Promise<string> {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), this.resolveTimeoutMs)
-    try {
-      const res = await fetch(url, { method: "HEAD", redirect: "follow", signal: controller.signal })
-      clearTimeout(timer)
-      if (res.url) return res.url
-      return url
-    } catch {
-      clearTimeout(timer)
-      return url
+    // Try direct decode for known tracker formats
+    const decoded = this.decodeTracker(url)
+    if (decoded) return decoded
+
+    // For known trackers, try a single "follow" request first to get final URL
+    if (this.isTrackerHost(url)) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), this.resolveTimeoutMs * 2)
+      try {
+        const res = await fetch(url, {
+          method: "GET",
+          redirect: "follow",
+          signal: controller.signal,
+          headers: { "User-Agent": "Mozilla/5.0 (JobFinder Gmail Intake)" }
+        })
+        clearTimeout(timer)
+        if (res.body && res.body.cancel) {
+          try {
+            res.body.cancel()
+          } catch {}
+        }
+        if (res.url) return res.url
+      } catch {
+        clearTimeout(timer)
+      }
     }
+
+    let current = url
+    const maxHops = this.maxRedirectHops
+    for (let hop = 0; hop < maxHops; hop++) {
+      const controller = new AbortController()
+      const hopTimeout = this.isTrackerHost(current) ? this.resolveTimeoutMs * 2 : this.resolveTimeoutMs
+      const timer = setTimeout(() => controller.abort(), hopTimeout)
+      try {
+        const res = await fetch(current, { method: "GET", redirect: "manual", signal: controller.signal })
+        clearTimeout(timer)
+        const loc = res.headers.get("location")
+        const finalUrl = res.url || current
+        // Stop downloading body ASAP to limit bandwidth
+        if (res.body && res.body.cancel) {
+          try {
+            res.body.cancel()
+          } catch {}
+        }
+        if (loc && res.status >= 300 && res.status < 400) {
+          // follow redirect
+          const next = new URL(loc, finalUrl).toString()
+          current = next
+          continue
+        }
+        return finalUrl
+      } catch {
+        clearTimeout(timer)
+        return current
+      }
+    }
+    return current
+  }
+
+  private isTrackerHost(url: string): boolean {
+    try {
+      const host = new URL(url).hostname.toLowerCase()
+      return this.trackerHosts.some((h) => host.includes(h))
+    } catch {
+      return false
+    }
+  }
+
+  private async extractCompanies(subject?: string, body?: string): Promise<string[]> {
+    const companies = new Set<string>()
+    const heuristic = this.extractCompaniesHeuristic(subject, body)
+    heuristic.forEach((c) => companies.add(c))
+    try {
+      const enriched = await parseEmailBodyWithAiFallback(body ?? "", [], { aiFallbackEnabled: true })
+      enriched
+        .map((j) => j.company)
+        .filter((c): c is string => Boolean(c))
+        .forEach((c) => companies.add(c))
+    } catch (error) {
+      logger.debug({ error: String(error) }, "AI company extraction failed; falling back to heuristic")
+    }
+    return Array.from(companies).slice(0, 10)
+  }
+
+  private extractCompaniesHeuristic(subject?: string, body?: string): string[] {
+    const found = new Set<string>()
+    const add = (s?: string) => {
+      if (!s) return
+      const clean = s.replace(/[^a-zA-Z0-9 .,&-]/g, "").trim()
+      if (clean.length > 1 && clean.length < 80) found.add(clean)
+    }
+
+    // From subject patterns: "Role @ Company" or "Role at Company"
+    if (subject) {
+      const atMatch = subject.match(/@\\s*([^@]+)$/) || subject.match(/\\bat\\s+([^@]+)$/i)
+      if (atMatch) add(atMatch[1])
+    }
+
+    if (body) {
+      const lines = body.split(/\\n+/).slice(0, 80)
+      for (const line of lines) {
+        const m = line.match(/at\\s+([A-Z][A-Za-z0-9 .,&'-]{2,60})/)
+        if (m) add(m[1])
+        const m2 = line.match(/with\\s+([A-Z][A-Za-z0-9 .,&'-]{2,60})/)
+        if (m2) add(m2[1])
+      }
+    }
+
+    return Array.from(found).slice(0, 10)
+  }
+
+  private decodeTracker(url: string): string | null {
+    try {
+      const parsed = new URL(url)
+      if (parsed.hostname.includes("cts.indeed.com")) {
+        const token = parsed.pathname.split("/").pop()
+        if (token) {
+          try {
+            const buf = Buffer.from(token, "base64")
+            const inflated = zlib.gunzipSync(buf).toString("utf8")
+            if (inflated.startsWith("http")) {
+              return inflated
+            }
+          } catch {
+            return null
+          }
+        }
+      }
+    } catch {
+      return null
+    }
+    return null
   }
 
   private getHeader(msg: GmailMessage, name: string): string | undefined {
