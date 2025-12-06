@@ -6,7 +6,7 @@
 
 ## Summary
 
-Implement an Agent Manager in the worker and backend generator that abstracts AI agent selection from callers. Callers supply a task type and prompt; the manager selects the appropriate agent based on configuration, availability, and budget. This centralizes agent lifecycle management including fallback chains, daily budgets (shared across scopes), per-scope auth gating (disable only the calling scope when creds are missing), error handling, and automatic recovery. Every agent declares explicit `authRequirements` (env vars and optional credential files); initialization fails if they are missing or malformed. Claude CLI is now a first-class agent (worker + backend) with auth provided by `CLAUDE_CODE_OAUTH_TOKEN` (no credential mounts required) or an interactive login cached under `~/.anthropic`.
+Implement an Agent Manager in the worker and backend generator that abstracts AI agent selection from callers. Callers supply a task type and prompt; the manager selects the appropriate agent based on configuration, availability, and budget. This centralizes agent lifecycle management including fallback chains, daily budgets (shared across scopes), per-scope auth gating (disable only the calling scope when creds are missing), error handling, and automatic recovery. Every agent declares explicit `authRequirements` (env vars and optional credential files); initialization fails if they are missing or malformed. Claude CLI is now a first-class agent (worker + backend) with auth provided by `CLAUDE_CODE_OAUTH_TOKEN` (no credential mounts required; optional interactive login is strictly for local dev convenience).
 
 This is a **hard cutover** - all legacy configuration fields will be removed, not deprecated.
 
@@ -147,6 +147,10 @@ interface AISettings {
       "runtimeState": {
         "worker": { "enabled": true, "reason": null },
         "backend": { "enabled": true, "reason": null }
+      },
+      "authRequirements": {
+        "type": "cli",
+        "requiredEnv": ["CLAUDE_CODE_OAUTH_TOKEN"]
       }
     },
     "gemini.api": {
@@ -160,9 +164,8 @@ interface AISettings {
         "backend": { "enabled": true, "reason": null }
       },
       "authRequirements": {
-        "type": "cli",
-        "requiredEnv": ["CLAUDE_CODE_OAUTH_TOKEN"],
-        "requiredFiles": ["~/.anthropic/credentials.json"]
+        "type": "api",
+        "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
       }
     }
   },

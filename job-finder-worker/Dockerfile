@@ -42,7 +42,6 @@ RUN groupadd --gid 1000 node \
 # AI CLI config directories (mount from host for auth credentials)
 ENV CODEX_HOME=/home/node/.codex
 ENV GEMINI_HOME=/home/node/.gemini
-ENV ANTHROPIC_HOME=/home/node/.anthropic
 
 # Copy Python packages from builder to node user's home
 COPY --from=builder /root/.local /home/node/.local
@@ -62,8 +61,8 @@ COPY --from=cli-builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /u
 RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js "$@"\n' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude
 
 # Create directories for AI CLIs and data with proper ownership
-RUN mkdir -p /home/node/.codex /home/node/.gemini /home/node/.anthropic /data/sqlite \
-    && chown -R node:node /home/node/.codex /home/node/.gemini /home/node/.anthropic /home/node/.local /data
+RUN mkdir -p /home/node/.codex /home/node/.gemini /data/sqlite \
+    && chown -R node:node /home/node/.codex /home/node/.gemini /home/node/.local /data
 
 # Copy application code
 COPY src/ ./src/

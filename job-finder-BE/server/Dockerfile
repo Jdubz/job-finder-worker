@@ -13,8 +13,6 @@ ENV HUSKY_SKIP_INSTALL=1
 RUN npm install -g npm@11.6.3
 # Install minimal deps for dev/hotreload (gosu needed by docker-compose.dev)
 RUN apt-get update && apt-get install -y --no-install-recommends chromium gosu && rm -rf /var/lib/apt/lists/*
-# Ensure Anthropic CLI auth path exists to prevent permission issues when mounted
-RUN mkdir -p /home/node/.anthropic && chown -R node:node /home/node/.anthropic
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
 # Adjust monorepo file dependency to match container layout (shared copied into /app/shared)
 RUN sed -i 's#file:../../shared#file:./shared#g; s#"../../shared"#"./shared"#g' package.json package-lock.json
@@ -34,7 +32,6 @@ ENV TZ=America/Los_Angeles
 # AI CLI config directories (mount from host for auth credentials)
 ENV CODEX_HOME=/home/node/.codex
 ENV GEMINI_HOME=/home/node/.gemini
-ENV ANTHROPIC_HOME=/home/node/.anthropic
 # Chromium path for Playwright PDF generation
 ENV CHROMIUM_PATH=/usr/bin/chromium
 
@@ -44,8 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends gosu ca-certifi
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g npm@11.6.3 @openai/codex@0.63.0 @google/gemini-cli@0.18.4 @anthropic-ai/claude-code@2.0.52 \
     && npm cache clean --force \
-    && mkdir -p /home/node/.codex /home/node/.gemini /home/node/.anthropic /data/artifacts /data/sqlite \
-    && chown -R node:node /home/node/.codex /home/node/.gemini /home/node/.anthropic /data
+    && mkdir -p /home/node/.codex /home/node/.gemini /data/artifacts /data/sqlite \
+    && chown -R node:node /home/node/.codex /home/node/.gemini /data
 
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
 RUN sed -i 's#file:../../shared#file:./shared#g; s#"../../shared"#"./shared"#g' package.json package-lock.json

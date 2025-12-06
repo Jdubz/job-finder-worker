@@ -467,11 +467,8 @@ def _check_cli_auth(provider: str) -> Tuple[bool, str]:
         return ok, "GEMINI_API_KEY/GOOGLE_API_KEY or ~/.gemini/settings.json"
 
     if provider == "claude":
-        ok = (
-            bool(os.getenv("CLAUDE_CODE_OAUTH_TOKEN"))
-            or Path.home().joinpath(".anthropic", "credentials.json").exists()
-        )
-        return ok, "CLAUDE_CODE_OAUTH_TOKEN or ~/.anthropic/credentials.json"
+        ok = bool(os.getenv("CLAUDE_CODE_OAUTH_TOKEN"))
+        return ok, "CLAUDE_CODE_OAUTH_TOKEN"
 
     return True, ""
 

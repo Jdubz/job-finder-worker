@@ -115,7 +115,7 @@ function authRequirementsFor(provider: AIProviderType, iface: AIInterfaceType): 
     'codex.cli': { type: 'cli', requiredEnv: ['OPENAI_API_KEY'], requiredFiles: ['~/.codex/auth.json'] },
     'gemini.cli': { type: 'cli', requiredEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'], requiredFiles: ['~/.gemini/settings.json'] },
     'gemini.api': { type: 'api', requiredEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'] },
-    'claude.cli': { type: 'cli', requiredEnv: ['CLAUDE_CODE_OAUTH_TOKEN'], requiredFiles: ['~/.anthropic/credentials.json'] },
+    'claude.cli': { type: 'cli', requiredEnv: ['CLAUDE_CODE_OAUTH_TOKEN'] },
     'claude.api': { type: 'api', requiredEnv: ['ANTHROPIC_API_KEY'] },
     'openai.api': { type: 'api', requiredEnv: ['OPENAI_API_KEY'] },
   }
