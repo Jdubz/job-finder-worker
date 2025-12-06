@@ -60,7 +60,7 @@ def test_source_discovery_uses_pattern_without_ai_probe(monkeypatch):
         raising=True,
     )
 
-    discovery = SourceDiscovery(provider=None)
+    discovery = SourceDiscovery(agent_manager=None)
     config, meta = discovery.discover(BUILTIN_URL)
 
     assert config is not None
