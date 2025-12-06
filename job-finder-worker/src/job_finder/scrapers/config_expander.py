@@ -19,50 +19,18 @@ For API sources, the vendor is auto-detected from config contents:
 - {"url": "...", "fields": {...}} → Full config (preferred)
 """
 
-import re
 from typing import Any, Dict, Optional, Tuple
 
-from job_finder.scrapers.platform_patterns import PLATFORM_PATTERNS
+from job_finder.scrapers.platform_patterns import PLATFORM_PATTERNS, match_platform
 
 # Build field mappings from platform_patterns (single source of truth)
-_GREENHOUSE_PATTERN = next((p for p in PLATFORM_PATTERNS if p.name == "greenhouse_api"), None)
-_ASHBY_PATTERN = next((p for p in PLATFORM_PATTERNS if p.name == "ashby_api"), None)
-_WORKDAY_PATTERN = next((p for p in PLATFORM_PATTERNS if p.name == "workday"), None)
+_GREENHOUSE_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "greenhouse_api")
+_ASHBY_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "ashby_api")
+_WORKDAY_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "workday")
 
-GREENHOUSE_FIELDS = (
-    _GREENHOUSE_PATTERN.fields
-    if _GREENHOUSE_PATTERN
-    else {
-        "title": "title",
-        "location": "location.name",
-        "description": "content",
-        "url": "absolute_url",
-        "posted_date": "updated_at",
-    }
-)
-
-ASHBY_FIELDS = (
-    _ASHBY_PATTERN.fields
-    if _ASHBY_PATTERN
-    else {
-        "title": "title",
-        "location": "location",
-        "description": "descriptionHtml",
-        "url": "jobUrl",
-        "posted_date": "publishedAt",
-    }
-)
-
-WORKDAY_FIELDS = (
-    _WORKDAY_PATTERN.fields
-    if _WORKDAY_PATTERN
-    else {
-        "title": "title",
-        "location": "locationsText",
-        "url": "externalPath",
-        "posted_date": "postedOn",
-    }
-)
+GREENHOUSE_FIELDS = _GREENHOUSE_PATTERN.fields
+ASHBY_FIELDS = _ASHBY_PATTERN.fields
+WORKDAY_FIELDS = _WORKDAY_PATTERN.fields
 
 # Standard RSS field mappings (not in platform_patterns since RSS is format-based, not platform-based)
 RSS_FIELDS = {
@@ -72,14 +40,12 @@ RSS_FIELDS = {
     "posted_date": "published",
 }
 
-# Regex to parse Workday careers URL
-# Format: https://{tenant}.{wd_instance}.myworkdayjobs.com/{site_id}
-WORKDAY_URL_PATTERN = re.compile(r"https?://([^.]+)\.(wd\d+)\.myworkdayjobs\.com/([^/?#]+)")
-
 
 def parse_workday_url(url: str) -> Optional[Tuple[str, str, str]]:
     """
     Parse a Workday careers URL into its components.
+
+    Uses the Workday pattern from platform_patterns.py (single source of truth).
 
     Args:
         url: Workday careers page URL
@@ -87,10 +53,22 @@ def parse_workday_url(url: str) -> Optional[Tuple[str, str, str]]:
     Returns:
         Tuple of (tenant, wd_instance, site_id) or None if not a valid Workday URL
     """
-    match = WORKDAY_URL_PATTERN.match(url)
-    if not match:
+    result = match_platform(url)
+    if not result:
         return None
-    return match.group(1), match.group(2), match.group(3)
+
+    pattern, groups = result
+    if pattern.name != "workday":
+        return None
+
+    tenant = groups.get("tenant")
+    wd_instance = groups.get("wd_instance")
+    site_id = groups.get("site_id")
+
+    if not tenant or not wd_instance or not site_id:
+        return None
+
+    return tenant, wd_instance, site_id
 
 
 def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
@@ -181,10 +159,10 @@ def _expand_ashby(config: Dict[str, Any]) -> Dict[str, Any]:
         "fields": ASHBY_FIELDS.copy(),
     }
 
-    # Include salary fields from platform pattern if available
-    if _ASHBY_PATTERN and _ASHBY_PATTERN.salary_min_field:
+    # Include salary fields from platform pattern
+    if _ASHBY_PATTERN.salary_min_field:
         expanded["salary_min_field"] = _ASHBY_PATTERN.salary_min_field
-    if _ASHBY_PATTERN and _ASHBY_PATTERN.salary_max_field:
+    if _ASHBY_PATTERN.salary_max_field:
         expanded["salary_max_field"] = _ASHBY_PATTERN.salary_max_field
 
     return expanded

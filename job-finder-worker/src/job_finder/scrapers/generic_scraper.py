@@ -5,7 +5,7 @@ import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import feedparser
 import json
@@ -60,6 +60,31 @@ class GenericScraper:
         """
         self.config = config
 
+    def _get_effective_url(self) -> str:
+        """
+        Get the effective URL with any server-side filters applied.
+
+        If company_filter and company_filter_param are both set, appends the
+        filter as a query parameter for server-side filtering.
+
+        Returns:
+            URL with filters applied
+        """
+        url = self.config.url
+
+        # Apply server-side company filter if supported
+        if self.config.company_filter and self.config.company_filter_param:
+            parsed = urlparse(url)
+            # Parse existing query params
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            # Add company filter param
+            params[self.config.company_filter_param] = [self.config.company_filter]
+            # Rebuild URL with new params
+            new_query = urlencode(params, doseq=True)
+            url = urlunparse(parsed._replace(query=new_query))
+
+        return url
+
     def scrape(self) -> List[Dict[str, Any]]:
         """
         Scrape jobs from the configured source.
@@ -68,7 +93,13 @@ class GenericScraper:
             List of standardized job dictionaries
         """
         try:
-            logger.info(f"Scraping {self.config.type} source: {self.config.url}")
+            effective_url = self._get_effective_url()
+            if effective_url != self.config.url:
+                logger.info(
+                    f"Scraping {self.config.type} source with server-side filter: {effective_url}"
+                )
+            else:
+                logger.info(f"Scraping {self.config.type} source: {self.config.url}")
 
             # Fetch data based on source type
             if self.config.type == "api":
@@ -93,7 +124,16 @@ class GenericScraper:
                 if job.get("title") and job.get("url"):
                     jobs.append(job)
 
-            logger.info(f"Scraped {len(jobs)} jobs from {self.config.url}")
+            # Apply company filter if configured (for company-specific aggregator sources)
+            if self.config.company_filter and jobs:
+                pre_filter_count = len(jobs)
+                jobs = [j for j in jobs if self._matches_company_filter(j)]
+                logger.info(
+                    f"Company filter '{self.config.company_filter}' matched "
+                    f"{len(jobs)}/{pre_filter_count} jobs"
+                )
+
+            logger.info(f"Scraped {len(jobs)} jobs from {effective_url}")
             return jobs
 
         except ScrapeBlockedError:
@@ -116,7 +156,7 @@ class GenericScraper:
         Returns:
             List of job items from API response
         """
-        url = self.config.url
+        url = self._get_effective_url()
         headers = {**DEFAULT_HEADERS, **self.config.headers}
 
         # Apply authentication
@@ -159,8 +199,9 @@ class GenericScraper:
             ScrapeBlockedError: If the response appears to be an anti-bot page
         """
         # Fetch with requests first to get raw content for anti-bot detection
+        url = self._get_effective_url()
         headers = {**DEFAULT_HEADERS, **self.config.headers}
-        response = requests.get(self.config.url, headers=headers, timeout=30)
+        response = requests.get(url, headers=headers, timeout=30)
         try:
             response.raise_for_status()
         except requests.HTTPError as e:
@@ -232,8 +273,9 @@ class GenericScraper:
         Returns:
             List of BeautifulSoup elements matching job_selector
         """
+        url = self._get_effective_url()
         headers = {**DEFAULT_HEADERS, **self.config.headers}
-        response = requests.get(self.config.url, headers=headers, timeout=30)
+        response = requests.get(url, headers=headers, timeout=30)
         try:
             response.raise_for_status()
         except requests.HTTPError as e:
@@ -655,6 +697,111 @@ class GenericScraper:
             return None
 
         return (company, job_title)
+
+    def _matches_company_filter(self, job: Dict[str, Any]) -> bool:
+        """
+        Check if a job matches the company filter.
+
+        Uses fuzzy matching to handle variations in company names:
+        - Case-insensitive comparison
+        - Strips common suffixes (.io, Inc, LLC, etc.)
+        - Checks if filter is contained in company name or vice versa
+        - Requires minimum 3 chars to avoid false positives with short names
+
+        Args:
+            job: Job dictionary with 'company' field
+
+        Returns:
+            True if job matches filter or no filter is set
+        """
+        if not self.config.company_filter:
+            return True
+
+        company = job.get("company", "")
+        if not company:
+            return False
+
+        # Normalize both for comparison
+        filter_norm = self._normalize_company_name(self.config.company_filter)
+        company_norm = self._normalize_company_name(company)
+
+        # Exact match after normalization
+        if filter_norm == company_norm:
+            return True
+
+        # For substring matching, require minimum length to avoid false positives
+        # e.g., "AI" matching "RAIL" or "Go" matching "Google"
+        min_length_for_substring = 3
+
+        if len(filter_norm) >= min_length_for_substring:
+            # Check if filter is a word boundary match in company name
+            # "Proxify" should match "Proxify AB" but not "NotProxify"
+            if filter_norm in company_norm:
+                # Verify it's at a word boundary (start of string or after space)
+                idx = company_norm.find(filter_norm)
+                if idx == 0 or (idx > 0 and company_norm[idx - 1] == " "):
+                    return True
+
+        if len(company_norm) >= min_length_for_substring:
+            # Check if company is contained in filter (handles normalization differences)
+            if company_norm in filter_norm:
+                idx = filter_norm.find(company_norm)
+                if idx == 0 or (idx > 0 and filter_norm[idx - 1] == " "):
+                    return True
+
+        return False
+
+    def _normalize_company_name(self, name: Optional[str]) -> str:
+        """
+        Normalize company name for fuzzy matching.
+
+        Removes common suffixes, punctuation, and normalizes case.
+
+        Args:
+            name: Company name to normalize (can be None)
+
+        Returns:
+            Normalized company name
+        """
+        if not name:
+            return ""
+
+        # Lowercase and strip whitespace
+        result = name.lower().strip()
+
+        # Remove common legal suffixes
+        suffixes = [
+            " inc.",
+            " inc",
+            " llc",
+            " ltd.",
+            " ltd",
+            " co.",
+            " co",
+            " corp.",
+            " corp",
+            " gmbh",
+            " ag",
+            " pty ltd",
+            " pty",
+            " holdings",
+            " group",
+            " limited",
+        ]
+        for suffix in suffixes:
+            if result.endswith(suffix):
+                result = result[: -len(suffix)]
+
+        # Remove .io, .com, .ai etc. domain-style suffixes
+        result = re.sub(r"\.(io|com|ai|app|dev|co|net|org)$", "", result)
+
+        # Remove punctuation except spaces
+        result = re.sub(r"[^\w\s]", "", result)
+
+        # Collapse multiple spaces
+        result = re.sub(r"\s+", " ", result).strip()
+
+        return result
 
     def _extract_company_website_from_description(self, description: str) -> Optional[str]:
         """
