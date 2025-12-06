@@ -332,7 +332,7 @@ export class GeneratorWorkflowService {
     personalInfo: PersonalInfo
   ): Promise<string | undefined> {
     const coverLetter = await this.buildCoverLetterContent(payload, personalInfo)
-    const title = (personalInfo as any).title || payload.job.role
+    const title = personalInfo.title || payload.job.role
     const pdf = await this.htmlPdf.renderCoverLetter(coverLetter, {
       name: personalInfo.name,
       email: personalInfo.email,
