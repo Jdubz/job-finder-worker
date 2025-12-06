@@ -142,11 +142,13 @@ export function GmailIngestTab() {
         toast({ title: "Gmail authorized" })
         await loadAccounts()
       } catch (error) {
-        toast({ title: "Gmail auth failed", description: String(error), variant: "destructive" })
+        const message = error instanceof Error ? error.message : "Unknown error"
+        toast({ title: "Gmail auth failed", description: message, variant: "destructive" })
       }
     },
-    onError: (error) => {
-      toast({ title: "Gmail auth failed", description: String(error), variant: "destructive" })
+    onError: (errorResponse) => {
+      const message = errorResponse.error_description || errorResponse.error || "Authorization failed"
+      toast({ title: "Gmail auth failed", description: message, variant: "destructive" })
     }
   })
 

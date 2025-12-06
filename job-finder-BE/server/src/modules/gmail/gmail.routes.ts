@@ -41,7 +41,7 @@ export function buildGmailRouter() {
     asyncHandler(async (req, res) => {
     const schema = z.object({
       code: z.string().min(1),
-      redirectUri: z.string().url(),
+      redirectUri: z.union([z.literal("postmessage"), z.string().url()]),
       userEmail: z.string().email(),
       gmailEmail: z.string().email().optional(),
       clientId: z.string().optional(),
