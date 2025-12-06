@@ -241,7 +241,6 @@ export const basePrefilterPolicy: PreFilterPolicy = {
   },
   employmentType: { allowFullTime: true, allowPartTime: true, allowContract: true },
   salary: { minimum: 80000 },
-  technology: { rejected: ["php"] },
 }
 
 export const mockCompany: Company = {

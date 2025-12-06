@@ -30,7 +30,6 @@ def source_processor():
             "allowContract": True,
         },
         "salary": {"minimum": None},
-        "technology": {"rejected": []},
     }
     config_loader.get_title_filter.return_value = {
         "requiredKeywords": [],

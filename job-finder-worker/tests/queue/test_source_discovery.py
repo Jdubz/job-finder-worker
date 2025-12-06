@@ -64,7 +64,6 @@ def mock_dependencies() -> Dict[str, Any]:
         },
         "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
         "salary": {"minimum": None},
-        "technology": {"rejected": []},
     }
     config_loader.get_match_policy.return_value = {
         "minScore": 60,

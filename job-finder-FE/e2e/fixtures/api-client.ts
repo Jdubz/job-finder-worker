@@ -16,7 +16,6 @@ const MIN_PREFILTER = {
   },
   employmentType: { allowFullTime: true, allowPartTime: true, allowContract: true },
   salary: { minimum: null },
-  technology: { rejected: [] },
 }
 
 const MIN_MATCH = {

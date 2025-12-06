@@ -48,7 +48,6 @@ class ConfigLoader:
             "workArrangement",
             "employmentType",
             "salary",
-            "technology",
         ]
         missing = [s for s in required_sections if s not in config]
         if missing:

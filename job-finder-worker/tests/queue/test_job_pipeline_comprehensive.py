@@ -116,7 +116,6 @@ def test_job_pipeline_full_path(tmp_path: Path):
                             "allowContract": True,
                         },
                         "salary": {"minimum": None},
-                        "technology": {"rejected": []},
                     }
                 ),
                 now_iso,
