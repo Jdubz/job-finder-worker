@@ -1,5 +1,5 @@
 export const sharedCss = `
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Inter:wght@400;500;600&display=swap');
 
   @page { margin: 0.4in; size: Letter; }
 
@@ -22,7 +22,7 @@ export const sharedCss = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: 'Source Sans 3', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
     color: var(--text);
     font-size: 10px;
     line-height: 1.45;
@@ -255,7 +255,7 @@ export const sharedCss = `
   .logo-box img { width: 100%; height: 100%; object-fit: contain; }
 
   .name {
-    font-family: 'Playfair Display', 'Source Sans 3', 'Segoe UI', serif;
+    font-family: 'Poppins', 'Inter', 'Segoe UI', sans-serif;
     font-size: 32px;
     font-weight: 700;
     color: var(--text);
