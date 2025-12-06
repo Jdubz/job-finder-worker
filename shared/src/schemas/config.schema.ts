@@ -268,16 +268,21 @@ export const personalInfoSchema = z.object({
   accentColor: z.string().optional(),
 })
 
-const gmailIngestSchema = z.object({
-  enabled: z.boolean().default(false),
-  label: z.string().optional(),
-  query: z.string().optional(),
-  maxMessages: z.number().int().positive().optional(),
-  allowedSenders: z.array(z.string().email()).optional(),
-  remoteSourceDefault: z.boolean().optional(),
-  aiFallbackEnabled: z.boolean().optional(),
-  defaultLabelOwner: z.string().email().nullable().optional(),
-})
+const gmailIngestSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    // Human-friendly knob: look back N days -> builds newer_than:N query
+    maxAgeDays: z.number().int().positive().max(365).default(7),
+    // Page size / per-run budget
+    maxMessages: z.number().int().positive().max(200).default(50),
+    // Optional Gmail label filter (free text, not a Gmail query string)
+    label: z.string().optional(),
+    remoteSourceDefault: z.boolean().optional(),
+    aiFallbackEnabled: z.boolean().optional(),
+    defaultLabelOwner: z.string().email().nullable().optional(),
+  })
+  // Allow legacy keys (allowedDomains/query/allowedSenders) to pass without breaking existing rows
+  .passthrough()
 
 export const configPayloadSchemaMap = {
   "ai-settings": aiSettingsSchema,

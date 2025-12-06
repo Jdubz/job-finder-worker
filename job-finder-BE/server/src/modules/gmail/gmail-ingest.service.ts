@@ -39,23 +39,6 @@ export class GmailIngestService {
   private readonly config = new ConfigRepository()
   private readonly queue = new JobQueueService()
   private readonly ingestState = new EmailIngestStateRepository()
-  private readonly defaultAllowedDomains = [
-    "greenhouse.io",
-    "lever.co",
-    "ashbyhq.com",
-    "workday.com",
-    "smartrecruiters.com",
-    "jobs.ashbyhq.com",
-    "boards.greenhouse.io",
-    "boards.eu.greenhouse.io",
-    "myworkdayjobs.com",
-    "jobs.lever.co",
-    "wellfound.com",
-    "angel.co",
-    "recruitee.com",
-    "jobvite.com",
-    "breezy.hr"
-  ]
 
   async ingestAll(): Promise<IngestJobResult[]> {
     const settings = this.getSettings()
@@ -88,13 +71,19 @@ export class GmailIngestService {
 
   private getSettings(): GmailIngestConfig | null {
     const cfg = this.config.get<GmailIngestConfig>("gmail-ingest")
-    return cfg?.payload ?? null
-  }
-
-  private resolveAllowedDomains(settings: GmailIngestConfig): string[] {
-    const configured = settings.allowedDomains?.map((d) => d.toLowerCase().trim()).filter(Boolean)
-    if (configured && configured.length > 0) return configured
-    return this.defaultAllowedDomains
+    if (!cfg?.payload) return null
+    // Apply defaults for new fields so legacy configs continue to work
+    return {
+      maxAgeDays: cfg.payload.maxAgeDays ?? 7,
+      maxMessages: cfg.payload.maxMessages ?? 50,
+      label: cfg.payload.label,
+      enabled: cfg.payload.enabled ?? false,
+      remoteSourceDefault: cfg.payload.remoteSourceDefault,
+      aiFallbackEnabled: cfg.payload.aiFallbackEnabled,
+      defaultLabelOwner: cfg.payload.defaultLabelOwner,
+      // legacy fields passthrough but unused now
+      ...(cfg.payload as any),
+    }
   }
 
   private async ingestAccount(
@@ -117,10 +106,9 @@ export class GmailIngestService {
 
     const queryParts: string[] = []
     if (settings?.label) queryParts.push(`label:${settings.label}`)
-    if (settings?.query) queryParts.push(settings.query)
+    if (settings?.maxAgeDays) queryParts.push(`newer_than:${settings.maxAgeDays}d`)
     const q = queryParts.join(" ").trim()
-    const maxResults = settings?.maxMessages ?? 25
-    const allowedDomains = this.resolveAllowedDomains(settings)
+    const maxResults = settings?.maxMessages ?? 50
     const messages = await this.fetchMessages(accessToken, ensured.historyId, q || undefined, maxResults)
     if (!messages.items.length) {
       return { gmailEmail, jobsFound: 0, jobsQueued: 0 }
@@ -155,7 +143,7 @@ export class GmailIngestService {
       }
 
       const body = this.extractBody(full)
-      const links = this.extractLinks(body, allowedDomains)
+      const links = this.extractLinks(body)
 
       if (!links.length) {
         // Record as processed with 0 jobs (no links found)
@@ -371,31 +359,25 @@ export class GmailIngestService {
     return buf.toString("utf8")
   }
 
-  private extractLinks(text: string, allowedDomains: string[]): string[] {
+  private extractLinks(text: string): string[] {
     if (!text) return []
     const regex = /https?:\/\/[^\s"'>)]+/gi
     const found = text.match(regex) ?? []
     const cleaned = found
       .map((url) => url.replace(/[.,;]+$/, ""))
-      .filter((url) => this.isLikelyJobLink(url, allowedDomains))
+      .filter((url) => this.isLikelyJobLink(url))
 
     // dedupe
     return Array.from(new Set(cleaned))
   }
 
-  private isLikelyJobLink(url: string, allowedDomains: string[]): boolean {
-    try {
-      const parsed = new URL(url)
-      const host = parsed.hostname.toLowerCase()
-      const path = (parsed.pathname || "").toLowerCase()
-      const domainAllowed =
-        allowedDomains.some((d) => host === d || host.endsWith(`.${d}`)) ||
-        path.includes("/careers") ||
-        path.includes("/jobs")
-      return domainAllowed
-    } catch {
-      return false
-    }
+  private isLikelyJobLink(url: string): boolean {
+    const lower = url.toLowerCase()
+    // Drop obvious non-job or footers
+    if (lower.includes("unsubscribe") || lower.includes("/privacy") || lower.includes("/settings")) return false
+    if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".gif")) return false
+    // Prefer keeping most links to widen intake; only minimal filtering above
+    return true
   }
 
   private getHeader(msg: GmailMessage, name: string): string | undefined {

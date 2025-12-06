@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -31,11 +31,9 @@ type IngestStatus = {
 
 type ConfigPayload = {
   enabled: boolean
-  label?: string
-  query?: string
+  maxAgeDays?: number
   maxMessages?: number
-  allowedSenders?: string[]
-  allowedDomains?: string[]
+  label?: string
   remoteSourceDefault?: boolean
   aiFallbackEnabled?: boolean
   defaultLabelOwner?: string | null
@@ -51,15 +49,6 @@ export function GmailIngestTab() {
   const [ingestStatus, setIngestStatus] = useState<IngestStatus | null>(null)
   const { user } = useAuth()
 
-  const allowedSenders = useMemo(
-    () => (config?.allowedSenders ?? []).join(", "),
-    [config?.allowedSenders]
-  )
-  const allowedDomains = useMemo(
-    () => (config?.allowedDomains ?? []).join(", "),
-    [config?.allowedDomains]
-  )
-
   useEffect(() => {
     void loadConfig()
     void loadAccounts()
@@ -72,7 +61,16 @@ export function GmailIngestTab() {
       const res = await apiClient.get<{ data: { config: { payload: ConfigPayload } } }>(
         "/config/gmail-ingest"
       )
-      setConfig(res.data.config.payload)
+      const payload = res.data.config.payload
+      setConfig({
+        maxAgeDays: payload.maxAgeDays ?? 7,
+        maxMessages: payload.maxMessages ?? 50,
+        enabled: payload.enabled,
+        label: payload.label,
+        remoteSourceDefault: payload.remoteSourceDefault,
+        aiFallbackEnabled: payload.aiFallbackEnabled,
+        defaultLabelOwner: payload.defaultLabelOwner ?? null,
+      })
     } catch (error) {
       toast({ title: "Failed to load Gmail config", description: String(error), variant: "destructive" })
     }
@@ -108,20 +106,6 @@ export function GmailIngestTab() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleCsvChange = (field: "allowedSenders" | "allowedDomains", value: string) => {
-    setConfig((prev) =>
-      prev
-        ? {
-            ...prev,
-            [field]: value
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          }
-        : prev
-    )
   }
 
   const startOAuth = useGoogleLogin({
@@ -232,12 +216,16 @@ export function GmailIngestTab() {
               />
             </div>
             <div>
-              <Label htmlFor="query">Query</Label>
+              <Label htmlFor="maxAge">Look back (days)</Label>
               <Input
-                id="query"
-                placeholder="newer_than:2d"
-                value={config.query ?? ""}
-                onChange={(e) => setConfig((c) => (c ? { ...c, query: e.target.value } : c))}
+                id="maxAge"
+                type="number"
+                min={1}
+                max={365}
+                value={config.maxAgeDays ?? ""}
+                onChange={(e) =>
+                  setConfig((c) => (c ? { ...c, maxAgeDays: Number(e.target.value) } : c))
+                }
               />
             </div>
           </div>
@@ -260,27 +248,6 @@ export function GmailIngestTab() {
                 onCheckedChange={(checked) => setConfig((c) => (c ? { ...c, remoteSourceDefault: checked } : c))}
               />
               <Label htmlFor="remote-source">Treat all as remote source</Label>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="allowedSenders">Allowed senders (comma separated)</Label>
-              <Input
-                id="allowedSenders"
-                placeholder="alerts@example.com, noreply@jobboard.com"
-                value={allowedSenders}
-                onChange={(e) => handleCsvChange("allowedSenders", e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="allowedDomains">Allowed domains (comma separated)</Label>
-              <Input
-                id="allowedDomains"
-                placeholder="greenhouse.io, lever.co"
-                value={allowedDomains}
-                onChange={(e) => handleCsvChange("allowedDomains", e.target.value)}
-              />
             </div>
           </div>
 

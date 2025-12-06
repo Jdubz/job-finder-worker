@@ -1,8 +1,10 @@
 export type GmailIngestConfig = {
   enabled: boolean
-  label?: string
-  query?: string
+  maxAgeDays?: number
   maxMessages?: number
+  label?: string
+  // Legacy fields (ignored but tolerated)
+  query?: string
   allowedSenders?: string[]
   allowedDomains?: string[]
   remoteSourceDefault?: boolean
