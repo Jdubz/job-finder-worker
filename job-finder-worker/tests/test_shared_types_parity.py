@@ -43,8 +43,29 @@ def _parse_union_literals(ts_path: Path, type_name: str) -> Set[str]:
                 j += 1
             break
 
+    # If we captured a type alias without inline literals (e.g., typeof CONST),
+    # treat it as empty so the const-array fallback runs.
+    if union_text and '"' not in union_text:
+        union_text = ""
+
     if not union_text:
-        raise AssertionError(f"Could not find union type {type_name} in {ts_path}")
+        # Fallback for const-array-based unions (e.g., QUEUE_ITEM_TYPES)
+        array_map = {"QueueItemType": "QUEUE_ITEM_TYPES", "QueueStatus": "QUEUE_STATUSES"}
+        const_name = array_map.get(type_name)
+        if const_name:
+            captured: list[str] = []
+            capture = False
+            for line in lines:
+                if const_name in line and "[" in line:
+                    capture = True
+                elif capture and "]" in line:
+                    capture = False
+                    break
+                if capture:
+                    captured.append(line)
+            union_text = "\n".join(captured)
+        if not union_text:
+            raise AssertionError(f"Could not find union type {type_name} in {ts_path}")
 
     return set(re.findall(r'"([^"]+)"', union_text))
 
@@ -151,6 +172,8 @@ def test_job_match_fields_cover_shared_contract():
         "id",
         "queue_item_id",
         "submitted_by",
+        "status",
+        "ignored_at",
     }
 
     worker_match_fields.update(JobMatchResult.model_fields.keys())

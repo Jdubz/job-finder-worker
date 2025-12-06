@@ -6,7 +6,14 @@
  */
 
 import type Database from 'better-sqlite3'
-import type { AIProviderType, AIInterfaceType, AgentId, AgentConfig, AgentTaskType } from '@shared/types'
+import type {
+  AIProviderType,
+  AIInterfaceType,
+  AgentId,
+  AgentConfig,
+  AgentTaskType,
+  AgentAuthRequirements,
+} from '@shared/types'
 
 export const description = 'Convert ai-settings to AgentManager structure'
 
@@ -57,10 +64,27 @@ function makeAgentId(provider: AIProviderType, iface: AIInterfaceType): AgentId 
   return `${provider}.${iface}` as AgentId
 }
 
+function authRequirementsFor(provider: AIProviderType, iface: AIInterfaceType): AgentAuthRequirements {
+  const map: Partial<Record<AgentId, AgentAuthRequirements>> = {
+    'codex.cli': { type: 'cli', requiredEnv: ['OPENAI_API_KEY'], requiredFiles: ['~/.codex/auth.json'] },
+    'gemini.cli': { type: 'cli', requiredEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'], requiredFiles: ['~/.gemini/settings.json'] },
+    'gemini.api': { type: 'api', requiredEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'] },
+    'claude.cli': { type: 'cli', requiredEnv: ['CLAUDE_CODE_OAUTH_TOKEN'], requiredFiles: ['~/.anthropic/credentials.json'] },
+    'claude.api': { type: 'api', requiredEnv: ['ANTHROPIC_API_KEY'] },
+    'openai.api': { type: 'api', requiredEnv: ['OPENAI_API_KEY'] },
+  }
+  const key = makeAgentId(provider, iface)
+  if (!map[key]) {
+    throw new Error(`authRequirements not defined for provider/interface: ${key}`)
+  }
+  return map[key] as AgentAuthRequirements
+}
+
 function migrateToNew(old: OldAISettings): NewAISettings {
   const agents: Partial<Record<AgentId, AgentConfig>> = {}
   const extractionFallbacks: AgentId[] = []
   const analysisFallbacks: AgentId[] = []
+  const documentFallbacks: AgentId[] = []
 
   const ensureAgent = (provider: AIProviderType, iface: AIInterfaceType, model: string): AgentId => {
     const agentId = makeAgentId(provider, iface)
@@ -69,10 +93,13 @@ function migrateToNew(old: OldAISettings): NewAISettings {
         provider,
         interface: iface,
         defaultModel: model,
-        enabled: true,
-        reason: null,
         dailyBudget: 100,
         dailyUsage: 0,
+        runtimeState: {
+          worker: { enabled: true, reason: null },
+          backend: { enabled: true, reason: null },
+        },
+        authRequirements: authRequirementsFor(provider, iface),
       }
     }
     return agentId
@@ -85,6 +112,7 @@ function migrateToNew(old: OldAISettings): NewAISettings {
     const agentId = ensureAgent(workerSelected.provider, workerSelected.interface, workerSelected.model)
     if (!extractionFallbacks.includes(agentId)) extractionFallbacks.push(agentId)
     if (!analysisFallbacks.includes(agentId)) analysisFallbacks.push(agentId)
+    if (!documentFallbacks.includes(agentId)) documentFallbacks.push(agentId)
   }
 
   if (tasks?.jobMatch) {
@@ -102,6 +130,12 @@ function migrateToNew(old: OldAISettings): NewAISettings {
     if (!extractionFallbacks.includes(agentId)) extractionFallbacks.unshift(agentId)
   }
 
+  if (old.documentGenerator?.selected) {
+    const docSel = old.documentGenerator.selected
+    const agentId = ensureAgent(docSel.provider, docSel.interface, docSel.model)
+    if (!documentFallbacks.includes(agentId)) documentFallbacks.unshift(agentId)
+  }
+
   const docGen = old.documentGenerator?.selected ?? {
     provider: 'codex' as AIProviderType,
     interface: 'cli' as AIInterfaceType,
@@ -110,7 +144,11 @@ function migrateToNew(old: OldAISettings): NewAISettings {
 
   return {
     agents,
-    taskFallbacks: { extraction: extractionFallbacks, analysis: analysisFallbacks },
+    taskFallbacks: {
+      extraction: extractionFallbacks,
+      analysis: analysisFallbacks,
+      document: documentFallbacks.length ? documentFallbacks : extractionFallbacks,
+    },
     modelRates: DEFAULT_MODEL_RATES,
     documentGenerator: { selected: docGen },
     options: old.options ?? [],
@@ -130,24 +168,43 @@ export function up(db: Database.Database): void {
           provider: 'gemini',
           interface: 'cli',
           defaultModel: 'gemini-2.0-flash',
-          enabled: true,
-          reason: null,
           dailyBudget: 100,
           dailyUsage: 0,
+          runtimeState: {
+            worker: { enabled: true, reason: null },
+            backend: { enabled: true, reason: null },
+          },
+          authRequirements: authRequirementsFor('gemini', 'cli'),
         },
         'codex.cli': {
           provider: 'codex',
           interface: 'cli',
           defaultModel: 'gpt-4o',
-          enabled: true,
-          reason: null,
           dailyBudget: 100,
           dailyUsage: 0,
+          runtimeState: {
+            worker: { enabled: true, reason: null },
+            backend: { enabled: true, reason: null },
+          },
+          authRequirements: authRequirementsFor('codex', 'cli'),
+        },
+        'claude.cli': {
+          provider: 'claude',
+          interface: 'cli',
+          defaultModel: 'claude-sonnet-4-20250514',
+          dailyBudget: 50,
+          dailyUsage: 0,
+          runtimeState: {
+            worker: { enabled: true, reason: null },
+            backend: { enabled: true, reason: null },
+          },
+          authRequirements: authRequirementsFor('claude', 'cli'),
         },
       },
       taskFallbacks: {
-        extraction: ['gemini.cli', 'codex.cli'],
-        analysis: ['gemini.cli', 'codex.cli'],
+        extraction: ['gemini.cli', 'codex.cli', 'claude.cli'],
+        analysis: ['gemini.cli', 'codex.cli', 'claude.cli'],
+        document: ['codex.cli', 'claude.cli', 'gemini.cli'],
       },
       modelRates: DEFAULT_MODEL_RATES,
       documentGenerator: { selected: { provider: 'codex', interface: 'cli', model: 'gpt-4o' } },

@@ -196,17 +196,21 @@ export async function triggerAgentReset() {
     for (const [agentId, config] of Object.entries(agents)) {
       if (!config) continue
 
-      const updates: Partial<typeof config> = { dailyUsage: 0 }
+      config.dailyUsage = 0
 
-      // Re-enable agents disabled due to quota exhaustion
-      if (!config.enabled && config.reason?.startsWith('quota_exhausted:')) {
-        updates.enabled = true
-        updates.reason = null
-        reenabledCount++
-        logger.info({ agentId, at: utcNowIso() }, 'Re-enabling agent after quota reset')
+      const runtime = config.runtimeState
+      if (runtime) {
+        for (const scope of Object.keys(runtime)) {
+          const scopeState = runtime[scope as keyof typeof runtime]
+          if (scopeState && !scopeState.enabled && scopeState.reason?.startsWith('quota_exhausted:')) {
+            scopeState.enabled = true
+            scopeState.reason = null
+            reenabledCount++
+            logger.info({ agentId, scope, at: utcNowIso() }, 'Re-enabling agent after quota reset')
+          }
+        }
       }
 
-      Object.assign(config, updates)
       resetCount++
     }
 

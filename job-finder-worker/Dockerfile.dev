@@ -35,6 +35,7 @@ RUN groupadd --gid 1000 node \
 # AI CLI config directories (mount from host for auth credentials)
 ENV CODEX_HOME=/home/node/.codex
 ENV GEMINI_HOME=/home/node/.gemini
+ENV ANTHROPIC_HOME=/home/node/.anthropic
 
 # Copy Codex CLI + node runtime from builder (no npm in final image)
 COPY --from=cli-builder /usr/local/bin/node /usr/local/bin/node
@@ -48,11 +49,11 @@ RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@google/gemini-cli/
 
 # Copy Claude CLI
 COPY --from=cli-builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@anthropic-ai/claude-code
-RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.js "$@"\n' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude
+RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js "$@"\n' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude
 
 # Create directories for AI CLIs with proper ownership
-RUN mkdir -p /home/node/.codex /home/node/.gemini /data/sqlite \
-    && chown -R node:node /home/node/.codex /home/node/.gemini /data
+RUN mkdir -p /home/node/.codex /home/node/.gemini /home/node/.anthropic /data/sqlite \
+    && chown -R node:node /home/node/.codex /home/node/.gemini /home/node/.anthropic /data
 
 # Copy and install Python dependencies first (for layer caching)
 COPY requirements.txt .

@@ -31,7 +31,7 @@ export type AIProviderType = "codex" | "claude" | "openai" | "gemini"
 export type AIInterfaceType = "cli" | "api"
 
 /** Agent task types - abstract categories describing the nature of AI work */
-export type AgentTaskType = "extraction" | "analysis"
+export type AgentTaskType = "extraction" | "analysis" | "document"
 
 /** Agent ID format: "{provider}.{interface}" (e.g., "gemini.cli", "codex.cli") */
 export type AgentId = `${AIProviderType}.${AIInterfaceType}`
@@ -72,6 +72,22 @@ export interface AIProviderOption {
   interfaces: AIInterfaceOption[]
 }
 
+export type AgentScope = "worker" | "backend"
+
+export interface AgentRuntimeState {
+  enabled: boolean
+  reason: string | null
+}
+
+export interface AgentAuthRequirements {
+  /** Interface mode used for auth checks (cli or api) */
+  type: AIInterfaceType
+  /** Environment variables required for this agent */
+  requiredEnv: string[]
+  /** Files whose existence satisfies auth (e.g., CLI credentials) */
+  requiredFiles?: string[]
+}
+
 /** Configuration for a single AI agent (provider/interface combination) */
 export interface AgentConfig {
   /** AI provider type */
@@ -80,18 +96,14 @@ export interface AgentConfig {
   interface: AIInterfaceType
   /** Default model for this agent */
   defaultModel: string
-  /** Whether agent can be used */
-  enabled: boolean
-  /**
-   * Why disabled (null if enabled). Prefix determines recovery:
-   * - "quota_exhausted:*" - auto-enabled by midnight cron
-   * - "error:*" - requires manual re-enable via UI
-   */
-  reason: string | null
   /** Maximum daily usage units */
   dailyBudget: number
   /** Current usage (reset at midnight) */
   dailyUsage: number
+  /** Scope-specific runtime state (auth/health per service) */
+  runtimeState: Record<AgentScope, AgentRuntimeState>
+  /** Auth requirements checked on AgentManager initialization */
+  authRequirements: AgentAuthRequirements
 }
 
 /** AI Settings with agent manager configuration */

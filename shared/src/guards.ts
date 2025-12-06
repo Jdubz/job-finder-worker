@@ -137,12 +137,37 @@ export function isAIInterfaceType(value: unknown): value is AIInterfaceType {
 function isAgentConfig(value: unknown): boolean {
   if (!isObject(value)) return false
   const agent = value as Record<string, unknown>
+
+  const runtime = agent.runtimeState
+  if (!isObject(runtime)) return false
+  const workerState = (runtime as Record<string, unknown>).worker
+  const backendState = (runtime as Record<string, unknown>).backend
+
+  const isRuntimeState = (state: unknown) =>
+    isObject(state) && typeof (state as any).enabled === "boolean" && ((state as any).reason === null || typeof (state as any).reason === "string")
+
+  if (!isRuntimeState(workerState) || !isRuntimeState(backendState)) return false
+
+  const auth = agent.authRequirements
+  if (!isObject(auth)) return false
+  if (!isAIInterfaceType((auth as any).type)) return false
+  if (
+    !Array.isArray((auth as any).requiredEnv) ||
+    (auth as any).requiredEnv.length === 0 ||
+    !(auth as any).requiredEnv.every((v: unknown) => typeof v === "string")
+  ) {
+    return false
+  }
+  if ((auth as any).requiredFiles !== undefined) {
+    if (!Array.isArray((auth as any).requiredFiles) || !(auth as any).requiredFiles.every((v: unknown) => typeof v === "string")) {
+      return false
+    }
+  }
+
   return (
     isAIProviderType(agent.provider) &&
     isAIInterfaceType(agent.interface) &&
     typeof agent.defaultModel === "string" &&
-    typeof agent.enabled === "boolean" &&
-    (agent.reason === null || typeof agent.reason === "string") &&
     typeof agent.dailyBudget === "number" &&
     typeof agent.dailyUsage === "number"
   )
@@ -162,7 +187,7 @@ function isAgentId(value: unknown): boolean {
  * Type guard for AgentTaskType
  */
 function isAgentTaskType(value: unknown): boolean {
-  return typeof value === "string" && ["extraction", "analysis"].includes(value)
+  return typeof value === "string" && ["extraction", "analysis", "document"].includes(value)
 }
 
 /**
@@ -176,6 +201,7 @@ export function isAISettings(value: unknown): value is AISettings {
   // Validate agents
   if (!isObject(settings.agents)) return false
   const agents = settings.agents as Record<string, unknown>
+  if (Object.keys(agents).length === 0) return false
   for (const [agentId, agentConfig] of Object.entries(agents)) {
     if (!isAgentId(agentId) || !isAgentConfig(agentConfig)) return false
   }
@@ -183,12 +209,19 @@ export function isAISettings(value: unknown): value is AISettings {
   // Validate taskFallbacks
   if (!isObject(settings.taskFallbacks)) return false
   const taskFallbacks = settings.taskFallbacks as Record<string, unknown>
+  const requiredTasks = ["extraction", "analysis", "document"]
   for (const [taskType, fallbackChain] of Object.entries(taskFallbacks)) {
     if (!isAgentTaskType(taskType)) return false
     if (!Array.isArray(fallbackChain)) return false
     for (const agentId of fallbackChain) {
       if (!isAgentId(agentId)) return false
+      if (!agents[agentId]) return false
     }
+  }
+  // Require all task types to be present and non-empty
+  for (const task of requiredTasks) {
+    const chain = taskFallbacks[task]
+    if (!Array.isArray(chain) || chain.length === 0) return false
   }
 
   // Validate modelRates

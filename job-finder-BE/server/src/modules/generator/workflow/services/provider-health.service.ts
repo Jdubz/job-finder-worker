@@ -133,10 +133,14 @@ export async function ensureCliProviderHealthy(provider: CliProvider): Promise<v
         const credPath = join(homedir(), '.anthropic', 'credentials.json')
         await readFile(credPath, 'utf-8')
         return
-      } catch {
-        throw new UserFacingError(
-          'Claude CLI not authenticated. Set CLAUDE_CODE_OAUTH_TOKEN or run "claude login" to configure credentials.'
-        )
+      } catch (error) {
+        const err = error as NodeJS.ErrnoException
+        if (err.code === 'ENOENT') {
+          throw new UserFacingError(
+            'Claude CLI not authenticated. Set CLAUDE_CODE_OAUTH_TOKEN or run "claude login" to configure credentials.'
+          )
+        }
+        throw new UserFacingError(`Failed to verify Claude CLI credentials: ${err.message}`)
       }
     default:
       return

@@ -31,14 +31,43 @@ const aiProviderOptionSchema = z.object({
   interfaces: z.array(aiInterfaceOptionSchema),
 })
 
-const aiSettingsSectionSchema = z.object({
-  selected: aiProviderSelectionSchema,
-  tasks: z.record(z.string(), z.unknown()).optional(),
+const agentRuntimeStateSchema = z.object({
+  enabled: z.boolean(),
+  reason: z.string().nullable(),
+})
+
+const agentAuthRequirementsSchema = z.object({
+  type: z.enum(["cli", "api"]),
+  requiredEnv: z.array(z.string()),
+  requiredFiles: z.array(z.string()).optional(),
+})
+
+const agentConfigSchema = z.object({
+  provider: z.enum(["codex", "claude", "openai", "gemini"]),
+  interface: z.enum(["cli", "api"]),
+  defaultModel: z.string(),
+  dailyBudget: z.number(),
+  dailyUsage: z.number(),
+  runtimeState: z.object({
+    worker: agentRuntimeStateSchema,
+    backend: agentRuntimeStateSchema,
+  }),
+  authRequirements: agentAuthRequirementsSchema,
 })
 
 export const aiSettingsSchema = z.object({
-  worker: aiSettingsSectionSchema,
-  documentGenerator: aiSettingsSectionSchema,
+  agents: z.record(z.string(), agentConfigSchema).refine((value) => Object.keys(value).length > 0, {
+    message: "At least one agent must be configured",
+  }),
+  taskFallbacks: z.object({
+    extraction: z.array(z.string()).min(1),
+    analysis: z.array(z.string()).min(1),
+    document: z.array(z.string()).min(1),
+  }),
+  modelRates: z.record(z.number()),
+  documentGenerator: z.object({
+    selected: aiProviderSelectionSchema,
+  }),
   options: z.array(aiProviderOptionSchema),
 })
 

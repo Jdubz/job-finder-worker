@@ -221,15 +221,20 @@ export function buildConfigRouter() {
       if (id === 'ai-settings') {
         const aiPayload = coerced as AISettings
         const configuredAgents = Object.keys(aiPayload.agents ?? {})
-        const enabledAgents = Object.entries(aiPayload.agents ?? {})
-          .filter(([, config]) => config?.enabled)
+        const enabledAgentsWorker = Object.entries(aiPayload.agents ?? {})
+          .filter(([, config]) => config?.runtimeState?.worker?.enabled)
+          .map(([id]) => id)
+        const enabledAgentsBackend = Object.entries(aiPayload.agents ?? {})
+          .filter(([, config]) => config?.runtimeState?.backend?.enabled)
           .map(([id]) => id)
         logger.info({
           configId: id,
           configuredAgents,
-          enabledAgents,
+          enabledAgentsWorker,
+          enabledAgentsBackend,
           extractionFallbacks: aiPayload.taskFallbacks?.extraction ?? [],
           analysisFallbacks: aiPayload.taskFallbacks?.analysis ?? [],
+          documentFallbacks: aiPayload.taskFallbacks?.document ?? [],
           docGenProvider: `${aiPayload.documentGenerator?.selected?.provider ?? 'unknown'}/${aiPayload.documentGenerator?.selected?.interface ?? 'unknown'}`,
           docGenModel: aiPayload.documentGenerator?.selected?.model ?? 'unknown',
           updatedBy: userEmail,

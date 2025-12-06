@@ -6,7 +6,7 @@
 
 ## Summary
 
-Implement an Agent Manager in the worker and backend generator that abstracts AI agent selection from callers. Callers supply a task type and prompt; the manager selects the appropriate agent based on configuration, availability, and budget. This centralizes agent lifecycle management including fallback chains, daily budgets (shared across scopes), per-scope auth gating (disable only the calling scope when creds are missing), error handling, and automatic recovery. Claude CLI is now a first-class agent (worker + backend) with auth via CLAUDE_CODE_OAUTH_TOKEN or logged-in anthropic credentials.
+Implement an Agent Manager in the worker and backend generator that abstracts AI agent selection from callers. Callers supply a task type and prompt; the manager selects the appropriate agent based on configuration, availability, and budget. This centralizes agent lifecycle management including fallback chains, daily budgets (shared across scopes), per-scope auth gating (disable only the calling scope when creds are missing), error handling, and automatic recovery. Every agent declares explicit `authRequirements` (env vars and optional credential files); initialization fails if they are missing or malformed. Claude CLI is now a first-class agent (worker + backend) with auth provided by `CLAUDE_CODE_OAUTH_TOKEN` (no credential mounts required) or an interactive login cached under `~/.anthropic`.
 
 This is a **hard cutover** - all legacy configuration fields will be removed, not deprecated.
 
@@ -37,6 +37,7 @@ Abstract task types describing the nature of work, decoupled from queue item typ
 |-----------|-------------|-----------|
 | `extraction` | Structured data extraction from text | Job details, company info parsing, source discovery |
 | `analysis` | Reasoning and evaluation | Match scoring rationale, research synthesis |
+| `document` | Resume / cover letter generation workflows | Generator pipeline for documents |
 
 Processor mapping (internal to AgentManager callers):
 ```python
@@ -45,6 +46,7 @@ QUEUE_TO_AGENT_TASK = {
     "company": "extraction",
     "source_discovery": "extraction",
     "agent_review": "analysis",
+    "generator": "document",
 }
 ```
 
@@ -55,13 +57,19 @@ QUEUE_TO_AGENT_TASK = {
 type AgentId = `${AIProviderType}.${AIInterfaceType}`
 
 /** Agent task types */
-type AgentTaskType = "extraction" | "analysis"
+type AgentTaskType = "extraction" | "analysis" | "document"
 
 type AgentScope = "worker" | "backend"
 
 interface AgentRuntimeState {
   enabled: boolean
   reason: string | null  // scope-specific disable reason
+}
+
+interface AgentAuthRequirements {
+  type: AIInterfaceType           // cli | api
+  requiredEnv: string[]           // non-empty
+  requiredFiles?: string[]        // any-of files; optional
 }
 
 interface AgentConfig {
@@ -71,6 +79,7 @@ interface AgentConfig {
   dailyBudget: number
   dailyUsage: number       // shared across scopes
   runtimeState: Record<AgentScope, AgentRuntimeState>
+  authRequirements: AgentAuthRequirements
 }
 
 interface AISettings {
@@ -106,6 +115,11 @@ interface AISettings {
       "runtimeState": {
         "worker": { "enabled": true, "reason": null },
         "backend": { "enabled": true, "reason": null }
+      },
+      "authRequirements": {
+        "type": "cli",
+        "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        "requiredFiles": ["~/.gemini/settings.json"]
       }
     },
     "codex.cli": {
@@ -117,6 +131,11 @@ interface AISettings {
       "runtimeState": {
         "worker": { "enabled": true, "reason": null },
         "backend": { "enabled": true, "reason": null }
+      },
+      "authRequirements": {
+        "type": "cli",
+        "requiredEnv": ["OPENAI_API_KEY"],
+        "requiredFiles": ["~/.codex/auth.json"]
       }
     },
     "claude.cli": {
@@ -139,6 +158,11 @@ interface AISettings {
       "runtimeState": {
         "worker": { "enabled": true, "reason": null },
         "backend": { "enabled": true, "reason": null }
+      },
+      "authRequirements": {
+        "type": "cli",
+        "requiredEnv": ["CLAUDE_CODE_OAUTH_TOKEN"],
+        "requiredFiles": ["~/.anthropic/credentials.json"]
       }
     }
   },
