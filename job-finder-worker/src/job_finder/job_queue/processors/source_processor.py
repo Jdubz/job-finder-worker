@@ -188,6 +188,8 @@ class SourceProcessor(BaseProcessor):
                 # Build a collision-resistant placeholder name
                 if company_name and aggregator_domain:
                     placeholder_name = f"{company_name} Jobs ({aggregator_domain})"
+                elif company_name:
+                    placeholder_name = f"{company_name} Jobs"
                 else:
                     placeholder_name = f"{urlparse(url).netloc} Jobs"
 

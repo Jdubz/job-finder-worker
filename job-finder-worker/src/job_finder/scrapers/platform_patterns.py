@@ -82,8 +82,12 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="greenhouse_html",
-        # Match jobs.greenhouse.io/company or boards.greenhouse.io/company
-        url_pattern=r"(?:jobs|boards)\.greenhouse\.io/(?P<board_token>[^/?#]+)",
+        # Match various Greenhouse board URLs:
+        # - jobs.greenhouse.io/company
+        # - boards.greenhouse.io/company
+        # - job-boards.greenhouse.io/company
+        # - job-boards.eu.greenhouse.io/company (regional)
+        url_pattern=r"(?:jobs|boards|job-boards)(?:\.[a-z]{2})?\.greenhouse\.io/(?P<board_token>[^/?#]+)",
         api_url_template="https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true",
         response_path="jobs",
         fields={
@@ -143,8 +147,9 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="workday",
-        # Match tenant.wdX.myworkdayjobs.com/site_id
-        url_pattern=r"https?://(?P<tenant>[^.]+)\.(?P<wd_instance>wd\d+)\.myworkdayjobs\.com/(?P<site_id>[^/?#]+)",
+        # Match tenant.wdX.myworkdayjobs.com/[lang]/site_id
+        # Language prefix (e.g., en-US/, fr-FR/) is optional
+        url_pattern=r"https?://(?P<tenant>[^.]+)\.(?P<wd_instance>wd\d+)\.myworkdayjobs\.com/(?:[a-zA-Z]{2}(?:-[a-zA-Z]{2,3})?/)?(?P<site_id>[^/?#]+)",
         api_url_template="https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs",
         method="POST",
         post_body_template={"limit": 20, "offset": 0},
@@ -284,6 +289,26 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         config_type="rss",
     ),
     PlatformPattern(
+        name="weworkremotely_rss",
+        # Match weworkremotely.com - uses RSS feed for all jobs
+        url_pattern=r"weworkremotely\.com",
+        api_url_template="https://weworkremotely.com/remote-jobs.rss",
+        response_path="items",
+        fields={
+            "title": "title",
+            "company": "title",  # Company name is prefix of title, extracted via regex
+            "location": "region",
+            "description": "description",
+            "url": "link",
+            "posted_date": "pubDate",
+            "category": "category",
+            "job_type": "type",
+        },
+        validation_key="items",
+        config_type="rss",
+        is_remote_source=True,
+    ),
+    PlatformPattern(
         name="indeed_partner_api",
         url_pattern=r"apis\.indeed\.com",
         api_url_template="https://apis.indeed.com/graphql",
@@ -331,7 +356,8 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="builtin_html",
-        url_pattern=r"builtin\.com/jobs",
+        # Match builtin.com/jobs or builtin.com/company/xxx/jobs
+        url_pattern=r"builtin\.com/(?:jobs|company/[^/]+/jobs)",
         api_url_template="https://builtin.com/jobs",
         response_path="",
         fields={
