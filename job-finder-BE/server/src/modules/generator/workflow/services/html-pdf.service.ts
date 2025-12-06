@@ -71,6 +71,9 @@ function buildContactRow(personal: PersonalInfo): string {
   if (personal.email) {
     addItem(icons.email, personal.email, `mailto:${personal.email}`)
   }
+  if ((personal as any).phone) {
+    addItem(icons.phone, (personal as any).phone)
+  }
   if (personal.location) {
     addItem(icons.location, personal.location)
   }
@@ -262,7 +265,19 @@ function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string
 
 function coverLetterHtml(
   content: CoverLetterContent,
-  opts: { name: string; title?: string; email: string; location?: string; phone?: string; date?: string; logo?: string; avatar?: string }
+  opts: {
+    name: string
+    email: string
+    location?: string
+    phone?: string
+    date?: string
+    logo?: string
+    avatar?: string
+    title?: string
+    website?: string
+    linkedin?: string
+    github?: string
+  }
 ): string {
   const contact = buildContactRow({
     name: opts.name,
@@ -270,7 +285,11 @@ function coverLetterHtml(
     location: opts.location,
     contact: { email: opts.email, location: opts.location },
     title: '',
-    summary: ''
+    summary: '',
+    phone: opts.phone,
+    website: opts.website,
+    linkedin: opts.linkedin,
+    github: opts.github
   } as any)
 
   const initials = getInitials(opts.name)
@@ -297,14 +316,38 @@ function coverLetterHtml(
 
     .letter header {
       display: grid;
+      margin-bottom: 12px;
       grid-template-columns: auto 1fr auto;
       align-items: center;
-      gap: 16px;
-      margin-bottom: 12px;
+      gap: 14px;
+      padding: 4px 6px 0;
     }
 
-    .letter .header-center {
-      text-align: center;
+    .header-center .name {
+      font-size: 22px;
+      letter-spacing: -0.2px;
+      margin-bottom: 4px;
+    }
+
+    .header-center .title {
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .header-center .contact {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .header-center .contact .contact-item {
+      font-size: 11px;
+      gap: 6px;
+      align-items: center;
     }
 
     .letter .header-rule {
@@ -315,35 +358,10 @@ function coverLetterHtml(
       margin-bottom: 20px;
     }
 
-    .letter .avatar {
-      width: 56px;
-      height: 56px;
-      font-size: 20px;
+    body {
+      font-size: 11.5px;
+      line-height: 1.6;
     }
-
-    .letter .avatar-photo {
-      width: 56px;
-      height: 56px;
-    }
-
-    .letter .logo-box {
-      width: 44px;
-      height: 44px;
-    }
-
-    .letter .name {
-      font-size: 24px;
-    }
-
-    .letter .title {
-      font-size: 11px;
-      margin-bottom: 4px;
-    }
-
-    .letter .contact {
-      justify-content: center;
-    }
-
     /* Recipient block with accent bar */
     .recipient {
       display: flex;
@@ -355,14 +373,14 @@ function coverLetterHtml(
     }
 
     .greeting {
-      font-size: 13px;
+      font-size: 15px;
       color: var(--text);
       font-weight: 700;
       margin: 0;
     }
 
     .date {
-      font-size: 10px;
+      font-size: 12px;
       color: var(--muted);
       margin: 0;
       margin-left: auto;
@@ -376,11 +394,11 @@ function coverLetterHtml(
     }
 
     .letter-body p {
-      font-size: 10.5px;
-      line-height: 1.75;
+      font-size: 11.5px;
+      line-height: 1.72;
       color: var(--text);
       margin: 0 0 14px 0;
-      text-align: justify;
+      text-align: left;
     }
 
     .letter-body p:last-child {
@@ -421,13 +439,13 @@ function coverLetterHtml(
   <body>
     <div class="letter">
       <header>
-        ${opts.logo ? `<div class="logo-box"><img src="${opts.logo}" alt="" /></div>` : '<div></div>'}
+        ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
         <div class="header-center">
           <div class="name">${cleanText(opts.name)}</div>
           ${opts.title ? `<div class="title">${cleanText(opts.title)}</div>` : ''}
           ${contact}
         </div>
-        ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
+        ${opts.logo ? `<div class="logo-box"><img src="${opts.logo}" alt="" /></div>` : '<div></div>'}
       </header>
       <hr class="header-rule" />
 
@@ -442,7 +460,11 @@ function coverLetterHtml(
 
       <div class="signature">
         <div class="signature-line">Sincerely,</div>
-        <div class="signature-name">${cleanText(content.signature || opts.name)}</div>
+        ${(() => {
+          const sigRaw = cleanText(content.signature || opts.name)
+          const sigMain = sigRaw.split(',')[0] || sigRaw
+          return `<div class="signature-name">${sigMain}</div>`
+        })()}
       </div>
 
       <footer>
@@ -475,7 +497,19 @@ export class HtmlPdfService {
 
   async renderCoverLetter(
     content: CoverLetterContent,
-    options: { name: string; title?: string; email: string; location?: string; phone?: string; date?: string; logo?: string; avatar?: string }
+    options: {
+      name: string
+      title?: string
+      email: string
+      location?: string
+      phone?: string
+      date?: string
+      logo?: string
+      avatar?: string
+      website?: string
+      linkedin?: string
+      github?: string
+    }
   ): Promise<Buffer> {
     const html = coverLetterHtml(content, options)
     return renderHtmlToPdf(html)

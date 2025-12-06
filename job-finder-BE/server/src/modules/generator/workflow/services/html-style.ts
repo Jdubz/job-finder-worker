@@ -1,4 +1,6 @@
 export const sharedCss = `
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Inter:wght@400;500;600&display=swap');
+
   @page { margin: 0.4in; size: Letter; }
 
   :root {
@@ -20,7 +22,7 @@ export const sharedCss = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
     color: var(--text);
     font-size: 10px;
     line-height: 1.45;
@@ -253,6 +255,7 @@ export const sharedCss = `
   .logo-box img { width: 100%; height: 100%; object-fit: contain; }
 
   .name {
+    font-family: 'Poppins', 'Inter', 'Segoe UI', sans-serif;
     font-size: 32px;
     font-weight: 700;
     color: var(--text);
@@ -412,7 +415,6 @@ export const sharedCss = `
     color: var(--muted-light);
   }
   .main-footer a { color: var(--accent); font-weight: 500; }
-
 `;
 
 // SVG icons as data URIs for contact items

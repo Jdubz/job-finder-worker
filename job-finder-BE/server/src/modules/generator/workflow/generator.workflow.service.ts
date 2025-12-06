@@ -332,15 +332,19 @@ export class GeneratorWorkflowService {
     personalInfo: PersonalInfo
   ): Promise<string | undefined> {
     const coverLetter = await this.buildCoverLetterContent(payload, personalInfo)
+    const title = personalInfo.title || payload.job.role
     const pdf = await this.htmlPdf.renderCoverLetter(coverLetter, {
       name: personalInfo.name,
-      title: payload.job.role,
       email: personalInfo.email,
       location: personalInfo.location,
       phone: personalInfo.phone,
       date: payload.date,
       logo: personalInfo.logo,
-      avatar: personalInfo.avatar
+      avatar: personalInfo.avatar,
+      title,
+      website: personalInfo.website,
+      linkedin: personalInfo.linkedin,
+      github: personalInfo.github
     })
     const metadata: ArtifactMetadata = {
       name: personalInfo.name,
