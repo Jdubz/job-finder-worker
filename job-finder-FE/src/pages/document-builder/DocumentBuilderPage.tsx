@@ -611,31 +611,36 @@ export function DocumentBuilderPage() {
 
       {/* Generation Progress - Positioned at bottom of page */}
       {generationSteps.length > 0 && (
-        <div className="mt-8 space-y-4">
-          <GenerationProgress steps={generationSteps} />
+        <Card className="mt-8">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Document Generation</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <GenerationProgress steps={generationSteps} />
 
-          {/* Download Buttons */}
-          {(resumeUrl || coverLetterUrl) && (
-            <div className="flex gap-3 justify-center">
-              {resumeUrl && (
-                <Button asChild variant="outline" size="sm">
-                  <a href={getAbsoluteArtifactUrl(resumeUrl) || "#"} target="_blank" rel="noopener noreferrer">
-                    <Download className="w-4 h-4 mr-2" />
-                    Download Resume
-                  </a>
-                </Button>
-              )}
-              {coverLetterUrl && (
-                <Button asChild variant="outline" size="sm">
-                  <a href={getAbsoluteArtifactUrl(coverLetterUrl) || "#"} target="_blank" rel="noopener noreferrer">
-                    <Download className="w-4 h-4 mr-2" />
-                    Download Cover Letter
-                  </a>
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
+            {/* Download Buttons */}
+            {(resumeUrl || coverLetterUrl) && (
+              <div className="flex gap-3 justify-center mt-4">
+                {resumeUrl && (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={getAbsoluteArtifactUrl(resumeUrl) || "#"} target="_blank" rel="noopener noreferrer">
+                      <Download className="w-4 h-4 mr-2" />
+                      Download Resume
+                    </a>
+                  </Button>
+                )}
+                {coverLetterUrl && (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={getAbsoluteArtifactUrl(coverLetterUrl) || "#"} target="_blank" rel="noopener noreferrer">
+                      <Download className="w-4 h-4 mr-2" />
+                      Download Cover Letter
+                    </a>
+                  </Button>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Error/Status banner anchored near the bottom */}
