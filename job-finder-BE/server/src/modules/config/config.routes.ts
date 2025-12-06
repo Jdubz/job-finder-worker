@@ -208,6 +208,9 @@ export function buildConfigRouter() {
 
       const coerced = coercePayload(id, body.payload)
       if (!validatePayload(id, coerced)) {
+        if (id === 'ai-settings') {
+          logger.error({ payload: coerced }, 'ai-settings validation failed during upsert')
+        }
         res.status(400).json(failure(ApiErrorCode.VALIDATION_FAILED, 'Invalid config payload'))
         return
       }

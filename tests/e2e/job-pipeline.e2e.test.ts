@@ -531,19 +531,31 @@ describe("Configuration flows", () => {
           provider: "openai",
           interface: "api",
           defaultModel: "gpt-4o-mini",
-          enabled: true,
-          reason: null,
           dailyBudget: 100,
           dailyUsage: 0,
+          runtimeState: {
+            worker: { enabled: true, reason: null },
+            backend: { enabled: true, reason: null },
+          },
+          authRequirements: {
+            type: "api",
+            requiredEnv: ["OPENAI_API_KEY"],
+          },
         },
       },
       taskFallbacks: {
         extraction: ["openai.api"],
         analysis: ["openai.api"],
+        document: ["openai.api"],
       },
       modelRates: { "gpt-4o-mini": 0.5 },
       documentGenerator: { selected: { provider: "openai", interface: "api", model: "gpt-4o-mini" } },
-      options: [],
+      options: [
+        {
+          value: "openai",
+          interfaces: [{ value: "api", enabled: true, models: ["gpt-4o", "gpt-4o-mini"] }],
+        },
+      ],
     })
     const aiSettings = await configClient.getAISettings()
     expect(aiSettings?.agents?.["openai.api"]?.provider).toBe("openai")
