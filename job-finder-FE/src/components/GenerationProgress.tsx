@@ -166,10 +166,10 @@ export function GenerationProgress({ steps }: GenerationProgressProps) {
   }
 
   return (
-    <div className="border-t pt-3 mt-3">
+    <div>
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
-        <FileText className="w-4 h-4 text-primary" />
+        <FileText className="w-5 h-5 text-primary" />
         <span className="text-sm font-medium">
           {hasFailed
             ? "Generation Failed"
@@ -184,13 +184,13 @@ export function GenerationProgress({ steps }: GenerationProgressProps) {
       {/* Progress bar */}
       <div className="flex items-center gap-3 mb-3">
         <Progress value={progressPercent} className="flex-1 h-2" />
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
+        <span className="text-sm text-muted-foreground whitespace-nowrap">
           {completedCount}/{totalSteps} complete
         </span>
       </div>
 
       {/* Steps */}
-      <div className="space-y-2" data-testid="generation-progress">
+      <div className="space-y-3" data-testid="generation-progress">
         {steps.map((step) => {
           const styles = getStepStyles(step.status)
           const description = getStepDescription(step)
@@ -198,10 +198,8 @@ export function GenerationProgress({ steps }: GenerationProgressProps) {
           return (
             <div
               key={step.id}
-              className={`flex items-start gap-2 py-1.5 ${
-                step.status === "in_progress"
-                  ? "bg-primary/5 -mx-2 px-2 rounded-md"
-                  : ""
+              className={`flex items-start gap-3 py-2 ${
+                step.status === "in_progress" ? "bg-primary/5 px-2 rounded-md" : ""
               }`}
               data-step-id={step.id}
             >
@@ -219,18 +217,17 @@ export function GenerationProgress({ steps }: GenerationProgressProps) {
       </div>
 
       {/* Summary message */}
-      {isComplete && !hasFailed && (
-        <div className="mt-3 pt-2 border-t">
-          <p className="text-sm text-green-600 font-medium">
-            Your documents are ready for download
-          </p>
-        </div>
-      )}
-      {hasFailed && (
-        <div className="mt-3 pt-2 border-t">
-          <p className="text-sm text-destructive">
-            Generation encountered an error. Please try again.
-          </p>
+      {(isComplete || hasFailed) && (
+        <div className="mt-4 pt-3 border-t">
+          {hasFailed ? (
+            <p className="text-sm text-destructive">
+              Generation encountered an error. Please try again.
+            </p>
+          ) : (
+            <p className="text-sm text-green-600 font-medium">
+              Your documents are ready for download
+            </p>
+          )}
         </div>
       )}
     </div>
