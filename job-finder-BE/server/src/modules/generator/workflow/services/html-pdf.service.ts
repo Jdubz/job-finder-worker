@@ -262,7 +262,7 @@ function resumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string
 
 function coverLetterHtml(
   content: CoverLetterContent,
-  opts: { name: string; email: string; location?: string; phone?: string; date?: string; logo?: string; avatar?: string }
+  opts: { name: string; title?: string; email: string; location?: string; phone?: string; date?: string; logo?: string; avatar?: string }
 ): string {
   const contact = buildContactRow({
     name: opts.name,
@@ -296,8 +296,52 @@ function coverLetterHtml(
     }
 
     .letter header {
-      margin-bottom: 12px;
+      display: grid;
       grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .letter .header-center {
+      text-align: center;
+    }
+
+    .letter .header-rule {
+      display: block;
+      border: none;
+      height: 2px;
+      background: var(--accent);
+      margin-bottom: 20px;
+    }
+
+    .letter .avatar {
+      width: 56px;
+      height: 56px;
+      font-size: 20px;
+    }
+
+    .letter .avatar-photo {
+      width: 56px;
+      height: 56px;
+    }
+
+    .letter .logo-box {
+      width: 44px;
+      height: 44px;
+    }
+
+    .letter .name {
+      font-size: 24px;
+    }
+
+    .letter .title {
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .letter .contact {
+      justify-content: center;
     }
 
     /* Recipient block with accent bar */
@@ -343,9 +387,9 @@ function coverLetterHtml(
       margin-bottom: 0;
     }
 
-    /* Signature with accent */
+    /* Signature - simple and professional */
     .signature {
-      margin-top: 28px;
+      margin-top: 24px;
       padding-left: 16px;
       margin-left: 4px;
     }
@@ -353,25 +397,13 @@ function coverLetterHtml(
     .signature-line {
       font-size: 10px;
       color: var(--muted);
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .signature-name {
-      font-size: 14px;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 600;
       color: var(--text);
-      position: relative;
-      display: inline-block;
-    }
-
-    .signature-name::after {
-      content: "";
-      position: absolute;
-      bottom: -2px;
-      left: 0;
-      width: 100%;
-      height: 2px;
-      background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
     }
 
     .letter footer {
@@ -392,6 +424,7 @@ function coverLetterHtml(
         ${opts.logo ? `<div class="logo-box"><img src="${opts.logo}" alt="" /></div>` : '<div></div>'}
         <div class="header-center">
           <div class="name">${cleanText(opts.name)}</div>
+          ${opts.title ? `<div class="title">${cleanText(opts.title)}</div>` : ''}
           ${contact}
         </div>
         ${avatar ? `<img class="avatar-photo" src="${avatar}" alt="" />` : `<div class="avatar">${initials}</div>`}
@@ -442,7 +475,7 @@ export class HtmlPdfService {
 
   async renderCoverLetter(
     content: CoverLetterContent,
-    options: { name: string; email: string; location?: string; phone?: string; date?: string; logo?: string; avatar?: string }
+    options: { name: string; title?: string; email: string; location?: string; phone?: string; date?: string; logo?: string; avatar?: string }
   ): Promise<Buffer> {
     const html = coverLetterHtml(content, options)
     return renderHtmlToPdf(html)

@@ -413,11 +413,6 @@ export const sharedCss = `
   }
   .main-footer a { color: var(--accent); font-weight: 500; }
 
-  /* Legacy support - hide old elements */
-  .header-rule, .skills-section, .skills-grid { display: none; }
-  header { display: none; }
-  section { margin-bottom: 0; }
-  footer { display: none; }
 `;
 
 // SVG icons as data URIs for contact items
