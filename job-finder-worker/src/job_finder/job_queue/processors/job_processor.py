@@ -891,12 +891,14 @@ class JobProcessor(BaseProcessor):
         job_data = ctx.job_data or {}
         logger.info(f"[PIPELINE] SKIPPED: '{job_data.get('title')}' - {reason}")
 
-        # Update listing (analysis data not stored for skipped jobs)
+        # Update listing with extraction and scoring data for UI visibility
+        # Scoring breakdown shows users WHY the job was skipped
         self._update_listing_status(
             ctx.listing_id,
             "skipped",
             filter_result={
                 "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
+                "scoring": ctx.score_result.to_dict() if ctx.score_result else None,
                 "skip_reason": reason,
             },
         )
@@ -913,12 +915,14 @@ class JobProcessor(BaseProcessor):
         job_data = ctx.job_data or {}
         logger.error(f"[PIPELINE] FAILED: '{job_data.get('title', ctx.item.url)}' - {error}")
 
-        # Build filter data with error info
+        # Build filter data with error info and any available extraction/scoring
         filter_data: Dict[str, Any] = {"error": error}
         if ctx.extraction:
             filter_data["extraction"] = ctx.extraction.to_dict()
+        if ctx.score_result:
+            filter_data["scoring"] = ctx.score_result.to_dict()
 
-        # Update listing if we have one (analysis data not stored for failed jobs)
+        # Update listing if we have one
         if ctx.listing_id:
             self._update_listing_status(
                 ctx.listing_id,
