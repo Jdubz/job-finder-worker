@@ -142,7 +142,9 @@ class SourceProcessor(BaseProcessor):
             company_created = False
 
             # Try to resolve company name regardless of aggregator so we can build unique names
-            company_name = config.company_name or source_config.get("company_name", "")
+            company_name = config.company_name or (
+                source_config.get("company_name", "") if source_config else ""
+            )
             if not company_name and config.company_id:
                 company_record = self.companies_manager.get_company_by_id(config.company_id)
                 if company_record:
