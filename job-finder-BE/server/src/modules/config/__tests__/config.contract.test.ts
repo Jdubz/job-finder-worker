@@ -86,7 +86,6 @@ describe('config contract', () => {
         allowOnsite: false,
         willRelocate: false,
         userLocation: 'Portland, OR',
-        userTimezone: -8,
         maxTimezoneDiffHours: 4,
       },
       employmentType: { allowFullTime: true, allowPartTime: false, allowContract: true },

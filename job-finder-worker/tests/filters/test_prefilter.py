@@ -988,8 +988,13 @@ class TestPreFilterTreatUnknownAsOnsite:
         result = pf.filter({"title": "Engineer"})
         assert result.passed is True
 
-    def test_timezone_guard_blocks_large_offset(self):
-        """Remote/hybrid roles are rejected when timezone diff exceeds max."""
+    def test_timezone_guard_blocks_large_offset(self, mocker):
+        """Remote/hybrid roles are rejected when timezone diff exceeds max (city-based)."""
+        # Mock the timezone lookup to avoid network calls
+        mocker.patch(
+            "job_finder.filters.prefilter.get_timezone_diff_hours",
+            return_value=13.5,  # Portland to Hyderabad is ~13.5 hours
+        )
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
@@ -999,7 +1004,6 @@ class TestPreFilterTreatUnknownAsOnsite:
                 "allowOnsite": True,
                 "willRelocate": False,
                 "userLocation": "Portland, OR",
-                "userTimezone": -8,
                 "maxTimezoneDiffHours": 4,
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
@@ -1007,13 +1011,19 @@ class TestPreFilterTreatUnknownAsOnsite:
             "technology": {"rejected": []},
         }
         pf = PreFilter(config)
-        job_data = {"title": "Engineer", "location": "Remote", "timezone": 2}
+        # Job in Hyderabad, India (UTC+5:30) vs Portland (UTC-8) = 13.5h diff
+        job_data = {"title": "Engineer", "city": "Hyderabad", "country": "India"}
         result = pf.filter(job_data, is_remote_source=True)
         assert result.passed is False
         assert "Timezone diff" in result.reason
 
-    def test_timezone_guard_allows_within_limit(self):
-        """Remote roles within max diff should pass."""
+    def test_timezone_guard_allows_within_limit(self, mocker):
+        """Remote roles within max diff should pass (city-based)."""
+        # Mock the timezone lookup to avoid network calls
+        mocker.patch(
+            "job_finder.filters.prefilter.get_timezone_diff_hours",
+            return_value=2.0,  # Portland to Denver is ~2 hours
+        )
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
@@ -1023,7 +1033,6 @@ class TestPreFilterTreatUnknownAsOnsite:
                 "allowOnsite": True,
                 "willRelocate": False,
                 "userLocation": "Portland, OR",
-                "userTimezone": -8,
                 "maxTimezoneDiffHours": 4,
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
@@ -1031,12 +1040,15 @@ class TestPreFilterTreatUnknownAsOnsite:
             "technology": {"rejected": []},
         }
         pf = PreFilter(config)
-        job_data = {"title": "Engineer", "location": "Remote", "timezone": -6}
+        # Job in Denver (UTC-7) vs Portland (UTC-8) = 1h diff
+        job_data = {"title": "Engineer", "city": "Denver", "state": "CO"}
         result = pf.filter(job_data, is_remote_source=True)
         assert result.passed is True
 
-    def test_timezone_guard_allows_missing_or_invalid(self):
-        """Missing or non-numeric timezone stays permissive."""
+    def test_timezone_guard_allows_missing_location(self, mocker):
+        """Missing job location stays permissive (city-based)."""
+        # Should not be called since job has no location
+        mock_tz = mocker.patch("job_finder.filters.prefilter.get_timezone_diff_hours")
         base_cfg = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
@@ -1046,7 +1058,6 @@ class TestPreFilterTreatUnknownAsOnsite:
                 "allowOnsite": True,
                 "willRelocate": False,
                 "userLocation": "Portland, OR",
-                "userTimezone": -8,
                 "maxTimezoneDiffHours": 4,
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
@@ -1054,18 +1065,43 @@ class TestPreFilterTreatUnknownAsOnsite:
             "technology": {"rejected": []},
         }
 
-        # Missing timezone on job
+        # Missing location on job - should pass without calling timezone lookup
         pf = PreFilter(base_cfg)
         result_missing = pf.filter(
             {"title": "Engineer", "location": "Remote"}, is_remote_source=True
         )
         assert result_missing.passed is True
+        mock_tz.assert_not_called()
 
-        # Non-numeric timezone on job
-        result_invalid = pf.filter(
-            {"title": "Engineer", "location": "Remote", "timezone": "east"}, is_remote_source=True
+    def test_timezone_guard_allows_lookup_failure(self, mocker):
+        """Timezone lookup failure stays permissive."""
+        # Mock timezone lookup returning None (lookup failed)
+        mocker.patch(
+            "job_finder.filters.prefilter.get_timezone_diff_hours",
+            return_value=None,
         )
-        assert result_invalid.passed is True
+        base_cfg = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+                "maxTimezoneDiffHours": 4,
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "technology": {"rejected": []},
+        }
+
+        pf = PreFilter(base_cfg)
+        result = pf.filter(
+            {"title": "Engineer", "city": "Unknown City", "country": "Nowhere"},
+            is_remote_source=True,
+        )
+        assert result.passed is True
 
 
 class TestPreFilterBypass:

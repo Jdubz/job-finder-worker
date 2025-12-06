@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from job_finder.utils.date_utils import parse_job_date
+from job_finder.utils.timezone_utils import get_timezone_diff_hours
 from job_finder.exceptions import InitializationError
 
 logger = logging.getLogger(__name__)
@@ -123,8 +124,7 @@ class PreFilter:
         # If true, treat unknown work arrangement as potentially onsite and apply location filter
         self.treat_unknown_as_onsite = work_config.get("treatUnknownAsOnsite", False)
 
-        # Optional timezone guard for remote/hybrid roles
-        self.user_timezone = work_config.get("userTimezone")
+        # Optional timezone guard for remote/hybrid roles (uses city-based comparison)
         self.max_timezone_diff_hours = work_config.get("maxTimezoneDiffHours")
 
         bool_keys = [
@@ -461,24 +461,73 @@ class PreFilter:
                     )
                 # Missing/ambiguous location data returns None -> allow (missing data = pass)
 
-        # Optional timezone check (only when both sides provide a timezone)
+        # Optional timezone check for remote/hybrid roles using city-based comparison
         if (
-            self.user_timezone is not None
-            and self.max_timezone_diff_hours is not None
-            and job_data.get("timezone") is not None
+            self.max_timezone_diff_hours is not None
+            and self.user_location
+            and arrangement in ("remote", "hybrid")
         ):
-            try:
-                tz = float(job_data.get("timezone"))
-                if abs(tz - float(self.user_timezone)) > float(self.max_timezone_diff_hours):
+            job_location = self._extract_job_location(job_data)
+            if job_location:
+                tz_diff = get_timezone_diff_hours(self.user_location, job_location)
+                if tz_diff is not None and tz_diff > self.max_timezone_diff_hours:
                     return PreFilterResult(
                         passed=False,
-                        reason=f"Timezone diff > {self.max_timezone_diff_hours}h",
+                        reason=f"Timezone diff {tz_diff:.1f}h > {self.max_timezone_diff_hours}h ({self.user_location} vs {job_location})",
                     )
-            except (TypeError, ValueError):
-                # If timezone is present but not numeric, allow (permissive default)
-                pass
 
         return PreFilterResult(passed=True)
+
+    def _extract_job_location(self, job_data: Dict[str, Any]) -> Optional[str]:
+        """Extract a location string from job data for timezone lookup.
+
+        Returns the first viable location string found, prioritizing structured fields.
+        Returns None if no location data is available.
+        """
+        # Try city + country first (most useful for timezone lookup)
+        city = job_data.get("city")
+        country = job_data.get("country")
+        if city and country:
+            return f"{city}, {country}"
+        if city:
+            state = job_data.get("state") or job_data.get("state_code")
+            if state:
+                return f"{city}, {state}"
+            return str(city)
+
+        # Try location string
+        location = job_data.get("location")
+        if isinstance(location, str) and location.strip():
+            # Skip generic "Remote" locations
+            loc_lower = location.lower()
+            if loc_lower not in ("remote", "worldwide", "anywhere", "global"):
+                return location.strip()
+
+        # Try metadata fields
+        metadata = job_data.get("metadata", {})
+        if isinstance(metadata, dict):
+            for key in ("Location", "location", "Office Location", "Office", "headquarters"):
+                value = metadata.get(key)
+                if isinstance(value, str) and value.strip():
+                    val_lower = value.lower()
+                    if val_lower not in ("remote", "worldwide", "anywhere", "global"):
+                        return value.strip()
+
+        # Try offices array
+        offices = job_data.get("offices", [])
+        if isinstance(offices, list) and offices:
+            for office in offices:
+                office_name = ""
+                if isinstance(office, dict):
+                    office_name = office.get("name", "") or office.get("location", "")
+                elif isinstance(office, str):
+                    office_name = office
+                if isinstance(office_name, str) and office_name.strip():
+                    name_lower = office_name.lower()
+                    if name_lower not in ("remote", "worldwide", "anywhere", "global"):
+                        return office_name.strip()
+
+        return None
 
     def _is_in_user_location(self, job_data: Dict[str, Any], user_location: str) -> Optional[bool]:
         """Determine whether job location matches the configured user location.

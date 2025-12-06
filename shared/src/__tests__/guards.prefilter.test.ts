@@ -11,7 +11,6 @@ const valid: PreFilterPolicy = {
     allowOnsite: false,
     willRelocate: false,
     userLocation: "Portland, OR",
-    userTimezone: -8,
     maxTimezoneDiffHours: 4,
   },
   employmentType: { allowFullTime: true, allowPartTime: false, allowContract: true },
@@ -40,17 +39,6 @@ describe("isPreFilterPolicy", () => {
 
   it("rejects invalid work arrangement", () => {
     const bad = { ...valid, workArrangement: { allowRemote: "yes" } } as any
-    expect(isPreFilterPolicy(bad)).toBe(false)
-  })
-
-  it("rejects invalid timezone fields", () => {
-    const bad = {
-      ...valid,
-      workArrangement: {
-        ...valid.workArrangement,
-        userTimezone: "west",
-      },
-    } as any
     expect(isPreFilterPolicy(bad)).toBe(false)
   })
 

@@ -61,7 +61,6 @@ const prefilterWorkArrangementSchema = z
     allowOnsite: z.boolean(),
     willRelocate: z.boolean(),
     userLocation: z.string(),
-    userTimezone: z.number().optional(),
     maxTimezoneDiffHours: z.number().optional(),
   })
   .superRefine((val, ctx) => {

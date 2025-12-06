@@ -33,7 +33,6 @@ const mapToForm = (config: PreFilterPolicy): PreFilterPolicy => {
       allowOnsite: config.workArrangement.allowOnsite,
       willRelocate: config.workArrangement.willRelocate,
       userLocation: config.workArrangement.userLocation,
-      userTimezone: config.workArrangement.userTimezone,
       maxTimezoneDiffHours: config.workArrangement.maxTimezoneDiffHours,
     },
     employmentType: {
@@ -93,10 +92,6 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
         allowOnsite: Boolean(values.workArrangement.allowOnsite),
         willRelocate: Boolean(values.workArrangement.willRelocate),
         userLocation: trimmedLocation,
-        userTimezone:
-          values.workArrangement.userTimezone === undefined || values.workArrangement.userTimezone === null
-            ? undefined
-            : Number(values.workArrangement.userTimezone),
         maxTimezoneDiffHours:
           values.workArrangement.maxTimezoneDiffHours === undefined ||
           values.workArrangement.maxTimezoneDiffHours === null
@@ -265,15 +260,9 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
                 <div className="grid md:grid-cols-2 gap-4">
                   <NumericField
                     control={form.control}
-                    name="workArrangement.userTimezone"
-                    label="User Timezone (UTC offset hours)"
-                    description="Example: -8 for PT, -5 for ET. Optional; required to enforce timezone guard."
-                  />
-                  <NumericField
-                    control={form.control}
                     name="workArrangement.maxTimezoneDiffHours"
                     label="Max Timezone Difference (hours)"
-                    description="Hard-reject remote/hybrid roles when both sides have TZ and diff exceeds this."
+                    description="Hard-reject remote/hybrid roles when job location timezone diff exceeds this. Timezone is derived from your city above."
                   />
                 </div>
               </section>

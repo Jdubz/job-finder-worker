@@ -405,7 +405,6 @@ export function isPreFilterPolicy(value: unknown): value is PreFilterPolicy {
   if (typeof wa.willRelocate !== "boolean") return false
   if (typeof wa.userLocation !== "string") return false
   if (wa.willRelocate === false && wa.userLocation.trim() === "") return false
-  if (wa.userTimezone !== undefined && typeof wa.userTimezone !== "number") return false
   if (wa.maxTimezoneDiffHours !== undefined && typeof wa.maxTimezoneDiffHours !== "number") return false
 
   if (!isObject(v.employmentType)) return false
