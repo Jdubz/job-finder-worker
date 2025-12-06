@@ -824,3 +824,473 @@ class TestAntiBlockDetection:
         jobs = scraper.scrape()
         assert len(jobs) == 1
         assert jobs[0]["title"] == "Test Job"
+
+
+class TestCompanyFiltering:
+    """Test company filtering for aggregator sources."""
+
+    @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_company_filter_matches_exact(self, mock_get, mock_parse):
+        """Test that company_filter matches exact company names."""
+        mock_response = Mock()
+        mock_response.text = "<rss><channel></channel></rss>"
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        # Create mock entries with different companies
+        entries = []
+        for company, title in [
+            ("Lemon.io", "Senior Developer"),
+            ("Toptal", "Backend Engineer"),
+            ("Lemon.io", "Frontend Developer"),
+        ]:
+            entry = Mock()
+            entry.title = f"{company}: {title}"
+            entry.link = f"https://example.com/job/{title.lower().replace(' ', '-')}"
+            entry.published = "Mon, 25 Oct 2025 10:00:00 GMT"
+            entries.append(entry)
+
+        mock_feed = Mock()
+        mock_feed.bozo = False
+        mock_feed.entries = entries
+        mock_parse.return_value = mock_feed
+
+        config = SourceConfig(
+            type="rss",
+            url="https://weworkremotely.com/remote-jobs.rss",
+            fields={"title": "title", "url": "link", "posted_date": "published"},
+            company_extraction="from_title",
+            company_filter="Lemon.io",
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        # Should only return Lemon.io jobs
+        assert len(jobs) == 2
+        assert all(job["company"] == "Lemon.io" for job in jobs)
+
+    @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_company_filter_case_insensitive(self, mock_get, mock_parse):
+        """Test that company_filter is case-insensitive."""
+        mock_response = Mock()
+        mock_response.text = "<rss><channel></channel></rss>"
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        entry = Mock()
+        entry.title = "LEMON.IO: Developer"
+        entry.link = "https://example.com/job/1"
+        entry.published = "Mon, 25 Oct 2025 10:00:00 GMT"
+
+        mock_feed = Mock()
+        mock_feed.bozo = False
+        mock_feed.entries = [entry]
+        mock_parse.return_value = mock_feed
+
+        config = SourceConfig(
+            type="rss",
+            url="https://weworkremotely.com/remote-jobs.rss",
+            fields={"title": "title", "url": "link", "posted_date": "published"},
+            company_extraction="from_title",
+            company_filter="lemon.io",  # lowercase
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        assert len(jobs) == 1
+
+    @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_company_filter_strips_suffixes(self, mock_get, mock_parse):
+        """Test that company_filter matches despite .io, Inc, etc. suffixes."""
+        mock_response = Mock()
+        mock_response.text = "<rss><channel></channel></rss>"
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        entry = Mock()
+        entry.title = "Lemon: Developer"  # No .io suffix
+        entry.link = "https://example.com/job/1"
+        entry.published = "Mon, 25 Oct 2025 10:00:00 GMT"
+
+        mock_feed = Mock()
+        mock_feed.bozo = False
+        mock_feed.entries = [entry]
+        mock_parse.return_value = mock_feed
+
+        config = SourceConfig(
+            type="rss",
+            url="https://weworkremotely.com/remote-jobs.rss",
+            fields={"title": "title", "url": "link", "posted_date": "published"},
+            company_extraction="from_title",
+            company_filter="Lemon.io",  # With .io suffix
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        # Should match "Lemon" with filter "Lemon.io"
+        assert len(jobs) == 1
+
+    @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_company_filter_partial_match(self, mock_get, mock_parse):
+        """Test that filter matches when one contains the other."""
+        mock_response = Mock()
+        mock_response.text = "<rss><channel></channel></rss>"
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        entry = Mock()
+        entry.title = "Proxify AB: Full Stack Developer"
+        entry.link = "https://example.com/job/1"
+        entry.published = "Mon, 25 Oct 2025 10:00:00 GMT"
+
+        mock_feed = Mock()
+        mock_feed.bozo = False
+        mock_feed.entries = [entry]
+        mock_parse.return_value = mock_feed
+
+        config = SourceConfig(
+            type="rss",
+            url="https://weworkremotely.com/remote-jobs.rss",
+            fields={"title": "title", "url": "link", "posted_date": "published"},
+            company_extraction="from_title",
+            company_filter="Proxify",  # Filter without "AB"
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        # Should match "Proxify AB" with filter "Proxify"
+        assert len(jobs) == 1
+
+    @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_company_filter_no_match_returns_empty(self, mock_get, mock_parse):
+        """Test that non-matching company filter returns empty list."""
+        mock_response = Mock()
+        mock_response.text = "<rss><channel></channel></rss>"
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        entry = Mock()
+        entry.title = "Toptal: Developer"
+        entry.link = "https://example.com/job/1"
+        entry.published = "Mon, 25 Oct 2025 10:00:00 GMT"
+
+        mock_feed = Mock()
+        mock_feed.bozo = False
+        mock_feed.entries = [entry]
+        mock_parse.return_value = mock_feed
+
+        config = SourceConfig(
+            type="rss",
+            url="https://weworkremotely.com/remote-jobs.rss",
+            fields={"title": "title", "url": "link", "posted_date": "published"},
+            company_extraction="from_title",
+            company_filter="Lemon.io",
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        assert len(jobs) == 0
+
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_company_filter_with_api_source(self, mock_get):
+        """Test that company_filter works with API sources too."""
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {
+                "title": "Dev at Acme",
+                "url": "https://example.com/1",
+                "company": "Acme Inc",
+                "posted_date": "2025-01-01",
+            },
+            {
+                "title": "Dev at Other",
+                "url": "https://example.com/2",
+                "company": "Other Corp",
+                "posted_date": "2025-01-01",
+            },
+            {
+                "title": "Engineer at Acme",
+                "url": "https://example.com/3",
+                "company": "Acme",
+                "posted_date": "2025-01-01",
+            },
+        ]
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={
+                "title": "title",
+                "url": "url",
+                "company": "company",
+                "posted_date": "posted_date",
+            },
+            company_filter="Acme",
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        # Should match both "Acme Inc" and "Acme"
+        assert len(jobs) == 2
+
+    def test_normalize_company_name(self):
+        """Test _normalize_company_name helper function."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+        )
+        scraper = GenericScraper(config)
+
+        # Test suffix removal
+        assert scraper._normalize_company_name("Acme Inc.") == "acme"
+        assert scraper._normalize_company_name("TechCorp LLC") == "techcorp"
+        assert scraper._normalize_company_name("Widget Ltd") == "widget"
+
+        # Test domain suffix removal
+        assert scraper._normalize_company_name("Lemon.io") == "lemon"
+        assert scraper._normalize_company_name("Example.com") == "example"
+        assert scraper._normalize_company_name("AI.dev") == "ai"
+
+        # Test case normalization
+        assert scraper._normalize_company_name("ACME") == "acme"
+        assert scraper._normalize_company_name("TechCorp") == "techcorp"
+
+        # Test punctuation removal
+        assert scraper._normalize_company_name("Tech-Corp!") == "techcorp"
+        # Ampersand removed, multiple spaces collapsed
+        assert scraper._normalize_company_name("Acme & Sons") == "acme sons"
+
+        # Test empty/None handling
+        assert scraper._normalize_company_name("") == ""
+        assert scraper._normalize_company_name(None) == ""
+
+    def test_source_config_company_filter_in_to_dict(self):
+        """Test that company_filter is included in to_dict output."""
+        config = SourceConfig(
+            type="rss",
+            url="https://example.com/feed.rss",
+            fields={"title": "title", "url": "link"},
+            company_filter="Acme",
+        )
+        result = config.to_dict()
+
+        assert result["company_filter"] == "Acme"
+
+    def test_source_config_company_filter_from_dict(self):
+        """Test that company_filter is loaded from dict."""
+        data = {
+            "type": "rss",
+            "url": "https://example.com/feed.rss",
+            "fields": {"title": "title", "url": "link"},
+            "company_filter": "Acme",
+        }
+        config = SourceConfig.from_dict(data)
+
+        assert config.company_filter == "Acme"
+
+    def test_company_filter_rejects_false_positives(self):
+        """Test that short filter names don't cause false positive matches."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            company_filter="AI",
+        )
+        scraper = GenericScraper(config)
+
+        # "AI" should NOT match "RAIL Company" (contains "ai" substring but not word boundary)
+        assert not scraper._matches_company_filter({"company": "RAIL Company"})
+        # "AI" should NOT match "Ukraine AI Solutions" (contains "ai" but mid-word)
+        assert not scraper._matches_company_filter({"company": "Ukraine AI Solutions"})
+        # "AI" SHOULD match exact "AI" company
+        assert scraper._matches_company_filter({"company": "AI"})
+        # "AI" SHOULD match "AI Inc" (exact with suffix)
+        assert scraper._matches_company_filter({"company": "AI Inc"})
+
+    def test_company_filter_word_boundary_matching(self):
+        """Test that partial matches respect word boundaries."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            company_filter="Lemon",
+        )
+        scraper = GenericScraper(config)
+
+        # Should match: starts with filter
+        assert scraper._matches_company_filter({"company": "Lemon.io"})
+        assert scraper._matches_company_filter({"company": "Lemon Inc"})
+
+        # Should NOT match: filter appears mid-word
+        assert not scraper._matches_company_filter({"company": "WaterLemon Co"})
+
+    def test_company_filter_empty_company_returns_false(self):
+        """Test that jobs with empty company field don't match filter."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            company_filter="Acme",
+        )
+        scraper = GenericScraper(config)
+
+        assert not scraper._matches_company_filter({"company": ""})
+        assert not scraper._matches_company_filter({"company": None})
+        assert not scraper._matches_company_filter({})  # No company key
+
+
+class TestServerSideFiltering:
+    """Test server-side company filtering via URL query parameters."""
+
+    def test_get_effective_url_no_filter(self):
+        """Test that URL is unchanged when no filter is set."""
+        config = SourceConfig(
+            type="api",
+            url="https://remotive.com/api/remote-jobs",
+            fields={"title": "title", "url": "url"},
+        )
+        scraper = GenericScraper(config)
+
+        assert scraper._get_effective_url() == "https://remotive.com/api/remote-jobs"
+
+    def test_get_effective_url_with_filter_no_param(self):
+        """Test that URL is unchanged when filter is set but param is not."""
+        config = SourceConfig(
+            type="api",
+            url="https://remotive.com/api/remote-jobs",
+            fields={"title": "title", "url": "url"},
+            company_filter="Acme",  # Filter set but no param
+        )
+        scraper = GenericScraper(config)
+
+        # No company_filter_param, so URL unchanged
+        assert scraper._get_effective_url() == "https://remotive.com/api/remote-jobs"
+
+    def test_get_effective_url_with_filter_and_param(self):
+        """Test that URL includes filter when both filter and param are set."""
+        config = SourceConfig(
+            type="api",
+            url="https://remotive.com/api/remote-jobs",
+            fields={"title": "title", "url": "url"},
+            company_filter="Acme Inc",
+            company_filter_param="company_name",
+        )
+        scraper = GenericScraper(config)
+
+        url = scraper._get_effective_url()
+        assert "company_name=Acme+Inc" in url or "company_name=Acme%20Inc" in url
+
+    def test_get_effective_url_preserves_existing_params(self):
+        """Test that existing query params are preserved when adding filter."""
+        config = SourceConfig(
+            type="api",
+            url="https://remotive.com/api/remote-jobs?limit=50",
+            fields={"title": "title", "url": "url"},
+            company_filter="Acme",
+            company_filter_param="company_name",
+        )
+        scraper = GenericScraper(config)
+
+        url = scraper._get_effective_url()
+        assert "limit=50" in url
+        assert "company_name=Acme" in url
+
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_fetch_json_uses_effective_url(self, mock_get):
+        """Test that _fetch_json uses the effective URL with filters."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"jobs": []}
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        config = SourceConfig(
+            type="api",
+            url="https://remotive.com/api/remote-jobs",
+            response_path="jobs",
+            fields={"title": "title", "url": "url"},
+            company_filter="Lemon.io",
+            company_filter_param="company_name",
+        )
+        scraper = GenericScraper(config)
+        scraper._fetch_json()
+
+        # Check that the URL passed to requests.get includes the filter
+        called_url = mock_get.call_args[0][0]
+        assert "company_name=Lemon.io" in called_url
+
+    def test_source_config_company_filter_param_from_dict(self):
+        """Test that company_filter_param is loaded from dict."""
+        data = {
+            "type": "api",
+            "url": "https://remotive.com/api/remote-jobs",
+            "fields": {"title": "title", "url": "url"},
+            "company_filter_param": "company_name",
+        }
+        config = SourceConfig.from_dict(data)
+
+        assert config.company_filter_param == "company_name"
+
+    def test_source_config_company_filter_param_in_to_dict(self):
+        """Test that company_filter_param is included in to_dict output."""
+        config = SourceConfig(
+            type="api",
+            url="https://remotive.com/api/remote-jobs",
+            fields={"title": "title", "url": "url"},
+            company_filter_param="company_name",
+        )
+        result = config.to_dict()
+
+        assert result["company_filter_param"] == "company_name"
+
+    @patch("job_finder.scrapers.generic_scraper.feedparser.parse")
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_fetch_rss_uses_effective_url(self, mock_get, mock_parse):
+        """Test that _fetch_rss uses the effective URL with filters."""
+        mock_response = Mock()
+        mock_response.text = "<rss><channel></channel></rss>"
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        mock_feed = Mock()
+        mock_feed.bozo = False
+        mock_feed.entries = []
+        mock_parse.return_value = mock_feed
+
+        config = SourceConfig(
+            type="rss",
+            url="https://example.com/feed.rss",
+            fields={"title": "title", "url": "link"},
+            company_filter="Acme",
+            company_filter_param="company",
+        )
+        scraper = GenericScraper(config)
+        scraper._fetch_rss()
+
+        # Check that the URL passed to requests.get includes the filter
+        called_url = mock_get.call_args[0][0]
+        assert "company=Acme" in called_url
+
+    def test_get_effective_url_handles_special_characters(self):
+        """Test that company names with special characters are properly URL-encoded."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            company_filter="A&B Company",
+            company_filter_param="company_name",
+        )
+        scraper = GenericScraper(config)
+
+        url = scraper._get_effective_url()
+        # & should be encoded as %26
+        assert (
+            "company_name=A%26B" in url or "company_name=A&B" not in url.split("?")[1].split("&")[0]
+        )

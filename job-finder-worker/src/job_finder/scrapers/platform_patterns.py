@@ -60,6 +60,9 @@ class PlatformPattern:
     # Company extraction method: "" | "from_title" | "from_description"
     # "from_title" - parse "Company: Job Title" format (common for aggregators)
     company_extraction: str = ""
+    # Query parameter name for server-side company filtering (e.g., "company_name" for Remotive)
+    # When set, the scraper will append ?{param}={company} to the URL
+    company_filter_param: str = ""
 
 
 # Platform patterns registry - add new platforms here, not in code
@@ -203,6 +206,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         },
         validation_key="jobs",
         is_remote_source=True,
+        company_filter_param="company_name",  # Remotive supports ?company_name= for server-side filtering
     ),
     PlatformPattern(
         name="remoteok_api",
@@ -457,5 +461,8 @@ def build_config_from_pattern(
 
     if pattern.company_extraction:
         config["company_extraction"] = pattern.company_extraction
+
+    if pattern.company_filter_param:
+        config["company_filter_param"] = pattern.company_filter_param
 
     return config

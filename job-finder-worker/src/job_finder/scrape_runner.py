@@ -267,10 +267,17 @@ class ScrapeRunner:
 
         # Get company name ONLY from linked company - never fall back to source name
         company_name = None
-        if not is_aggregator and company_id:
+        company_filter = None
+        if company_id:
             company = self.companies_manager.get_company_by_id(company_id)
             if company:
-                company_name = company.get("name")
+                linked_company_name = company.get("name")
+                if is_aggregator:
+                    # For aggregator sources with a company_id, filter jobs by company name
+                    company_filter = linked_company_name
+                else:
+                    # For non-aggregator (direct company) sources, override company name
+                    company_name = linked_company_name
 
         logger.info(f"\nScraping source: {source_name} (type={source_type})")
 
@@ -290,6 +297,10 @@ class ScrapeRunner:
             raise ConfigurationError(f"Source {source_name} missing 'url' in config")
         if "fields" not in expanded_config:
             raise ConfigurationError(f"Source {source_name} missing 'fields' in config")
+
+        # Apply company filter for aggregator sources with a company_id
+        if company_filter:
+            expanded_config["company_filter"] = company_filter
 
         # Create SourceConfig with company name override
         try:
