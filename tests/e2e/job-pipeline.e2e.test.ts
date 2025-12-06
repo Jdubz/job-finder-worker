@@ -289,6 +289,7 @@ async function ensureBaseConfigs(configClient: any, userEmail: string) {
     taskFallbacks: {
       extraction: ["gemini.api"],
       analysis: ["gemini.api"],
+      document: ["gemini.api"],
     },
     modelRates: {
       "gemini-2.0-flash": 0.5,
