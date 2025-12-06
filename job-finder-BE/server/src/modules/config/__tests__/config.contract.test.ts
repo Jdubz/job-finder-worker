@@ -180,6 +180,7 @@ describe('config contract', () => {
         scrape: { enabled: true, hours: [0], lastRun: null },
         maintenance: { enabled: true, hours: [1], lastRun: null },
         logrotate: { enabled: true, hours: [2], lastRun: null },
+        agentReset: { enabled: true, hours: [3], lastRun: null },
       },
     })
 

@@ -326,6 +326,16 @@ export async function seedBaseConfigs(request: APIRequestContext) {
     relocationAllowed: false,
   })
 
+  // Ensure cron-config exists with minimal jobs (gmail removed)
+  await upsert("cron-config", {
+    jobs: {
+      scrape: { enabled: true, hours: [0], lastRun: null },
+      maintenance: { enabled: true, hours: [0], lastRun: null },
+      logrotate: { enabled: true, hours: [0], lastRun: null },
+      agentReset: { enabled: true, hours: [0], lastRun: null },
+    },
+  })
+
   // Seed ai-prompts via the prompts endpoint (different API structure)
   const promptsRes = await request.put(`${API_BASE}/prompts`, {
     headers: {
