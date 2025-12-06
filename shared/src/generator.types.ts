@@ -33,6 +33,7 @@ export interface TokenUsage {
 export interface PersonalInfo {
   name: string
   email: string
+  title?: string
   /**
    * City name only (e.g., "Portland"); used for onsite/hybrid checks.
    */
