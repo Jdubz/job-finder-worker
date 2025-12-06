@@ -324,13 +324,15 @@ class TestMatchPlatform:
         assert pattern.name == "weworkremotely_rss"
 
     def test_weworkremotely_config_uses_rss(self):
-        """Verify WeWorkRemotely config uses RSS feed."""
+        """Verify WeWorkRemotely config uses RSS feed with company extraction."""
         url = "https://weworkremotely.com/company/lemon-io"
         pattern, groups = match_platform(url)
         config = build_config_from_pattern(pattern, groups)
         assert config["type"] == "rss"
         assert config["url"] == "https://weworkremotely.com/remote-jobs.rss"
         assert config.get("is_remote_source") is True
+        # Company is extracted from "Company: Job Title" format in RSS titles
+        assert config.get("company_extraction") == "from_title"
 
     # BuiltIn tests
     def test_builtin_root_jobs_page(self):
