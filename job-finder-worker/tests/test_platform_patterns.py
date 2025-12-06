@@ -28,6 +28,9 @@ class TestPlatformPatternRegistry:
             "linkedin_stub",
             "smartrecruiters_api",
             "avature_rss",
+            "weworkremotely_rss",
+            "builtin_html",
+            "jobicy_api",
         }
         assert expected.issubset(pattern_names)
 
@@ -87,6 +90,44 @@ class TestMatchPlatform:
         assert pattern.name == "greenhouse_html"
         assert groups["board_token"] == "openai"
 
+    def test_greenhouse_job_boards_subdomain(self):
+        """Test matching job-boards.greenhouse.io URLs (hyphenated subdomain)."""
+        url = "https://job-boards.greenhouse.io/veeamsoftware/jobs/4589680101"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "greenhouse_html"
+        assert groups["board_token"] == "veeamsoftware"
+
+    def test_greenhouse_eu_regional_subdomain(self):
+        """Test matching job-boards.eu.greenhouse.io URLs (EU regional)."""
+        url = "https://job-boards.eu.greenhouse.io/veeamsoftware/jobs/4589680101"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "greenhouse_html"
+        assert groups["board_token"] == "veeamsoftware"
+
+    def test_greenhouse_eu_jobs_subdomain(self):
+        """Test matching jobs.eu.greenhouse.io URLs."""
+        url = "https://jobs.eu.greenhouse.io/eurocompany"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "greenhouse_html"
+        assert groups["board_token"] == "eurocompany"
+
+    def test_greenhouse_regional_api_url_generation(self):
+        """Verify EU/regional URLs still generate correct API URL."""
+        url = "https://job-boards.eu.greenhouse.io/veeamsoftware"
+        pattern, groups = match_platform(url)
+        config = build_config_from_pattern(pattern, groups)
+        # API URL should always use boards-api.greenhouse.io (not regional)
+        assert (
+            config["url"]
+            == "https://boards-api.greenhouse.io/v1/boards/veeamsoftware/jobs?content=true"
+        )
+
     # Ashby tests
     def test_ashby_api_url(self):
         """Test matching Ashby API URLs."""
@@ -125,8 +166,8 @@ class TestMatchPlatform:
         assert groups["board_name"] == "faire"
 
     # Workday tests
-    def test_workday_url(self):
-        """Test matching Workday URLs."""
+    def test_workday_url_with_language_prefix(self):
+        """Test matching Workday URLs with language prefix - should skip lang and capture site_id."""
         url = "https://salesforce.wd12.myworkdayjobs.com/en-US/External_Career_Site"
         result = match_platform(url)
         assert result is not None
@@ -134,10 +175,11 @@ class TestMatchPlatform:
         assert pattern.name == "workday"
         assert groups["tenant"] == "salesforce"
         assert groups["wd_instance"] == "wd12"
-        assert groups["site_id"] == "en-US"
+        # Should capture 'External_Career_Site', NOT 'en-US'
+        assert groups["site_id"] == "External_Career_Site"
 
-    def test_workday_url_different_wd_instance(self):
-        """Test Workday URL with different wd instance."""
+    def test_workday_url_without_language_prefix(self):
+        """Test Workday URL without language prefix."""
         url = "https://linkedin.wd1.myworkdayjobs.com/jobs"
         result = match_platform(url)
         assert result is not None
@@ -147,8 +189,8 @@ class TestMatchPlatform:
         assert groups["wd_instance"] == "wd1"
         assert groups["site_id"] == "jobs"
 
-    def test_workday_url_with_path(self):
-        """Test Workday URL with job path."""
+    def test_workday_url_with_language_and_job_path(self):
+        """Test Workday URL with language prefix and job path."""
         url = "https://uber.wd5.myworkdayjobs.com/en-US/Uber_Careers/job/12345"
         result = match_platform(url)
         assert result is not None
@@ -156,7 +198,30 @@ class TestMatchPlatform:
         assert pattern.name == "workday"
         assert groups["tenant"] == "uber"
         assert groups["wd_instance"] == "wd5"
-        assert groups["site_id"] == "en-US"
+        # Should capture 'Uber_Careers', NOT 'en-US'
+        assert groups["site_id"] == "Uber_Careers"
+
+    def test_workday_url_with_fr_fr_language(self):
+        """Test Workday URL with fr-FR language prefix."""
+        url = "https://company.wd3.myworkdayjobs.com/fr-FR/careers"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "workday"
+        assert groups["tenant"] == "company"
+        assert groups["wd_instance"] == "wd3"
+        assert groups["site_id"] == "careers"
+
+    def test_workday_url_yahoo_regression(self):
+        """Regression test: Yahoo Workday URL should capture 'careers' not 'en-US'."""
+        url = "https://ouryahoo.wd5.myworkdayjobs.com/en-US/careers/details/Tech-Writer_JR0026219"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "workday"
+        assert groups["tenant"] == "ouryahoo"
+        assert groups["wd_instance"] == "wd5"
+        assert groups["site_id"] == "careers"  # NOT 'en-US'
 
     # Lever tests
     def test_lever_url(self):
@@ -231,6 +296,81 @@ class TestMatchPlatform:
             "lang": "en_GB",
             "site": "talent",
         }
+
+    # WeWorkRemotely tests
+    def test_weworkremotely_company_page(self):
+        """Test matching weworkremotely.com company pages."""
+        url = "https://weworkremotely.com/company/lemon-io"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "weworkremotely_rss"
+        assert pattern.is_remote_source is True
+
+    def test_weworkremotely_remote_jobs(self):
+        """Test matching weworkremotely.com remote-jobs page."""
+        url = "https://weworkremotely.com/remote-jobs"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "weworkremotely_rss"
+
+    def test_weworkremotely_root(self):
+        """Test matching weworkremotely.com root."""
+        url = "https://weworkremotely.com"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "weworkremotely_rss"
+
+    def test_weworkremotely_config_uses_rss(self):
+        """Verify WeWorkRemotely config uses RSS feed with company extraction."""
+        url = "https://weworkremotely.com/company/lemon-io"
+        pattern, groups = match_platform(url)
+        config = build_config_from_pattern(pattern, groups)
+        assert config["type"] == "rss"
+        assert config["url"] == "https://weworkremotely.com/remote-jobs.rss"
+        assert config.get("is_remote_source") is True
+        # Company is extracted from "Company: Job Title" format in RSS titles
+        assert config.get("company_extraction") == "from_title"
+
+    # BuiltIn tests
+    def test_builtin_root_jobs_page(self):
+        """Test matching builtin.com/jobs."""
+        url = "https://builtin.com/jobs"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "builtin_html"
+
+    def test_builtin_company_jobs_page(self):
+        """Test matching builtin.com/company/xxx/jobs pages."""
+        url = "https://builtin.com/company/grow-therapy/jobs"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "builtin_html"
+
+    def test_builtin_company_jobs_different_company(self):
+        """Test matching builtin.com/company/xxx/jobs for various companies."""
+        urls = [
+            "https://builtin.com/company/stripe/jobs",
+            "https://builtin.com/company/discord/jobs",
+            "https://builtin.com/company/some-company-name/jobs",
+        ]
+        for url in urls:
+            result = match_platform(url)
+            assert result is not None, f"Should match: {url}"
+            pattern, groups = result
+            assert pattern.name == "builtin_html"
+
+    def test_builtin_config_has_follow_detail(self):
+        """Verify BuiltIn config has follow_detail for job enrichment."""
+        url = "https://builtin.com/company/grow-therapy/jobs"
+        pattern, groups = match_platform(url)
+        config = build_config_from_pattern(pattern, groups)
+        assert config["type"] == "html"
+        assert config.get("follow_detail") is True
 
     # Non-matching URLs
     def test_unknown_url_returns_none(self):

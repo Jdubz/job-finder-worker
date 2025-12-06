@@ -17,7 +17,6 @@ const prefilterPolicy: PreFilterPolicy = {
   },
   employmentType: { allowFullTime: true, allowPartTime: true, allowContract: true },
   salary: { minimum: null },
-  technology: { rejected: [] },
 }
 
 const matchPolicy: MatchPolicy = {

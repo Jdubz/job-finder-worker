@@ -53,7 +53,6 @@ class TestPreFilterTitleCheck:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
 
     def test_passes_with_required_keyword(self, config_with_title_keywords):
@@ -104,7 +103,6 @@ class TestPreFilterFreshnessCheck:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
 
     def test_fresh_job_passes(self, config_with_freshness):
@@ -146,7 +144,6 @@ class TestPreFilterFreshnessCheck:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         old_date = (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
@@ -172,7 +169,6 @@ class TestPreFilterWorkArrangement:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "is_remote": True})
@@ -192,7 +188,6 @@ class TestPreFilterWorkArrangement:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "is_remote": True})
@@ -211,7 +206,6 @@ class TestPreFilterWorkArrangement:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "metadata": {"Location Type": "Hybrid"}})
@@ -231,7 +225,6 @@ class TestPreFilterWorkArrangement:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         # Note: location string with just city name doesn't infer onsite
@@ -259,7 +252,6 @@ class TestPreFilterWorkArrangement:
                 "allowContract": True,
             },
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter(
@@ -289,7 +281,6 @@ class TestPreFilterWorkArrangement:
                 "allowContract": True,
             },
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter(
@@ -320,7 +311,6 @@ class TestPreFilterWorkArrangement:
                 "allowContract": True,
             },
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter(
@@ -350,7 +340,6 @@ class TestPreFilterWorkArrangement:
                 "allowContract": True,
             },
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "metadata": {"Location Type": "Hybrid"}})
@@ -374,7 +363,6 @@ class TestPreFilterWorkArrangement:
                 "allowContract": True,
             },
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter(
@@ -404,7 +392,6 @@ class TestPreFilterWorkArrangement:
                 "allowContract": True,
             },
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "metadata": {"Location Type": "Onsite"}})
@@ -424,7 +411,6 @@ class TestPreFilterWorkArrangement:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         # No work arrangement data - should pass (missing data = pass)
@@ -453,7 +439,6 @@ class TestPreFilterEmploymentType:
                 "allowContract": True,
             },
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "employment_type": "Full-time"})
@@ -477,7 +462,6 @@ class TestPreFilterEmploymentType:
                 "allowContract": False,
             },
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "job_type": "Contract"})
@@ -501,7 +485,6 @@ class TestPreFilterEmploymentType:
                 "allowContract": False,
             },
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         # Unknown format - should skip
@@ -526,7 +509,6 @@ class TestPreFilterSalary:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": 100000},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "salary_max": 80000})
@@ -547,7 +529,6 @@ class TestPreFilterSalary:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": 100000},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "salary_max": 150000})
@@ -567,7 +548,6 @@ class TestPreFilterSalary:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": 100000},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "salary": "$80k - $120k"})
@@ -587,7 +567,6 @@ class TestPreFilterSalary:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": 100000},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer"})
@@ -607,95 +586,11 @@ class TestPreFilterSalary:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "salary_max": 50000})
         assert result.passed is True
         # Salary check disabled, should not appear in performed or skipped
-
-
-class TestPreFilterTechnology:
-    """Tests for technology rejection filtering."""
-
-    def test_rejected_tech_in_tags_fails(self):
-        config = {
-            "title": {"requiredKeywords": [], "excludedKeywords": []},
-            "freshness": {"maxAgeDays": 0},
-            "workArrangement": {
-                "allowRemote": True,
-                "allowHybrid": True,
-                "allowOnsite": True,
-                "willRelocate": True,
-                "userLocation": "Portland, OR",
-            },
-            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
-            "salary": {"minimum": None},
-            "technology": {"rejected": ["php", "wordpress"]},
-        }
-        pf = PreFilter(config)
-        result = pf.filter({"title": "Engineer", "tags": ["python", "php", "react"]})
-        assert result.passed is False
-        assert "php" in result.reason.lower()
-
-    def test_no_rejected_tech_passes(self):
-        config = {
-            "title": {"requiredKeywords": [], "excludedKeywords": []},
-            "freshness": {"maxAgeDays": 0},
-            "workArrangement": {
-                "allowRemote": True,
-                "allowHybrid": True,
-                "allowOnsite": True,
-                "willRelocate": True,
-                "userLocation": "Portland, OR",
-            },
-            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
-            "salary": {"minimum": None},
-            "technology": {"rejected": ["php", "wordpress"]},
-        }
-        pf = PreFilter(config)
-        result = pf.filter({"title": "Engineer", "tags": ["python", "react", "typescript"]})
-        assert result.passed is True
-        assert "technology" in result.checks_performed
-
-    def test_empty_tags_skipped(self):
-        config = {
-            "title": {"requiredKeywords": [], "excludedKeywords": []},
-            "freshness": {"maxAgeDays": 0},
-            "workArrangement": {
-                "allowRemote": True,
-                "allowHybrid": True,
-                "allowOnsite": True,
-                "willRelocate": True,
-                "userLocation": "Portland, OR",
-            },
-            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
-            "salary": {"minimum": None},
-            "technology": {"rejected": ["php"]},
-        }
-        pf = PreFilter(config)
-        result = pf.filter({"title": "Engineer", "tags": []})
-        assert result.passed is True
-        assert "technology" in result.checks_skipped
-
-    def test_case_insensitive_matching(self):
-        config = {
-            "title": {"requiredKeywords": [], "excludedKeywords": []},
-            "freshness": {"maxAgeDays": 0},
-            "workArrangement": {
-                "allowRemote": True,
-                "allowHybrid": True,
-                "allowOnsite": True,
-                "willRelocate": True,
-                "userLocation": "Portland, OR",
-            },
-            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
-            "salary": {"minimum": None},
-            "technology": {"rejected": ["PHP", "WordPress"]},
-        }
-        pf = PreFilter(config)
-        result = pf.filter({"title": "Engineer", "tags": ["php", "wordpress"]})
-        assert result.passed is False
 
 
 class TestPreFilterOfficesArray:
@@ -715,7 +610,6 @@ class TestPreFilterOfficesArray:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
 
     def test_remote_detected_from_offices_array(self, base_config):
@@ -772,7 +666,6 @@ class TestPreFilterRemoteKeywords:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "location": "Distributed"})
@@ -794,7 +687,6 @@ class TestPreFilterRemoteKeywords:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         # Default keyword should not trigger
@@ -824,7 +716,6 @@ class TestPreFilterLinkedInHashtags:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
 
     @pytest.mark.parametrize(
@@ -866,7 +757,6 @@ class TestPreFilterRemoteSource:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         # No remote indicators in job data, but is_remote_source=True
@@ -888,7 +778,6 @@ class TestPreFilterRemoteSource:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "location": "USA"}, is_remote_source=False)
@@ -914,7 +803,6 @@ class TestPreFilterTreatUnknownAsOnsite:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         # No remote indicators, location outside user location
@@ -937,7 +825,6 @@ class TestPreFilterTreatUnknownAsOnsite:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         result = pf.filter({"title": "Engineer", "location": "Portland, OR"})
@@ -958,7 +845,6 @@ class TestPreFilterTreatUnknownAsOnsite:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         # No remote indicators, location outside - but treatUnknownAsOnsite is False
@@ -981,15 +867,19 @@ class TestPreFilterTreatUnknownAsOnsite:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
         # No remote indicators, no location data
         result = pf.filter({"title": "Engineer"})
         assert result.passed is True
 
-    def test_timezone_guard_blocks_large_offset(self):
-        """Remote/hybrid roles are rejected when timezone diff exceeds max."""
+    def test_timezone_guard_blocks_large_offset(self, mocker):
+        """Remote/hybrid roles are rejected when timezone diff exceeds max (city-based)."""
+        # Mock the timezone lookup to avoid network calls
+        mocker.patch(
+            "job_finder.filters.prefilter.get_timezone_diff_hours",
+            return_value=13.5,  # Portland to Hyderabad is ~13.5 hours
+        )
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
@@ -999,21 +889,25 @@ class TestPreFilterTreatUnknownAsOnsite:
                 "allowOnsite": True,
                 "willRelocate": False,
                 "userLocation": "Portland, OR",
-                "userTimezone": -8,
                 "maxTimezoneDiffHours": 4,
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
-        job_data = {"title": "Engineer", "location": "Remote", "timezone": 2}
+        # Job in Hyderabad, India (UTC+5:30) vs Portland (UTC-8) = 13.5h diff
+        job_data = {"title": "Engineer", "city": "Hyderabad", "country": "India"}
         result = pf.filter(job_data, is_remote_source=True)
         assert result.passed is False
         assert "Timezone diff" in result.reason
 
-    def test_timezone_guard_allows_within_limit(self):
-        """Remote roles within max diff should pass."""
+    def test_timezone_guard_allows_within_limit(self, mocker):
+        """Remote roles within max diff should pass (city-based)."""
+        # Mock the timezone lookup to avoid network calls
+        mocker.patch(
+            "job_finder.filters.prefilter.get_timezone_diff_hours",
+            return_value=2.0,  # Portland to Denver is ~2 hours
+        )
         config = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
@@ -1023,20 +917,21 @@ class TestPreFilterTreatUnknownAsOnsite:
                 "allowOnsite": True,
                 "willRelocate": False,
                 "userLocation": "Portland, OR",
-                "userTimezone": -8,
                 "maxTimezoneDiffHours": 4,
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
         pf = PreFilter(config)
-        job_data = {"title": "Engineer", "location": "Remote", "timezone": -6}
+        # Job in Denver (UTC-7) vs Portland (UTC-8) = 1h diff
+        job_data = {"title": "Engineer", "city": "Denver", "state": "CO"}
         result = pf.filter(job_data, is_remote_source=True)
         assert result.passed is True
 
-    def test_timezone_guard_allows_missing_or_invalid(self):
-        """Missing or non-numeric timezone stays permissive."""
+    def test_timezone_guard_allows_missing_location(self, mocker):
+        """Missing job location stays permissive (city-based)."""
+        # Should not be called since job has no location
+        mock_tz = mocker.patch("job_finder.filters.prefilter.get_timezone_diff_hours")
         base_cfg = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
@@ -1046,26 +941,48 @@ class TestPreFilterTreatUnknownAsOnsite:
                 "allowOnsite": True,
                 "willRelocate": False,
                 "userLocation": "Portland, OR",
-                "userTimezone": -8,
                 "maxTimezoneDiffHours": 4,
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
 
-        # Missing timezone on job
+        # Missing location on job - should pass without calling timezone lookup
         pf = PreFilter(base_cfg)
         result_missing = pf.filter(
             {"title": "Engineer", "location": "Remote"}, is_remote_source=True
         )
         assert result_missing.passed is True
+        mock_tz.assert_not_called()
 
-        # Non-numeric timezone on job
-        result_invalid = pf.filter(
-            {"title": "Engineer", "location": "Remote", "timezone": "east"}, is_remote_source=True
+    def test_timezone_guard_allows_lookup_failure(self, mocker):
+        """Timezone lookup failure stays permissive."""
+        # Mock timezone lookup returning None (lookup failed)
+        mocker.patch(
+            "job_finder.filters.prefilter.get_timezone_diff_hours",
+            return_value=None,
         )
-        assert result_invalid.passed is True
+        base_cfg = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+                "maxTimezoneDiffHours": 4,
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+        }
+
+        pf = PreFilter(base_cfg)
+        result = pf.filter(
+            {"title": "Engineer", "city": "Unknown City", "country": "Nowhere"},
+            is_remote_source=True,
+        )
+        assert result.passed is True
 
 
 class TestPreFilterBypass:
@@ -1094,7 +1011,6 @@ class TestPreFilterBypass:
                 "allowContract": False,
             },
             "salary": {"minimum": 999999},
-            "technology": {"rejected": ["everything"]},
         }
         pf = PreFilter(config)
 
@@ -1107,7 +1023,6 @@ class TestPreFilterBypass:
             "is_remote": True,  # Not allowed
             "employment_type": "Full-time",  # Not allowed
             "salary_max": 1000,  # Below minimum
-            "tags": ["everything"],  # Rejected
         }
 
         # PreFilter.filter() does not handle bypass - it always applies filter rules

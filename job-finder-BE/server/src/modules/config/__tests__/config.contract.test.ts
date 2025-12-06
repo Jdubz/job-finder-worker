@@ -86,12 +86,10 @@ describe('config contract', () => {
         allowOnsite: false,
         willRelocate: false,
         userLocation: 'Portland, OR',
-        userTimezone: -8,
         maxTimezoneDiffHours: 4,
       },
       employmentType: { allowFullTime: true, allowPartTime: false, allowContract: true },
       salary: { minimum: 80000 },
-      technology: { rejected: ['php'] },
     })
 
     repo.upsert('match-policy', {

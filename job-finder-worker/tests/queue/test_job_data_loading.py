@@ -57,7 +57,6 @@ def mock_dependencies():
             "allowContract": True,
         },
         "salary": {"minimum": None},
-        "technology": {"rejected": []},
     }
     config_loader.get_match_policy.return_value = {
         "minScore": 60,

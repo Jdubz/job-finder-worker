@@ -350,11 +350,18 @@ function coverLetterHtml(
       align-items: center;
     }
 
+    .letter .header-rule {
+      display: block;
+      border: none;
+      height: 2px;
+      background: var(--accent);
+      margin-bottom: 20px;
+    }
+
     body {
       font-size: 11.5px;
       line-height: 1.6;
     }
-
     /* Recipient block with accent bar */
     .recipient {
       display: flex;
@@ -398,9 +405,9 @@ function coverLetterHtml(
       margin-bottom: 0;
     }
 
-    /* Signature with accent */
+    /* Signature - simple and professional */
     .signature {
-      margin-top: 28px;
+      margin-top: 24px;
       padding-left: 16px;
       margin-left: 4px;
     }
@@ -408,25 +415,13 @@ function coverLetterHtml(
     .signature-line {
       font-size: 10px;
       color: var(--muted);
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .signature-name {
-      font-size: 14px;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 600;
       color: var(--text);
-      position: relative;
-      display: inline-block;
-    }
-
-    .signature-name::after {
-      content: "";
-      position: absolute;
-      bottom: -2px;
-      left: 0;
-      width: 100%;
-      height: 2px;
-      background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
     }
 
     .letter footer {
@@ -502,7 +497,7 @@ export class HtmlPdfService {
 
   async renderCoverLetter(
     content: CoverLetterContent,
-    options: { name: string; email: string; location?: string; phone?: string; date?: string; logo?: string; avatar?: string }
+    options: { name: string; title?: string; email: string; location?: string; phone?: string; date?: string; logo?: string; avatar?: string }
   ): Promise<Buffer> {
     const html = coverLetterHtml(content, options)
     return renderHtmlToPdf(html)

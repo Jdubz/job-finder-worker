@@ -405,7 +405,6 @@ export function isPreFilterPolicy(value: unknown): value is PreFilterPolicy {
   if (typeof wa.willRelocate !== "boolean") return false
   if (typeof wa.userLocation !== "string") return false
   if (wa.willRelocate === false && wa.userLocation.trim() === "") return false
-  if (wa.userTimezone !== undefined && typeof wa.userTimezone !== "number") return false
   if (wa.maxTimezoneDiffHours !== undefined && typeof wa.maxTimezoneDiffHours !== "number") return false
 
   if (!isObject(v.employmentType)) return false
@@ -421,10 +420,6 @@ export function isPreFilterPolicy(value: unknown): value is PreFilterPolicy {
   if (!isObject(v.salary)) return false
   const sal = v.salary as Record<string, unknown>
   if (sal.minimum !== null && typeof sal.minimum !== "number") return false
-
-  if (!isObject(v.technology)) return false
-  const tech = v.technology as Record<string, unknown>
-  if (!isStringArray(tech.rejected)) return false
 
   return true
 }

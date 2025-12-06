@@ -174,11 +174,9 @@ export interface PreFilterWorkArrangementConfig {
   allowOnsite: boolean
   /** Whether the user is willing to relocate for onsite/hybrid roles */
   willRelocate: boolean
-  /** User's preferred location for onsite/hybrid roles (e.g., "Portland, OR") */
+  /** User's preferred location for onsite/hybrid roles (e.g., "Portland, OR"). Also used for timezone derivation. */
   userLocation: string
-  /** User timezone offset hours (e.g., -8 for PST). Optional to stay permissive. */
-  userTimezone?: number
-  /** Maximum allowed timezone difference (hours). Optional; when set enables a hard gate. */
+  /** Maximum allowed timezone difference in hours. When set, enables city-based timezone comparison using userLocation. */
   maxTimezoneDiffHours?: number
   /**
    * Keywords that indicate remote work arrangement (checked in location, offices, metadata).
@@ -217,16 +215,6 @@ export interface PreFilterSalaryConfig {
   minimum: number | null
 }
 
-/** Technology rejection filtering */
-export interface PreFilterTechnologyConfig {
-  /**
-   * Technologies that cause immediate rejection if found in structured tags.
-   * Only applies when source provides structured tags (e.g., Remotive).
-   * Keep list short for high-confidence rejects (e.g., ["php", "wordpress"]).
-   */
-  rejected: string[]
-}
-
 /** Complete pre-filter policy configuration */
 export interface PreFilterPolicy {
   /** Title keyword filtering */
@@ -239,8 +227,6 @@ export interface PreFilterPolicy {
   employmentType: PreFilterEmploymentTypeConfig
   /** Salary floor filtering */
   salary: PreFilterSalaryConfig
-  /** Technology rejection filtering */
-  technology: PreFilterTechnologyConfig
 }
 
 // -----------------------------------------------------------

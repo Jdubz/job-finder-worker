@@ -89,7 +89,6 @@ const minimalPrefilterPolicy = {
   },
   employmentType: { allowFullTime: true, allowPartTime: true, allowContract: true },
   salary: { minimum: null },
-  technology: { rejected: [] },
 }
 
 const minimalMatchPolicy = {

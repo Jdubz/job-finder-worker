@@ -114,7 +114,6 @@ class TestCompanyPipeline:
             },
             "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
             "salary": {"minimum": None},
-            "technology": {"rejected": []},
         }
 
         company_info_fetcher = Mock()

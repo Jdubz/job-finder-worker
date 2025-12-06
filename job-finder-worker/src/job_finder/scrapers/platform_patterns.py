@@ -57,6 +57,9 @@ class PlatformPattern:
     follow_detail: bool = False
     # Whether this is a remote-only job board (all jobs treated as remote)
     is_remote_source: bool = False
+    # Company extraction method: "" | "from_title" | "from_description"
+    # "from_title" - parse "Company: Job Title" format (common for aggregators)
+    company_extraction: str = ""
 
 
 # Platform patterns registry - add new platforms here, not in code
@@ -82,8 +85,13 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="greenhouse_html",
-        # Match jobs.greenhouse.io/company or boards.greenhouse.io/company
-        url_pattern=r"(?:jobs|boards)\.greenhouse\.io/(?P<board_token>[^/?#]+)",
+        # Match various Greenhouse board URLs:
+        # - jobs.greenhouse.io/company
+        # - boards.greenhouse.io/company
+        # - job-boards.greenhouse.io/company
+        # - job-boards.eu.greenhouse.io/company (regional)
+        # Regional codes can be 2+ chars (eu, uk, etc.)
+        url_pattern=r"(?:jobs|boards|job-boards)(?:\.[a-z]{2,})?\.greenhouse\.io/(?P<board_token>[^/?#]+)",
         api_url_template="https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true",
         response_path="jobs",
         fields={
@@ -143,8 +151,10 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="workday",
-        # Match tenant.wdX.myworkdayjobs.com/site_id
-        url_pattern=r"https?://(?P<tenant>[^.]+)\.(?P<wd_instance>wd\d+)\.myworkdayjobs\.com/(?P<site_id>[^/?#]+)",
+        # Match tenant.wdX.myworkdayjobs.com/[lang]/site_id
+        # Language prefix (e.g., en-US/, fr-FR/) is optional
+        # Uses strict format: lowercase lang (2 chars) + optional uppercase country (2 chars)
+        url_pattern=r"https?://(?P<tenant>[^.]+)\.(?P<wd_instance>wd\d+)\.myworkdayjobs\.com/(?:[a-z]{2}(?:-[A-Z]{2})?/)?(?P<site_id>[^/?#]+)",
         api_url_template="https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs",
         method="POST",
         post_body_template={"limit": 20, "offset": 0},
@@ -284,6 +294,27 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         config_type="rss",
     ),
     PlatformPattern(
+        name="weworkremotely_rss",
+        # Match weworkremotely.com - uses RSS feed for all jobs
+        # Title format: "Company Name: Job Title" - extracted via company_extraction
+        url_pattern=r"weworkremotely\.com",
+        api_url_template="https://weworkremotely.com/remote-jobs.rss",
+        response_path="items",
+        fields={
+            "title": "title",
+            "location": "region",
+            "description": "description",
+            "url": "link",
+            "posted_date": "pubDate",
+            "category": "category",
+            "job_type": "type",
+        },
+        validation_key="items",
+        config_type="rss",
+        is_remote_source=True,
+        company_extraction="from_title",
+    ),
+    PlatformPattern(
         name="indeed_partner_api",
         url_pattern=r"apis\.indeed\.com",
         api_url_template="https://apis.indeed.com/graphql",
@@ -331,7 +362,8 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="builtin_html",
-        url_pattern=r"builtin\.com/jobs",
+        # Match builtin.com/jobs or builtin.com/company/xxx/jobs
+        url_pattern=r"builtin\.com/(?:jobs|company/[^/]+/jobs)",
         api_url_template="https://builtin.com/jobs",
         response_path="",
         fields={
@@ -422,5 +454,8 @@ def build_config_from_pattern(
 
     if pattern.is_remote_source:
         config["is_remote_source"] = True
+
+    if pattern.company_extraction:
+        config["company_extraction"] = pattern.company_extraction
 
     return config

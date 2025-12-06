@@ -334,6 +334,7 @@ export class GeneratorWorkflowService {
     const coverLetter = await this.buildCoverLetterContent(payload, personalInfo)
     const pdf = await this.htmlPdf.renderCoverLetter(coverLetter, {
       name: personalInfo.name,
+      title: payload.job.role,
       email: personalInfo.email,
       location: personalInfo.location,
       phone: personalInfo.phone,

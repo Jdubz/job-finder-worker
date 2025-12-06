@@ -64,7 +64,6 @@ def mock_dependencies() -> Dict[str, Any]:
         },
         "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
         "salary": {"minimum": None},
-        "technology": {"rejected": []},
     }
     config_loader.get_match_policy.return_value = {
         "minScore": 60,
@@ -443,7 +442,7 @@ class TestSourceDiscoveryFailure:
             None,
             {
                 "error": "api_probe_failed",
-                "error_details": "Failed to resolve 'boards-api.consider.com'",
+                "error_details": "HTTP 500: Internal Server Error",
             },
         )
         mock_discovery_class.return_value = mock_discovery
@@ -454,6 +453,36 @@ class TestSourceDiscoveryFailure:
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
         assert create_kwargs["config"]["disabled_notes"] == "api_probe_failed"
+        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
+        assert status_call[0][1] == QueueStatus.SUCCESS
+
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    def test_api_probe_failed_with_resolve_error_becomes_dns_error(
+        self,
+        mock_discovery_class,
+        _mock_agent_manager,
+        source_processor,
+        mock_dependencies,
+    ):
+        """If API probe fails due to DNS resolution, normalize to dns_error."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = (
+            None,
+            {
+                "error": "api_probe_failed",
+                "error_details": "Failed to resolve 'boards-api.consider.com'",
+            },
+        )
+        mock_discovery_class.return_value = mock_discovery
+
+        item = make_discovery_item(url="https://careers.nea.com/jobs/perplexity-ai")
+        source_processor.process_source_discovery(item)
+
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["status"] == SourceStatus.DISABLED
+        # When error_details contains "resolve", api_probe_failed is normalized to dns_error
+        assert create_kwargs["config"]["disabled_notes"] == "dns_error"
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
@@ -500,3 +529,138 @@ class TestCompanyNameExtraction:
         """Test handling invalid URLs."""
         assert source_processor._extract_company_from_url("not-a-url") == ""
         assert source_processor._extract_company_from_url("") == ""
+
+
+class TestPlaceholderNaming:
+    """Test placeholder source naming when discovery fails.
+
+    Regression tests for the fix where sources were incorrectly named with URLs
+    instead of company names when discovery failed.
+    """
+
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    def test_placeholder_uses_company_name_without_aggregator(
+        self,
+        mock_discovery_class,
+        _mock_agent_manager,
+        source_processor,
+        mock_dependencies,
+    ):
+        """When discovery fails and company_name is provided without aggregator, use company name.
+
+        Regression test: Previously this would incorrectly use the URL netloc.
+        """
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = (None, {"error": "discovery_failed"})
+        mock_discovery_class.return_value = mock_discovery
+
+        # Configure sources_manager to return None for aggregator domain (company-specific URL)
+        mock_dependencies["sources_manager"].get_aggregator_domain_for_url.return_value = None
+
+        # Company-specific URL (not an aggregator)
+        item = make_discovery_item(
+            url="https://www.baxenergy.com/careers/",
+            company_name="BaxEnergy",
+        )
+        source_processor.process_source_discovery(item)
+
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        # Should be "BaxEnergy Jobs", NOT "www.baxenergy.com Jobs"
+        assert create_kwargs["name"] == "BaxEnergy Jobs"
+        assert create_kwargs["status"] == SourceStatus.DISABLED
+
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    def test_placeholder_uses_company_and_aggregator_when_both_present(
+        self,
+        mock_discovery_class,
+        _mock_agent_manager,
+        source_processor,
+        mock_dependencies,
+    ):
+        """When discovery fails with both company_name and aggregator, use both in name."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = (None, {"error": "discovery_failed"})
+        mock_discovery_class.return_value = mock_discovery
+
+        # Configure sources_manager to return aggregator domain
+        mock_dependencies["sources_manager"].get_aggregator_domain_for_url.return_value = (
+            "myworkdayjobs.com"
+        )
+
+        item = make_discovery_item(
+            url="https://ouryahoo.wd5.myworkdayjobs.com/careers",
+            company_name="Yahoo",
+        )
+        source_processor.process_source_discovery(item)
+
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        assert create_kwargs["name"] == "Yahoo Jobs (myworkdayjobs.com)"
+        assert create_kwargs["aggregator_domain"] == "myworkdayjobs.com"
+
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    def test_placeholder_falls_back_to_url_when_no_company_name(
+        self,
+        mock_discovery_class,
+        _mock_agent_manager,
+        source_processor,
+        mock_dependencies,
+    ):
+        """When discovery fails without company_name, fall back to URL netloc."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = (None, {"error": "discovery_failed"})
+        mock_discovery_class.return_value = mock_discovery
+
+        # Configure sources_manager to return None (not an aggregator)
+        mock_dependencies["sources_manager"].get_aggregator_domain_for_url.return_value = None
+
+        # Create item without company_name
+        config = SourceDiscoveryConfig(
+            url="https://unknown-company.com/jobs",
+            type_hint=SourceTypeHint.AUTO,
+            company_id=None,
+            company_name=None,
+        )
+        item = JobQueueItem(
+            id="queue-456",
+            type=QueueItemType.SOURCE_DISCOVERY,
+            url="https://unknown-company.com/jobs",
+            company_name=None,
+            source="user_submission",
+            submitted_by="tester",
+            source_discovery_config=config,
+        )
+        source_processor.process_source_discovery(item)
+
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        # Should use URL netloc as fallback
+        assert create_kwargs["name"] == "unknown-company.com Jobs"
+
+    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    def test_placeholder_naming_regression_sticker_mule(
+        self,
+        mock_discovery_class,
+        _mock_agent_manager,
+        source_processor,
+        mock_dependencies,
+    ):
+        """Regression test: Sticker Mule should be named correctly, not with URL."""
+        mock_discovery = Mock()
+        mock_discovery.discover.return_value = (None, {"error": "api_probe_failed"})
+        mock_discovery_class.return_value = mock_discovery
+
+        # Configure sources_manager to return None (company-specific URL)
+        mock_dependencies["sources_manager"].get_aggregator_domain_for_url.return_value = None
+
+        item = make_discovery_item(
+            url="https://www.stickermule.com/careers",
+            company_name="Sticker Mule",
+        )
+        source_processor.process_source_discovery(item)
+
+        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
+        # Should be "Sticker Mule Jobs", NOT "www.stickermule.com Jobs"
+        assert create_kwargs["name"] == "Sticker Mule Jobs"

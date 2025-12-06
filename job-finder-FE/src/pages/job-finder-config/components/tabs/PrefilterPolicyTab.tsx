@@ -33,7 +33,6 @@ const mapToForm = (config: PreFilterPolicy): PreFilterPolicy => {
       allowOnsite: config.workArrangement.allowOnsite,
       willRelocate: config.workArrangement.willRelocate,
       userLocation: config.workArrangement.userLocation,
-      userTimezone: config.workArrangement.userTimezone,
       maxTimezoneDiffHours: config.workArrangement.maxTimezoneDiffHours,
     },
     employmentType: {
@@ -43,9 +42,6 @@ const mapToForm = (config: PreFilterPolicy): PreFilterPolicy => {
     },
     salary: {
       minimum: config.salary.minimum,
-    },
-    technology: {
-      rejected: config.technology.rejected,
     },
   }
 }
@@ -93,10 +89,6 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
         allowOnsite: Boolean(values.workArrangement.allowOnsite),
         willRelocate: Boolean(values.workArrangement.willRelocate),
         userLocation: trimmedLocation,
-        userTimezone:
-          values.workArrangement.userTimezone === undefined || values.workArrangement.userTimezone === null
-            ? undefined
-            : Number(values.workArrangement.userTimezone),
         maxTimezoneDiffHours:
           values.workArrangement.maxTimezoneDiffHours === undefined ||
           values.workArrangement.maxTimezoneDiffHours === null
@@ -107,9 +99,6 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
         allowFullTime: Boolean(values.employmentType.allowFullTime),
         allowPartTime: Boolean(values.employmentType.allowPartTime),
         allowContract: Boolean(values.employmentType.allowContract),
-      },
-      technology: {
-        rejected: cleanList(values.technology.rejected ?? []),
       },
     }
 
@@ -265,15 +254,9 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
                 <div className="grid md:grid-cols-2 gap-4">
                   <NumericField
                     control={form.control}
-                    name="workArrangement.userTimezone"
-                    label="User Timezone (UTC offset hours)"
-                    description="Example: -8 for PT, -5 for ET. Optional; required to enforce timezone guard."
-                  />
-                  <NumericField
-                    control={form.control}
                     name="workArrangement.maxTimezoneDiffHours"
                     label="Max Timezone Difference (hours)"
-                    description="Hard-reject remote/hybrid roles when both sides have TZ and diff exceeds this."
+                    description="Hard-reject remote/hybrid roles when job location timezone diff exceeds this. Timezone is derived from your city above."
                   />
                 </div>
               </section>
@@ -308,23 +291,6 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
                 </div>
               </section>
 
-              <section className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-lg font-semibold">Technology Hard Rejections</h3>
-                  <ImpactBadge label="Instant reject" tone="negative" />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Structured tags only. Use for absolute no-gos (e.g., PHP if never considered). Should be a subset of
-                  match-policy technology rejects.
-                </p>
-                <StringListField
-                  control={form.control}
-                  name="technology.rejected"
-                  label="Rejected Technologies"
-                  placeholder="php"
-                  description="Jobs tagged with any of these are discarded before extraction."
-                />
-              </section>
             </div>
           </TabCard>
         </Form>
