@@ -94,6 +94,7 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
   experience: {
     maxRequired: values.experience.maxRequired,
     overqualifiedScore: values.experience.overqualifiedScore,
+    relevantExperienceStart: values.experience.relevantExperienceStart?.trim() || null,
   },
   freshness: {
     freshDays: values.freshness.freshDays,
@@ -518,7 +519,7 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 <h3 className="text-lg font-semibold">Experience Level</h3>
                 <ImpactBadge label="Score adjustment" tone="neutral" />
               </div>
-              <div className="grid gap-6 md:grid-cols-2">
+              <div className="grid gap-6 md:grid-cols-3">
                 <NumericField
                   control={form.control}
                   name="experience.maxRequired"
@@ -532,6 +533,28 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                   label="Overqualified Score"
                   description="Per year overqualified (negative)."
                   info="Score adjustment per year you exceed the job's max requirement."
+                />
+                <FormField
+                  control={form.control}
+                  name="experience.relevantExperienceStart"
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className="flex items-center gap-1">
+                        <FormLabel>Relevant Experience Start</FormLabel>
+                        <InfoTooltip content="Only count work experience starting from this date. Useful for career changers." />
+                      </div>
+                      <FormControl>
+                        <Input
+                          type="month"
+                          value={field.value ?? ""}
+                          onChange={(e) => field.onChange(e.target.value || null)}
+                          className="max-w-[11rem]"
+                        />
+                      </FormControl>
+                      <FormDescription>Exclude earlier work (YYYY-MM).</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
             </section>

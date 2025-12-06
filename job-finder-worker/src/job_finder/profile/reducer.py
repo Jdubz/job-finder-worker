@@ -13,6 +13,7 @@ Rules (2025-12-05 clarifications):
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -87,12 +88,25 @@ def build_analog_map(analog_groups: Iterable[Iterable[str]]) -> Dict[str, Set[st
     return analog_map
 
 
-def reduce_content_items(items: List[dict]) -> ScoringProfile:
-    """Reduce raw content_items rows into skill years and totals."""
+def reduce_content_items(
+    items: List[dict],
+    relevant_experience_start: Optional[str] = None,
+) -> ScoringProfile:
+    """Reduce raw content_items rows into skill years and totals.
+
+    Args:
+        items: List of content_item dicts from database
+        relevant_experience_start: Only count work experience starting from this date
+                                   (YYYY-MM-DD or YYYY-MM format). Useful for career
+                                   changers to exclude irrelevant prior work.
+    """
     if not items:
         return ScoringProfile(skills=set(), skill_years={}, total_experience_years=0.0)
 
     today = date.today()
+
+    # Parse relevance cutoff date if provided
+    relevance_cutoff = _parse_date(relevant_experience_start)
 
     # Index for parent lookup (highlights inherit dates)
     by_id = {item.get("id"): item for item in items}
@@ -107,7 +121,18 @@ def reduce_content_items(items: List[dict]) -> ScoringProfile:
         if not skills_raw:
             normalized_skills: Set[str] = set()
         elif isinstance(skills_raw, str):
-            skills_list = [s.strip() for s in skills_raw.split(",") if s.strip()]
+            # Try parsing as JSON array first (e.g., '["React","Node.js"]')
+            skills_list: List[str] = []
+            if skills_raw.startswith("["):
+                try:
+                    parsed = json.loads(skills_raw)
+                    if isinstance(parsed, list):
+                        skills_list = [str(s).strip() for s in parsed if s]
+                except json.JSONDecodeError:
+                    pass
+            # Fall back to comma-separated string
+            if not skills_list:
+                skills_list = [s.strip() for s in skills_raw.split(",") if s.strip()]
             normalized_skills = {_normalize_skill(s) for s in skills_list if s}
         elif isinstance(skills_raw, (list, tuple)):
             normalized_skills = {_normalize_skill(s) for s in skills_raw if s}
@@ -127,11 +152,37 @@ def reduce_content_items(items: List[dict]) -> ScoringProfile:
                 end = _parse_date(parent.get("end_date")) or end
 
         if start:
-            end = end or today
-            months = _month_span(start, end)
+            ai_context = raw.get("ai_context", "")
+            # Only work items use today as end_date for open-ended roles
+            # Education/projects/etc. without end_date get just the start month
+            if end:
+                effective_end = end
+            elif ai_context == "work":
+                effective_end = today
+            else:
+                # Non-work items without end_date: use start month only
+                effective_end = start
+
+            months = _month_span(start, effective_end)
             if not months:
                 continue
-            overall_months |= months
+            # Only count 'work' items toward overall experience years
+            # Education, projects, highlights, etc. contribute skills but not tenure
+            if ai_context == "work":
+                # Apply relevance cutoff for experience counting
+                if relevance_cutoff:
+                    # Skip work items that ended before the cutoff
+                    if effective_end < relevance_cutoff:
+                        # Still add skills but don't count toward experience
+                        for skill in normalized_skills:
+                            skill_months.setdefault(skill, set()).update(months)
+                        continue
+                    # Adjust start to cutoff if it started before
+                    relevant_start = max(start, relevance_cutoff)
+                    relevant_months = _month_span(relevant_start, effective_end)
+                    overall_months |= relevant_months
+                else:
+                    overall_months |= months
             for skill in normalized_skills:
                 skill_months.setdefault(skill, set()).update(months)
         elif not start:
@@ -153,15 +204,24 @@ def reduce_content_items(items: List[dict]) -> ScoringProfile:
     )
 
 
-def load_scoring_profile(db_path: Optional[str] = None) -> ScoringProfile:
-    """Load content_items from SQLite and reduce to scoring profile."""
+def load_scoring_profile(
+    db_path: Optional[str] = None,
+    relevant_experience_start: Optional[str] = None,
+) -> ScoringProfile:
+    """Load content_items from SQLite and reduce to scoring profile.
+
+    Args:
+        db_path: Path to SQLite database
+        relevant_experience_start: Only count work experience starting from this date
+                                   (YYYY-MM-DD or YYYY-MM format)
+    """
     try:
         with sqlite_connection(db_path) as conn:
             rows = conn.execute(
                 "SELECT id, parent_id, ai_context, start_date, end_date, skills FROM content_items"
             ).fetchall()
         items = [dict(row) for row in rows]
-        return reduce_content_items(items)
+        return reduce_content_items(items, relevant_experience_start=relevant_experience_start)
     except sqlite3.OperationalError:
         # Table not present (e.g., in unit tests using stub DB) -> zero profile
         return ScoringProfile(skills=set(), skill_years={}, total_experience_years=0.0)

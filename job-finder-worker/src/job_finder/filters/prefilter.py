@@ -194,11 +194,15 @@ class PreFilter:
         else:
             checks_skipped.append("title")
 
-        # 2. Freshness check (if posted_date available and parseable)
+        # 2. Freshness check (if posted_date or first_published available and parseable)
+        # Use first_published if available (true publication date), fall back to posted_date
+        # Some APIs (e.g., Greenhouse) have updated_at mapped to posted_date, which can be
+        # misleading - first_published is the authoritative publication date.
         if self.max_age_days > 0:
-            posted_date = job_data.get("posted_date")
-            if posted_date:
-                result, was_parseable = self._check_freshness(posted_date)
+            # Prefer first_published as it's the true publication date
+            date_to_check = job_data.get("first_published") or job_data.get("posted_date")
+            if date_to_check:
+                result, was_parseable = self._check_freshness(date_to_check)
                 if was_parseable:
                     checks_performed.append("freshness")
                     if not result.passed:
@@ -240,13 +244,39 @@ class PreFilter:
                 )
             # in_user_city is True or None (missing data) - allow
         else:
-            # For unknown arrangements: apply timezone check if remote is allowed
-            # (unknown could be remote, so we apply the guard as a safeguard)
-            if (
+            # For unknown arrangements: apply both location and timezone checks
+            # Unknown could be remote (apply timezone guard) OR hybrid/onsite
+            # (reject if clearly outside user's city when not willing to relocate)
+            if self.user_location and not self.will_relocate:
+                checks_performed.append("workArrangement")
+
+                # First check if job is clearly outside user's city
+                # (catches hybrid/onsite jobs that would otherwise slip through)
+                in_user_city = self._is_in_user_location(job_data, self.user_location)
+                if in_user_city is False:
+                    return PreFilterResult(
+                        passed=False,
+                        reason=f"Unknown work arrangement with location outside {self.user_location}",
+                        checks_performed=checks_performed,
+                        checks_skipped=checks_skipped,
+                    )
+
+                # Also apply timezone check for remote possibility
+                if self.allow_remote and self.max_timezone_diff_hours is not None:
+                    result = self._check_timezone(job_data)
+                    if not result.passed:
+                        return PreFilterResult(
+                            passed=False,
+                            reason=result.reason,
+                            checks_performed=checks_performed,
+                            checks_skipped=checks_skipped,
+                        )
+            elif (
                 self.allow_remote
                 and self.max_timezone_diff_hours is not None
                 and self.user_location
             ):
+                # willRelocate is True, just apply timezone check
                 checks_performed.append("workArrangement")
                 result = self._check_timezone(job_data)
                 if not result.passed:
@@ -503,16 +533,130 @@ class PreFilter:
         }
     )
 
+    # Patterns to extract real location from composite "Remote, Country" strings
+    # Matches: "Remote, Poland", "Remote - United States", "US Remote", "Remote (EMEA)"
+    _REMOTE_LOCATION_PATTERNS = [
+        re.compile(r"^remote\s*[-,]\s*(.+)$", re.IGNORECASE),  # "Remote, Poland" or "Remote - US"
+        re.compile(r"^remote\s*\((.+)\)$", re.IGNORECASE),  # "Remote (EMEA)"
+        re.compile(r"^(.+?)\s*[-,]\s*remote$", re.IGNORECASE),  # "Poland, Remote" or "US - Remote"
+        re.compile(r"^(.+?)\s+remote$", re.IGNORECASE),  # "US Remote" or "Poland Remote"
+        re.compile(r"^remote\s+(.+)$", re.IGNORECASE),  # "Remote US" or "Remote Poland"
+    ]
+
+    # Words that are NOT locations but commonly appear before/after "remote"
+    # These are modifiers, regions too broad for timezone lookup, or generic terms
+    _NON_LOCATION_WORDS = frozenset(
+        {
+            # Modifiers
+            "fully",
+            "100%",
+            "partly",
+            "mostly",
+            "primarily",
+            "first",
+            "only",
+            "preferred",
+            "optional",
+            "flexible",
+            # Regions too broad for timezone lookup (span multiple timezones)
+            "us",
+            "usa",
+            "united states",
+            "americas",
+            "emea",
+            "apac",
+            "latam",
+            "eu",
+            "europe",
+            "asia",
+            "africa",
+            "global",
+            "international",
+            "north america",
+            "south america",
+            # Other non-locations
+            "based",
+            "friendly",
+            "eligible",
+            "ok",
+            "okay",
+            "possible",
+            "available",
+        }
+    )
+
+    def _extract_location_from_composite(self, location: str) -> Optional[str]:
+        """Extract real location from composite strings like 'Remote, Poland'.
+
+        Returns the extracted location if found, None if the string is purely generic
+        or contains only broad regions not useful for timezone lookup.
+        """
+        loc_stripped = location.strip()
+
+        # Try each pattern to extract the real location
+        for pattern in self._REMOTE_LOCATION_PATTERNS:
+            match = pattern.match(loc_stripped)
+            if match:
+                extracted = match.group(1).strip()
+                extracted_lower = extracted.lower()
+                # If we matched a pattern but the extracted part is generic or blocked,
+                # return None immediately - don't try other patterns which may extract
+                # malformed values (e.g., Pattern 4 extracting "- US" from "Remote - US")
+                if (
+                    not extracted
+                    or extracted_lower in self._GENERIC_LOCATIONS
+                    or extracted_lower in self._NON_LOCATION_WORDS
+                ):
+                    return None
+                return extracted
+
+        return None
+
     def _is_generic_location(self, location: str) -> bool:
-        """Check if a location string is generic (remote, worldwide, etc.)."""
+        """Check if a location string is purely generic (remote, worldwide, etc.).
+
+        Composite locations like 'Remote, Poland' are NOT considered generic
+        because they contain actionable location data.
+        """
         loc_lower = location.lower().strip()
+
         # Check exact match first
         if loc_lower in self._GENERIC_LOCATIONS:
             return True
-        # Check if "remote" appears as a substring (catches "Remote - US", "US Remote", etc.)
+
+        # If location contains "remote", check if we can extract a real location from it
         if "remote" in loc_lower:
+            # Try to extract a real location from composite string
+            extracted = self._extract_location_from_composite(location)
+            if extracted:
+                # Has real location data, not purely generic
+                return False
+            # No real location extracted, treat as generic
             return True
+
         return False
+
+    def _get_valid_location_from_string(self, location_string: Optional[str]) -> Optional[str]:
+        """Validate and extract a location from a string.
+
+        Handles composite locations like "Remote, Poland" and filters out generic locations.
+
+        Returns:
+            A valid location string, or None if the input is empty, generic, or not a string.
+        """
+        if not isinstance(location_string, str) or not location_string.strip():
+            return None
+
+        # First check if it's a composite location like "Remote, Poland"
+        extracted = self._extract_location_from_composite(location_string)
+        if extracted:
+            return extracted
+
+        # Otherwise use as-is if not generic
+        if not self._is_generic_location(location_string):
+            return location_string.strip()
+
+        return None
 
     def _extract_job_location(self, job_data: Dict[str, Any]) -> Optional[str]:
         """Extract a location string from job data for timezone lookup.
@@ -520,6 +664,8 @@ class PreFilter:
         Iterates through multiple data sources (city/country, location string, metadata,
         offices) and returns the first viable location string found. Short-circuits on
         first match for performance.
+
+        Handles composite locations like "Remote, Poland" by extracting the real location.
 
         Note: Single city names without state/country (e.g., "Portland") may be ambiguous
         and could geocode to unexpected locations. Structured fields (city + state/country)
@@ -541,19 +687,15 @@ class PreFilter:
             return str(city)
 
         # Try location string
-        location = job_data.get("location")
-        if isinstance(location, str) and location.strip():
-            if not self._is_generic_location(location):
-                return location.strip()
+        if valid_loc := self._get_valid_location_from_string(job_data.get("location")):
+            return valid_loc
 
         # Try metadata fields
         metadata = job_data.get("metadata", {})
         if isinstance(metadata, dict):
             for key in ("Location", "location", "Office Location", "Office", "headquarters"):
-                value = metadata.get(key)
-                if isinstance(value, str) and value.strip():
-                    if not self._is_generic_location(value):
-                        return value.strip()
+                if valid_loc := self._get_valid_location_from_string(metadata.get(key)):
+                    return valid_loc
 
         # Try offices array
         offices = job_data.get("offices", [])
@@ -564,9 +706,8 @@ class PreFilter:
                     office_name = office.get("name", "") or office.get("location", "")
                 elif isinstance(office, str):
                     office_name = office
-                if isinstance(office_name, str) and office_name.strip():
-                    if not self._is_generic_location(office_name):
-                        return office_name.strip()
+                if valid_loc := self._get_valid_location_from_string(office_name):
+                    return valid_loc
 
         return None
 

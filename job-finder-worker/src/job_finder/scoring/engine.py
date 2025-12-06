@@ -423,10 +423,12 @@ class ScoringEngine:
         tz_adjustment = int(tz_diff * per_hour_score)
         adjustments: List[ScoreAdjustment] = []
 
-        # Bonus for hybrid in same city
+        # For hybrid roles, check if in user's city
         if is_hybrid and extraction.city:
             user_city = self.location_config.get("userCity", "").lower()
-            if user_city and extraction.city.lower() == user_city:
+            job_city = extraction.city.lower()
+            if user_city and job_city == user_city:
+                # Bonus for hybrid in same city
                 same_city_score = self.location_config.get("hybridSameCityScore", 10)
                 adjustments.append(
                     ScoreAdjustment(
@@ -444,6 +446,26 @@ class ScoringEngine:
                         )
                     )
                 return {"points": tz_adjustment + same_city_score, "adjustments": adjustments}
+            elif user_city:
+                # Hybrid in different city - requires relocation
+                # Apply same penalty as onsite roles requiring relocation
+                relocation_score = self.location_config.get("relocationScore", -80)
+                adjustments.append(
+                    ScoreAdjustment(
+                        category="location",
+                        reason=f"Hybrid requires presence in {extraction.city} (not {user_city.title()})",
+                        points=relocation_score,
+                    )
+                )
+                if tz_adjustment != 0:
+                    adjustments.append(
+                        ScoreAdjustment(
+                            category="location",
+                            reason=f"Timezone diff {tz_diff}h",
+                            points=tz_adjustment,
+                        )
+                    )
+                return {"points": tz_adjustment + relocation_score, "adjustments": adjustments}
 
         if tz_adjustment != 0:
             return {
