@@ -339,7 +339,11 @@ export class GeneratorWorkflowService {
       phone: personalInfo.phone,
       date: payload.date,
       logo: personalInfo.logo,
-      avatar: personalInfo.avatar
+      avatar: personalInfo.avatar,
+      title: personalInfo.title || payload.job.role,
+      website: personalInfo.website,
+      linkedin: personalInfo.linkedin,
+      github: personalInfo.github
     })
     const metadata: ArtifactMetadata = {
       name: personalInfo.name,

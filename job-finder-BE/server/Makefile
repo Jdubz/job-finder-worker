@@ -177,9 +177,9 @@ dev-validate: ## Run generator test
 	@jq . .dev/output/last-response.json
 
 # Cleanup
-dev-clean: ## Clean dev environment (keeps database)
-	@echo "$(YELLOW)Cleaning dev logs and artifacts...$(RESET)"
-	@rm -rf .dev/logs/* .dev/artifacts/* .dev/output/*
+dev-clean: ## Clean dev environment (keeps database and artifacts)
+	@echo "$(YELLOW)Cleaning dev logs and output (artifacts preserved)...$(RESET)"
+	@rm -rf .dev/logs/* .dev/output/*
 	@mkdir -p .dev/logs .dev/artifacts .dev/output
 	@echo "$(GREEN)✓ Dev environment cleaned$(RESET)"
 

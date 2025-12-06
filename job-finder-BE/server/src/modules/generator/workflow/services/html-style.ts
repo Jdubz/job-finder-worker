@@ -1,4 +1,6 @@
 export const sharedCss = `
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@400;500;600&display=swap');
+
   @page { margin: 0.4in; size: Letter; }
 
   :root {
@@ -20,7 +22,7 @@ export const sharedCss = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-family: 'Source Sans 3', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
     color: var(--text);
     font-size: 10px;
     line-height: 1.45;
@@ -253,6 +255,7 @@ export const sharedCss = `
   .logo-box img { width: 100%; height: 100%; object-fit: contain; }
 
   .name {
+    font-family: 'Playfair Display', 'Source Sans 3', 'Segoe UI', serif;
     font-size: 32px;
     font-weight: 700;
     color: var(--text);
@@ -412,12 +415,6 @@ export const sharedCss = `
     color: var(--muted-light);
   }
   .main-footer a { color: var(--accent); font-weight: 500; }
-
-  /* Legacy support - hide old elements */
-  .header-rule, .skills-section, .skills-grid { display: none; }
-  header { display: none; }
-  section { margin-bottom: 0; }
-  footer { display: none; }
 `;
 
 // SVG icons as data URIs for contact items

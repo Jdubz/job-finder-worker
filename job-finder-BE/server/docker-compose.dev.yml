@@ -75,7 +75,7 @@ services:
         source: ./.dev/data
         target: /data/sqlite
       - type: bind
-        source: ../.artifacts-test # shared, gitignored test artifacts (see .gitignore)
+        source: ./.dev/artifacts # generated PDFs stored on host
         target: /data/artifacts
       - type: bind
         source: ./.dev/logs
@@ -113,9 +113,9 @@ services:
       dockerfile: job-finder-BE/server/Dockerfile
       target: base
     container_name: job-finder-api-dev-hotreload
-    user: "root"
+    user: "node"
     working_dir: /app
-    command: ["/bin/sh", "-c", "mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/ && chown -R node:node /home/node/.codex; npm run dev"]
+    command: ["/bin/sh", "-c", "mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/; npm run dev"]
     env_file:
       - .env.dev
     environment:
@@ -138,7 +138,7 @@ services:
         source: ./.dev/data
         target: /data/sqlite
       - type: bind
-        source: ../.artifacts-test
+        source: ./.dev/artifacts
         target: /data/artifacts
       - type: bind
         source: ./.dev/logs

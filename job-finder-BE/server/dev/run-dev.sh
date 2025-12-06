@@ -132,7 +132,7 @@ fi
 check_artifact() {
   local url="$1"
   [[ -z "$url" ]] && return 0
-  local rel="${url#/api/generator/artifacts/}"
+  local rel="${url#*/api/generator/artifacts/}" # works for relative or absolute URLs
   local abs="$DEV_DIR/artifacts/$rel"
   if [[ -f "$abs" ]]; then
     echo "✔ Found artifact: $abs"

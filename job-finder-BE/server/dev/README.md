@@ -68,7 +68,7 @@ make dev-down           # Stop containers
 make dev-logs           # Tail container logs
 make dev-shell          # Shell into container
 make dev-validate       # Run generator test
-make dev-clean          # Clean logs/artifacts
+make dev-clean          # Clean logs/output (artifacts kept)
 make dev-clean-all      # Remove entire .dev/
 ```
 
