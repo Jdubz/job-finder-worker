@@ -497,7 +497,19 @@ export class HtmlPdfService {
 
   async renderCoverLetter(
     content: CoverLetterContent,
-    options: { name: string; title?: string; email: string; location?: string; phone?: string; date?: string; logo?: string; avatar?: string }
+    options: {
+      name: string
+      title?: string
+      email: string
+      location?: string
+      phone?: string
+      date?: string
+      logo?: string
+      avatar?: string
+      website?: string
+      linkedin?: string
+      github?: string
+    }
   ): Promise<Buffer> {
     const html = coverLetterHtml(content, options)
     return renderHtmlToPdf(html)
