@@ -170,6 +170,8 @@ class TestAnalyzeMatch:
 
         # Missing required field (missing_skills)
         assert analysis is None
+
+
 class TestAnalyzeJob:
     """Test complete job analysis flow.
 
