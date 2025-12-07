@@ -170,9 +170,18 @@ export function buildJobMatchRouter() {
         ignoredAt: payload.ignoredAt ? toTimestamp(payload.ignoredAt) : undefined
       }
 
-      const match = repo.upsert(matchRequest)
-      const response: SaveJobMatchResponse = { match }
-      res.status(201).json(success(response))
+      try {
+        const match = repo.upsert(matchRequest)
+        const response: SaveJobMatchResponse = { match }
+        res.status(201).json(success(response))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to save match'
+        if (message.includes('FOREIGN KEY constraint')) {
+          res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Invalid jobListingId - job listing does not exist'))
+          return
+        }
+        throw err
+      }
     })
   )
 

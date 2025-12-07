@@ -83,22 +83,33 @@ export function buildGeneratorAssetsRouter() {
       const parsed = uploadSchema.parse(req.body ?? {})
 
       let payload: { mime: string; buffer: Buffer }
-      if (parsed.dataUrl) {
-        payload = parseDataUrl(parsed.dataUrl)
-      } else if (parsed.url) {
-        payload = await fetchExternal(parsed.url)
-      } else {
-        return res.status(400).json({ message: 'dataUrl or url is required' })
+      try {
+        if (parsed.dataUrl) {
+          payload = parseDataUrl(parsed.dataUrl)
+        } else if (parsed.url) {
+          payload = await fetchExternal(parsed.url)
+        } else {
+          res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'dataUrl or url is required'))
+          return
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to process asset'
+        res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, message))
+        return
       }
 
-      const saved = await storageService.saveAsset(payload.buffer, payload.mime, parsed.type)
-      const publicUrl = storageService.createPublicUrl(saved.storagePath)
+      try {
+        const saved = await storageService.saveAsset(payload.buffer, payload.mime, parsed.type)
+        const publicUrl = storageService.createPublicUrl(saved.storagePath)
 
-      res.json({
-        success: true,
-        path: `/${saved.storagePath}`.replace(/\\/g, '/'),
-        publicUrl
-      })
+        res.json({
+          success: true,
+          path: `/${saved.storagePath}`.replace(/\\/g, '/'),
+          publicUrl
+        })
+      } catch {
+        res.status(500).json(failure(ApiErrorCode.STORAGE_ERROR, 'Failed to save asset'))
+      }
     })
   )
 
@@ -138,7 +149,9 @@ export function buildGeneratorAssetsServeRouter() {
         res.setHeader('Cache-Control', 'private, max-age=31536000')
         const stream = createReadStream(requestedFile)
         stream.on('error', () => {
-          res.status(500).json(failure(ApiErrorCode.STORAGE_ERROR, 'Failed to read asset'))
+          if (!res.headersSent) {
+            res.status(500).json(failure(ApiErrorCode.STORAGE_ERROR, 'Failed to read asset'))
+          }
         })
         stream.pipe(res)
       } catch (error) {

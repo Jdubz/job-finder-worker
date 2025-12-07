@@ -144,11 +144,16 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
     '/',
     ...mutationsMiddleware,
     asyncHandler((req, res) => {
-      const payload = createRequestSchema.parse(req.body) as CreateContentItemRequest
-      const user = getAuthenticatedUser(req)
-      const item = repo.create({ ...payload.itemData, userEmail: user.email })
-      const response: CreateContentItemResponse = { item, message: 'Content item created' }
-      res.status(201).json(success(response))
+      try {
+        const payload = createRequestSchema.parse(req.body) as CreateContentItemRequest
+        const user = getAuthenticatedUser(req)
+        const item = repo.create({ ...payload.itemData, userEmail: user.email })
+        const response: CreateContentItemResponse = { item, message: 'Content item created' }
+        res.status(201).json(success(response))
+      } catch (err) {
+        if (handleRepoError(err, res)) return
+        throw err
+      }
     })
   )
 

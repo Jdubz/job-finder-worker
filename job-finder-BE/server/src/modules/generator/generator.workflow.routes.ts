@@ -65,26 +65,37 @@ export function buildGeneratorWorkflowRouter() {
     '/start',
     asyncHandler(async (req, res) => {
       const payload = generatorRequestSchema.parse(req.body ?? {})
-      const { requestId, steps } = await service.createRequest(payload)
 
-      // Execute the first step synchronously
-      const stepResult = await service.runNextStep(requestId, payload)
-      if (!stepResult) {
-        res.status(500).json(failure(ApiErrorCode.INTERNAL_ERROR, 'Failed to execute first step'))
-        return
+      try {
+        const { requestId, steps } = await service.createRequest(payload)
+
+        // Execute the first step synchronously
+        const stepResult = await service.runNextStep(requestId, payload)
+        if (!stepResult) {
+          res.status(500).json(failure(ApiErrorCode.INTERNAL_ERROR, 'Failed to execute first step'))
+          return
+        }
+
+        res.json(
+          success({
+            requestId,
+            status: stepResult.status,
+            steps: stepResult.steps,
+            nextStep: stepResult.nextStep,
+            stepCompleted: steps[0]?.id, // First step that was completed
+            resumeUrl: stepResult.resumeUrl,
+            coverLetterUrl: stepResult.coverLetterUrl
+          })
+        )
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Generation failed'
+        // Check for user-facing errors vs internal errors
+        if (err instanceof Error && err.name === 'UserFacingError') {
+          res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, message))
+          return
+        }
+        res.status(500).json(failure(ApiErrorCode.GENERATION_FAILED, message))
       }
-
-      res.json(
-        success({
-          requestId,
-          status: stepResult.status,
-          steps: stepResult.steps,
-          nextStep: stepResult.nextStep,
-          stepCompleted: steps[0]?.id, // First step that was completed
-          resumeUrl: stepResult.resumeUrl,
-          coverLetterUrl: stepResult.coverLetterUrl
-        })
-      )
     })
   )
 

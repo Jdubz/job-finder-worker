@@ -299,7 +299,7 @@ export function buildJobQueueRouter() {
       if (result.success) {
         res.json(success(result))
       } else {
-        res.status(500).json(failure('CRON_TRIGGER_FAILED', result.error ?? 'Unknown error'))
+        res.status(503).json(failure(ApiErrorCode.SERVICE_UNAVAILABLE, result.error ?? 'Cron trigger failed'))
       }
     })
   )
@@ -312,7 +312,7 @@ export function buildJobQueueRouter() {
       if (result.success) {
         res.json(success(result))
       } else {
-        res.status(500).json(failure('CRON_TRIGGER_FAILED', result.error ?? 'Unknown error'))
+        res.status(503).json(failure(ApiErrorCode.SERVICE_UNAVAILABLE, result.error ?? 'Cron trigger failed'))
       }
     })
   )
@@ -325,7 +325,7 @@ export function buildJobQueueRouter() {
       if (result.success) {
         res.json(success(result))
       } else {
-        res.status(500).json(failure('CRON_TRIGGER_FAILED', result.error ?? 'Unknown error'))
+        res.status(503).json(failure(ApiErrorCode.SERVICE_UNAVAILABLE, result.error ?? 'Cron trigger failed'))
       }
     })
   )
@@ -338,7 +338,7 @@ export function buildJobQueueRouter() {
       if (result.success) {
         res.json(success(result))
       } else {
-        res.status(500).json(failure('CRON_TRIGGER_FAILED', result.error ?? 'Unknown error'))
+        res.status(503).json(failure(ApiErrorCode.SERVICE_UNAVAILABLE, result.error ?? 'Cron trigger failed'))
       }
     })
   )
