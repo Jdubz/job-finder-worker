@@ -261,11 +261,11 @@ describe('JobQueueRepository', () => {
       expect(repo.hasActiveCompanyTask('company-456')).toBe(true)
     })
 
-    it('returns false when only completed tasks exist for the company', () => {
+    it('returns false when only successful tasks exist for the company', () => {
       repo.enqueue(
         buildQueueItem({
           type: 'company',
-          status: 'completed',
+          status: 'success',
           company_id: 'company-789'
         })
       )

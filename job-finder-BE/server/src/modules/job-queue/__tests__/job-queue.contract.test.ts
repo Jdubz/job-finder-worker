@@ -112,8 +112,8 @@ describe('job queue contract', () => {
       expect(secondRes.status).toBe(201)
     })
 
-    it('allows submission when previous task is completed', async () => {
-      // Create a task and complete it
+    it('allows submission when previous task is successful', async () => {
+      // Create a task and mark it successful
       const firstRes = await request(app).post('/queue/companies').send({
         companyName: 'Completed Corp',
         companyId: 'company-completed-test',
@@ -121,9 +121,9 @@ describe('job queue contract', () => {
       })
       expect(firstRes.status).toBe(201)
 
-      // Update to completed status
+      // Update to success status
       db.prepare('UPDATE job_queue SET status = ? WHERE id = ?').run(
-        'completed',
+        'success',
         firstRes.body.data.queueItem.id
       )
 
