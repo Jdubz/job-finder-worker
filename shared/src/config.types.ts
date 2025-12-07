@@ -36,27 +36,11 @@ export type AgentTaskType = "extraction" | "analysis" | "document"
 /** Agent ID format: "{provider}.{interface}" (e.g., "gemini.cli", "codex.cli") */
 export type AgentId = `${AIProviderType}.${AIInterfaceType}`
 
-/** Available models per provider and interface */
-export const AI_PROVIDER_MODELS = {
-  codex: {
-    cli: ["o3", "o4-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"],
-  },
-  claude: {
-    api: [
-      "claude-sonnet-4-5-20250929",
-      "claude-sonnet-4-20250514",
-      "claude-3-5-sonnet-20241022",
-      "claude-3-5-haiku-20241022",
-    ],
-  },
-  openai: {
-    api: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
-  },
-  gemini: {
-    cli: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
-    api: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
-  },
-} as const
+/**
+ * Model selection is managed via ai-settings config, not hardcoded constants.
+ * Use -latest aliases (e.g., "claude-sonnet-4-5-latest") for organic improvements.
+ * See: agents[agentId].defaultModel in ai-settings
+ */
 
 /** Interface availability option (used by backend to report CLI/API availability) */
 export interface AIInterfaceOption {
@@ -116,6 +100,19 @@ export interface AISettings {
 
   /** Model cost rates - how much budget each model consumes (default: 1.0) */
   modelRates: Record<string, number>
+
+  /**
+   * @deprecated Backend uses AgentManager with taskFallbacks['document'] for provider selection.
+   * This field is kept for backwards compatibility and frontend display only.
+   * Do NOT use this for provider selection in backend code.
+   */
+  documentGenerator?: {
+    selected?: {
+      provider: AIProviderType
+      interface: AIInterfaceType
+      model: string
+    }
+  }
 
   /** Provider availability metadata (populated by backend) */
   options: AIProviderOption[]

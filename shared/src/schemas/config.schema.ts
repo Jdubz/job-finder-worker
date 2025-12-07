@@ -64,7 +64,11 @@ export const aiSettingsSchema = z.object({
     analysis: z.array(z.string()).min(1),
     document: z.array(z.string()).min(1),
   }),
-  modelRates: z.record(z.number()),
+  modelRates: z.record(z.string(), z.number()),
+  /** @deprecated - kept for backwards compatibility */
+  documentGenerator: z.object({
+    selected: aiProviderSelectionSchema.optional(),
+  }).optional(),
   options: z.array(aiProviderOptionSchema),
 })
 

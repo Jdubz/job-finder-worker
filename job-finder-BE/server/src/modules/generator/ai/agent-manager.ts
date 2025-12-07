@@ -5,7 +5,7 @@ import type { Logger } from 'pino'
 import type { AISettings, AgentConfig, AgentId, AgentScope, AgentTaskType } from '@shared/types'
 import { ConfigRepository } from '../../config/config.repository'
 import { logger } from '../../../logger'
-import { runCliProvider, type CliProvider } from '../workflow/services/cli-runner'
+import { runCliProvider, type CliProvider, type CliErrorType } from '../workflow/services/cli-runner'
 import { UserFacingError } from '../workflow/generator.workflow.service'
 
 type AgentExecutionResult = {
@@ -16,6 +16,20 @@ type AgentExecutionResult = {
 
 class NoAgentsAvailableError extends Error {
   constructor(message: string, readonly taskType: AgentTaskType, readonly triedAgents: string[]) {
+    super(message)
+  }
+}
+
+/** Errors that should continue to the next agent in the fallback chain */
+class QuotaExhaustedError extends Error {
+  constructor(message: string, readonly agentId: string) {
+    super(message)
+  }
+}
+
+/** Errors that should stop the fallback chain (systemic issues) */
+class AgentExecutionError extends Error {
+  constructor(message: string, readonly agentId: string, readonly errorType: CliErrorType) {
     super(message)
   }
 }
@@ -93,11 +107,26 @@ export class AgentManager {
       }
 
       try {
-        const output = await this.runAgent(agent, prompt, model)
+        const output = await this.runAgent(agent, agentId, prompt, model)
         agent.dailyUsage += cost
         this.persist(aiSettings)
         return { output, agentId, model }
       } catch (err) {
+        if (err instanceof QuotaExhaustedError) {
+          // Quota errors: disable agent and continue to next in fallback chain
+          this.log.warn({ agentId, error: err.message }, 'Agent quota exhausted, trying next agent')
+          this.disableAgent(aiSettings, agentId, `quota_exhausted: ${err.message}`)
+          continue
+        }
+
+        if (err instanceof AgentExecutionError) {
+          // Non-quota errors: disable agent and throw immediately (systemic issues)
+          this.log.error({ agentId, error: err.message, errorType: err.errorType }, 'Agent execution failed')
+          this.disableAgent(aiSettings, agentId, `error: ${err.message}`)
+          throw new UserFacingError(`AI generation failed: ${err.message}`)
+        }
+
+        // Unknown errors: disable and re-throw
         const reason = err instanceof Error ? err.message : 'agent failed'
         this.disableAgent(aiSettings, agentId, `error: ${reason}`)
         throw err
@@ -129,15 +158,26 @@ export class AgentManager {
     return parts.join('|')
   }
 
-  private async runAgent(agent: AgentConfig, prompt: string, model: string): Promise<string> {
+  private async runAgent(agent: AgentConfig, agentId: string, prompt: string, model: string): Promise<string> {
     if (agent.interface !== 'cli') {
       throw new UserFacingError(`Interface ${agent.interface} not supported for generator tasks`)
     }
     const provider = agent.provider as CliProvider
-    const result = await runCliProvider(prompt, provider, { model, allowFallbackToCodex: false })
+    const result = await runCliProvider(prompt, provider, { model })
+
     if (!result.success) {
-      throw new UserFacingError(result.error || 'AI generation failed')
+      const errorMsg = result.error || 'AI generation failed'
+      const errorType = result.errorType || 'other'
+
+      // Throw appropriate error type based on CLI result
+      if (errorType === 'quota') {
+        throw new QuotaExhaustedError(errorMsg, agentId)
+      }
+
+      // Auth, timeout, not_found, and other errors are considered systemic
+      throw new AgentExecutionError(errorMsg, agentId, errorType)
     }
+
     return result.output
   }
 
@@ -156,4 +196,4 @@ export class AgentManager {
   }
 }
 
-export { NoAgentsAvailableError, AgentExecutionResult }
+export { NoAgentsAvailableError, QuotaExhaustedError, AgentExecutionError, AgentExecutionResult }
