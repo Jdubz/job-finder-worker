@@ -6,11 +6,13 @@ import { JobMatchRepository } from '../job-match.repository'
 import { JobListingRepository } from '../../job-listings/job-listing.repository'
 import { getDb } from '../../../db/sqlite'
 import { buildJobMatchInput } from './fixtures'
+import { apiErrorHandler } from '../../../middleware/api-error'
 
 const createApp = () => {
   const app = express()
   app.use(express.json())
   app.use('/job-matches', buildJobMatchRouter())
+  app.use(apiErrorHandler)
   return app
 }
 
@@ -77,6 +79,22 @@ describe('job match routes', () => {
 
     const stored = repo.getById(res.body.data.match.id)
     expect(stored?.jobListingId).toBe('listing-13')
+  })
+
+  it('returns 400 when creating a match with invalid jobListingId', async () => {
+    const payload = buildJobMatchInput({
+      queueItemId: 'queue-99',
+      jobListingId: 'non-existent-listing-id'
+    })
+    const body = { ...payload }
+    delete body.id
+
+    const res = await request(app).post('/job-matches').send(body)
+
+    expect(res.status).toBe(400)
+    expect(res.body.success).toBe(false)
+    expect(res.body.error.code).toBe('INVALID_REQUEST')
+    expect(res.body.error.message).toContain('Invalid jobListingId')
   })
 
   it('deletes matches via DELETE', async () => {

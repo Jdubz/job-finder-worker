@@ -276,6 +276,19 @@ export class JobQueueRepository {
     this.db.prepare('DELETE FROM job_queue WHERE id = ?').run(id)
   }
 
+  hasActiveCompanyTask(companyId: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 FROM job_queue
+         WHERE type = 'company'
+           AND json_extract(input, '$.company_id') = ?
+           AND status IN ('pending', 'processing')
+         LIMIT 1`
+      )
+      .get(companyId)
+    return !!row
+  }
+
   getStats(): QueueStats {
     const rows = this.db.prepare('SELECT status, COUNT(*) as count FROM job_queue GROUP BY status').all() as Array<{
       status: QueueStatus

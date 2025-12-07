@@ -235,4 +235,82 @@ describe('JobQueueRepository', () => {
       expect(fetched?.scraped_data).toEqual({ content: 'scraped' })
     })
   })
+
+  describe('hasActiveCompanyTask', () => {
+    it('returns true when a pending company task exists', () => {
+      repo.enqueue(
+        buildQueueItem({
+          type: 'company',
+          status: 'pending',
+          company_id: 'company-123'
+        })
+      )
+
+      expect(repo.hasActiveCompanyTask('company-123')).toBe(true)
+    })
+
+    it('returns true when a processing company task exists', () => {
+      repo.enqueue(
+        buildQueueItem({
+          type: 'company',
+          status: 'processing',
+          company_id: 'company-456'
+        })
+      )
+
+      expect(repo.hasActiveCompanyTask('company-456')).toBe(true)
+    })
+
+    it('returns false when only successful tasks exist for the company', () => {
+      repo.enqueue(
+        buildQueueItem({
+          type: 'company',
+          status: 'success',
+          company_id: 'company-789'
+        })
+      )
+
+      expect(repo.hasActiveCompanyTask('company-789')).toBe(false)
+    })
+
+    it('returns false when only failed tasks exist for the company', () => {
+      repo.enqueue(
+        buildQueueItem({
+          type: 'company',
+          status: 'failed',
+          company_id: 'company-failed'
+        })
+      )
+
+      expect(repo.hasActiveCompanyTask('company-failed')).toBe(false)
+    })
+
+    it('returns false when no tasks exist for the company', () => {
+      expect(repo.hasActiveCompanyTask('non-existent-company')).toBe(false)
+    })
+
+    it('returns false when active tasks exist for a different company', () => {
+      repo.enqueue(
+        buildQueueItem({
+          type: 'company',
+          status: 'pending',
+          company_id: 'other-company'
+        })
+      )
+
+      expect(repo.hasActiveCompanyTask('my-company')).toBe(false)
+    })
+
+    it('ignores non-company task types', () => {
+      repo.enqueue(
+        buildQueueItem({
+          type: 'job',
+          status: 'pending',
+          company_id: 'company-job'
+        })
+      )
+
+      expect(repo.hasActiveCompanyTask('company-job')).toBe(false)
+    })
+  })
 })

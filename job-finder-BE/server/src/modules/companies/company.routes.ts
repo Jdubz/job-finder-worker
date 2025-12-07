@@ -73,13 +73,22 @@ export function buildCompanyRouter() {
     '/:id',
     asyncHandler((req, res) => {
       const updates = updateSchema.parse(req.body)
-      const company = repo.update(req.params.id, updates)
-      if (!company) {
-        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Company not found'))
-        return
+      try {
+        const company = repo.update(req.params.id, updates)
+        if (!company) {
+          res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Company not found'))
+          return
+        }
+        const response: UpdateCompanyResponse = { company, message: 'Company updated successfully' }
+        res.json(success(response))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to update company'
+        if (message.includes('UNIQUE constraint')) {
+          res.status(409).json(failure(ApiErrorCode.RESOURCE_CONFLICT, 'A company with this name or website already exists'))
+          return
+        }
+        throw err
       }
-      const response: UpdateCompanyResponse = { company, message: 'Company updated successfully' }
-      res.json(success(response))
     })
   )
 
