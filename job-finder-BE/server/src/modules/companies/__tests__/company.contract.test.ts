@@ -45,4 +45,44 @@ describe('company contract', () => {
     }
     expect(parsed.success).toBe(true)
   })
+
+  describe('PATCH /companies/:id', () => {
+    it('returns 409 when updating to a duplicate name', async () => {
+      // Create two companies
+      repo.create({
+        id: 'company-dup-1',
+        name: 'First Company',
+        website: 'https://first.co',
+        about: null,
+        culture: null,
+        mission: null,
+        industry: 'tech',
+        headquartersLocation: null,
+        companySizeCategory: 'small',
+        techStack: [],
+      })
+      repo.create({
+        id: 'company-dup-2',
+        name: 'Second Company',
+        website: 'https://second.co',
+        about: null,
+        culture: null,
+        mission: null,
+        industry: 'tech',
+        headquartersLocation: null,
+        companySizeCategory: 'small',
+        techStack: [],
+      })
+
+      // Try to update second company to have the same name as first
+      const res = await request(app)
+        .patch('/companies/company-dup-2')
+        .send({ name: 'First Company' })
+
+      expect(res.status).toBe(409)
+      expect(res.body.success).toBe(false)
+      expect(res.body.error.code).toBe('RESOURCE_CONFLICT')
+      expect(res.body.error.message).toContain('already exists')
+    })
+  })
 })
