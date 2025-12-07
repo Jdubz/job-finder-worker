@@ -238,8 +238,6 @@ export function buildConfigRouter() {
           extractionFallbacks: aiPayload.taskFallbacks?.extraction ?? [],
           analysisFallbacks: aiPayload.taskFallbacks?.analysis ?? [],
           documentFallbacks: aiPayload.taskFallbacks?.document ?? [],
-          docGenProvider: `${aiPayload.documentGenerator?.selected?.provider ?? 'unknown'}/${aiPayload.documentGenerator?.selected?.interface ?? 'unknown'}`,
-          docGenModel: aiPayload.documentGenerator?.selected?.model ?? 'unknown',
           updatedBy: userEmail,
         }, 'AI settings updated')
       }

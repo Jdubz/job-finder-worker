@@ -226,13 +226,6 @@ def test_job_pipeline_full_path(tmp_path: Path):
                             "document": ["gemini.cli"],
                         },
                         "modelRates": {"gemini-2.0-flash": 0.5},
-                        "documentGenerator": {
-                            "selected": {
-                                "provider": "gemini",
-                                "interface": "cli",
-                                "model": "gemini-2.0-flash",
-                            }
-                        },
                         "options": [],
                     }
                 ),

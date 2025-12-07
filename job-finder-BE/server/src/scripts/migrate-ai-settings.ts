@@ -16,7 +16,6 @@
  *   agents: { "gemini.cli": AgentConfig, "codex.cli": AgentConfig, ... }
  *   taskFallbacks: { extraction: ["gemini.cli", "codex.cli"], analysis: [...] }
  *   modelRates: { "gpt-4o": 1.0, "gemini-2.0-flash": 0.5, ... }
- *   documentGenerator: { selected: { provider, interface, model } }
  *   options: [...]
  * }
  */
@@ -56,9 +55,6 @@ type NewAISettings = {
   agents: Partial<Record<AgentId, AgentConfig>>
   taskFallbacks: Record<AgentTaskType, AgentId[]>
   modelRates: Record<string, number>
-  documentGenerator: {
-    selected: { provider: AIProviderType; interface: AIInterfaceType; model: string }
-  }
   options: unknown[]
 }
 
@@ -196,13 +192,6 @@ function migrateAISettings(old: OldAISettings): NewAISettings {
     }
   }
 
-  // Ensure documentGenerator has valid defaults
-  const docGen = old.documentGenerator?.selected ?? {
-    provider: 'codex' as AIProviderType,
-    interface: 'cli' as AIInterfaceType,
-    model: 'gpt-4o',
-  }
-
   return {
     agents,
     taskFallbacks: {
@@ -211,7 +200,6 @@ function migrateAISettings(old: OldAISettings): NewAISettings {
       document: documentFallbacks.length ? documentFallbacks : extractionFallbacks,
     },
     modelRates: DEFAULT_MODEL_RATES,
-    documentGenerator: { selected: docGen },
     options: old.options ?? [],
   }
 }
@@ -271,9 +259,6 @@ function main() {
         document: ['codex.cli', 'claude.cli', 'gemini.cli'],
       },
       modelRates: DEFAULT_MODEL_RATES,
-      documentGenerator: {
-        selected: { provider: 'codex', interface: 'cli', model: 'gpt-4o' },
-      },
       options: [
         {
           value: 'gemini',

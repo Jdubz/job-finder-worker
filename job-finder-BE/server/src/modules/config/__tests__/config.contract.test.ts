@@ -61,9 +61,6 @@ describe('config contract', () => {
         document: ['openai.api'],
       },
       modelRates: { 'gpt-4o': 1 },
-      documentGenerator: {
-        selected: { provider: 'openai', interface: 'api', model: 'gpt-4o' },
-      },
       options: [
         {
           value: 'openai',
