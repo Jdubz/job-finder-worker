@@ -221,7 +221,7 @@ class JobMatchPrompts:
    - cover_letter_points: 2-4 talking points to address gaps or motivation
    - keywords: 8-12 ATS keywords from the posting (exact casing)
 
-Rules:
+# Rules:
 - Use only information from the profile and posting; do not invent facts.
 - Keep bullets short (8-14 words) and specific.
 - Do not score or rank the job; deterministic scoring is handled elsewhere.
