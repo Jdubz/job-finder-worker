@@ -129,7 +129,6 @@ export function AISettingsTab({
   const agents = aiSettings.agents ?? {}
   const taskFallbacks = aiSettings.taskFallbacks ?? {}
   const modelRates = aiSettings.modelRates ?? {}
-  const docGen = aiSettings.documentGenerator?.selected
 
   // Get all possible agent IDs from options
   const availableAgentIds: AgentId[] = []
@@ -193,34 +192,11 @@ export function AISettingsTab({
     })
   }
 
-  const updateDocGenSelection = (
-    selection: { provider: AIProviderType; interface: AIInterfaceType; model: string }
-  ) => {
-    setAISettings((prev) => {
-      if (!prev) return null
-      return {
-        ...prev,
-        documentGenerator: { selected: selection },
-      }
-    })
-  }
-
   const resolveProvider = (provider: AIProviderType): AIProviderOption | undefined =>
     options.find((p: AIProviderOption) => p.value === provider)
 
   const resolveInterface = (provider: AIProviderType, iface: AIInterfaceType) =>
     resolveProvider(provider)?.interfaces.find((i: AIInterfaceOption) => i.value === iface)
-
-  const chooseFallbackInterface = (provider: AIProviderType) => {
-    const providerOption = resolveProvider(provider)
-    if (!providerOption) return { interface: "api" as AIInterfaceType, model: "" }
-    const iface = providerOption.interfaces.find((i: AIInterfaceOption) => i.enabled) ?? providerOption.interfaces[0]
-    const model = iface?.models[0] ?? ""
-    return { interface: (iface?.value ?? "api") as AIInterfaceType, model }
-  }
-
-  const firstProvider = options[0]
-  const firstInterface = firstProvider?.interfaces[0]
 
   return (
     <TabsContent value="ai" className="space-y-4 mt-4">
@@ -382,7 +358,8 @@ export function AISettingsTab({
           <div className="space-y-4">
             <h3 className="text-lg font-medium">Task Fallback Chains</h3>
             <p className="text-sm text-muted-foreground">
-              Configure the order of agents to try for each task type. First available agent is used.
+              Configure the order of agents to try for each task type. First available agent is used. Document
+              generation now follows the Document Generation chain here (no separate selector).
             </p>
             <div className="space-y-4">
               {(["extraction", "analysis", "document"] as AgentTaskType[]).map((taskType) => {
@@ -471,91 +448,6 @@ export function AISettingsTab({
             </div>
           </div>
 
-          {/* Document Generator */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Document Generator</h3>
-            <p className="text-sm text-muted-foreground">
-              AI provider for resume/cover letter generation.
-            </p>
-            {firstProvider && firstInterface && docGen && (
-              <div className="grid grid-cols-3 gap-6">
-                <div className="space-y-2">
-                  <Label>Provider</Label>
-                  <Select
-                    value={docGen.provider}
-                    onValueChange={(value) => {
-                      const fallback = chooseFallbackInterface(value as AIProviderType)
-                      updateDocGenSelection({
-                        provider: value as AIProviderType,
-                        interface: fallback.interface,
-                        model: fallback.model,
-                      })
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {options.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {PROVIDER_LABELS[opt.value]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Interface</Label>
-                  <Select
-                    value={docGen.interface}
-                    onValueChange={(value) => {
-                      const ifaceOption = resolveInterface(docGen.provider, value as AIInterfaceType)
-                      updateDocGenSelection({
-                        provider: docGen.provider,
-                        interface: value as AIInterfaceType,
-                        model: ifaceOption?.models[0] ?? "",
-                      })
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {resolveProvider(docGen.provider)?.interfaces.map((iface) => (
-                        <SelectItem key={iface.value} value={iface.value}>
-                          {INTERFACE_LABELS[iface.value]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Model</Label>
-                  <Select
-                    value={docGen.model}
-                    onValueChange={(value) => {
-                      updateDocGenSelection({
-                        provider: docGen.provider,
-                        interface: docGen.interface,
-                        model: value,
-                      })
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {resolveInterface(docGen.provider, docGen.interface)?.models.map((model) => (
-                        <SelectItem key={model} value={model}>
-                          {model}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </TabCard>
     </TabsContent>

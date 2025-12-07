@@ -186,7 +186,6 @@ export const mockAISettings: AISettings = {
     "gemini-2.0-flash": 0.5,
     "gpt-4o": 1,
   },
-  documentGenerator: { selected: { provider: "gemini", interface: "cli", model: "gemini-2.0-flash" } },
   options: [],
 }
 

@@ -117,15 +117,6 @@ export interface AISettings {
   /** Model cost rates - how much budget each model consumes (default: 1.0) */
   modelRates: Record<string, number>
 
-  /** Document generator selection (until backend uses AgentManager) */
-  documentGenerator: {
-    selected: {
-      provider: AIProviderType
-      interface: AIInterfaceType
-      model: string
-    }
-  }
-
   /** Provider availability metadata (populated by backend) */
   options: AIProviderOption[]
 }

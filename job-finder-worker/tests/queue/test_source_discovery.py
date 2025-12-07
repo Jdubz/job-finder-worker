@@ -50,9 +50,6 @@ def mock_dependencies() -> Dict[str, Any]:
             "document": ["codex.cli"],
         },
         "modelRates": {"gpt-4o": 1.0},
-        "documentGenerator": {
-            "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
-        },
         "options": [],
     }
     config_loader.get_title_filter.return_value = {

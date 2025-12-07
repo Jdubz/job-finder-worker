@@ -36,9 +36,6 @@ type NewAISettings = {
   agents: Partial<Record<AgentId, AgentConfig>>
   taskFallbacks: Record<AgentTaskType, AgentId[]>
   modelRates: Record<string, number>
-  documentGenerator: {
-    selected: { provider: AIProviderType; interface: AIInterfaceType; model: string }
-  }
   options: unknown[]
 }
 
@@ -136,12 +133,6 @@ function migrateToNew(old: OldAISettings): NewAISettings {
     if (!documentFallbacks.includes(agentId)) documentFallbacks.unshift(agentId)
   }
 
-  const docGen = old.documentGenerator?.selected ?? {
-    provider: 'codex' as AIProviderType,
-    interface: 'cli' as AIInterfaceType,
-    model: 'gpt-4o',
-  }
-
   return {
     agents,
     taskFallbacks: {
@@ -150,7 +141,6 @@ function migrateToNew(old: OldAISettings): NewAISettings {
       document: documentFallbacks.length ? documentFallbacks : extractionFallbacks,
     },
     modelRates: DEFAULT_MODEL_RATES,
-    documentGenerator: { selected: docGen },
     options: old.options ?? [],
   }
 }
@@ -207,7 +197,6 @@ export function up(db: Database.Database): void {
         document: ['codex.cli', 'claude.cli', 'gemini.cli'],
       },
       modelRates: DEFAULT_MODEL_RATES,
-      documentGenerator: { selected: { provider: 'codex', interface: 'cli', model: 'gpt-4o' } },
       options: [],
     }
 
@@ -255,7 +244,6 @@ export function down(db: Database.Database): void {
           },
         }
       : undefined,
-    documentGenerator: parsed.documentGenerator,
     options: parsed.options,
   }
 

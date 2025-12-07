@@ -60,9 +60,6 @@ class TestConfigLoaderAISettings:
                 "document": ["claude.api"],
             },
             "modelRates": {"claude-sonnet-4-5-20250929": 1.0},
-            "documentGenerator": {
-                "selected": {"provider": "openai", "interface": "api", "model": "gpt-4o"}
-            },
             "options": [],
         }
         conn.execute(
@@ -108,13 +105,6 @@ class TestConfigLoaderAISettings:
                 "document": ["openai.api"],
             },
             "modelRates": {"gpt-4o": 1.0},
-            "documentGenerator": {
-                "selected": {
-                    "provider": "claude",
-                    "interface": "api",
-                    "model": "claude-sonnet-4-5-20250929",
-                }
-            },
             "options": [
                 {
                     "value": "openai",
@@ -189,9 +179,6 @@ class TestConfigLoaderIntegration:
                 "document": ["claude.api"],
             },
             "modelRates": {"claude-sonnet": 1.0},
-            "documentGenerator": {
-                "selected": {"provider": "openai", "interface": "api", "model": "gpt-4o"}
-            },
             "options": [],
         }
         # Complete match-policy (all sections required, no defaults)
@@ -305,9 +292,6 @@ class TestConfigLoaderIntegration:
                 "document": ["openai.api"],
             },
             "modelRates": {"gpt-4o": 1.0},
-            "documentGenerator": {
-                "selected": {"provider": "claude", "interface": "api", "model": "claude-sonnet"}
-            },
             "options": [],
         }
         conn.execute(

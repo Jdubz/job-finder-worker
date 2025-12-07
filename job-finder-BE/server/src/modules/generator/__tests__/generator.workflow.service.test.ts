@@ -35,9 +35,6 @@ const TEST_AI_SETTINGS: AISettings = {
   modelRates: {
     'gemini-2.0-flash': 0.5,
   },
-  documentGenerator: {
-    selected: { provider: 'gemini', interface: 'api', model: 'gemini-2.0-flash' }
-  },
   options: []
 }
 

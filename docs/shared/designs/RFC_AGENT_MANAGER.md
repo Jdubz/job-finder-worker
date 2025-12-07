@@ -92,11 +92,6 @@ interface AISettings {
   /** Model cost rates (default: 1.0) */
   modelRates: Record<string, number>
 
-  /** Document generator selection (until backend uses AgentManager) */
-  documentGenerator: {
-    selected: { provider: AIProviderType; interface: AIInterfaceType; model: string }
-  }
-
   /** Provider availability metadata (populated by backend) */
   options: AIProviderOption[]
 }
@@ -432,7 +427,7 @@ async function resetAgents() {
 | `AITaskConfig` | config.types.ts:78-82 | None (removed) |
 | `AITasksConfig` | config.types.ts:85-89 | None (removed) |
 | `AISettingsSection` | config.types.ts:91-95 | Inline in AISettings |
-| `AIProviderSelection` | config.types.ts:68-72 | Inline in documentGenerator |
+| `AIProviderSelection` | config.types.ts:68-72 | Removed; document generation uses `taskFallbacks.document` |
 
 ### Functions to Remove
 

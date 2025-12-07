@@ -135,8 +135,26 @@ vi.mock("../hooks/useConfigState", () => ({
     handleSaveMatchPolicy: vi.fn(),
     resetMatchPolicy: vi.fn(),
     aiSettings: {
-      worker: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
-      documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
+      agents: {
+        "gemini.api": {
+          provider: "gemini",
+          interface: "api",
+          defaultModel: "gemini-2.0-flash",
+          dailyBudget: 100,
+          dailyUsage: 0,
+          runtimeState: {
+            worker: { enabled: true, reason: null },
+            backend: { enabled: true, reason: null },
+          },
+          authRequirements: { type: "api", requiredEnv: ["GEMINI_API_KEY"] },
+        },
+      },
+      taskFallbacks: {
+        extraction: ["gemini.api"],
+        analysis: ["gemini.api"],
+        document: ["gemini.api"],
+      },
+      modelRates: { "gemini-2.0-flash": 1 },
       options: [],
     },
     setAISettings: vi.fn(),
