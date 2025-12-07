@@ -12,6 +12,9 @@ export interface NormalizedApiError {
   raw: unknown
 }
 
+/** Minimum message length to consider it "specific" rather than a generic default */
+const MIN_SPECIFIC_MESSAGE_LENGTH = 10
+
 /**
  * Check if an error is a conflict/already-exists error (HTTP 409)
  */
@@ -130,14 +133,13 @@ export const handleApiError = (
   if (!options?.silent && !restarting) {
     // For conflict errors (409), prefer the specific API message over the generic userMessage
     // since the API provides actionable context (e.g., "A re-analysis task for this company is already in the queue")
-    const isConflictError = normalized.code === ApiErrorCode.ALREADY_EXISTS ||
-                            normalized.code === ApiErrorCode.RESOURCE_CONFLICT
+    const isConflict = isConflictError(error)
     const hasSpecificApiMessage = normalized.message &&
                                    normalized.message !== definition.defaultMessage &&
-                                   normalized.message.length > 10
+                                   normalized.message.length > MIN_SPECIFIC_MESSAGE_LENGTH
 
     const title = options?.toastTitle ??
-                  (isConflictError && hasSpecificApiMessage ? normalized.message : definition.userMessage) ??
+                  (isConflict && hasSpecificApiMessage ? normalized.message : definition.userMessage) ??
                   normalized.message
 
     toast.error({
