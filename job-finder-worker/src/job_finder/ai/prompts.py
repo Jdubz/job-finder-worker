@@ -192,7 +192,7 @@ class JobMatchPrompts:
         """
         profile_summary = JobMatchPrompts.build_profile_summary(profile)
 
-        prompt = f"""You are an expert career advisor and job matching specialist. Analyze how well this job posting matches the candidate's profile with extreme accuracy and honesty.
+        prompt = f"""You are a concise job-match assistant. Summarize how the candidate fits this role and give only the guidance needed to tailor a resume and cover letter.
 
 {profile_summary}
 
@@ -208,223 +208,37 @@ class JobMatchPrompts:
 **Company Information:**
 {job.get('company_info', '')}
 ''' if job.get('company_info') else ''}
-# Analysis Task
 
-Provide a thorough, accurate analysis of job fit. Be HONEST and REALISTIC - false positives waste the candidate's time.
+# Deliverables (be brief and factual)
 
-## CRITICAL PRE-SCREENING CHECKS (Auto-Reject if True):
+1) matched_skills: skills the candidate already has that are explicitly relevant (max 12)
+2) missing_skills: real gaps or weak areas (max 8)
+3) experience_match: 1-2 sentences on seniority/domain fit
+4) key_strengths: 3-5 bullets that would impress this hiring team
+5) potential_concerns: concrete risks/gaps the candidate should address
+6) customization_recommendations:
+   - resume_focus: 3-5 bullets to emphasize on the resume for THIS job
+   - cover_letter_points: 2-4 talking points to address gaps or motivation
+   - keywords: 8-12 ATS keywords from the posting (exact casing)
 
-Before scoring, check for these AUTOMATIC DISQUALIFIERS:
+Rules:
+- Use only information from the profile and posting; do not invent facts.
+- Keep bullets short (8-14 words) and specific.
+- Do not score or rank the job; deterministic scoring is handled elsewhere.
 
-1. **Hidden Non-Engineering Role**
-   - Is this actually a management role disguised as IC? (e.g., "Technical Program Manager", "Delivery Manager")
-   - Is it primarily sales/customer-facing? (e.g., "Solutions Architect" that's 80% sales, "Customer Success Engineer")
-   - Does it require minimal coding? (e.g., "oversee", "coordinate", "manage team" but no "build", "develop", "code")
-   - **If YES to any:** Explain why in potential_concerns
-
-2. **Location / Onsite Policy**
-   - Is the role onsite-only or hybrid outside the Portland, OR metro (Portland/Beaverton/Hillsboro/Vancouver WA)?
-   - Does it say "NYC-based", "SF-based", "must be in office", or require relocation to a city other than Portland?
-   - If the job has a specific city listed and no clear remote option, treat it as onsite in that city.
-   - **If YES to any:** Deduct at least 60 points (configurable policy) for a location mismatch and list the mismatch in potential_concerns. Do not force the score to zero unless other dealbreakers apply.
-
-3. **Remote Work Red Flags**
-   - Does it require frequent travel (25%+ of time)?
-   - Does it say "remote for now, relocate later" or "remote during pandemic only"?
-   - Does it require specific timezone hours incompatible with Pacific Time? (e.g., "must work UK hours")
-   - Is it "remote" but requires regular in-office attendance outside Portland, OR?
-   - **If YES to any:** Apply a policy-driven deduction (typically 40–60 points) and explain in potential_concerns. Only set score to 0 if multiple hard red flags stack.
-
-4. **Compensation/Employment Structure Issues**
-   - Is this a contract/1099 position when candidate wants FTE?
-   - Does it emphasize equity over base salary for an unproven startup?
-   - Does "competitive salary" seem like code for below-market pay?
-   - Is it commission-based or performance-pay heavy?
-   - **If YES to any:** Reduce score by 30 points minimum
-
-5. **Unrealistic Expectations**
-   - Does it list 10+ required technologies that no one person could master?
-   - Does it want senior-level skills but offer mid-level compensation?
-   - Is the title inflated for the actual role? (e.g., "Senior" but requires only 2 years experience)
-   - **If YES:** Reduce score by 20 points minimum
-
-6. **Quality/Culture Red Flags**
-   - Excessive buzzwords with no substance ("rockstar", "ninja", "10x engineer")?
-   - "Fast-paced startup environment" + "wear many hats" = chaotic/undefined role?
-   - "Unlimited PTO" without clear team boundaries = overwork culture?
-   - "Family atmosphere" + "we work hard and play hard" = poor work-life balance?
-   - No mention of WLB, benefits, or team structure?
-   - **If multiple flags:** Reduce score by 10-15 points
-
-## Step 1: Extract Job Requirements
-
-From the title and description, identify:
-1. **Required skills** (MUST-have technologies/tools)
-2. **Preferred skills** (nice-to-have)
-3. **Experience level** (Junior 0-2 years, Mid 2-5 years, Senior 5+ years, Staff/Principal 8+ years)
-4. **Years of experience required**
-5. **Seniority indicators** (Junior/Mid/Senior/Lead/Staff/Principal in title or description)
-6. **Domain expertise** (e.g., fintech, healthcare, e-commerce)
-
-## Step 2: Match Against Profile
-
-For each requirement, check:
-- Does candidate have this skill? At what level?
-- How many years of experience with this skill?
-- Have they used it in a professional setting (not just side projects)?
-- Do they have recent experience (within last 2-3 years)?
-
-## Step 3: Calculate Match Score (0-100) - STRICT GRADING
-
-Use this formula with **EXTREMELY HIGH STANDARDS**:
-
-**Title Skills (50 points max):**
-- ALL title skills at Expert/Advanced level (5+ years): 50 points
-- ALL title skills at Advanced level (3-5 years): 40 points
-- Title skills at Intermediate level (1-3 years): 20-25 points
-- Missing ANY title skill OR only beginner level: 0-10 points
-
-**Description Requirements (30 points max):**
-- 95%+ of REQUIRED skills present at strong level: 30 points
-- 85-95% of required skills present at strong level: 20 points
-- 70-85% of required skills present: 10 points
-- <70% of required skills present: 0-5 points
-
-**Experience Level Match (20 points max):**
-- Seniority EXACTLY matches + domain experience: 20 points
-- Seniority matches but different domain: 15 points
-- One level off (e.g., Mid for Senior): 5-10 points
-- Two+ levels off OR seniority unclear: 0 points
-
-**CRITICAL RULES - STRICT ENFORCEMENT:**
-
-1. **Title Skills are NON-NEGOTIABLE**
-   - Missing ANY core technology from title → MAXIMUM score = 30 (fails threshold)
-   - Title skill at beginner level → MAXIMUM score = 40
-
-2. **Seniority Strictly Enforced**
-   - Job says "Senior" (5+ years) but candidate has <4 years → MAXIMUM score = 45
-   - Job says "Staff/Principal" (8+ years) but candidate has <7 years → MAXIMUM score = 40
-   - Job says "Lead/Director" but candidate has no leadership experience → MAXIMUM score = 35
-
-3. **Domain Expertise Required**
-   - Job requires specific domain (fintech, healthcare, etc.) candidate lacks → Reduce by 15-20 points
-   - Job requires specific platform (e.g., AWS) candidate lacks → Reduce by 10-15 points
-
-4. **Recency Matters**
-   - Skill mentioned in title but not used in last 3 years → Reduce title score by 20 points
-   - Multiple outdated skills → Additional 10 point reduction
-
-5. **Buzzword Detection**
-   - If job is a generic "Full Stack Developer" with no specific tech → Can be more lenient
-   - If job lists 15+ technologies → Focus on 5-7 most important ones
-
-6. **Be BRUTALLY Honest**
-   - When in doubt, score LOWER
-   - Better to miss marginal matches than waste time on poor fits
-   - Only scores 80+ should pass threshold
-
-## Step 4: Provide Analysis
-
-Return detailed analysis in JSON format with:
-
-1. **matched_skills**: Array of skill names (strings only, e.g. ["Python", "React"])
-2. **missing_skills**: Array of skill names (strings only, e.g. ["Kubernetes", "AWS"])
-3. **experience_match**: Detailed explanation of experience level fit
-4. **key_strengths**: Top 3-5 specific reasons candidate is strong (be concrete, reference actual experience)
-5. **potential_concerns**: Honest assessment of gaps/weaknesses (be specific)
-6. **customization_recommendations**: Specific, actionable advice for tailoring application
-
-NOTE: Do NOT include match_score or application_priority - these are handled by a separate deterministic scoring engine.
-
-## Scoring Examples (STRICT STANDARDS):
-
-**Example 1 - Excellent Match (Score: 92) - HIGH PRIORITY**
-- Job: "Senior Python Developer" at fintech company
-- Candidate: 7 years Python (expert), 5 years in fintech, all required skills at advanced level
-- Title skills (50) + Description (30) + Experience (12) = 92
-
-**Example 2 - Good Match (Score: 85) - HIGH PRIORITY**
-- Job: "React Frontend Engineer"
-- Candidate: 5 years React (expert), 4 years JavaScript, missing 1 nice-to-have skill
-- Title skills (50) + Description (25) + Experience (10) = 85
-
-**Example 3 - Decent Match (Score: 72) - MEDIUM PRIORITY**
-- Job: "Senior Full Stack Engineer (Python/React)"
-- Candidate: 6 years Python (expert), 2 years React (intermediate), senior title mismatch
-- Title skills (35) + Description (25) + Experience (12) = 72
-
-**Example 4 - Borderline (Score: 58) - FAILS THRESHOLD**
-- Job: "Full Stack Engineer (Python/React)"
-- Candidate: Strong Python (5 years expert), basic React (6 months beginner)
-- Title skills (25 - React too weak) + Description (20) + Experience (13) = 58
-
-**Example 5 - Poor Match (Score: 30) - FAILS THRESHOLD**
-- Job: ".NET Developer"
-- Candidate: Strong Python/JavaScript, NO .NET experience
-- Title skills (0 - missing .NET) + Description (20) + Experience (10) = 30 (capped)
-
-**Example 6 - Very Poor Match (Score: 15) - FAILS THRESHOLD**
-- Job: "Senior DevOps Engineer (Kubernetes/AWS)"
-- Candidate: Junior developer with 2 years, no infrastructure or cloud experience
-- Title skills (0) + Description (5) + Experience (0) + Seniority cap = 15
-
-**Example 7 - Auto-Reject (Score: 0) - HIDDEN NON-ENGINEERING**
-- Job: "Technical Program Manager" with "coordinate teams", "manage stakeholders", minimal coding
-- Candidate: IC engineer seeking hands-on role
-- Score: 0 - Not an engineering role despite "technical" in title
-
-**Example 8 - Auto-Reject (Score: 0) - REMOTE RED FLAG**
-- Job: "Remote" but requires "50% travel" or "must work EST hours" from Pacific timezone
-- Score: 0 - Remote restrictions incompatible with candidate location/preferences
-
-**PORTLAND BONUS:**
-- If job explicitly mentions Portland, OR office/presence: +15 bonus points (shows local opportunity)
-- If hybrid Portland option mentioned: +10 bonus points
-- Apply AFTER calculating base score, can push borderline matches over threshold
-
-**Remember:** Only scores 80+ should realistically pass. Be harsh - candidate's time is valuable.
-
-Respond **ONLY** with valid JSON in this shape (no prose, no markdown):
+Return ONLY valid JSON in this shape (no prose, no markdown):
 {{
   "matched_skills": [],
   "missing_skills": [],
   "experience_match": "",
   "key_strengths": [],
   "potential_concerns": [],
-  "customization_recommendations": {{}}
-}}
-
-Example response:
-{{
-  "matched_skills": ["Python", "Django", "PostgreSQL"],
-  "missing_skills": ["Kubernetes", "GraphQL"],
-  "experience_match": "Strong match - candidate has 5 years in similar roles",
-  "key_strengths": [
-    "Deep Python and Django expertise",
-    "Experience building scalable APIs",
-    "Track record of leading projects"
-  ],
-  "potential_concerns": [
-    "Limited Kubernetes experience",
-    "No GraphQL background"
-  ],
   "customization_recommendations": {{
-    "resume_focus": [
-      "Highlight API development experience",
-      "Emphasize Python/Django projects",
-      "Include any containerization work (Docker)"
-    ],
-    "cover_letter_points": [
-      "Mention enthusiasm for learning Kubernetes",
-      "Highlight similar tech stack experience",
-      "Discuss scalability achievements"
-    ],
-    "skills_to_emphasize": ["Python", "Django", "REST APIs", "PostgreSQL"]
+    "resume_focus": [],
+    "cover_letter_points": [],
+    "keywords": []
   }}
 }}
-
-Respond ONLY with valid JSON, no additional text.
 """
         return prompt
 

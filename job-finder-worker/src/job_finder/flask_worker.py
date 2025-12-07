@@ -429,7 +429,6 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         agent_manager=agent_manager,
         profile=profile,
         min_match_score=match_policy["minScore"],
-        generate_intake=True,
     )
 
     # Company info fetcher uses AgentManager for AI calls

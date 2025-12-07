@@ -98,7 +98,6 @@ class AIJobMatcher:
         agent_manager: "AgentManager",
         profile: Profile,
         min_match_score: int = 50,
-        generate_intake: bool = True,
         company_weights: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -111,13 +110,13 @@ class AIJobMatcher:
             agent_manager: AgentManager for executing AI tasks.
             profile: User profile for matching context.
             min_match_score: Minimum score threshold (from deterministic scoring).
-            generate_intake: Whether to generate resume intake data.
-            company_weights: Weights for priority thresholds only.
+        Note: This matcher performs a single AI call per job; resume/cover letter guidance
+        comes from the primary analysis response to keep the pipeline lean.
+        company_weights: Weights for priority thresholds only.
         """
         self.agent_manager = agent_manager
         self.profile = profile
         self.min_match_score = min_match_score
-        self.generate_intake = generate_intake
         self.company_weights = company_weights or self.DEFAULT_COMPANY_WEIGHTS
         self.prompts = JobMatchPrompts()
 
@@ -187,12 +186,11 @@ class AIJobMatcher:
                 )
                 return None
 
-            # Step 4: Generate resume intake data if enabled
+            # Single-call pipeline: intake data is not generated here; guidance lives in
+            # customization_recommendations from match_analysis.
             intake_data = None
-            if self.generate_intake and (not below_threshold or return_below_threshold):
-                intake_data = self._generate_intake_data(job, match_analysis)
 
-            # Step 5: Build and return result
+            # Build and return result
             result = self._build_match_result(
                 job, match_analysis, match_score, intake_data, score_breakdown
             )
@@ -316,8 +314,8 @@ class AIJobMatcher:
             result = self.agent_manager.execute(
                 task_type="analysis",
                 prompt=prompt,
-                max_tokens=4096,
-                temperature=0.3,
+                max_tokens=1400,
+                temperature=0.2,
             )
             response = result.text
 

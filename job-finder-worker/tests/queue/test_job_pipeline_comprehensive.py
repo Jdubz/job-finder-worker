@@ -236,7 +236,6 @@ def test_job_pipeline_full_path(tmp_path: Path):
     # Stub AI matcher and filter to avoid network/LLM
     class DummyMatcher:
         min_match_score = 50
-        generate_intake = False
 
         def analyze_job(self, job: dict, **_kwargs) -> JobMatchResult:
             return JobMatchResult(
