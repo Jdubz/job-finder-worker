@@ -126,11 +126,13 @@ async function executeCommand(
         logger.warn({ provider, timeoutMs }, 'CLI process timed out, killing process')
         child.kill('SIGTERM')
         // Give it a moment to terminate gracefully, then force kill
-        setTimeout(() => {
+        const forceKillTimeout = setTimeout(() => {
           if (!child.killed) {
             child.kill('SIGKILL')
           }
         }, 5000)
+        // Clear force kill timeout if process exits gracefully
+        child.once('exit', () => clearTimeout(forceKillTimeout))
         resolve({
           success: false,
           output: stdout,

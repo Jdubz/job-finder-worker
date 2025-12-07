@@ -552,7 +552,7 @@ export class GeneratorWorkflowService {
       const parsed = JSON.parse(agentResult.output) as CoverLetterContent
 
       // Validate cover letter content against source data to catch potential hallucinations
-      this.validateCoverLetterContent(parsed, contentItems, payload)
+      this.warnOnPotentialHallucinations(parsed, contentItems, payload)
 
       return parsed
     } catch (error) {
@@ -562,11 +562,10 @@ export class GeneratorWorkflowService {
   }
 
   /**
-   * Validate cover letter content against source content items.
-   * Logs warnings for potential hallucinations but doesn't reject content
-   * (cover letters need more creative freedom than resumes).
+   * Check cover letter content for potential hallucinations.
+   * Logs warnings but doesn't reject content (cover letters need more creative freedom than resumes).
    */
-  private validateCoverLetterContent(
+  private warnOnPotentialHallucinations(
     content: CoverLetterContent,
     contentItems: Array<{ title?: string | null; skills?: string[] | null; aiContext?: string | null }>,
     payload: GenerateDocumentPayload
@@ -592,7 +591,7 @@ export class GeneratorWorkflowService {
 
     // Check for company name mentions that aren't in allowed list
     // This is a heuristic - we look for patterns like "at [Company]" or "with [Company]"
-    const companyMentionPatterns = /(?:at|with|for|joined|worked at)\s+([A-Z][A-Za-z0-9\s&]+?)(?:\s+(?:as|where|and|,|\.)|$)/gi
+    const companyMentionPatterns = /(?:at|with|for|joined|worked at)\s+([a-z][a-z0-9\s&]+?)(?:\s+(?:as|where|and|,|\.|$))/gi
     let match: RegExpExecArray | null
     const mentionedCompanies: string[] = []
 

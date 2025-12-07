@@ -120,11 +120,10 @@ export class AgentManager {
         }
 
         if (err instanceof AgentExecutionError) {
-          // Non-quota errors: disable agent and stop (systemic issues)
+          // Non-quota errors: disable agent and throw immediately (systemic issues)
           this.log.error({ agentId, error: err.message, errorType: err.errorType }, 'Agent execution failed')
           this.disableAgent(aiSettings, agentId, `error: ${err.message}`)
-          // Break - don't try other agents for systemic errors
-          break
+          throw new UserFacingError(`AI generation failed: ${err.message}`)
         }
 
         // Unknown errors: disable and re-throw
