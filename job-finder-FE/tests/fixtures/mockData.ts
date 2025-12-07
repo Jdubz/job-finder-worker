@@ -144,24 +144,49 @@ export const mockWorkerSettings: WorkerSettings = {
 
 export const mockAISettings: AISettings = {
   agents: {
-    "gemini.api": {
+    "gemini.cli": {
       provider: "gemini",
-      interface: "api",
+      interface: "cli",
       defaultModel: "gemini-2.0-flash",
-      enabled: true,
-      reason: null,
       dailyBudget: 100,
-      dailyUsage: 0,
+      dailyUsage: 25,
+      runtimeState: {
+        worker: { enabled: true, reason: null },
+        backend: { enabled: true, reason: null },
+      },
+      authRequirements: {
+        type: "cli",
+        requiredEnv: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        requiredFiles: ["~/.gemini/settings.json"],
+      },
+    },
+    "codex.cli": {
+      provider: "codex",
+      interface: "cli",
+      defaultModel: "gpt-4o",
+      dailyBudget: 50,
+      dailyUsage: 50,
+      runtimeState: {
+        worker: { enabled: false, reason: "quota_exhausted: daily budget reached" },
+        backend: { enabled: true, reason: null },
+      },
+      authRequirements: {
+        type: "cli",
+        requiredEnv: ["OPENAI_API_KEY"],
+        requiredFiles: ["~/.codex/auth.json"],
+      },
     },
   },
   taskFallbacks: {
-    extraction: ["gemini.api"],
-    analysis: ["gemini.api"],
+    extraction: ["gemini.cli", "codex.cli"],
+    analysis: ["gemini.cli"],
+    document: ["codex.cli", "gemini.cli"],
   },
   modelRates: {
     "gemini-2.0-flash": 0.5,
+    "gpt-4o": 1,
   },
-  documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
+  documentGenerator: { selected: { provider: "gemini", interface: "cli", model: "gemini-2.0-flash" } },
   options: [],
 }
 

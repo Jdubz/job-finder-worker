@@ -111,6 +111,8 @@ SELENIUM_HEADLESS=true
 # ANTHROPIC_API_KEY=your-anthropic-key  # Only for claude/api
 # OPENAI_API_KEY=your-openai-key        # Only for openai/api
 # GOOGLE_API_KEY=your-gemini-key        # Only for gemini/api
+# CLI-only auth
+# CLAUDE_CODE_OAUTH_TOKEN=your-claude-code-token
 ```
 
 ## Configuration Management

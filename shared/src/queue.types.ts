@@ -47,7 +47,8 @@ export const QUEUE_ITEM_TYPES = [
   "company",
   "scrape",
   "source_discovery",
-  "scrape_source"
+  "scrape_source",
+  "agent_review"
 ] as const
 
 /**

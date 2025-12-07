@@ -37,23 +37,31 @@ class TestConfigLoaderAISettings:
         return str(db_file)
 
     def test_get_ai_settings_returns_stored_config(self, db_path):
-        """Should return stored AI settings from database."""
-        # Insert AI settings
+        """Should return stored AI settings from database (new schema)."""
         conn = sqlite3.connect(db_path)
         payload = {
-            "worker": {
-                "selected": {
+            "agents": {
+                "claude.api": {
                     "provider": "claude",
                     "interface": "api",
-                    "model": "claude-sonnet-4-5-20250929",
-                },
+                    "defaultModel": "claude-sonnet-4-5-20250929",
+                    "dailyBudget": 100,
+                    "dailyUsage": 0,
+                    "runtimeState": {
+                        "worker": {"enabled": True, "reason": None},
+                        "backend": {"enabled": True, "reason": None},
+                    },
+                    "authRequirements": {"type": "api", "requiredEnv": ["ANTHROPIC_API_KEY"]},
+                }
             },
+            "taskFallbacks": {
+                "extraction": ["claude.api"],
+                "analysis": ["claude.api"],
+                "document": ["claude.api"],
+            },
+            "modelRates": {"claude-sonnet-4-5-20250929": 1.0},
             "documentGenerator": {
-                "selected": {
-                    "provider": "openai",
-                    "interface": "api",
-                    "model": "gpt-4o",
-                },
+                "selected": {"provider": "openai", "interface": "api", "model": "gpt-4o"}
             },
             "options": [],
         }
@@ -67,10 +75,8 @@ class TestConfigLoaderAISettings:
         loader = ConfigLoader(db_path)
         ai_settings = loader.get_ai_settings()
 
-        assert ai_settings["worker"]["selected"]["provider"] == "claude"
-        assert ai_settings["worker"]["selected"]["interface"] == "api"
-        assert ai_settings["worker"]["selected"]["model"] == "claude-sonnet-4-5-20250929"
-        assert ai_settings["documentGenerator"]["selected"]["provider"] == "openai"
+        assert ai_settings["agents"]["claude.api"]["defaultModel"] == "claude-sonnet-4-5-20250929"
+        assert ai_settings["taskFallbacks"]["document"] == ["claude.api"]
 
     def test_get_ai_settings_missing_raises(self, db_path):
         """Should fail loudly when ai-settings is missing."""
@@ -82,13 +88,26 @@ class TestConfigLoaderAISettings:
         """Should handle full AI settings with providers array."""
         conn = sqlite3.connect(db_path)
         payload = {
-            "worker": {
-                "selected": {
+            "agents": {
+                "openai.api": {
                     "provider": "openai",
                     "interface": "api",
-                    "model": "gpt-4o",
+                    "defaultModel": "gpt-4o",
+                    "dailyBudget": 100,
+                    "dailyUsage": 0,
+                    "runtimeState": {
+                        "worker": {"enabled": True, "reason": None},
+                        "backend": {"enabled": True, "reason": None},
+                    },
+                    "authRequirements": {"type": "api", "requiredEnv": ["OPENAI_API_KEY"]},
                 }
             },
+            "taskFallbacks": {
+                "extraction": ["openai.api"],
+                "analysis": ["openai.api"],
+                "document": ["openai.api"],
+            },
+            "modelRates": {"gpt-4o": 1.0},
             "documentGenerator": {
                 "selected": {
                     "provider": "claude",
@@ -96,6 +115,12 @@ class TestConfigLoaderAISettings:
                     "model": "claude-sonnet-4-5-20250929",
                 }
             },
+            "options": [
+                {
+                    "value": "openai",
+                    "interfaces": [{"value": "api", "models": ["gpt-4o"], "enabled": True}],
+                }
+            ],
         }
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
@@ -107,9 +132,8 @@ class TestConfigLoaderAISettings:
         loader = ConfigLoader(db_path)
         ai_settings = loader.get_ai_settings()
 
-        assert ai_settings["worker"]["selected"]["provider"] == "openai"
-        assert ai_settings["documentGenerator"]["selected"]["provider"] == "claude"
-        assert "options" in ai_settings
+        assert ai_settings["agents"]["openai.api"]["defaultModel"] == "gpt-4o"
+        assert ai_settings["taskFallbacks"]["document"] == ["openai.api"]
 
 
 # NOTE: TestConfigLoaderJobMatch was removed during hybrid scoring migration.
@@ -145,9 +169,26 @@ class TestConfigLoaderIntegration:
 
         # Insert both configs
         ai_payload = {
-            "worker": {
-                "selected": {"provider": "claude", "interface": "api", "model": "claude-sonnet"}
+            "agents": {
+                "claude.api": {
+                    "provider": "claude",
+                    "interface": "api",
+                    "defaultModel": "claude-sonnet",
+                    "dailyBudget": 100,
+                    "dailyUsage": 0,
+                    "runtimeState": {
+                        "worker": {"enabled": True, "reason": None},
+                        "backend": {"enabled": True, "reason": None},
+                    },
+                    "authRequirements": {"type": "api", "requiredEnv": ["ANTHROPIC_API_KEY"]},
+                },
             },
+            "taskFallbacks": {
+                "extraction": ["claude.api"],
+                "analysis": ["claude.api"],
+                "document": ["claude.api"],
+            },
+            "modelRates": {"claude-sonnet": 1.0},
             "documentGenerator": {
                 "selected": {"provider": "openai", "interface": "api", "model": "gpt-4o"}
             },
@@ -232,7 +273,7 @@ class TestConfigLoaderIntegration:
         match_policy = loader.get_match_policy()
 
         # Verify they are separate
-        assert ai_settings["worker"]["selected"]["provider"] == "claude"
+        assert ai_settings["agents"]["claude.api"]["provider"] == "claude"
         assert match_policy["minScore"] == 60
 
         # AI settings should not have match-policy fields
@@ -244,10 +285,30 @@ class TestConfigLoaderIntegration:
         """Should return consistent results across multiple calls."""
         conn = sqlite3.connect(db_path)
         payload = {
-            "worker": {"selected": {"provider": "openai", "interface": "api", "model": "gpt-4o"}},
+            "agents": {
+                "openai.api": {
+                    "provider": "openai",
+                    "interface": "api",
+                    "defaultModel": "gpt-4o",
+                    "dailyBudget": 100,
+                    "dailyUsage": 0,
+                    "runtimeState": {
+                        "worker": {"enabled": True, "reason": None},
+                        "backend": {"enabled": True, "reason": None},
+                    },
+                    "authRequirements": {"type": "api", "requiredEnv": ["OPENAI_API_KEY"]},
+                }
+            },
+            "taskFallbacks": {
+                "extraction": ["openai.api"],
+                "analysis": ["openai.api"],
+                "document": ["openai.api"],
+            },
+            "modelRates": {"gpt-4o": 1.0},
             "documentGenerator": {
                 "selected": {"provider": "claude", "interface": "api", "model": "claude-sonnet"}
             },
+            "options": [],
         }
         conn.execute(
             "INSERT INTO job_finder_config (id, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?)",

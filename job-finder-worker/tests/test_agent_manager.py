@@ -19,7 +19,7 @@ def make_ai_settings(
     """Helper to create ai-settings test fixtures."""
     return {
         "agents": agents or {},
-        "taskFallbacks": task_fallbacks or {"extraction": [], "analysis": []},
+        "taskFallbacks": task_fallbacks or {"extraction": [], "analysis": [], "document": []},
         "modelRates": model_rates or {"gpt-4o": 1.0, "gemini-2.0-flash": 0.5},
         "documentGenerator": {
             "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
@@ -32,20 +32,26 @@ def make_agent_config(
     provider="gemini",
     interface="cli",
     model="gemini-2.0-flash",
-    enabled=True,
-    reason=None,
     daily_budget=100,
     daily_usage=0,
+    runtime_state=None,
 ):
     """Helper to create agent config test fixtures."""
+    runtime_state = runtime_state or {
+        "worker": {"enabled": True, "reason": None},
+        "backend": {"enabled": True, "reason": None},
+    }
     return {
         "provider": provider,
         "interface": interface,
         "defaultModel": model,
-        "enabled": enabled,
-        "reason": reason,
         "dailyBudget": daily_budget,
         "dailyUsage": daily_usage,
+        "runtimeState": runtime_state,
+        "authRequirements": {
+            "type": interface,
+            "requiredEnv": ["PATH"],
+        },
     }
 
 
@@ -86,7 +92,12 @@ class TestAgentManagerExecute:
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={
-                "gemini.cli": make_agent_config(enabled=False, reason="error: test"),
+                "gemini.cli": make_agent_config(
+                    runtime_state={
+                        "worker": {"enabled": False, "reason": "error: test"},
+                        "backend": {"enabled": True, "reason": None},
+                    }
+                ),
                 "codex.cli": make_agent_config(provider="codex"),
             },
             task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},
@@ -119,7 +130,7 @@ class TestAgentManagerExecute:
         assert result.agent_id == "codex.cli"
         # Should have disabled the over-budget agent
         config_loader.update_agent_status.assert_called_with(
-            "gemini.cli", enabled=False, reason="quota_exhausted: daily budget reached"
+            "gemini.cli", "worker", enabled=False, reason="quota_exhausted: daily budget reached"
         )
 
     @patch("job_finder.ai.agent_manager._get_provider_class")
@@ -165,7 +176,7 @@ class TestAgentManagerExecute:
 
         # Should disable the failed agent with error reason
         config_loader.update_agent_status.assert_called_with(
-            "gemini.cli", enabled=False, reason="error: API rate limit"
+            "gemini.cli", "worker", enabled=False, reason="error: API rate limit"
         )
 
     @patch("job_finder.ai.agent_manager._get_provider_class")
@@ -205,7 +216,7 @@ class TestAgentManagerExecute:
 
         # First agent should be disabled with quota reason
         config_loader.update_agent_status.assert_any_call(
-            "gemini.cli", enabled=False, reason="quota_exhausted: Gemini quota exhausted"
+            "gemini.cli", "worker", enabled=False, reason="quota_exhausted: Gemini quota exhausted"
         )
 
     def test_raises_when_no_fallback_chain(self):
@@ -228,9 +239,18 @@ class TestAgentManagerExecute:
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={
-                "gemini.cli": make_agent_config(enabled=False, reason="error: test"),
+                "gemini.cli": make_agent_config(
+                    runtime_state={
+                        "worker": {"enabled": False, "reason": "error: test"},
+                        "backend": {"enabled": True, "reason": None},
+                    }
+                ),
                 "codex.cli": make_agent_config(
-                    provider="codex", enabled=False, reason="quota_exhausted: test"
+                    provider="codex",
+                    runtime_state={
+                        "worker": {"enabled": False, "reason": "quota_exhausted: test"},
+                        "backend": {"enabled": True, "reason": None},
+                    },
                 ),
             },
             task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},

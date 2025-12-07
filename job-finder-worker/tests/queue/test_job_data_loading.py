@@ -25,15 +25,22 @@ def mock_dependencies():
                 "provider": "test",
                 "interface": "cli",
                 "defaultModel": "test-model",
-                "enabled": True,
-                "reason": None,
                 "dailyBudget": 100,
                 "dailyUsage": 0,
+                "runtimeState": {
+                    "worker": {"enabled": True, "reason": None},
+                    "backend": {"enabled": True, "reason": None},
+                },
+                "authRequirements": {
+                    "type": "cli",
+                    "requiredEnv": ["PATH"],
+                },
             }
         },
         "taskFallbacks": {
             "extraction": ["test.agent"],
             "analysis": ["test.agent"],
+            "document": ["test.agent"],
         },
         "modelRates": {"test-model": 0.5},
     }

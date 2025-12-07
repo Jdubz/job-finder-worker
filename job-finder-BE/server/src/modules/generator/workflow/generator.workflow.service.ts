@@ -11,11 +11,8 @@ import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import { buildCoverLetterPrompt, buildResumePrompt } from './prompts'
-import { runCliProvider } from './services/cli-runner'
-import type { CliProvider } from './services/cli-runner'
-import { ensureCliProviderHealthy } from './services/provider-health.service'
+import { AgentManager } from '../ai/agent-manager'
 import { ConfigRepository } from '../../config/config.repository'
-import type { AISettings } from '@shared/types'
 
 export class UserFacingError extends Error {}
 
@@ -52,6 +49,7 @@ export interface GenerateDocumentPayload {
 export class GeneratorWorkflowService {
   private readonly userFriendlyError =
     'AI generation failed. Please retry in a moment or contact support if it keeps happening.'
+  private readonly agentManager: AgentManager
 
   constructor(
     private readonly htmlPdf = new HtmlPdfService(),
@@ -61,27 +59,12 @@ export class GeneratorWorkflowService {
     private readonly jobMatchRepo = new JobMatchRepository(),
     private readonly configRepo = new ConfigRepository(),
     private readonly log: Logger = logger
-  ) {}
+  ) {
+    this.agentManager = new AgentManager(this.configRepo, this.log)
+  }
 
   private async ensureProviderAvailable(): Promise<void> {
-    const config = this.configRepo.get<AISettings>('ai-settings')
-    if (!config?.payload?.documentGenerator?.selected) {
-      throw new UserFacingError('AI settings not configured. Please configure ai-settings in the database.')
-    }
-
-    const selection = config.payload.documentGenerator.selected
-
-    if (selection.interface !== 'cli') {
-      // Only CLI providers need health checks here
-      return
-    }
-
-    try {
-      await ensureCliProviderHealthy(selection.provider as CliProvider)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'AI provider unavailable'
-      throw new UserFacingError(message)
-    }
+    this.agentManager.ensureAvailable('document')
   }
 
   async createRequest(payload: GenerateDocumentPayload) {
@@ -399,18 +382,15 @@ export class GeneratorWorkflowService {
     const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
     const prompt = buildResumePrompt(payload, personalInfo, contentItems, jobMatch)
-    const provider = this.getDocumentGeneratorCliProvider()
-    const cliResult = await runCliProvider(prompt, provider)
+    const agentResult = await this.agentManager.execute('document', prompt)
 
-    if (!cliResult.success) {
-      this.log.error({ error: cliResult.error }, 'AI resume generation failed')
-      throw new Error(`AI generation failed: ${cliResult.error || 'Unknown error'}`)
-    }
-
-    this.log.info({ outputPreview: cliResult.output.slice(0, 400) }, 'AI resume raw output preview')
+    this.log.info(
+      { outputPreview: agentResult.output.slice(0, 400), agentId: agentResult.agentId, model: agentResult.model },
+      'AI resume raw output preview'
+    )
 
     try {
-      const parsed = JSON.parse(cliResult.output) as ResumeContent
+      const parsed = JSON.parse(agentResult.output) as ResumeContent
 
       // Filter work experience items (new taxonomy: 'work')
       const workItems = contentItems.filter((item) => item.aiContext === 'work')
@@ -550,7 +530,7 @@ export class GeneratorWorkflowService {
 
       return parsed
     } catch (error) {
-      this.log.error({ err: error, output: cliResult.output.slice(0, 500) }, 'Failed to parse AI resume output as JSON')
+      this.log.error({ err: error, output: agentResult.output.slice(0, 500) }, 'Failed to parse AI resume output as JSON')
       throw new Error('AI returned invalid JSON for resume content', { cause: error })
     }
   }
@@ -566,45 +546,14 @@ export class GeneratorWorkflowService {
     const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
     const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
-    const provider = this.getDocumentGeneratorCliProvider()
-    const cliResult = await runCliProvider(prompt, provider)
-
-    if (!cliResult.success) {
-      this.log.error({ error: cliResult.error }, 'AI cover letter generation failed')
-      throw new Error(`AI generation failed: ${cliResult.error || 'Unknown error'}`)
-    }
+    const agentResult = await this.agentManager.execute('document', prompt)
 
     try {
-      const parsed = JSON.parse(cliResult.output) as CoverLetterContent
+      const parsed = JSON.parse(agentResult.output) as CoverLetterContent
       return parsed
     } catch (error) {
-      this.log.error({ err: error, output: cliResult.output.slice(0, 500) }, 'Failed to parse AI cover letter output as JSON')
+      this.log.error({ err: error, output: agentResult.output.slice(0, 500) }, 'Failed to parse AI cover letter output as JSON')
       throw new Error('AI returned invalid JSON for cover letter content', { cause: error })
     }
-  }
-  private getDocumentGeneratorCliProvider(): CliProvider {
-    const config = this.configRepo.get<AISettings>('ai-settings')
-    if (!config?.payload?.documentGenerator?.selected) {
-      throw new UserFacingError('AI settings not configured. Please configure ai-settings in the database.')
-    }
-    const selection = config.payload.documentGenerator.selected
-
-    const provider = selection.provider
-    const interfaceType = selection.interface
-
-    if (interfaceType !== 'cli') {
-      this.log.warn(
-        { provider, interface: interfaceType },
-        'Document generator interface not supported in CLI runner; falling back to codex/cli'
-      )
-      return 'codex'
-    }
-
-    if (provider === 'codex' || provider === 'gemini' || provider === 'claude') {
-      return provider
-    }
-
-    this.log.warn({ provider }, 'Document generator provider not supported; falling back to codex')
-    return 'codex'
   }
 }

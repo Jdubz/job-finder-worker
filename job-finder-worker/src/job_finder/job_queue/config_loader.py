@@ -149,13 +149,99 @@ class ConfigLoader:
 
         # Validate agents structure
         agents = settings.get("agents")
-        if not isinstance(agents, dict):
-            raise InitializationError("ai-settings.agents must be an object")
+        if not isinstance(agents, dict) or not agents:
+            raise InitializationError("ai-settings.agents must be a non-empty object")
+
+        for agent_id, agent in agents.items():
+            if not isinstance(agent, dict):
+                raise InitializationError(f"agent {agent_id} must be an object")
+            for key in [
+                "provider",
+                "interface",
+                "defaultModel",
+                "dailyBudget",
+                "dailyUsage",
+                "runtimeState",
+                "authRequirements",
+            ]:
+                if key not in agent:
+                    raise InitializationError(f"agent {agent_id} missing required key: {key}")
+            if not isinstance(agent.get("provider"), str) or not isinstance(
+                agent.get("interface"), str
+            ):
+                raise InitializationError(f"agent {agent_id} provider/interface must be strings")
+            if not isinstance(agent.get("defaultModel"), str):
+                raise InitializationError(f"agent {agent_id} defaultModel must be a string")
+            if not isinstance(agent.get("dailyBudget"), (int, float)):
+                raise InitializationError(f"agent {agent_id} dailyBudget must be numeric")
+            if not isinstance(agent.get("dailyUsage"), (int, float)):
+                raise InitializationError(f"agent {agent_id} dailyUsage must be numeric")
+
+            auth_req = agent.get("authRequirements")
+            if not isinstance(auth_req, dict):
+                raise InitializationError(f"agent {agent_id} authRequirements must be an object")
+            if auth_req.get("type") not in {"cli", "api"}:
+                raise InitializationError(
+                    f"agent {agent_id} authRequirements.type must be 'cli' or 'api'"
+                )
+            if not isinstance(auth_req.get("requiredEnv"), list):
+                raise InitializationError(
+                    f"agent {agent_id} authRequirements.requiredEnv must be a list"
+                )
+            if not auth_req.get("requiredEnv"):
+                raise InitializationError(
+                    f"agent {agent_id} authRequirements.requiredEnv must be a non-empty list"
+                )
+            if not all(isinstance(v, str) and v for v in auth_req.get("requiredEnv", [])):
+                raise InitializationError(
+                    f"agent {agent_id} authRequirements.requiredEnv must be non-empty strings"
+                )
+            if "requiredFiles" in auth_req:
+                if not isinstance(auth_req.get("requiredFiles"), list) or not all(
+                    isinstance(v, str) for v in auth_req.get("requiredFiles", [])
+                ):
+                    raise InitializationError(
+                        f"agent {agent_id} authRequirements.requiredFiles must be a list of strings"
+                    )
+            runtime_state = agent.get("runtimeState")
+            if not isinstance(runtime_state, dict):
+                raise InitializationError(f"agent {agent_id} runtimeState must be an object")
+            for scope in ["worker", "backend"]:
+                if scope not in runtime_state:
+                    raise InitializationError(
+                        f"agent {agent_id} missing runtimeState for scope '{scope}'"
+                    )
+                scope_state = runtime_state[scope]
+                if not isinstance(scope_state, dict):
+                    raise InitializationError(
+                        f"agent {agent_id} runtimeState.{scope} must be an object"
+                    )
+                if not isinstance(scope_state.get("enabled"), bool):
+                    raise InitializationError(
+                        f"agent {agent_id} runtimeState.{scope}.enabled must be a boolean"
+                    )
+                reason = scope_state.get("reason")
+                if reason is not None and not isinstance(reason, str):
+                    raise InitializationError(
+                        f"agent {agent_id} runtimeState.{scope}.reason must be string or null"
+                    )
 
         # Validate taskFallbacks structure
         task_fallbacks = settings.get("taskFallbacks")
         if not isinstance(task_fallbacks, dict):
             raise InitializationError("ai-settings.taskFallbacks must be an object")
+        required_tasks = ["extraction", "analysis", "document"]
+        for task_name, chain in task_fallbacks.items():
+            if task_name not in required_tasks:
+                raise InitializationError(f"Unexpected task type in taskFallbacks: {task_name}")
+            if not isinstance(chain, list) or not chain:
+                raise InitializationError(f"taskFallbacks.{task_name} must be a non-empty list")
+            for agent_id in chain:
+                if not isinstance(agent_id, str):
+                    raise InitializationError(f"taskFallbacks.{task_name} entries must be strings")
+        for task_name in required_tasks:
+            if task_name not in task_fallbacks:
+                raise InitializationError(f"taskFallbacks missing required task type: {task_name}")
 
         # Validate modelRates structure
         model_rates = settings.get("modelRates")
@@ -182,18 +268,20 @@ class ConfigLoader:
         model_rates = settings.get("modelRates", {})
 
         if agent_id not in agents:
-            logger.warning(f"Agent {agent_id} not found in ai-settings, skipping usage increment")
-            return
+            raise InitializationError(f"Agent {agent_id} not found in ai-settings")
 
         agent = agents[agent_id]
+        if "dailyUsage" not in agent:
+            raise InitializationError(f"Agent {agent_id} missing dailyUsage")
+
         cost = model_rates.get(model, 1.0)
-        agent["dailyUsage"] = agent.get("dailyUsage", 0) + cost
+        agent["dailyUsage"] = agent["dailyUsage"] + cost
 
         self._set_config("ai-settings", settings)
         logger.debug(f"Incremented {agent_id} usage by {cost} (model: {model})")
 
     def update_agent_status(
-        self, agent_id: str, enabled: bool, reason: Optional[str] = None
+        self, agent_id: str, scope: str, enabled: bool, reason: Optional[str] = None
     ) -> None:
         """
         Update an agent's enabled status and reason.
@@ -207,15 +295,23 @@ class ConfigLoader:
         agents = settings.get("agents", {})
 
         if agent_id not in agents:
-            logger.warning(f"Agent {agent_id} not found in ai-settings, skipping status update")
-            return
+            raise InitializationError(f"Agent {agent_id} not found in ai-settings")
+
+        if scope not in {"worker", "backend"}:
+            raise InitializationError(f"Invalid agent scope: {scope}")
 
         agent = agents[agent_id]
-        agent["enabled"] = enabled
-        agent["reason"] = reason if not enabled else None
+        runtime_state = agent.get("runtimeState")
+        if not runtime_state or scope not in runtime_state:
+            raise InitializationError(f"Agent {agent_id} missing runtimeState for scope {scope}")
+
+        runtime_state[scope]["enabled"] = enabled
+        runtime_state[scope]["reason"] = reason if not enabled else None
 
         self._set_config("ai-settings", settings)
-        logger.info(f"Updated agent {agent_id}: enabled={enabled}, reason={reason}")
+        logger.info(
+            f"Updated agent {agent_id} for scope {scope}: enabled={enabled}, reason={reason}"
+        )
 
     def _set_config(self, key: str, payload: Dict[str, Any]) -> None:
         """Update a config entry in the database."""

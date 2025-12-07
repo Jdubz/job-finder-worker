@@ -2,7 +2,7 @@
 
 # Stage 0: build Codex CLI and Gemini CLI without leaving npm in final image
 FROM node:20-slim AS cli-builder
-RUN npm install -g @openai/codex@0.58.0 @google/gemini-cli@0.18.4
+RUN npm install -g @openai/codex@0.58.0 @google/gemini-cli@0.18.4 @anthropic-ai/claude-code@2.0.52
 
 # Stage 1: build Python deps
 FROM python:3.12-slim as builder
@@ -55,6 +55,10 @@ RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@openai/codex/bin/c
 # Copy Gemini CLI
 COPY --from=cli-builder /usr/local/lib/node_modules/@google/gemini-cli /usr/local/lib/node_modules/@google/gemini-cli
 RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@google/gemini-cli/dist/index.js "$@"\n' > /usr/local/bin/gemini && chmod +x /usr/local/bin/gemini
+
+# Copy Claude CLI
+COPY --from=cli-builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@anthropic-ai/claude-code
+RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js "$@"\n' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude
 
 # Create directories for AI CLIs and data with proper ownership
 RUN mkdir -p /home/node/.codex /home/node/.gemini /data/sqlite \

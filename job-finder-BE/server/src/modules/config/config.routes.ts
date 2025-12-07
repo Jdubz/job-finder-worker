@@ -208,6 +208,9 @@ export function buildConfigRouter() {
 
       const coerced = coercePayload(id, body.payload)
       if (!validatePayload(id, coerced)) {
+        if (id === 'ai-settings') {
+          logger.error({ payload: coerced }, 'ai-settings validation failed during upsert')
+        }
         res.status(400).json(failure(ApiErrorCode.VALIDATION_FAILED, 'Invalid config payload'))
         return
       }
@@ -221,15 +224,20 @@ export function buildConfigRouter() {
       if (id === 'ai-settings') {
         const aiPayload = coerced as AISettings
         const configuredAgents = Object.keys(aiPayload.agents ?? {})
-        const enabledAgents = Object.entries(aiPayload.agents ?? {})
-          .filter(([, config]) => config?.enabled)
+        const enabledAgentsWorker = Object.entries(aiPayload.agents ?? {})
+          .filter(([, config]) => config?.runtimeState?.worker?.enabled)
+          .map(([id]) => id)
+        const enabledAgentsBackend = Object.entries(aiPayload.agents ?? {})
+          .filter(([, config]) => config?.runtimeState?.backend?.enabled)
           .map(([id]) => id)
         logger.info({
           configId: id,
           configuredAgents,
-          enabledAgents,
+          enabledAgentsWorker,
+          enabledAgentsBackend,
           extractionFallbacks: aiPayload.taskFallbacks?.extraction ?? [],
           analysisFallbacks: aiPayload.taskFallbacks?.analysis ?? [],
+          documentFallbacks: aiPayload.taskFallbacks?.document ?? [],
           docGenProvider: `${aiPayload.documentGenerator?.selected?.provider ?? 'unknown'}/${aiPayload.documentGenerator?.selected?.interface ?? 'unknown'}`,
           docGenModel: aiPayload.documentGenerator?.selected?.model ?? 'unknown',
           updatedBy: userEmail,

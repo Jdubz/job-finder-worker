@@ -32,15 +32,22 @@ def mock_dependencies() -> Dict[str, Any]:
                 "provider": "codex",
                 "interface": "cli",
                 "defaultModel": "gpt-4o",
-                "enabled": True,
-                "reason": None,
                 "dailyBudget": 100,
                 "dailyUsage": 0,
+                "runtimeState": {
+                    "worker": {"enabled": True, "reason": None},
+                    "backend": {"enabled": True, "reason": None},
+                },
+                "authRequirements": {
+                    "type": "cli",
+                    "requiredEnv": ["PATH"],
+                },
             }
         },
         "taskFallbacks": {
             "extraction": ["codex.cli"],
             "analysis": ["codex.cli"],
+            "document": ["codex.cli"],
         },
         "modelRates": {"gpt-4o": 1.0},
         "documentGenerator": {

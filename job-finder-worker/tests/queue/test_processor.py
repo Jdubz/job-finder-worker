@@ -31,15 +31,22 @@ def mock_managers():
                 "provider": "gemini",
                 "interface": "cli",
                 "defaultModel": "gemini-2.0-flash",
-                "enabled": True,
-                "reason": None,
                 "dailyBudget": 100,
                 "dailyUsage": 0,
+                "runtimeState": {
+                    "worker": {"enabled": True, "reason": None},
+                    "backend": {"enabled": True, "reason": None},
+                },
+                "authRequirements": {
+                    "type": "cli",
+                    "requiredEnv": ["PATH"],
+                },
             }
         },
         "taskFallbacks": {
             "extraction": ["gemini.cli"],
             "analysis": ["gemini.cli"],
+            "document": ["gemini.cli"],
         },
         "modelRates": {"gemini-2.0-flash": 0.5},
         "documentGenerator": {

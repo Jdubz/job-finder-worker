@@ -128,7 +128,9 @@ export async function ensureCliProviderHealthy(provider: CliProvider): Promise<v
     case 'gemini':
       return checkGeminiConfig()
     case 'claude':
-      // No health check available for Claude yet
+      if (!process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+        throw new UserFacingError('Claude CLI not authenticated. Set CLAUDE_CODE_OAUTH_TOKEN for this service scope.')
+      }
       return
     default:
       return

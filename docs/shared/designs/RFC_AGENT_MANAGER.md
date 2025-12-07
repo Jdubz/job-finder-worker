@@ -1,12 +1,12 @@
 > Status: Draft
 > Owner: @jdubz
-> Last Updated: 2025-12-04
+> Last Updated: 2025-12-06
 
 # RFC: Agent Manager
 
 ## Summary
 
-Implement an Agent Manager in the worker that abstracts AI agent selection from callers. The worker supplies a task type and prompt; the manager selects the appropriate agent based on configuration, availability, and budget. This centralizes agent lifecycle management including fallback chains, daily budgets, error handling, and automatic recovery.
+Implement an Agent Manager in the worker and backend generator that abstracts AI agent selection from callers. Callers supply a task type and prompt; the manager selects the appropriate agent based on configuration, availability, and budget. This centralizes agent lifecycle management including fallback chains, daily budgets (shared across scopes), per-scope auth gating (disable only the calling scope when creds are missing), error handling, and automatic recovery. Every agent declares explicit `authRequirements` (env vars and optional credential files); initialization fails if they are missing or malformed. Claude CLI is now a first-class agent (worker + backend) with auth provided by `CLAUDE_CODE_OAUTH_TOKEN` (no credential mounts required; optional interactive login is strictly for local dev convenience).
 
 This is a **hard cutover** - all legacy configuration fields will be removed, not deprecated.
 
@@ -16,17 +16,7 @@ This is a **hard cutover** - all legacy configuration fields will be removed, no
 
 The worker calls `create_provider_from_config()` directly with per-task overrides. There is no fallback mechanism, budget tracking, or centralized error handling.
 
-**Current ai-settings structure (to be replaced entirely):**
-```typescript
-interface AISettings {
-  worker: {
-    selected: { provider, interface, model }
-    tasks?: { jobMatch?, companyDiscovery?, sourceDiscovery? }  // REMOVE
-  }
-  documentGenerator: { selected: { provider, interface, model } }
-  options: AIProviderOption[]
-}
-```
+**Current ai-settings structure (to be replaced entirely):** removed; all legacy fields are deleted in the hard cutover.
 
 ### Problems
 
@@ -47,6 +37,7 @@ Abstract task types describing the nature of work, decoupled from queue item typ
 |-----------|-------------|-----------|
 | `extraction` | Structured data extraction from text | Job details, company info parsing, source discovery |
 | `analysis` | Reasoning and evaluation | Match scoring rationale, research synthesis |
+| `document` | Resume / cover letter generation workflows | Generator pipeline for documents |
 
 Processor mapping (internal to AgentManager callers):
 ```python
@@ -55,6 +46,7 @@ QUEUE_TO_AGENT_TASK = {
     "company": "extraction",
     "source_discovery": "extraction",
     "agent_review": "analysis",
+    "generator": "document",
 }
 ```
 
@@ -65,16 +57,29 @@ QUEUE_TO_AGENT_TASK = {
 type AgentId = `${AIProviderType}.${AIInterfaceType}`
 
 /** Agent task types */
-type AgentTaskType = "extraction" | "analysis"
+type AgentTaskType = "extraction" | "analysis" | "document"
+
+type AgentScope = "worker" | "backend"
+
+interface AgentRuntimeState {
+  enabled: boolean
+  reason: string | null  // scope-specific disable reason
+}
+
+interface AgentAuthRequirements {
+  type: AIInterfaceType           // cli | api
+  requiredEnv: string[]           // non-empty
+  requiredFiles?: string[]        // any-of files; optional
+}
 
 interface AgentConfig {
   provider: AIProviderType
   interface: AIInterfaceType
   defaultModel: string
-  enabled: boolean
-  reason: string | null  // "quota_exhausted:*" or "error:*"
   dailyBudget: number
-  dailyUsage: number
+  dailyUsage: number       // shared across scopes
+  runtimeState: Record<AgentScope, AgentRuntimeState>
+  authRequirements: AgentAuthRequirements
 }
 
 interface AISettings {
@@ -105,33 +110,69 @@ interface AISettings {
       "provider": "gemini",
       "interface": "cli",
       "defaultModel": "gemini-2.0-flash",
-      "enabled": true,
-      "reason": null,
       "dailyBudget": 100,
-      "dailyUsage": 0
+      "dailyUsage": 0,
+      "runtimeState": {
+        "worker": { "enabled": true, "reason": null },
+        "backend": { "enabled": true, "reason": null }
+      },
+      "authRequirements": {
+        "type": "cli",
+        "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        "requiredFiles": ["~/.gemini/settings.json"]
+      }
     },
     "codex.cli": {
       "provider": "codex",
       "interface": "cli",
       "defaultModel": "gpt-4o",
-      "enabled": true,
-      "reason": null,
       "dailyBudget": 50,
-      "dailyUsage": 0
+      "dailyUsage": 0,
+      "runtimeState": {
+        "worker": { "enabled": true, "reason": null },
+        "backend": { "enabled": true, "reason": null }
+      },
+      "authRequirements": {
+        "type": "cli",
+        "requiredEnv": ["OPENAI_API_KEY"],
+        "requiredFiles": ["~/.codex/auth.json"]
+      }
+    },
+    "claude.cli": {
+      "provider": "claude",
+      "interface": "cli",
+      "defaultModel": "claude-3-5-sonnet",
+      "dailyBudget": 50,
+      "dailyUsage": 0,
+      "runtimeState": {
+        "worker": { "enabled": true, "reason": null },
+        "backend": { "enabled": true, "reason": null }
+      },
+      "authRequirements": {
+        "type": "cli",
+        "requiredEnv": ["CLAUDE_CODE_OAUTH_TOKEN"]
+      }
     },
     "gemini.api": {
       "provider": "gemini",
       "interface": "api",
       "defaultModel": "gemini-2.0-flash",
-      "enabled": true,
-      "reason": null,
       "dailyBudget": 200,
-      "dailyUsage": 0
+      "dailyUsage": 0,
+      "runtimeState": {
+        "worker": { "enabled": true, "reason": null },
+        "backend": { "enabled": true, "reason": null }
+      },
+      "authRequirements": {
+        "type": "api",
+        "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
+      }
     }
   },
   "taskFallbacks": {
-    "extraction": ["gemini.cli", "codex.cli", "gemini.api"],
-    "analysis": ["codex.cli", "gemini.cli"]
+    "extraction": ["gemini.cli", "codex.cli", "claude.cli", "gemini.api"],
+    "analysis": ["codex.cli", "gemini.cli", "claude.cli"],
+    "document": ["codex.cli", "claude.cli", "gemini.cli"]
   },
   "modelRates": {
     "gpt-4o": 1.0,
@@ -148,7 +189,7 @@ interface AISettings {
 
 AgentManager checks budget BEFORE calling an agent:
 ```python
-def execute(self, task_type: str, prompt: str, ...):
+def execute(self, task_type: str, prompt: str, scope: str, ...):
     ai_settings = self.config_loader.get_ai_settings()  # Fresh read every call
 
     for agent_id in ai_settings["taskFallbacks"].get(task_type, []):
@@ -156,8 +197,12 @@ def execute(self, task_type: str, prompt: str, ...):
         if not agent:
             continue
 
-        # Skip disabled agents
-        if not agent["enabled"]:
+        scope_state = agent.get("runtimeState", {}).get(scope)
+        if not scope_state:
+            raise NoAgentsAvailableError(f"Missing runtimeState for scope {scope}")
+
+        # Skip agents disabled for this scope
+        if not scope_state.get("enabled", False):
             continue
 
         # BUDGET CHECK - enforced here, not in agent
@@ -217,6 +262,7 @@ class AgentManager:
         self,
         task_type: str,
         prompt: str,
+        scope: str,
         model_override: Optional[str] = None,
         **kwargs
     ) -> AgentResult:
@@ -233,9 +279,9 @@ class AgentManager:
                 continue
 
             # Budget enforcement
-            if agent["dailyUsage"] >= agent["dailyBudget"]:
-                self._disable_agent(agent_id, "quota_exhausted: daily budget reached")
-                continue
+        if agent["dailyUsage"] >= agent["dailyBudget"]:
+            self._disable_agent(agent_id, scope, "quota_exhausted: daily budget reached")
+            continue
 
             try:
                 model = model_override or agent["defaultModel"]
@@ -244,7 +290,7 @@ class AgentManager:
                 self._increment_usage(agent_id, model)  # ConfigLoader handles model rate lookup
                 return AgentResult(text=response, agent_id=agent_id, model=model)
             except AIProviderError as e:
-                self._disable_agent(agent_id, f"error: {str(e)}")
+                self._disable_agent(agent_id, scope, f"error: {str(e)}")
                 # BREAK, not continue: API errors indicate systemic issues
                 # that won't be fixed by trying another agent
                 break
@@ -270,8 +316,8 @@ class AgentManager:
         """Increment agent usage. ConfigLoader handles model rate lookup from modelRates."""
         self.config_loader.increment_agent_usage(agent_id, model)
 
-    def _disable_agent(self, agent_id: str, reason: str):
-        self.config_loader.update_agent_status(agent_id, enabled=False, reason=reason)
+    def _disable_agent(self, agent_id: str, scope: str, reason: str):
+        self.config_loader.update_agent_status(agent_id, scope, enabled=False, reason=reason)
 ```
 
 ### Midnight Cron Job

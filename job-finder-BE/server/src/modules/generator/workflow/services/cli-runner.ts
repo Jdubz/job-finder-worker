@@ -12,6 +12,11 @@ interface CliResult {
   error?: string
 }
 
+export interface CliRunOptions {
+  model?: string
+  allowFallbackToCodex?: boolean
+}
+
 function sanitizeCliError(raw?: string): string {
   if (!raw) return 'AI generation failed'
   const text = raw.toString()
@@ -27,7 +32,7 @@ function sanitizeCliError(raw?: string): string {
   return text.slice(0, 400).trim()
 }
 
-function buildCommand(provider: CliProvider, prompt: string): { cmd: string; args: string[] } {
+function buildCommand(provider: CliProvider, prompt: string, model?: string): { cmd: string; args: string[] } {
   if (provider === 'codex') {
     return {
       cmd: 'codex',
@@ -38,13 +43,21 @@ function buildCommand(provider: CliProvider, prompt: string): { cmd: string; arg
   if (provider === 'gemini') {
     return {
       cmd: 'gemini',
-      args: ['--print', '--model', 'gemini-1.5-flash', '--output', 'json', '--prompt', prompt]
+      args: ['--print', '--model', model || 'gemini-1.5-flash', '--output', 'json', '--prompt', prompt]
     }
   }
   if (provider === 'claude') {
+    const args = ['--print', '--output-format', 'json']
+    if (model) {
+      args.push('--model', model)
+    }
+    if (process.env.CLAUDE_SKIP_PERMISSIONS !== 'false') {
+      args.push('--dangerously-skip-permissions')
+    }
+    args.push('--prompt', prompt)
     return {
       cmd: 'claude',
-      args: ['--print', '--dangerously-skip-permissions', '--output-format', 'json', '--prompt', prompt]
+      args
     }
   }
   return {
@@ -53,16 +66,18 @@ function buildCommand(provider: CliProvider, prompt: string): { cmd: string; arg
   }
 }
 
-export async function runCliProvider(prompt: string, preferred: CliProvider = 'codex'): Promise<CliResult> {
-  // Currently only OpenAI/Codex provider is actively supported
-  // Other providers are included in fallback chain for future implementation
+export async function runCliProvider(
+  prompt: string,
+  preferred: CliProvider = 'codex',
+  options: CliRunOptions = {}
+): Promise<CliResult> {
   const providers: CliProvider[] =
-    preferred === 'codex' ? ['codex'] : [preferred, 'codex']
+    options.allowFallbackToCodex === false || preferred === 'codex' ? [preferred] : [preferred, 'codex']
 
   let lastError: string | undefined
 
   for (const provider of providers) {
-    const result = await executeCommand(provider, prompt)
+    const result = await executeCommand(provider, prompt, options.model)
     if (result.success) {
       return result
     }
@@ -74,9 +89,9 @@ export async function runCliProvider(prompt: string, preferred: CliProvider = 'c
   return { success: false, output: '', error: lastError || 'Provider failed. Currently only OpenAI/Codex is supported.' }
 }
 
-async function executeCommand(provider: CliProvider, prompt: string): Promise<CliResult> {
+async function executeCommand(provider: CliProvider, prompt: string, model?: string): Promise<CliResult> {
   return new Promise((resolve) => {
-    const command = buildCommand(provider, prompt)
+    const command = buildCommand(provider, prompt, model)
 
     logger.info({ provider, cmd: command.cmd }, 'Executing AI generation command')
 

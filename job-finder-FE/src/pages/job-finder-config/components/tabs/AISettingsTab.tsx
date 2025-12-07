@@ -85,6 +85,7 @@ const INTERFACE_LABELS: Record<AIInterfaceType, string> = {
 const TASK_LABELS: Record<AgentTaskType, string> = {
   extraction: "Data Extraction",
   analysis: "Analysis",
+  document: "Document Generation",
 }
 
 function formatAgentId(agentId: AgentId): string {
@@ -145,10 +146,16 @@ export function AISettingsTab({
         provider: agentId.split(".")[0] as AIProviderType,
         interface: agentId.split(".")[1] as AIInterfaceType,
         defaultModel: "",
-        enabled: false,
-        reason: null,
         dailyBudget: 100,
         dailyUsage: 0,
+        runtimeState: {
+          worker: { enabled: false, reason: null },
+          backend: { enabled: false, reason: null },
+        },
+        authRequirements: {
+          type: "cli",
+          requiredEnv: ["PATH"],
+        },
       }
       return {
         ...prev,
@@ -235,44 +242,90 @@ export function AISettingsTab({
             <div className="space-y-3">
               {Object.entries(agents).map(([agentId, config]) => {
                 if (!config) return null
-                const reasonBadge = getReasonBadge(config.reason)
+                const workerState = config.runtimeState?.worker ?? { enabled: false, reason: null }
+                const backendState = config.runtimeState?.backend ?? { enabled: false, reason: null }
+                const workerBadge = getReasonBadge(workerState.reason ?? null)
+                const backendBadge = getReasonBadge(backendState.reason ?? null)
                 const [provider, iface] = agentId.split(".") as [AIProviderType, AIInterfaceType]
                 const availableModels = resolveInterface(provider, iface)?.models ?? []
-                const hasReason = !!config.reason
                 return (
                   <div key={agentId} className="border rounded-md p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <Switch
-                          checked={config.enabled}
-                          onCheckedChange={(enabled) =>
-                            updateAgent(agentId as AgentId, {
-                              enabled,
-                              // Only clear reason when enabling a disabled agent
-                              ...(enabled && config.reason ? { reason: null } : {}),
-                            })
-                          }
-                        />
-                        <div className="font-medium">{formatAgentId(agentId as AgentId)}</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {reasonBadge && (
-                          <Badge variant={reasonBadge.variant}>{reasonBadge.label}</Badge>
-                        )}
-                        {hasReason && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => updateAgent(agentId as AgentId, { enabled: true, reason: null })}
-                            title="Clear status and re-enable"
-                          >
-                            <AlertCircle className="h-4 w-4 mr-1" />
-                            Clear
-                          </Button>
-                        )}
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <div className="font-medium min-w-[220px]">{formatAgentId(agentId as AgentId)}</div>
+                        <div className="flex items-center gap-6">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={workerState.enabled}
+                              onCheckedChange={(enabled) =>
+                                updateAgent(agentId as AgentId, {
+                                  runtimeState: {
+                                    worker: { enabled, reason: enabled ? null : workerState.reason ?? null },
+                                    backend: backendState,
+                                  },
+                                })
+                              }
+                            />
+                            <span className="text-sm font-medium">Worker</span>
+                            {workerBadge && <Badge variant={workerBadge.variant}>{workerBadge.label}</Badge>}
+                            {workerState.reason && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  updateAgent(agentId as AgentId, {
+                                    runtimeState: {
+                                      worker: { enabled: true, reason: null },
+                                      backend: backendState,
+                                    },
+                                  })
+                                }
+                                title="Clear worker status and re-enable"
+                                className="h-7 px-2"
+                              >
+                                <AlertCircle className="h-4 w-4 mr-1" />
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={backendState.enabled}
+                              onCheckedChange={(enabled) =>
+                                updateAgent(agentId as AgentId, {
+                                  runtimeState: {
+                                    worker: workerState,
+                                    backend: { enabled, reason: enabled ? null : backendState.reason ?? null },
+                                  },
+                                })
+                              }
+                            />
+                            <span className="text-sm font-medium">Backend</span>
+                            {backendBadge && <Badge variant={backendBadge.variant}>{backendBadge.label}</Badge>}
+                            {backendState.reason && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  updateAgent(agentId as AgentId, {
+                                    runtimeState: {
+                                      worker: workerState,
+                                      backend: { enabled: true, reason: null },
+                                    },
+                                  })
+                                }
+                                title="Clear backend status and re-enable"
+                                className="h-7 px-2"
+                              >
+                                <AlertCircle className="h-4 w-4 mr-1" />
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-6 pl-12">
+                    <div className="flex items-center gap-6 pl-2 md:pl-12 flex-wrap">
                       <div className="flex items-center gap-2">
                         <Label className="text-sm">Model:</Label>
                         <Select
@@ -332,7 +385,7 @@ export function AISettingsTab({
               Configure the order of agents to try for each task type. First available agent is used.
             </p>
             <div className="space-y-4">
-              {(["extraction", "analysis"] as AgentTaskType[]).map((taskType) => {
+              {(["extraction", "analysis", "document"] as AgentTaskType[]).map((taskType) => {
                 const fallbacks = taskFallbacks[taskType] ?? []
                 return (
                   <div key={taskType} className="border rounded-md p-4">

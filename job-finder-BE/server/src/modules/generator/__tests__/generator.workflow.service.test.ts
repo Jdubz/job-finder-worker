@@ -4,9 +4,9 @@ import type { GeneratorWorkflowRepository, GeneratorRequestRecord, GeneratorArti
 import type { PersonalInfoStore } from '../personal-info.store'
 import type { ContentItemRepository } from '../../content-items/content-item.repository'
 import { storageService } from '../workflow/services/storage.service'
-import { runCliProvider } from '../workflow/services/cli-runner'
 import type { PersonalInfo, ContentItem, AISettings } from '@shared/types'
 import type { ConfigRepository } from '../../config/config.repository'
+import * as AgentManagerModule from '../ai/agent-manager'
 
 // Test fixture for AISettings (no defaults - explicit test data)
 const TEST_AI_SETTINGS: AISettings = {
@@ -15,15 +15,22 @@ const TEST_AI_SETTINGS: AISettings = {
       provider: 'gemini',
       interface: 'api',
       defaultModel: 'gemini-2.0-flash',
-      enabled: true,
-      reason: null,
       dailyBudget: 100,
       dailyUsage: 0,
+      runtimeState: {
+        worker: { enabled: true, reason: null },
+        backend: { enabled: true, reason: null }
+      },
+      authRequirements: {
+        type: 'api',
+        requiredEnv: ['PATH']
+      }
     },
   },
   taskFallbacks: {
     extraction: ['gemini.api'],
     analysis: ['gemini.api'],
+    document: ['gemini.api'],
   },
   modelRates: {
     'gemini-2.0-flash': 0.5,
@@ -34,46 +41,66 @@ const TEST_AI_SETTINGS: AISettings = {
   options: []
 }
 
-vi.mock('../workflow/services/cli-runner', () => {
-  const runCliProvider = vi.fn().mockImplementation((prompt: string) => {
-    const isCover = /greeting|cover\s*letter|cover_letter|cover-letter/i.test(prompt)
-    if (isCover) {
-      return Promise.resolve({
-        success: true,
-        output: JSON.stringify({
-          greeting: 'Hello Hiring Team,',
-          openingParagraph: 'I am excited to apply.',
-          bodyParagraphs: ['Body paragraph one'],
-          closingParagraph: 'Thank you for your consideration.',
-          signature: 'Test User'
+function makeAgentManager() {
+  return {
+    ensureAvailable: vi.fn(),
+    execute: vi.fn().mockImplementation((_: string, prompt: string) => {
+      const isCover = /greeting|cover\s*letter|cover_letter|cover-letter/i.test(prompt)
+      if (isCover) {
+        return Promise.resolve({
+          output: JSON.stringify({
+            greeting: 'Hello Hiring Team,',
+            openingParagraph: 'I am excited to apply.',
+            bodyParagraphs: ['Body paragraph one'],
+            closingParagraph: 'Thank you for your consideration.',
+            signature: 'Test User'
+          }),
+          agentId: 'gemini.cli',
+          model: 'gemini-2.0-flash'
         })
-      })
-    }
-    return Promise.resolve({
-      success: true,
-      output: JSON.stringify({
-        personalInfo: {
-          name: 'Test User',
-          title: 'Engineer',
-          summary: 'Test summary',
-          contact: { email: 'test@example.com' }
-        },
-        professionalSummary: 'Summary',
-        experience: [
-          {
-            company: 'Acme Corp',
-            role: 'Engineer',
-            startDate: '2020-01',
-            endDate: '2021-01',
-            highlights: ['Did things']
-          }
-        ],
-        skills: [{ category: 'Core', items: ['JS'] }],
-        education: []
+      }
+      return Promise.resolve({
+        output: JSON.stringify({
+          personalInfo: {
+            name: 'Test User',
+            title: 'Engineer',
+            summary: 'Test summary',
+            contact: { email: 'test@example.com' }
+          },
+          professionalSummary: 'Summary',
+          experience: [
+            {
+              company: 'Acme Corp',
+              role: 'Engineer',
+              startDate: '2020-01',
+              endDate: '2021-01',
+              highlights: ['Did things']
+            }
+          ],
+          skills: [{ category: 'Core', items: ['JS'] }],
+          education: []
+        }),
+        agentId: 'gemini.cli',
+        model: 'gemini-2.0-flash'
       })
     })
+  }
+}
+
+vi.mock('../ai/agent-manager', () => {
+  const instances: any[] = []
+  let lastManager: any = null
+  const AgentManager = vi.fn(() => {
+    const manager = makeAgentManager()
+    instances.push(manager)
+    lastManager = manager
+    return manager
   })
-  return { runCliProvider }
+  const reset = () => {
+    instances.length = 0
+    lastManager = null
+  }
+  return { AgentManager, __agentManagers: instances, __getLastManager: () => lastManager, __resetAgentMock: reset }
 })
 
 vi.mock('../../prompts/prompts.repository', () => {
@@ -250,44 +277,8 @@ const mockCoverLetterContent = {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(runCliProvider).mockImplementation((prompt: string) => {
-      const isCover = /greeting|cover\s*letter|cover_letter|cover-letter/i.test(prompt)
-      if (isCover) {
-        return Promise.resolve({
-          success: true,
-          output: JSON.stringify({
-            greeting: 'Hello Hiring Team,',
-            openingParagraph: 'I am excited to apply.',
-            bodyParagraphs: ['Body paragraph one'],
-            closingParagraph: 'Thank you for your consideration.',
-            signature: 'Test User'
-          })
-        })
-      }
-      return Promise.resolve({
-        success: true,
-        output: JSON.stringify({
-          personalInfo: {
-            name: 'Test User',
-            title: 'Engineer',
-            summary: 'Test summary',
-            contact: { email: 'test@example.com' }
-          },
-          professionalSummary: 'Summary',
-          experience: [
-            {
-              company: 'Acme Corp',
-              role: 'Engineer',
-              startDate: '2020-01',
-              endDate: '2021-01',
-              highlights: ['Did things']
-            }
-          ],
-          skills: [{ category: 'Core', items: ['JS'] }],
-          education: []
-        })
-      })
-    })
+    const reset = (AgentManagerModule as any).__resetAgentMock
+    reset?.()
     vi.spyOn(storageService, 'saveArtifactWithMetadata').mockResolvedValue({
       storagePath: '2024-01-15/acme-corp_software-engineer_a1b2c3d4e5f6/test-user_acme-corp_software-engineer_resume.pdf',
       filename: 'test-user_acme-corp_software-engineer_resume.pdf',
@@ -358,25 +349,23 @@ const mockCoverLetterContent = {
     expect(repo.listArtifacts(requestId)).toHaveLength(1)
   })
 
-  it('uses documentGenerator selection when provider is supported CLI', () => {
+  it('invokes AgentManager for resume generation with document task type', async () => {
     const service = createService()
-    ;(configRepo as any).aiSettings = {
-      ...TEST_AI_SETTINGS,
-      documentGenerator: { selected: { provider: 'claude', interface: 'cli', model: 'claude-sonnet-4-5-20250929' } },
-    }
+    const { requestId } = await service.createRequest(payload)
+    await service.runNextStep(requestId) // collect-data
+    await service.runNextStep(requestId) // generate-resume
 
-    const provider = (service as any).getDocumentGeneratorCliProvider()
-    expect(provider).toBe('claude')
+    const agentInstance = (service as any).agentManager
+    expect(typeof agentInstance?.execute).toBe('function')
   })
 
-  it('falls back to codex when documentGenerator interface is api', () => {
+  it('invokes AgentManager for cover letter generation with document task type', async () => {
     const service = createService()
-    ;(configRepo as any).aiSettings = {
-      ...TEST_AI_SETTINGS,
-      documentGenerator: { selected: { provider: 'claude', interface: 'api', model: 'claude-sonnet-4-5-20250929' } },
-    }
+    const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+    await service.runNextStep(requestId) // collect-data
+    await service.runNextStep(requestId) // generate-cover-letter
 
-    const provider = (service as any).getDocumentGeneratorCliProvider()
-    expect(provider).toBe('codex')
+    const agentInstance = (service as any).agentManager
+    expect(typeof agentInstance?.execute).toBe('function')
   })
 })

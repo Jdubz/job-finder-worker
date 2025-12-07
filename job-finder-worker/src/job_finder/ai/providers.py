@@ -9,7 +9,8 @@ import logging
 import os
 import subprocess
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 
 from anthropic import Anthropic
 from openai import OpenAI
@@ -363,9 +364,72 @@ class CodexCLIProvider(AIProvider):
             raise AIProviderError(f"Codex CLI timed out after {self.timeout}s") from exc
 
 
+class ClaudeCLIProvider(AIProvider):
+    """Claude Code CLI provider (CLI interface)."""
+
+    def __init__(self, model: Optional[str] = None, timeout: int = 120):
+        self.model = model or "claude-3-5-sonnet-20241022"
+        self.timeout = timeout
+
+    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
+        cmd = [
+            "claude",
+            "--print",
+            "--output-format",
+            "json",
+            "--model",
+            self.model,
+            "--prompt",
+            prompt,
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AIProviderError(f"Claude CLI timed out after {self.timeout}s") from exc
+        except FileNotFoundError as exc:
+            raise AIProviderError("Claude CLI binary not found on PATH") from exc
+
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+
+        if result.returncode != 0:
+            err_msg = stderr or stdout or f"Claude CLI exited with code {result.returncode}"
+            raise AIProviderError(err_msg)
+
+        if not stdout:
+            raise AIProviderError("Claude CLI returned no output")
+
+        # Parse JSON output when available
+        try:
+            parsed = json.loads(stdout)
+            if isinstance(parsed, dict):
+                if isinstance(parsed.get("text"), str):
+                    return parsed["text"].strip()
+                if isinstance(parsed.get("completion"), str):
+                    return parsed["completion"].strip()
+                output = parsed.get("output")
+                if isinstance(output, dict) and isinstance(output.get("text"), str):
+                    return output["text"].strip()
+            if isinstance(parsed, list):
+                text_parts = [str(p) for p in parsed if isinstance(p, (str, int, float))]
+                if text_parts:
+                    return "\n".join(text_parts).strip()
+        except json.JSONDecodeError:
+            return stdout
+
+        return stdout
+
+
 # Provider dispatch map: (provider, interface) -> provider class
 _PROVIDER_MAP: Dict[tuple, type] = {
     ("codex", "cli"): CodexCLIProvider,
+    ("claude", "cli"): ClaudeCLIProvider,
     ("claude", "api"): ClaudeProvider,
     ("openai", "api"): OpenAIProvider,
     ("gemini", "api"): GeminiProvider,
@@ -386,6 +450,38 @@ _INTERFACE_FALLBACKS: Dict[str, str] = {
 }
 
 
+_CLI_AUTH_CONFIG: Dict[str, Dict[str, Any]] = {
+    "codex": {
+        "env_vars": ["OPENAI_API_KEY"],
+        "file_path": Path.home().joinpath(".codex", "auth.json"),
+        "hint": "OPENAI_API_KEY or ~/.codex/auth.json",
+    },
+    "gemini": {
+        "env_vars": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        "file_path": Path.home().joinpath(".gemini", "settings.json"),
+        "hint": "GEMINI_API_KEY/GOOGLE_API_KEY or ~/.gemini/settings.json",
+    },
+    "claude": {
+        "env_vars": ["CLAUDE_CODE_OAUTH_TOKEN"],
+        "file_path": None,
+        "hint": "CLAUDE_CODE_OAUTH_TOKEN",
+    },
+}
+
+
+def _check_cli_auth(provider: str) -> Tuple[bool, str]:
+    """Check CLI auth for provider returning (available, reason)."""
+    cfg = _CLI_AUTH_CONFIG.get(provider)
+    if not cfg:
+        return True, ""
+
+    env_ok = any(os.getenv(var) for var in cfg["env_vars"])
+    file_path = cfg.get("file_path")
+    file_ok = file_path.exists() if file_path is not None else False
+
+    return env_ok or file_ok, cfg["hint"]
+
+
 def _check_api_key_available(provider: str, interface: str) -> bool:
     """Check if the required API key(s) are available for this provider/interface."""
     key = (provider, interface)
@@ -401,3 +497,17 @@ def _get_missing_api_key_names(provider: str, interface: str) -> list:
     key = (provider, interface)
     required_vars = _API_KEY_REQUIREMENTS.get(key, [])
     return [var for var in required_vars if not os.getenv(var)]
+
+
+def auth_status(provider: str, interface: str) -> Tuple[bool, str]:
+    """Return (is_available, reason)."""
+    if interface == "api":
+        if _check_api_key_available(provider, interface):
+            return True, ""
+        missing = ",".join(_get_missing_api_key_names(provider, interface))
+        return False, f"missing_api_key:{missing}"
+
+    available, hint = _check_cli_auth(provider)
+    if available:
+        return True, ""
+    return False, f"missing_cli_auth:{hint}"

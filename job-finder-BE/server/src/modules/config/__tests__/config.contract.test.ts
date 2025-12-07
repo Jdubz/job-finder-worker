@@ -38,9 +38,29 @@ describe('config contract', () => {
 
   it('gets ai-settings config with shared schema', async () => {
     repo.upsert('ai-settings', {
-      worker: {
-        selected: { provider: 'openai', interface: 'api', model: 'gpt-4o' },
+      agents: {
+        'openai.api': {
+          provider: 'openai',
+          interface: 'api',
+          defaultModel: 'gpt-4o',
+          dailyBudget: 100,
+          dailyUsage: 0,
+          runtimeState: {
+            worker: { enabled: true, reason: null },
+            backend: { enabled: true, reason: null },
+          },
+          authRequirements: {
+            type: 'api',
+            requiredEnv: ['OPENAI_API_KEY'],
+          },
+        },
       },
+      taskFallbacks: {
+        extraction: ['openai.api'],
+        analysis: ['openai.api'],
+        document: ['openai.api'],
+      },
+      modelRates: { 'gpt-4o': 1 },
       documentGenerator: {
         selected: { provider: 'openai', interface: 'api', model: 'gpt-4o' },
       },

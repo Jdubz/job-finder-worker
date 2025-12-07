@@ -286,15 +286,22 @@ export async function seedBaseConfigs(request: APIRequestContext) {
         provider: "gemini",
         interface: "api",
         defaultModel: "gemini-2.0-flash",
-        enabled: true,
-        reason: null,
         dailyBudget: 100,
         dailyUsage: 0,
+        runtimeState: {
+          worker: { enabled: true, reason: null },
+          backend: { enabled: true, reason: null },
+        },
+        authRequirements: {
+          type: "api",
+          requiredEnv: ["GOOGLE_API_KEY"],
+        },
       },
     },
     taskFallbacks: {
       extraction: ["gemini.api"],
       analysis: ["gemini.api"],
+      document: ["gemini.api"],
     },
     modelRates: {
       "gemini-2.0-flash": 0.5,

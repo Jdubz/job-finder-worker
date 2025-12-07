@@ -6,7 +6,9 @@ from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 from job_finder.ai.providers import (
     AIProvider,
     ClaudeProvider,
+    ClaudeCLIProvider,
     CodexCLIProvider,
+    GeminiCLIProvider,
     GeminiProvider,
     OpenAIProvider,
 )
@@ -28,7 +30,9 @@ __all__ = [
     "JobExtractionResult",
     "AIProvider",
     "ClaudeProvider",
+    "ClaudeCLIProvider",
     "CodexCLIProvider",
+    "GeminiCLIProvider",
     "GeminiProvider",
     "OpenAIProvider",
     "SourceDiscovery",

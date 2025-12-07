@@ -13,9 +13,17 @@ const importWithMocks = async () => {
 }
 
 describe('ensureCliProviderHealthy', () => {
-  it('passes through when provider has no health check (claude)', async () => {
+  it('throws for claude when env var missing', async () => {
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+    const { ensureCliProviderHealthy } = await importWithMocks()
+    await expect(ensureCliProviderHealthy('claude')).rejects.toThrow(/CLAUDE_CODE_OAUTH_TOKEN/)
+  })
+
+  it('passes for claude when env var set', async () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'token'
     const { ensureCliProviderHealthy } = await importWithMocks()
     await expect(ensureCliProviderHealthy('claude')).resolves.toBeUndefined()
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN
   })
 
   describe('codex (config-based)', () => {

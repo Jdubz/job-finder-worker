@@ -34,24 +34,31 @@ describe("AISettingsTab", () => {
         provider: "gemini",
         interface: "cli",
         defaultModel: "gemini-2.0-flash",
-        enabled: true,
-        reason: null,
         dailyBudget: 100,
         dailyUsage: 25,
+        runtimeState: {
+          worker: { enabled: true, reason: null },
+          backend: { enabled: true, reason: null },
+        },
+        authRequirements: { type: "cli", requiredEnv: ["GEMINI_API_KEY"] },
       },
       "codex.cli": {
         provider: "codex",
         interface: "cli",
         defaultModel: "gpt-4o",
-        enabled: false,
-        reason: "quota_exhausted: daily budget reached",
         dailyBudget: 50,
         dailyUsage: 50,
+        runtimeState: {
+          worker: { enabled: false, reason: "quota_exhausted: daily budget reached" },
+          backend: { enabled: true, reason: null },
+        },
+        authRequirements: { type: "cli", requiredEnv: ["OPENAI_API_KEY"] },
       },
     },
     taskFallbacks: {
       extraction: ["gemini.cli", "codex.cli"],
       analysis: ["codex.cli"],
+      document: ["codex.cli", "gemini.cli"],
     },
     modelRates: {
       "gpt-4o": 1.0,
@@ -165,7 +172,7 @@ describe("AISettingsTab", () => {
   it("shows clear error button for agents with errors", () => {
     render(<AISettingsTab {...defaultProps} />)
 
-    // The codex.cli agent has a quota_exhausted reason, so Clear button should appear
+    // The codex.cli worker scope has a quota_exhausted reason, so Clear button should appear
     expect(screen.getByText("Clear")).toBeInTheDocument()
   })
 
@@ -296,7 +303,7 @@ describe("AISettingsTab", () => {
     it("shows clear button only for agents with errors", () => {
       render(<AISettingsTab {...defaultProps} />)
 
-      // Only codex.cli has a reason set, so only one Clear button
+      // Only codex.cli has a worker reason set, so only one Clear button
       const clearButtons = screen.getAllByText("Clear")
       expect(clearButtons.length).toBe(1)
     })
@@ -307,11 +314,17 @@ describe("AISettingsTab", () => {
         agents: {
           "gemini.cli": {
             ...mockAISettings.agents["gemini.cli"]!,
-            reason: null,
+            runtimeState: {
+              worker: { enabled: true, reason: null },
+              backend: { enabled: true, reason: null },
+            },
           } as AgentConfig,
           "codex.cli": {
             ...mockAISettings.agents["codex.cli"]!,
-            reason: null,
+            runtimeState: {
+              worker: { enabled: true, reason: null },
+              backend: { enabled: true, reason: null },
+            },
           } as AgentConfig,
         },
       }
@@ -336,8 +349,8 @@ describe("AISettingsTab", () => {
       // Verify the updater function clears reason and enables the agent
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(mockAISettings)
-      expect(result.agents["codex.cli"].enabled).toBe(true)
-      expect(result.agents["codex.cli"].reason).toBeNull()
+      expect(result.agents["codex.cli"].runtimeState.worker.enabled).toBe(true)
+      expect(result.agents["codex.cli"].runtimeState.worker.reason).toBeNull()
     })
 
     it("shows error badge with correct variant for quota exhausted", () => {
@@ -354,7 +367,10 @@ describe("AISettingsTab", () => {
           ...mockAISettings.agents,
           "codex.cli": {
             ...mockAISettings.agents["codex.cli"]!,
-            reason: "error: API connection failed",
+            runtimeState: {
+              worker: { enabled: false, reason: "error: API connection failed" },
+              backend: { enabled: true, reason: null },
+            },
           } as AgentConfig,
         },
       }
@@ -369,9 +385,9 @@ describe("AISettingsTab", () => {
     it("shows remove button for each agent in fallback chain", () => {
       render(<AISettingsTab {...defaultProps} />)
 
-      // extraction has 2 agents, analysis has 1 = 3 total X buttons
+      // Current mock data renders 5 agents across task chains
       const xIcons = screen.getAllByTestId("x-icon")
-      expect(xIcons.length).toBe(3)
+      expect(xIcons.length).toBe(5)
     })
 
     it("removes agent from fallback chain when X is clicked", async () => {
@@ -417,14 +433,15 @@ describe("AISettingsTab", () => {
         taskFallbacks: {
           extraction: [],
           analysis: [],
+          document: [],
         },
       }
 
       render(<AISettingsTab {...defaultProps} aiSettings={settingsWithEmptyChain} />)
 
-      // Should show "No fallback chain configured" for both task types
+      // Should show "No fallback chain configured" for all task types
       const emptyMessages = screen.getAllByText("No fallback chain configured")
-      expect(emptyMessages.length).toBe(2)
+      expect(emptyMessages.length).toBe(3)
     })
   })
 
@@ -435,18 +452,18 @@ describe("AISettingsTab", () => {
 
       render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
 
-      // Find the switches - there should be 2 (one for each agent)
+      // Find the switches - there should be 4 (worker/backend for each agent)
       const switches = screen.getAllByRole("switch")
-      // The second switch is for codex.cli which is disabled and has a reason
-      await user.click(switches[1])
+      // Index 2 corresponds to codex.cli worker scope (disabled with reason)
+      await user.click(switches[2])
 
       expect(setAISettings).toHaveBeenCalledTimes(1)
 
       // Verify the updater clears reason when enabling
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(mockAISettings)
-      expect(result.agents["codex.cli"].enabled).toBe(true)
-      expect(result.agents["codex.cli"].reason).toBeNull()
+      expect(result.agents["codex.cli"].runtimeState.worker.enabled).toBe(true)
+      expect(result.agents["codex.cli"].runtimeState.worker.reason).toBeNull()
     })
 
     it("preserves reason when agent is toggled off", async () => {
@@ -457,8 +474,10 @@ describe("AISettingsTab", () => {
           ...mockAISettings.agents,
           "gemini.cli": {
             ...mockAISettings.agents["gemini.cli"]!,
-            enabled: true,
-            reason: "some_status: previously set",
+            runtimeState: {
+              worker: { enabled: true, reason: "some_status: previously set" },
+              backend: { enabled: true, reason: null },
+            },
           } as AgentConfig,
         },
       }
@@ -468,7 +487,7 @@ describe("AISettingsTab", () => {
 
       render(<AISettingsTab {...defaultProps} aiSettings={settingsWithReason} setAISettings={setAISettings} />)
 
-      // Find the switches and click the first one (gemini.cli which is enabled)
+      // Find the switches and click the first one (gemini.cli worker which is enabled)
       const switches = screen.getAllByRole("switch")
       await user.click(switches[0])
 
@@ -477,9 +496,9 @@ describe("AISettingsTab", () => {
       // Verify the updater sets enabled to false but preserves reason
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(settingsWithReason)
-      expect(result.agents["gemini.cli"].enabled).toBe(false)
+      expect(result.agents["gemini.cli"].runtimeState.worker.enabled).toBe(false)
       // Reason should be preserved when disabling
-      expect(result.agents["gemini.cli"].reason).toBe("some_status: previously set")
+      expect(result.agents["gemini.cli"].runtimeState.worker.reason).toBe("some_status: previously set")
     })
   })
 
