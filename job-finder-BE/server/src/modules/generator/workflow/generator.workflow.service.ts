@@ -596,7 +596,7 @@ export class GeneratorWorkflowService {
     let match: RegExpExecArray | null
     const mentionedCompanies: string[] = []
 
-    while ((match = companyMentionPatterns.exec(content.openingParagraph + ' ' + content.bodyParagraphs.join(' '))) !== null) {
+    while ((match = companyMentionPatterns.exec([content.openingParagraph, ...content.bodyParagraphs, content.closingParagraph].join(' '))) !== null) {
       const company = match[1].trim().toLowerCase()
       if (company && !allowedCompanies.has(company) && company.length > 2) {
         mentionedCompanies.push(match[1].trim())
