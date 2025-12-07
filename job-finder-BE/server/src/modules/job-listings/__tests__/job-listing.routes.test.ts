@@ -113,4 +113,29 @@ describe('job listing routes', () => {
       expect(res.body.data.count).toBe(1)
     })
   })
+
+  describe('POST /job-listings', () => {
+    it('returns 409 when creating a listing with duplicate URL', async () => {
+      const listingData = {
+        url: 'https://example.com/duplicate-job',
+        title: 'Engineer',
+        companyName: 'Company',
+        description: 'Description'
+      }
+
+      // First creation should succeed
+      const firstRes = await request(app).post('/job-listings').send(listingData)
+      expect(firstRes.status).toBe(201)
+
+      // Second creation with same URL should return 409
+      const secondRes = await request(app).post('/job-listings').send({
+        ...listingData,
+        title: 'Different Title'
+      })
+      expect(secondRes.status).toBe(409)
+      expect(secondRes.body.success).toBe(false)
+      expect(secondRes.body.error.code).toBe('RESOURCE_CONFLICT')
+      expect(secondRes.body.error.message).toContain('URL already exists')
+    })
+  })
 })

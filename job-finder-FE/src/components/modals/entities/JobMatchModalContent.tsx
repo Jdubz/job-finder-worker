@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ExternalLink, FileText, Download, Eye, CheckCircle } from "lucide-react"
+import { ExternalLink, FileText, Download, CheckCircle } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { JobMatchWithListing } from "@shared/types"
 import {
@@ -154,8 +154,8 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
   }, [localMatch.id])
 
   return (
-    <div className="flex flex-col gap-3 min-h-0">
-      <div className="flex items-start justify-between gap-3">
+    <div className="flex flex-col gap-3 min-h-0 h-[85vh]">
+      <div className="flex items-start justify-between gap-3 flex-shrink-0">
         <div className="flex-1">
           <p className="text-2xl font-semibold leading-tight">{localMatch.listing.title}</p>
           <p className="text-base text-muted-foreground flex flex-wrap gap-2">
@@ -206,8 +206,8 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
           <TabsTrigger value="description">Description</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="flex-1 min-h-0 mt-2">
-          <ScrollArea className="h-[260px] sm:h-[360px] md:h-[420px] pr-4">
+        <TabsContent value="overview" className="flex-1 min-h-0 mt-2 flex flex-col">
+          <ScrollArea className="flex-1 pr-4">
             <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div className="text-center p-3 bg-secondary rounded-lg">
                 <div className="text-2xl font-bold text-green-600">{localMatch.matchScore}%</div>
@@ -264,48 +264,50 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="skills" className="flex-1 min-h-0 mt-2">
-          <ScrollArea className="h-[260px] sm:h-[360px] md:h-[420px] pr-4 space-y-4">
-            <div>
-              <h3 className="font-semibold mb-2 text-green-600">
-                Matched Skills ({localMatch.matchedSkills?.length || 0})
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {localMatch.matchedSkills && localMatch.matchedSkills.length > 0 ? (
-                  localMatch.matchedSkills.map((skill, idx) => (
-                    <Badge key={idx} className="bg-green-500">
-                      {skill}
-                    </Badge>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No matched skills data available</p>
-                )}
+        <TabsContent value="skills" className="flex-1 min-h-0 mt-2 flex flex-col">
+          <ScrollArea className="flex-1 pr-4">
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold mb-2 text-green-600">
+                  Matched Skills ({localMatch.matchedSkills?.length || 0})
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {localMatch.matchedSkills && localMatch.matchedSkills.length > 0 ? (
+                    localMatch.matchedSkills.map((skill, idx) => (
+                      <Badge key={idx} className="bg-green-500">
+                        {skill}
+                      </Badge>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No matched skills data available</p>
+                  )}
+                </div>
               </div>
-            </div>
 
-            <Separator />
+              <Separator />
 
-            <div>
-              <h3 className="font-semibold mb-2 text-orange-600">
-                Skills to Highlight ({localMatch.missingSkills?.length || 0})
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {localMatch.missingSkills && localMatch.missingSkills.length > 0 ? (
-                  localMatch.missingSkills.map((skill, idx) => (
-                    <Badge key={idx} variant="outline" className="border-orange-500">
-                      {skill}
-                    </Badge>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">You have all required skills!</p>
-                )}
+              <div>
+                <h3 className="font-semibold mb-2 text-orange-600">
+                  Skills to Highlight ({localMatch.missingSkills?.length || 0})
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {localMatch.missingSkills && localMatch.missingSkills.length > 0 ? (
+                    localMatch.missingSkills.map((skill, idx) => (
+                      <Badge key={idx} variant="outline" className="border-orange-500">
+                        {skill}
+                      </Badge>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">You have all required skills!</p>
+                  )}
+                </div>
               </div>
             </div>
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="customization" className="flex-1 min-h-0 mt-2">
-          <ScrollArea className="h-[260px] sm:h-[360px] md:h-[420px] pr-4 space-y-4">
+        <TabsContent value="customization" className="flex-1 min-h-0 mt-2 flex flex-col">
+          <ScrollArea className="flex-1 pr-4">
             {localMatch.customizationRecommendations && localMatch.customizationRecommendations.length > 0 ? (
               <div>
                 <h3 className="font-semibold mb-3">How to Customize Your Application</h3>
@@ -344,8 +346,8 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="description" className="flex-1 min-h-0 mt-2">
-          <ScrollArea className="h-[260px] sm:h-[360px] md:h-[420px] pr-4">
+        <TabsContent value="description" className="flex-1 min-h-0 mt-2 flex flex-col">
+          <ScrollArea className="flex-1 pr-4">
             <div className="prose prose-sm dark:prose-invert max-w-none space-y-4">
               {companyInfo && (
                 <div>
@@ -365,7 +367,7 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
         </TabsContent>
       </Tabs>
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid md:grid-cols-2 gap-4 flex-shrink-0">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
@@ -445,22 +447,20 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
                     <div className="flex items-center gap-1">
                       {doc.resumeUrl && (
                         <Button
-                          variant="ghost"
+                          variant="secondary"
                           size="sm"
                           onClick={() => window.open(getAbsoluteArtifactUrl(doc.resumeUrl) || "#", "_blank")}
-                          title="View Resume"
                         >
-                          <Eye className="h-4 w-4" />
+                          Resume
                         </Button>
                       )}
                       {doc.coverLetterUrl && (
                         <Button
-                          variant="ghost"
+                          variant="secondary"
                           size="sm"
                           onClick={() => window.open(getAbsoluteArtifactUrl(doc.coverLetterUrl) || "#", "_blank")}
-                          title="View Cover Letter"
                         >
-                          <Download className="h-4 w-4" />
+                          Cover Letter
                         </Button>
                       )}
                     </div>

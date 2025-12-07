@@ -84,22 +84,31 @@ export function buildJobListingRouter() {
         return
       }
 
-      const listing = repo.create({
-        url: payload.url,
-        sourceId: payload.sourceId ?? null,
-        companyId: payload.companyId ?? null,
-        title: payload.title,
-        companyName: payload.companyName,
-        location: payload.location ?? null,
-        salaryRange: payload.salaryRange ?? null,
-        description: payload.description,
-        postedDate: payload.postedDate ?? null,
-        status: payload.status ?? 'pending',
-        filterResult: payload.filterResult ?? null,
-        matchScore: null
-      })
-      const response: CreateJobListingResponse = { listing }
-      res.status(201).json(success(response))
+      try {
+        const listing = repo.create({
+          url: payload.url,
+          sourceId: payload.sourceId ?? null,
+          companyId: payload.companyId ?? null,
+          title: payload.title,
+          companyName: payload.companyName,
+          location: payload.location ?? null,
+          salaryRange: payload.salaryRange ?? null,
+          description: payload.description,
+          postedDate: payload.postedDate ?? null,
+          status: payload.status ?? 'pending',
+          filterResult: payload.filterResult ?? null,
+          matchScore: null
+        })
+        const response: CreateJobListingResponse = { listing }
+        res.status(201).json(success(response))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to create listing'
+        if (message.includes('UNIQUE constraint')) {
+          res.status(409).json(failure(ApiErrorCode.RESOURCE_CONFLICT, 'Job listing with this URL already exists'))
+          return
+        }
+        throw err
+      }
     })
   )
 

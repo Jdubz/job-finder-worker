@@ -1,5 +1,6 @@
-import type { QueueItem, QueueSource, QueueStats, QueueStatus, ScrapeConfig } from '@shared/types'
+import { ApiErrorCode, type QueueItem, type QueueSource, type QueueStats, type QueueStatus, type ScrapeConfig } from '@shared/types'
 import { JobQueueRepository, type NewQueueItem, type QueueItemUpdate } from './job-queue.repository'
+import { ApiHttpError } from '../../middleware/api-error'
 
 
 export type SubmitJobInput = {
@@ -84,6 +85,14 @@ export class JobQueueService {
   }
 
   submitCompany(input: SubmitCompanyInput): QueueItem {
+    // Check if there's already an active task for this company
+    if (input.companyId && this.repo.hasActiveCompanyTask(input.companyId)) {
+      throw new ApiHttpError(
+        ApiErrorCode.ALREADY_EXISTS,
+        'A re-analysis task for this company is already in the queue'
+      )
+    }
+
     const now = new Date()
     const item: NewQueueItem = {
       type: 'company',

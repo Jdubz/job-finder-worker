@@ -40,11 +40,16 @@ export function buildPromptsRouter() {
         const prompts = repository.getPrompts()
         const response: GetPromptsResponse = { prompts }
         res.json(success(response))
-      } catch {
-        res.status(404).json(failure(
-          ApiErrorCode.NOT_FOUND,
-          "Prompts configuration 'ai-prompts' not found - must be configured in database"
-        ))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : ''
+        if (message.includes('not found')) {
+          res.status(404).json(failure(
+            ApiErrorCode.NOT_FOUND,
+            "Prompts configuration 'ai-prompts' not found - must be configured in database"
+          ))
+          return
+        }
+        throw err
       }
     })
   )

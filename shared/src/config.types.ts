@@ -318,6 +318,12 @@ export interface ExperienceConfig {
   maxRequired: number
   /** Score adjustment per year user is overqualified (negative) */
   overqualifiedScore: number
+  /**
+   * Only count work experience starting from this date (YYYY-MM-DD or YYYY-MM).
+   * Earlier experience is excluded from total experience calculation.
+   * Useful for career changers to exclude irrelevant prior work.
+   */
+  relevantExperienceStart?: string | null
 }
 
 /** Freshness/age scoring configuration */
