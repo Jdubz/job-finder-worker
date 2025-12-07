@@ -231,17 +231,21 @@ export function isAISettings(value: unknown): value is AISettings {
     if (typeof rate !== "number") return false
   }
 
-  // Validate documentGenerator.selected
-  if (!isObject(settings.documentGenerator)) return false
-  const docGen = settings.documentGenerator as Record<string, unknown>
-  if (!isObject(docGen.selected)) return false
-  const docGenSelected = docGen.selected as Record<string, unknown>
-  if (
-    !isAIProviderType(docGenSelected.provider) ||
-    !isAIInterfaceType(docGenSelected.interface) ||
-    typeof docGenSelected.model !== "string"
-  ) {
-    return false
+  // Validate documentGenerator.selected (optional - deprecated field)
+  if (settings.documentGenerator !== undefined) {
+    if (!isObject(settings.documentGenerator)) return false
+    const docGen = settings.documentGenerator as Record<string, unknown>
+    if (docGen.selected !== undefined) {
+      if (!isObject(docGen.selected)) return false
+      const docGenSelected = docGen.selected as Record<string, unknown>
+      if (
+        !isAIProviderType(docGenSelected.provider) ||
+        !isAIInterfaceType(docGenSelected.interface) ||
+        typeof docGenSelected.model !== "string"
+      ) {
+        return false
+      }
+    }
   }
 
   // Validate options array

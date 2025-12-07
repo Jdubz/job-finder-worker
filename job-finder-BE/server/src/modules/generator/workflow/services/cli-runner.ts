@@ -1,20 +1,33 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { logger } from '../../../../logger'
-import { isAuthenticationError } from './auth-error.util'
+import { isAuthenticationError, isQuotaError } from './auth-error.util'
 
 // Primary provider is 'codex' (OpenAI/ChatGPT)
 // Other providers are included for future support but not currently active
 export type CliProvider = 'codex' | 'gemini' | 'claude'
 
+export type CliErrorType = 'quota' | 'auth' | 'timeout' | 'not_found' | 'other'
+
 interface CliResult {
   success: boolean
   output: string
   error?: string
+  errorType?: CliErrorType
 }
 
 export interface CliRunOptions {
   model?: string
-  allowFallbackToCodex?: boolean
+  /** Timeout in milliseconds (default: 120000 = 2 minutes) */
+  timeoutMs?: number
+}
+
+const DEFAULT_TIMEOUT_MS = 120_000 // 2 minutes
+
+function classifyError(message?: string): CliErrorType {
+  if (!message) return 'other'
+  if (isQuotaError(message)) return 'quota'
+  if (isAuthenticationError(message)) return 'auth'
+  return 'other'
 }
 
 function sanitizeCliError(raw?: string): string {
@@ -22,6 +35,9 @@ function sanitizeCliError(raw?: string): string {
   const text = raw.toString()
   if (isAuthenticationError(text)) {
     return 'AI provider authentication required. Please log in and retry.'
+  }
+  if (isQuotaError(text)) {
+    return 'AI provider rate limit or quota exceeded. Please try again later.'
   }
   // Strip long prompts: keep content before separator lines or first 400 chars
   const separators = ['--------', 'INPUT DATA', 'user\n']
@@ -66,36 +82,32 @@ function buildCommand(provider: CliProvider, prompt: string, model?: string): { 
   }
 }
 
+/**
+ * Execute a CLI provider command.
+ *
+ * Note: Fallback logic is handled by AgentManager at a higher level.
+ * This function only executes a single provider.
+ */
 export async function runCliProvider(
   prompt: string,
-  preferred: CliProvider = 'codex',
+  provider: CliProvider,
   options: CliRunOptions = {}
 ): Promise<CliResult> {
-  const providers: CliProvider[] =
-    options.allowFallbackToCodex === false || preferred === 'codex' ? [preferred] : [preferred, 'codex']
-
-  let lastError: string | undefined
-
-  for (const provider of providers) {
-    const result = await executeCommand(provider, prompt, options.model)
-    if (result.success) {
-      return result
-    }
-    lastError = result.error || lastError
-  }
-
-  // If all providers fail, log a warning about the current limitations
-  logger.warn({ lastError }, 'Document generation failed. Only OpenAI/Codex provider is currently supported.')
-  return { success: false, output: '', error: lastError || 'Provider failed. Currently only OpenAI/Codex is supported.' }
+  return executeCommand(provider, prompt, options.model, options.timeoutMs)
 }
 
-async function executeCommand(provider: CliProvider, prompt: string, model?: string): Promise<CliResult> {
+async function executeCommand(
+  provider: CliProvider,
+  prompt: string,
+  model?: string,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
+): Promise<CliResult> {
   return new Promise((resolve) => {
     const command = buildCommand(provider, prompt, model)
 
-    logger.info({ provider, cmd: command.cmd }, 'Executing AI generation command')
+    logger.info({ provider, cmd: command.cmd, timeoutMs }, 'Executing AI generation command')
 
-    const child = spawn(command.cmd, command.args, {
+    const child: ChildProcess = spawn(command.cmd, command.args, {
       env: process.env,
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe']
@@ -104,30 +116,57 @@ async function executeCommand(provider: CliProvider, prompt: string, model?: str
     let stdout = ''
     let stderr = ''
     let failed = false
+    let timedOut = false
 
-    child.stdout.on('data', (data) => {
+    // Set up timeout
+    const timeoutId = setTimeout(() => {
+      if (!failed) {
+        timedOut = true
+        failed = true
+        logger.warn({ provider, timeoutMs }, 'CLI process timed out, killing process')
+        child.kill('SIGTERM')
+        // Give it a moment to terminate gracefully, then force kill
+        setTimeout(() => {
+          if (!child.killed) {
+            child.kill('SIGKILL')
+          }
+        }, 5000)
+        resolve({
+          success: false,
+          output: stdout,
+          error: `AI generation timed out after ${timeoutMs / 1000} seconds`,
+          errorType: 'timeout'
+        })
+      }
+    }, timeoutMs)
+
+    child.stdout?.on('data', (data) => {
       stdout += data.toString()
     })
 
-    child.stderr.on('data', (data) => {
+    child.stderr?.on('data', (data) => {
       stderr += data.toString()
     })
 
     child.on('error', (error: NodeJS.ErrnoException) => {
+      clearTimeout(timeoutId)
+      if (failed) return
       failed = true
       logger.warn({ provider, error }, 'CLI process error')
       // Check if the command was not found
       if (error.code === 'ENOENT') {
         const errorMsg = `AI CLI tool '${command.cmd}' not found. Please ensure the ${provider} CLI is installed and available in PATH.`
         logger.error(errorMsg)
-        resolve({ success: false, output: '', error: errorMsg })
+        resolve({ success: false, output: '', error: errorMsg, errorType: 'not_found' })
       } else {
-        resolve({ success: false, output: stdout, error: error.message || 'Unknown error' })
+        const errorType = classifyError(error.message)
+        resolve({ success: false, output: stdout, error: error.message || 'Unknown error', errorType })
       }
     })
 
     child.on('close', (code) => {
-      if (failed) {
+      clearTimeout(timeoutId)
+      if (failed || timedOut) {
         return
       }
       if (code === 0) {
@@ -144,8 +183,15 @@ async function executeCommand(provider: CliProvider, prompt: string, model?: str
         resolve({ success: true, output: stdout })
         return
       } catch {
-        logger.warn({ provider, code, stderr }, 'CLI provider failed')
-        resolve({ success: false, output: stdout, error: sanitizeCliError(stderr || stdout) })
+        const combinedOutput = stderr || stdout
+        const errorType = classifyError(combinedOutput)
+        logger.warn({ provider, code, stderr, errorType }, 'CLI provider failed')
+        resolve({
+          success: false,
+          output: stdout,
+          error: sanitizeCliError(combinedOutput),
+          errorType
+        })
       }
     })
   })
