@@ -21,9 +21,6 @@ def make_ai_settings(
         "agents": agents or {},
         "taskFallbacks": task_fallbacks or {"extraction": [], "analysis": [], "document": []},
         "modelRates": model_rates or {"gpt-4o": 1.0, "gemini-2.0-flash": 0.5},
-        "documentGenerator": {
-            "selected": {"provider": "codex", "interface": "cli", "model": "gpt-4o"}
-        },
         "options": [],
     }
 

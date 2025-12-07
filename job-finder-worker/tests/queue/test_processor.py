@@ -49,13 +49,6 @@ def mock_managers():
             "document": ["gemini.cli"],
         },
         "modelRates": {"gemini-2.0-flash": 0.5},
-        "documentGenerator": {
-            "selected": {
-                "provider": "gemini",
-                "interface": "cli",
-                "model": "gemini-2.0-flash",
-            }
-        },
     }
     config_loader.get_prefilter_policy.return_value = {
         "title": {"requiredKeywords": [], "excludedKeywords": []},

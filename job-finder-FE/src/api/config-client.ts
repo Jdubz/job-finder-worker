@@ -56,17 +56,6 @@ export class ConfigClient extends BaseApiClient {
       modelRates: settings.modelRates
         ? { ...existing.modelRates, ...settings.modelRates }
         : existing.modelRates,
-      // Merge documentGenerator if provided
-      documentGenerator: settings.documentGenerator
-        ? {
-            ...existing.documentGenerator,
-            ...settings.documentGenerator,
-            selected: {
-              ...existing.documentGenerator?.selected,
-              ...settings.documentGenerator?.selected,
-            },
-          }
-        : existing.documentGenerator,
     })
   }
 

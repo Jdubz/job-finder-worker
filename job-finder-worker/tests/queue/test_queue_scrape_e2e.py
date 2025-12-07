@@ -248,13 +248,6 @@ def test_queue_scrape_end_to_end(temp_db):
                             "document": ["gemini.cli"],
                         },
                         "modelRates": {"gemini-2.0-flash": 0.5},
-                        "documentGenerator": {
-                            "selected": {
-                                "provider": "gemini",
-                                "interface": "cli",
-                                "model": "gemini-2.0-flash",
-                            }
-                        },
                         "options": [],
                     }
                 ),

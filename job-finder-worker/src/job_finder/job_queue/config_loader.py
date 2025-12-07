@@ -130,7 +130,6 @@ class ConfigLoader:
         - agents: Dict of agent configs keyed by agent ID (e.g., "gemini.cli")
         - taskFallbacks: Dict of fallback chains per task type
         - modelRates: Dict of model cost rates
-        - documentGenerator: Document generator selection
         - options: Provider availability metadata
         """
         settings = self._get_config("ai-settings")
@@ -139,7 +138,7 @@ class ConfigLoader:
             raise InitializationError("ai-settings must be an object")
 
         # Validate required top-level keys
-        required_keys = ["agents", "taskFallbacks", "modelRates", "documentGenerator", "options"]
+        required_keys = ["agents", "taskFallbacks", "modelRates", "options"]
         missing = [k for k in required_keys if k not in settings]
         if missing:
             raise InitializationError(
@@ -247,11 +246,6 @@ class ConfigLoader:
         model_rates = settings.get("modelRates")
         if not isinstance(model_rates, dict):
             raise InitializationError("ai-settings.modelRates must be an object")
-
-        # Validate documentGenerator structure
-        doc_gen = settings.get("documentGenerator")
-        if not isinstance(doc_gen, dict) or not isinstance(doc_gen.get("selected"), dict):
-            raise InitializationError("ai-settings.documentGenerator.selected must be an object")
 
         return settings
 

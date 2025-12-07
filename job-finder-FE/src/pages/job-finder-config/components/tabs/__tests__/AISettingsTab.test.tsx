@@ -64,9 +64,6 @@ describe("AISettingsTab", () => {
       "gpt-4o": 1.0,
       "gemini-2.0-flash": 0.3,
     },
-    documentGenerator: {
-      selected: { provider: "openai", interface: "api", model: "gpt-4o" },
-    },
     options: [
       {
         value: "codex",
@@ -132,7 +129,7 @@ describe("AISettingsTab", () => {
   it("renders document generator section", () => {
     render(<AISettingsTab {...defaultProps} />)
 
-    expect(screen.getByText("Document Generator")).toBeInTheDocument()
+    expect(screen.getByText("AI Agent Configuration")).toBeInTheDocument()
   })
 
   it("calls save and reset handlers", async () => {
@@ -221,8 +218,6 @@ describe("AISettingsTab", () => {
 
       // Find the model dropdown trigger for gemini agent (first one showing gemini-2.0-flash)
       const modelTriggers = screen.getAllByRole("combobox")
-      // The model dropdowns come after the document generator dropdowns
-      // Find the one that shows gemini-2.0-flash
       const geminiModelTrigger = modelTriggers.find(
         (trigger) => trigger.textContent === "gemini-2.0-flash"
       )

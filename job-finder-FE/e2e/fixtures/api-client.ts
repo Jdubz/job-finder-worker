@@ -307,7 +307,6 @@ export async function seedBaseConfigs(request: APIRequestContext) {
       "gemini-2.0-flash": 0.5,
       "gemini-1.5-pro": 1.0,
     },
-    documentGenerator: { selected: { provider: "gemini", interface: "api", model: "gemini-2.0-flash" } },
     options: [
       {
         value: "gemini",

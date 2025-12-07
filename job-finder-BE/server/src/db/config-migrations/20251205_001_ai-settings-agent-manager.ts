@@ -263,7 +263,6 @@ export function down(db: Database.Database): void {
           },
         }
       : undefined,
-    documentGenerator: parsed.documentGenerator,
     options: parsed.options,
   }
 
