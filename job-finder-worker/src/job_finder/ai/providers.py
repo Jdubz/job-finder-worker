@@ -56,13 +56,13 @@ class AIProvider(ABC):
 class ClaudeProvider(AIProvider):
     """Anthropic Claude provider (API interface)."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-5-20250929"):
+    def __init__(self, model: str, api_key: Optional[str] = None):
         """
         Initialize Claude provider.
 
         Args:
+            model: Model identifier (required - provided by AgentManager from config).
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var).
-            model: Model identifier.
         """
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
@@ -90,13 +90,13 @@ class ClaudeProvider(AIProvider):
 class OpenAIProvider(AIProvider):
     """OpenAI GPT provider (API interface)."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o"):
+    def __init__(self, model: str, api_key: Optional[str] = None):
         """
         Initialize OpenAI provider.
 
         Args:
+            model: Model identifier (required - provided by AgentManager from config).
             api_key: OpenAI API key (defaults to OPENAI_API_KEY env var).
-            model: Model identifier.
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
@@ -124,13 +124,13 @@ class OpenAIProvider(AIProvider):
 class GeminiProvider(AIProvider):
     """Google Gemini provider (API interface)."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash"):
+    def __init__(self, model: str, api_key: Optional[str] = None):
         """
         Initialize Gemini provider.
 
         Args:
+            model: Model identifier (required - provided by AgentManager from config).
             api_key: Google API key (defaults to GOOGLE_API_KEY or GEMINI_API_KEY env var).
-            model: Model identifier.
         """
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
@@ -176,12 +176,13 @@ class GeminiCLIProvider(AIProvider):
     - Working directory set to /tmp to minimize context token usage
     """
 
-    def __init__(self, model: Optional[str] = None, timeout: int = 120):
+    def __init__(self, model: str, timeout: int = 120):
         """
         Initialize Gemini CLI provider.
 
         Args:
-            model: Model identifier (currently ignored - CLI uses its own model selection).
+            model: Model identifier (required - provided by AgentManager from config).
+                   Note: Currently stored but not used by CLI - reserved for future support.
             timeout: Command timeout in seconds (default 120s for longer responses).
         """
         self.model = model  # Reserved for future use when CLI supports model selection
@@ -274,7 +275,14 @@ class CodexCLIProvider(AIProvider):
     model is rejected, we automatically retry using the CLI default model.
     """
 
-    def __init__(self, model: Optional[str] = "gpt-5-codex", timeout: int = 60):
+    def __init__(self, model: str, timeout: int = 60):
+        """
+        Initialize Codex CLI provider.
+
+        Args:
+            model: Model identifier (required - provided by AgentManager from config).
+            timeout: Command timeout in seconds (default 60s).
+        """
         self.model = model
         self.timeout = timeout
 
@@ -367,8 +375,15 @@ class CodexCLIProvider(AIProvider):
 class ClaudeCLIProvider(AIProvider):
     """Claude Code CLI provider (CLI interface)."""
 
-    def __init__(self, model: Optional[str] = None, timeout: int = 120):
-        self.model = model or "claude-3-5-sonnet-20241022"
+    def __init__(self, model: str, timeout: int = 120):
+        """
+        Initialize Claude CLI provider.
+
+        Args:
+            model: Model identifier (required - provided by AgentManager from config).
+            timeout: Command timeout in seconds (default 120s).
+        """
+        self.model = model
         self.timeout = timeout
 
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:

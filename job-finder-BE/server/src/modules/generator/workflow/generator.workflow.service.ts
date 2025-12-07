@@ -550,10 +550,84 @@ export class GeneratorWorkflowService {
 
     try {
       const parsed = JSON.parse(agentResult.output) as CoverLetterContent
+
+      // Validate cover letter content against source data to catch potential hallucinations
+      this.warnOnPotentialHallucinations(parsed, contentItems, payload)
+
       return parsed
     } catch (error) {
       this.log.error({ err: error, output: agentResult.output.slice(0, 500) }, 'Failed to parse AI cover letter output as JSON')
       throw new Error('AI returned invalid JSON for cover letter content', { cause: error })
+    }
+  }
+
+  /**
+   * Check cover letter content for potential hallucinations.
+   * Logs warnings but doesn't reject content (cover letters need more creative freedom than resumes).
+   */
+  private warnOnPotentialHallucinations(
+    content: CoverLetterContent,
+    contentItems: Array<{ title?: string | null; skills?: string[] | null; aiContext?: string | null }>,
+    payload: GenerateDocumentPayload
+  ): void {
+    // Build set of allowed company names (target company + work experience companies)
+    const workItems = contentItems.filter((item) => item.aiContext === 'work')
+    const allowedCompanies = new Set<string>([
+      payload.job.company.toLowerCase().trim(),
+      ...workItems.map((item) => (item.title || '').toLowerCase().trim()).filter(Boolean)
+    ])
+
+    // Build set of allowed skills from content items
+    const allowedSkills = new Set<string>(
+      contentItems.flatMap((item) => (item.skills || []).map((s) => s.toLowerCase().trim()))
+    )
+
+    // Combine all text content for analysis
+    const allText = [
+      content.openingParagraph,
+      ...content.bodyParagraphs,
+      content.closingParagraph
+    ].join(' ').toLowerCase()
+
+    // Check for company name mentions that aren't in allowed list
+    // This is a heuristic - we look for patterns like "at [Company]" or "with [Company]"
+    const companyMentionPatterns = /(?:at|with|for|joined|worked at)\s+([a-z][a-z0-9\s&]+?)(?:\s+(?:as|where|and|,|\.|$))/gi
+    let match: RegExpExecArray | null
+    const mentionedCompanies: string[] = []
+
+    while ((match = companyMentionPatterns.exec([content.openingParagraph, ...content.bodyParagraphs, content.closingParagraph].join(' '))) !== null) {
+      const company = match[1].trim().toLowerCase()
+      if (company && !allowedCompanies.has(company) && company.length > 2) {
+        mentionedCompanies.push(match[1].trim())
+      }
+    }
+
+    if (mentionedCompanies.length > 0) {
+      this.log.warn(
+        { mentionedCompanies, allowedCompanies: Array.from(allowedCompanies) },
+        'Cover letter may mention companies not in source data (potential hallucination)'
+      )
+    }
+
+    // Check for technology/skill mentions that aren't in allowed list
+    // Only log if we have skills to compare against
+    if (allowedSkills.size > 0) {
+      const commonTechTerms = [
+        'javascript', 'typescript', 'python', 'java', 'react', 'node', 'aws', 'docker',
+        'kubernetes', 'sql', 'mongodb', 'postgresql', 'redis', 'graphql', 'rest',
+        'microservices', 'ci/cd', 'agile', 'scrum', 'git', 'linux', 'cloud'
+      ]
+
+      const mentionedUnknownSkills = commonTechTerms.filter(
+        (term) => allText.includes(term) && !allowedSkills.has(term)
+      )
+
+      if (mentionedUnknownSkills.length > 0) {
+        this.log.warn(
+          { mentionedUnknownSkills },
+          'Cover letter mentions technologies not in source content items (potential hallucination)'
+        )
+      }
     }
   }
 }

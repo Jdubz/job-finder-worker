@@ -36,16 +36,33 @@ type NewAISettings = {
   agents: Partial<Record<AgentId, AgentConfig>>
   taskFallbacks: Record<AgentTaskType, AgentId[]>
   modelRates: Record<string, number>
+  /** @deprecated - kept for backwards compatibility with frontend */
+  documentGenerator?: {
+    selected?: { provider: AIProviderType; interface: AIInterfaceType; model: string }
+  }
   options: unknown[]
 }
 
+/**
+ * Model rates for budget tracking.
+ * Uses -latest aliases where available to support organic model improvements.
+ * Rates are relative costs per request (1.0 = baseline).
+ */
 const DEFAULT_MODEL_RATES: Record<string, number> = {
+  // OpenAI/Codex - no -latest aliases available
   'gpt-4o': 1.0,
   'gpt-4o-mini': 0.5,
   'gpt-4': 1.5,
+  // Claude - use -latest aliases for organic improvements
+  'claude-sonnet-4-5-latest': 1.0,
+  'claude-sonnet-4-latest': 1.0,
+  'claude-opus-4-latest': 1.5,
+  'claude-haiku-3-5-latest': 0.3,
+  // Legacy Claude models (for backwards compatibility)
   'claude-3-opus': 1.5,
   'claude-3-sonnet': 1.0,
   'claude-3-haiku': 0.3,
+  // Gemini - version numbers are standard
   'gemini-2.0-flash': 0.5,
   'gemini-1.5-pro': 1.0,
   'gemini-1.5-flash': 0.3,
@@ -141,6 +158,7 @@ function migrateToNew(old: OldAISettings): NewAISettings {
       document: documentFallbacks.length ? documentFallbacks : extractionFallbacks,
     },
     modelRates: DEFAULT_MODEL_RATES,
+    // documentGenerator is deprecated - provider selection uses taskFallbacks['document']
     options: old.options ?? [],
   }
 }
@@ -181,7 +199,7 @@ export function up(db: Database.Database): void {
         'claude.cli': {
           provider: 'claude',
           interface: 'cli',
-          defaultModel: 'claude-sonnet-4-20250514',
+          defaultModel: 'claude-sonnet-4-5-latest',
           dailyBudget: 50,
           dailyUsage: 0,
           runtimeState: {
@@ -197,6 +215,7 @@ export function up(db: Database.Database): void {
         document: ['codex.cli', 'claude.cli', 'gemini.cli'],
       },
       modelRates: DEFAULT_MODEL_RATES,
+      // documentGenerator is deprecated - provider selection uses taskFallbacks['document']
       options: [],
     }
 
