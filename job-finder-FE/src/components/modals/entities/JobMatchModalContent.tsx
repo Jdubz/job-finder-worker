@@ -446,22 +446,22 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
                     </div>
                     <div className="flex items-center gap-1">
                       {doc.resumeUrl && (
-                        <Badge
+                        <Button
                           variant="secondary"
-                          className="cursor-pointer hover:bg-secondary/80"
+                          size="sm"
                           onClick={() => window.open(getAbsoluteArtifactUrl(doc.resumeUrl) || "#", "_blank")}
                         >
                           Resume
-                        </Badge>
+                        </Button>
                       )}
                       {doc.coverLetterUrl && (
-                        <Badge
+                        <Button
                           variant="secondary"
-                          className="cursor-pointer hover:bg-secondary/80"
+                          size="sm"
                           onClick={() => window.open(getAbsoluteArtifactUrl(doc.coverLetterUrl) || "#", "_blank")}
                         >
                           Cover Letter
-                        </Badge>
+                        </Button>
                       )}
                     </div>
                   </div>
