@@ -181,15 +181,20 @@ class AgentManager:
                 logger.info(f"Skipping agent {agent_id}: {auth_reason}")
                 continue
 
-            # Determine model first so we can calculate cost for budget check
-            model = model_override or agent_config.get("defaultModel")
-            if model is None:
+            # Determine model - "default" or empty means CLI uses its own default
+            raw_model = model_override or agent_config.get("defaultModel") or None
+            model = None if raw_model in (None, "", "default") else raw_model
+            interface_type = agent_config.get("interface")
+
+            # API providers require explicit model; CLI providers can use their default
+            if model is None and interface_type == "api":
                 raise NoAgentsAvailableError(
-                    f"Agent {agent_id} missing defaultModel",
+                    f"Agent {agent_id} (API) requires defaultModel to be set (not 'default')",
                     task_type=task_type,
                     tried_agents=tried_agents,
                 )
-            cost = model_rates.get(model, 1.0)
+            # Cost defaults to 1.0 when model is None (CLI using its default)
+            cost = model_rates.get(model, 1.0) if model else 1.0
 
             # Budget enforcement - check before calling (using model cost)
             if "dailyUsage" not in agent_config or "dailyBudget" not in agent_config:
