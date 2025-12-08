@@ -101,7 +101,7 @@ export class AgentManager {
 
       // Determine model - "default" or empty means CLI uses its own default
       const rawModel = modelOverride ?? agent.defaultModel
-      const model = rawModel && rawModel !== 'default' ? rawModel : undefined
+      const model = (!rawModel || rawModel === 'default') ? undefined : rawModel
       // Cost defaults to 1.0 when model is undefined (CLI using its default)
       const cost = model ? (aiSettings.modelRates?.[model] ?? 1) : 1
       if (agent.dailyUsage + cost > agent.dailyBudget) {
