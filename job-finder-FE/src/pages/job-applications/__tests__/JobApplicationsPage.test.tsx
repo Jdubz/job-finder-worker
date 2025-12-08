@@ -191,6 +191,11 @@ describe("JobApplicationsPage", () => {
     fireEvent.click(statusSelect)
     fireEvent.click(screen.getByRole("option", { name: /Applied/i }))
 
+    await waitFor(() => {
+      const lastCall = mocks.subscribeToMatches.mock.calls.at(-1)
+      expect(lastCall?.[1]).toMatchObject({ status: "applied" })
+    })
+
     const rows = screen.getAllByRole("row").slice(1)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toHaveTextContent("C Engineer")

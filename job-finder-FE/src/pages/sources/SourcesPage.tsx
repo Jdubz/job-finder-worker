@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react"
 import { formatDistanceToNowStrict } from "date-fns"
+import { normalizeDateValue } from "@/utils/dateFormat"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useEntityModal } from "@/contexts/EntityModalContext"
@@ -64,27 +65,8 @@ const sourceTypeLabels: Record<string, string> = {
   lever: "Lever",
 }
 
-const toDate = (value: unknown): Date | null => {
-  if (!value) return null
-  if (value instanceof Date) return value
-  if (typeof value === "string" || typeof value === "number") {
-    const d = new Date(value)
-    return Number.isNaN(d.getTime()) ? null : d
-  }
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "toDate" in value &&
-    typeof (value as { toDate: () => Date }).toDate === "function"
-  ) {
-    const d = (value as { toDate: () => Date }).toDate()
-    return Number.isNaN(d.getTime()) ? null : d
-  }
-  return null
-}
-
 const formatRelativeTime = (value: unknown): string => {
-  const date = toDate(value)
+  const date = normalizeDateValue(value)
   if (!date) return "—"
   return formatDistanceToNowStrict(date, { addSuffix: true })
 }

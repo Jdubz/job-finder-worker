@@ -10,7 +10,7 @@
  * - Authentication requirements
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { SourcesPage } from "../SourcesPage"
@@ -33,6 +33,7 @@ describe("SourcesPage", () => {
   }
 
   let mockSources: JobSource[]
+  let dateNowSpy: ReturnType<typeof vi.spyOn>
 
   const mockSubmitSourceDiscovery = vi.fn()
   const mockDeleteSource = vi.fn()
@@ -48,44 +49,44 @@ describe("SourcesPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-
-    const now = new Date()
+    const now = new Date("2024-01-02T12:00:00Z")
+    dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(now.getTime())
     mockSources = [
       {
         id: "source-1",
         name: "Acme Greenhouse",
         sourceType: "greenhouse",
-      status: "active",
-      aggregatorDomain: null,
-      companyId: "company-1",
-      configJson: { url: "https://boards.greenhouse.io/acme", type: "rss", fields: {} },
-      lastScrapedAt: new Date(now.getTime() - 6 * 60 * 60 * 1000),
-      createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
-      updatedAt: new Date(now.getTime() - 7 * 60 * 60 * 1000),
+        status: "active",
+        aggregatorDomain: null,
+        companyId: "company-1",
+        configJson: { url: "https://boards.greenhouse.io/acme", type: "rss", fields: {} },
+        lastScrapedAt: new Date(now.getTime() - 6 * 60 * 60 * 1000),
+        createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(now.getTime() - 7 * 60 * 60 * 1000),
       },
       {
         id: "source-2",
         name: "TechCorp RSS",
         sourceType: "rss",
-      status: "active",
-      aggregatorDomain: null,
-      companyId: "company-2",
-      configJson: { url: "https://careers.techcorp.io/jobs.rss", type: "rss", fields: {} },
-      lastScrapedAt: new Date(now.getTime() - 8 * 60 * 60 * 1000),
-      createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
-      updatedAt: new Date(now.getTime() - 8 * 60 * 60 * 1000),
+        status: "active",
+        aggregatorDomain: null,
+        companyId: "company-2",
+        configJson: { url: "https://careers.techcorp.io/jobs.rss", type: "rss", fields: {} },
+        lastScrapedAt: new Date(now.getTime() - 8 * 60 * 60 * 1000),
+        createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(now.getTime() - 8 * 60 * 60 * 1000),
       },
       {
         id: "source-3",
         name: "Remotive Jobs",
         sourceType: "api",
-      status: "paused",
-      aggregatorDomain: "remotive.com",
-      companyId: null,
-      configJson: { url: "https://remotive.com/api/remote-jobs", type: "rss", fields: {} },
-      lastScrapedAt: null,
-      createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
-      updatedAt: new Date(now.getTime() - 8 * 60 * 60 * 1000),
+        status: "paused",
+        aggregatorDomain: "remotive.com",
+        companyId: null,
+        configJson: { url: "https://remotive.com/api/remote-jobs", type: "rss", fields: {} },
+        lastScrapedAt: null,
+        createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(now.getTime() - 8 * 60 * 60 * 1000),
       },
     ]
 
@@ -124,7 +125,7 @@ describe("SourcesPage", () => {
   })
 
   afterEach(() => {
-    vi.useRealTimers()
+    dateNowSpy?.mockRestore()
   })
 
   describe("Initial Rendering", () => {
