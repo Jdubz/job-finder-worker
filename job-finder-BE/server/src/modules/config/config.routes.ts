@@ -27,6 +27,7 @@ import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { env } from '../../config/env'
 import { logger } from '../../logger'
+import { ApiHttpError } from '../../middleware/api-error'
 
 const updateSchema = z.object({
   payload: z.record(z.unknown())
@@ -97,42 +98,10 @@ function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>):
   return Object.fromEntries(entries) as T
 }
 
-function defaultDocumentGenerator(
-  payload: Partial<AISettings> & Record<string, unknown>
-): { documentGenerator?: AISettings['documentGenerator'] } {
-  const agents = (payload as any).agents ?? {}
-  const firstAgent = Object.keys(agents)[0]
-  if (!firstAgent) return {}
-
-  const [provider, iface] = firstAgent.split('.')
-  const model = (agents as any)[firstAgent]?.defaultModel ?? 'gpt-4o'
-
-  return {
-    documentGenerator: {
-      selected: {
-        provider: provider as AISettings['documentGenerator'] extends { selected: infer S }
-          ? S extends { provider: infer P }
-            ? P
-            : never
-          : never,
-        interface: (iface ?? 'api') as AISettings['documentGenerator'] extends { selected: infer S }
-          ? S extends { interface: infer I }
-            ? I
-            : never
-          : never,
-        model
-      }
-    }
-  }
-}
-
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
   switch (id) {
     case 'ai-settings':
-      return normalizeKeys<AISettings>({
-        ...defaultDocumentGenerator(payload),
-        ...payload,
-      })
+      return normalizeKeys<AISettings>(payload)
     case 'match-policy':
       return normalizeKeys<MatchPolicy>(payload)
     case 'prefilter-policy':
@@ -214,13 +183,17 @@ export function buildConfigRouter() {
       // For ai-settings, populate provider/interface availability dynamically
       if (id === 'ai-settings') {
         const aiPayload = entry.payload as AISettings
-        const docGen = aiPayload.documentGenerator ?? defaultDocumentGenerator(aiPayload as any).documentGenerator
+        if (!aiPayload.documentGenerator?.selected) {
+          throw new ApiHttpError(ApiErrorCode.INTERNAL_ERROR, 'ai-settings is missing documentGenerator.selected', {
+            status: 500,
+            details: { id, reason: 'documentGenerator.selected required' }
+          })
+        }
         const response: GetConfigEntryResponse = {
           config: {
             ...entry,
             payload: {
               ...aiPayload,
-              documentGenerator: docGen,
               options: buildProviderOptionsWithAvailability(aiPayload.options),
             },
           },
