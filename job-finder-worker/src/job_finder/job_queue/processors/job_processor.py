@@ -114,13 +114,13 @@ class JobProcessor(BaseProcessor):
         self.agent_manager = AgentManager(ctx.config_loader)
         self.extractor = JobExtractor(self.agent_manager)
 
-        # Initialize scrape runner with title filter for pre-filtering
+        # Initialize scrape runner with config_loader so it creates both title_filter and prefilter
         self.scrape_runner = ScrapeRunner(
             queue_manager=ctx.queue_manager,
             job_listing_storage=ctx.job_listing_storage,
             companies_manager=ctx.companies_manager,
             sources_manager=ctx.sources_manager,
-            title_filter=self.title_filter,
+            config_loader=ctx.config_loader,
         )
 
         # Initialize scraper intake with filters for deduplication
