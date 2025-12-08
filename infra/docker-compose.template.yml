@@ -35,7 +35,7 @@ services:
       TZ: America/Los_Angeles
       LOG_DIR: /logs
       WORKER_MAINTENANCE_URL: http://worker:5555/maintenance
-      # CORS_ALLOWED_ORIGINS: "https://your-frontend-domain.com,https://another-domain.com"
+      CORS_ALLOWED_ORIGINS: https://job-finder.joshwentworth.com
     volumes:
       # Update these paths to match your production server
       - type: bind
