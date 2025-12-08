@@ -4,7 +4,8 @@
 
 set -euo pipefail
 
-SOURCE="${HOME}/.codex"
+# Allow overriding with CODEX_REFRESH_HOME; default to dedicated prod path.
+SOURCE="${CODEX_REFRESH_HOME:-/srv/job-finder/codex-refresh/.codex}"
 TARGETS=(
   "${CODEX_SYNC_ROOT:-/srv/job-finder}/codex/.codex"
   "${CODEX_SYNC_ROOT:-/srv/job-finder}/codex-seed/.codex"

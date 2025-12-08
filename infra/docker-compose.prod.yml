@@ -45,12 +45,12 @@ services:
       - type: bind
         source: /srv/job-finder/logs
         target: /logs
-      # Codex: seed (ro) + named volume (rw) for runtime state
+      # Codex: shared volume + seed (ro) for reseed on start
       - type: bind
         source: /srv/job-finder/codex-seed/.codex
         target: /codex-seed
         read_only: true
-      - codex-home-api:/home/node/.codex
+      - codex-home-shared:/home/node/.codex
       # Gemini: seed (ro) + named volume (rw) for runtime state
       - type: bind
         source: /srv/job-finder/gemini-seed/.gemini
@@ -100,12 +100,12 @@ services:
       - type: bind
         source: /srv/job-finder/config
         target: /app/config
-      # Codex: seed (ro) + named volume (rw) for runtime state
+      # Codex: shared volume + seed (ro) for reseed on start
       - type: bind
         source: /srv/job-finder/codex-seed/.codex
         target: /codex-seed
         read_only: true
-      - codex-home-worker:/home/node/.codex
+      - codex-home-shared:/home/node/.codex
       # Gemini: seed (ro) + named volume (rw) for runtime state
       - type: bind
         source: /srv/job-finder/gemini-seed/.gemini
@@ -164,7 +164,6 @@ networks:
     driver: bridge
 
 volumes:
-  codex-home-worker:
-  codex-home-api:
+  codex-home-shared:
   gemini-home-worker:
   gemini-home-api:

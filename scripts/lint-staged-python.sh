@@ -36,7 +36,12 @@ pushd "$WORKER_DIR" >/dev/null
 FILE_LIST=()
 while IFS= read -r f; do
   # strip leading path component
-  FILE_LIST+=("${f#job-finder-worker/}")
+  REL="${f#job-finder-worker/}"
+  if [[ -f "$REL" ]]; then
+    FILE_LIST+=("$REL")
+  else
+    echo "[lint] Skipping missing file $REL"
+  fi
 done <<< "$STAGED_FILES"
 
 # Black (check only)
