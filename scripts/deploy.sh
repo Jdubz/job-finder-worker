@@ -66,16 +66,6 @@ if [ -f "$SOURCE_AUTH" ]; then
   install -m 700 -d "$DEPLOY_PATH/codex-seed/.codex"
   install -m 600 "$SOURCE_AUTH" "$DEPLOY_PATH/codex-seed/.codex/auth.json"
 
-  sync_volume_auth() {
-    local volume_name="$1"
-    docker run --rm \
-      -v "${volume_name}:/data" \
-      -v "$SOURCE_AUTH:/host/auth.json:ro" \
-      alpine:3.20.2 \
-      sh -c 'mkdir -p /data && cp /host/auth.json /data/auth.json && chmod 600 /data/auth.json'
-  }
-
-  sync_volume_auth job-finder_codex-home-shared || echo "[deploy] WARNING: Failed to sync auth to volume job-finder_codex-home-shared. Continuing..."
 else
   echo "[deploy] WARNING: $SOURCE_AUTH not found; skipping Codex auth refresh"
 fi

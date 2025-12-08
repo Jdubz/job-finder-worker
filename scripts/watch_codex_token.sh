@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-REFRESH_HOME="${CODEX_REFRESH_HOME:-/srv/job-finder/codex-refresh/.codex}"
+REFRESH_HOME="${CODEX_REFRESH_HOME:-/srv/job-finder/codex}"
 SEED_DIR="${CODEX_SEED_DIR:-/srv/job-finder/codex-seed/.codex}"
 COMPOSE_FILE="${COMPOSE_FILE:-/srv/job-finder/docker-compose.yml}"
 VOLUME_NAME="${CODEX_VOLUME_NAME:-job-finder_codex-home-shared}"
@@ -32,11 +32,28 @@ fi
 last_hash=$(hash_file)
 copy_auth
 
-while true; do
-  new_hash=$(hash_file)
-  if [[ "$new_hash" != "$last_hash" ]]; then
-    last_hash="$new_hash"
-    copy_auth
-  fi
-  sleep 30
-done
+watch_dir=$(dirname "$AUTH_PATH")
+if command -v inotifywait >/dev/null 2>&1; then
+  echo "[watch-codex] Using inotify to monitor $AUTH_PATH"
+  while inotifywait -e close_write,move,create,delete "$watch_dir" >/dev/null 2>&1; do
+    if [[ ! -f "$AUTH_PATH" ]]; then
+      echo "[watch-codex] auth.json missing after change" >&2
+      continue
+    fi
+    new_hash=$(hash_file)
+    if [[ "$new_hash" != "$last_hash" ]]; then
+      last_hash="$new_hash"
+      copy_auth
+    fi
+  done
+else
+  echo "[watch-codex] inotifywait not found; falling back to 30s polling"
+  while true; do
+    new_hash=$(hash_file)
+    if [[ "$new_hash" != "$last_hash" ]]; then
+      last_hash="$new_hash"
+      copy_auth
+    fi
+    sleep 30
+  done
+fi
