@@ -70,6 +70,24 @@ export function RestartOverlay() {
       window.location.replace(window.location.href)
     }
 
+    const handleLifecycleRecovery = (event: MessageEvent) => {
+      if (stateRef.current.status !== "waiting") return
+      // `ready` events are authoritative that the API is back. `status` events carry a ready flag.
+      if (event.type === "ready") {
+        attemptReloadIfWaiting()
+        return
+      }
+
+      try {
+        const data = JSON.parse(event.data) as { ready?: boolean; phase?: string }
+        if (data.ready || data.phase === "ready") {
+          attemptReloadIfWaiting()
+        }
+      } catch {
+        /* ignore malformed status payloads */
+      }
+    }
+
     source.addEventListener("restarting", (event) => {
       try {
         const data = JSON.parse((event as MessageEvent).data) as { reason?: string }
@@ -82,17 +100,8 @@ export function RestartOverlay() {
     // The backend broadcasts a `ready` (and periodic `status`) event once it is accepting traffic again.
     // If polling failed due to a bad health URL or other transient issues, this acts as a second signal
     // to clear the overlay and reload when the API is definitively back online.
-    source.addEventListener("ready", attemptReloadIfWaiting)
-    source.addEventListener("status", (event) => {
-      try {
-        const data = JSON.parse((event as MessageEvent).data) as { ready?: boolean }
-        if (data.ready) {
-          attemptReloadIfWaiting()
-        }
-      } catch {
-        /* ignore malformed status payloads */
-      }
-    })
+    source.addEventListener("ready", (event) => handleLifecycleRecovery(event as MessageEvent))
+    source.addEventListener("status", (event) => handleLifecycleRecovery(event as MessageEvent))
 
     // Handle SSE connection errors - the server may have died without sending 'restarting'
     // This catches cases where watchtower/docker kills the container abruptly
