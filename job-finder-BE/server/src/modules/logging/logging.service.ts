@@ -18,13 +18,22 @@ function truncateEntry(entry: any) {
   const fieldsToTrim = ['message', 'details', 'payload']
   for (const key of fieldsToTrim) {
     if (typeof cloned[key] === 'string' && Buffer.byteLength(cloned[key], 'utf8') > MAX_ENTRY_BYTES) {
-      let truncated = cloned[key]
-      while (Buffer.byteLength(truncated, 'utf8') > MAX_ENTRY_BYTES && truncated.length > 0) {
-        const over = Buffer.byteLength(truncated, 'utf8') - MAX_ENTRY_BYTES
-        const drop = Math.max(1, Math.ceil(over / 2))
-        truncated = truncated.slice(0, truncated.length - drop)
+      const original = cloned[key] as string
+      let left = 0
+      let right = original.length
+      let best = ''
+      while (left <= right) {
+        const mid = Math.floor((left + right) / 2)
+        const candidate = original.slice(0, mid)
+        const bytes = Buffer.byteLength(candidate, 'utf8')
+        if (bytes <= MAX_ENTRY_BYTES) {
+          best = candidate
+          left = mid + 1
+        } else {
+          right = mid - 1
+        }
       }
-      cloned[key] = `${truncated}…`
+      cloned[key] = `${best}…`
     }
   }
   return cloned
@@ -39,7 +48,7 @@ function truncateEntry(entry: any) {
  */
 export const loggingService = {
   getLogFilePath(): string {
-    const logDir = env.LOG_DIR || path.join(process.cwd(), 'logs')
+    const logDir = env.LOG_DIR
     ensureLogDir(logDir)
     return path.join(logDir, 'frontend.log')
   },

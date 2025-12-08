@@ -20,6 +20,10 @@ export function buildOriginGuard(allowedOrigins: string[]) {
 
     const origin = req.headers.origin
     if (!origin) {
+      // Allow authenticated non-browser clients (Bearer/API key) without Origin/Referer
+      const hasAuthHeader = Boolean(req.headers.authorization || req.headers['x-api-key'])
+      if (hasAuthHeader) return next()
+
       // Fallback to Referer when Origin is missing
       const referer = req.headers.referer
       if (referer) {

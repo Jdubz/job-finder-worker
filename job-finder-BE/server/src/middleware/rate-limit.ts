@@ -19,6 +19,17 @@ export function rateLimit(options: RateLimitOptions) {
   const buckets = new Map<string, Bucket>()
   const keyFor = options.keyGenerator ?? ((req: Request) => req.ip ?? null)
 
+  // Periodic cleanup to avoid bucket buildup under low traffic
+  const cleanupInterval = setInterval(() => {
+    const now = Date.now()
+    for (const [k, b] of buckets) {
+      if (b.expiresAt <= now) {
+        buckets.delete(k)
+      }
+    }
+  }, Math.max(options.windowMs, 5_000))
+  cleanupInterval.unref?.()
+
   return function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
     const key = keyFor(req)
     if (!key) return next() // avoid shared/global bucket; skip when no key
@@ -52,4 +63,6 @@ export function rateLimit(options: RateLimitOptions) {
 
     next()
   }
+  // Expose stop hook for tests to clear the interval
+  ;(rateLimitMiddleware as any).stop = () => clearInterval(cleanupInterval)
 }
