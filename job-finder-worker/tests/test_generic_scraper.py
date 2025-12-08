@@ -266,6 +266,71 @@ class TestGenericScraperAPI:
         assert jobs[0]["title"] == "Engineer"
         assert jobs[0]["company"] == "TechCorp"
 
+    @patch("job_finder.scrapers.generic_scraper.requests.post")
+    def test_scrape_api_post_paginates_on_offset_limit(self, mock_post):
+        """POST APIs with offset/limit in body should auto-paginate (e.g., Workday)."""
+        first = Mock()
+        first.json.return_value = {
+            "jobPostings": [{"title": "A", "externalPath": "job/1", "postedOn": "2024-01-01"}]
+        }
+        first.raise_for_status = Mock()
+
+        second = Mock()
+        second.json.return_value = {
+            "jobPostings": [{"title": "B", "externalPath": "job/2", "postedOn": "2024-01-02"}]
+        }
+        second.raise_for_status = Mock()
+
+        # Empty third page to stop pagination
+        third = Mock()
+        third.json.return_value = {"jobPostings": []}
+        third.raise_for_status = Mock()
+
+        mock_post.side_effect = [first, second, third]
+
+        config = SourceConfig(
+            type="api",
+            url="https://tenant.wd1.myworkdayjobs.com/wday/cxs/tenant/site/jobs",
+            response_path="jobPostings",
+            method="POST",
+            post_body={"limit": 1, "offset": 0},
+            base_url="https://tenant.wd1.myworkdayjobs.com/site",
+            fields={"title": "title", "url": "externalPath", "posted_date": "postedOn"},
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        assert len(jobs) == 2
+        # offsets should be 0 then 1 (limit increment)
+        assert mock_post.call_count == 3
+        assert mock_post.call_args_list[0].kwargs["json"]["offset"] == 0
+        assert mock_post.call_args_list[1].kwargs["json"]["offset"] == 1
+        assert mock_post.call_args_list[2].kwargs["json"]["offset"] == 2
+        assert jobs[0]["url"] == "https://tenant.wd1.myworkdayjobs.com/site/job/1"
+        assert jobs[1]["url"] == "https://tenant.wd1.myworkdayjobs.com/site/job/2"
+
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_scrape_api_base_url_prefixes_relative_paths(self, mock_get):
+        """Relative URLs should be prefixed with base_url."""
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {"title": "Engineer", "externalPath": "job/123", "posted_date": "2024-01-01"}
+        ]
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            response_path="",
+            fields={"title": "title", "url": "externalPath", "posted_date": "posted_date"},
+            base_url="https://tenant.wd1.myworkdayjobs.com/site",
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        assert jobs[0]["url"] == "https://tenant.wd1.myworkdayjobs.com/site/job/123"
+
     @patch("job_finder.scrapers.generic_scraper.requests.get")
     def test_scrape_api_array_slice(self, mock_get):
         """Test API scraping with array slice (like RemoteOK)."""

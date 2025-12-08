@@ -160,6 +160,9 @@ class GenericScraper:
         Returns:
             List of job items from API response
         """
+        if self._should_paginate_post():
+            return self._fetch_json_paginated()
+
         url = self._get_effective_url()
         headers = {**DEFAULT_HEADERS, **self.config.headers}
 
@@ -191,6 +194,70 @@ class GenericScraper:
 
         # Navigate to jobs array using response_path
         return self._navigate_path(data, self.config.response_path)
+
+    def _fetch_json_paginated(self) -> List[Dict[str, Any]]:
+        """
+        Fetch paginated POST JSON APIs that use offset/limit in the request body.
+
+        This is primarily for Workday, but is driven entirely by config (presence
+        of offset/limit keys) to avoid hardcoding vendor specifics.
+        """
+        url = self._get_effective_url()
+        headers = {**DEFAULT_HEADERS, **self.config.headers}
+        if self.config.api_key:
+            if self.config.auth_type == "bearer":
+                headers["Authorization"] = f"Bearer {self.config.api_key}"
+            elif self.config.auth_type == "header":
+                headers[self.config.auth_param] = self.config.api_key
+            elif self.config.auth_type == "query":
+                sep = "&" if "?" in url else "?"
+                url = f"{url}{sep}{self.config.auth_param}={self.config.api_key}"
+        headers["Content-Type"] = "application/json"
+
+        results: List[Dict[str, Any]] = []
+        body = dict(self.config.post_body or {})
+        limit = int(body.get("limit", 20) or 20)
+        offset = int(body.get("offset", 0) or 0)
+        max_pages = 50  # safety cap to avoid infinite loops
+
+        for _ in range(max_pages):
+            payload = dict(body)
+            payload["offset"] = offset
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as e:
+                raise ScrapeBlockedError(
+                    self.config.url, f"HTTP {response.status_code}: {response.reason}"
+                ) from e
+
+            data = response.json()
+            items = self._navigate_path(data, self.config.response_path)
+            if not items:
+                break
+
+            results.extend(items)
+
+            # Stop if fewer than limit returned (no more pages)
+            if len(items) < limit:
+                break
+
+            offset += limit
+
+        return results
+
+    def _should_paginate_post(self) -> bool:
+        """
+        Determine whether to auto-paginate a POST API based on config.
+
+        We enable pagination when:
+        - HTTP method is POST
+        - post_body defines both 'offset' and 'limit'
+        """
+        if self.config.method.upper() != "POST":
+            return False
+        body = self.config.post_body or {}
+        return "offset" in body and "limit" in body
 
     def _fetch_rss(self) -> List[Any]:
         """
@@ -625,8 +692,13 @@ class GenericScraper:
         # Construct full URL from relative path if base_url is specified
         if self.config.base_url and job.get("url"):
             url = job["url"]
-            if url.startswith("/"):
-                job["url"] = f"{self.config.base_url}{url}"
+            is_absolute = isinstance(url, str) and re.match(r"^https?://", url)
+            if not is_absolute:
+                # Normalize leading slash to avoid double slashes
+                if url.startswith("/"):
+                    job["url"] = f"{self.config.base_url}{url}"
+                else:
+                    job["url"] = f"{self.config.base_url}/{url}"
 
         # Apply company extraction strategy if company is still empty
         if not job.get("company") and self.config.company_extraction:
