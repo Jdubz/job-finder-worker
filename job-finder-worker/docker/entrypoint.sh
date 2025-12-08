@@ -17,36 +17,20 @@ chown -R node:node /data 2>/dev/null || true
 chown -R node:node /app/data 2>/dev/null || true
 chown -R node:node /app/logs 2>/dev/null || true
 
-# Codex CLI auth: mount ~/.codex from host (contains OAuth tokens for ChatGPT Pro)
-# The mount must be read-write so codex can refresh expired tokens
-# Uses same approach as API container for consistency
-CODEX_REQUIRED=${CODEX_REQUIRED:-false}
+# Codex CLI auth
+# We treat the runtime volume as replaceable and always copy from the read-only
+# seed so restarts pick up the newest token without interactive login.
 echo "=== Codex CLI Setup ==="
-echo "CODEX_HOME=${CODEX_HOME:-/home/node/.codex}"
-
-if [ -d "/home/node/.codex" ]; then
-    chown -R node:node /home/node/.codex
-    echo "Codex config directory: EXISTS"
-    ls -la /home/node/.codex/ 2>/dev/null || true
-
-    if [ -f "/home/node/.codex/auth.json" ]; then
-        echo "auth.json: EXISTS"
-        echo "Checking codex login status..."
-        if ! gosu node codex login status 2>/dev/null; then
-            echo "WARNING: Codex login status check failed (token may need refresh)"
-            [ "$CODEX_REQUIRED" = "true" ] && exit 1
-        else
-            echo "✓ Codex authenticated"
-        fi
-    else
-        echo "WARNING: /home/node/.codex/auth.json not found"
-        [ "$CODEX_REQUIRED" = "true" ] && exit 1
-    fi
+echo "Syncing codex seed into runtime volume..."
+rm -rf /home/node/.codex
+mkdir -p /home/node/.codex
+cp -a /codex-seed/. /home/node/.codex/
+chown -R node:node /home/node/.codex
+if [ -f /home/node/.codex/auth.json ]; then
+    echo "✓ codex auth.json present"
 else
-    echo "WARNING: /home/node/.codex directory not mounted"
-    echo "AI features using Codex CLI will not work"
-    echo "Mount your ~/.codex folder to /home/node/.codex"
-    [ "$CODEX_REQUIRED" = "true" ] && exit 1
+    echo "ERROR: codex auth.json missing after seed sync"
+    exit 1
 fi
 echo "=== End Codex Setup ==="
 

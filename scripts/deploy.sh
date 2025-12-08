@@ -58,12 +58,13 @@ cp infra/docker-compose.prod.yml docker-compose.yml
 echo "[deploy] Synced docker-compose.yml from infra/docker-compose.prod.yml"
 
 # --- Refresh Codex auth into seeds and volumes ---
-CODEX_BASE="${CODEX_BASE:-$DEPLOY_PATH}"
-SOURCE_AUTH="$HOME/.codex/auth.json"
+# Use a dedicated prod Codex home so the deploy user's personal tokens don't race refresh.
+CODEX_REFRESH_HOME="${CODEX_REFRESH_HOME:-/srv/job-finder/codex-refresh/.codex}"
+SOURCE_AUTH="${CODEX_REFRESH_HOME}/auth.json"
 if [ -f "$SOURCE_AUTH" ]; then
   echo "[deploy] Updating Codex auth from $SOURCE_AUTH"
-  install -m 700 -d "$CODEX_BASE/codex-seed/.codex"
-  install -m 600 "$SOURCE_AUTH" "$CODEX_BASE/codex-seed/.codex/auth.json"
+  install -m 700 -d "$DEPLOY_PATH/codex-seed/.codex"
+  install -m 600 "$SOURCE_AUTH" "$DEPLOY_PATH/codex-seed/.codex/auth.json"
 
   sync_volume_auth() {
     local volume_name="$1"
@@ -74,8 +75,7 @@ if [ -f "$SOURCE_AUTH" ]; then
       sh -c 'mkdir -p /data && cp /host/auth.json /data/auth.json && chmod 600 /data/auth.json'
   }
 
-  sync_volume_auth job-finder_codex-home-api || echo "[deploy] WARNING: Failed to sync auth to volume job-finder_codex-home-api. Continuing..."
-  sync_volume_auth job-finder_codex-home-worker || echo "[deploy] WARNING: Failed to sync auth to volume job-finder_codex-home-worker. Continuing..."
+  sync_volume_auth job-finder_codex-home-shared || echo "[deploy] WARNING: Failed to sync auth to volume job-finder_codex-home-shared. Continuing..."
 else
   echo "[deploy] WARNING: $SOURCE_AUTH not found; skipping Codex auth refresh"
 fi
@@ -102,7 +102,8 @@ if [ -f "$SOURCE_GEMINI" ]; then
 else
   echo "[deploy] WARNING: $SOURCE_GEMINI not found; skipping Gemini auth refresh"
 fi
-# Pull and restart stack
+# Pull and restart stack (reset Codex volume so it matches the fresh seed)
+docker volume rm job-finder_codex-home-shared >/dev/null 2>&1 || true
 docker compose -f docker-compose.yml pull
 docker compose -f docker-compose.yml up -d --remove-orphans
 
