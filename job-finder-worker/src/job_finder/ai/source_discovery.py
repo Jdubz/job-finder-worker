@@ -40,7 +40,6 @@ HEADLESS_REQUIRED_DOMAINS = {
 }
 
 # Fast lookup by pattern name to avoid repeated scans
-PLATFORM_PATTERNS_BY_NAME = {p.name: p for p in PLATFORM_PATTERNS}
 
 # Patterns for detecting single job listing URLs on aggregators (invalid as sources)
 # These URLs point to individual jobs, not company job boards
