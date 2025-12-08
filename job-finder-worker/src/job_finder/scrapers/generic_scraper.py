@@ -228,7 +228,9 @@ class GenericScraper:
 
         if len(results) and len(results) / max(limit, 1) >= max_pages:
             logger.warning(
-                "Pagination hit max_pages=%s for %s; results may be truncated", max_pages, self.config.url
+                "Pagination hit max_pages=%s for %s; results may be truncated",
+                max_pages,
+                self.config.url,
             )
         return results
 
@@ -245,7 +247,9 @@ class GenericScraper:
         body = self.config.post_body or {}
         return "offset" in body and "limit" in body
 
-    def _apply_auth_and_headers(self, url: str, force_json: bool = False) -> tuple[Dict[str, str], str]:
+    def _apply_auth_and_headers(
+        self, url: str, force_json: bool = False
+    ) -> tuple[Dict[str, str], str]:
         """
         Build headers (plus auth) and possibly mutate the URL for query auth.
         Shared between GET/POST fetchers to avoid duplication.

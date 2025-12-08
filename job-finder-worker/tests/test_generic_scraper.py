@@ -366,7 +366,9 @@ class TestGenericScraperAPI:
         ok.raise_for_status = Mock()
 
         bad = Mock()
-        bad.raise_for_status.side_effect = requests.HTTPError(response=Mock(status=403, reason="Forbidden"))
+        bad.raise_for_status.side_effect = requests.HTTPError(
+            response=Mock(status=403, reason="Forbidden")
+        )
 
         mock_post.side_effect = [ok, bad]
 
