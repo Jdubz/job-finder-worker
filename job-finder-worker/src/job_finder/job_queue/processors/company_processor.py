@@ -7,11 +7,12 @@ Philosophy: Search by company name is the primary data source.
 URL is a hint, not a requirement. AI extracts from search results.
 """
 
+import json
 import logging
 
 from job_finder.exceptions import InitializationError
 from contextlib import contextmanager
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from job_finder.ai.search_client import get_search_client, SearchResult
@@ -112,11 +113,16 @@ class CompanyProcessor(BaseProcessor):
         )
 
         with self._handle_company_failure(item):
+            # Get source context from item input (if spawned from job processor)
+            # or look up from existing company sources
+            source_context = self._get_source_context(item, company_id)
+
             # Fetch company info using search-first approach
             # URL from queue item is just a hint - fetcher will validate/ignore if it's a job board
             extracted_info = self.company_info_fetcher.fetch_company_info(
                 company_name=company_name,
                 url_hint=item.url,
+                source_context=source_context,
             )
 
             # Determine data quality level for the result message
@@ -255,6 +261,62 @@ class CompanyProcessor(BaseProcessor):
     # ============================================================
     # HELPER METHODS
     # ============================================================
+
+    def _get_source_context(
+        self, item: JobQueueItem, company_id: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get source context for company research.
+
+        First checks the item input for source_context (passed from job processor),
+        then falls back to looking up any existing source linked to the company.
+
+        Args:
+            item: The queue item being processed
+            company_id: The company ID (if known)
+
+        Returns:
+            Source context dict with aggregator_domain and base_url, or None
+        """
+        # Check if source_context was passed in the item input
+        source_context = item.input.get("source_context")
+        if source_context:
+            return source_context
+
+        # Fall back to looking up from existing company sources
+        if not company_id:
+            return None
+
+        try:
+            # Get any source linked to this company
+            sources = self.sources_manager.get_sources_for_company(company_id)
+            if not sources:
+                return None
+
+            # Use the first source with useful context
+            for source in sources:
+                try:
+                    aggregator_domain = source.get("aggregator_domain")
+                    config = source.get("config_json", {})
+                    if isinstance(config, str):
+                        config = json.loads(config)
+
+                    base_url = config.get("base_url", "")
+
+                    if aggregator_domain or base_url:
+                        return {
+                            "aggregator_domain": aggregator_domain or "",
+                            "base_url": base_url,
+                            "source_name": source.get("name", ""),
+                        }
+                except json.JSONDecodeError:
+                    logger.debug("Invalid JSON in config for source %s", source.get("id"))
+                    continue
+
+            return None
+        except Exception as e:
+            logger.debug("Failed to get source context for company %s: %s", company_id, e)
+            return None
 
     def _detect_job_board_for_discovery(
         self, website: Optional[str], provided_url: Optional[str]
