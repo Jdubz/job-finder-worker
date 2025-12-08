@@ -57,9 +57,14 @@ function buildCommand(provider: CliProvider, prompt: string, model?: string): { 
     }
   }
   if (provider === 'gemini') {
+    const args = ['--print', '--output', 'json']
+    if (model) {
+      args.push('--model', model)
+    }
+    args.push('--prompt', prompt)
     return {
       cmd: 'gemini',
-      args: ['--print', '--model', model || 'gemini-1.5-flash', '--output', 'json', '--prompt', prompt]
+      args
     }
   }
   if (provider === 'claude') {

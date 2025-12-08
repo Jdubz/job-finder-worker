@@ -11,7 +11,7 @@ import { UserFacingError } from '../workflow/generator.workflow.service'
 type AgentExecutionResult = {
   output: string
   agentId: string
-  model: string
+  model: string | undefined
 }
 
 class NoAgentsAvailableError extends Error {
@@ -99,8 +99,11 @@ export class AgentManager {
         continue
       }
 
-      const model = modelOverride ?? agent.defaultModel
-      const cost = aiSettings.modelRates?.[model] ?? 1
+      // Determine model - "default" or empty means CLI uses its own default
+      const rawModel = modelOverride ?? agent.defaultModel
+      const model = (!rawModel || rawModel === 'default') ? undefined : rawModel
+      // Cost defaults to 1.0 when model is undefined (CLI using its default)
+      const cost = model ? (aiSettings.modelRates?.[model] ?? 1) : 1
       if (agent.dailyUsage + cost > agent.dailyBudget) {
         this.disableAgent(aiSettings, agentId, 'quota_exhausted: daily budget reached')
         continue
@@ -158,7 +161,7 @@ export class AgentManager {
     return parts.join('|')
   }
 
-  private async runAgent(agent: AgentConfig, agentId: string, prompt: string, model: string): Promise<string> {
+  private async runAgent(agent: AgentConfig, agentId: string, prompt: string, model: string | undefined): Promise<string> {
     if (agent.interface !== 'cli') {
       throw new UserFacingError(`Interface ${agent.interface} not supported for generator tasks`)
     }
