@@ -133,7 +133,7 @@ export function JobApplicationsPage() {
 
     // Status filter (local fallback in case backend subscription sends broader set)
     if (statusFilter !== "all") {
-      filtered = filtered.filter((match) => match.status === statusFilter)
+      filtered = filtered.filter((match) => (match.status ?? "active") === statusFilter)
     }
 
     // Search filter (company name or job title)
