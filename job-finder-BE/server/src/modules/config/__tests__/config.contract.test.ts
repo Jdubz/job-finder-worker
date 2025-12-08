@@ -67,13 +67,6 @@ describe('config contract', () => {
           interfaces: [{ value: 'api', models: ['gpt-4o'], enabled: true }],
         },
       ],
-      documentGenerator: {
-        selected: {
-          provider: 'openai',
-          interface: 'api',
-          model: 'gpt-4o',
-        },
-      },
     })
     const res = await request(app).get('/config/ai-settings')
     expect(res.status).toBe(200)

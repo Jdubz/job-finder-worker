@@ -183,12 +183,6 @@ export function buildConfigRouter() {
       // For ai-settings, populate provider/interface availability dynamically
       if (id === 'ai-settings') {
         const aiPayload = entry.payload as AISettings
-        if (!aiPayload.documentGenerator?.selected) {
-          throw new ApiHttpError(ApiErrorCode.INTERNAL_ERROR, 'ai-settings is missing documentGenerator.selected', {
-            status: 500,
-            details: { id, reason: 'documentGenerator.selected required' }
-          })
-        }
         const response: GetConfigEntryResponse = {
           config: {
             ...entry,
