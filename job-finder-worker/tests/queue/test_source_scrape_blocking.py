@@ -90,7 +90,11 @@ def test_scrape_skips_disabled_source(source_processor):
         "name": "Disabled Source",
         "sourceType": "api",
         "status": "disabled",
-        "config": {"type": "api", "url": "https://example.com/api", "fields": {"title": "t", "url": "u"}},
+        "config": {
+            "type": "api",
+            "url": "https://example.com/api",
+            "fields": {"title": "t", "url": "u"},
+        },
     }
     source_processor.sources_manager.get_source_by_id.return_value = source_record
 
