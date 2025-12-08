@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -26,12 +26,12 @@ from job_finder.job_queue.processor import QueueItemProcessor
 
 def make_analysis_result(
     classification: SourceClassification = SourceClassification.COMPANY_SPECIFIC,
-    aggregator_domain: str = None,
-    company_name: str = None,
+    aggregator_domain: Optional[str] = None,
+    company_name: Optional[str] = None,
     should_disable: bool = False,
-    disable_reason: DisableReason = None,
+    disable_reason: Optional[DisableReason] = None,
     disable_notes: str = "",
-    source_config: Dict[str, Any] = None,
+    source_config: Optional[Dict[str, Any]] = None,
     confidence: float = 0.9,
     reasoning: str = "Test reasoning",
 ) -> SourceAnalysisResult:

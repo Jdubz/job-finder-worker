@@ -432,12 +432,12 @@ class SourceAnalysisAgent:
                 reasoning="Fallback: could not analyze source",
             )
 
-        except Exception:
+        except Exception as fallback_exc:
             return SourceAnalysisResult(
                 classification=SourceClassification.INVALID,
                 should_disable=True,
                 disable_reason=DisableReason.INVALID_URL,
-                disable_notes=f"Invalid URL or analysis error: {error}",
+                disable_notes=f"Fallback URL parsing failed: {fallback_exc}. Original error: {error}",
                 confidence=0.0,
                 reasoning="Fallback: URL parsing failed",
             )
