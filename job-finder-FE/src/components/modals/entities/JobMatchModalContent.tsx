@@ -34,6 +34,11 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
   const [documents, setDocuments] = useState<GeneratorRequestRecord[]>([])
   const [loadingDocs, setLoadingDocs] = useState(true)
   const [generateType, setGenerateType] = useState<"resume" | "coverLetter" | "both">("resume")
+  const generationLabels: Record<typeof generateType | "both", string> = {
+    resume: "Resume",
+    coverLetter: "Cover Letter",
+    both: "Resume & Cover Letter",
+  }
   const [steps, setSteps] = useState<GenerationStep[]>([])
   const [resumeUrl, setResumeUrl] = useState<string | null>(null)
   const [coverLetterUrl, setCoverLetterUrl] = useState<string | null>(null)
@@ -384,7 +389,7 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
                       onClick={() => setGenerateType(type)}
                       disabled={generating}
                     >
-                      {type === "resume" ? "Resume" : type === "coverLetter" ? "Cover Letter" : "Both"}
+                      {generationLabels[type]}
                     </Button>
                   ))}
                 </div>
@@ -435,11 +440,7 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
                             {doc.job.role} @ {doc.job.company}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {doc.generateType === "both"
-                              ? "Resume & Cover Letter"
-                              : doc.generateType === "resume"
-                                ? "Resume"
-                                : "Cover Letter"}
+                            {generationLabels[doc.generateType] || "Resume"}
                             {" • "}
                             {new Date(doc.createdAt).toLocaleDateString()}
                           </span>
