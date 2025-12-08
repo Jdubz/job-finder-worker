@@ -1010,5 +1010,7 @@ def discover_source(
     """
     discovery = SourceDiscovery(agent_manager)
     return discovery.discover(url)
+
+
 # Fast lookup by pattern name to avoid repeated scans
 PLATFORM_PATTERNS_BY_NAME = {p.name: p for p in PLATFORM_PATTERNS}
