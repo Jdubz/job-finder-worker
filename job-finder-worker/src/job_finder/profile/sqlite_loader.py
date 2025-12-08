@@ -19,6 +19,11 @@ from job_finder.storage.sqlite_client import sqlite_connection
 
 logger = logging.getLogger(__name__)
 
+# Skill level thresholds (years of experience)
+_SKILL_LEVEL_EXPERT_YEARS = 5
+_SKILL_LEVEL_ADVANCED_YEARS = 3
+_SKILL_LEVEL_INTERMEDIATE_YEARS = 1
+
 
 def _parse_json(value: Optional[str], default):
     if not value:
@@ -51,13 +56,23 @@ class SQLiteProfileLoader:
             Profile with work experience, highlights, skills, education, projects
         """
         try:
+            from job_finder.profile.reducer import load_scoring_profile
+
             profile_row = self._fetch_user_row()
             experiences = self._load_experiences()
-            skills = self._derive_skills_with_years()
             summary = self._load_summary()
             education = self._load_education()
             projects = self._load_projects()
-            years_of_experience = self._get_total_experience_years()
+
+            # Load scoring profile once and derive skills + years from it
+            scoring_profile = load_scoring_profile(self.db_path)
+            years_of_experience = scoring_profile.total_experience_years
+
+            skills: List[Skill] = []
+            for skill_name, years in scoring_profile.skill_years.items():
+                level = self._infer_skill_level(years)
+                skills.append(Skill(name=skill_name, level=level, years_experience=years))
+            skills.sort(key=lambda s: (-(s.years_experience or 0), s.name.lower()))
 
             return Profile(
                 name=name or profile_row.get("name") or "Job Finder User",
@@ -93,11 +108,12 @@ class SQLiteProfileLoader:
         Queries work items (ai_context='work') and their child highlights,
         combining them into Experience objects with detailed achievements.
         """
-        # Query work items only
+        # Query work items only (NULL dates sorted last)
         work_query = """
             SELECT * FROM content_items
             WHERE ai_context = 'work'
-            ORDER BY datetime(start_date) DESC
+            ORDER BY CASE WHEN start_date IS NULL THEN 1 ELSE 0 END,
+                     datetime(start_date) DESC
         """
 
         # Query highlights grouped by parent
@@ -147,6 +163,9 @@ class SQLiteProfileLoader:
                     achievements.append(f"{h_title}: {h_desc}")
                 elif h_desc:
                     achievements.append(h_desc)
+                elif h_title:
+                    # Include title-only highlights
+                    achievements.append(h_title)
 
             # Add description bullets after highlights
             achievements.extend(description_bullets)
@@ -231,6 +250,8 @@ class SQLiteProfileLoader:
                     institution=institution,
                     degree=degree_info,
                     field_of_study=None,
+                    start_date=item.get("start_date"),
+                    end_date=item.get("end_date"),
                     honors=honors,
                 )
             )
@@ -265,51 +286,21 @@ class SQLiteProfileLoader:
                     name=name,
                     description=description,
                     technologies=technologies or [],
+                    start_date=item.get("start_date"),
+                    end_date=item.get("end_date"),
                     highlights=[],
                 )
             )
 
         return projects
 
-    def _derive_skills_with_years(self) -> List[Skill]:
-        """Derive skills with years of experience from reducer.
-
-        Uses the reducer's skill_years calculation for accurate experience tracking.
-        """
-        from job_finder.profile.reducer import load_scoring_profile
-
-        scoring_profile = load_scoring_profile(self.db_path)
-
-        skills: List[Skill] = []
-        for skill_name, years in scoring_profile.skill_years.items():
-            # Infer level based on years
-            level = self._infer_skill_level(years)
-            skills.append(
-                Skill(
-                    name=skill_name,
-                    level=level,
-                    years_experience=years,
-                )
-            )
-
-        # Sort by years descending, then by name
-        skills.sort(key=lambda s: (-1 * (s.years_experience or 0), s.name.lower()))
-        return skills
-
     def _infer_skill_level(self, years: float) -> str:
         """Infer skill proficiency level from years of experience."""
-        if years >= 5:
+        if years >= _SKILL_LEVEL_EXPERT_YEARS:
             return "expert"
-        elif years >= 3:
+        elif years >= _SKILL_LEVEL_ADVANCED_YEARS:
             return "advanced"
-        elif years >= 1:
+        elif years >= _SKILL_LEVEL_INTERMEDIATE_YEARS:
             return "intermediate"
         else:
             return "beginner"
-
-    def _get_total_experience_years(self) -> float:
-        """Get total years of professional experience from reducer."""
-        from job_finder.profile.reducer import load_scoring_profile
-
-        scoring_profile = load_scoring_profile(self.db_path)
-        return scoring_profile.total_experience_years
