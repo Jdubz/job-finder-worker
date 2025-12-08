@@ -336,6 +336,7 @@ export class JobQueueRepository {
   private buildFilters(options: {
     status?: QueueStatus | QueueStatus[]
     type?: QueueItem['type']
+    source?: QueueItem['source']
   }) {
     let whereClause = 'WHERE 1 = 1'
     const params: Array<string | number> = []
@@ -350,6 +351,11 @@ export class JobQueueRepository {
     if (options.type) {
       whereClause += ' AND type = ?'
       params.push(options.type)
+    }
+
+    if (options.source) {
+      whereClause += " AND json_extract(input, '$.source') = ?"
+      params.push(options.source)
     }
 
     return { whereClause, params }

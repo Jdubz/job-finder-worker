@@ -6,14 +6,11 @@ import { env } from '../../config/env'
 
 const MAX_TOTAL_BYTES = 512 * 1024 // 512KB per request
 const MAX_ENTRY_BYTES = 16 * 1024 // 16KB per log entry before truncation
-const logDirCache = { ensured: false }
 
 function ensureLogDir(dir: string) {
-  if (logDirCache.ensured) return
   if (!fsSync.existsSync(dir)) {
     fsSync.mkdirSync(dir, { recursive: true })
   }
-  logDirCache.ensured = true
 }
 
 function truncateEntry(entry: any) {
@@ -21,7 +18,13 @@ function truncateEntry(entry: any) {
   const fieldsToTrim = ['message', 'details', 'payload']
   for (const key of fieldsToTrim) {
     if (typeof cloned[key] === 'string' && Buffer.byteLength(cloned[key], 'utf8') > MAX_ENTRY_BYTES) {
-      cloned[key] = `${cloned[key].slice(0, MAX_ENTRY_BYTES)}…`
+      let truncated = cloned[key]
+      while (Buffer.byteLength(truncated, 'utf8') > MAX_ENTRY_BYTES && truncated.length > 0) {
+        const over = Buffer.byteLength(truncated, 'utf8') - MAX_ENTRY_BYTES
+        const drop = Math.max(1, Math.ceil(over / 2))
+        truncated = truncated.slice(0, truncated.length - drop)
+      }
+      cloned[key] = `${truncated}…`
     }
   }
   return cloned

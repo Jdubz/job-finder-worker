@@ -16,8 +16,22 @@ export function buildOriginGuard(allowedOrigins: string[]) {
 
     const origin = req.headers.origin
     if (!origin) {
-      // Some clients omit Origin (e.g., curl); allow to avoid false positives.
-      return next()
+      // Fallback to Referer when Origin is missing
+      const referer = req.headers.referer
+      if (referer) {
+        try {
+          const refererOrigin = new URL(referer).origin
+          if (allowed.has(refererOrigin)) {
+            return next()
+          }
+        } catch {
+          // invalid referer; fall through
+        }
+      }
+      return next(new ApiHttpError(ApiErrorCode.FORBIDDEN, 'Cross-site request blocked (missing Origin/Referer)', {
+        status: 403,
+        details: { origin: null, referer: referer ?? null }
+      }))
     }
 
     if (allowed.has(origin)) {

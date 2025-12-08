@@ -70,12 +70,7 @@ export function buildAuthRouter() {
    * Exchange a Google OAuth credential for a session cookie.
    * This is the single entry point for authentication.
    */
-  router.post('/login', async (req, res, next) => {
-    // Apply lightweight rate limiting per IP
-    loginRateLimiter(req, res, (err?: unknown) => {
-      if (err) return next(err)
-    })
-
+  router.post('/login', loginRateLimiter, async (req, res, next) => {
     try {
       const parsed = LoginSchema.safeParse(req.body)
       if (!parsed.success) {
