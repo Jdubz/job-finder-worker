@@ -131,6 +131,11 @@ export function JobApplicationsPage() {
   useEffect(() => {
     let filtered = [...matches]
 
+    // Status filter (local fallback in case backend subscription sends broader set)
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((match) => (match.status ?? "active") === statusFilter)
+    }
+
     // Search filter (company name or job title)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
@@ -158,7 +163,7 @@ export function JobApplicationsPage() {
     })
 
     setFilteredMatches(filtered)
-  }, [matches, searchQuery, sortBy])
+  }, [matches, searchQuery, sortBy, statusFilter])
 
   const handleRowClick = (match: JobMatchWithListing) => {
     openModal({

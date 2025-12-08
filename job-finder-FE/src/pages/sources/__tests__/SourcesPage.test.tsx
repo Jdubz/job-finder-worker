@@ -10,7 +10,7 @@
  * - Authentication requirements
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { SourcesPage } from "../SourcesPage"
@@ -18,6 +18,8 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useJobSources } from "@/hooks/useJobSources"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { EntityModalProvider } from "@/contexts/EntityModalContext"
+import { formatDistanceToNowStrict } from "date-fns"
+import type { JobSource } from "@shared/types"
 
 vi.mock("@/contexts/AuthContext")
 vi.mock("@/hooks/useJobSources")
@@ -30,44 +32,8 @@ describe("SourcesPage", () => {
     displayName: "Test User",
   }
 
-  const mockSources = [
-    {
-      id: "source-1",
-      name: "Acme Greenhouse",
-      sourceType: "greenhouse",
-      status: "active",
-      aggregatorDomain: null,
-      companyId: "company-1",
-      configJson: { url: "https://boards.greenhouse.io/acme" },
-      lastScrapedAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    {
-      id: "source-2",
-      name: "TechCorp RSS",
-      sourceType: "rss",
-      status: "active",
-      aggregatorDomain: null,
-      companyId: "company-2",
-      configJson: { url: "https://careers.techcorp.io/jobs.rss" },
-      lastScrapedAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    {
-      id: "source-3",
-      name: "Remotive Jobs",
-      sourceType: "api",
-      status: "paused",
-      aggregatorDomain: "remotive.com",
-      companyId: null,
-      configJson: { url: "https://remotive.com/api/remote-jobs" },
-      lastScrapedAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-  ]
+  let mockSources: JobSource[]
+  let dateNowSpy: ReturnType<typeof vi.spyOn>
 
   const mockSubmitSourceDiscovery = vi.fn()
   const mockDeleteSource = vi.fn()
@@ -83,6 +49,46 @@ describe("SourcesPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    const now = new Date("2024-01-02T12:00:00Z")
+    dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(now.getTime())
+    mockSources = [
+      {
+        id: "source-1",
+        name: "Acme Greenhouse",
+        sourceType: "greenhouse",
+        status: "active",
+        aggregatorDomain: null,
+        companyId: "company-1",
+        configJson: { url: "https://boards.greenhouse.io/acme", type: "rss", fields: {} },
+        lastScrapedAt: new Date(now.getTime() - 6 * 60 * 60 * 1000),
+        createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(now.getTime() - 7 * 60 * 60 * 1000),
+      },
+      {
+        id: "source-2",
+        name: "TechCorp RSS",
+        sourceType: "rss",
+        status: "active",
+        aggregatorDomain: null,
+        companyId: "company-2",
+        configJson: { url: "https://careers.techcorp.io/jobs.rss", type: "rss", fields: {} },
+        lastScrapedAt: new Date(now.getTime() - 8 * 60 * 60 * 1000),
+        createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(now.getTime() - 8 * 60 * 60 * 1000),
+      },
+      {
+        id: "source-3",
+        name: "Remotive Jobs",
+        sourceType: "api",
+        status: "paused",
+        aggregatorDomain: "remotive.com",
+        companyId: null,
+        configJson: { url: "https://remotive.com/api/remote-jobs", type: "rss", fields: {} },
+        lastScrapedAt: null,
+        createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(now.getTime() - 8 * 60 * 60 * 1000),
+      },
+    ]
 
     vi.mocked(useAuth).mockReturnValue({
       user: mockUser as any,
@@ -118,6 +124,10 @@ describe("SourcesPage", () => {
     } as any)
   })
 
+  afterEach(() => {
+    dateNowSpy?.mockRestore()
+  })
+
   describe("Initial Rendering", () => {
     it("should render the sources page with title", async () => {
       renderWithProvider()
@@ -148,6 +158,7 @@ describe("SourcesPage", () => {
         expect(screen.getByRole("columnheader", { name: /name/i })).toBeInTheDocument()
         expect(screen.getByRole("columnheader", { name: /type/i })).toBeInTheDocument()
         expect(screen.getByRole("columnheader", { name: /status/i })).toBeInTheDocument()
+        expect(screen.getByRole("columnheader", { name: /last scraped/i })).toBeInTheDocument()
       })
     })
 
@@ -229,6 +240,19 @@ describe("SourcesPage", () => {
       // Verify rows have cursor-pointer class for click affordance
       const row = screen.getByText("Acme Greenhouse").closest("tr")
       expect(row).toHaveClass("cursor-pointer")
+    })
+
+    it("shows formatted last scraped times", async () => {
+      renderWithProvider()
+
+      await waitFor(() => {
+        const sixHoursLabel = formatDistanceToNowStrict(mockSources[0].lastScrapedAt as Date, { addSuffix: true })
+        const eightHoursLabel = formatDistanceToNowStrict(mockSources[1].lastScrapedAt as Date, { addSuffix: true })
+
+        expect(screen.getByText(new RegExp(sixHoursLabel, "i"))).toBeInTheDocument()
+        expect(screen.getByText(new RegExp(eightHoursLabel, "i"))).toBeInTheDocument()
+        expect(screen.getAllByText("—").length).toBeGreaterThan(0)
+      })
     })
   })
 

@@ -84,6 +84,35 @@ describe("JobApplicationsPage", () => {
         updatedAt: new Date("2024-01-03"),
       },
     },
+    {
+      id: "3",
+      jobListingId: "l3",
+      matchScore: 55,
+      matchedSkills: [],
+      missingSkills: [],
+      matchReasons: [],
+      keyStrengths: [],
+      potentialConcerns: [],
+      experienceMatch: 50,
+      customizationRecommendations: [],
+      analyzedAt: new Date("2024-01-04"),
+      createdAt: new Date("2024-01-04"),
+      updatedAt: new Date("2024-01-04"),
+      submittedBy: null,
+      queueItemId: "q3",
+      status: "applied",
+      listing: {
+        id: "l3",
+        url: "https://jobs/3",
+        title: "C Engineer",
+        companyName: "Gamma",
+        location: "LA",
+        description: "desc",
+        status: "matched",
+        createdAt: new Date("2024-01-04"),
+        updatedAt: new Date("2024-01-04"),
+      },
+    },
   ]
 
   beforeEach(() => {
@@ -147,5 +176,28 @@ describe("JobApplicationsPage", () => {
     const rows = screen.getAllByRole("row").slice(1)
     expect(rows[0]).toHaveTextContent("Alpha")
     expect(rows[1]).toHaveTextContent("Beta")
+  })
+
+  it("applies status filter locally", async () => {
+    render(
+      <MemoryRouter>
+        <JobApplicationsPage />
+      </MemoryRouter>
+    )
+
+    await screen.findByText("A Engineer")
+
+    const statusSelect = screen.getByRole("combobox", { name: /status filter/i })
+    fireEvent.click(statusSelect)
+    fireEvent.click(screen.getByRole("option", { name: /Applied/i }))
+
+    await waitFor(() => {
+      const lastCall = mocks.subscribeToMatches.mock.calls.at(-1)
+      expect(lastCall?.[1]).toMatchObject({ status: "applied" })
+    })
+
+    const rows = screen.getAllByRole("row").slice(1)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toHaveTextContent("C Engineer")
   })
 })

@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react"
+import { formatDistanceToNowStrict } from "date-fns"
+import { normalizeDateValue } from "@/utils/dateFormat"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useEntityModal } from "@/contexts/EntityModalContext"
@@ -61,6 +63,12 @@ const sourceTypeLabels: Record<string, string> = {
   greenhouse: "Greenhouse",
   workday: "Workday",
   lever: "Lever",
+}
+
+const formatRelativeTime = (value: unknown): string => {
+  const date = normalizeDateValue(value)
+  if (!date) return "—"
+  return formatDistanceToNowStrict(date, { addSuffix: true })
 }
 
 export function SourcesPage() {
@@ -361,6 +369,7 @@ export function SourcesPage() {
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="hidden md:table-cell">Company</TableHead>
+                  <TableHead>Last Scraped</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -431,6 +440,11 @@ export function SourcesPage() {
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-muted-foreground text-sm">
+                        {formatRelativeTime(source.lastScrapedAt)}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
