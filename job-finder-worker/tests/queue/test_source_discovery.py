@@ -9,6 +9,7 @@ import pytest
 
 from job_finder.job_queue.models import (
     JobQueueItem,
+    ProcessorContext,
     QueueItemType,
     QueueStatus,
     SourceDiscoveryConfig,
@@ -165,7 +166,17 @@ def processor(mock_dependencies: Dict[str, Any]) -> QueueItemProcessor:
         patch("job_finder.job_queue.processors.job_processor.AgentManager"),
         patch("job_finder.job_queue.processors.job_processor.ScrapeRunner"),
     ):
-        return QueueItemProcessor(**mock_dependencies)
+        ctx = ProcessorContext(
+            queue_manager=mock_dependencies["queue_manager"],
+            config_loader=mock_dependencies["config_loader"],
+            job_storage=mock_dependencies["job_storage"],
+            job_listing_storage=mock_dependencies["job_listing_storage"],
+            companies_manager=mock_dependencies["companies_manager"],
+            sources_manager=mock_dependencies["sources_manager"],
+            company_info_fetcher=mock_dependencies["company_info_fetcher"],
+            ai_matcher=mock_dependencies["ai_matcher"],
+        )
+        return QueueItemProcessor(ctx)
 
 
 @pytest.fixture

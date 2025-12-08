@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from job_finder.job_queue.models import JobQueueItem, QueueItemType
+from job_finder.job_queue.models import JobQueueItem, ProcessorContext, QueueItemType
 from job_finder.job_queue.processors.company_processor import CompanyProcessor
 
 
@@ -17,13 +17,17 @@ def _make_processor():
 
     company_info_fetcher = MagicMock()
 
-    return CompanyProcessor(
+    ctx = ProcessorContext(
         queue_manager=queue_manager,
         config_loader=config_loader,
+        job_storage=MagicMock(),
+        job_listing_storage=MagicMock(),
         companies_manager=companies_manager,
         sources_manager=sources_manager,
         company_info_fetcher=company_info_fetcher,
+        ai_matcher=MagicMock(),
     )
+    return CompanyProcessor(ctx)
 
 
 def _company_item(name="Acme", cid=None, url="https://acme.com/jobs"):

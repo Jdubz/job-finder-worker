@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, create_autospec
 
+from job_finder.job_queue.models import ProcessorContext
 from job_finder.job_queue.processors.job_processor import JobProcessor
 from job_finder.storage.job_listing_storage import JobListingStorage
 
@@ -24,7 +25,7 @@ def _build_processor(job_listing_storage):
     company_info_fetcher = MagicMock()
     ai_matcher = MagicMock()
 
-    return JobProcessor(
+    ctx = ProcessorContext(
         queue_manager=queue_manager,
         config_loader=config_loader,
         job_storage=job_storage,
@@ -34,6 +35,7 @@ def _build_processor(job_listing_storage):
         company_info_fetcher=company_info_fetcher,
         ai_matcher=ai_matcher,
     )
+    return JobProcessor(ctx)
 
 
 def test_update_listing_status_calls_storage_with_expected_signature():

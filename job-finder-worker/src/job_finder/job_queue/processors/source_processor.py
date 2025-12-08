@@ -18,10 +18,9 @@ from job_finder.ai.source_discovery import SourceDiscovery
 from job_finder.exceptions import DuplicateSourceError, QueueProcessingError, ScrapeBlockedError
 from job_finder.filters.prefilter import PreFilter
 from job_finder.filters.title_filter import TitleFilter
-from job_finder.job_queue.config_loader import ConfigLoader
-from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import (
     JobQueueItem,
+    ProcessorContext,
     QueueItemType,
     QueueStatus,
     SourceStatus,
@@ -30,8 +29,6 @@ from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
-from job_finder.storage.companies_manager import CompaniesManager
-from job_finder.storage.job_sources_manager import JobSourcesManager
 
 from .base_processor import BaseProcessor
 
@@ -41,37 +38,28 @@ logger = logging.getLogger(__name__)
 class SourceProcessor(BaseProcessor):
     """Processor for source discovery and scraping queue items."""
 
-    def __init__(
-        self,
-        queue_manager: QueueManager,
-        config_loader: ConfigLoader,
-        sources_manager: JobSourcesManager,
-        companies_manager: CompaniesManager,
-    ):
+    def __init__(self, ctx: ProcessorContext):
         """
-        Initialize source processor with its specific dependencies.
+        Initialize source processor with ProcessorContext.
 
         Args:
-            queue_manager: Queue manager for updating item status
-            config_loader: Configuration loader for AI settings
-            sources_manager: Job sources manager
-            companies_manager: Companies manager for company lookup/creation
+            ctx: ProcessorContext containing all required dependencies
         """
-        super().__init__(queue_manager, config_loader)
+        super().__init__(ctx)
 
-        self.sources_manager = sources_manager
-        self.companies_manager = companies_manager
-        self.agent_manager = AgentManager(config_loader)
+        self.sources_manager = ctx.sources_manager
+        self.companies_manager = ctx.companies_manager
+        self.agent_manager = AgentManager(ctx.config_loader)
 
         # Create filters from prefilter-policy for early rejection
-        prefilter_policy = config_loader.get_prefilter_policy()
+        prefilter_policy = ctx.config_loader.get_prefilter_policy()
         title_cfg = prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
         self.title_filter = TitleFilter(title_cfg) if title_cfg else None
         self.prefilter = PreFilter(prefilter_policy) if prefilter_policy else None
 
         # Initialize scraper intake with filters to pre-filter jobs at intake
         self.scraper_intake = ScraperIntake(
-            queue_manager=queue_manager,
+            queue_manager=ctx.queue_manager,
             title_filter=self.title_filter,
             prefilter=self.prefilter,
         )

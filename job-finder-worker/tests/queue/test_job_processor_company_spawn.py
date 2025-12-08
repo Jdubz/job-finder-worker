@@ -11,7 +11,7 @@ when company_id changed between job submissions. Fixed to use OR logic.
 
 from unittest.mock import MagicMock, patch
 
-from job_finder.job_queue.models import JobQueueItem, QueueItemType
+from job_finder.job_queue.models import JobQueueItem, ProcessorContext, QueueItemType
 from job_finder.job_queue.processors.job_processor import JobProcessor, PipelineContext
 
 
@@ -44,7 +44,7 @@ def _make_job_processor():
         "job_finder.job_queue.processors.job_processor.AgentManager",
         return_value=MagicMock(),
     ):
-        processor = JobProcessor(
+        ctx = ProcessorContext(
             queue_manager=qm,
             config_loader=cl,
             job_storage=js,
@@ -55,6 +55,7 @@ def _make_job_processor():
             ai_matcher=ai_matcher,
             notifier=None,
         )
+        processor = JobProcessor(ctx)
 
     processor._refresh_runtime_config = nop  # avoid overwriting mocks
     return processor, qm, comp

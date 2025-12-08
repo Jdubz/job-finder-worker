@@ -15,7 +15,7 @@ import tempfile
 import os
 from unittest.mock import MagicMock, patch
 
-from job_finder.job_queue.models import JobQueueItem, QueueItemType
+from job_finder.job_queue.models import JobQueueItem, ProcessorContext, QueueItemType
 from job_finder.job_queue.processors.job_processor import JobProcessor, PipelineContext
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.job_queue.manager import QueueManager
@@ -190,7 +190,7 @@ def job_processor(queue_manager, mock_config_loader, job_listing_storage):
     with patch("job_finder.job_queue.processors.job_processor.AgentManager"):
         with patch("job_finder.job_queue.processors.job_processor.JobExtractor"):
             with patch("job_finder.job_queue.processors.job_processor.ScrapeRunner"):
-                processor = JobProcessor(
+                ctx = ProcessorContext(
                     queue_manager=queue_manager,
                     config_loader=mock_config_loader,
                     job_storage=MagicMock(),
@@ -200,6 +200,7 @@ def job_processor(queue_manager, mock_config_loader, job_listing_storage):
                     company_info_fetcher=MagicMock(),
                     ai_matcher=MagicMock(),
                 )
+                processor = JobProcessor(ctx)
                 return processor
 
 

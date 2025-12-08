@@ -30,7 +30,6 @@ from urllib.parse import urlparse, quote_plus
 from job_finder.ai.agent_manager import AgentManager
 from job_finder.ai.extraction import JobExtractor, JobExtractionResult
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
-from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import (
     AIProviderError,
     DuplicateQueueItemError,
@@ -39,22 +38,16 @@ from job_finder.exceptions import (
 )
 from job_finder.filters.title_filter import TitleFilter
 from job_finder.filters.prefilter import PreFilter
-from job_finder.job_queue.config_loader import ConfigLoader
-from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import (
     JobQueueItem,
+    ProcessorContext,
     QueueItemType,
     QueueStatus,
 )
-from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
 from job_finder.profile.reducer import build_analog_map, load_scoring_profile
 from job_finder.scrape_runner import ScrapeRunner
-from job_finder.storage.companies_manager import CompaniesManager
-from job_finder.storage.job_listing_storage import JobListingStorage
-from job_finder.storage.job_storage import JobStorage
-from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name, is_source_name
 from job_finder.utils.url_utils import normalize_url
@@ -85,44 +78,25 @@ class PipelineContext:
 class JobProcessor(BaseProcessor):
     """Processor for job queue items using single-task pipeline."""
 
-    def __init__(
-        self,
-        queue_manager: QueueManager,
-        config_loader: ConfigLoader,
-        job_storage: JobStorage,
-        job_listing_storage: JobListingStorage,
-        companies_manager: CompaniesManager,
-        sources_manager: JobSourcesManager,
-        company_info_fetcher: CompanyInfoFetcher,
-        ai_matcher: AIJobMatcher,
-        notifier: Optional[QueueEventNotifier] = None,
-    ):
+    def __init__(self, ctx: ProcessorContext):
         """
-        Initialize job processor with its specific dependencies.
+        Initialize job processor with ProcessorContext.
 
         Args:
-            queue_manager: Queue manager for updating item status
-            config_loader: Configuration loader for stop lists and filters
-            job_storage: Job storage for saving matches (references job_listings)
-            job_listing_storage: Job listing storage for tracking all discovered jobs
-            companies_manager: Company data manager
-            sources_manager: Job sources manager
-            company_info_fetcher: Company info fetcher (for ScrapeRunner)
-            ai_matcher: AI job matcher
-            notifier: Optional event notifier for WebSocket progress updates
+            ctx: ProcessorContext containing all required dependencies
         """
-        super().__init__(queue_manager, config_loader)
+        super().__init__(ctx)
 
-        self.job_storage = job_storage
-        self.job_listing_storage = job_listing_storage
-        self.companies_manager = companies_manager
-        self.sources_manager = sources_manager
-        self.ai_matcher = ai_matcher
-        self.company_info_fetcher = company_info_fetcher
-        self.notifier = notifier
+        self.job_storage = ctx.job_storage
+        self.job_listing_storage = ctx.job_listing_storage
+        self.companies_manager = ctx.companies_manager
+        self.sources_manager = ctx.sources_manager
+        self.ai_matcher = ctx.ai_matcher
+        self.company_info_fetcher = ctx.company_info_fetcher
+        self.notifier = ctx.notifier
 
         # Initialize new hybrid pipeline components
-        prefilter_policy = config_loader.get_prefilter_policy()
+        prefilter_policy = ctx.config_loader.get_prefilter_policy()
         title_filter_config = (
             prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
         )
@@ -131,29 +105,29 @@ class JobProcessor(BaseProcessor):
         # Initialize prefilter - fails loud if not configured
         self.prefilter = PreFilter(prefilter_policy)
 
-        match_policy = config_loader.get_match_policy()
+        match_policy = ctx.config_loader.get_match_policy()
         self.match_policy = match_policy
 
         self.scoring_engine = self._build_scoring_engine(match_policy)
 
         # Initialize AgentManager for AI operations
-        self.agent_manager = AgentManager(config_loader)
+        self.agent_manager = AgentManager(ctx.config_loader)
         self.extractor = JobExtractor(self.agent_manager)
 
         # Initialize scrape runner with title filter for pre-filtering
         self.scrape_runner = ScrapeRunner(
-            queue_manager=queue_manager,
-            job_listing_storage=job_listing_storage,
-            companies_manager=companies_manager,
-            sources_manager=sources_manager,
+            queue_manager=ctx.queue_manager,
+            job_listing_storage=ctx.job_listing_storage,
+            companies_manager=ctx.companies_manager,
+            sources_manager=ctx.sources_manager,
             title_filter=self.title_filter,
         )
 
         # Initialize scraper intake with filters for deduplication
         self.scraper_intake = ScraperIntake(
-            queue_manager=queue_manager,
-            job_listing_storage=job_listing_storage,
-            companies_manager=companies_manager,
+            queue_manager=ctx.queue_manager,
+            job_listing_storage=ctx.job_listing_storage,
+            companies_manager=ctx.companies_manager,
             title_filter=self.title_filter,
             prefilter=self.prefilter,
         )
