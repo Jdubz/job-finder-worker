@@ -27,7 +27,6 @@ import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { env } from '../../config/env'
 import { logger } from '../../logger'
-import { ApiHttpError } from '../../middleware/api-error'
 
 const updateSchema = z.object({
   payload: z.record(z.unknown())
