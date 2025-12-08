@@ -351,6 +351,7 @@ export function buildCoverLetterPrompt(
     '\nUse the experience, education, projects, and skills provided as your ONLY source of truth.' +
     '\nDo NOT invent new companies, roles, achievements, technologies, or skills; every claim must come from the input data above.' +
     '\nSelect the most relevant 2-3 experiences/achievements for THIS specific role and company.' +
-    '\nReturn ONLY a JSON object with keys: greeting, openingParagraph, bodyParagraphs[], closingParagraph, signature.'
+    '\nReturn ONLY a JSON object with keys: greeting, openingParagraph, bodyParagraphs[], closingParagraph, signature.' +
+    '\nThe "signature" field is the closing phrase only (e.g., "Best," or "Cheers," or "Looking forward to it,"). The candidate name is added programmatically below it.'
   )
 }
