@@ -149,6 +149,17 @@ export function SourcesPage() {
     })
   }
 
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value)
+    setFilters({
+      search: searchTerm || undefined,
+      status: value !== "all" ? (value as JobSourceStatus) : undefined,
+      limit: 100,
+      sortBy,
+      sortOrder,
+    })
+  }
+
   const handleSortChange = (value: string) => {
     const nextSort = value as typeof sortBy
     setSortBy(nextSort)
@@ -172,9 +183,11 @@ export function SourcesPage() {
     })
   }
 
-  // Filter sources locally for search (memoized)
+  const getTime = (value: unknown) => normalizeDateValue(value)?.getTime() ?? 0
+
+  // Filter and sort sources locally for responsive UI (memoized)
   const filteredSources = useMemo(() => {
-    return sources.filter((source) => {
+    const filtered = sources.filter((source) => {
       if (
         searchTerm &&
         !source.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
@@ -187,7 +200,28 @@ export function SourcesPage() {
       }
       return true
     })
-  }, [sources, searchTerm, statusFilter])
+
+    return filtered.sort((a, b) => {
+      const direction = sortOrder === "asc" ? 1 : -1
+      switch (sortBy) {
+        case "name":
+          return direction * a.name.localeCompare(b.name)
+        case "created_at": {
+          const diff = getTime(a.createdAt) - getTime(b.createdAt)
+          return direction === 1 ? diff : -diff
+        }
+        case "last_scraped_at": {
+          const diff = getTime(a.lastScrapedAt) - getTime(b.lastScrapedAt)
+          return direction === 1 ? diff : -diff
+        }
+        case "updated_at":
+        default: {
+          const diff = getTime(a.updatedAt) - getTime(b.updatedAt)
+          return direction === 1 ? diff : -diff
+        }
+      }
+    })
+  }, [sources, searchTerm, statusFilter, sortBy, sortOrder])
 
   if (!user) {
     return (
@@ -311,7 +345,7 @@ export function SourcesPage() {
                 className="w-full sm:w-[200px]"
               />
               <div className="flex gap-2">
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
                   <SelectTrigger className="flex-1 sm:w-[110px]">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
