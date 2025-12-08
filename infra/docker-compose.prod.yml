@@ -21,7 +21,7 @@ services:
       JF_SQLITE_MIGRATIONS_DIR: /app/infra/sqlite/migrations
       LOG_DIR: /logs
       WORKER_MAINTENANCE_URL: http://worker:5555/maintenance
-      CORS_ALLOWED_ORIGINS: https://job-finder.joshwentworth.com
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://job-finder.joshwentworth.com}
       TZ: America/Los_Angeles
     entrypoint:
       - sh
