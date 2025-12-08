@@ -459,7 +459,7 @@ function coverLetterHtml(
       </div>
 
       <div class="signature">
-        <div class="signature-line">${cleanText(content.signature || 'Sincerely,')}</div>
+        <div class="signature-line">${cleanText(typeof content.signature === 'string' && content.signature ? content.signature : 'Sincerely,')}</div>
         <div class="signature-name">${cleanText(opts.name)}</div>
       </div>
 

@@ -138,6 +138,7 @@ export interface CoverLetterContent {
   openingParagraph: string
   bodyParagraphs: string[]
   closingParagraph: string
+  /** Closing phrase only (e.g., "Best," or "Sincerely,"). Candidate name is added programmatically. */
   signature: string
 }
 
