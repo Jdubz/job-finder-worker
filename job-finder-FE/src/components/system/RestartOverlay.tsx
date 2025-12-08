@@ -64,12 +64,33 @@ export function RestartOverlay() {
       }
     }
 
+    const attemptReloadIfWaiting = () => {
+      if (stateRef.current.status !== "waiting") return
+      // Rely on a full reload to restore persisted state and reconnect SSE cleanly
+      window.location.replace(window.location.href)
+    }
+
     source.addEventListener("restarting", (event) => {
       try {
         const data = JSON.parse((event as MessageEvent).data) as { reason?: string }
         void beginBlocking(data.reason)
       } catch {
         void beginBlocking()
+      }
+    })
+
+    // The backend broadcasts a `ready` (and periodic `status`) event once it is accepting traffic again.
+    // If polling failed due to a bad health URL or other transient issues, this acts as a second signal
+    // to clear the overlay and reload when the API is definitively back online.
+    source.addEventListener("ready", attemptReloadIfWaiting)
+    source.addEventListener("status", (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data) as { ready?: boolean }
+        if (data.ready) {
+          attemptReloadIfWaiting()
+        }
+      } catch {
+        /* ignore malformed status payloads */
       }
     })
 
