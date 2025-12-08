@@ -2,6 +2,29 @@ import { promises as fs } from 'fs'
 import * as path from 'path'
 import * as fsSync from 'fs'
 import { logger } from '../../logger'
+import { env } from '../../config/env'
+
+const MAX_TOTAL_BYTES = 512 * 1024 // 512KB per request
+const MAX_ENTRY_BYTES = 16 * 1024 // 16KB per log entry before truncation
+
+function ensureLogDir(dir: string) {
+  if (!fsSync.existsSync(dir)) {
+    fsSync.mkdirSync(dir, { recursive: true })
+  }
+}
+
+function truncateEntry(entry: any) {
+  const cloned = { ...entry }
+  const fieldsToTrim = ['message', 'details', 'payload']
+  for (const key of fieldsToTrim) {
+    if (typeof cloned[key] === 'string' && Buffer.byteLength(cloned[key], 'utf8') > MAX_ENTRY_BYTES) {
+      const buf = Buffer.from(cloned[key], 'utf8')
+      const sliced = buf.slice(0, MAX_ENTRY_BYTES).toString('utf8')
+      cloned[key] = `${sliced}…`
+    }
+  }
+  return cloned
+}
 
 /**
  * Simple file-based logging service
@@ -12,14 +35,8 @@ import { logger } from '../../logger'
  */
 export const loggingService = {
   getLogFilePath(): string {
-    const isProd = process.env.NODE_ENV === 'production'
-    const logDir = isProd ? '/srv/job-finder/logs' : path.join(process.cwd(), 'logs')
-
-    // Ensure directory exists
-    if (!fsSync.existsSync(logDir)) {
-      fsSync.mkdirSync(logDir, { recursive: true })
-    }
-
+    const logDir = env.LOG_DIR
+    ensureLogDir(logDir)
     return path.join(logDir, 'frontend.log')
   },
 
@@ -30,14 +47,20 @@ export const loggingService = {
       return { stored: 0, failed: 0 }
     }
 
-    // Process all logs into a single string
-    const content = logs.map(log => {
-      const logEntry = {
-        ...log,
+    const normalized = logs.map((log) => {
+      const entry = truncateEntry(log)
+      return JSON.stringify({
+        ...entry,
         timestamp: new Date().toISOString()
-      }
-      return JSON.stringify(logEntry)
-    }).join('\n') + '\n'
+      })
+    })
+
+    const content = normalized.join('\n') + '\n'
+
+    if (Buffer.byteLength(content, 'utf8') > MAX_TOTAL_BYTES) {
+      logger.warn({ bytes: Buffer.byteLength(content, 'utf8'), max: MAX_TOTAL_BYTES }, 'Rejected log batch: too large')
+      return { stored: 0, failed: logs.length }
+    }
 
     try {
       // Single async write operation

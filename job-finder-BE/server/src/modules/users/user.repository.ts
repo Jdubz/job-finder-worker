@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3"
+import { createHash } from "node:crypto"
 import { getDb } from "../../db/sqlite"
 
 export type UserRole = string
@@ -62,6 +63,10 @@ export class UserRepository {
 
   constructor() {
     this.db = getDb()
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex')
   }
 
   findByEmail(email: string): UserRecord | null {
@@ -132,11 +137,12 @@ export class UserRepository {
   }
 
   saveSession(userId: string, token: string, expiresAt: string): void {
+    const hashed = this.hashToken(token)
     this.db
       .prepare(
         "UPDATE users SET session_token = ?, session_expires_at = ?, session_expires_at_ms = ?, updated_at = datetime('now') WHERE id = ?"
       )
-      .run(token, expiresAt, Date.parse(expiresAt), userId)
+      .run(hashed, expiresAt, Date.parse(expiresAt), userId)
   }
 
   clearSession(userId: string): void {
@@ -148,11 +154,12 @@ export class UserRepository {
   }
 
   findBySessionToken(token: string): UserRecord | null {
+    const hashed = this.hashToken(token)
     const row = this.db
       .prepare(
         "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms FROM users WHERE session_token = ?"
       )
-      .get(token) as UserRow | undefined
+      .get(hashed) as UserRow | undefined
     if (!row) return null
     return mapRow(row)
   }
