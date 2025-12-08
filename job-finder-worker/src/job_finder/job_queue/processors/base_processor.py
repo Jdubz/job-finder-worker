@@ -14,9 +14,7 @@ are initialized only by processors that need them (JobProcessor).
 import logging
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
-from job_finder.job_queue.config_loader import ConfigLoader
-from job_finder.job_queue.manager import QueueManager
-from job_finder.job_queue.models import JobQueueItem, QueueStatus
+from job_finder.job_queue.models import JobQueueItem, ProcessorContext, QueueStatus
 from job_finder.logging_config import get_structured_logger
 
 if TYPE_CHECKING:
@@ -28,22 +26,19 @@ logger = logging.getLogger(__name__)
 class BaseProcessor:
     """Base class for queue item processors with shared dependencies."""
 
-    def __init__(
-        self,
-        queue_manager: QueueManager,
-        config_loader: ConfigLoader,
-    ):
+    def __init__(self, ctx: ProcessorContext):
         """
-        Initialize base processor with core shared dependencies.
+        Initialize base processor with ProcessorContext.
 
-        Subclasses should accept additional dependencies specific to their needs.
+        All dependencies are accessed via ctx, which provides a clean
+        dependency injection pattern.
 
         Args:
-            queue_manager: Queue manager for updating item status
-            config_loader: Configuration loader for stop lists and filters
+            ctx: ProcessorContext containing all required dependencies
         """
-        self.queue_manager = queue_manager
-        self.config_loader = config_loader
+        self.ctx = ctx
+        self.queue_manager = ctx.queue_manager
+        self.config_loader = ctx.config_loader
 
         # Structured logger for traceable, queryable log fields
         self.slogger = get_structured_logger(

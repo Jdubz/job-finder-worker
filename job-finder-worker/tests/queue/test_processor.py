@@ -6,6 +6,7 @@ import pytest
 
 from job_finder.job_queue.models import (
     JobQueueItem,
+    ProcessorContext,
     QueueItemType,
     QueueStatus,
     ScrapeConfig,
@@ -92,7 +93,18 @@ def processor(mock_managers):
         mock_scrape_runner_class.return_value = mock_scrape_runner_instance
         mock_agent_manager_class.return_value = MagicMock()  # Mock AgentManager
 
-        processor_instance = QueueItemProcessor(**mock_managers)
+        # Create ProcessorContext from mock_managers
+        ctx = ProcessorContext(
+            queue_manager=mock_managers["queue_manager"],
+            config_loader=mock_managers["config_loader"],
+            job_storage=mock_managers["job_storage"],
+            job_listing_storage=mock_managers["job_listing_storage"],
+            companies_manager=mock_managers["companies_manager"],
+            sources_manager=mock_managers["sources_manager"],
+            company_info_fetcher=mock_managers["company_info_fetcher"],
+            ai_matcher=mock_managers["ai_matcher"],
+        )
+        processor_instance = QueueItemProcessor(ctx)
 
         # Store reference to mock scrape_runner for tests to access
         # Note: After refactoring, scrape_runner is on job_processor

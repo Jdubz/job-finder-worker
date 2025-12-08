@@ -372,3 +372,76 @@ class ConfigLoader:
             )
 
         return settings
+
+    # ============================================================
+    # WORKER RUNTIME HELPERS
+    # ============================================================
+
+    # Bounds for runtime settings
+    MIN_PROCESSING_TIMEOUT_SECONDS = 5
+    DEFAULT_PROCESSING_TIMEOUT_SECONDS = 1800  # 30 minutes
+    MIN_TASK_DELAY_SECONDS = 0
+    MAX_TASK_DELAY_SECONDS = 60
+    DEFAULT_TASK_DELAY_SECONDS = 1
+    MIN_POLL_INTERVAL_SECONDS = 10
+    DEFAULT_POLL_INTERVAL_SECONDS = 60
+
+    def get_processing_timeout(self) -> int:
+        """
+        Get processing timeout in seconds with bounds validation.
+
+        Returns:
+            Processing timeout (minimum 5 seconds, default 1800).
+        """
+        worker_settings = self.get_worker_settings()
+        runtime = worker_settings.get("runtime", {})
+        timeout = runtime.get("processingTimeoutSeconds", self.DEFAULT_PROCESSING_TIMEOUT_SECONDS)
+        return max(self.MIN_PROCESSING_TIMEOUT_SECONDS, int(timeout))
+
+    def get_task_delay(self) -> float:
+        """
+        Get delay between tasks in seconds with bounds validation.
+
+        Returns:
+            Task delay (0-60 seconds, default 1).
+        """
+        worker_settings = self.get_worker_settings()
+        runtime = worker_settings.get("runtime", {})
+        delay_raw = runtime.get("taskDelaySeconds", self.DEFAULT_TASK_DELAY_SECONDS)
+
+        try:
+            delay = float(delay_raw)
+            if delay < self.MIN_TASK_DELAY_SECONDS:
+                logger.warning(
+                    "Invalid taskDelaySeconds=%s (negative), using default of %ss",
+                    delay_raw,
+                    self.DEFAULT_TASK_DELAY_SECONDS,
+                )
+                return float(self.DEFAULT_TASK_DELAY_SECONDS)
+            elif delay > self.MAX_TASK_DELAY_SECONDS:
+                logger.warning(
+                    "taskDelaySeconds=%s exceeds maximum of %ss, capping",
+                    delay_raw,
+                    self.MAX_TASK_DELAY_SECONDS,
+                )
+                return float(self.MAX_TASK_DELAY_SECONDS)
+            return delay
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid taskDelaySeconds=%s (not a number), using default of %ss",
+                delay_raw,
+                self.DEFAULT_TASK_DELAY_SECONDS,
+            )
+            return float(self.DEFAULT_TASK_DELAY_SECONDS)
+
+    def get_poll_interval(self) -> int:
+        """
+        Get poll interval in seconds with bounds validation.
+
+        Returns:
+            Poll interval (minimum 10 seconds, default 60).
+        """
+        worker_settings = self.get_worker_settings()
+        runtime = worker_settings.get("runtime", {})
+        interval = runtime.get("pollIntervalSeconds", self.DEFAULT_POLL_INTERVAL_SECONDS)
+        return max(self.MIN_POLL_INTERVAL_SECONDS, int(interval))

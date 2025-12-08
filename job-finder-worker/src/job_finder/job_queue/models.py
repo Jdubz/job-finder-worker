@@ -5,12 +5,57 @@ The TypeScript definitions in @shared/types are the source of truth; this file m
 those contracts for the Python worker.
 """
 
+from __future__ import annotations
+
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from job_finder.ai import AIJobMatcher
+    from job_finder.company_info_fetcher import CompanyInfoFetcher
+    from job_finder.job_queue.config_loader import ConfigLoader
+    from job_finder.job_queue.manager import QueueManager
+    from job_finder.job_queue.notifier import QueueEventNotifier
+    from job_finder.storage import JobStorage, JobListingStorage
+    from job_finder.storage.companies_manager import CompaniesManager
+    from job_finder.storage.job_sources_manager import JobSourcesManager
+
+
+@dataclass
+class ProcessorContext:
+    """
+    Dependency container for queue item processors.
+
+    Groups related dependencies to reduce constructor parameter counts and
+    make dependency injection clearer. Each specialized processor receives
+    this context and uses only the dependencies it needs.
+
+    Attributes:
+        queue_manager: Queue manager for updating item status
+        config_loader: Configuration loader for stop lists and filters
+        job_storage: SQLite job storage for saving matches
+        job_listing_storage: SQLite storage for all discovered job listings
+        companies_manager: Company data manager
+        sources_manager: Job sources manager
+        company_info_fetcher: Company info scraper
+        ai_matcher: AI job matcher
+        notifier: Optional event notifier for WebSocket progress updates
+    """
+
+    queue_manager: "QueueManager"
+    config_loader: "ConfigLoader"
+    job_storage: "JobStorage"
+    job_listing_storage: "JobListingStorage"
+    companies_manager: "CompaniesManager"
+    sources_manager: "JobSourcesManager"
+    company_info_fetcher: "CompanyInfoFetcher"
+    ai_matcher: "AIJobMatcher"
+    notifier: Optional["QueueEventNotifier"] = None
 
 
 class QueueItemType(str, Enum):

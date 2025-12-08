@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import os
 import time
 import signal
+import traceback
 
 from job_finder.flask_worker import initialize_components, load_config
-from job_finder.exceptions import InitializationError, ConfigurationError
+from job_finder.exceptions import InitializationError, ConfigurationError, NoAgentsAvailableError
+from job_finder.job_queue.models import QueueStatus
 
 
 logger = logging.getLogger("queue_worker")
@@ -35,79 +38,101 @@ def main() -> None:
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 
-    # Get task delay from settings (default to 1 second) with validation
+    # Get task delay and processing timeout from config_loader (centralized validation)
     try:
-        worker_settings = config_loader.get_worker_settings()
-        runtime = worker_settings.get("runtime", {}) if isinstance(worker_settings, dict) else {}
-        task_delay_raw = runtime.get("taskDelaySeconds", 1)
-
-        # Validate taskDelaySeconds is a valid number
-        try:
-            task_delay = float(task_delay_raw)
-            # Ensure it's within reasonable bounds (0 to 60 seconds)
-            if task_delay < 0:
-                logger.warning(
-                    "Invalid taskDelaySeconds=%s (negative), using default of 1s",
-                    task_delay_raw,
-                )
-                task_delay = 1
-            elif task_delay > 60:
-                logger.warning(
-                    "taskDelaySeconds=%s exceeds maximum of 60s, capping at 60s",
-                    task_delay_raw,
-                )
-                task_delay = 60
-        except (TypeError, ValueError):
-            logger.warning(
-                "Invalid taskDelaySeconds=%s (not a number), using default of 1s",
-                task_delay_raw,
-            )
-            task_delay = 1
+        task_delay = config_loader.get_task_delay()
     except (InitializationError, ConfigurationError) as e:
-        # Expected errors: database not initialized, config missing, etc.
         logger.warning(
-            "Could not load worker runtime settings (%s: %s), using default task delay of 1s",
+            "Could not load task delay (%s: %s), using default of 1s",
             type(e).__name__,
             e,
         )
-        task_delay = 1
+        task_delay = 1.0
     except Exception:
-        # Unexpected errors - log full traceback for debugging
-        logger.exception("Unexpected error loading queue settings, using default task delay of 1s")
-        task_delay = 1
+        logger.exception("Unexpected error loading task delay, using default of 1s")
+        task_delay = 1.0
+
+    try:
+        processing_timeout = config_loader.get_processing_timeout()
+    except (InitializationError, ConfigurationError):
+        processing_timeout = 1800  # Default 30 minutes
+        logger.warning(
+            "Could not load processing timeout, using default of %ss", processing_timeout
+        )
 
     logger.info(
-        "Queue worker started (poll_interval=%ss, batch_size=%s, task_delay=%ss)",
+        "Queue worker started (poll_interval=%ss, batch_size=%s, task_delay=%ss, timeout=%ss)",
         POLL_INTERVAL,
         BATCH_SIZE,
         task_delay,
+        processing_timeout,
     )
 
-    while RUNNING:
-        try:
-            items = queue_manager.get_pending_items(limit=BATCH_SIZE)
-            if not items:
-                logger.debug("No pending items. Sleeping for %ss", POLL_INTERVAL)
+    # Use ThreadPoolExecutor for timeout enforcement (single worker to maintain serial processing)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        while RUNNING:
+            try:
+                items = queue_manager.get_pending_items(limit=BATCH_SIZE)
+                if not items:
+                    logger.debug("No pending items. Sleeping for %ss", POLL_INTERVAL)
+                    time.sleep(POLL_INTERVAL)
+                    continue
+
+                logger.info("Processing %s queue items", len(items))
+                for i, item in enumerate(items):
+                    if not RUNNING:
+                        break
+                    try:
+                        # Submit task with timeout enforcement
+                        future = executor.submit(processor.process_item, item)
+                        future.result(timeout=processing_timeout)
+
+                        # Add delay between tasks (except after the last item)
+                        if task_delay > 0 and i < len(items) - 1:
+                            time.sleep(task_delay)
+
+                    except concurrent.futures.TimeoutError:
+                        error_msg = f"Processing exceeded timeout ({processing_timeout}s)"
+                        logger.error("Item %s timed out: %s", item.id, error_msg)
+                        queue_manager.update_status(
+                            item.id,
+                            QueueStatus.FAILED,
+                            error_msg,
+                            error_details=error_msg,
+                        )
+
+                    except NoAgentsAvailableError as e:
+                        # Critical: no agents available - reset item and stop processing
+                        logger.error(
+                            "No agents available for item %s (task_type=%s, tried=%s)",
+                            item.id,
+                            e.task_type,
+                            e.tried_agents,
+                        )
+                        queue_manager.update_status(
+                            item.id,
+                            QueueStatus.PENDING,
+                            f"Reset to pending: no agents available for {e.task_type}",
+                        )
+                        # Stop processing until agents are available
+                        logger.warning("Stopping queue processing: no agents available")
+                        config_loader.set_processing_disabled_with_reason(str(e))
+                        break
+
+                    except Exception:
+                        # Mark item as failed with full traceback
+                        error_msg = traceback.format_exc()
+                        logger.exception("Failed processing item %s", item.id)
+                        queue_manager.update_status(
+                            item.id,
+                            QueueStatus.FAILED,
+                            "Processing failed - see error details",
+                            error_details=error_msg,
+                        )
+
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception("Unhandled queue loop error")
                 time.sleep(POLL_INTERVAL)
-                continue
-
-            logger.info("Processing %s queue items", len(items))
-            for i, item in enumerate(items):
-                if not RUNNING:
-                    break
-                try:
-                    processor.process_item(item)
-
-                    # Add delay between tasks (except after the last item)
-                    if task_delay > 0 and i < len(items) - 1:
-                        time.sleep(task_delay)
-
-                except Exception:  # pragma: no cover - defensive logging
-                    logger.exception("Failed processing item %s", item.id)
-
-        except Exception:  # pragma: no cover - defensive logging
-            logger.exception("Unhandled queue loop error")
-            time.sleep(POLL_INTERVAL)
 
     logger.info("Queue worker stopped")
 

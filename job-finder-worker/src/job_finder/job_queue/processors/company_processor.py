@@ -15,20 +15,16 @@ from typing import List, Optional
 from urllib.parse import urlparse
 
 from job_finder.ai.search_client import get_search_client, SearchResult
-from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.exceptions import DuplicateQueueItemError
-from job_finder.job_queue.config_loader import ConfigLoader
-from job_finder.job_queue.manager import QueueManager
 from job_finder.logging_config import format_company_name
 from job_finder.job_queue.models import (
     JobQueueItem,
+    ProcessorContext,
     QueueItemType,
     QueueStatus,
     SourceDiscoveryConfig,
     SourceTypeHint,
 )
-from job_finder.storage.companies_manager import CompaniesManager
-from job_finder.storage.job_sources_manager import JobSourcesManager
 
 from .base_processor import BaseProcessor
 
@@ -38,29 +34,18 @@ logger = logging.getLogger(__name__)
 class CompanyProcessor(BaseProcessor):
     """Processor for company queue items."""
 
-    def __init__(
-        self,
-        queue_manager: QueueManager,
-        config_loader: ConfigLoader,
-        companies_manager: CompaniesManager,
-        sources_manager: JobSourcesManager,
-        company_info_fetcher: CompanyInfoFetcher,
-    ):
+    def __init__(self, ctx: ProcessorContext):
         """
-        Initialize company processor with its specific dependencies.
+        Initialize company processor with ProcessorContext.
 
         Args:
-            queue_manager: Queue manager for updating item status
-            config_loader: Configuration loader for stop lists and filters
-            companies_manager: Company data manager
-            sources_manager: Job sources manager
-            company_info_fetcher: Company info fetcher (search-first)
+            ctx: ProcessorContext containing all required dependencies
         """
-        super().__init__(queue_manager, config_loader)
+        super().__init__(ctx)
 
-        self.companies_manager = companies_manager
-        self.sources_manager = sources_manager
-        self.company_info_fetcher = company_info_fetcher
+        self.companies_manager = ctx.companies_manager
+        self.sources_manager = ctx.sources_manager
+        self.company_info_fetcher = ctx.company_info_fetcher
 
     # ============================================================
     # SINGLE-PASS PROCESSOR
