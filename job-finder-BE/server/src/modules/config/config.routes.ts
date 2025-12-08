@@ -97,21 +97,33 @@ function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>):
   return Object.fromEntries(entries) as T
 }
 
-function defaultDocumentGenerator(payload: Record<string, unknown>): { documentGenerator: AISettings['documentGenerator'] } {
-  const firstAgent = Object.keys((payload as any).agents ?? {})[0]
-  if (firstAgent) {
-    const [provider, iface] = firstAgent.split('.')
-    return {
-      documentGenerator: {
-        selected: {
-          provider: provider as AISettings['documentGenerator'] extends { selected: infer S } ? S extends { provider: infer P } ? P : never : never,
-          interface: (iface ?? 'api') as AISettings['documentGenerator'] extends { selected: infer S } ? S extends { interface: infer I } ? I : never : never,
-          model: (payload as any).agents?.[firstAgent]?.defaultModel ?? 'gpt-4o'
-        }
+function defaultDocumentGenerator(
+  payload: Partial<AISettings> & Record<string, unknown>
+): { documentGenerator?: AISettings['documentGenerator'] } {
+  const agents = (payload as any).agents ?? {}
+  const firstAgent = Object.keys(agents)[0]
+  if (!firstAgent) return {}
+
+  const [provider, iface] = firstAgent.split('.')
+  const model = (agents as any)[firstAgent]?.defaultModel ?? 'gpt-4o'
+
+  return {
+    documentGenerator: {
+      selected: {
+        provider: provider as AISettings['documentGenerator'] extends { selected: infer S }
+          ? S extends { provider: infer P }
+            ? P
+            : never
+          : never,
+        interface: (iface ?? 'api') as AISettings['documentGenerator'] extends { selected: infer S }
+          ? S extends { interface: infer I }
+            ? I
+            : never
+          : never,
+        model
       }
     }
   }
-  return { documentGenerator: { selected: undefined } }
 }
 
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
@@ -202,7 +214,7 @@ export function buildConfigRouter() {
       // For ai-settings, populate provider/interface availability dynamically
       if (id === 'ai-settings') {
         const aiPayload = entry.payload as AISettings
-        const docGen = aiPayload.documentGenerator ?? defaultDocumentGenerator(aiPayload).documentGenerator
+        const docGen = aiPayload.documentGenerator ?? defaultDocumentGenerator(aiPayload as any).documentGenerator
         const response: GetConfigEntryResponse = {
           config: {
             ...entry,
