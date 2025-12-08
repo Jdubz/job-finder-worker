@@ -451,7 +451,7 @@ class SourceDiscovery:
         try:
             host = urlparse(url).hostname or ""
             return any(host.endswith(dom) for dom in HEADLESS_REQUIRED_DOMAINS)
-        except Exception:
+        except ValueError:
             return False
 
     def _probe_lever_from_posting(self, url: str) -> Optional[Dict[str, Any]]:
@@ -475,7 +475,7 @@ class SourceDiscovery:
         except (requests.RequestException, ValueError, json.JSONDecodeError):
             return None
 
-        lever_pattern = next((p for p in PLATFORM_PATTERNS if p.name == "lever"), None)
+        lever_pattern = PLATFORM_PATTERNS_BY_NAME.get("lever")
         if not lever_pattern:
             return None
 
@@ -1010,3 +1010,5 @@ def discover_source(
     """
     discovery = SourceDiscovery(agent_manager)
     return discovery.discover(url)
+# Fast lookup by pattern name to avoid repeated scans
+PLATFORM_PATTERNS_BY_NAME = {p.name: p for p in PLATFORM_PATTERNS}
