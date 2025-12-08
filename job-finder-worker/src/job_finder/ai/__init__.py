@@ -19,7 +19,12 @@ from job_finder.ai.search_client import (
     TavilySearchClient,
     get_search_client,
 )
-from job_finder.ai.source_discovery import SourceDiscovery
+from job_finder.ai.source_analysis_agent import (
+    DisableReason,
+    SourceAnalysisAgent,
+    SourceAnalysisResult,
+    SourceClassification,
+)
 
 __all__ = [
     "AgentManager",
@@ -35,7 +40,10 @@ __all__ = [
     "GeminiCLIProvider",
     "GeminiProvider",
     "OpenAIProvider",
-    "SourceDiscovery",
+    "SourceAnalysisAgent",
+    "SourceAnalysisResult",
+    "SourceClassification",
+    "DisableReason",
     "SearchClient",
     "SearchResult",
     "TavilySearchClient",

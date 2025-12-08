@@ -8,13 +8,19 @@ All sources use the GenericScraper with unified SourceConfig format.
 """
 
 import logging
-import re
 import traceback
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
+import requests
+
 from job_finder.ai.agent_manager import AgentManager
-from job_finder.ai.source_discovery import SourceDiscovery
+from job_finder.ai.search_client import get_search_client
+from job_finder.ai.source_analysis_agent import (
+    SourceAnalysisAgent,
+    SourceAnalysisResult,
+    SourceClassification,
+)
 from job_finder.exceptions import DuplicateSourceError, QueueProcessingError, ScrapeBlockedError
 from job_finder.filters.prefilter import PreFilter
 from job_finder.filters.title_filter import TitleFilter
@@ -88,13 +94,17 @@ class SourceProcessor(BaseProcessor):
 
     def process_source_discovery(self, item: JobQueueItem) -> None:
         """
-        Process SOURCE_DISCOVERY queue item.
+        Process SOURCE_DISCOVERY queue item using intelligent agent-based analysis.
+
+        This method uses the SourceAnalysisAgent to intelligently classify and
+        analyze sources, replacing fragile pattern matching with AI reasoning.
 
         Flow:
-        1. Fetch URL and detect source type using AI
-        2. Generate SourceConfig with field mappings
-        3. Validate by test scraping
-        4. Create job-source document if successful
+        1. Gather context (fetch attempt, search results)
+        2. Run AI analysis to classify the source
+        3. Use classification to properly set company_id / aggregator_domain
+        4. Create source with meaningful disable notes if needed
+        5. Spawn follow-up tasks if source is active
 
         Args:
             item: Queue item with source_discovery_config
@@ -110,236 +120,52 @@ class SourceProcessor(BaseProcessor):
 
         # Set PROCESSING status at the start
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, f"Discovering source at {url}"
+            item.id, QueueStatus.PROCESSING, f"Analyzing source at {url}"
         )
 
         try:
-            # Run AI-powered discovery (AgentManager handles fallbacks internally)
-            discovery = SourceDiscovery(self.agent_manager)
-            discovery_result = discovery.discover(url)
-            if isinstance(discovery_result, tuple) and len(discovery_result) == 2:
-                source_config, validation_meta = discovery_result
-            else:
-                source_config, validation_meta = discovery_result, {}
-
-            # Detect if this is an aggregator based on URL
-            aggregator_domain = self._detect_aggregator_domain(url)
-
-            # Extract company info
-            company_id = config.company_id
-            company_created = False
-
-            # Try to resolve company name regardless of aggregator so we can build unique names
-            company_name = config.company_name or (
-                source_config.get("company_name", "") if source_config else ""
+            # Step 1: Gather context for the agent
+            fetch_result = self._attempt_fetch(url)
+            search_results = (
+                self._gather_search_context(url) if not fetch_result.get("success") else None
             )
-            if not company_name and config.company_id:
-                company_record = self.companies_manager.get_company_by_id(config.company_id)
-                if company_record:
-                    company_name = company_record.get("name")
 
-            if not source_config:
-                error = validation_meta.get("error", "discovery_failed")
-                error_details = validation_meta.get("error_details", "")
-
-                normalized_reason = error or "discovery_failed"
-                if isinstance(error_details, str):
-                    details_lower = error_details.lower()
-                    if normalized_reason == "discovery_failed":
-                        if "cloudflare" in details_lower or "vercel" in details_lower:
-                            normalized_reason = "bot_protection"
-                    elif normalized_reason == "api_probe_failed" and "resolve" in details_lower:
-                        normalized_reason = "dns_error"
-
-                placeholder_config = {
-                    "type": "html",
-                    "url": url,
-                    "headers": {},
-                    "disabled_notes": normalized_reason,
-                }
-
-                # Check for existing company+aggregator source to avoid duplicates
-                existing_pair = None
-                if company_id and aggregator_domain:
-                    existing_pair = self.sources_manager.get_source_by_company_and_aggregator(
-                        company_id, aggregator_domain
-                    )
-                    if isinstance(existing_pair, dict) and existing_pair:
-                        self._handle_existing_source(
-                            item,
-                            {
-                                **existing_pair,
-                                "disabledNotes": existing_pair.get("disabledNotes", ""),
-                            },
-                            context="placeholder",
-                        )
-                        return
-
-                # Build a collision-resistant placeholder name
-                if company_name and aggregator_domain:
-                    placeholder_name = f"{company_name} Jobs ({aggregator_domain})"
-                elif company_name:
-                    placeholder_name = f"{company_name} Jobs"
-                else:
-                    placeholder_name = f"{urlparse(url).netloc} Jobs"
-
-                source_id = self.sources_manager.create_from_discovery(
-                    name=placeholder_name,
-                    source_type=placeholder_config.get("type", "unknown"),
-                    config=placeholder_config,
-                    company_id=company_id,
-                    aggregator_domain=aggregator_domain,
-                    status=SourceStatus.DISABLED,
-                )
-
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.SUCCESS,
-                    f"Source created disabled: {normalized_reason}",
-                    scraped_data={
-                        "source_id": source_id,
-                        "disabled_notes": normalized_reason,
-                        "error_details": error_details,
-                    },
-                )
-                return
-
-            if not aggregator_domain:
-                # This is a company-specific source, resolve company and create stub if needed
-                if not company_name:
-                    company_name = self._extract_company_from_url(url)
-
-                if not company_id and company_name:
-                    # Find or create company record (without setting website from source URL)
-                    company_record = self.companies_manager.get_or_create_company(
-                        company_name=company_name,
-                        company_website=None,  # Let company enrichment find the real website
-                    )
-                    company_id = company_record.get("id")
-                    company_created = not company_record.get("about")
-                    logger.info(
-                        "Resolved company for source: %s -> %s (created=%s)",
-                        company_name,
-                        company_id,
-                        company_created,
-                    )
-
-            source_type = source_config.get("type", "unknown")
-
-            # Create source name (keep aggregator + company to avoid collisions)
-            if company_name and aggregator_domain:
-                source_name = f"{company_name} Jobs ({aggregator_domain})"
-            elif company_name:
-                source_name = f"{company_name} Jobs"
-            elif aggregator_domain:
-                source_name = f"{aggregator_domain.split('.')[0].title()} Jobs"
-            else:
-                source_name = f"Source ({source_type})"
-
-            needs_api_key = bool(validation_meta.get("needs_api_key"))
-            disabled_notes = (
-                "needs api key" if needs_api_key else source_config.get("disabled_notes", "")
+            # Step 2: Run intelligent agent analysis
+            analysis_agent = SourceAnalysisAgent(self.agent_manager)
+            analysis = analysis_agent.analyze(
+                url=url,
+                company_name=config.company_name,
+                company_id=config.company_id,
+                fetch_result=fetch_result,
+                search_results=search_results,
             )
-            initial_status = SourceStatus.DISABLED if needs_api_key else SourceStatus.ACTIVE
-            if disabled_notes:
-                source_config["disabled_notes"] = disabled_notes
 
-            # Guard against duplicates on the (company, aggregator) pair before creating
-            existing_pair = None
-            if company_id and aggregator_domain:
-                existing_pair = self.sources_manager.get_source_by_company_and_aggregator(
-                    company_id, aggregator_domain
-                )
-
-            try:
-                source_id = self.sources_manager.create_from_discovery(
-                    name=source_name,
-                    source_type=source_type,
-                    config=source_config,
-                    company_id=company_id,
-                    aggregator_domain=aggregator_domain,
-                    status=initial_status,
-                )
-            except DuplicateSourceError:
-                if not existing_pair and company_id and aggregator_domain:
-                    existing_pair = self.sources_manager.get_source_by_company_and_aggregator(
-                        company_id, aggregator_domain
-                    )
-                if existing_pair:
-                    self._handle_existing_source(
-                        item,
-                        {**existing_pair, "disabledNotes": existing_pair.get("disabledNotes", "")},
-                        context="race",
-                    )
-                    return
-                raise
-
-            if initial_status == SourceStatus.ACTIVE:
-                # Spawn SCRAPE_SOURCE to immediately scrape the new source
-                # Use spawn_item_safely for proper lineage tracking and dedup
-                scrape_item_id = self.queue_manager.spawn_item_safely(
-                    current_item=item,
-                    new_item_data={
-                        "type": QueueItemType.SCRAPE_SOURCE,
-                        "url": "",
-                        "company_name": company_name or "",
-                        "company_id": company_id,
-                        "source": "automated_scan",
-                        "source_id": source_id,
-                        "scraped_data": {"source_id": source_id},
-                    },
-                )
-                if scrape_item_id:
-                    logger.info(
-                        f"Spawned SCRAPE_SOURCE item {scrape_item_id} for source {source_id}"
-                    )
-                else:
-                    logger.info(f"SCRAPE_SOURCE blocked by spawn rules for source {source_id}")
-            else:
-                logger.info(
-                    "Created source %s disabled (%s); skipping immediate scrape",
-                    source_id,
-                    disabled_notes,
-                )
-
-            # If we created a new company stub, spawn COMPANY task to enrich it
-            if company_created and company_id:
-                company_website = self._extract_base_url(url)
-                # Use spawn_item_safely for proper lineage tracking and dedup
-                company_item_id = self.queue_manager.spawn_item_safely(
-                    current_item=item,
-                    new_item_data={
-                        "type": QueueItemType.COMPANY,
-                        "url": company_website,
-                        "company_name": company_name,
-                        "company_id": company_id,
-                        "source": "automated_scan",
-                    },
-                )
-                if company_item_id:
-                    logger.info(
-                        "Spawned COMPANY item %s to enrich stub for %s",
-                        company_item_id,
-                        company_name,
-                    )
-                else:
-                    logger.info(
-                        "COMPANY task blocked by spawn rules for %s",
-                        company_name,
-                    )
-
-            # Update queue item with success
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.SUCCESS,
-                source_id,
-                scraped_data={
-                    "source_id": source_id,
-                    "source_type": source_type,
-                    "disabled_notes": disabled_notes or "",
-                },
+            logger.info(
+                f"Source analysis: classification={analysis.classification.value}, "
+                f"aggregator={analysis.aggregator_domain}, company={analysis.company_name}, "
+                f"disable={analysis.should_disable}, confidence={analysis.confidence:.2f}"
             )
-            logger.info(f"SOURCE_DISCOVERY complete: Created source {source_id}")
+
+            # Step 3: Handle the analysis result
+            result = self._handle_analysis_result(item, config, url, analysis, fetch_result)
+
+            if result.get("handled"):
+                return  # Already handled (e.g., existing source found)
+
+            # Step 4: Create the source based on analysis
+            source_id = result.get("source_id")
+            if source_id:
+                self._finalize_source_creation(
+                    item=item,
+                    source_id=source_id,
+                    source_type=result.get("source_type", "unknown"),
+                    company_id=result.get("company_id"),
+                    company_name=result.get("company_name"),
+                    company_created=result.get("company_created", False),
+                    disabled_notes=result.get("disabled_notes", ""),
+                    initial_status=result.get("initial_status", SourceStatus.ACTIVE),
+                    url=url,
+                )
 
         except Exception as e:
             logger.error(f"Error in SOURCE_DISCOVERY: {e}")
@@ -350,6 +176,305 @@ class SourceProcessor(BaseProcessor):
                 error_details=traceback.format_exc(),
             )
 
+    def _attempt_fetch(self, url: str) -> Dict[str, Any]:
+        """Attempt to fetch URL content and return result context.
+
+        Args:
+            url: URL to fetch
+
+        Returns:
+            Dict with fetch result details for agent context
+        """
+        headers = {
+            "User-Agent": "JobFinderBot/1.0",
+            "Accept": "application/json, application/rss+xml, application/xml, text/xml, text/html, */*",
+        }
+
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "content_type": response.headers.get("Content-Type", ""),
+                "sample": response.text[:5000],  # Truncate for context
+            }
+
+        except requests.RequestException as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            error_type = "fetch_error"
+
+            if status in (401, 403):
+                error_type = "auth_or_bot_protection"
+            elif status == 429:
+                error_type = "rate_limited"
+
+            message = str(e).lower()
+            if "name or service not known" in message or "dns" in message:
+                error_type = "dns_error"
+
+            logger.warning(f"Fetch failed for {url}: {error_type} ({e})")
+
+            return {
+                "success": False,
+                "status_code": status,
+                "error": error_type,
+                "error_message": str(e),
+            }
+
+    def _gather_search_context(self, url: str) -> Optional[List[Dict[str, str]]]:
+        """Gather search results about the URL/domain for agent context.
+
+        Args:
+            url: URL to search for information about
+
+        Returns:
+            List of search result dicts or None
+        """
+        search_client = get_search_client()
+        if not search_client:
+            return None
+
+        domain = urlparse(url).netloc
+        queries = [
+            f"{domain} jobs api",
+            f"{domain} careers api documentation",
+        ]
+
+        results = []
+        for query in queries:
+            try:
+                search_results = search_client.search(query, max_results=3)
+                for r in search_results:
+                    results.append(
+                        {
+                            "title": r.title,
+                            "url": r.url,
+                            "snippet": r.snippet,
+                        }
+                    )
+                logger.info(f"Tavily search for '{query}' returned {len(search_results)} results")
+            except Exception as e:
+                logger.debug(f"Search failed for '{query}': {e}")
+
+        return results if results else None
+
+    def _handle_analysis_result(
+        self,
+        item: JobQueueItem,
+        config: Any,
+        url: str,
+        analysis: SourceAnalysisResult,
+        fetch_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Handle the source analysis result and prepare for source creation.
+
+        The agent is the single source of truth for classification, company_name,
+        and aggregator_domain. We trust its output completely.
+
+        Args:
+            item: The queue item being processed
+            config: Source discovery config
+            url: The source URL
+            analysis: The analysis result from the agent
+            fetch_result: The fetch attempt result
+
+        Returns:
+            Dict with handling result and source creation params
+        """
+        result: Dict[str, Any] = {"handled": False}
+
+        # Trust the agent's analysis - it's the primary source of truth
+        aggregator_domain = analysis.aggregator_domain
+        company_name = config.company_name or analysis.company_name
+        company_id = config.company_id
+        company_created = False
+
+        # If agent identified a company, resolve to company_id
+        if company_name and not company_id:
+            company_record = self.companies_manager.get_or_create_company(
+                company_name=company_name,
+                company_website=None,
+            )
+            company_id = company_record.get("id")
+            company_created = not company_record.get("about")
+            logger.info(
+                "Resolved company for source: %s -> %s (created=%s)",
+                company_name,
+                company_id,
+                company_created,
+            )
+
+        # Check for existing source to avoid duplicates
+        if company_id and aggregator_domain:
+            existing = self.sources_manager.get_source_by_company_and_aggregator(
+                company_id, aggregator_domain
+            )
+            if existing:
+                self._handle_existing_source(item, existing, context="duplicate")
+                result["handled"] = True
+                return result
+
+        # Build source name
+        if company_name and aggregator_domain:
+            source_name = f"{company_name} Jobs ({aggregator_domain})"
+        elif company_name:
+            source_name = f"{company_name} Jobs"
+        elif aggregator_domain:
+            source_name = f"{aggregator_domain.split('.')[0].title()} Jobs"
+        else:
+            source_name = f"{urlparse(url).netloc} Jobs"
+
+        # Determine if source should be disabled
+        should_disable = analysis.should_disable
+        disabled_notes = analysis.disable_notes
+
+        # Handle invalid classifications
+        if analysis.classification in (
+            SourceClassification.SINGLE_JOB_LISTING,
+            SourceClassification.ATS_PROVIDER_SITE,
+            SourceClassification.INVALID,
+        ):
+            should_disable = True
+            if not disabled_notes:
+                disabled_notes = f"Invalid source type: {analysis.classification.value}"
+
+        # Determine source config and type
+        source_config = analysis.source_config or {
+            "type": "html",
+            "url": url,
+            "headers": {},
+        }
+        source_type = source_config.get("type", "unknown")
+
+        if should_disable:
+            source_config["disabled_notes"] = disabled_notes
+
+        # Create the source
+        initial_status = SourceStatus.DISABLED if should_disable else SourceStatus.ACTIVE
+
+        try:
+            source_id = self.sources_manager.create_from_discovery(
+                name=source_name,
+                source_type=source_type,
+                config=source_config,
+                company_id=company_id,
+                aggregator_domain=aggregator_domain,
+                status=initial_status,
+            )
+        except DuplicateSourceError:
+            # Race condition - check again
+            if company_id and aggregator_domain:
+                existing = self.sources_manager.get_source_by_company_and_aggregator(
+                    company_id, aggregator_domain
+                )
+                if existing:
+                    self._handle_existing_source(item, existing, context="race")
+                    result["handled"] = True
+                    return result
+            raise
+
+        result.update(
+            {
+                "source_id": source_id,
+                "source_type": source_type,
+                "company_id": company_id,
+                "company_name": company_name,
+                "company_created": company_created,
+                "aggregator_domain": aggregator_domain,
+                "disabled_notes": disabled_notes,
+                "initial_status": initial_status,
+            }
+        )
+
+        return result
+
+    def _finalize_source_creation(
+        self,
+        item: JobQueueItem,
+        source_id: str,
+        source_type: str,
+        company_id: Optional[str],
+        company_name: Optional[str],
+        company_created: bool,
+        disabled_notes: str,
+        initial_status: SourceStatus,
+        url: str,
+    ) -> None:
+        """Finalize source creation with follow-up tasks.
+
+        Args:
+            item: The queue item
+            source_id: Created source ID
+            source_type: Source type (api, rss, html)
+            company_id: Company ID if resolved
+            company_name: Company name
+            company_created: Whether company was newly created
+            disabled_notes: Disable notes if any
+            initial_status: Source status
+            url: Original URL
+        """
+        if initial_status == SourceStatus.ACTIVE:
+            # Spawn SCRAPE_SOURCE to immediately scrape
+            scrape_item_id = self.queue_manager.spawn_item_safely(
+                current_item=item,
+                new_item_data={
+                    "type": QueueItemType.SCRAPE_SOURCE,
+                    "url": "",
+                    "company_name": company_name or "",
+                    "company_id": company_id,
+                    "source": "automated_scan",
+                    "source_id": source_id,
+                    "scraped_data": {"source_id": source_id},
+                },
+            )
+            if scrape_item_id:
+                logger.info(f"Spawned SCRAPE_SOURCE item {scrape_item_id} for source {source_id}")
+            else:
+                logger.info(f"SCRAPE_SOURCE blocked by spawn rules for source {source_id}")
+        else:
+            logger.info(
+                "Created source %s disabled (%s); skipping immediate scrape",
+                source_id,
+                disabled_notes,
+            )
+
+        # Spawn COMPANY task for new company stubs
+        if company_created and company_id:
+            company_website = self._extract_base_url(url)
+            company_item_id = self.queue_manager.spawn_item_safely(
+                current_item=item,
+                new_item_data={
+                    "type": QueueItemType.COMPANY,
+                    "url": company_website,
+                    "company_name": company_name,
+                    "company_id": company_id,
+                    "source": "automated_scan",
+                },
+            )
+            if company_item_id:
+                logger.info(
+                    "Spawned COMPANY item %s to enrich stub for %s",
+                    company_item_id,
+                    company_name,
+                )
+            else:
+                logger.info("COMPANY task blocked by spawn rules for %s", company_name)
+
+        # Update queue item with success
+        self.queue_manager.update_status(
+            item.id,
+            QueueStatus.SUCCESS,
+            source_id,
+            scraped_data={
+                "source_id": source_id,
+                "source_type": source_type,
+                "disabled_notes": disabled_notes or "",
+            },
+        )
+        logger.info(f"SOURCE_DISCOVERY complete: Created source {source_id}")
+
     def _extract_base_url(self, url: str) -> str:
         """Extract base URL (scheme + domain) from a full URL."""
         try:
@@ -357,137 +482,6 @@ class SourceProcessor(BaseProcessor):
             return f"{parsed.scheme}://{parsed.netloc}"
         except Exception:
             return url
-
-    # Invalid names that should not be extracted as company names
-    _INVALID_COMPANY_NAMES = frozenset(
-        {
-            "www",
-            "api",
-            "app",
-            "dev",
-            "staging",
-            "jobs",
-            "careers",
-            "greenhouse",
-            "lever",
-            "smartrecruiters",
-        }
-    )
-
-    # API path patterns: (domain_substring, path_regex)
-    _API_PATH_PATTERNS = [
-        ("greenhouse.io", r"/boards/([^/]+)"),
-        ("lever.co", r"/postings/([^/?]+)"),
-        ("smartrecruiters.com", r"/companies/([^/]+)"),
-    ]
-
-    # Host/subdomain patterns: (domain_substring, host_regex)
-    _HOST_PATTERNS = [
-        ("myworkdayjobs.com", r"([^.]+)\.wd\d*\."),
-    ]
-
-    def _extract_company_from_url(self, url: str) -> str:
-        """Extract company name from URL.
-
-        Handles various URL patterns:
-        - Aggregator APIs: boards-api.greenhouse.io/v1/boards/COMPANY/jobs
-        - Lever API: api.lever.co/v0/postings/COMPANY
-        - SmartRecruiters: api.smartrecruiters.com/v1/companies/COMPANY/postings
-        - Subdomain patterns: jobs.COMPANY.com, careers.COMPANY.com
-        - Direct company sites: www.COMPANY.com/careers
-        """
-        try:
-            parsed = urlparse(url.lower())
-            host = parsed.netloc
-            path = parsed.path
-
-            # Check API path patterns (Greenhouse, Lever, SmartRecruiters)
-            for domain_part, path_regex in self._API_PATH_PATTERNS:
-                if domain_part in host:
-                    match = re.search(path_regex, path)
-                    if match:
-                        return self._format_company_name(match.group(1))
-
-            # Check host/subdomain patterns (Workday)
-            for domain_part, host_regex in self._HOST_PATTERNS:
-                if domain_part in host:
-                    match = re.match(host_regex, host)
-                    if match:
-                        return self._format_company_name(match.group(1))
-
-            # Pattern: jobs.X.com or careers.X.com subdomain pattern
-            # e.g., jobs.dropbox.com -> Dropbox
-            subdomain_match = re.match(r"(jobs?|careers?)\.([^.]+)\.", host)
-            if subdomain_match:
-                company_part = subdomain_match.group(2)
-                if company_part not in self._INVALID_COMPANY_NAMES:
-                    return self._format_company_name(company_part)
-
-            # Fallback: Direct company site - extract from domain
-            # e.g., www.toggl.com/jobs -> Toggl
-            # Remove www. and common subdomains
-            host = re.sub(r"^(www|api|app|jobs|careers)\.", "", host)
-            # Get base domain (before TLD)
-            domain_parts = host.split(".")
-            if len(domain_parts) >= 2:
-                # Handle .co.uk, .com.au etc.
-                if domain_parts[-2] in {"co", "com", "org", "net"} and len(domain_parts) >= 3:
-                    name = domain_parts[-3]
-                else:
-                    name = domain_parts[-2]
-
-                if name and name not in self._INVALID_COMPANY_NAMES:
-                    return self._format_company_name(name)
-
-            return ""
-        except Exception:
-            return ""
-
-    def _format_company_name(self, slug: str) -> str:
-        """Format a URL slug into a proper company name.
-
-        Args:
-            slug: URL slug like 'anthropic', 'ge-vernova', 'acme_corp'
-
-        Returns:
-            Formatted name like 'Anthropic', 'GE Vernova', 'Acme Corp'
-        """
-        if not slug:
-            return ""
-
-        # Split on hyphens and underscores
-        parts = re.split(r"[-_]", slug)
-        capitalized = [part.capitalize() for part in parts if part]
-
-        return " ".join(capitalized)
-
-    def _detect_aggregator_domain(self, url: str) -> Optional[str]:
-        """Detect if URL belongs to a known job aggregator.
-
-        Delegates to JobSourcesManager.get_aggregator_domain_for_url() which uses
-        database-driven aggregator domains from the job_sources table.
-
-        Args:
-            url: The source URL to check
-
-        Returns:
-            The aggregator domain if detected, None if company-specific
-        """
-        domain = self.sources_manager.get_aggregator_domain_for_url(url)
-        if domain:
-            return domain
-
-        # Fallback: lightweight built-ins to avoid hard failures before DB seed
-        fallback_domains = {"builtin.com"}
-        try:
-            host = urlparse(url.lower()).netloc
-            for d in fallback_domains:
-                if host == d or host.endswith("." + d):
-                    return d
-        except Exception as exc:
-            logger.warning("Fallback aggregator detection failed for %s: %s", url, exc)
-
-        return None
 
     # ============================================================
     # SOURCE SCRAPING
@@ -705,24 +699,33 @@ class SourceProcessor(BaseProcessor):
 
     def _self_heal_source_config(self, source: dict, url: str, company_name: str) -> Optional[dict]:
         """
-        Use AI discovery to repair/improve a weak source config.
+        Use AI analysis to repair/improve a weak source config.
 
         Returns a new config dict or None if healing failed/disabled.
         """
-        discovery = SourceDiscovery(self.agent_manager)
-        discovery_result = discovery.discover(url)
-        if isinstance(discovery_result, tuple):
-            healed_config, validation_meta = discovery_result
-        else:
-            healed_config, validation_meta = discovery_result, {}
+        try:
+            # Gather context for the agent
+            fetch_result = self._attempt_fetch(url)
 
-        if healed_config and validation_meta.get("success", True):
-            logger.info(
-                "Updated source config via self-heal for %s (id=%s)",
-                company_name or source.get("name", "unknown"),
-                source.get("id"),
+            # Run analysis
+            analysis_agent = SourceAnalysisAgent(self.agent_manager)
+            analysis = analysis_agent.analyze(
+                url=url,
+                company_name=company_name,
+                fetch_result=fetch_result,
             )
-            return healed_config
 
-        logger.info("Self-heal could not produce a better config for %s", url)
-        return None
+            if analysis.source_config and not analysis.should_disable:
+                logger.info(
+                    "Updated source config via self-heal for %s (id=%s)",
+                    company_name or source.get("name", "unknown"),
+                    source.get("id"),
+                )
+                return analysis.source_config
+
+            logger.info("Self-heal could not produce a better config for %s", url)
+            return None
+
+        except Exception as e:
+            logger.warning("Self-heal failed for %s: %s", url, e)
+            return None

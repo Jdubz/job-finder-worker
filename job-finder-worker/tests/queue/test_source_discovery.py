@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from job_finder.ai.source_analysis_agent import (
+    DisableReason,
+    SourceAnalysisResult,
+    SourceClassification,
+)
 from job_finder.job_queue.models import (
     JobQueueItem,
     ProcessorContext,
@@ -17,6 +22,31 @@ from job_finder.job_queue.models import (
     SourceTypeHint,
 )
 from job_finder.job_queue.processor import QueueItemProcessor
+
+
+def make_analysis_result(
+    classification: SourceClassification = SourceClassification.COMPANY_SPECIFIC,
+    aggregator_domain: Optional[str] = None,
+    company_name: Optional[str] = None,
+    should_disable: bool = False,
+    disable_reason: Optional[DisableReason] = None,
+    disable_notes: str = "",
+    source_config: Optional[Dict[str, Any]] = None,
+    confidence: float = 0.9,
+    reasoning: str = "Test reasoning",
+) -> SourceAnalysisResult:
+    """Helper to create SourceAnalysisResult for tests."""
+    return SourceAnalysisResult(
+        classification=classification,
+        aggregator_domain=aggregator_domain,
+        company_name=company_name,
+        should_disable=should_disable,
+        disable_reason=disable_reason,
+        disable_notes=disable_notes,
+        source_config=source_config,
+        confidence=confidence,
+        reasoning=reasoning,
+    )
 
 
 @pytest.fixture
@@ -241,25 +271,41 @@ class TestQueueRouting:
 class TestSourceDiscoverySuccess:
     """Test successful source discovery scenarios."""
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_discovers_api_source(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
         """Test discovering an API source (like Greenhouse)."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = {
-            "type": "api",
-            "url": "https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true",
-            "response_path": "jobs",
-            "fields": {"title": "title", "url": "absolute_url"},
-            "company_name": "Stripe",
-        }
-        mock_discovery_class.return_value = mock_discovery
+        # Mock the fetch attempt
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = '{"jobs": []}'
+        mock_response.headers = {"Content-Type": "application/json"}
+        mock_requests_get.return_value = mock_response
+
+        # Mock the analysis agent
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.JOB_AGGREGATOR,
+            aggregator_domain="greenhouse.io",
+            company_name="Stripe",
+            source_config={
+                "type": "api",
+                "url": "https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true",
+                "response_path": "jobs",
+                "fields": {"title": "title", "url": "absolute_url"},
+            },
+        )
+        mock_agent_class.return_value = mock_agent
 
         item = make_discovery_item(url="https://boards.greenhouse.io/stripe")
         source_processor.process_source_discovery(item)
@@ -280,23 +326,39 @@ class TestSourceDiscoverySuccess:
         new_item_data = spawn_call.kwargs.get("new_item_data", {})
         assert new_item_data.get("type") == QueueItemType.SCRAPE_SOURCE
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_discovers_rss_source(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
         """Test discovering an RSS source."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = {
-            "type": "rss",
-            "url": "https://example.com/jobs.rss",
-            "fields": {"title": "title", "url": "link"},
-        }
-        mock_discovery_class.return_value = mock_discovery
+        # Mock the fetch attempt
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "<rss>...</rss>"
+        mock_response.headers = {"Content-Type": "application/rss+xml"}
+        mock_requests_get.return_value = mock_response
+
+        # Mock the analysis agent
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.COMPANY_SPECIFIC,
+            company_name="Example Corp",
+            source_config={
+                "type": "rss",
+                "url": "https://example.com/jobs.rss",
+                "fields": {"title": "title", "url": "link"},
+            },
+        )
+        mock_agent_class.return_value = mock_agent
 
         item = make_discovery_item(url="https://example.com/jobs.rss")
         source_processor.process_source_discovery(item)
@@ -307,24 +369,40 @@ class TestSourceDiscoverySuccess:
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_discovers_html_source(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
         """Test discovering an HTML source."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = {
-            "type": "html",
-            "url": "https://example.com/careers",
-            "job_selector": ".job-listing",
-            "fields": {"title": ".title", "url": "a@href"},
-        }
-        mock_discovery_class.return_value = mock_discovery
+        # Mock the fetch attempt
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "<html>...</html>"
+        mock_response.headers = {"Content-Type": "text/html"}
+        mock_requests_get.return_value = mock_response
+
+        # Mock the analysis agent
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.COMPANY_SPECIFIC,
+            company_name="Example Corp",
+            source_config={
+                "type": "html",
+                "url": "https://example.com/careers",
+                "job_selector": ".job-listing",
+                "fields": {"title": ".title", "url": "a@href"},
+            },
+        )
+        mock_agent_class.return_value = mock_agent
 
         item = make_discovery_item(url="https://example.com/careers")
         source_processor.process_source_discovery(item)
@@ -335,34 +413,49 @@ class TestSourceDiscoverySuccess:
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_creates_disabled_when_api_key_needed(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
         """Sources needing API keys should be created disabled with notes and no scrape spawn."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = (
-            {
+        # Mock the fetch attempt (auth required)
+        mock_response = Mock()
+        mock_response.status_code = 401
+        mock_response.raise_for_status.side_effect = Exception("401 Unauthorized")
+        mock_requests_get.return_value = mock_response
+
+        # Mock the analysis agent
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.COMPANY_SPECIFIC,
+            company_name="Example Corp",
+            should_disable=True,
+            disable_reason=DisableReason.AUTH_REQUIRED,
+            disable_notes="API requires authentication",
+            source_config={
                 "type": "api",
                 "url": "https://api.example.com/jobs",
                 "response_path": "jobs",
                 "fields": {"title": "title", "url": "link"},
             },
-            {"needs_api_key": True},
         )
-        mock_discovery_class.return_value = mock_discovery
+        mock_agent_class.return_value = mock_agent
 
         item = make_discovery_item(url="https://api.example.com/jobs")
         source_processor.process_source_discovery(item)
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
-        assert create_kwargs["config"]["disabled_notes"] == "needs api key"
+        assert "authentication" in create_kwargs["config"]["disabled_notes"].lower()
 
         # Should NOT spawn scrape item when disabled
         mock_dependencies["queue_manager"].add_item.assert_not_called()
@@ -371,19 +464,33 @@ class TestSourceDiscoverySuccess:
 class TestSourceDiscoveryFailure:
     """Test source discovery failure scenarios."""
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_handles_discovery_failure(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
-        """Test handling when discovery returns None."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = None
-        mock_discovery_class.return_value = mock_discovery
+        """Test handling when agent returns disabled result."""
+        # Mock fetch failure
+        mock_requests_get.side_effect = Exception("Connection failed")
+        mock_search_client.return_value = None
+
+        # Mock the analysis agent returning disabled result
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.INVALID,
+            should_disable=True,
+            disable_reason=DisableReason.DISCOVERY_FAILED,
+            disable_notes="discovery_failed",
+        )
+        mock_agent_class.return_value = mock_agent
 
         item = make_discovery_item(url="https://example.com/invalid")
         source_processor.process_source_discovery(item)
@@ -391,129 +498,117 @@ class TestSourceDiscoveryFailure:
         # Should create disabled source with notes and still mark SUCCESS for queue item
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
-        assert create_kwargs["config"].get("disabled_notes") == "discovery_failed"
+        assert (
+            "discovery_failed" in create_kwargs["config"].get("disabled_notes", "").lower()
+            or "invalid" in create_kwargs["config"].get("disabled_notes", "").lower()
+        )
 
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_disables_on_bot_protection(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
         """If bot protection blocks discovery, create a disabled source with notes."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = (None, {"error": "bot_protection"})
-        mock_discovery_class.return_value = mock_discovery
+        # Mock 403 response
+        mock_response = Mock()
+        mock_response.status_code = 403
+        mock_response.raise_for_status.side_effect = Exception("403 Forbidden")
+        mock_requests_get.return_value = mock_response
+        mock_search_client.return_value = None
+
+        # Mock the analysis agent
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.COMPANY_SPECIFIC,
+            company_name="Example Corp",
+            should_disable=True,
+            disable_reason=DisableReason.BOT_PROTECTION,
+            disable_notes="bot_protection",
+        )
+        mock_agent_class.return_value = mock_agent
 
         item = make_discovery_item(url="https://blocked.example.com/careers")
         source_processor.process_source_discovery(item)
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
-        assert create_kwargs["config"]["disabled_notes"] == "bot_protection"
+        assert "bot_protection" in create_kwargs["config"]["disabled_notes"]
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_disables_on_dns_error(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
         """If the host cannot be resolved, create a disabled source with notes."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = (None, {"error": "dns_error"})
-        mock_discovery_class.return_value = mock_discovery
+        # Mock DNS error
+        mock_requests_get.side_effect = Exception("Name or service not known")
+        mock_search_client.return_value = None
+
+        # Mock the analysis agent
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.INVALID,
+            should_disable=True,
+            disable_reason=DisableReason.DNS_ERROR,
+            disable_notes="dns_error",
+        )
+        mock_agent_class.return_value = mock_agent
 
         item = make_discovery_item(url="https://no-such-host.invalid/jobs")
         source_processor.process_source_discovery(item)
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["status"] == SourceStatus.DISABLED
-        assert create_kwargs["config"]["disabled_notes"] == "dns_error"
+        assert "dns_error" in create_kwargs["config"]["disabled_notes"]
         status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
         assert status_call[0][1] == QueueStatus.SUCCESS
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
-    def test_disables_on_api_probe_failed(
-        self,
-        mock_discovery_class,
-        _mock_agent_manager,
-        source_processor,
-        mock_dependencies,
-    ):
-        """If API probe fails, create disabled source with the error reason."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = (
-            None,
-            {
-                "error": "api_probe_failed",
-                "error_details": "HTTP 500: Internal Server Error",
-            },
-        )
-        mock_discovery_class.return_value = mock_discovery
-
-        item = make_discovery_item(url="https://careers.nea.com/jobs/perplexity-ai")
-        source_processor.process_source_discovery(item)
-
-        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
-        assert create_kwargs["status"] == SourceStatus.DISABLED
-        assert create_kwargs["config"]["disabled_notes"] == "api_probe_failed"
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
-        assert status_call[0][1] == QueueStatus.SUCCESS
-
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
-    def test_api_probe_failed_with_resolve_error_becomes_dns_error(
-        self,
-        mock_discovery_class,
-        _mock_agent_manager,
-        source_processor,
-        mock_dependencies,
-    ):
-        """If API probe fails due to DNS resolution, normalize to dns_error."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = (
-            None,
-            {
-                "error": "api_probe_failed",
-                "error_details": "Failed to resolve 'boards-api.consider.com'",
-            },
-        )
-        mock_discovery_class.return_value = mock_discovery
-
-        item = make_discovery_item(url="https://careers.nea.com/jobs/perplexity-ai")
-        source_processor.process_source_discovery(item)
-
-        create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
-        assert create_kwargs["status"] == SourceStatus.DISABLED
-        # When error_details contains "resolve", api_probe_failed is normalized to dns_error
-        assert create_kwargs["config"]["disabled_notes"] == "dns_error"
-        status_call = mock_dependencies["queue_manager"].update_status.call_args_list[-1]
-        assert status_call[0][1] == QueueStatus.SUCCESS
-
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_handles_discovery_exception(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
-        """Test handling when discovery raises an exception."""
-        mock_discovery = Mock()
-        mock_discovery.discover.side_effect = Exception("API Error")
-        mock_discovery_class.return_value = mock_discovery
+        """Test handling when analysis raises an exception."""
+        # Mock successful fetch but agent raises exception
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "<html>...</html>"
+        mock_response.headers = {"Content-Type": "text/html"}
+        mock_requests_get.return_value = mock_response
+
+        # Mock the analysis agent raising exception
+        mock_agent = Mock()
+        mock_agent.analyze.side_effect = Exception("API Error")
+        mock_agent_class.return_value = mock_agent
 
         item = make_discovery_item(url="https://example.com/error")
         source_processor.process_source_discovery(item)
@@ -523,29 +618,6 @@ class TestSourceDiscoveryFailure:
         assert status_call[0][1] == QueueStatus.FAILED
 
 
-class TestCompanyNameExtraction:
-    """Test company name extraction from URL."""
-
-    def test_extract_company_from_url(self, source_processor):
-        """Test extracting company name from URL."""
-        # Simple domain
-        assert source_processor._extract_company_from_url("https://stripe.com/careers") == "Stripe"
-
-        # Hyphenated
-        result = source_processor._extract_company_from_url("https://tech-corp.com/jobs")
-        assert result in ("TechCorp", "Tech Corp")
-
-        # With www
-        assert (
-            source_processor._extract_company_from_url("https://www.example.com/jobs") == "Example"
-        )
-
-    def test_extract_company_from_invalid_url(self, source_processor):
-        """Test handling invalid URLs."""
-        assert source_processor._extract_company_from_url("not-a-url") == ""
-        assert source_processor._extract_company_from_url("") == ""
-
-
 class TestPlaceholderNaming:
     """Test placeholder source naming when discovery fails.
 
@@ -553,12 +625,16 @@ class TestPlaceholderNaming:
     instead of company names when discovery failed.
     """
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_placeholder_uses_company_name_without_aggregator(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
@@ -566,9 +642,20 @@ class TestPlaceholderNaming:
 
         Regression test: Previously this would incorrectly use the URL netloc.
         """
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = (None, {"error": "discovery_failed"})
-        mock_discovery_class.return_value = mock_discovery
+        # Mock fetch failure
+        mock_requests_get.side_effect = Exception("Connection failed")
+        mock_search_client.return_value = None
+
+        # Mock the analysis agent returning disabled company-specific result
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.COMPANY_SPECIFIC,
+            company_name="BaxEnergy",
+            should_disable=True,
+            disable_reason=DisableReason.DISCOVERY_FAILED,
+            disable_notes="discovery_failed",
+        )
+        mock_agent_class.return_value = mock_agent
 
         # Configure sources_manager to return None for aggregator domain (company-specific URL)
         mock_dependencies["sources_manager"].get_aggregator_domain_for_url.return_value = None
@@ -585,19 +672,35 @@ class TestPlaceholderNaming:
         assert create_kwargs["name"] == "BaxEnergy Jobs"
         assert create_kwargs["status"] == SourceStatus.DISABLED
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_placeholder_uses_company_and_aggregator_when_both_present(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
         """When discovery fails with both company_name and aggregator, use both in name."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = (None, {"error": "discovery_failed"})
-        mock_discovery_class.return_value = mock_discovery
+        # Mock fetch failure
+        mock_requests_get.side_effect = Exception("Connection failed")
+        mock_search_client.return_value = None
+
+        # Mock the analysis agent returning aggregator result with company
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.JOB_AGGREGATOR,
+            aggregator_domain="myworkdayjobs.com",
+            company_name="Yahoo",
+            should_disable=True,
+            disable_reason=DisableReason.DISCOVERY_FAILED,
+            disable_notes="discovery_failed",
+        )
+        mock_agent_class.return_value = mock_agent
 
         # Configure sources_manager to return aggregator domain
         mock_dependencies["sources_manager"].get_aggregator_domain_for_url.return_value = (
@@ -614,19 +717,33 @@ class TestPlaceholderNaming:
         assert create_kwargs["name"] == "Yahoo Jobs (myworkdayjobs.com)"
         assert create_kwargs["aggregator_domain"] == "myworkdayjobs.com"
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_placeholder_falls_back_to_url_when_no_company_name(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
         """When discovery fails without company_name, fall back to URL netloc."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = (None, {"error": "discovery_failed"})
-        mock_discovery_class.return_value = mock_discovery
+        # Mock fetch failure
+        mock_requests_get.side_effect = Exception("Connection failed")
+        mock_search_client.return_value = None
+
+        # Mock the analysis agent returning no company info
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.INVALID,
+            should_disable=True,
+            disable_reason=DisableReason.DISCOVERY_FAILED,
+            disable_notes="discovery_failed",
+        )
+        mock_agent_class.return_value = mock_agent
 
         # Configure sources_manager to return None (not an aggregator)
         mock_dependencies["sources_manager"].get_aggregator_domain_for_url.return_value = None
@@ -653,19 +770,34 @@ class TestPlaceholderNaming:
         # Should use URL netloc as fallback
         assert create_kwargs["name"] == "unknown-company.com Jobs"
 
+    @patch("job_finder.job_queue.processors.source_processor.get_search_client")
+    @patch("job_finder.job_queue.processors.source_processor.requests.get")
     @patch("job_finder.job_queue.processors.source_processor.AgentManager")
-    @patch("job_finder.job_queue.processors.source_processor.SourceDiscovery")
+    @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_placeholder_naming_regression_sticker_mule(
         self,
-        mock_discovery_class,
+        mock_agent_class,
         _mock_agent_manager,
+        mock_requests_get,
+        mock_search_client,
         source_processor,
         mock_dependencies,
     ):
         """Regression test: Sticker Mule should be named correctly, not with URL."""
-        mock_discovery = Mock()
-        mock_discovery.discover.return_value = (None, {"error": "api_probe_failed"})
-        mock_discovery_class.return_value = mock_discovery
+        # Mock fetch failure
+        mock_requests_get.side_effect = Exception("Connection failed")
+        mock_search_client.return_value = None
+
+        # Mock the analysis agent
+        mock_agent = Mock()
+        mock_agent.analyze.return_value = make_analysis_result(
+            classification=SourceClassification.COMPANY_SPECIFIC,
+            company_name="Sticker Mule",
+            should_disable=True,
+            disable_reason=DisableReason.DISCOVERY_FAILED,
+            disable_notes="api_probe_failed",
+        )
+        mock_agent_class.return_value = mock_agent
 
         # Configure sources_manager to return None (company-specific URL)
         mock_dependencies["sources_manager"].get_aggregator_domain_for_url.return_value = None
