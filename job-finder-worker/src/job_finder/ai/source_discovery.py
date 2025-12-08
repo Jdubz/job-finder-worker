@@ -33,6 +33,14 @@ _DNS_ERROR_TOKENS = {
     "dns",
 }
 
+# Domains that are known to be JS-rendered and need headless scraping
+HEADLESS_REQUIRED_DOMAINS = {
+    # Remains headless-only
+    "stickermule.com",
+}
+
+# Fast lookup by pattern name to avoid repeated scans
+
 # Patterns for detecting single job listing URLs on aggregators (invalid as sources)
 # These URLs point to individual jobs, not company job boards
 _SINGLE_JOB_PATTERNS = [
@@ -306,6 +314,21 @@ class SourceDiscovery:
                     return pattern_config, validation
                 # If validation failed, continue to try fetching
 
+            # Lever single-posting heuristic -> derive board slug
+            lever_config = self._probe_lever_from_posting(url)
+            if lever_config:
+                validation = self._validate_config(lever_config)
+                if validation.get("success"):
+                    return lever_config, validation
+
+            # Skip known JS/headless portals only after pattern/Lever probes
+            if self._requires_headless(url):
+                return None, {
+                    "success": False,
+                    "error": "requires_headless",
+                    "message": "Page is JS-rendered and needs headless scraping",
+                }
+
             fetch_meta: Dict[str, Any] = {}
 
             # Step 1: Detect source type and fetch sample
@@ -423,6 +446,42 @@ class SourceDiscovery:
             return resp.url
         except requests.RequestException:
             return None
+
+    def _requires_headless(self, url: str) -> bool:
+        try:
+            host = urlparse(url).hostname or ""
+            return any(host.endswith(dom) for dom in HEADLESS_REQUIRED_DOMAINS)
+        except ValueError as e:
+            logger.warning("Error checking headless requirement for %s: %s", url, e)
+            return False
+
+    def _probe_lever_from_posting(self, url: str) -> Optional[Dict[str, Any]]:
+        """
+        If the URL is a single Lever posting, derive the board slug and build API config.
+        Example: https://jobs.lever.co/paymentology/abcd -> slug paymentology.
+        """
+        match = re.search(r"jobs\.lever\.co/([^/]+)/[^/?#]+(?:[?#]|$)", url)
+        if not match:
+            return None
+
+        slug = match.group(1)
+        api_url = f"https://api.lever.co/v0/postings/{slug}?mode=json"
+        try:
+            resp = requests.get(api_url, headers={"Accept": "application/json"}, timeout=8)
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            if not isinstance(data, list):
+                return None
+        except (requests.RequestException, ValueError, json.JSONDecodeError):
+            return None
+
+        lever_pattern = PLATFORM_PATTERNS_BY_NAME.get("lever")
+        if not lever_pattern:
+            return None
+
+        config = build_config_from_pattern(lever_pattern, {"company": slug}, original_url=url)
+        return config
 
     def _probe_greenhouse_from_host(self, url: str) -> Optional[Dict[str, Any]]:
         """
@@ -952,3 +1011,7 @@ def discover_source(
     """
     discovery = SourceDiscovery(agent_manager)
     return discovery.discover(url)
+
+
+# Fast lookup by pattern name to avoid repeated scans
+PLATFORM_PATTERNS_BY_NAME = {p.name: p for p in PLATFORM_PATTERNS}
