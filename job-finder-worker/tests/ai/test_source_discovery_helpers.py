@@ -29,9 +29,7 @@ def test_probe_lever_from_posting_builds_config(monkeypatch, discovery):
 
     monkeypatch.setattr("job_finder.ai.source_discovery.requests.get", fake_get)
 
-    config = discovery._probe_lever_from_posting(
-        "https://jobs.lever.co/paymentology/abcd-1234"
-    )
+    config = discovery._probe_lever_from_posting("https://jobs.lever.co/paymentology/abcd-1234")
 
     assert captured["url"].startswith("https://api.lever.co/v0/postings/paymentology")
     assert config is not None
