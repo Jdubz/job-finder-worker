@@ -70,9 +70,10 @@ type IndexableObject = { [key: string]: unknown }
  * Helper function to normalize job match data from different sources.
  * Handles JobMatch, JobMatchWithListing, and raw API response shapes.
  */
-function normalizeJobMatch(match: JobMatch): NormalizedJobMatch {
-  // Cast to indexable for flexible property access (handles snake_case and nested data)
-  const matchObj = match as unknown as IndexableObject
+function normalizeJobMatch(match: JobMatch | Record<string, unknown>): NormalizedJobMatch {
+  // Use type guard for flexible property access (handles snake_case and nested data)
+  const matchObj: IndexableObject =
+    typeof match === "object" && match !== null ? (match as IndexableObject) : {}
 
   const asObj = (value: unknown): IndexableObject =>
     typeof value === "object" && value !== null ? (value as IndexableObject) : {}
@@ -300,7 +301,7 @@ export function DocumentBuilderPage() {
       const startResponse = await generatorClient.startGeneration(request)
 
       if (!startResponse.success) {
-        showUserError("Failed to start generation. Please try again.")
+        showUserError("Failed to start generation. Please try again.", startResponse.error)
         return
       }
 

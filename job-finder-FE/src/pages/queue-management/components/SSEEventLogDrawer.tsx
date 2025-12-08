@@ -1,7 +1,5 @@
 import { Bug } from "lucide-react"
-
-/** Maximum number of events displayed in the log */
-export const EVENT_LOG_MAX_SIZE = 200
+import { EVENT_LOG_MAX_SIZE } from "@/config/constants"
 
 interface SSEEventEntry {
   id: string
