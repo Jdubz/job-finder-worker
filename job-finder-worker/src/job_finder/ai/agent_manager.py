@@ -193,7 +193,7 @@ class AgentManager:
                     task_type=task_type,
                     tried_agents=tried_agents,
                 )
-            # Cost defaults to 1.0 when model is "default" (CLI using its default)
+            # Cost defaults to 1.0 when model is None (CLI using its default)
             cost = model_rates.get(model, 1.0) if model else 1.0
 
             # Budget enforcement - check before calling (using model cost)

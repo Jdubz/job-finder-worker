@@ -76,7 +76,7 @@ const DEFAULT_MODEL_RATES: Record<string, number> = {
 
 /**
  * Default provider options with available models.
- * Uses -latest aliases where available to inherit improvements automatically.
+ * CLI interfaces include "default" option to use CLI's configured default model.
  * Models are ordered newest/most-capable first within each category.
  */
 const DEFAULT_PROVIDER_OPTIONS = [
@@ -114,7 +114,7 @@ const DEFAULT_PROVIDER_OPTIONS = [
       {
         value: 'api',
         // API requires explicit model - no "default" option
-        models: ['o1', 'o1-mini', 'gpt-4o', 'gpt-4o-mini'],
+        models: ['o3', 'o3-mini', 'o1', 'o1-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
         enabled: true,
       },
     ],
@@ -125,13 +125,13 @@ const DEFAULT_PROVIDER_OPTIONS = [
       {
         value: 'cli',
         // "default" = CLI uses its configured default (auto-updates with CLI)
-        models: ['default', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+        models: ['default', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
         enabled: true,
       },
       {
         value: 'api',
         // API requires explicit model - no "default" option
-        models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+        models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
         enabled: true,
       },
     ],
