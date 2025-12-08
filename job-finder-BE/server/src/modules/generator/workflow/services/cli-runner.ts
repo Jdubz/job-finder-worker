@@ -75,7 +75,7 @@ function buildCommand(provider: CliProvider, prompt: string, model?: string): { 
     if (process.env.CLAUDE_SKIP_PERMISSIONS !== 'false') {
       args.push('--dangerously-skip-permissions')
     }
-    args.push('--prompt', prompt)
+    args.push('-p', prompt)
     return {
       cmd: 'claude',
       args
