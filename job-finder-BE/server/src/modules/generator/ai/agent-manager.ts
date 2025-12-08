@@ -109,35 +109,52 @@ export class AgentManager {
         continue
       }
 
-      try {
-        const output = await this.runAgent(agent, agentId, prompt, model)
-        agent.dailyUsage += cost
-        this.persist(aiSettings)
-        return { output, agentId, model }
-      } catch (err) {
-        if (err instanceof QuotaExhaustedError) {
-          // Quota errors: disable agent and continue to next in fallback chain
-          this.log.warn({ agentId, error: err.message }, 'Agent quota exhausted, trying next agent')
-          this.disableAgent(aiSettings, agentId, `quota_exhausted: ${err.message}`)
-          continue
-        }
+      // Retry logic for transient errors (timeout)
+      const maxRetries = 2 // 2 retries = 3 total attempts
 
-        if (err instanceof AgentExecutionError) {
-          // Timeout errors: transient, do NOT disable, continue to next agent
-          if (err.errorType === 'timeout') {
-            this.log.warn({ agentId, error: err.message }, 'Agent timeout (transient), trying next agent')
-            continue
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const output = await this.runAgent(agent, agentId, prompt, model)
+          agent.dailyUsage += cost
+          this.persist(aiSettings)
+          return { output, agentId, model }
+        } catch (err) {
+          if (err instanceof QuotaExhaustedError) {
+            // Quota errors: disable agent and continue to next in fallback chain
+            this.log.warn({ agentId, error: err.message }, 'Agent quota exhausted, trying next agent')
+            this.disableAgent(aiSettings, agentId, `quota_exhausted: ${err.message}`)
+            break // Exit retry loop, continue to next agent
           }
-          // Other non-quota errors: disable agent and throw immediately (systemic issues)
-          this.log.error({ agentId, error: err.message, errorType: err.errorType }, 'Agent execution failed')
-          this.disableAgent(aiSettings, agentId, `error: ${err.message}`)
-          throw new UserFacingError(`AI generation failed: ${err.message}`)
-        }
 
-        // Unknown errors: disable and re-throw
-        const reason = err instanceof Error ? err.message : 'agent failed'
-        this.disableAgent(aiSettings, agentId, `error: ${reason}`)
-        throw err
+          if (err instanceof AgentExecutionError) {
+            // Timeout errors: retry up to maxRetries times
+            if (err.errorType === 'timeout') {
+              if (attempt < maxRetries) {
+                this.log.warn(
+                  { agentId, error: err.message, attempt: attempt + 1, maxAttempts: maxRetries + 1 },
+                  'Agent timeout, retrying...'
+                )
+                continue // Retry same agent
+              }
+              // All retries exhausted - disable agent and continue to next
+              this.log.error(
+                { agentId, error: err.message, attempts: maxRetries + 1 },
+                'Agent timeout after all retries, disabling'
+              )
+              this.disableAgent(aiSettings, agentId, `error: ${err.message}`)
+              break // Exit retry loop, continue to next agent
+            }
+            // Other non-quota errors: disable agent and throw immediately (systemic issues)
+            this.log.error({ agentId, error: err.message, errorType: err.errorType }, 'Agent execution failed')
+            this.disableAgent(aiSettings, agentId, `error: ${err.message}`)
+            throw new UserFacingError(`AI generation failed: ${err.message}`)
+          }
+
+          // Unknown errors: disable and re-throw
+          const reason = err instanceof Error ? err.message : 'agent failed'
+          this.disableAgent(aiSettings, agentId, `error: ${reason}`)
+          throw err
+        }
       }
     }
 
