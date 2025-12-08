@@ -618,29 +618,6 @@ class TestSourceDiscoveryFailure:
         assert status_call[0][1] == QueueStatus.FAILED
 
 
-class TestCompanyNameExtraction:
-    """Test company name extraction from URL."""
-
-    def test_extract_company_from_url(self, source_processor):
-        """Test extracting company name from URL."""
-        # Simple domain
-        assert source_processor._extract_company_from_url("https://stripe.com/careers") == "Stripe"
-
-        # Hyphenated
-        result = source_processor._extract_company_from_url("https://tech-corp.com/jobs")
-        assert result in ("TechCorp", "Tech Corp")
-
-        # With www
-        assert (
-            source_processor._extract_company_from_url("https://www.example.com/jobs") == "Example"
-        )
-
-    def test_extract_company_from_invalid_url(self, source_processor):
-        """Test handling invalid URLs."""
-        assert source_processor._extract_company_from_url("not-a-url") == ""
-        assert source_processor._extract_company_from_url("") == ""
-
-
 class TestPlaceholderNaming:
     """Test placeholder source naming when discovery fails.
 

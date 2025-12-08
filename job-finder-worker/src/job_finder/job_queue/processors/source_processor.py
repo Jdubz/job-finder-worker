@@ -8,7 +8,6 @@ All sources use the GenericScraper with unified SourceConfig format.
 """
 
 import logging
-import re
 import traceback
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -274,6 +273,9 @@ class SourceProcessor(BaseProcessor):
     ) -> Dict[str, Any]:
         """Handle the source analysis result and prepare for source creation.
 
+        The agent is the single source of truth for classification, company_name,
+        and aggregator_domain. We trust its output completely.
+
         Args:
             item: The queue item being processed
             config: Source discovery config
@@ -286,49 +288,26 @@ class SourceProcessor(BaseProcessor):
         """
         result: Dict[str, Any] = {"handled": False}
 
-        # Determine aggregator_domain from analysis
+        # Trust the agent's analysis - it's the primary source of truth
         aggregator_domain = analysis.aggregator_domain
-
-        # For pure aggregators without company context, we still need aggregator_domain
-        # For company boards on aggregators, we have both
-        if analysis.classification == SourceClassification.JOB_AGGREGATOR:
-            if not aggregator_domain:
-                # Extract from URL as fallback
-                aggregator_domain = self._extract_aggregator_from_url(url)
-
-        # Resolve company info
-        company_id = config.company_id
         company_name = config.company_name or analysis.company_name
+        company_id = config.company_id
         company_created = False
 
-        # If we have a company name but no ID, find or create
-        if analysis.classification == SourceClassification.COMPANY_SPECIFIC:
-            if not company_name:
-                company_name = self._extract_company_from_url(url)
-
-            if not company_id and company_name:
-                company_record = self.companies_manager.get_or_create_company(
-                    company_name=company_name,
-                    company_website=None,
-                )
-                company_id = company_record.get("id")
-                company_created = not company_record.get("about")
-                logger.info(
-                    "Resolved company for source: %s -> %s (created=%s)",
-                    company_name,
-                    company_id,
-                    company_created,
-                )
-
-        # Handle company boards on aggregators (e.g., greenhouse.io/acme)
-        if analysis.classification == SourceClassification.JOB_AGGREGATOR and company_name:
-            if not company_id:
-                company_record = self.companies_manager.get_or_create_company(
-                    company_name=company_name,
-                    company_website=None,
-                )
-                company_id = company_record.get("id")
-                company_created = not company_record.get("about")
+        # If agent identified a company, resolve to company_id
+        if company_name and not company_id:
+            company_record = self.companies_manager.get_or_create_company(
+                company_name=company_name,
+                company_website=None,
+            )
+            company_id = company_record.get("id")
+            company_created = not company_record.get("about")
+            logger.info(
+                "Resolved company for source: %s -> %s (created=%s)",
+                company_name,
+                company_id,
+                company_created,
+            )
 
         # Check for existing source to avoid duplicates
         if company_id and aggregator_domain:
@@ -413,37 +392,6 @@ class SourceProcessor(BaseProcessor):
         )
 
         return result
-
-    def _extract_aggregator_from_url(self, url: str) -> Optional[str]:
-        """Extract aggregator domain from URL.
-
-        Args:
-            url: URL to extract domain from
-
-        Returns:
-            Aggregator domain or None
-        """
-        try:
-            parsed = urlparse(url.lower())
-            host = parsed.netloc
-
-            # Remove www. prefix
-            if host.startswith("www."):
-                host = host[4:]
-
-            # Check against known aggregators in the database
-            db_domain = self.sources_manager.get_aggregator_domain_for_url(url)
-            if db_domain:
-                return db_domain
-
-            # Return the base domain
-            parts = host.split(".")
-            if len(parts) >= 2:
-                return ".".join(parts[-2:])
-
-            return host
-        except Exception:
-            return None
 
     def _finalize_source_creation(
         self,
@@ -537,109 +485,6 @@ class SourceProcessor(BaseProcessor):
             return f"{parsed.scheme}://{parsed.netloc}"
         except Exception:
             return url
-
-    # Invalid names that should not be extracted as company names
-    _INVALID_COMPANY_NAMES = frozenset(
-        {
-            "www",
-            "api",
-            "app",
-            "dev",
-            "staging",
-            "jobs",
-            "careers",
-            "greenhouse",
-            "lever",
-            "smartrecruiters",
-        }
-    )
-
-    # API path patterns: (domain_substring, path_regex)
-    _API_PATH_PATTERNS = [
-        ("greenhouse.io", r"/boards/([^/]+)"),
-        ("lever.co", r"/postings/([^/?]+)"),
-        ("smartrecruiters.com", r"/companies/([^/]+)"),
-    ]
-
-    # Host/subdomain patterns: (domain_substring, host_regex)
-    _HOST_PATTERNS = [
-        ("myworkdayjobs.com", r"([^.]+)\.wd\d*\."),
-    ]
-
-    def _extract_company_from_url(self, url: str) -> str:
-        """Extract company name from URL.
-
-        Handles various URL patterns:
-        - Aggregator APIs: boards-api.greenhouse.io/v1/boards/COMPANY/jobs
-        - Lever API: api.lever.co/v0/postings/COMPANY
-        - SmartRecruiters: api.smartrecruiters.com/v1/companies/COMPANY/postings
-        - Subdomain patterns: jobs.COMPANY.com, careers.COMPANY.com
-        - Direct company sites: www.COMPANY.com/careers
-        """
-        try:
-            parsed = urlparse(url.lower())
-            host = parsed.netloc
-            path = parsed.path
-
-            # Check API path patterns (Greenhouse, Lever, SmartRecruiters)
-            for domain_part, path_regex in self._API_PATH_PATTERNS:
-                if domain_part in host:
-                    match = re.search(path_regex, path)
-                    if match:
-                        return self._format_company_name(match.group(1))
-
-            # Check host/subdomain patterns (Workday)
-            for domain_part, host_regex in self._HOST_PATTERNS:
-                if domain_part in host:
-                    match = re.match(host_regex, host)
-                    if match:
-                        return self._format_company_name(match.group(1))
-
-            # Pattern: jobs.X.com or careers.X.com subdomain pattern
-            # e.g., jobs.dropbox.com -> Dropbox
-            subdomain_match = re.match(r"(jobs?|careers?)\.([^.]+)\.", host)
-            if subdomain_match:
-                company_part = subdomain_match.group(2)
-                if company_part not in self._INVALID_COMPANY_NAMES:
-                    return self._format_company_name(company_part)
-
-            # Fallback: Direct company site - extract from domain
-            # e.g., www.toggl.com/jobs -> Toggl
-            # Remove www. and common subdomains
-            host = re.sub(r"^(www|api|app|jobs|careers)\.", "", host)
-            # Get base domain (before TLD)
-            domain_parts = host.split(".")
-            if len(domain_parts) >= 2:
-                # Handle .co.uk, .com.au etc.
-                if domain_parts[-2] in {"co", "com", "org", "net"} and len(domain_parts) >= 3:
-                    name = domain_parts[-3]
-                else:
-                    name = domain_parts[-2]
-
-                if name and name not in self._INVALID_COMPANY_NAMES:
-                    return self._format_company_name(name)
-
-            return ""
-        except Exception:
-            return ""
-
-    def _format_company_name(self, slug: str) -> str:
-        """Format a URL slug into a proper company name.
-
-        Args:
-            slug: URL slug like 'anthropic', 'ge-vernova', 'acme_corp'
-
-        Returns:
-            Formatted name like 'Anthropic', 'GE Vernova', 'Acme Corp'
-        """
-        if not slug:
-            return ""
-
-        # Split on hyphens and underscores
-        parts = re.split(r"[-_]", slug)
-        capitalized = [part.capitalize() for part in parts if part]
-
-        return " ".join(capitalized)
 
     # ============================================================
     # SOURCE SCRAPING
