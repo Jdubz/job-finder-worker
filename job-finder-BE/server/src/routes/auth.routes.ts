@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express'
+import { Router, type Response, type RequestHandler } from 'express'
 import { parse as parseCookie } from 'cookie'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
@@ -64,7 +64,7 @@ function createSession(userId: string): string {
 export function buildAuthRouter() {
   const router = Router()
   const loginRateLimiter = rateLimit({ windowMs: 60_000, max: 20 })
-  const loginGuard = env.NODE_ENV === 'production' ? loginRateLimiter : (_req: Request, _res: Response, next: NextFunction) => next()
+  const loginGuard: RequestHandler = env.NODE_ENV === 'production' ? loginRateLimiter : (_req, _res, next) => next()
 
   /**
    * POST /auth/login
