@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { vi } from "vitest"
 import { JobMatchModalContent } from "../JobMatchModalContent"
 import type { JobMatchWithListing } from "@shared/types"
@@ -71,6 +72,13 @@ describe("JobMatchModalContent", () => {
 
     render(<JobMatchModalContent match={baseMatch} />)
 
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    await user.click(screen.getByRole("tab", { name: /Documents/i }))
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: /Documents/i })).toHaveAttribute("data-state", "active")
+    )
+
     await waitFor(() => expect(screen.getByText(/Documents for this match/i)).toBeInTheDocument())
     expect(screen.getByText(/Frontend Engineer @ ACME/)).toBeInTheDocument()
   })
@@ -132,8 +140,16 @@ describe("JobMatchModalContent", () => {
 
     render(<JobMatchModalContent match={baseMatch} />)
 
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+
+    await user.click(screen.getByRole("tab", { name: /Documents/i }))
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: /Documents/i })).toHaveAttribute("data-state", "active")
+    )
+
     const generateBtn = await screen.findByRole("button", { name: /Generate now/i })
-    fireEvent.click(generateBtn)
+    await user.click(generateBtn)
 
     await waitFor(() => expect(generatorClientModule.generatorClient.startGeneration).toHaveBeenCalled())
     const requestArg = vi.mocked(generatorClientModule.generatorClient.startGeneration).mock.calls[0][0]

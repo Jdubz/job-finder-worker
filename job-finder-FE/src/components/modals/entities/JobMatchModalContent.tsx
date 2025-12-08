@@ -199,11 +199,12 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
       </div>
 
       <Tabs defaultValue="overview" className="mt-2 flex-1 flex flex-col min-h-0">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 flex-shrink-0">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 flex-shrink-0">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="skills">Skills</TabsTrigger>
           <TabsTrigger value="customization">Customize</TabsTrigger>
           <TabsTrigger value="description">Description</TabsTrigger>
+          <TabsTrigger value="documents">Documents</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="flex-1 min-h-0 mt-2 flex flex-col">
@@ -365,112 +366,113 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
             </div>
           </ScrollArea>
         </TabsContent>
-      </Tabs>
-
-      <div className="grid md:grid-cols-2 gap-4 flex-shrink-0">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4" /> Generate documents
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex gap-2">
-              {(["resume", "coverLetter", "both"] as const).map((type) => (
-                <Button
-                  key={type}
-                  variant={generateType === type ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setGenerateType(type)}
-                  disabled={generating}
-                >
-                  {type === "resume" ? "Resume" : type === "coverLetter" ? "Cover Letter" : "Both"}
+        <TabsContent value="documents" className="flex-1 min-h-0 mt-2 flex flex-col">
+          <div className="grid gap-4 md:grid-cols-2 h-full">
+            <Card className="flex flex-col">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" /> Generate documents
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 flex-1 flex flex-col">
+                <div className="flex gap-2">
+                  {(["resume", "coverLetter", "both"] as const).map((type) => (
+                    <Button
+                      key={type}
+                      variant={generateType === type ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setGenerateType(type)}
+                      disabled={generating}
+                    >
+                      {type === "resume" ? "Resume" : type === "coverLetter" ? "Cover Letter" : "Both"}
+                    </Button>
+                  ))}
+                </div>
+                <Button onClick={handleGenerate} disabled={generating} className="w-full">
+                  {generating ? "Generating..." : "Generate now"}
                 </Button>
-              ))}
-            </div>
-            <Button onClick={handleGenerate} disabled={generating} className="w-full">
-              {generating ? "Generating..." : "Generate now"}
-            </Button>
 
-            {steps.length > 0 && <GenerationProgress steps={steps} />}
+                {steps.length > 0 && <GenerationProgress steps={steps} />}
 
-            {(resumeUrl || coverLetterUrl) && (
-              <div className="flex gap-2">
-                {resumeUrl && (
-                  <Button asChild variant="outline" size="sm">
-                    <a href={getAbsoluteArtifactUrl(resumeUrl) || "#"} target="_blank" rel="noreferrer">
-                      <Download className="h-4 w-4 mr-2" /> Resume
-                    </a>
-                  </Button>
-                )}
-                {coverLetterUrl && (
-                  <Button asChild variant="outline" size="sm">
-                    <a href={getAbsoluteArtifactUrl(coverLetterUrl) || "#"} target="_blank" rel="noreferrer">
-                      <Download className="h-4 w-4 mr-2" /> Cover Letter
-                    </a>
-                  </Button>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4" /> Documents for this match
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {loadingDocs ? (
-              <p className="text-sm text-muted-foreground">Loading documents...</p>
-            ) : documents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No documents yet for this match.</p>
-            ) : (
-              <div className="space-y-2">
-                {documents.map((doc) => (
-                  <div key={doc.id} className="border rounded-md p-2 flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium">
-                        {doc.job.role} @ {doc.job.company}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {doc.generateType === "both"
-                          ? "Resume & Cover Letter"
-                          : doc.generateType === "resume"
-                            ? "Resume"
-                            : "Cover Letter"}
-                        {" • "}
-                        {new Date(doc.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {doc.resumeUrl && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => window.open(getAbsoluteArtifactUrl(doc.resumeUrl) || "#", "_blank")}
-                        >
-                          Resume
-                        </Button>
-                      )}
-                      {doc.coverLetterUrl && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => window.open(getAbsoluteArtifactUrl(doc.coverLetterUrl) || "#", "_blank")}
-                        >
-                          Cover Letter
-                        </Button>
-                      )}
-                    </div>
+                {(resumeUrl || coverLetterUrl) && (
+                  <div className="flex gap-2">
+                    {resumeUrl && (
+                      <Button asChild variant="outline" size="sm">
+                        <a href={getAbsoluteArtifactUrl(resumeUrl) || "#"} target="_blank" rel="noreferrer">
+                          <Download className="h-4 w-4 mr-2" /> Resume
+                        </a>
+                      </Button>
+                    )}
+                    {coverLetterUrl && (
+                      <Button asChild variant="outline" size="sm">
+                        <a href={getAbsoluteArtifactUrl(coverLetterUrl) || "#"} target="_blank" rel="noreferrer">
+                          <Download className="h-4 w-4 mr-2" /> Cover Letter
+                        </a>
+                      </Button>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="flex flex-col min-h-0">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4" /> Documents for this match
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 overflow-auto">
+                {loadingDocs ? (
+                  <p className="text-sm text-muted-foreground">Loading documents...</p>
+                ) : documents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No documents yet for this match.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {documents.map((doc) => (
+                      <div key={doc.id} className="border rounded-md p-2 flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">
+                            {doc.job.role} @ {doc.job.company}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {doc.generateType === "both"
+                              ? "Resume & Cover Letter"
+                              : doc.generateType === "resume"
+                                ? "Resume"
+                                : "Cover Letter"}
+                            {" • "}
+                            {new Date(doc.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {doc.resumeUrl && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => window.open(getAbsoluteArtifactUrl(doc.resumeUrl) || "#", "_blank")}
+                            >
+                              Resume
+                            </Button>
+                          )}
+                          {doc.coverLetterUrl && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => window.open(getAbsoluteArtifactUrl(doc.coverLetterUrl) || "#", "_blank")}
+                            >
+                              Cover Letter
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 mt-auto border-t flex-shrink-0">
         {handlers?.onGenerateResume && (
