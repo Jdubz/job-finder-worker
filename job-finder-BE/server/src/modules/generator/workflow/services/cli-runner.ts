@@ -36,12 +36,12 @@ const CLI_FLAGS = {
   // Gemini-specific
   GEMINI_OUTPUT: '--output',
   GEMINI_OUTPUT_JSON: 'json',
-  GEMINI_PROMPT: '--prompt',
+  // Note: Gemini CLI --prompt flag is deprecated, use positional argument instead
   // Claude-specific
   CLAUDE_OUTPUT_FORMAT: '--output-format',
   CLAUDE_OUTPUT_JSON: 'json',
-  CLAUDE_SKIP_PERMISSIONS: '--dangerously-skip-permissions',
-  CLAUDE_PROMPT: '-p'
+  CLAUDE_SKIP_PERMISSIONS: '--dangerously-skip-permissions'
+  // Note: Claude CLI uses positional prompt argument, not a flag
 } as const
 
 function classifyError(message?: string): CliErrorType {
@@ -89,7 +89,8 @@ function buildCommand(provider: CliProvider, prompt: string, model?: string): { 
     if (model) {
       args.push(CLI_FLAGS.MODEL, model)
     }
-    args.push(CLI_FLAGS.GEMINI_PROMPT, prompt)
+    // Gemini CLI --prompt flag is deprecated, use positional argument
+    args.push(prompt)
     return {
       cmd: 'gemini',
       args
@@ -103,7 +104,8 @@ function buildCommand(provider: CliProvider, prompt: string, model?: string): { 
     if (process.env.CLAUDE_SKIP_PERMISSIONS !== 'false') {
       args.push(CLI_FLAGS.CLAUDE_SKIP_PERMISSIONS)
     }
-    args.push(CLI_FLAGS.CLAUDE_PROMPT, prompt)
+    // Claude CLI uses positional prompt argument, not a flag
+    args.push(prompt)
     return {
       cmd: 'claude',
       args

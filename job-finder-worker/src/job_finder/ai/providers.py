@@ -396,7 +396,8 @@ class ClaudeCLIProvider(AIProvider):
         ]
         if self.model:
             cmd.extend(["--model", self.model])
-        cmd.extend(["--prompt", prompt])
+        # Prompt is a positional argument in Claude CLI, not a flag
+        cmd.append(prompt)
 
         try:
             result = subprocess.run(
