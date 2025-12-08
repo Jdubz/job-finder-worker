@@ -459,12 +459,8 @@ function coverLetterHtml(
       </div>
 
       <div class="signature">
-        <div class="signature-line">Sincerely,</div>
-        ${(() => {
-          const sigRaw = cleanText(content.signature || opts.name)
-          const sigMain = sigRaw.split(',')[0] || sigRaw
-          return `<div class="signature-name">${sigMain}</div>`
-        })()}
+        <div class="signature-line">${cleanText(content.signature || 'Sincerely,')}</div>
+        <div class="signature-name">${cleanText(opts.name)}</div>
       </div>
 
       <footer>
