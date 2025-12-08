@@ -254,9 +254,7 @@ class SourceProcessor(BaseProcessor):
                             "snippet": r.snippet,
                         }
                     )
-                logger.info(
-                    f"Tavily search for '{query}' returned {len(search_results)} results"
-                )
+                logger.info(f"Tavily search for '{query}' returned {len(search_results)} results")
             except Exception as e:
                 logger.debug(f"Search failed for '{query}': {e}")
 
