@@ -72,6 +72,12 @@ def main() -> None:
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         while RUNNING:
             try:
+                # Check if processing is enabled before fetching items (prevents busy-loop)
+                if not config_loader.is_processing_enabled():
+                    logger.info("Queue processing is paused. Sleeping for %ss", POLL_INTERVAL)
+                    time.sleep(POLL_INTERVAL)
+                    continue
+
                 items = queue_manager.get_pending_items(limit=BATCH_SIZE)
                 if not items:
                     logger.debug("No pending items. Sleeping for %ss", POLL_INTERVAL)

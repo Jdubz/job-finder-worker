@@ -16,6 +16,7 @@ import sys
 import threading
 import concurrent.futures
 import time
+import traceback
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -586,13 +587,22 @@ def _process_single_item(
         pause_requested = True
 
     except Exception as e:
+        error_msg = str(e)
+        error_details = traceback.format_exc()
         slogger.queue_item_processing(
             item_id=item.id,
             item_type=str(item.type),
             action="failed",
-            details={"error": str(e)},
+            details={"error": error_msg},
         )
-        _set_state("last_error", str(e))
+        # Mark item as failed to prevent it from being stuck in 'processing' state
+        queue_manager.update_status(
+            item.id,
+            QueueStatus.FAILED,
+            "Processing failed due to an unhandled error",
+            error_details=error_details,
+        )
+        _set_state("last_error", error_msg)
 
     finally:
         _set_state("current_item_id", None)
