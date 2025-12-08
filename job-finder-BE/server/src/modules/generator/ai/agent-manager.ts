@@ -123,7 +123,12 @@ export class AgentManager {
         }
 
         if (err instanceof AgentExecutionError) {
-          // Non-quota errors: disable agent and throw immediately (systemic issues)
+          // Timeout errors: transient, do NOT disable, continue to next agent
+          if (err.errorType === 'timeout') {
+            this.log.warn({ agentId, error: err.message }, 'Agent timeout (transient), trying next agent')
+            continue
+          }
+          // Other non-quota errors: disable agent and throw immediately (systemic issues)
           this.log.error({ agentId, error: err.message, errorType: err.errorType }, 'Agent execution failed')
           this.disableAgent(aiSettings, agentId, `error: ${err.message}`)
           throw new UserFacingError(`AI generation failed: ${err.message}`)

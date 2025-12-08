@@ -99,6 +99,27 @@ class QuotaExhaustedError(AIProviderError):
         super().__init__(message)
 
 
+class TransientError(AIProviderError):
+    """Raised for transient errors that should allow fallback to next agent.
+
+    Unlike permanent AIProviderError which stops the fallback chain,
+    TransientError allows the AgentManager to continue trying other agents.
+    The failed agent is NOT disabled since the error may be temporary.
+
+    Examples:
+    - Network timeout
+    - Temporary connection failure
+    - Service temporarily unavailable
+
+    Attributes:
+        provider: The AI provider that experienced the transient error
+    """
+
+    def __init__(self, message: str, provider: str = "unknown"):
+        self.provider = provider
+        super().__init__(message)
+
+
 class NoAgentsAvailableError(AIProviderError):
     """Raised when no agents are available to handle a task.
 

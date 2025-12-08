@@ -19,7 +19,12 @@ from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from job_finder.ai.providers import auth_status
 
-from job_finder.exceptions import AIProviderError, NoAgentsAvailableError, QuotaExhaustedError
+from job_finder.exceptions import (
+    AIProviderError,
+    NoAgentsAvailableError,
+    QuotaExhaustedError,
+    TransientError,
+)
 
 if TYPE_CHECKING:
     from job_finder.job_queue.config_loader import ConfigLoader
@@ -232,6 +237,13 @@ class AgentManager:
                 error_msg = str(e)
                 logger.warning(f"Agent {agent_id} quota exhausted: {error_msg}")
                 self._disable_agent(agent_id, active_scope, f"quota_exhausted: {error_msg}")
+                errors.append((agent_id, error_msg))
+                continue  # Try next agent in fallback chain
+
+            except TransientError as e:
+                # Transient errors (timeout, network) - do NOT disable, continue to next
+                error_msg = str(e)
+                logger.warning(f"Agent {agent_id} transient error: {error_msg}")
                 errors.append((agent_id, error_msg))
                 continue  # Try next agent in fallback chain
 

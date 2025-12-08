@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional, Tuple
 from anthropic import Anthropic
 from openai import OpenAI
 
-from job_finder.exceptions import AIProviderError, QuotaExhaustedError
+from job_finder.exceptions import AIProviderError, QuotaExhaustedError, TransientError
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +260,9 @@ class GeminiCLIProvider(AIProvider):
             return response_text
 
         except subprocess.TimeoutExpired as exc:
-            raise AIProviderError(f"Gemini CLI timed out after {self.timeout}s") from exc
+            raise TransientError(
+                f"Gemini CLI timed out after {self.timeout}s", provider="gemini"
+            ) from exc
 
 
 class CodexCLIProvider(AIProvider):
@@ -369,7 +371,9 @@ class CodexCLIProvider(AIProvider):
             raise AIProviderError("Codex CLI returned no message content")
 
         except subprocess.TimeoutExpired as exc:
-            raise AIProviderError(f"Codex CLI timed out after {self.timeout}s") from exc
+            raise TransientError(
+                f"Codex CLI timed out after {self.timeout}s", provider="codex"
+            ) from exc
 
 
 class ClaudeCLIProvider(AIProvider):
@@ -407,7 +411,9 @@ class ClaudeCLIProvider(AIProvider):
                 timeout=self.timeout,
             )
         except subprocess.TimeoutExpired as exc:
-            raise AIProviderError(f"Claude CLI timed out after {self.timeout}s") from exc
+            raise TransientError(
+                f"Claude CLI timed out after {self.timeout}s", provider="claude"
+            ) from exc
         except FileNotFoundError as exc:
             raise AIProviderError("Claude CLI binary not found on PATH") from exc
 

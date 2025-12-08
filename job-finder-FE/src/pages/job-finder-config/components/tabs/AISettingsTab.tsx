@@ -14,6 +14,12 @@ import {
 } from "@/components/ui/select"
 import { TabCard } from "../shared"
 import { X, RotateCcw, AlertCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import type {
   AISettings,
   AIProviderType,
@@ -243,7 +249,18 @@ export function AISettingsTab({
                               }
                             />
                             <span className="text-sm font-medium">Worker</span>
-                            {workerBadge && <Badge variant={workerBadge.variant}>{workerBadge.label}</Badge>}
+                            {workerBadge && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge variant={workerBadge.variant} className="cursor-help">{workerBadge.label}</Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-md">
+                                    <p className="text-xs break-words">{workerState.reason}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
                             {workerState.reason && (
                               <Button
                                 variant="ghost"
@@ -277,7 +294,18 @@ export function AISettingsTab({
                               }
                             />
                             <span className="text-sm font-medium">Backend</span>
-                            {backendBadge && <Badge variant={backendBadge.variant}>{backendBadge.label}</Badge>}
+                            {backendBadge && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge variant={backendBadge.variant} className="cursor-help">{backendBadge.label}</Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-md">
+                                    <p className="text-xs break-words">{backendState.reason}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
                             {backendState.reason && (
                               <Button
                                 variant="ghost"
