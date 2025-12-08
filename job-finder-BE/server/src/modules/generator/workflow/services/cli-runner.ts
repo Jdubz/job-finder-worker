@@ -85,7 +85,7 @@ function buildCommand(provider: CliProvider, prompt: string, model?: string): { 
     }
   }
   if (provider === 'gemini') {
-    const args = [CLI_FLAGS.PRINT, CLI_FLAGS.GEMINI_OUTPUT, CLI_FLAGS.GEMINI_OUTPUT_JSON]
+    const args: string[] = [CLI_FLAGS.PRINT, CLI_FLAGS.GEMINI_OUTPUT, CLI_FLAGS.GEMINI_OUTPUT_JSON]
     if (model) {
       args.push(CLI_FLAGS.MODEL, model)
     }
@@ -96,7 +96,7 @@ function buildCommand(provider: CliProvider, prompt: string, model?: string): { 
     }
   }
   if (provider === 'claude') {
-    const args = [CLI_FLAGS.PRINT, CLI_FLAGS.CLAUDE_OUTPUT_FORMAT, CLI_FLAGS.CLAUDE_OUTPUT_JSON]
+    const args: string[] = [CLI_FLAGS.PRINT, CLI_FLAGS.CLAUDE_OUTPUT_FORMAT, CLI_FLAGS.CLAUDE_OUTPUT_JSON]
     if (model) {
       args.push(CLI_FLAGS.MODEL, model)
     }
