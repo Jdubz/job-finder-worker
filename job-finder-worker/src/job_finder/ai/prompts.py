@@ -110,7 +110,7 @@ class JobMatchPrompts:
 
                 if exp.achievements:
                     lines.append("**Key Achievements:**")
-                    for achievement in exp.achievements[:3]:  # Top 3
+                    for achievement in exp.achievements[:5]:  # Top 5 (includes project highlights)
                         lines.append(f"  - {achievement}")
 
                 if exp.technologies:
