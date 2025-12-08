@@ -11,7 +11,7 @@ const EnvSchema = z.object({
   FIREBASE_APP_CHECK_AUDIENCE: z.string().optional(),
   TEST_AUTH_BYPASS_TOKEN: z.string().optional(),
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
-  SESSION_TTL_DAYS: z.coerce.number().positive().int().default(30),
+  SESSION_TTL_DAYS: z.coerce.number().positive().int().default(14),
   GENERATOR_FUNCTION_URL: z.string().optional(),
   GENERATOR_ARTIFACTS_DIR: z.string().optional(),
   GENERATOR_ARTIFACTS_PUBLIC_BASE: z.string().optional(),

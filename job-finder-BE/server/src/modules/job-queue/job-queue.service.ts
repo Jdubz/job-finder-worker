@@ -52,6 +52,10 @@ export class JobQueueService {
     return this.repo.list(options)
   }
 
+  listWithTotal(options: ListQueueOptions = {}): { items: QueueItem[]; total: number } {
+    return this.repo.listWithTotal(options)
+  }
+
   submitJob(input: SubmitJobInput): QueueItem {
     const now = new Date()
     const hasPrebuiltDocs = Boolean(input.generationId)

@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express'
+import { Router, type Request, type Response, type RequestHandler, type NextFunction } from 'express'
 import { parse as parseCookie } from 'cookie'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
@@ -10,6 +10,7 @@ import { UserRepository } from '../modules/users/user.repository'
 import { logger } from '../logger'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError } from '../middleware/api-error'
+import { rateLimit } from '../middleware/rate-limit'
 
 const IS_DEVELOPMENT = env.NODE_ENV === 'development' || env.NODE_ENV === 'test'
 const SESSION_TTL_DAYS = env.SESSION_TTL_DAYS
@@ -62,13 +63,17 @@ function createSession(userId: string): string {
 
 export function buildAuthRouter() {
   const router = Router()
+  const loginRateLimiter = rateLimit({ windowMs: 60_000, max: 20 })
+  const loginGuard: RequestHandler = env.NODE_ENV === 'production'
+    ? loginRateLimiter
+    : (_req: Request, _res: Response, next: NextFunction) => next()
 
   /**
    * POST /auth/login
    * Exchange a Google OAuth credential for a session cookie.
    * This is the single entry point for authentication.
    */
-  router.post('/login', async (req, res, next) => {
+  router.post('/login', loginGuard, async (req, res, next) => {
     try {
       const parsed = LoginSchema.safeParse(req.body)
       if (!parsed.success) {

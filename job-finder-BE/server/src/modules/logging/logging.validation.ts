@@ -63,6 +63,7 @@ export function validateLogRequest(req: Request, res: Response, next: NextFuncti
         message: `Log at index ${i} has invalid category: ${log.category}`,
       })
     }
+
   }
 
   next()

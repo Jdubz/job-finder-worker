@@ -102,7 +102,6 @@ def main():
         agent_manager=agent_manager,
         profile=profile,
         min_match_score=job_match.get("minMatchScore", 70),
-        generate_intake=job_match.get("generateIntakeData", True),
     )
     company_info_fetcher = CompanyInfoFetcher(agent_manager=agent_manager)
 

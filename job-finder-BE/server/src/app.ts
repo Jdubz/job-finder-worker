@@ -21,6 +21,7 @@ import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError, apiErrorHandler } from './middleware/api-error'
 import { buildAuthRouter } from './routes/auth.routes'
+import { buildOriginGuard } from './middleware/origin-guard'
 
 export function buildApp() {
   const app = express()
@@ -52,6 +53,8 @@ export function buildApp() {
         'https://job-finder.joshwentworth.com',
         'https://job-finder-api.joshwentworth.com'
       ]
+
+  const originGuard = buildOriginGuard(allowedOrigins)
 
   app.use(
     cors({
@@ -90,6 +93,9 @@ export function buildApp() {
 
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: true }))
+
+  // Basic CSRF mitigation: block cross-site mutations when Origin is present and disallowed
+  app.use('/api', originGuard)
 
   // Prompts route - public GET, authenticated PUT/POST
   app.use('/api/prompts', buildPromptsRouter())

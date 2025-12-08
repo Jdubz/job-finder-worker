@@ -116,12 +116,20 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
         limit: query.limit,
         offset: query.offset
       })
+      const total = repo.count({
+        parentId:
+          query.parentId === undefined
+            ? undefined
+            : query.parentId === '' || query.parentId === ROOT_PARENT_SENTINEL
+              ? null
+              : query.parentId
+      })
 
-      const response: ListContentItemsResponse = {
-        items: buildTree(items),
-        total: items.length,
-        hasMore: items.length === query.limit
-      }
+        const response: ListContentItemsResponse = {
+          items: buildTree(items),
+          total,
+          hasMore: query.offset + items.length < total
+        }
 
       res.json(success(response))
     })

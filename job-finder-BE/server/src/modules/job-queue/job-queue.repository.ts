@@ -180,35 +180,38 @@ export class JobQueueRepository {
     limit?: number
     offset?: number
   } = {}): QueueItem[] {
-    let sql = 'SELECT * FROM job_queue WHERE 1 = 1'
-    const params: Array<string | number> = []
+    const { whereClause, params } = this.buildFilters(options)
+    let sql = `SELECT * FROM job_queue ${whereClause} ORDER BY datetime(created_at) DESC`
 
-    if (options.status) {
-      const statuses = Array.isArray(options.status) ? options.status : [options.status]
-      const placeholders = statuses.map(() => '?').join(', ')
-      sql += ` AND status IN (${placeholders})`
-      params.push(...statuses)
-    }
-
-    if (options.type) {
-      sql += ' AND type = ?'
-      params.push(options.type)
-    }
-
-    sql += ' ORDER BY datetime(created_at) DESC'
-
+    const paginatedParams = [...params]
     if (typeof options.limit === 'number') {
       sql += ' LIMIT ?'
-      params.push(options.limit)
+      paginatedParams.push(options.limit)
     }
 
     if (typeof options.offset === 'number') {
       sql += ' OFFSET ?'
-      params.push(options.offset)
+      paginatedParams.push(options.offset)
     }
 
-    const rows = this.db.prepare(sql).all(...params) as QueueItemRow[]
+    const rows = this.db.prepare(sql).all(...paginatedParams) as QueueItemRow[]
     return rows.map(buildQueueItem)
+  }
+
+  listWithTotal(options: {
+    status?: QueueStatus | QueueStatus[]
+    type?: QueueItem['type']
+    limit?: number
+    offset?: number
+  } = {}): { items: QueueItem[]; total: number } {
+    const { whereClause, params } = this.buildFilters(options)
+
+    const totalRow = this.db
+      .prepare(`SELECT COUNT(*) as count FROM job_queue ${whereClause}`)
+      .get(...params) as { count: number }
+
+    const items = this.list(options)
+    return { items, total: totalRow.count }
   }
 
   update(id: string, updates: QueueItemUpdate): QueueItem {
@@ -328,5 +331,33 @@ export class JobQueueRepository {
     })
 
     return stats
+  }
+
+  private buildFilters(options: {
+    status?: QueueStatus | QueueStatus[]
+    type?: QueueItem['type']
+    source?: QueueItem['source']
+  }) {
+    let whereClause = 'WHERE 1 = 1'
+    const params: Array<string | number> = []
+
+    if (options.status) {
+      const statuses = Array.isArray(options.status) ? options.status : [options.status]
+      const placeholders = statuses.map(() => '?').join(', ')
+      whereClause += ` AND status IN (${placeholders})`
+      params.push(...statuses)
+    }
+
+    if (options.type) {
+      whereClause += ' AND type = ?'
+      params.push(options.type)
+    }
+
+    if (options.source) {
+      whereClause += " AND json_extract(input, '$.source') = ?"
+      params.push(options.source)
+    }
+
+    return { whereClause, params }
   }
 }

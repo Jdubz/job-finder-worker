@@ -116,7 +116,7 @@ export function buildJobQueueRouter() {
     '/',
     asyncHandler((req, res) => {
       const query = listQueueSchema.parse(req.query)
-      const items = service.list({
+      const { items, total } = service.listWithTotal({
         status: query.status,
         type: query.type,
         source: query.source,
@@ -129,8 +129,8 @@ export function buildJobQueueRouter() {
         pagination: {
           limit: query.limit,
           offset: query.offset,
-          total: items.length,
-          hasMore: items.length === query.limit
+          total,
+          hasMore: query.offset + items.length < total
         }
       }
 
