@@ -20,26 +20,8 @@ export function buildOriginGuard(allowedOrigins: string[]) {
 
     const origin = req.headers.origin
     if (!origin) {
-      // Allow authenticated non-browser clients (Bearer/API key) without Origin/Referer
-      const hasAuthHeader = Boolean(req.headers.authorization || req.headers['x-api-key'])
-      if (hasAuthHeader) return next()
-
-      // Fallback to Referer when Origin is missing
-      const referer = req.headers.referer
-      if (referer) {
-        try {
-          const refererOrigin = new URL(referer).origin
-          if (allowed.has(refererOrigin)) {
-            return next()
-          }
-        } catch {
-          // invalid referer; fall through
-        }
-      }
-      return next(new ApiHttpError(ApiErrorCode.FORBIDDEN, 'Cross-site request blocked (missing Origin/Referer)', {
-        status: 403,
-        details: { origin: null, referer: referer ?? null }
-      }))
+      // Treat absent Origin as non-browser client; allow
+      return next()
     }
 
     if (allowed.has(origin)) {

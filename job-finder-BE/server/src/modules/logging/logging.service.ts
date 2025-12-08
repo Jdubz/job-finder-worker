@@ -18,22 +18,9 @@ function truncateEntry(entry: any) {
   const fieldsToTrim = ['message', 'details', 'payload']
   for (const key of fieldsToTrim) {
     if (typeof cloned[key] === 'string' && Buffer.byteLength(cloned[key], 'utf8') > MAX_ENTRY_BYTES) {
-      const original = cloned[key] as string
-      let left = 0
-      let right = original.length
-      let best = ''
-      while (left <= right) {
-        const mid = Math.floor((left + right) / 2)
-        const candidate = original.slice(0, mid)
-        const bytes = Buffer.byteLength(candidate, 'utf8')
-        if (bytes <= MAX_ENTRY_BYTES) {
-          best = candidate
-          left = mid + 1
-        } else {
-          right = mid - 1
-        }
-      }
-      cloned[key] = `${best}…`
+      const buf = Buffer.from(cloned[key], 'utf8')
+      const sliced = buf.slice(0, MAX_ENTRY_BYTES).toString('utf8')
+      cloned[key] = `${sliced}…`
     }
   }
   return cloned

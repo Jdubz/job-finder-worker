@@ -52,12 +52,14 @@ export function rateLimit(options: RateLimitOptions) {
     }
 
     // Opportunistic cleanup of a few expired buckets to avoid unbounded growth
-    let pruned = 0
-    for (const [k, b] of buckets) {
-      if (b.expiresAt <= now) {
-        buckets.delete(k)
-        pruned++
-        if (pruned >= 5) break // limit per-request work
+    if (buckets.size > 1000) {
+      let pruned = 0
+      for (const [k, b] of buckets) {
+        if (b.expiresAt <= now) {
+          buckets.delete(k)
+          pruned++
+          if (pruned >= 5) break // limit per-request work
+        }
       }
     }
 
@@ -65,4 +67,5 @@ export function rateLimit(options: RateLimitOptions) {
   }
   // Expose stop hook for tests to clear the interval
   ;(rateLimitMiddleware as any).stop = () => clearInterval(cleanupInterval)
+  return rateLimitMiddleware
 }
