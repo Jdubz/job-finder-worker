@@ -33,6 +33,14 @@ _DNS_ERROR_TOKENS = {
     "dns",
 }
 
+# Domains that are known to be JS-rendered and need headless scraping
+HEADLESS_REQUIRED_DOMAINS = {
+    "builtin.com",
+    "jobs.ashbyhq.com",
+    "ashbyhq.com",
+    "stickermule.com",
+}
+
 # Patterns for detecting single job listing URLs on aggregators (invalid as sources)
 # These URLs point to individual jobs, not company job boards
 _SINGLE_JOB_PATTERNS = [
@@ -288,6 +296,14 @@ class SourceDiscovery:
                     "message": "URL points to a single job listing, not a company job board",
                 }
 
+            # Skip known JS/headless portals where we don't (yet) run a browser
+            if self._requires_headless(url):
+                return None, {
+                    "success": False,
+                    "error": "requires_headless",
+                    "message": "Page is JS-rendered and needs headless scraping",
+                }
+
             if is_ats_provider_url(url):
                 logger.warning(f"URL is an ATS provider's own site, not a customer board: {url}")
                 return None, {
@@ -305,6 +321,13 @@ class SourceDiscovery:
                     logger.info(f"Pattern-based detection succeeded for {url}")
                     return pattern_config, validation
                 # If validation failed, continue to try fetching
+
+            # Lever single-posting heuristic -> derive board slug
+            lever_config = self._probe_lever_from_posting(url)
+            if lever_config:
+                validation = self._validate_config(lever_config)
+                if validation.get("success"):
+                    return lever_config, validation
 
             fetch_meta: Dict[str, Any] = {}
 
@@ -423,6 +446,41 @@ class SourceDiscovery:
             return resp.url
         except requests.RequestException:
             return None
+
+    def _requires_headless(self, url: str) -> bool:
+        try:
+            host = urlparse(url).hostname or ""
+            return any(host.endswith(dom) for dom in HEADLESS_REQUIRED_DOMAINS)
+        except Exception:
+            return False
+
+    def _probe_lever_from_posting(self, url: str) -> Optional[Dict[str, Any]]:
+        """
+        If the URL is a single Lever posting, derive the board slug and build API config.
+        Example: https://jobs.lever.co/paymentology/abcd -> slug paymentology.
+        """
+        match = re.search(r"jobs\.lever\.co/([^/]+)/[^/]+", url)
+        if not match:
+            return None
+
+        slug = match.group(1)
+        api_url = f"https://api.lever.co/v0/postings/{slug}?mode=json"
+        try:
+            resp = requests.get(api_url, headers={"Accept": "application/json"}, timeout=8)
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            if not isinstance(data, list):
+                return None
+        except (requests.RequestException, ValueError, json.JSONDecodeError):
+            return None
+
+        lever_pattern = next((p for p in PLATFORM_PATTERNS if p.name == "lever"), None)
+        if not lever_pattern:
+            return None
+
+        config = build_config_from_pattern(lever_pattern, {"company": slug}, original_url=url)
+        return config
 
     def _probe_greenhouse_from_host(self, url: str) -> Optional[Dict[str, Any]]:
         """
