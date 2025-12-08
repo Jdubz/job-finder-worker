@@ -7,15 +7,6 @@ import pytest
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 
 
-@pytest.fixture(autouse=True)
-def patch_text_limits(monkeypatch, tmp_path):
-    """Provide default text limits without needing SQLITE_DB_PATH in tests."""
-    monkeypatch.setattr(
-        "job_finder.ai.matcher.get_text_limits",
-        lambda: {"intakeTextLimit": 4000, "intakeFieldLimit": 500},
-    )
-
-
 @pytest.fixture
 def mock_agent_manager():
     """Create a mock AgentManager."""
@@ -45,20 +36,17 @@ class TestAIJobMatcherInit:
             agent_manager=mock_agent_manager,
             profile=mock_profile,
             min_match_score=80,
-            generate_intake=True,
         )
 
         assert matcher.agent_manager == mock_agent_manager
         assert matcher.profile == mock_profile
         assert matcher.min_match_score == 80
-        assert matcher.generate_intake is True
 
     def test_init_with_defaults(self, mock_agent_manager, mock_profile):
         """Test matcher initialization with default values."""
         matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
 
         assert matcher.min_match_score == 50
-        assert matcher.generate_intake is True
 
 
 # NOTE: TestCalculateAdjustedScore removed during hybrid scoring migration.
@@ -184,117 +172,6 @@ class TestAnalyzeMatch:
         assert analysis is None
 
 
-class TestGenerateIntakeData:
-    """Test resume intake data generation."""
-
-    def test_generate_intake_data_success(self, mock_agent_manager, mock_profile, sample_job):
-        """Test successful intake data generation."""
-        match_analysis = {"match_score": 85, "matched_skills": ["Python"]}
-        mock_agent_manager.execute.return_value = Mock(
-            text="""
-            {
-                "job_id": "123",
-                "job_title": "Senior Engineer",
-                "target_summary": "Experienced Python developer",
-                "skills_priority": ["Python", "AWS"],
-                "ats_keywords": ["Python", "Senior"]
-            }
-            """
-        )
-
-        matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
-        intake_data = matcher._generate_intake_data(sample_job, match_analysis)
-
-        assert intake_data is not None
-        assert intake_data["job_id"] == "123"
-        assert "Python" in intake_data["skills_priority"]
-
-    def test_generate_intake_data_propagates_ai_provider_error(
-        self, mock_agent_manager, mock_profile, sample_job
-    ):
-        """Test that AIProviderError is re-raised instead of being caught.
-
-        CRITICAL: AI infrastructure failures must bubble up to cause task FAILURE.
-        """
-        from job_finder.exceptions import AIProviderError
-
-        match_analysis = {"match_score": 85, "matched_skills": ["Python"]}
-        mock_agent_manager.execute.side_effect = AIProviderError("Codex CLI timed out")
-
-        matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
-
-        # Should raise AIProviderError, not return None
-        with pytest.raises(AIProviderError, match="Codex CLI timed out"):
-            matcher._generate_intake_data(sample_job, match_analysis)
-
-    def test_generate_intake_data_optimizes_size(
-        self, mock_agent_manager, mock_profile, sample_job
-    ):
-        """Test intake data size optimization is called."""
-        match_analysis = {"match_score": 85}
-        mock_agent_manager.execute.return_value = Mock(
-            text="""
-            {
-                "job_id": "123",
-                "job_title": "Engineer",
-                "target_summary": "Test",
-                "skills_priority": ["Python"],
-                "ats_keywords": ["Python"]
-            }
-            """
-        )
-
-        matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
-
-        with patch.object(matcher, "_optimize_intake_data_size") as mock_optimize:
-            mock_optimize.return_value = {"optimized": True}
-            matcher._generate_intake_data(sample_job, match_analysis)
-
-            mock_optimize.assert_called_once()
-
-
-class TestOptimizeIntakeDataSize:
-    """Test intake data size optimization."""
-
-    def test_optimize_trims_long_strings(self, mock_provider, mock_profile):
-        """Test long strings are trimmed."""
-        matcher = AIJobMatcher(agent_manager=mock_provider, profile=mock_profile)
-
-        long_text = "This is a very long string. " * 100
-        intake_data = {"description": long_text}
-
-        optimized = matcher._optimize_intake_data_size(intake_data)
-
-        assert len(optimized["description"]) < len(long_text)
-
-    def test_optimize_trims_long_lists(self, mock_provider, mock_profile):
-        """Test long lists are trimmed."""
-        matcher = AIJobMatcher(agent_manager=mock_provider, profile=mock_profile)
-
-        long_list = [f"Skill {i}" for i in range(50)]
-        intake_data = {"skills": long_list}
-
-        optimized = matcher._optimize_intake_data_size(intake_data)
-
-        assert len(optimized["skills"]) < len(long_list)
-
-    def test_optimize_handles_nested_dicts(self, mock_provider, mock_profile):
-        """Test optimization handles nested dictionaries."""
-        matcher = AIJobMatcher(agent_manager=mock_provider, profile=mock_profile)
-
-        intake_data = {
-            "nested": {
-                "description": "Short description",
-                "keywords": ["A", "B", "C"],
-            }
-        }
-
-        optimized = matcher._optimize_intake_data_size(intake_data)
-
-        assert "nested" in optimized
-        assert "description" in optimized["nested"]
-
-
 class TestAnalyzeJob:
     """Test complete job analysis flow.
 
@@ -303,23 +180,15 @@ class TestAnalyzeJob:
     """
 
     def test_analyze_job_uses_deterministic_score(self, mock_provider, mock_profile, sample_job):
-        """Test that analyze_job uses deterministic_score."""
-        mock_provider.execute.side_effect = [
-            # First call: match analysis
-            Mock(text='{"match_score": 60, "matched_skills": ["Python"], "missing_skills": []}'),
-            # Second call: intake data
-            Mock(
-                text='{"job_id": "123", "job_title": "Engineer", '
-                '"target_summary": "Test", "skills_priority": ["Python"], '
-                '"ats_keywords": ["Python"]}'
-            ),
-        ]
+        """Test that analyze_job uses deterministic_score and returns single-call result."""
+        mock_provider.execute.return_value = Mock(
+            text='{"match_score": 60, "matched_skills": ["Python"], "missing_skills": []}'
+        )
 
         matcher = AIJobMatcher(
             agent_manager=mock_provider,
             profile=mock_profile,
             min_match_score=80,
-            generate_intake=True,
         )
 
         # Provide deterministic score that's above threshold
@@ -328,7 +197,7 @@ class TestAnalyzeJob:
 
         assert result is not None
         assert result.match_score == 90
-        assert result.resume_intake_data is not None
+        assert result.resume_intake_data is None
 
     def test_analyze_job_requires_deterministic_score(
         self, mock_provider, mock_profile, sample_job
@@ -342,7 +211,6 @@ class TestAnalyzeJob:
             agent_manager=mock_provider,
             profile=mock_profile,
             min_match_score=80,
-            generate_intake=True,
         )
 
         # No deterministic_score provided - should raise ValueError
@@ -371,30 +239,23 @@ class TestAnalyzeJob:
 
         assert result is None
 
-    def test_analyze_job_without_intake_generation(self, mock_provider, mock_profile, sample_job):
-        """Test job analysis without intake data generation."""
+    def test_analyze_job_single_call_pipeline(self, mock_provider, mock_profile, sample_job):
+        """Analysis should issue exactly one AI call and no intake call."""
         mock_provider.execute.return_value = Mock(
-            text="""
-            {
-                "match_score": 85,
-                "matched_skills": ["Python"],
-                "missing_skills": []
-            }
-            """
+            text='{"matched_skills": ["Python"], "missing_skills": []}'
         )
 
         matcher = AIJobMatcher(
             agent_manager=mock_provider,
             profile=mock_profile,
-            min_match_score=80,
-            generate_intake=False,
+            min_match_score=70,
         )
 
-        job_with_score = {**sample_job, "deterministic_score": 85}
+        job_with_score = {**sample_job, "deterministic_score": 75}
         result = matcher.analyze_job(job_with_score)
 
         assert result is not None
-        assert result.resume_intake_data is None
+        mock_provider.execute.assert_called_once()
 
     def test_analyze_job_handles_analysis_failure(self, mock_provider, mock_profile, sample_job):
         """Test handling of analysis failure returns None."""

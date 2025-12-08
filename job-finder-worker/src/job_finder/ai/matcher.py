@@ -1,9 +1,8 @@
-"""AI-powered job matching and intake data generation.
+"""AI-powered job matching.
 
 This module focuses on AI-powered analysis for:
 - Skill matching and gap analysis
 - Experience matching
-- Resume intake data generation
 
 Scoring is now handled by the deterministic ScoringEngine, not this module.
 """
@@ -20,7 +19,6 @@ from job_finder.ai.prompts import JobMatchPrompts
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import AIProviderError
 from job_finder.profile.schema import Profile
-from job_finder.settings import get_text_limits
 
 if TYPE_CHECKING:
     from job_finder.ai.agent_manager import AgentManager
@@ -73,7 +71,7 @@ class JobMatchResult(BaseModel):
 
 
 class AIJobMatcher:
-    """AI-powered job matcher that analyzes jobs and generates resume intake data."""
+    """AI-powered job matcher that analyzes jobs."""
 
     DEFAULT_COMPANY_WEIGHTS: Dict[str, Any] = {
         "bonuses": {"remoteFirst": 15, "aiMlFocus": 10},
@@ -98,7 +96,6 @@ class AIJobMatcher:
         agent_manager: "AgentManager",
         profile: Profile,
         min_match_score: int = 50,
-        generate_intake: bool = True,
         company_weights: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -111,13 +108,15 @@ class AIJobMatcher:
             agent_manager: AgentManager for executing AI tasks.
             profile: User profile for matching context.
             min_match_score: Minimum score threshold (from deterministic scoring).
-            generate_intake: Whether to generate resume intake data.
             company_weights: Weights for priority thresholds only.
+
+        Note:
+            This matcher performs a single AI call per job; resume/cover letter guidance
+            comes from the primary analysis response to keep the pipeline lean.
         """
         self.agent_manager = agent_manager
         self.profile = profile
         self.min_match_score = min_match_score
-        self.generate_intake = generate_intake
         self.company_weights = company_weights or self.DEFAULT_COMPANY_WEIGHTS
         self.prompts = JobMatchPrompts()
 
@@ -187,14 +186,9 @@ class AIJobMatcher:
                 )
                 return None
 
-            # Step 4: Generate resume intake data if enabled
-            intake_data = None
-            if self.generate_intake and (not below_threshold or return_below_threshold):
-                intake_data = self._generate_intake_data(job, match_analysis)
-
-            # Step 5: Build and return result
+            # Build and return result
             result = self._build_match_result(
-                job, match_analysis, match_score, intake_data, score_breakdown
+                job, match_analysis, match_score, None, score_breakdown
             )
 
             logger.info(f"Successfully analyzed {job.get('title')} - Score: {match_score}")
@@ -316,8 +310,8 @@ class AIJobMatcher:
             result = self.agent_manager.execute(
                 task_type="analysis",
                 prompt=prompt,
-                max_tokens=4096,
-                temperature=0.3,
+                max_tokens=1400,
+                temperature=0.2,
             )
             response = result.text
 
@@ -370,187 +364,3 @@ class AIJobMatcher:
                 except json.JSONDecodeError:
                     pass
             raise
-
-    def _generate_intake_data(
-        self, job: Dict[str, Any], match_analysis: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Internal method to generate resume intake data using AI.
-
-        Args:
-            job: Job posting dictionary.
-            match_analysis: Previous match analysis results.
-
-        Returns:
-            Dictionary with resume intake data, or None if failed.
-        """
-        response = None
-        try:
-            prompt = self.prompts.generate_resume_intake_data(self.profile, job, match_analysis)
-
-            # Use AgentManager for AI execution (analysis task type)
-            result = self.agent_manager.execute(
-                task_type="analysis",
-                prompt=prompt,
-                max_tokens=4096,
-                temperature=0.4,  # Slightly higher for creative intake data
-            )
-            response = result.text
-
-            # Parse JSON response (handles markdown code blocks)
-            json_str = extract_json_from_response(response)
-            intake_data = self._safe_parse_json(json_str)
-
-            # Validate required fields
-            required_fields = [
-                "job_id",
-                "job_title",
-                "target_summary",
-                "skills_priority",
-                "ats_keywords",
-            ]
-            missing_fields = [field for field in required_fields if field not in intake_data]
-            if missing_fields:
-                logger.warning(f"Intake data missing optional fields: {missing_fields}")
-
-            # Intelligently reduce field sizes if they're too large
-            intake_data = self._optimize_intake_data_size(intake_data)
-
-            logger.info(f"Generated intake data for {job.get('title')}")
-            return intake_data
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse intake data response as JSON: {str(e)}")
-            logger.error(
-                f"Raw response (first 500 chars): {response[:500] if response else 'None'}..."
-            )
-            return None
-        except Exception as e:
-            # Re-raise AIProviderError so infrastructure failures bubble up
-            if isinstance(e, AIProviderError):
-                logger.error(f"AI provider error generating intake data: {str(e)}")
-                raise  # Let caller handle - this should FAIL the task
-            logger.error(f"Error generating intake data: {str(e)}", exc_info=True)
-            return None
-
-    def _optimize_intake_data_size(self, intake_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Intelligently reduce the size of intake data fields by removing unnecessary
-        information and consolidating content. Applies to ALL large fields generically.
-
-        Args:
-            intake_data: Resume intake data dictionary
-
-        Returns:
-            Optimized intake data with reduced field sizes
-        """
-        import re
-
-        # Get text limits from config
-        text_limits = get_text_limits()
-        max_intake_text = text_limits.get("maxIntakeTextLength", 500)
-        max_intake_desc = text_limits.get("maxIntakeDescriptionLength", 2000)
-        max_intake_field = text_limits.get("maxIntakeFieldLength", 400)
-        max_text_optimization = 100  # Only optimize strings longer than this
-
-        def clean_text(text: str, max_length: int = max_intake_text) -> str:
-            """Clean and truncate text intelligently."""
-            if not text or len(text) <= max_length:
-                return text
-
-            # Remove excessive whitespace
-            text = re.sub(r"\s+", " ", text).strip()
-
-            # Remove redundant phrases
-            redundant_phrases = [
-                r"\b(please|kindly|simply|just|really|very|quite|rather)\b",
-                r"\b(note that|it is important to|make sure to)\b",
-            ]
-            for phrase in redundant_phrases:
-                text = re.sub(phrase, "", text, flags=re.IGNORECASE)
-
-            # Clean up extra spaces after removal
-            text = re.sub(r"\s+", " ", text).strip()
-
-            # If still too long, truncate at sentence boundary
-            if len(text) > max_length:
-                # Try to cut at last complete sentence
-                truncated = text[:max_length]
-                last_period = truncated.rfind(".")
-                last_semicolon = truncated.rfind(";")
-                cut_point = max(last_period, last_semicolon)
-
-                if cut_point > max_length * 0.7:  # At least 70% of target length
-                    text = text[: cut_point + 1].strip()
-                else:
-                    text = truncated.strip() + "..."
-
-            return text
-
-        def trim_list(
-            items: List[str], max_items: int = 20, max_item_length: int = 100
-        ) -> List[str]:
-            """Trim list to reasonable size and clean each item."""
-            if not items:
-                return items
-
-            # Take only first max_items
-            trimmed = items[:max_items]
-
-            # Clean each item
-            cleaned = []
-            for item in trimmed:
-                if isinstance(item, str):
-                    # Remove excess whitespace
-                    item = re.sub(r"\s+", " ", item).strip()
-                    # Truncate very long items
-                    if len(item) > max_item_length:
-                        item = item[:max_item_length].strip() + "..."
-                    cleaned.append(item)
-                else:
-                    cleaned.append(item)
-
-            return cleaned
-
-        def optimize_value(value: Any, key: str) -> Any:
-            """Recursively optimize any value based on its type and size."""
-            if isinstance(value, str):
-                # Apply different limits based on field purpose
-                if (
-                    len(value) > max_text_optimization
-                ):  # Only optimize strings that are actually large
-                    if "description" in key.lower():
-                        return clean_text(
-                            value, max_length=max_intake_desc
-                        )  # Descriptions can be longer
-                    elif "summary" in key.lower():
-                        return clean_text(value, max_length=max_intake_field)
-                    else:
-                        return clean_text(value, max_length=max_intake_text)
-                return value
-
-            elif isinstance(value, list):
-                # Determine limits based on field name
-                if "keyword" in key.lower() or "skill" in key.lower():
-                    return trim_list(value, max_items=25, max_item_length=100)
-                elif "highlight" in key.lower() or "achievement" in key.lower():
-                    return trim_list(value, max_items=10, max_item_length=200)
-                elif "project" in key.lower():
-                    return trim_list(value, max_items=5, max_item_length=150)
-                else:
-                    return trim_list(value, max_items=15, max_item_length=100)
-
-            elif isinstance(value, dict):
-                # Recursively optimize nested dictionaries
-                return {k: optimize_value(v, k) for k, v in value.items()}
-
-            else:
-                # Return non-text types as-is (numbers, booleans, None, etc.)
-                return value
-
-        # Recursively optimize all fields in the intake data
-        optimized_data = {}
-        for key, value in intake_data.items():
-            optimized_data[key] = optimize_value(value, key)
-
-        return optimized_data
