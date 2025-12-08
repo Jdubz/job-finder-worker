@@ -483,6 +483,38 @@ class JobSourcesManager:
             ).fetchone()
         return row is not None
 
+    def get_sources_for_company(self, company_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Get job sources linked to a company.
+
+        Args:
+            company_id: The company ID to look up
+            limit: Maximum number of sources to return
+
+        Returns:
+            List of source dicts with id, name, aggregator_domain, config_json
+        """
+        with sqlite_connection(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, name, aggregator_domain, config_json
+                FROM job_sources
+                WHERE company_id = ?
+                LIMIT ?
+                """,
+                (company_id, limit),
+            ).fetchall()
+
+        return [
+            {
+                "id": row[0],
+                "name": row[1],
+                "aggregator_domain": row[2],
+                "config_json": row[3],
+            }
+            for row in rows
+        ]
+
     # ------------------------------------------------------------------ #
     # Aggregator Domain Lookup
     # ------------------------------------------------------------------ #

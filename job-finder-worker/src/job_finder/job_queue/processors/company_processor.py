@@ -289,68 +289,34 @@ class CompanyProcessor(BaseProcessor):
 
         try:
             # Get any source linked to this company
-            sources = self._get_company_sources(company_id)
+            sources = self.sources_manager.get_sources_for_company(company_id)
             if not sources:
                 return None
 
             # Use the first source with useful context
             for source in sources:
-                aggregator_domain = source.get("aggregator_domain")
-                config = source.get("config_json", {})
-                if isinstance(config, str):
-                    config = json.loads(config)
+                try:
+                    aggregator_domain = source.get("aggregator_domain")
+                    config = source.get("config_json", {})
+                    if isinstance(config, str):
+                        config = json.loads(config)
 
-                base_url = config.get("base_url", "")
+                    base_url = config.get("base_url", "")
 
-                if aggregator_domain or base_url:
-                    return {
-                        "aggregator_domain": aggregator_domain or "",
-                        "base_url": base_url,
-                        "source_name": source.get("name", ""),
-                    }
+                    if aggregator_domain or base_url:
+                        return {
+                            "aggregator_domain": aggregator_domain or "",
+                            "base_url": base_url,
+                            "source_name": source.get("name", ""),
+                        }
+                except json.JSONDecodeError:
+                    logger.debug("Invalid JSON in config for source %s", source.get("id"))
+                    continue
 
             return None
         except Exception as e:
             logger.debug("Failed to get source context for company %s: %s", company_id, e)
             return None
-
-    def _get_company_sources(self, company_id: str) -> List[Dict[str, Any]]:
-        """
-        Get sources linked to a company.
-
-        Args:
-            company_id: The company ID
-
-        Returns:
-            List of source dicts
-        """
-        try:
-            # Use sources_manager to get sources for the company
-            from job_finder.storage.sqlite_utils import sqlite_connection
-
-            with sqlite_connection(self.sources_manager.db_path) as conn:
-                rows = conn.execute(
-                    """
-                    SELECT id, name, aggregator_domain, config_json
-                    FROM job_sources
-                    WHERE company_id = ?
-                    LIMIT 5
-                    """,
-                    (company_id,),
-                ).fetchall()
-
-            return [
-                {
-                    "id": row[0],
-                    "name": row[1],
-                    "aggregator_domain": row[2],
-                    "config_json": row[3],
-                }
-                for row in rows
-            ]
-        except Exception as e:
-            logger.debug("Failed to get sources for company %s: %s", company_id, e)
-            return []
 
     def _detect_job_board_for_discovery(
         self, website: Optional[str], provided_url: Optional[str]

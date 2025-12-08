@@ -81,7 +81,7 @@ def fetch_company_info(
         source_context: Optional dict with keys:
             - aggregator_domain: e.g., "greenhouse.io", "lever.co"
             - base_url: e.g., "https://mdlz.wd3.myworkdayjobs.com"
-            - job_title: Original job title for context
+            - source_name: Name of the job source
     """
 ```
 
@@ -99,7 +99,9 @@ def _build_search_query(self, company_name: str, source_context: Optional[dict] 
         base_url = source_context.get("base_url", "")
         if "myworkdayjobs.com" in base_url:
             # Extract company identifier: "mdlz.wd3.myworkdayjobs.com" -> "mdlz"
-            subdomain = base_url.split(".")[0].replace("https://", "")
+            from urllib.parse import urlparse
+            parsed = urlparse(base_url)
+            subdomain = parsed.netloc.split(".")[0] if parsed.netloc else ""
             if subdomain and subdomain != company_name.lower():
                 query_parts.append(f"OR {subdomain}")
 
@@ -127,8 +129,11 @@ def _search_with_fallbacks(self, company_name: str, source_context: Optional[dic
     if source_context and "base_url" in source_context:
         base_url = source_context["base_url"]
         if "myworkdayjobs.com" in base_url:
-            subdomain = base_url.split(".")[0].replace("https://", "")
-            queries.insert(0, f"{subdomain} company")  # Try subdomain first
+            from urllib.parse import urlparse
+            parsed = urlparse(base_url)
+            subdomain = parsed.netloc.split(".")[0] if parsed.netloc else ""
+            if subdomain:
+                queries.insert(0, f"{subdomain} company")  # Try subdomain first
 
     for query in queries:
         results = self.search_client.search(query, max_results=8)
@@ -151,6 +156,7 @@ Add Wikipedia as a high-quality data source for established companies.
 """Wikipedia API client for company information."""
 
 import logging
+import re
 import requests
 from typing import Dict, Optional
 from urllib.parse import quote
@@ -335,11 +341,10 @@ class WikipediaClient:
         if not value:
             return None
         try:
-            # Remove commas and extract number
-            import re
-            match = re.search(r"[\d,]+", value.replace(",", ""))
-            if match:
-                return int(match.group())
+            # Remove all non-digit characters and parse
+            digits_only = re.sub(r"[^\d]", "", value)
+            if digits_only:
+                return int(digits_only)
         except ValueError:
             pass
         return None

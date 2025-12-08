@@ -104,7 +104,7 @@ class CompanyInfoFetcher:
             source_context: Optional context from job source with keys:
                 - aggregator_domain: e.g., "greenhouse.io", "lever.co"
                 - base_url: e.g., "https://mdlz.wd3.myworkdayjobs.com"
-                - job_title: Original job title for context
+                - source_name: Name of the job source
 
         Returns:
             Dictionary with company information
@@ -821,7 +821,6 @@ Be factual. Return ONLY valid JSON."""
         # Try to find any JSON-like object in the response
         patterns = [
             r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}",  # Nested objects
-            r"\{[^{}]+\}",  # Simple object
         ]
 
         for pattern in patterns:
