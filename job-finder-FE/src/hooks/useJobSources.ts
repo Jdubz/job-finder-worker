@@ -57,13 +57,17 @@ export function useJobSources(options: UseJobSourcesOptions = {}): UseJobSources
     }
   }, [filters])
 
+  // Track mount/unmount state
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  // Auto-fetch whenever filters change
   useEffect(() => {
     if (autoFetch) {
       fetchSources()
-    }
-
-    return () => {
-      isMountedRef.current = false
     }
   }, [autoFetch, fetchSources])
 
