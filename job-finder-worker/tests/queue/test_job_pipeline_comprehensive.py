@@ -10,7 +10,7 @@ from pathlib import Path
 from job_finder.ai.matcher import JobMatchResult
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue import ConfigLoader, QueueManager
-from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
+from job_finder.job_queue.models import JobQueueItem, ProcessorContext, QueueItemType, QueueStatus
 from job_finder.job_queue.processor import QueueItemProcessor
 from job_finder.storage import JobStorage, JobListingStorage
 from job_finder.storage.companies_manager import CompaniesManager
@@ -254,7 +254,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
 
     ai_matcher = DummyMatcher()
 
-    processor = QueueItemProcessor(
+    ctx = ProcessorContext(
         queue_manager=queue_manager,
         config_loader=config_loader,
         job_storage=job_storage,
@@ -264,6 +264,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
         company_info_fetcher=company_info_fetcher,
         ai_matcher=ai_matcher,
     )
+    processor = QueueItemProcessor(ctx)
 
     # Patch internals to keep the run deterministic
     job_data = {
@@ -308,7 +309,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
             )
 
     processor.job_processor.scoring_engine = MockScoringEngine()  # type: ignore[assignment]
-    processor.company_info_fetcher.fetch_company_info = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+    processor.ctx.company_info_fetcher.fetch_company_info = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
         "about": "We build pipelines",
         "culture": "Remote-first",
     }

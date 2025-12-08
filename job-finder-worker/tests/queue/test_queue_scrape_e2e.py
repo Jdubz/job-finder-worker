@@ -15,7 +15,7 @@ import pytest
 
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue import ConfigLoader, QueueManager
-from job_finder.job_queue.models import JobQueueItem, QueueItemType, ScrapeConfig
+from job_finder.job_queue.models import JobQueueItem, ProcessorContext, QueueItemType, ScrapeConfig
 from job_finder.job_queue.processor import QueueItemProcessor
 from job_finder.storage import JobStorage, JobListingStorage
 from job_finder.storage.companies_manager import CompaniesManager
@@ -263,7 +263,7 @@ def test_queue_scrape_end_to_end(temp_db):
         company_id="e2e-company-id",
     )
 
-    processor = QueueItemProcessor(
+    ctx = ProcessorContext(
         queue_manager=queue_manager,
         config_loader=config_loader,
         job_storage=job_storage,
@@ -273,6 +273,7 @@ def test_queue_scrape_end_to_end(temp_db):
         company_info_fetcher=company_info_fetcher,
         ai_matcher=ai_matcher,
     )
+    processor = QueueItemProcessor(ctx)
 
     # Mock extractor and scoring engine to avoid real AI calls
     from job_finder.ai.extraction import JobExtractionResult

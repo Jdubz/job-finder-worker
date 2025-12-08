@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from job_finder.ai.search_client import SearchResult
+from job_finder.job_queue.models import ProcessorContext
 from job_finder.job_queue.processors.company_processor import CompanyProcessor
 
 
@@ -29,13 +30,17 @@ def company_processor():
     ]
     company_info_fetcher = Mock()
 
-    return CompanyProcessor(
+    ctx = ProcessorContext(
         queue_manager=queue_manager,
         config_loader=config_loader,
+        job_storage=Mock(),
+        job_listing_storage=Mock(),
         companies_manager=companies_manager,
         sources_manager=sources_manager,
         company_info_fetcher=company_info_fetcher,
+        ai_matcher=Mock(),
     )
+    return CompanyProcessor(ctx)
 
 
 class TestFindBestCareerUrl:

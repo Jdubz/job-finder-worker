@@ -7,6 +7,7 @@ returned incorrect names like "Jobs" for subdomain patterns like jobs.dropbox.co
 import pytest
 from unittest.mock import MagicMock
 
+from job_finder.job_queue.models import ProcessorContext
 from job_finder.job_queue.processors.source_processor import SourceProcessor
 
 
@@ -36,12 +37,17 @@ def source_processor():
         "excludedKeywords": [],
     }
 
-    return SourceProcessor(
+    ctx = ProcessorContext(
         queue_manager=MagicMock(),
         config_loader=config_loader,
-        sources_manager=MagicMock(),
+        job_storage=MagicMock(),
+        job_listing_storage=MagicMock(),
         companies_manager=MagicMock(),
+        sources_manager=MagicMock(),
+        company_info_fetcher=MagicMock(),
+        ai_matcher=MagicMock(),
     )
+    return SourceProcessor(ctx)
 
 
 class TestExtractCompanyFromUrl:

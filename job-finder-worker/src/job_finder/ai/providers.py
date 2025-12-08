@@ -56,12 +56,12 @@ class AIProvider(ABC):
 class ClaudeProvider(AIProvider):
     """Anthropic Claude provider (API interface)."""
 
-    def __init__(self, model: str, api_key: Optional[str] = None):
+    def __init__(self, model: str = "claude-sonnet-4-20250514", api_key: Optional[str] = None):
         """
         Initialize Claude provider.
 
         Args:
-            model: Model identifier (required - provided by AgentManager from config).
+            model: Model identifier (default: claude-sonnet-4-20250514).
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var).
         """
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
@@ -90,12 +90,12 @@ class ClaudeProvider(AIProvider):
 class OpenAIProvider(AIProvider):
     """OpenAI GPT provider (API interface)."""
 
-    def __init__(self, model: str, api_key: Optional[str] = None):
+    def __init__(self, model: str = "gpt-4", api_key: Optional[str] = None):
         """
         Initialize OpenAI provider.
 
         Args:
-            model: Model identifier (required - provided by AgentManager from config).
+            model: Model identifier (default: gpt-4).
             api_key: OpenAI API key (defaults to OPENAI_API_KEY env var).
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
@@ -124,12 +124,12 @@ class OpenAIProvider(AIProvider):
 class GeminiProvider(AIProvider):
     """Google Gemini provider (API interface)."""
 
-    def __init__(self, model: str, api_key: Optional[str] = None):
+    def __init__(self, model: str = "gemini-2.0-flash", api_key: Optional[str] = None):
         """
         Initialize Gemini provider.
 
         Args:
-            model: Model identifier (required - provided by AgentManager from config).
+            model: Model identifier (default: gemini-2.0-flash).
             api_key: Google API key (defaults to GOOGLE_API_KEY or GEMINI_API_KEY env var).
         """
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
@@ -176,12 +176,12 @@ class GeminiCLIProvider(AIProvider):
     - Working directory set to /tmp to minimize context token usage
     """
 
-    def __init__(self, model: str, timeout: int = 120):
+    def __init__(self, model: str = "gemini-2.0-flash", timeout: int = 120):
         """
         Initialize Gemini CLI provider.
 
         Args:
-            model: Model identifier (required - provided by AgentManager from config).
+            model: Model identifier (default: gemini-2.0-flash).
                    Note: Currently stored but not used by CLI - reserved for future support.
             timeout: Command timeout in seconds (default 120s for longer responses).
         """
@@ -275,12 +275,12 @@ class CodexCLIProvider(AIProvider):
     model is rejected, we automatically retry using the CLI default model.
     """
 
-    def __init__(self, model: str, timeout: int = 60):
+    def __init__(self, model: str = "gpt-5-codex", timeout: int = 60):
         """
         Initialize Codex CLI provider.
 
         Args:
-            model: Model identifier (required - provided by AgentManager from config).
+            model: Model identifier (default: gpt-5-codex).
             timeout: Command timeout in seconds (default 60s).
         """
         self.model = model

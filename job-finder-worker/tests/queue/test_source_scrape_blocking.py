@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from job_finder.exceptions import ScrapeBlockedError
-from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
+from job_finder.job_queue.models import JobQueueItem, ProcessorContext, QueueItemType, QueueStatus
 from job_finder.job_queue.processors.source_processor import SourceProcessor
 
 
@@ -15,12 +15,17 @@ def source_processor():
     sources_manager = MagicMock()
     companies_manager = MagicMock()
 
-    return SourceProcessor(
+    ctx = ProcessorContext(
         queue_manager=queue_manager,
         config_loader=config_loader,
-        sources_manager=sources_manager,
+        job_storage=MagicMock(),
+        job_listing_storage=MagicMock(),
         companies_manager=companies_manager,
+        sources_manager=sources_manager,
+        company_info_fetcher=MagicMock(),
+        ai_matcher=MagicMock(),
     )
+    return SourceProcessor(ctx)
 
 
 def make_scrape_item(source_id: str) -> JobQueueItem:
