@@ -65,30 +65,30 @@ export class ContentItemRepository {
   }
 
   list(options: ListContentItemsOptions = {}): ContentItem[] {
-    let sql = 'SELECT * FROM content_items WHERE 1 = 1'
-    const params: Array<string | number | null> = []
+    const { whereClause, params } = this.buildFilters(options)
+    let sql = `SELECT * FROM content_items ${whereClause} ORDER BY parent_id IS NOT NULL, parent_id, order_index ASC`
 
-    if (options.parentId === null) {
-      sql += ' AND parent_id IS NULL'
-    } else if (options.parentId) {
-      sql += ' AND parent_id = ?'
-      params.push(options.parentId)
-    }
-
-    sql += ' ORDER BY parent_id IS NOT NULL, parent_id, order_index ASC'
-
+    const paginatedParams = [...params]
     if (typeof options.limit === 'number') {
       sql += ' LIMIT ?'
-      params.push(options.limit)
+      paginatedParams.push(options.limit)
     }
 
     if (typeof options.offset === 'number') {
       sql += ' OFFSET ?'
-      params.push(options.offset)
+      paginatedParams.push(options.offset)
     }
 
-    const rows = this.db.prepare(sql).all(...params) as ContentItemRow[]
+    const rows = this.db.prepare(sql).all(...paginatedParams) as ContentItemRow[]
     return rows.map(parseRow)
+  }
+
+  count(options: ListContentItemsOptions = {}): number {
+    const { whereClause, params } = this.buildFilters(options)
+    const row = this.db
+      .prepare(`SELECT COUNT(*) as count FROM content_items ${whereClause}`)
+      .get(...params) as { count: number }
+    return row.count
   }
 
   getById(id: string): ContentItem | null {
@@ -272,5 +272,19 @@ export class ContentItemRepository {
     ids.forEach((siblingId, idx) => {
       stmt.run(idx, siblingId)
     })
+  }
+
+  private buildFilters(options: ListContentItemsOptions) {
+    let whereClause = 'WHERE 1 = 1'
+    const params: Array<string | number | null> = []
+
+    if (options.parentId === null) {
+      whereClause += ' AND parent_id IS NULL'
+    } else if (options.parentId) {
+      whereClause += ' AND parent_id = ?'
+      params.push(options.parentId)
+    }
+
+    return { whereClause, params }
   }
 }

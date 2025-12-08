@@ -10,6 +10,7 @@ import { UserRepository } from '../modules/users/user.repository'
 import { logger } from '../logger'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError } from '../middleware/api-error'
+import { rateLimit } from '../middleware/rate-limit'
 
 const IS_DEVELOPMENT = env.NODE_ENV === 'development' || env.NODE_ENV === 'test'
 const SESSION_TTL_DAYS = env.SESSION_TTL_DAYS
@@ -62,6 +63,7 @@ function createSession(userId: string): string {
 
 export function buildAuthRouter() {
   const router = Router()
+  const loginRateLimiter = rateLimit({ windowMs: 60_000, max: 20 })
 
   /**
    * POST /auth/login
@@ -69,6 +71,11 @@ export function buildAuthRouter() {
    * This is the single entry point for authentication.
    */
   router.post('/login', async (req, res, next) => {
+    // Apply lightweight rate limiting per IP
+    loginRateLimiter(req, res, (err?: unknown) => {
+      if (err) return next(err)
+    })
+
     try {
       const parsed = LoginSchema.safeParse(req.body)
       if (!parsed.success) {

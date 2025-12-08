@@ -97,10 +97,30 @@ function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>):
   return Object.fromEntries(entries) as T
 }
 
+function defaultDocumentGenerator(payload: Record<string, unknown>): { documentGenerator: AISettings['documentGenerator'] } {
+  const firstAgent = Object.keys((payload as any).agents ?? {})[0]
+  if (firstAgent) {
+    const [provider, iface] = firstAgent.split('.')
+    return {
+      documentGenerator: {
+        selected: {
+          provider: provider as AISettings['documentGenerator'] extends { selected: infer S } ? S extends { provider: infer P } ? P : never : never,
+          interface: (iface ?? 'api') as AISettings['documentGenerator'] extends { selected: infer S } ? S extends { interface: infer I } ? I : never : never,
+          model: (payload as any).agents?.[firstAgent]?.defaultModel ?? 'gpt-4o'
+        }
+      }
+    }
+  }
+  return { documentGenerator: { selected: undefined } }
+}
+
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
   switch (id) {
     case 'ai-settings':
-      return normalizeKeys<AISettings>(payload)
+      return normalizeKeys<AISettings>({
+        ...defaultDocumentGenerator(payload),
+        ...payload,
+      })
     case 'match-policy':
       return normalizeKeys<MatchPolicy>(payload)
     case 'prefilter-policy':
@@ -182,11 +202,13 @@ export function buildConfigRouter() {
       // For ai-settings, populate provider/interface availability dynamically
       if (id === 'ai-settings') {
         const aiPayload = entry.payload as AISettings
+        const docGen = aiPayload.documentGenerator ?? defaultDocumentGenerator(aiPayload).documentGenerator
         const response: GetConfigEntryResponse = {
           config: {
             ...entry,
             payload: {
               ...aiPayload,
+              documentGenerator: docGen,
               options: buildProviderOptionsWithAvailability(aiPayload.options),
             },
           },

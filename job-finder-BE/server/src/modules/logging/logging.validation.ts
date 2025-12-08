@@ -63,6 +63,15 @@ export function validateLogRequest(req: Request, res: Response, next: NextFuncti
         message: `Log at index ${i} has invalid category: ${log.category}`,
       })
     }
+
+    // Reject excessively large messages to avoid log bloat
+    const size = Buffer.byteLength(JSON.stringify(log), 'utf8')
+    if (size > 16 * 1024) {
+      return res.status(400).json({
+        error: 'Invalid log entry',
+        message: `Log at index ${i} exceeds size limit`,
+      })
+    }
   }
 
   next()
