@@ -296,14 +296,6 @@ class SourceDiscovery:
                     "message": "URL points to a single job listing, not a company job board",
                 }
 
-            # Skip known JS/headless portals where we don't (yet) run a browser
-            if self._requires_headless(url):
-                return None, {
-                    "success": False,
-                    "error": "requires_headless",
-                    "message": "Page is JS-rendered and needs headless scraping",
-                }
-
             if is_ats_provider_url(url):
                 logger.warning(f"URL is an ATS provider's own site, not a customer board: {url}")
                 return None, {
@@ -328,6 +320,14 @@ class SourceDiscovery:
                 validation = self._validate_config(lever_config)
                 if validation.get("success"):
                     return lever_config, validation
+
+            # Skip known JS/headless portals only after pattern/Lever probes
+            if self._requires_headless(url):
+                return None, {
+                    "success": False,
+                    "error": "requires_headless",
+                    "message": "Page is JS-rendered and needs headless scraping",
+                }
 
             fetch_meta: Dict[str, Any] = {}
 
