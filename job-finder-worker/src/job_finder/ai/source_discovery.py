@@ -35,11 +35,12 @@ _DNS_ERROR_TOKENS = {
 
 # Domains that are known to be JS-rendered and need headless scraping
 HEADLESS_REQUIRED_DOMAINS = {
-    "builtin.com",
-    "jobs.ashbyhq.com",
-    "ashbyhq.com",
+    # Remains headless-only
     "stickermule.com",
 }
+
+# Fast lookup by pattern name to avoid repeated scans
+PLATFORM_PATTERNS_BY_NAME = {p.name: p for p in PLATFORM_PATTERNS}
 
 # Patterns for detecting single job listing URLs on aggregators (invalid as sources)
 # These URLs point to individual jobs, not company job boards
@@ -451,7 +452,8 @@ class SourceDiscovery:
         try:
             host = urlparse(url).hostname or ""
             return any(host.endswith(dom) for dom in HEADLESS_REQUIRED_DOMAINS)
-        except ValueError:
+        except ValueError as e:
+            logger.warning("Error checking headless requirement for %s: %s", url, e)
             return False
 
     def _probe_lever_from_posting(self, url: str) -> Optional[Dict[str, Any]]:
@@ -459,7 +461,7 @@ class SourceDiscovery:
         If the URL is a single Lever posting, derive the board slug and build API config.
         Example: https://jobs.lever.co/paymentology/abcd -> slug paymentology.
         """
-        match = re.search(r"jobs\.lever\.co/([^/]+)/[^/]+", url)
+        match = re.search(r"jobs\.lever\.co/([^/]+)/[^/?#]+(?:[?#]|$)", url)
         if not match:
             return None
 

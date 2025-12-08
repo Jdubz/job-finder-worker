@@ -553,7 +553,7 @@ class SourceProcessor(BaseProcessor):
                     QueueStatus.FAILED,
                     f"Source is disabled: {source_name}. Enable before scraping.",
                 )
-                logger.info("Skipping disabled source %s (%s)", source_name, source_id)
+                logger.info("Skipping disabled source %s (%s)", source_name, source.get("id"))
                 return
 
             # Self-heal FK relationships (company <-> source linkage)
