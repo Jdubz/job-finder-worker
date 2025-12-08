@@ -30,7 +30,7 @@ export function rateLimit(options: RateLimitOptions) {
   }, Math.max(options.windowMs, 5_000))
   cleanupInterval.unref?.()
 
-  return function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
+  const rateLimitMiddleware = (req: Request, res: Response, next: NextFunction) => {
     const key = keyFor(req)
     if (!key) return next() // avoid shared/global bucket; skip when no key
 
