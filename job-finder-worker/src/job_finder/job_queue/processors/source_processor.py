@@ -17,7 +17,6 @@ import requests
 from job_finder.ai.agent_manager import AgentManager
 from job_finder.ai.search_client import get_search_client
 from job_finder.ai.source_analysis_agent import (
-    DisableReason,
     SourceAnalysisAgent,
     SourceAnalysisResult,
     SourceClassification,
