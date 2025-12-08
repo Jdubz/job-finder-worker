@@ -25,7 +25,7 @@ echo "Syncing codex seed into runtime volume..."
 # The codex runtime lives on a named volume; deleting the mountpoint can fail
 # with 'Device or resource busy'. Clear its contents instead.
 mkdir -p /home/node/.codex
-find /home/node/.codex -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+find /home/node/.codex -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 cp -a /codex-seed/. /home/node/.codex/
 chown -R node:node /home/node/.codex
 if [ -f /home/node/.codex/auth.json ]; then
