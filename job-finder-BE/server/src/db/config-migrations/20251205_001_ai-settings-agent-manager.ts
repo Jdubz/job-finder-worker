@@ -49,24 +49,94 @@ type NewAISettings = {
  * Rates are relative costs per request (1.0 = baseline).
  */
 const DEFAULT_MODEL_RATES: Record<string, number> = {
-  // OpenAI/Codex - no -latest aliases available
+  // "default" = CLI uses its configured default (cost 1.0)
+  'default': 1.0,
+  // OpenAI/Codex - use production model names
   'gpt-4o': 1.0,
   'gpt-4o-mini': 0.5,
-  'gpt-4': 1.5,
-  // Claude - use -latest aliases for organic improvements
-  'claude-sonnet-4-5-latest': 1.0,
-  'claude-sonnet-4-latest': 1.0,
-  'claude-opus-4-latest': 1.5,
-  'claude-haiku-3-5-latest': 0.3,
-  // Legacy Claude models (for backwards compatibility)
-  'claude-3-opus': 1.5,
-  'claude-3-sonnet': 1.0,
-  'claude-3-haiku': 0.3,
-  // Gemini - version numbers are standard
+  'gpt-4.1': 1.0,
+  'gpt-4.1-mini': 0.5,
+  'o1': 2.0,
+  'o1-mini': 1.0,
+  'o3': 2.5,
+  'o3-mini': 1.5,
+  // Claude - short aliases (auto-update within version, not across versions)
+  'claude-opus-4-5': 1.0,
+  'claude-sonnet-4-5': 1.0,
+  'claude-haiku-4-5': 0.3,
+  'claude-opus-4-1': 1.5,
+  'claude-sonnet-4-0': 1.0,
+  // Gemini - use current production models
   'gemini-2.0-flash': 0.5,
+  'gemini-2.5-flash': 0.5,
+  'gemini-2.5-pro': 1.0,
   'gemini-1.5-pro': 1.0,
   'gemini-1.5-flash': 0.3,
 }
+
+/**
+ * Default provider options with available models.
+ * Uses -latest aliases where available to inherit improvements automatically.
+ * Models are ordered newest/most-capable first within each category.
+ */
+const DEFAULT_PROVIDER_OPTIONS = [
+  {
+    value: 'codex',
+    interfaces: [
+      {
+        value: 'cli',
+        // "default" = CLI uses its configured default (auto-updates with CLI)
+        models: ['default', 'o3', 'o3-mini', 'o1', 'o1-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
+        enabled: true,
+      },
+    ],
+  },
+  {
+    value: 'claude',
+    interfaces: [
+      {
+        value: 'cli',
+        // "default" = CLI uses its configured default (auto-updates with CLI)
+        models: ['default', 'claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1', 'claude-sonnet-4-0'],
+        enabled: true,
+      },
+      {
+        value: 'api',
+        // API requires explicit model - no "default" option
+        models: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1', 'claude-sonnet-4-0'],
+        enabled: true,
+      },
+    ],
+  },
+  {
+    value: 'openai',
+    interfaces: [
+      {
+        value: 'api',
+        // API requires explicit model - no "default" option
+        models: ['o1', 'o1-mini', 'gpt-4o', 'gpt-4o-mini'],
+        enabled: true,
+      },
+    ],
+  },
+  {
+    value: 'gemini',
+    interfaces: [
+      {
+        value: 'cli',
+        // "default" = CLI uses its configured default (auto-updates with CLI)
+        models: ['default', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+        enabled: true,
+      },
+      {
+        value: 'api',
+        // API requires explicit model - no "default" option
+        models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+        enabled: true,
+      },
+    ],
+  },
+]
 
 function isAlreadyMigrated(payload: unknown): payload is NewAISettings {
   if (!payload || typeof payload !== 'object') return false
@@ -159,7 +229,8 @@ function migrateToNew(old: OldAISettings): NewAISettings {
     },
     modelRates: DEFAULT_MODEL_RATES,
     // documentGenerator is deprecated - provider selection uses taskFallbacks['document']
-    options: old.options ?? [],
+    // Always use default options to ensure correct model lists
+    options: DEFAULT_PROVIDER_OPTIONS,
   }
 }
 
@@ -175,7 +246,7 @@ export function up(db: Database.Database): void {
         'gemini.cli': {
           provider: 'gemini',
           interface: 'cli',
-          defaultModel: 'gemini-2.0-flash',
+          defaultModel: 'default',
           dailyBudget: 100,
           dailyUsage: 0,
           runtimeState: {
@@ -187,7 +258,7 @@ export function up(db: Database.Database): void {
         'codex.cli': {
           provider: 'codex',
           interface: 'cli',
-          defaultModel: 'gpt-4o',
+          defaultModel: 'default',
           dailyBudget: 100,
           dailyUsage: 0,
           runtimeState: {
@@ -199,7 +270,7 @@ export function up(db: Database.Database): void {
         'claude.cli': {
           provider: 'claude',
           interface: 'cli',
-          defaultModel: 'claude-sonnet-4-5-latest',
+          defaultModel: 'default',
           dailyBudget: 50,
           dailyUsage: 0,
           runtimeState: {
@@ -216,7 +287,7 @@ export function up(db: Database.Database): void {
       },
       modelRates: DEFAULT_MODEL_RATES,
       // documentGenerator is deprecated - provider selection uses taskFallbacks['document']
-      options: [],
+      options: DEFAULT_PROVIDER_OPTIONS,
     }
 
     db.prepare(
