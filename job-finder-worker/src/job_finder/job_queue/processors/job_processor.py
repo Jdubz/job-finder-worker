@@ -731,6 +731,9 @@ class JobProcessor(BaseProcessor):
             # Use a search query URL that's unique per company name
             company_url = f"https://www.google.com/search?q={quote_plus(company_name)}+company"
 
+        # Build source context for better company research
+        source_context = self._build_source_context(ctx.item.source_id)
+
         try:
             self.queue_manager.spawn_item_safely(
                 current_item=ctx.item,
@@ -740,6 +743,7 @@ class JobProcessor(BaseProcessor):
                     "company_name": company_name,
                     "company_id": company_id,
                     "source": ctx.item.source,
+                    "source_context": source_context,
                 },
             )
             logger.debug("Spawned company enrichment task for %s", company_name)
@@ -959,6 +963,40 @@ class JobProcessor(BaseProcessor):
         database-driven aggregator domains from the job_sources table.
         """
         return self.sources_manager.is_job_board_url(url)
+
+    def _build_source_context(self, source_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        """
+        Build source context for company research from source_id.
+
+        The source context helps the company info fetcher understand where
+        the job came from, which improves search queries and disambiguation.
+
+        Args:
+            source_id: The source ID to look up
+
+        Returns:
+            Dict with aggregator_domain and base_url, or None if source not found
+        """
+        if not source_id:
+            return None
+
+        try:
+            source = self.sources_manager.get_source_by_id(source_id)
+            if not source:
+                return None
+
+            config = source.get("config_json", {})
+            if isinstance(config, str):
+                config = json.loads(config)
+
+            return {
+                "aggregator_domain": source.get("aggregator_domain", ""),
+                "base_url": config.get("base_url", ""),
+                "source_name": source.get("name", ""),
+            }
+        except Exception as e:
+            logger.debug("Failed to build source context for %s: %s", source_id, e)
+            return None
 
     # ============================================================
     # SCRAPE REQUESTS (enqueue-only)
