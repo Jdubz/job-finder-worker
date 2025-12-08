@@ -8,8 +8,10 @@ chown -R node:node /data
 # Codex CLI auth: always reseed runtime volume from read-only seed on start.
 echo "=== Codex CLI Setup ==="
 echo "Syncing codex seed into runtime volume..."
-rm -rf /home/node/.codex
+# The codex runtime lives on a named volume; removing the mountpoint can fail
+# (Device or resource busy) and crash the container. Clear contents instead.
 mkdir -p /home/node/.codex
+find /home/node/.codex -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
 cp -a /codex-seed/. /home/node/.codex/
 chown -R node:node /home/node/.codex
 if [ -f /home/node/.codex/auth.json ]; then
