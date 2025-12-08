@@ -113,6 +113,8 @@ export interface StartGenerationResponse {
     coverLetterUrl?: string
   }
   requestId: string
+  /** Error message when success is false */
+  error?: string
 }
 
 export interface ExecuteStepResponse {

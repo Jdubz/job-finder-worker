@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, useRef } from "react"
 import { companiesClient } from "@/api"
 import type { Company } from "@shared/types"
+import { CACHE_TTL_MS } from "@/config/constants"
 
 // Simple in-memory cache for company data
 const companyCache = new Map<string, { company: Company; timestamp: number }>()
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 interface UseCompanyOptions {
   /** If true, fetches company data on mount. Default: true */
@@ -38,7 +38,7 @@ export function useCompany(companyId: string | null | undefined, options: UseCom
 
     // Check cache first
     const cached = companyCache.get(companyId)
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
       setCompany(cached.company)
       setLoading(false)
       setError(null)
