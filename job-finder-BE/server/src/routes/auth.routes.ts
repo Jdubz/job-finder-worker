@@ -64,13 +64,14 @@ function createSession(userId: string): string {
 export function buildAuthRouter() {
   const router = Router()
   const loginRateLimiter = rateLimit({ windowMs: 60_000, max: 20 })
+  const loginGuard = env.NODE_ENV === 'production' ? loginRateLimiter : (_req: Request, _res: Response, next: NextFunction) => next()
 
   /**
    * POST /auth/login
    * Exchange a Google OAuth credential for a session cookie.
    * This is the single entry point for authentication.
    */
-  router.post('/login', loginRateLimiter, async (req, res, next) => {
+  router.post('/login', loginGuard, async (req, res, next) => {
     try {
       const parsed = LoginSchema.safeParse(req.body)
       if (!parsed.success) {
