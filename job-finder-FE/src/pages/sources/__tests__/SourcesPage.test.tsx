@@ -344,4 +344,36 @@ describe("SourcesPage", () => {
       })
     })
   })
+
+  describe("Sorting", () => {
+    it("sorts by name ascending when selected", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderWithProvider()
+
+      const [, sortField, sortOrder] = screen.getAllByRole("combobox")
+      await user.click(sortField)
+      await user.click(await screen.findByRole("option", { name: /name \(A–Z\)/i }))
+
+      await user.click(sortOrder)
+      await user.click(await screen.findByRole("option", { name: /asc/i }))
+
+      await waitFor(() => {
+        const rows = screen.getAllByRole("row").slice(1) // skip header row
+        const firstRow = rows[0]
+        const lastRow = rows[rows.length - 1]
+        expect(firstRow).toHaveTextContent("Acme Greenhouse")
+        expect(lastRow).toHaveTextContent("TechCorp RSS")
+      })
+    })
+
+    it("sorts by last scraped descending by default", async () => {
+      renderWithProvider()
+
+      await waitFor(() => {
+        const rows = screen.getAllByRole("row").slice(1)
+        const firstRow = rows[0]
+        expect(firstRow).toHaveTextContent("Acme Greenhouse")
+      })
+    })
+  })
 })

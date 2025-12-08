@@ -208,16 +208,16 @@ export function SourcesPage() {
           return direction * a.name.localeCompare(b.name)
         case "created_at": {
           const diff = getTime(a.createdAt) - getTime(b.createdAt)
-          return direction === 1 ? diff : -diff
+          return direction * diff
         }
         case "last_scraped_at": {
           const diff = getTime(a.lastScrapedAt) - getTime(b.lastScrapedAt)
-          return direction === 1 ? diff : -diff
+          return direction * diff
         }
         case "updated_at":
         default: {
           const diff = getTime(a.updatedAt) - getTime(b.updatedAt)
-          return direction === 1 ? diff : -diff
+          return direction * diff
         }
       }
     })

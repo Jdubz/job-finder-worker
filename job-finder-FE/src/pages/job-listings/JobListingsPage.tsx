@@ -193,12 +193,12 @@ export function JobListingsPage() {
           return direction * a.status.localeCompare(b.status)
         case "date": {
           const diff = getTime(a.createdAt) - getTime(b.createdAt)
-          return direction === 1 ? diff : -diff
+          return direction * diff
         }
         case "updated":
         default: {
           const diff = getTime(a.updatedAt ?? a.createdAt) - getTime(b.updatedAt ?? b.createdAt)
-          return direction === 1 ? diff : -diff
+          return direction * diff
         }
       }
     })

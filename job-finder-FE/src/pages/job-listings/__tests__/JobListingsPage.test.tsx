@@ -48,6 +48,16 @@ describe("JobListingsPage sorting", () => {
           createdAt: new Date("2024-01-02"),
           updatedAt: new Date("2024-01-10"),
         },
+        {
+          id: "l3",
+          title: "Data Engineer",
+          companyName: "Zenith Labs",
+          status: "pending",
+          description: "desc",
+          url: "https://z.io",
+          createdAt: new Date("2024-01-03"),
+          updatedAt: new Date("2024-01-06"),
+        },
       ] as any,
       loading: false,
       error: null,
@@ -106,5 +116,41 @@ describe("JobListingsPage sorting", () => {
         sortOrder: "asc",
       })
     )
+  })
+
+  it("sorts listings by company name ascending when selected", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderPage()
+
+    const [sortFieldCombobox, sortOrderCombobox] = screen.getAllByRole("combobox")
+    await user.click(sortFieldCombobox)
+    await user.click(await screen.findByRole("option", { name: "Company" }))
+
+    await user.click(sortOrderCombobox)
+    await user.click(await screen.findByRole("option", { name: "Asc" }))
+
+    await waitFor(() => {
+      const rows = screen.getAllByRole("row").slice(1) // skip header
+      const firstRow = rows[0]
+      const lastRow = rows[rows.length - 1]
+      expect(firstRow).toHaveTextContent("Acme")
+      expect(lastRow).toHaveTextContent("Zenith Labs")
+    })
+  })
+
+  it("sorts listings by created date when selected", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderPage()
+
+    const [sortFieldCombobox] = screen.getAllByRole("combobox")
+    await user.click(sortFieldCombobox)
+    await user.click(await screen.findByRole("option", { name: "Created (newest)" }))
+
+    // Keep default desc
+    await waitFor(() => {
+      const rows = screen.getAllByRole("row").slice(1)
+      expect(rows[0]).toHaveTextContent("Zenith Labs")
+      expect(rows[rows.length - 1]).toHaveTextContent("Beta Co")
+    })
   })
 })
