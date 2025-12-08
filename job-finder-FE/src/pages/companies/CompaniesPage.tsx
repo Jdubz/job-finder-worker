@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { useEntityModal } from "@/contexts/EntityModalContext"
+import { normalizeDateValue } from "@/utils/dateFormat"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -207,15 +208,34 @@ export function CompaniesPage() {
     })
   }
 
-  // Filter companies locally for search (memoized)
+  const getTime = (value: unknown) => normalizeDateValue(value)?.getTime() ?? 0
+
+  // Filter companies locally for search and apply sort (memoized)
   const filteredCompanies = useMemo(() => {
-    return companies.filter((company) => {
+    const filtered = companies.filter((company) => {
       if (searchTerm && !company.name.toLowerCase().includes(searchTerm.toLowerCase())) {
         return false
       }
       return true
     })
-  }, [companies, searchTerm])
+
+    return filtered.sort((a, b) => {
+      const direction = sortOrder === "asc" ? 1 : -1
+      switch (sortBy) {
+        case "name":
+          return direction * a.name.localeCompare(b.name)
+        case "created_at": {
+          const diff = getTime(a.createdAt) - getTime(b.createdAt)
+          return direction * diff
+        }
+        case "updated_at":
+        default: {
+          const diff = getTime(a.updatedAt ?? a.createdAt) - getTime(b.updatedAt ?? b.createdAt)
+          return direction * diff
+        }
+      }
+    })
+  }, [companies, searchTerm, sortBy, sortOrder])
 
   if (!user) {
     return (

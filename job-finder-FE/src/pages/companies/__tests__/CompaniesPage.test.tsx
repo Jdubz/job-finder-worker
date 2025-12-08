@@ -55,8 +55,8 @@ describe("CompaniesPage", () => {
       culture: "We foster a collaborative environment where creativity thrives. Our team values include innovation, integrity, and inclusion.",
       headquartersLocation: "San Francisco, CA",
       companySizeCategory: "1000-5000",
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: new Date("2024-01-01T10:00:00Z"),
+      updatedAt: new Date("2024-01-02T10:00:00Z"),
     },
     {
       id: "company-2",
@@ -67,8 +67,8 @@ describe("CompaniesPage", () => {
       // Partial data: about > 50 chars (but no culture)
       about: "A fast-growing software company focused on developer tools and productivity solutions.",
       culture: "",
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: new Date("2024-01-02T09:00:00Z"),
+      updatedAt: new Date("2024-01-03T09:00:00Z"),
     },
     {
       id: "company-3",
@@ -79,8 +79,8 @@ describe("CompaniesPage", () => {
       // Pending data: no meaningful about or culture
       about: "",
       culture: "",
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: new Date("2024-01-03T08:00:00Z"),
+      updatedAt: new Date("2024-01-04T08:00:00Z"),
     },
   ]
 
@@ -236,6 +236,36 @@ describe("CompaniesPage", () => {
           sortOrder: "asc",
         })
       )
+    })
+
+    it("sorts companies by name ascending when selected", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderWithProviders()
+
+      const [sortFieldCombobox, sortOrderCombobox] = screen.getAllByRole("combobox")
+      await user.click(sortFieldCombobox)
+      await user.click(await screen.findByRole("option", { name: /Name/i }))
+
+      await user.click(sortOrderCombobox)
+      await user.click(await screen.findByRole("option", { name: "Asc" }))
+
+      await waitFor(() => {
+        const rows = screen.getAllByRole("row").slice(1)
+        const firstRow = rows[0]
+        const lastRow = rows[rows.length - 1]
+        expect(firstRow).toHaveTextContent("Acme Corporation")
+        expect(lastRow).toHaveTextContent("TechCorp")
+      })
+    })
+
+    it("sorts companies by created date desc by default", async () => {
+      renderWithProviders()
+
+      await waitFor(() => {
+        const rows = screen.getAllByRole("row").slice(1)
+        expect(rows[0]).toHaveTextContent("StartupXYZ")
+        expect(rows[rows.length - 1]).toHaveTextContent("Acme Corporation")
+      })
     })
   })
 

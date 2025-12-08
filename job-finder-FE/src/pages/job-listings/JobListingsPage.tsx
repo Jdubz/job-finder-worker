@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useJobListings } from "@/hooks/useJobListings"
 import { useQueueItems } from "@/hooks/useQueueItems"
 import { useEntityModal } from "@/contexts/EntityModalContext"
+import { normalizeDateValue } from "@/utils/dateFormat"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -164,8 +165,10 @@ export function JobListingsPage() {
   )
 
   // Filter listings locally for immediate search feedback (memoized)
+  const getTime = (value: unknown) => normalizeDateValue(value)?.getTime() ?? 0
+
   const filteredListings = useMemo(() => {
-    return listings.filter((listing) => {
+    const filtered = listings.filter((listing) => {
       if (
         searchTerm &&
         !listing.title.toLowerCase().includes(searchTerm.toLowerCase()) &&
@@ -178,7 +181,28 @@ export function JobListingsPage() {
       }
       return true
     })
-  }, [listings, searchTerm, statusFilter])
+
+    return filtered.sort((a, b) => {
+      const direction = sortOrder === "asc" ? 1 : -1
+      switch (sortBy) {
+        case "company":
+          return direction * a.companyName.localeCompare(b.companyName)
+        case "title":
+          return direction * a.title.localeCompare(b.title)
+        case "status":
+          return direction * a.status.localeCompare(b.status)
+        case "date": {
+          const diff = getTime(a.createdAt) - getTime(b.createdAt)
+          return direction * diff
+        }
+        case "updated":
+        default: {
+          const diff = getTime(a.updatedAt ?? a.createdAt) - getTime(b.updatedAt ?? b.createdAt)
+          return direction * diff
+        }
+      }
+    })
+  }, [listings, searchTerm, statusFilter, sortBy, sortOrder])
 
   if (!user) {
     return (
