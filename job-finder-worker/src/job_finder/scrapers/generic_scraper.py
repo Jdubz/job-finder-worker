@@ -164,17 +164,7 @@ class GenericScraper:
             return self._fetch_json_paginated()
 
         url = self._get_effective_url()
-        headers = {**DEFAULT_HEADERS, **self.config.headers}
-
-        # Apply authentication
-        if self.config.api_key:
-            if self.config.auth_type == "bearer":
-                headers["Authorization"] = f"Bearer {self.config.api_key}"
-            elif self.config.auth_type == "header":
-                headers[self.config.auth_param] = self.config.api_key
-            elif self.config.auth_type == "query":
-                sep = "&" if "?" in url else "?"
-                url = f"{url}{sep}{self.config.auth_param}={self.config.api_key}"
+        headers, url = self._apply_auth_and_headers(url)
 
         # Make request based on method
         if self.config.method.upper() == "POST":
@@ -203,26 +193,18 @@ class GenericScraper:
         of offset/limit keys) to avoid hardcoding vendor specifics.
         """
         url = self._get_effective_url()
-        headers = {**DEFAULT_HEADERS, **self.config.headers}
-        if self.config.api_key:
-            if self.config.auth_type == "bearer":
-                headers["Authorization"] = f"Bearer {self.config.api_key}"
-            elif self.config.auth_type == "header":
-                headers[self.config.auth_param] = self.config.api_key
-            elif self.config.auth_type == "query":
-                sep = "&" if "?" in url else "?"
-                url = f"{url}{sep}{self.config.auth_param}={self.config.api_key}"
-        headers["Content-Type"] = "application/json"
+        headers, url = self._apply_auth_and_headers(url, force_json=True)
 
         results: List[Dict[str, Any]] = []
         body = dict(self.config.post_body or {})
-        limit = int(body.get("limit", 20) or 20)
-        offset = int(body.get("offset", 0) or 0)
-        max_pages = 50  # safety cap to avoid infinite loops
+        limit = self._parse_int_with_default(body.get("limit"), 20)
+        offset = self._parse_int_with_default(body.get("offset"), 0)
+        max_pages = 50  # safety cap to avoid infinite loops; tuned for Workday defaults
 
         for _ in range(max_pages):
             payload = dict(body)
             payload["offset"] = offset
+            payload["limit"] = limit
             response = requests.post(url, headers=headers, json=payload, timeout=30)
             try:
                 response.raise_for_status()
@@ -244,6 +226,10 @@ class GenericScraper:
 
             offset += limit
 
+        if len(results) and len(results) / max(limit, 1) >= max_pages:
+            logger.warning(
+                "Pagination hit max_pages=%s for %s; results may be truncated", max_pages, self.config.url
+            )
         return results
 
     def _should_paginate_post(self) -> bool:
@@ -258,6 +244,37 @@ class GenericScraper:
             return False
         body = self.config.post_body or {}
         return "offset" in body and "limit" in body
+
+    def _apply_auth_and_headers(self, url: str, force_json: bool = False) -> tuple[Dict[str, str], str]:
+        """
+        Build headers (plus auth) and possibly mutate the URL for query auth.
+        Shared between GET/POST fetchers to avoid duplication.
+        """
+        headers = {**DEFAULT_HEADERS, **self.config.headers}
+
+        if self.config.api_key:
+            if self.config.auth_type == "bearer":
+                headers["Authorization"] = f"Bearer {self.config.api_key}"
+            elif self.config.auth_type == "header":
+                headers[self.config.auth_param] = self.config.api_key
+            elif self.config.auth_type == "query":
+                sep = "&" if "?" in url else "?"
+                url = f"{url}{sep}{self.config.auth_param}={self.config.api_key}"
+
+        if force_json:
+            headers["Content-Type"] = "application/json"
+
+        return headers, url
+
+    @staticmethod
+    def _parse_int_with_default(value: Any, default: int) -> int:
+        """Parse ints while treating 0 as valid; fall back on None/empty strings."""
+        if value is None or value == "":
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
 
     def _fetch_rss(self) -> List[Any]:
         """
@@ -692,13 +709,13 @@ class GenericScraper:
         # Construct full URL from relative path if base_url is specified
         if self.config.base_url and job.get("url"):
             url = job["url"]
-            is_absolute = isinstance(url, str) and re.match(r"^https?://", url)
-            if not is_absolute:
-                # Normalize leading slash to avoid double slashes
-                if url.startswith("/"):
-                    job["url"] = f"{self.config.base_url}{url}"
-                else:
-                    job["url"] = f"{self.config.base_url}/{url}"
+            if isinstance(url, str):
+                is_absolute = re.match(r"^https?://", url)
+                if not is_absolute:
+                    # Normalize slashes to avoid double slashes
+                    base = self.config.base_url.rstrip("/")
+                    relative = url.lstrip("/")
+                    job["url"] = f"{base}/{relative}"
 
         # Apply company extraction strategy if company is still empty
         if not job.get("company") and self.config.company_extraction:

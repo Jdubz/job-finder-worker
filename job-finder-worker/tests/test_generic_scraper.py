@@ -301,7 +301,7 @@ class TestGenericScraperAPI:
         jobs = scraper.scrape()
 
         assert len(jobs) == 2
-        # offsets should be 0 then 1 (limit increment)
+        # offsets should be 0, 1, 2 (incremented by limit=1 each iteration)
         assert mock_post.call_count == 3
         assert mock_post.call_args_list[0].kwargs["json"]["offset"] == 0
         assert mock_post.call_args_list[1].kwargs["json"]["offset"] == 1
@@ -330,6 +330,103 @@ class TestGenericScraperAPI:
         jobs = scraper.scrape()
 
         assert jobs[0]["url"] == "https://tenant.wd1.myworkdayjobs.com/site/job/123"
+
+    @patch("job_finder.scrapers.generic_scraper.requests.post")
+    def test_scrape_api_post_stops_when_first_page_under_limit(self, mock_post):
+        """Pagination should stop when first page has fewer than limit items."""
+        first = Mock()
+        first.json.return_value = {
+            "jobPostings": [{"title": "Solo", "externalPath": "job/1", "postedOn": "2024-01-01"}]
+        }
+        first.raise_for_status = Mock()
+        mock_post.side_effect = [first]
+
+        config = SourceConfig(
+            type="api",
+            url="https://tenant.wd1.myworkdayjobs.com/wday/cxs/tenant/site/jobs",
+            response_path="jobPostings",
+            method="POST",
+            post_body={"limit": 5, "offset": 0},
+            base_url="https://tenant.wd1.myworkdayjobs.com/site",
+            fields={"title": "title", "url": "externalPath", "posted_date": "postedOn"},
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 1
+        assert mock_post.call_count == 1  # stops after first short page
+
+    @patch("job_finder.scrapers.generic_scraper.requests.post")
+    def test_scrape_api_post_raises_on_later_page_error(self, mock_post):
+        """HTTP errors mid-pagination should raise ScrapeBlockedError."""
+        import requests
+        from job_finder.exceptions import ScrapeBlockedError
+
+        ok = Mock()
+        ok.json.return_value = {"jobPostings": [{"title": "Page1", "externalPath": "job/1"}]}
+        ok.raise_for_status = Mock()
+
+        bad = Mock()
+        bad.raise_for_status.side_effect = requests.HTTPError(response=Mock(status=403, reason="Forbidden"))
+
+        mock_post.side_effect = [ok, bad]
+
+        config = SourceConfig(
+            type="api",
+            url="https://tenant.wd1.myworkdayjobs.com/wday/cxs/tenant/site/jobs",
+            response_path="jobPostings",
+            method="POST",
+            post_body={"limit": 1, "offset": 0},
+            fields={"title": "title", "url": "externalPath"},
+        )
+
+        with pytest.raises(ScrapeBlockedError):
+            GenericScraper(config).scrape()
+
+    @patch("job_finder.scrapers.generic_scraper.requests.post")
+    def test_scrape_api_post_honors_bearer_auth(self, mock_post):
+        """Bearer auth should be applied to paginated POST requests."""
+        first = Mock()
+        first.json.return_value = {"jobPostings": []}
+        first.raise_for_status = Mock()
+        mock_post.side_effect = [first]
+
+        config = SourceConfig(
+            type="api",
+            url="https://tenant.wd1.myworkdayjobs.com/wday/cxs/tenant/site/jobs",
+            response_path="jobPostings",
+            method="POST",
+            post_body={"limit": 1, "offset": 0},
+            fields={"title": "title", "url": "externalPath"},
+            api_key="token123",
+            auth_type="bearer",
+        )
+        GenericScraper(config).scrape()
+
+        headers = mock_post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer token123"
+
+    @patch("job_finder.scrapers.generic_scraper.requests.post")
+    @patch("job_finder.scrapers.generic_scraper.logger")
+    def test_scrape_api_post_logs_when_max_pages_hit(self, mock_logger, mock_post):
+        """Warn when pagination reaches the safety cap."""
+        page = Mock()
+        page.json.return_value = {
+            "jobPostings": [{"title": "A", "externalPath": "job/x", "postedOn": "2024-01-01"}]
+        }
+        page.raise_for_status = Mock()
+        mock_post.side_effect = [page] * 50
+
+        config = SourceConfig(
+            type="api",
+            url="https://tenant.wd1.myworkdayjobs.com/wday/cxs/tenant/site/jobs",
+            response_path="jobPostings",
+            method="POST",
+            post_body={"limit": 1, "offset": 0},
+            fields={"title": "title", "url": "externalPath", "posted_date": "postedOn"},
+        )
+        GenericScraper(config).scrape()
+
+        mock_logger.warning.assert_called()
 
     @patch("job_finder.scrapers.generic_scraper.requests.get")
     def test_scrape_api_array_slice(self, mock_get):
