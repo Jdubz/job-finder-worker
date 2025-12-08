@@ -544,7 +544,17 @@ class SourceProcessor(BaseProcessor):
 
             source_name = source.get("name") or ""
             source_type = source.get("sourceType", "api")
+            source_status = source.get("status") or source.get("statusValue")
             config = source.get("config", {})
+
+            if source_status and str(source_status).lower() == SourceStatus.DISABLED.value:
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Source is disabled: {source_name}. Enable before scraping.",
+                )
+                logger.info("Skipping disabled source %s (%s)", source_name, source_id)
+                return
 
             # Self-heal FK relationships (company <-> source linkage)
             company_id_from_source = source.get("companyId") or source.get("company_id")

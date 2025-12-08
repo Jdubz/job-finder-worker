@@ -81,3 +81,25 @@ def test_scrape_block_disables_source(mock_scraper_cls, source_processor):
     status_args, status_kwargs = mock_update_status.call_args
     assert status_args[1] == QueueStatus.FAILED
     assert "blocked" in status_args[2].lower()
+
+
+def test_scrape_skips_disabled_source(source_processor):
+    """SCRAPE_SOURCE should respect disabled status and skip execution."""
+    source_record = {
+        "id": "source-123",
+        "name": "Disabled Source",
+        "sourceType": "api",
+        "status": "disabled",
+        "config": {"type": "api", "url": "https://example.com/api", "fields": {"title": "t", "url": "u"}},
+    }
+    source_processor.sources_manager.get_source_by_id.return_value = source_record
+
+    item = make_scrape_item(source_record["id"])
+
+    with patch.object(source_processor, "queue_manager") as qm:
+        source_processor.process_scrape_source(item)
+        assert qm.update_status.call_count == 2  # PROCESSING then FAILED
+        args, _ = qm.update_status.call_args
+        assert args[0] == item.id
+        assert args[1] == QueueStatus.FAILED
+        assert "disabled" in args[2].lower()
