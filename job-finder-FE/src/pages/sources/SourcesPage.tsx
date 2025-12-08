@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useEntityModal } from "@/contexts/EntityModalContext"
@@ -164,17 +164,22 @@ export function SourcesPage() {
     })
   }
 
-  // Filter sources locally for search (in addition to server-side filtering)
-  const filteredSources = sources.filter((source) => {
-    if (searchTerm && !source.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        !source.aggregatorDomain?.toLowerCase().includes(searchTerm.toLowerCase())) {
-      return false
-    }
-    if (statusFilter !== "all" && source.status !== statusFilter) {
-      return false
-    }
-    return true
-  })
+  // Filter sources locally for search (memoized)
+  const filteredSources = useMemo(() => {
+    return sources.filter((source) => {
+      if (
+        searchTerm &&
+        !source.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        !source.aggregatorDomain?.toLowerCase().includes(searchTerm.toLowerCase())
+      ) {
+        return false
+      }
+      if (statusFilter !== "all" && source.status !== statusFilter) {
+        return false
+      }
+      return true
+    })
+  }, [sources, searchTerm, statusFilter])
 
   if (!user) {
     return (

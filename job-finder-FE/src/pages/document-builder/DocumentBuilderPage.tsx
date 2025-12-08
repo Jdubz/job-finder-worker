@@ -1,8 +1,8 @@
-// @ts-nocheck
 import { useState, useEffect } from "react"
 import { useLocation } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { jobMatchesClient } from "@/api/job-matches-client"
+import { logger } from "@/services/logging/FrontendLogger"
 import {
   generatorClient,
   type GenerateDocumentRequest,
@@ -52,8 +52,8 @@ function getInitialSteps(generateType: "resume" | "coverLetter" | "both"): Gener
   return baseSteps[generateType] || baseSteps.resume
 }
 
-// Helper function to normalize job match data from different sources
-function normalizeJobMatch(match: Record<string, unknown>): {
+/** Normalized job match data for display */
+interface NormalizedJobMatch {
   id: string
   jobTitle: string
   companyName: string
@@ -61,12 +61,26 @@ function normalizeJobMatch(match: Record<string, unknown>): {
   jobDescription: string
   matchScore: number
   analyzedAt: Date | string
-} {
-  const asObj = (value: unknown) => (typeof value === "object" && value !== null ? value : {})
-  const listing = asObj(match.listing)
-  const company = asObj(match.company)
+}
 
-  const getString = (obj: Record<string, unknown>, keys: string[], fallback?: string): string => {
+/** Type for objects that can be indexed by string keys */
+type IndexableObject = { [key: string]: unknown }
+
+/**
+ * Helper function to normalize job match data from different sources.
+ * Handles JobMatch, JobMatchWithListing, and raw API response shapes.
+ */
+function normalizeJobMatch(match: JobMatch): NormalizedJobMatch {
+  // Cast to indexable for flexible property access (handles snake_case and nested data)
+  const matchObj = match as unknown as IndexableObject
+
+  const asObj = (value: unknown): IndexableObject =>
+    typeof value === "object" && value !== null ? (value as IndexableObject) : {}
+
+  const listing = asObj(matchObj.listing)
+  const company = asObj(matchObj.company)
+
+  const getString = (obj: IndexableObject, keys: string[], fallback?: string): string => {
     for (const key of keys) {
       const value = obj[key]
       if (typeof value === "string" && value.trim().length > 0) return value
@@ -74,7 +88,7 @@ function normalizeJobMatch(match: Record<string, unknown>): {
     return fallback ?? ""
   }
 
-  const getNumber = (obj: Record<string, unknown>, keys: string[], fallback = 0): number => {
+  const getNumber = (obj: IndexableObject, keys: string[], fallback = 0): number => {
     for (const key of keys) {
       const value = obj[key]
       if (typeof value === "number") return value
@@ -82,7 +96,7 @@ function normalizeJobMatch(match: Record<string, unknown>): {
     return fallback
   }
 
-  const getDate = (obj: Record<string, unknown>, keys: string[]): Date | undefined => {
+  const getDate = (obj: IndexableObject, keys: string[]): Date | undefined => {
     for (const key of keys) {
       const value = obj[key]
       if (value instanceof Date) return value
@@ -95,32 +109,29 @@ function normalizeJobMatch(match: Record<string, unknown>): {
   }
 
   const jobTitle =
-    getString(match, ["jobTitle", "job_title", "title"]) ||
+    getString(matchObj, ["jobTitle", "job_title", "title"]) ||
     getString(listing, ["title"], "Unknown Title")
 
   const companyName =
-    getString(match, ["companyName", "company_name"]) ||
+    getString(matchObj, ["companyName", "company_name"]) ||
     getString(listing, ["companyName"]) ||
     getString(company, ["name"], "Unknown Company")
 
-  const location = getString(match, ["location"]) || getString(listing, ["location"], "Remote")
+  const location = getString(matchObj, ["location"]) || getString(listing, ["location"], "Remote")
 
   const jobDescription =
-    getString(match, ["jobDescription", "job_description", "description"]) ||
+    getString(matchObj, ["jobDescription", "job_description", "description"]) ||
     getString(listing, ["description"], "")
 
-  const matchScore = getNumber(match, ["matchScore", "match_score"]) ||
+  const matchScore = getNumber(matchObj, ["matchScore", "match_score"]) ||
     getNumber(listing, ["matchScore"], 0)
 
   const analyzedAt =
-    getDate(match, ["analyzedAt", "analyzed_at"]) ??
+    getDate(matchObj, ["analyzedAt", "analyzed_at"]) ??
     getDate(listing, ["analyzedAt"]) ??
     new Date()
 
-  const idValue =
-    (match.id as string | number | undefined) ??
-    (listing.id as string | number | undefined) ??
-    ""
+  const idValue = match.id ?? (listing.id as string | number | undefined) ?? ""
 
   return {
     id: typeof idValue === "string" ? idValue : String(idValue),
@@ -173,7 +184,9 @@ export function DocumentBuilderPage() {
         })
         setJobMatches(matches)
       } catch (error) {
-        console.error("Failed to load job matches:", error)
+        logger.error("DocumentBuilder", "loadMatches", "Failed to load job matches", {
+          error: { type: "FetchError", message: error instanceof Error ? error.message : String(error) },
+        })
       } finally {
         setLoadingMatches(false)
       }
@@ -221,7 +234,9 @@ export function DocumentBuilderPage() {
 
   const showUserError = (message: string, details?: unknown) => {
     if (details) {
-      console.error(details)
+      logger.error("DocumentBuilder", "userError", message, {
+        error: { type: "UserError", message: details instanceof Error ? details.message : String(details) },
+      })
     }
     const displayMessage =
       typeof details === "string"
@@ -285,7 +300,7 @@ export function DocumentBuilderPage() {
       const startResponse = await generatorClient.startGeneration(request)
 
       if (!startResponse.success) {
-        showUserError("Failed to start generation. Please try again.", startResponse.error)
+        showUserError("Failed to start generation. Please try again.")
         return
       }
 
@@ -363,7 +378,9 @@ export function DocumentBuilderPage() {
           // Move to next step (undefined when complete)
           nextStep = stepResponse.data.nextStep
         } catch (error) {
-          console.error("Step execution error:", error)
+          logger.error("DocumentBuilder", "stepExecution", "Step execution error", {
+            error: { type: "StepError", message: error instanceof Error ? error.message : String(error) },
+          })
           // Mark current step as failed
           setGenerationSteps(
             currentSteps.map((step) =>
@@ -408,7 +425,9 @@ export function DocumentBuilderPage() {
       setCustomJobDescription("")
       setTargetSummary("")
     } catch (error) {
-      console.error("Generation error:", error)
+      logger.error("DocumentBuilder", "generation", "Document generation failed", {
+        error: { type: "GenerationError", message: error instanceof Error ? error.message : String(error) },
+      })
       showUserError("Document generation failed. Please try again.", error)
     } finally {
       setLoading(false)

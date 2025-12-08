@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
@@ -14,17 +13,17 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
     return (
       <div
         ref={ref}
+        role="progressbar"
+        aria-valuenow={Math.round(percentage)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Progress: ${Math.round(percentage)}%`}
         className={cn("relative h-4 w-full overflow-hidden rounded-full bg-secondary", className)}
         {...props}
       >
         <div
           className="h-full bg-primary transition-all duration-300 ease-in-out"
           style={{ width: `${percentage}%` }}
-          role="progressbar"
-          aria-valuenow={Math.round(percentage)}
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-label={`Progress: ${percentage}%`}
         />
       </div>
     )

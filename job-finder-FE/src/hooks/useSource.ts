@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, useRef } from "react"
 import { jobSourcesClient } from "@/api"
 import type { JobSource } from "@shared/types"
+import { CACHE_TTL_MS } from "@/config/constants"
 
 // Simple in-memory cache for source data
 const sourceCache = new Map<string, { source: JobSource; timestamp: number }>()
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 interface UseSourceOptions {
   /** If true, fetches source data on mount. Default: true */
@@ -38,7 +38,7 @@ export function useSource(sourceId: string | null | undefined, options: UseSourc
 
     // Check cache first
     const cached = sourceCache.get(sourceId)
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
       setSource(cached.source)
       setLoading(false)
       setError(null)

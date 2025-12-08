@@ -9,6 +9,8 @@
  * testing works without restarting the dev server.
  */
 
+import { API_TIMEOUT_MS, API_RETRY_DELAY_MS } from "./constants"
+
 export function resolveApiBaseUrl(): string {
   // If explicitly set, use that
   if (import.meta.env.VITE_API_BASE_URL) {
@@ -36,9 +38,9 @@ export const API_CONFIG = {
   get generatorBaseUrl() {
     return `${resolveApiBaseUrl()}/api/generator`
   },
-  timeout: 30000,
+  timeout: API_TIMEOUT_MS,
   retryAttempts: 3,
-  retryDelay: 1000,
+  retryDelay: API_RETRY_DELAY_MS,
 }
 
 // Legacy authenticatedFetch removed – use cookie-based auth via credentials: include

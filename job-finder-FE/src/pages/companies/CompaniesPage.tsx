@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useCompanies } from "@/hooks/useCompanies"
@@ -207,13 +207,15 @@ export function CompaniesPage() {
     })
   }
 
-  // Filter companies locally for search (in addition to server-side filtering)
-  const filteredCompanies = companies.filter((company) => {
-    if (searchTerm && !company.name.toLowerCase().includes(searchTerm.toLowerCase())) {
-      return false
-    }
-    return true
-  })
+  // Filter companies locally for search (memoized)
+  const filteredCompanies = useMemo(() => {
+    return companies.filter((company) => {
+      if (searchTerm && !company.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+        return false
+      }
+      return true
+    })
+  }, [companies, searchTerm])
 
   if (!user) {
     return (

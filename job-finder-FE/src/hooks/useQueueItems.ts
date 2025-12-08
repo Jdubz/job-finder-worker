@@ -2,8 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { queueClient } from "@/api"
 import type { QueueItem, SubmitJobRequest } from "@shared/types"
 import { API_CONFIG } from "@/config/api"
+import {
+  DEFAULT_PAGE_LIMIT,
+  EVENT_LOG_MAX_SIZE,
+  SSE_RECONNECT_DELAY_MS,
+  SSE_GRACEFUL_RECONNECT_DELAY_MS,
+} from "@/config/constants"
 import { consumeSavedProviderState, registerStateProvider } from "@/lib/restart-persistence"
 import { normalizeDateValue, normalizeObjectValue } from "@/utils/dateFormat"
+import { logger } from "@/services/logging/FrontendLogger"
 
 interface UseQueueItemsOptions {
   limit?: number
@@ -47,7 +54,7 @@ interface UseQueueItemsResult {
 }
 
 export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItemsResult {
-  const { limit = 50, status } = options
+  const { limit = DEFAULT_PAGE_LIMIT, status } = options
 
   const [queueItems, setQueueItems] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState<boolean>(true)
@@ -70,8 +77,8 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     }
     setEventLog((prev) => {
       const next = [entry, ...prev]
-      // Keep last 200 entries to avoid unbounded growth
-      return next.slice(0, 200)
+      // Keep last N entries to avoid unbounded growth
+      return next.slice(0, EVENT_LOG_MAX_SIZE)
     })
   }, [])
 
@@ -94,8 +101,8 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     try {
       setQueueItems(savedQueueItems.map(normalizeQueueItem))
       setLoading(false)
-    } catch (err) {
-      console.warn("Failed to hydrate queue items from restart snapshot", err)
+    } catch (_err) {
+      logger.warning("QueueItems", "hydrate", "Failed to hydrate queue items from restart snapshot")
     }
   }, [normalizeQueueItem, savedQueueItems])
 
@@ -225,12 +232,12 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         // Stream ended gracefully (e.g., Cloudflare timeout) - reconnect
         if (!cancelled) {
           setConnectionStatus("connecting")
-          console.log("Queue event stream ended gracefully; reconnecting...")
+          logger.info("QueueItems", "sseReconnect", "Queue event stream ended gracefully; reconnecting")
           appendEventLog("connection.end", { reason: "graceful" })
           fetchQueueItems({ silent: true })
           setTimeout(() => {
             if (!cancelled) void startStream()
-          }, 1000)
+          }, SSE_GRACEFUL_RECONNECT_DELAY_MS)
         }
         return
       } catch (error) {
@@ -243,13 +250,15 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
 
         if (!cancelled) {
           setConnectionStatus("connecting")
-          console.error("Queue event stream disconnected; retrying shortly", error)
+          logger.error("QueueItems", "sseDisconnect", "Queue event stream disconnected; retrying shortly", {
+            error: { type: "SSEError", message: error instanceof Error ? error.message : String(error) },
+          })
           appendEventLog("connection.error", { message: String(error) })
           fetchQueueItems({ silent: true })
           // Attempt to reconnect after backoff
           setTimeout(() => {
             if (!cancelled) void startStream()
-          }, 5000)
+          }, SSE_RECONNECT_DELAY_MS)
         }
       }
     }
@@ -357,8 +366,8 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         if (!Array.isArray(data)) return
         try {
           setQueueItems((data as QueueItem[]).map(normalizeQueueItem))
-        } catch (err) {
-          console.warn("Failed to hydrate queue items provider", err)
+        } catch (_err) {
+          logger.warning("QueueItems", "providerHydrate", "Failed to hydrate queue items provider")
         }
       },
     })

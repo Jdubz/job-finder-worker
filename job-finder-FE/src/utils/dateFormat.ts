@@ -1,6 +1,8 @@
 /**
- * Date formatting utilities for resume builder
- * All dates use "MMM YYYY" format (e.g., "Dec 2020")
+ * Date formatting utilities
+ *
+ * Centralized date handling for the application.
+ * Handles Date objects, ISO strings, Unix timestamps, Firebase Timestamps, etc.
  */
 
 import type { TimestampLike } from "@shared/types"
@@ -15,14 +17,44 @@ import type { TimestampLike } from "@shared/types"
  */
 export function normalizeDateValue(value: unknown): Date | null {
   if (!value) return null
-  if (value instanceof Date) return value
-  if (typeof value === "string" || typeof value === "number") return new Date(value)
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value
+  if (typeof value === "string" || typeof value === "number") {
+    const d = new Date(value)
+    return isNaN(d.getTime()) ? null : d
+  }
   // Handle Firebase Timestamps and similar objects with toDate method
   if (typeof value === "object" && "toDate" in (value as Record<string, unknown>)) {
     const toDateFn = (value as { toDate: () => Date }).toDate
-    if (typeof toDateFn === "function") return toDateFn.call(value)
+    if (typeof toDateFn === "function") {
+      const d = toDateFn.call(value)
+      return isNaN(d.getTime()) ? null : d
+    }
   }
   return null
+}
+
+/**
+ * Format a date as a readable string (e.g., "Dec 7, 2025")
+ */
+export function formatDate(date: unknown): string {
+  const d = normalizeDateValue(date)
+  if (!d) return "—"
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+}
+
+/**
+ * Format a date with time (e.g., "Dec 7, 2025, 10:30 AM")
+ */
+export function formatDateTime(date: unknown): string {
+  const d = normalizeDateValue(date)
+  if (!d) return "—"
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 }
 
 /**

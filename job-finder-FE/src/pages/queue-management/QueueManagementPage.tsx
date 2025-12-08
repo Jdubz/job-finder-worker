@@ -1,10 +1,9 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import type { QueueItem, QueueStats } from "@shared/types"
+import type { QueueItem } from "@shared/types"
 import { useQueueItems, type ConnectionStatus } from "@/hooks/useQueueItems"
-import { configClient } from "@/api/config-client"
-import { queueClient } from "@/api/queue-client"
 import { normalizeDateValue } from "@/utils/dateFormat"
+import { logger } from "@/services/logging/FrontendLogger"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -19,34 +18,41 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog } from "@/components/ui/dialog"
 import { AlertCircle, Activity, Loader2, Plus, Play, Pause, AlertTriangle, Bug } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
 import { QueueTable } from "./components/QueueTable"
-type CompletedStatus = "success" | "failed" | "skipped"
+import { useQueueStats } from "./hooks/useQueueStats"
+import { useProcessingToggle } from "./hooks/useProcessingToggle"
+import { SSEEventLogDrawer } from "./components/SSEEventLogDrawer"
+import { ConfirmToggleDialog } from "./components/ConfirmToggleDialog"
 
+type CompletedStatus = "success" | "failed" | "skipped"
 const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped"]
-const STATS_FETCH_DEBOUNCE_MS = 500
 
 export function QueueManagementPage() {
   const { user, isOwner } = useAuth()
   const { openModal } = useEntityModal()
 
-  const { queueItems, loading, error, connectionStatus, eventLog, updateQueueItem, refetch } = useQueueItems({ limit: 100 })
+  // Core data hook
+  const { queueItems, loading, error, connectionStatus, eventLog, updateQueueItem, refetch } =
+    useQueueItems({ limit: 100 })
 
-  const [queueStats, setQueueStats] = useState<QueueStats | null>(null)
-  const [statsLoading, setStatsLoading] = useState(true)
-  const [usingFallbackStats, setUsingFallbackStats] = useState(false)
+  // Extracted hooks for better organization
+  const { stats: queueStats, loading: statsLoading, usingFallback: usingFallbackStats } =
+    useQueueStats({ enabled: !!user && isOwner, queueItems })
+
+  const { isProcessingEnabled, stopReason, isToggling: isTogglingProcessing, toggleProcessing } =
+    useProcessingToggle()
+
+  // Local UI state
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [activeProcessingId, setActiveProcessingId] = useState<string | null>(null)
   const [processingConflictCount, setProcessingConflictCount] = useState<number>(0)
   const conflictRefetched = useRef(false)
-  const [isProcessingEnabled, setIsProcessingEnabled] = useState<boolean | null>(null)
-  const [stopReason, setStopReason] = useState<string | null>(null)
-  const [isTogglingProcessing, setIsTogglingProcessing] = useState(false)
   const [confirmToggleOpen, setConfirmToggleOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
   const [completedStatusFilter, setCompletedStatusFilter] = useState<CompletedStatus | "all">("all")
@@ -54,141 +60,64 @@ export function QueueManagementPage() {
   const [showEventLog, setShowEventLog] = useState(false)
 
   // Handle stat pill click to filter the list
-  const handleStatPillClick = useCallback((status: string) => {
-    // Toggle off if already selected
-    if (activeStatFilter === status) {
-      setActiveStatFilter(null)
-      setActiveTab("pending")
-      setCompletedStatusFilter("all")
-      return
-    }
-
-    setActiveStatFilter(status)
-
-    // Route to appropriate tab and filter
-    if (status === "pending" || status === "processing") {
-      setActiveTab("pending")
-      setCompletedStatusFilter("all")
-    } else if (COMPLETED_STATUSES.includes(status as CompletedStatus)) {
-      setActiveTab("completed")
-      setCompletedStatusFilter(status as CompletedStatus)
-    }
-  }, [activeStatFilter])
-
-  // Fetch full stats from API (not limited to 100 items)
-  // Debounced to avoid rapid refetches on every SSE event
-  useEffect(() => {
-    if (!user || !isOwner) return
-
-    const fetchStats = async () => {
-      try {
-        setStatsLoading(true)
-        const stats = await queueClient.getStats()
-        setQueueStats(stats)
-        setUsingFallbackStats(false)
-      } catch (err) {
-        console.error("Failed to fetch queue stats:", err)
-        // Fallback to local calculation if API fails (limited to 100 items)
-        const stats: QueueStats = {
-          total: queueItems.length,
-          pending: queueItems.filter((i) => i.status === "pending").length,
-          processing: queueItems.filter((i) => i.status === "processing").length,
-          success: queueItems.filter((i) => i.status === "success").length,
-          failed: queueItems.filter((i) => i.status === "failed").length,
-          skipped: queueItems.filter((i) => i.status === "skipped").length,
-        }
-        setQueueStats(stats)
-        setUsingFallbackStats(true)
-      } finally {
-        setStatsLoading(false)
+  const handleStatPillClick = useCallback(
+    (status: string) => {
+      if (activeStatFilter === status) {
+        setActiveStatFilter(null)
+        setActiveTab("pending")
+        setCompletedStatusFilter("all")
+        return
       }
-    }
 
-    // Debounce stats fetch to avoid rapid API calls from SSE events
-    const timeoutId = setTimeout(fetchStats, STATS_FETCH_DEBOUNCE_MS)
-    return () => clearTimeout(timeoutId)
-  }, [user, isOwner, queueItems])
+      setActiveStatFilter(status)
+
+      if (status === "pending" || status === "processing") {
+        setActiveTab("pending")
+        setCompletedStatusFilter("all")
+      } else if (COMPLETED_STATUSES.includes(status as CompletedStatus)) {
+        setActiveTab("completed")
+        setCompletedStatusFilter(status as CompletedStatus)
+      }
+    },
+    [activeStatFilter]
+  )
 
   // Clear error alert when items load successfully
   useEffect(() => {
     if (error) {
-      setAlert({
-        type: "error",
-        message: "Failed to load queue data. Please try again.",
-      })
+      setAlert({ type: "error", message: "Failed to load queue data. Please try again." })
     } else if (queueItems.length > 0) {
       setAlert(null)
     }
   }, [queueItems, error])
 
-  // Load worker runtime settings on mount
-  useEffect(() => {
-    const loadQueueSettings = async () => {
-      try {
-        const settings = await configClient.getWorkerSettings()
-        const runtime = settings.runtime
-        setIsProcessingEnabled(runtime.isProcessingEnabled ?? true)
-        setStopReason(runtime.stopReason ?? null)
-      } catch (err) {
-        console.error("Failed to load worker settings:", err)
-        setIsProcessingEnabled(true) // Default to enabled
-      }
-    }
-    loadQueueSettings()
-  }, [])
-
   const handleToggleProcessing = useCallback(async () => {
-    const newValue = !isProcessingEnabled
-    setIsTogglingProcessing(true)
-    try {
-      const current = await configClient.getWorkerSettings()
-      const runtime = { ...current.runtime, isProcessingEnabled: newValue }
-      await configClient.updateWorkerSettings({ ...current, runtime })
-      setIsProcessingEnabled(newValue)
-      if (newValue) {
-        // Worker clears stopReason when it starts processing; clear local state for UI
-        setStopReason(null)
-      }
-      setAlert({
-        type: "success",
-        message: newValue ? "Queue processing started" : "Queue processing paused",
-      })
-    } catch (err) {
-      console.error("Failed to toggle processing:", err)
-      setAlert({
-        type: "error",
-        message: "Failed to update queue processing state",
-      })
-    } finally {
-      setIsTogglingProcessing(false)
-      setConfirmToggleOpen(false)
-    }
-  }, [isProcessingEnabled])
+    const result = await toggleProcessing()
+    setAlert({ type: result.success ? "success" : "error", message: result.message })
+    setConfirmToggleOpen(false)
+  }, [toggleProcessing])
 
-  // Pending items: pending + processing, sorted chronologically (oldest first = next up)
+  // Filtered items - pending tab
   const pendingItems = useMemo(() => {
     return [...queueItems]
       .filter((item) => {
         if (!item.id) return false
         const isPendingOrProcessing = item.status === "pending" || item.status === "processing"
         if (!isPendingOrProcessing) return false
-        // If a specific pending/processing filter is active, apply it
         if (activeStatFilter === "pending" && item.status !== "pending") return false
         if (activeStatFilter === "processing" && item.status !== "processing") return false
         return true
       })
       .sort((a, b) => {
-        // Processing items first, then pending
         if (a.status === "processing" && b.status !== "processing") return -1
         if (b.status === "processing" && a.status !== "processing") return 1
-        // Then by created_at ascending (oldest first = next up)
         const aDate = normalizeDate(a.created_at)
         const bDate = normalizeDate(b.created_at)
         return aDate.getTime() - bDate.getTime()
       }) as QueueItem[]
   }, [queueItems, activeStatFilter])
 
-  // Completed items: success, failed, skipped - sorted by most recently updated first
+  // Filtered items - completed tab
   const completedItems = useMemo(() => {
     return [...queueItems]
       .filter((item) => {
@@ -199,20 +128,20 @@ export function QueueManagementPage() {
         return true
       })
       .sort((a, b) => {
-        // Most recently updated first
         const aDate = normalizeDate(a.updated_at ?? a.completed_at ?? a.created_at)
         const bDate = normalizeDate(b.updated_at ?? b.completed_at ?? b.created_at)
         return bDate.getTime() - aDate.getTime()
       }) as QueueItem[]
   }, [queueItems, completedStatusFilter])
 
+  // Currently processing items
   const processingItems = useMemo(() => {
     return [...queueItems]
       .filter((i) => i.status === "processing" && i.id)
       .sort((a, b) => {
         const aDate = normalizeDate(a.processed_at ?? a.updated_at ?? a.created_at)
         const bDate = normalizeDate(b.processed_at ?? b.updated_at ?? b.created_at)
-        return aDate.getTime() - bDate.getTime() // oldest first for continuity
+        return aDate.getTime() - bDate.getTime()
       }) as QueueItem[]
   }, [queueItems])
 
@@ -225,7 +154,7 @@ export function QueueManagementPage() {
   useEffect(() => {
     setProcessingConflictCount(processingItems.length > 1 ? processingItems.length : 0)
 
-    // Auto-resync once if multiple items report as processing (should not happen)
+    // Auto-resync once if multiple items report as processing
     if (processingItems.length > 1 && !conflictRefetched.current) {
       conflictRefetched.current = true
       void refetch()
@@ -240,7 +169,6 @@ export function QueueManagementPage() {
       return
     }
 
-    // If current is still processing, keep it; otherwise pick the oldest in-flight item
     const stillCurrent = processingItems.find((i) => i.id === activeProcessingId)
     if (stillCurrent) return
 
@@ -249,23 +177,17 @@ export function QueueManagementPage() {
 
   const handleCancelItem = async (id: string) => {
     try {
-      // Update the queue item to cancelled status
       await updateQueueItem(id, {
         status: "skipped",
         result_message: "Cancelled by user",
         completed_at: new Date(),
       })
-
-      setAlert({
-        type: "success",
-        message: "Queue item cancelled",
+      setAlert({ type: "success", message: "Queue item cancelled" })
+    } catch (err) {
+      logger.error("QueueManagement", "cancelItem", "Failed to cancel item", {
+        error: { type: "CancelError", message: err instanceof Error ? err.message : String(err) },
       })
-    } catch (error) {
-      console.error("Failed to cancel item:", error)
-      setAlert({
-        type: "error",
-        message: "Failed to cancel queue item",
-      })
+      setAlert({ type: "error", message: "Failed to cancel queue item" })
     }
   }
 
@@ -282,8 +204,7 @@ export function QueueManagementPage() {
     return `${days}d ago`
   }
 
-  const formatTime = (ts: number) => new Date(ts).toLocaleTimeString()
-
+  // Auth guards
   if (!user) {
     return (
       <div className="space-y-6">
@@ -310,9 +231,7 @@ export function QueueManagementPage() {
         </div>
         <Alert>
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            You need editor permissions to access queue management.
-          </AlertDescription>
+          <AlertDescription>You need editor permissions to access queue management.</AlertDescription>
         </Alert>
       </div>
     )
@@ -320,28 +239,12 @@ export function QueueManagementPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold tracking-tight">Queue Management</h1>
-            <Badge
-              variant="outline"
-              className={`flex items-center gap-1 ${
-                isProcessingEnabled === false
-                  ? "bg-amber-50 text-amber-700 border-amber-200"
-                  : "bg-green-50 text-green-700 border-green-200"
-              }`}
-            >
-              <span className="relative flex h-2 w-2">
-                {isProcessingEnabled !== false && (
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                )}
-                <span className={`relative inline-flex rounded-full h-2 w-2 ${
-                  isProcessingEnabled === false ? "bg-amber-500" : "bg-green-500"
-                }`}></span>
-              </span>
-              {isProcessingEnabled === false ? "Paused" : "Live"}
-            </Badge>
+            <ProcessingStatusBadge isEnabled={isProcessingEnabled} />
             <ConnectionStatusBadge status={connectionStatus} />
           </div>
           <p className="text-muted-foreground mt-2">
@@ -385,6 +288,7 @@ export function QueueManagementPage() {
         </div>
       </div>
 
+      {/* Alerts */}
       {alert && (
         <Alert variant={alert.type === "error" ? "destructive" : "default"}>
           <AlertCircle className="h-4 w-4" />
@@ -393,7 +297,10 @@ export function QueueManagementPage() {
       )}
 
       {stopReason && isProcessingEnabled === false && (
-        <Alert variant="destructive" className="border-amber-500 bg-amber-50 text-amber-900 [&>svg]:text-amber-600">
+        <Alert
+          variant="destructive"
+          className="border-amber-500 bg-amber-50 text-amber-900 [&>svg]:text-amber-600"
+        >
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
             <span className="font-medium">Queue stopped automatically:</span> {stopReason}
@@ -412,76 +319,17 @@ export function QueueManagementPage() {
             </Badge>
           )}
         </div>
-        <ActiveQueueItem
-          item={processingItem}
-          loading={loading}
-          onCancel={handleCancelItem}
-        />
+        <ActiveQueueItem item={processingItem} loading={loading} onCancel={handleCancelItem} />
       </div>
 
-      {/* Compact stats - clickable to filter the list below */}
-      {statsLoading || loading ? (
-        <div className="flex flex-wrap gap-2">
-          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <Skeleton key={i} className="h-10 w-24 rounded-full" />
-          ))}
-        </div>
-      ) : (
-        queueStats && (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <StatPill label="Total" value={queueStats.total} />
-            <StatPill
-              label="Pending"
-              value={queueStats.pending}
-              tone="amber"
-              active={activeStatFilter === "pending"}
-              onClick={() => handleStatPillClick("pending")}
-            />
-            <StatPill
-              label="Processing"
-              value={queueStats.processing}
-              tone="blue"
-              active={activeStatFilter === "processing"}
-              onClick={() => handleStatPillClick("processing")}
-            />
-            <StatPill
-              label="Failed"
-              value={queueStats.failed}
-              tone="red"
-              active={activeStatFilter === "failed"}
-              onClick={() => handleStatPillClick("failed")}
-            />
-            <StatPill
-              label="Skipped"
-              value={queueStats.skipped}
-              tone="gray"
-              active={activeStatFilter === "skipped"}
-              onClick={() => handleStatPillClick("skipped")}
-            />
-            <StatPill
-              label="Success"
-              value={queueStats.success}
-              tone="green"
-              active={activeStatFilter === "success"}
-              onClick={() => handleStatPillClick("success")}
-            />
-            <StatPill
-              label="Success Rate"
-              value={`${queueStats.total > 0 ? Math.round((queueStats.success / queueStats.total) * 100) : 0}%`}
-              tone="emerald"
-            />
-            {usingFallbackStats && (
-              <div
-                className="flex items-center gap-1 text-amber-600 cursor-help"
-                title="Stats API unavailable. Showing counts from last 100 items only."
-              >
-                <AlertTriangle className="h-4 w-4" />
-                <span className="text-xs">Partial data</span>
-              </div>
-            )}
-          </div>
-        )
-      )}
+      {/* Stats pills */}
+      <QueueStatsDisplay
+        stats={queueStats}
+        loading={statsLoading || loading}
+        usingFallback={usingFallbackStats}
+        activeFilter={activeStatFilter}
+        onFilterClick={handleStatPillClick}
+      />
 
       {/* Queue list with tabs */}
       <Card>
@@ -494,10 +342,15 @@ export function QueueManagementPage() {
             <div className="flex items-center justify-between mb-4">
               <TabsList>
                 <TabsTrigger value="pending">
-                  Pending ({queueStats ? queueStats.pending + queueStats.processing : pendingItems.length})
+                  Pending (
+                  {queueStats ? queueStats.pending + queueStats.processing : pendingItems.length})
                 </TabsTrigger>
                 <TabsTrigger value="completed">
-                  Completed ({queueStats ? queueStats.success + queueStats.failed + queueStats.skipped : completedItems.length})
+                  Completed (
+                  {queueStats
+                    ? queueStats.success + queueStats.failed + queueStats.skipped
+                    : completedItems.length}
+                  )
                 </TabsTrigger>
               </TabsList>
 
@@ -555,17 +408,16 @@ export function QueueManagementPage() {
               ) : completedItems.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No completed tasks found{completedStatusFilter !== "all" ? ` with status "${completedStatusFilter}"` : ""}.</p>
+                  <p>
+                    No completed tasks found
+                    {completedStatusFilter !== "all" ? ` with status "${completedStatusFilter}"` : ""}
+                    .
+                  </p>
                 </div>
               ) : (
                 <QueueTable
                   items={completedItems}
-                  onRowClick={(item) =>
-                    openModal({
-                      type: "jobQueueItem",
-                      item,
-                    })
-                  }
+                  onRowClick={(item) => openModal({ type: "jobQueueItem", item })}
                   onCancel={handleCancelItem}
                   formatRelativeTime={formatRelativeTime}
                 />
@@ -576,90 +428,62 @@ export function QueueManagementPage() {
       </Card>
 
       {/* SSE Event log drawer */}
-      <div
-        className={`fixed left-0 top-24 bottom-4 w-96 bg-slate-900 text-slate-50 shadow-2xl border-r border-slate-800 transition-transform duration-300 ease-in-out transform ${
-          showEventLog ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/60 backdrop-blur">
-          <div className="flex items-center gap-2">
-            <Bug className="h-4 w-4" />
-            <div>
-              <div className="text-sm font-semibold">Incoming SSE Events</div>
-              <div className="text-xs text-slate-400">Most recent first • capped at 200</div>
-            </div>
-          </div>
-          <button
-            className="text-slate-400 hover:text-white text-sm"
-            onClick={() => setShowEventLog(false)}
-            aria-label="Close SSE log"
-          >
-            Close
-          </button>
-        </div>
-        <div className="h-full overflow-y-auto px-4 py-3 space-y-2 text-xs font-mono leading-relaxed">
-          {eventLog.length === 0 ? (
-            <div className="text-slate-500">No events yet</div>
-          ) : (
-            eventLog.map((entry) => (
-              <div key={entry.id} className="bg-slate-800/70 border border-slate-700 rounded p-2">
-                <div className="flex items-center justify-between text-[11px] text-slate-300">
-                  <span className="uppercase tracking-wide">{entry.event}</span>
-                  <span className="text-slate-500">{formatTime(entry.timestamp)}</span>
-                </div>
-                <pre className="mt-1 whitespace-pre-wrap break-words text-slate-100">
-                  {JSON.stringify(entry.payload, null, 2)}
-                </pre>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+      <SSEEventLogDrawer
+        isOpen={showEventLog}
+        onClose={() => setShowEventLog(false)}
+        eventLog={eventLog}
+      />
 
+      {/* Dialogs */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <ScrapeJobDialog open={createOpen} onOpenChange={setCreateOpen} onSubmitted={refetch} />
       </Dialog>
 
-      {/* Confirm Toggle Processing Modal */}
-      <Dialog open={confirmToggleOpen} onOpenChange={setConfirmToggleOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>
-              {isProcessingEnabled ? "Pause Queue Processing?" : "Start Queue Processing?"}
-            </DialogTitle>
-            <DialogDescription>
-              {isProcessingEnabled
-                ? "The worker will stop picking up new tasks from the queue. Items currently being processed will complete. Pending items will remain in the queue."
-                : "The worker will resume processing pending items in the queue."}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="ghost" onClick={() => setConfirmToggleOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant={isProcessingEnabled ? "destructive" : "default"}
-              onClick={handleToggleProcessing}
-              disabled={isTogglingProcessing}
-            >
-              {isTogglingProcessing ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : isProcessingEnabled ? (
-                <Pause className="h-4 w-4 mr-2" />
-              ) : (
-                <Play className="h-4 w-4 mr-2" />
-              )}
-              {isProcessingEnabled ? "Pause Processing" : "Start Processing"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmToggleDialog
+        open={confirmToggleOpen}
+        onOpenChange={setConfirmToggleOpen}
+        isProcessingEnabled={isProcessingEnabled ?? true}
+        isToggling={isTogglingProcessing}
+        onConfirm={handleToggleProcessing}
+      />
     </div>
   )
 }
 
+// Helper function
 function normalizeDate(value: unknown): Date {
   return normalizeDateValue(value) ?? new Date(0)
+}
+
+// Sub-components
+
+interface ProcessingStatusBadgeProps {
+  isEnabled: boolean | null
+}
+
+function ProcessingStatusBadge({ isEnabled }: ProcessingStatusBadgeProps) {
+  return (
+    <Badge
+      variant="outline"
+      className={`flex items-center gap-1 ${
+        isEnabled === false
+          ? "bg-amber-50 text-amber-700 border-amber-200"
+          : "bg-green-50 text-green-700 border-green-200"
+      }`}
+    >
+      <span className="relative flex h-2 w-2">
+        {isEnabled !== false && (
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+        )}
+        <span
+          className={`relative inline-flex rounded-full h-2 w-2 ${
+            isEnabled === false ? "bg-amber-500" : "bg-green-500"
+          }`}
+        ></span>
+      </span>
+      {isEnabled === false ? "Paused" : "Live"}
+    </Badge>
+  )
 }
 
 interface ConnectionStatusBadgeProps {
@@ -685,16 +509,104 @@ function ConnectionStatusBadge({ status }: ConnectionStatusBadgeProps) {
   }[status]
 
   return (
-    <Badge variant="outline" className={`flex items-center gap-1 ${config.bg} ${config.text} ${config.border}`}>
+    <Badge
+      variant="outline"
+      className={`flex items-center gap-1 ${config.bg} ${config.text} ${config.border}`}
+    >
       <span className="relative flex h-2 w-2">
         {status === "connecting" && (
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
         )}
-        <span className={`relative inline-flex rounded-full h-2 w-2 ${
-          status === "connecting" ? "bg-blue-500" : "bg-red-500"
-        }`}></span>
+        <span
+          className={`relative inline-flex rounded-full h-2 w-2 ${
+            status === "connecting" ? "bg-blue-500" : "bg-red-500"
+          }`}
+        ></span>
       </span>
       {config.label}
     </Badge>
+  )
+}
+
+interface QueueStatsDisplayProps {
+  stats: import("@shared/types").QueueStats | null
+  loading: boolean
+  usingFallback: boolean
+  activeFilter: string | null
+  onFilterClick: (status: string) => void
+}
+
+function QueueStatsDisplay({
+  stats,
+  loading,
+  usingFallback,
+  activeFilter,
+  onFilterClick,
+}: QueueStatsDisplayProps) {
+  if (loading) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <Skeleton key={i} className="h-10 w-24 rounded-full" />
+        ))}
+      </div>
+    )
+  }
+
+  if (!stats) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <StatPill label="Total" value={stats.total} />
+      <StatPill
+        label="Pending"
+        value={stats.pending}
+        tone="amber"
+        active={activeFilter === "pending"}
+        onClick={() => onFilterClick("pending")}
+      />
+      <StatPill
+        label="Processing"
+        value={stats.processing}
+        tone="blue"
+        active={activeFilter === "processing"}
+        onClick={() => onFilterClick("processing")}
+      />
+      <StatPill
+        label="Failed"
+        value={stats.failed}
+        tone="red"
+        active={activeFilter === "failed"}
+        onClick={() => onFilterClick("failed")}
+      />
+      <StatPill
+        label="Skipped"
+        value={stats.skipped}
+        tone="gray"
+        active={activeFilter === "skipped"}
+        onClick={() => onFilterClick("skipped")}
+      />
+      <StatPill
+        label="Success"
+        value={stats.success}
+        tone="green"
+        active={activeFilter === "success"}
+        onClick={() => onFilterClick("success")}
+      />
+      <StatPill
+        label="Success Rate"
+        value={`${stats.total > 0 ? Math.round((stats.success / stats.total) * 100) : 0}%`}
+        tone="emerald"
+      />
+      {usingFallback && (
+        <div
+          className="flex items-center gap-1 text-amber-600 cursor-help"
+          title="Stats API unavailable. Showing counts from last 100 items only."
+        >
+          <AlertTriangle className="h-4 w-4" />
+          <span className="text-xs">Partial data</span>
+        </div>
+      )}
+    </div>
   )
 }
