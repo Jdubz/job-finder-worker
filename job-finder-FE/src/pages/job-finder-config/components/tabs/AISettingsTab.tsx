@@ -110,6 +110,25 @@ function getReasonBadge(reason: string | null): { variant: "default" | "destruct
   return { variant: "default", label: reason }
 }
 
+/** Reusable component for displaying agent status with tooltip */
+function StatusBadge({ reason }: { reason: string | null }) {
+  const badge = getReasonBadge(reason)
+  if (!badge) return null
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant={badge.variant} className="cursor-help">{badge.label}</Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-md">
+          <p className="text-xs break-words">{reason}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 export function AISettingsTab({
   isSaving,
   aiSettings,
@@ -226,8 +245,6 @@ export function AISettingsTab({
                 if (!config) return null
                 const workerState = config.runtimeState?.worker ?? { enabled: false, reason: null }
                 const backendState = config.runtimeState?.backend ?? { enabled: false, reason: null }
-                const workerBadge = getReasonBadge(workerState.reason ?? null)
-                const backendBadge = getReasonBadge(backendState.reason ?? null)
                 const [provider, iface] = agentId.split(".") as [AIProviderType, AIInterfaceType]
                 const availableModels = resolveInterface(provider, iface)?.models ?? []
                 return (
@@ -249,18 +266,7 @@ export function AISettingsTab({
                               }
                             />
                             <span className="text-sm font-medium">Worker</span>
-                            {workerBadge && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Badge variant={workerBadge.variant} className="cursor-help">{workerBadge.label}</Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-md">
-                                    <p className="text-xs break-words">{workerState.reason}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
+                            <StatusBadge reason={workerState.reason} />
                             {workerState.reason && (
                               <Button
                                 variant="ghost"
@@ -294,18 +300,7 @@ export function AISettingsTab({
                               }
                             />
                             <span className="text-sm font-medium">Backend</span>
-                            {backendBadge && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Badge variant={backendBadge.variant} className="cursor-help">{backendBadge.label}</Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-md">
-                                    <p className="text-xs break-words">{backendState.reason}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
+                            <StatusBadge reason={backendState.reason} />
                             {backendState.reason && (
                               <Button
                                 variant="ghost"
