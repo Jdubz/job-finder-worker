@@ -109,7 +109,7 @@ export async function enqueueScrapeJob() {
 export async function triggerMaintenance() {
   try {
     logger.info({ at: utcNowIso() }, 'Cron maintenance starting')
-    const result = await getMaintenanceService().runMaintenance()
+    const result = getMaintenanceService().runMaintenance()
     logger.info({ result, at: utcNowIso() }, 'Cron maintenance completed')
     return result
   } catch (error) {

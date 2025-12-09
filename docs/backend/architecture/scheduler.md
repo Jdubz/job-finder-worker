@@ -1,6 +1,6 @@
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-12-04
+> Last Updated: 2025-12-09
 
 # API Scheduler (cron replacement)
 
@@ -11,7 +11,7 @@
 
 ## Managed jobs
 - `scrape`: enqueues scrape jobs using `worker-settings.runtime.scrapeConfig`.
-- `maintenance`: runs database cleanup directly in the API (archives old queue items, ignores old matches, archives old listings).
+- `maintenance`: runs database cleanup directly in the API (archives old listings with CASCADE delete of matches, archives old queue items).
 - `logrotate`: rotates and gzips API logs under `LOG_DIR`.
 - `agentReset`: resets daily AI agent usage quotas at midnight.
 

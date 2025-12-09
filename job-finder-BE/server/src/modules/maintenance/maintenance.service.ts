@@ -15,7 +15,7 @@ const LISTING_ARCHIVE_DAYS = 14 // Archive listings older than 2 weeks
 export class MaintenanceService {
   constructor(private repo = new MaintenanceRepository()) {}
 
-  async runMaintenance(): Promise<MaintenanceResult> {
+  runMaintenance(): MaintenanceResult {
     logger.info('Starting maintenance cycle')
 
     try {
