@@ -57,7 +57,7 @@ def get_source_info(db_path: str | None, source_id: str | None) -> Dict[str, Any
 
     with sqlite_connection(db_path) as conn:
         row = conn.execute(
-            "SELECT id, name, source_type, config FROM job_sources WHERE id = ?", (source_id,)
+            "SELECT id, name, source_type FROM job_sources WHERE id = ?", (source_id,)
         ).fetchone()
         return dict(row) if row else {}
 
