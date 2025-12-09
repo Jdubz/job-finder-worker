@@ -11,8 +11,9 @@
 
 ## Managed jobs
 - `scrape`: enqueues scrape jobs using `worker-settings.runtime.scrapeConfig`.
-- `maintenance`: POSTs to `WORKER_MAINTENANCE_URL`.
+- `maintenance`: runs database cleanup directly in the API (archives old queue items, ignores old matches, archives old listings).
 - `logrotate`: rotates and gzips API logs under `LOG_DIR`.
+- `agentReset`: resets daily AI agent usage quotas at midnight.
 
 ## Configuration
 - Shape stored in `cron-config`:
@@ -21,7 +22,8 @@
     "jobs": {
       "scrape": { "enabled": true, "hours": [0,6,12,18], "lastRun": "..." },
       "maintenance": { "enabled": true, "hours": [0], "lastRun": "..." },
-      "logrotate": { "enabled": true, "hours": [0], "lastRun": "..." }
+      "logrotate": { "enabled": true, "hours": [0], "lastRun": "..." },
+      "agentReset": { "enabled": true, "hours": [0], "lastRun": "..." }
     }
   }
   ```
