@@ -227,8 +227,7 @@ class AgentManager:
                         agent_id, agent_config, prompt, model, max_tokens, temperature
                     )
 
-                    # Increment usage after successful call
-                    cost = model_rates.get(model, 1.0)
+                    # Increment usage after successful call (cost already calculated above)
                     self.config_loader.increment_agent_usage(agent_id, model)
                     logger.info(
                         f"Agent {agent_id} executed successfully (model={model}, cost={cost}, scope={active_scope})"

@@ -100,11 +100,11 @@ class QuotaExhaustedError(AIProviderError):
 
 
 class TransientError(AIProviderError):
-    """Raised for transient errors that should allow fallback to next agent.
+    """Raised for transient errors that allow retries before disabling.
 
-    Unlike permanent AIProviderError which stops the fallback chain,
-    TransientError allows the AgentManager to continue trying other agents.
-    The failed agent is NOT disabled since the error may be temporary.
+    Unlike permanent AIProviderError which disables the agent immediately,
+    TransientError triggers retry logic (up to 2 retries = 3 total attempts).
+    The agent is only disabled after all retries are exhausted.
 
     Examples:
     - Network timeout
