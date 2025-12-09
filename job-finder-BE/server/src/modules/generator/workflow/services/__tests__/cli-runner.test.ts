@@ -112,11 +112,11 @@ describe('cli-runner', () => {
 
       expect(spawnCalls).toHaveLength(1)
       expect(spawnCalls[0].cmd).toBe('gemini')
+      // Gemini CLI uses positional prompt argument (--prompt is deprecated)
       expect(spawnCalls[0].args).toEqual([
         '--print',
         '--output',
         'json',
-        '--prompt',
         'test prompt'
       ])
     })
@@ -126,23 +126,23 @@ describe('cli-runner', () => {
 
       expect(spawnCalls).toHaveLength(1)
       expect(spawnCalls[0].cmd).toBe('gemini')
+      // Gemini CLI uses positional prompt argument (--prompt is deprecated)
       expect(spawnCalls[0].args).toEqual([
         '--print',
         '--output',
         'json',
         '--model',
         'gemini-2.0-flash',
-        '--prompt',
         'test prompt'
       ])
     })
 
-    it('uses --prompt flag for gemini CLI', async () => {
+    it('uses positional argument for gemini CLI prompt (not --prompt flag)', async () => {
       await runCliProvider('my prompt here', 'gemini')
 
-      expect(spawnCalls[0].args).toContain('--prompt')
-      const promptIndex = spawnCalls[0].args.indexOf('--prompt')
-      expect(spawnCalls[0].args[promptIndex + 1]).toBe('my prompt here')
+      // --prompt flag is deprecated, prompt should be last positional argument
+      expect(spawnCalls[0].args).not.toContain('--prompt')
+      expect(spawnCalls[0].args[spawnCalls[0].args.length - 1]).toBe('my prompt here')
     })
 
     it('includes --print and --output json flags for gemini', async () => {
@@ -171,12 +171,12 @@ describe('cli-runner', () => {
 
       expect(spawnCalls).toHaveLength(1)
       expect(spawnCalls[0].cmd).toBe('claude')
+      // Claude CLI uses positional prompt argument (not -p or --prompt)
       expect(spawnCalls[0].args).toEqual([
         '--print',
         '--output-format',
         'json',
         '--dangerously-skip-permissions',
-        '-p',
         'test prompt'
       ])
     })
@@ -187,6 +187,7 @@ describe('cli-runner', () => {
 
       expect(spawnCalls).toHaveLength(1)
       expect(spawnCalls[0].cmd).toBe('claude')
+      // Claude CLI uses positional prompt argument (not -p or --prompt)
       expect(spawnCalls[0].args).toEqual([
         '--print',
         '--output-format',
@@ -194,20 +195,17 @@ describe('cli-runner', () => {
         '--model',
         'claude-sonnet-4-20250514',
         '--dangerously-skip-permissions',
-        '-p',
         'test prompt'
       ])
     })
 
-    it('uses -p flag (not --prompt) for claude CLI', async () => {
+    it('uses positional argument for claude CLI prompt (not -p or --prompt)', async () => {
       await runCliProvider('my prompt here', 'claude')
 
-      // Verify -p is used, not --prompt
-      expect(spawnCalls[0].args).toContain('-p')
+      // Verify neither -p nor --prompt is used - prompt is positional
+      expect(spawnCalls[0].args).not.toContain('-p')
       expect(spawnCalls[0].args).not.toContain('--prompt')
-
-      const promptIndex = spawnCalls[0].args.indexOf('-p')
-      expect(spawnCalls[0].args[promptIndex + 1]).toBe('my prompt here')
+      expect(spawnCalls[0].args[spawnCalls[0].args.length - 1]).toBe('my prompt here')
     })
 
     it('includes --print and --output-format json flags for claude', async () => {
@@ -270,16 +268,16 @@ describe('cli-runner', () => {
       const specialPrompt = 'Test with "quotes" and $variables and `backticks`'
       await runCliProvider(specialPrompt, 'claude')
 
-      const promptIndex = spawnCalls[0].args.indexOf('-p')
-      expect(spawnCalls[0].args[promptIndex + 1]).toBe(specialPrompt)
+      // Prompt is last positional argument
+      expect(spawnCalls[0].args[spawnCalls[0].args.length - 1]).toBe(specialPrompt)
     })
 
     it('handles multiline prompts', async () => {
       const multilinePrompt = 'Line 1\nLine 2\nLine 3'
       await runCliProvider(multilinePrompt, 'gemini')
 
-      const promptIndex = spawnCalls[0].args.indexOf('--prompt')
-      expect(spawnCalls[0].args[promptIndex + 1]).toBe(multilinePrompt)
+      // Prompt is last positional argument
+      expect(spawnCalls[0].args[spawnCalls[0].args.length - 1]).toBe(multilinePrompt)
     })
   })
 
@@ -308,7 +306,8 @@ describe('cli-runner', () => {
       await runCliProvider('test', 'claude', { model: 'claude-sonnet-4-20250514' })
 
       const modelIndex = spawnCalls[0].args.indexOf('--model')
-      const promptIndex = spawnCalls[0].args.indexOf('-p')
+      // Prompt is last positional argument
+      const promptIndex = spawnCalls[0].args.length - 1
       expect(modelIndex).toBeLessThan(promptIndex)
     })
 
@@ -316,7 +315,8 @@ describe('cli-runner', () => {
       await runCliProvider('test', 'gemini', { model: 'gemini-2.0-flash' })
 
       const modelIndex = spawnCalls[0].args.indexOf('--model')
-      const promptIndex = spawnCalls[0].args.indexOf('--prompt')
+      // Prompt is last positional argument
+      const promptIndex = spawnCalls[0].args.length - 1
       expect(modelIndex).toBeLessThan(promptIndex)
     })
   })
