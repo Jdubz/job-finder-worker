@@ -40,97 +40,80 @@ export function QueueItemModalContent({ item, handlers }: QueueItemModalContentP
   const pipeline = (item.pipeline_state ?? output.pipeline_state ?? {}) as Record<string, unknown>
 
   const getStringField = (obj: Record<string, unknown>, key: string): string | undefined => {
-    const value = obj?.[key]
+    const value = obj[key]
     return typeof value === "string" && value.trim().length > 0 ? value : undefined
   }
 
-  const jobListingId =
-    getStringField(metadata, "job_listing_id") || getStringField(scraped, "job_listing_id") || getStringField(pipeline, "job_listing_id")
+  const findIdInObjects = (key: string): string | undefined =>
+    getStringField(metadata, key) || getStringField(scraped, key) || getStringField(pipeline, key)
 
-  const companyId =
-    item.company_id ||
-    getStringField(metadata, "company_id") ||
-    getStringField(scraped, "company_id") ||
-    getStringField(pipeline, "company_id")
+  const jobListingId = findIdInObjects("job_listing_id")
+  const companyId = item.company_id || findIdInObjects("company_id")
+  const sourceId = item.source_id || findIdInObjects("source_id")
 
-  const sourceId =
-    item.source_id ||
-    getStringField(metadata, "source_id") ||
-    getStringField(scraped, "source_id") ||
-    getStringField(pipeline, "source_id")
-
-  const openListingModal = async () => {
-    if (!jobListingId) return
-    setLoadingKey("listing")
-    try {
-      const listing = await jobListingsClient.getListing(jobListingId)
-      openModal({ type: "jobListing", listing })
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Unable to open job listing",
-        description: error instanceof Error ? error.message : "Please try again."
-      })
-    } finally {
-      setLoadingKey(null)
+  const createModalOpener = <T,>(
+    key: string,
+    id: string | undefined,
+    fetcher: () => Promise<T>,
+    onSuccess: (data: T) => void,
+    errorTitle: string
+  ) => {
+    return async () => {
+      if (!id) return
+      setLoadingKey(key)
+      try {
+        const data = await fetcher()
+        onSuccess(data)
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: errorTitle,
+          description: error instanceof Error ? error.message : "Please try again."
+        })
+      } finally {
+        setLoadingKey(null)
+      }
     }
   }
 
-  const openMatchModal = async () => {
-    if (!jobListingId) return
-    setLoadingKey("match")
-    try {
-      const matches = await jobMatchesClient.listMatches({ jobListingId, limit: 1 })
-      const match = matches[0]
+  const openListingModal = createModalOpener(
+    "listing",
+    jobListingId,
+    () => jobListingsClient.getListing(jobListingId as string),
+    (listing) => openModal({ type: "jobListing", listing }),
+    "Unable to open job listing"
+  )
+
+  const openMatchModal = createModalOpener(
+    "match",
+    jobListingId,
+    () => jobMatchesClient.listMatches({ jobListingId: jobListingId as string, limit: 1 }),
+    (matches) => {
+      const match = matches[0] as (typeof matches)[number] | undefined
       if (!match) {
         toast({ variant: "info", title: "No job match yet", description: "This listing has not produced a match." })
         return
       }
       openModal({ type: "jobMatch", match })
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Unable to open job match",
-        description: error instanceof Error ? error.message : "Please try again."
-      })
-    } finally {
-      setLoadingKey(null)
-    }
-  }
+    },
+    "Unable to open job match"
+  )
 
-  const openCompanyModal = async () => {
-    if (!companyId) return
-    setLoadingKey("company")
-    try {
-      const companyRecord = await companiesClient.getCompany(companyId)
-      openModal({ type: "company", companyId, company: companyRecord })
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Unable to open company",
-        description: error instanceof Error ? error.message : "Please try again."
-      })
-    } finally {
-      setLoadingKey(null)
-    }
-  }
+  const openCompanyModal = createModalOpener(
+    "company",
+    companyId,
+    () => companiesClient.getCompany(companyId as string),
+    (companyRecord) => openModal({ type: "company", companyId, company: companyRecord }),
+    "Unable to open company"
+  )
 
-  const openSourceModal = async () => {
-    if (!sourceId) return
-    setLoadingKey("source")
-    try {
-      const sourceRecord = await jobSourcesClient.getJobSource(sourceId)
-      openModal({ type: "jobSource", sourceId, source: sourceRecord })
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Unable to open source",
-        description: error instanceof Error ? error.message : "Please try again."
-      })
-    } finally {
-      setLoadingKey(null)
-    }
-  }
+  const openSourceModal = createModalOpener(
+    "source",
+    sourceId,
+    () => jobSourcesClient.getJobSource(sourceId as string),
+    (sourceRecord) => openModal({ type: "jobSource", sourceId, source: sourceRecord }),
+    "Unable to open source"
+  )
 
   return (
     <div className="space-y-4 overflow-y-auto flex-1 pr-2" data-testid="queue-item-dialog">
@@ -186,11 +169,11 @@ export function QueueItemModalContent({ item, handlers }: QueueItemModalContentP
                 <div className="text-xs font-mono text-muted-foreground break-all">Listing: {jobListingId}</div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="secondary" onClick={openListingModal} disabled={loadingKey === "listing"}>
-                    {loadingKey === "listing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    {loadingKey === "listing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-2 h-4 w-4" />}
                     Open listing modal
                   </Button>
                   <Button size="sm" variant="ghost" onClick={openMatchModal} disabled={loadingKey === "match"}>
-                    {loadingKey === "match" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-2 h-4 w-4" />}
+                    {loadingKey === "match" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LinkIcon className="mr-2 h-4 w-4" />}
                     View job match
                   </Button>
                 </div>
