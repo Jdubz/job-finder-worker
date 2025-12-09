@@ -208,9 +208,10 @@ class JobListingStorage:
                 chunk = normalized_urls[chunk_start : chunk_start + chunk_size]
                 placeholders = ",".join("?" for _ in chunk)
                 # Check both active and archived listings
+                # Use UNION ALL for performance (url is unique within each table)
                 query = f"""
                     SELECT url FROM job_listings WHERE url IN ({placeholders})
-                    UNION
+                    UNION ALL
                     SELECT url FROM job_listings_archive WHERE url IN ({placeholders})
                 """
                 # Need to pass chunk twice for both tables
