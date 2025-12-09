@@ -4,7 +4,6 @@ import { getDb } from '../../db/sqlite'
 export interface MaintenanceStats {
   archivedQueueItems: number
   archivedListings: number
-  ignoredMatches: number
 }
 
 export class MaintenanceRepository {
@@ -57,24 +56,6 @@ export class MaintenanceRepository {
     })()
 
     return result
-  }
-
-  /**
-   * Mark job_matches older than specified days as ignored.
-   * Only affects matches with status='active'.
-   */
-  ignoreOldMatches(olderThanDays: number): number {
-    const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000).toISOString()
-    const now = new Date().toISOString()
-
-    const result = this.db.prepare(`
-      UPDATE job_matches
-      SET status = 'ignored', ignored_at = ?
-      WHERE created_at < ?
-      AND status = 'active'
-    `).run(now, cutoff)
-
-    return result.changes
   }
 
   /**
@@ -142,14 +123,9 @@ export class MaintenanceRepository {
       'SELECT COUNT(*) as count FROM job_listings_archive'
     ).get() as { count: number }
 
-    const ignoredMatchesCount = this.db.prepare(
-      `SELECT COUNT(*) as count FROM job_matches WHERE status = 'ignored'`
-    ).get() as { count: number }
-
     return {
       archivedQueueItems: queueArchiveCount.count,
-      archivedListings: listingsArchiveCount.count,
-      ignoredMatches: ignoredMatchesCount.count
+      archivedListings: listingsArchiveCount.count
     }
   }
 }
