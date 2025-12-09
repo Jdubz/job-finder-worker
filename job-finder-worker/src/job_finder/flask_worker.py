@@ -548,9 +548,7 @@ def _verify_migrations(db_path: str) -> None:
             details.append(
                 f"schema migrations missing: expected >= {required_schema_min_id}, found {max(applied_schema_ids) if applied_schema_ids else 'none'}"
             )
-        raise InitializationError(
-            "Migrations not up to date. " + "; ".join(details)
-        )
+        raise InitializationError("Migrations not up to date. " + "; ".join(details))
 
 
 def _get_task_delay() -> float:
