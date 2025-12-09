@@ -251,9 +251,9 @@ def test_submit_jobs_empty_list(scraper_intake, mock_queue_manager):
 def test_submit_jobs_handles_race_condition(scraper_intake, mock_queue_manager):
     """Test that DuplicateQueueItemError is handled gracefully as a duplicate."""
     jobs = [
-        {"title": "Job 1", "url": "https://example.com/job/1", "company": "Test"},
-        {"title": "Job 2", "url": "https://example.com/job/2", "company": "Test"},
-        {"title": "Job 3", "url": "https://example.com/job/3", "company": "Test"},
+        {"title": "Job 1", "url": "https://example.com/job/1", "company": "Test", "description": "desc"},
+        {"title": "Job 2", "url": "https://example.com/job/2", "company": "Test", "description": "desc"},
+        {"title": "Job 3", "url": "https://example.com/job/3", "company": "Test", "description": "desc"},
     ]
 
     # url_exists check passes (returns False) but insert fails due to race condition
