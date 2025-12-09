@@ -74,9 +74,9 @@ def test_submit_jobs_success(scraper_intake, mock_queue_manager):
 def test_submit_jobs_with_duplicates(scraper_intake, mock_queue_manager):
     """Test job submission with duplicates."""
     jobs = [
-        {"title": "Job 1", "url": "https://example.com/job/1", "company": "Test"},
-        {"title": "Job 2", "url": "https://example.com/job/2", "company": "Test"},
-        {"title": "Job 3", "url": "https://example.com/job/3", "company": "Test"},
+        {"title": "Job 1", "url": "https://example.com/job/1", "company": "Test", "description": "desc"},
+        {"title": "Job 2", "url": "https://example.com/job/2", "company": "Test", "description": "desc"},
+        {"title": "Job 3", "url": "https://example.com/job/3", "company": "Test", "description": "desc"},
     ]
 
     # Mock second job is duplicate
@@ -97,7 +97,7 @@ def test_submit_jobs_with_duplicates(scraper_intake, mock_queue_manager):
 def test_submit_jobs_with_company_id(scraper_intake, mock_queue_manager):
     """Test job submission with company ID."""
     jobs = [
-        {"title": "Job 1", "url": "https://example.com/job/1", "company": "Test"},
+        {"title": "Job 1", "url": "https://example.com/job/1", "company": "Test", "description": "desc"},
     ]
 
     mock_queue_manager.url_exists_in_queue.return_value = False
@@ -116,8 +116,8 @@ def test_submit_jobs_with_company_id(scraper_intake, mock_queue_manager):
 def test_submit_jobs_handles_errors(scraper_intake, mock_queue_manager):
     """Test that submission continues on individual errors."""
     jobs = [
-        {"title": "Job 1", "url": "https://example.com/job/1", "company": "Test"},
-        {"title": "Job 2", "url": "https://example.com/job/2", "company": "Test"},
+        {"title": "Job 1", "url": "https://example.com/job/1", "company": "Test", "description": "desc"},
+        {"title": "Job 2", "url": "https://example.com/job/2", "company": "Test", "description": "desc"},
     ]
 
     mock_queue_manager.url_exists_in_queue.return_value = False
