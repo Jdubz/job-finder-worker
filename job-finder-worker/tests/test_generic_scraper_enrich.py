@@ -147,11 +147,18 @@ def test_enrich_smartrecruiters_detail(monkeypatch):
             "type": "api",
             "url": "https://api.smartrecruiters.com/v1/companies/acme/postings?limit=200",
             "response_path": "content",
-            "fields": {"title": "name", "url": "ref", "description": "jobAd.sections.jobDescription.text"},
+            "fields": {
+                "title": "name",
+                "url": "ref",
+                "description": "jobAd.sections.jobDescription.text",
+            },
         }
     )
     scraper = GenericScraper(cfg)
-    job = {"url": "https://api.smartrecruiters.com/v1/companies/acme/postings/123", "description": ""}
+    job = {
+        "url": "https://api.smartrecruiters.com/v1/companies/acme/postings/123",
+        "description": "",
+    }
 
     enriched = scraper._enrich_from_detail(job)
     assert enriched["description"] == "<p>SR description</p>"
@@ -215,7 +222,11 @@ def test_should_enrich_rules(monkeypatch):
             "type": "api",
             "url": "https://api.smartrecruiters.com/v1/companies/acme/postings?limit=200",
             "response_path": "content",
-            "fields": {"title": "name", "url": "ref", "description": "jobAd.sections.jobDescription.text"},
+            "fields": {
+                "title": "name",
+                "url": "ref",
+                "description": "jobAd.sections.jobDescription.text",
+            },
         }
     )
     scraper = GenericScraper(cfg)
@@ -225,6 +236,8 @@ def test_should_enrich_rules(monkeypatch):
     assert scraper._should_enrich({"description": "d", "posted_date": "2025-01-01"}) is False
     scraper.config.follow_detail = True
     assert scraper._should_enrich({"description": "d", "posted_date": "2025-01-01"}) is True
+
+
 # ============================================================
 # Tests for HTML date extraction fallback strategies
 # ============================================================
