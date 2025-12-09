@@ -171,17 +171,18 @@ describe('job queue contract', () => {
       expect(submitRes.status).toBe(201)
       const itemId = submitRes.body.data.queueItem.id
 
-      // Set to failed with error details
+      // Set to failed with error details and result message
       db.prepare(
-        'UPDATE job_queue SET status = ?, error_details = ?, completed_at = ? WHERE id = ?'
-      ).run('failed', 'Test error message', new Date().toISOString(), itemId)
+        'UPDATE job_queue SET status = ?, error_details = ?, result_message = ?, completed_at = ? WHERE id = ?'
+      ).run('failed', 'Test error message', 'Previous failure reason', new Date().toISOString(), itemId)
 
       // Retry the item
       const retryRes = await request(app).post(`/queue/${itemId}/retry`)
       expect(retryRes.status).toBe(200)
       expect(retryRes.body.data.queueItem.status).toBe('pending')
-      // error_details and completed_at are cleared (null in DB, undefined in API response)
+      // error_details, result_message, and completed_at are cleared (null in DB, undefined in API response)
       expect(retryRes.body.data.queueItem.error_details).toBeUndefined()
+      expect(retryRes.body.data.queueItem.result_message).toBeUndefined()
       expect(retryRes.body.data.queueItem.completed_at).toBeUndefined()
       expect(retryRes.body.data.message).toBe('Item queued for retry')
     })

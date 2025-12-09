@@ -198,6 +198,7 @@ export class JobQueueService {
       processed_at: null,
       completed_at: null,
       error_details: null,
+      result_message: null,
       updated_at: new Date()
     })
   }
