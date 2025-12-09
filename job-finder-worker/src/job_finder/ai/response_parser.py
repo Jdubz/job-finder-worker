@@ -17,6 +17,7 @@ def extract_json_from_response(response: Optional[str]) -> str:
     Handles common AI response patterns:
     - ```json ... ``` code blocks
     - ``` ... ``` generic code blocks
+    - Envelope objects that wrap the real result (e.g., {type:'result', result:'```json ...```'})
     - Plain JSON without formatting
 
     Args:
@@ -29,6 +30,17 @@ def extract_json_from_response(response: Optional[str]) -> str:
         return ""
 
     cleaned = response.strip()
+
+    # Handle envelope objects that wrap the actual result payload
+    if cleaned.startswith("{") and '"result"' in cleaned:
+        try:
+            outer = json.loads(cleaned)
+            inner = outer.get("result")
+            if isinstance(inner, str) and inner.strip():
+                return extract_json_from_response(inner)
+        except Exception:
+            # Fall back to normal parsing
+            pass
 
     # Handle ```json ... ``` blocks
     if "```json" in cleaned:

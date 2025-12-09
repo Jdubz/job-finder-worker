@@ -355,6 +355,18 @@ class SourceProcessor(BaseProcessor):
         initial_status = SourceStatus.DISABLED if should_disable else SourceStatus.ACTIVE
 
         try:
+            # Thorough duplicate detection before persisting
+            dup = self.sources_manager.find_duplicate_candidate(
+                name=source_name,
+                company_id=company_id,
+                aggregator_domain=aggregator_domain,
+                url=url,
+            )
+            if dup:
+                self._handle_existing_source(item, dup, context="preflight")
+                result["handled"] = True
+                return result
+
             source_id = self.sources_manager.create_from_discovery(
                 name=source_name,
                 source_type=source_type,

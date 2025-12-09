@@ -171,6 +171,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         },
         headers={"Content-Type": "application/json"},
         validation_key="jobPostings",
+        follow_detail=True,
     ),
     PlatformPattern(
         name="lever",
@@ -267,6 +268,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
             "description": "jobAd.sections.jobDescription.text",
         },
         validation_key="content",
+        follow_detail=True,
     ),
     PlatformPattern(
         name="avature_rss",
@@ -317,6 +319,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         config_type="rss",
         is_remote_source=True,
         company_extraction="from_title",
+        follow_detail=True,
     ),
     PlatformPattern(
         name="indeed_partner_api",

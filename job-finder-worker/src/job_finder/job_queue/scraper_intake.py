@@ -298,9 +298,23 @@ class ScraperIntake:
                 job_payload = dict(job)
                 job_payload["company"] = company_name
 
+                # Require minimum fields before we ever hit the queue. If the scraper
+                # could not fetch a title/description, we skip and log instead of
+                # enqueueing a job that will certainly fail downstream.
+                title = (job_payload.get("title") or "").strip()
+                description = (job_payload.get("description") or "").strip()
+                if not title or not description:
+                    skipped_count += 1
+                    logger.info(
+                        "Skipping job with missing required fields (title=%s, description=%s): %s",
+                        bool(title),
+                        bool(description),
+                        canonical_url,
+                    )
+                    continue
+
                 # Pre-filter job by title before adding to queue
                 if self.title_filter:
-                    title = job_payload.get("title", "")
                     filter_result = self.title_filter.filter(title)
                     if not filter_result.passed:
                         prefiltered_count += 1
@@ -331,11 +345,18 @@ class ScraperIntake:
                 # Job passed all pre-filters - store in job_listings with status='pending'
                 listing_id = self._store_job_listing(
                     job=job_payload,
-                    normalized_url=normalized_url,
+                    normalized_url=canonical_url,
                     source_id=source_id,
                     company_id=company_id,
                     status="pending",
                 )
+                if not listing_id:
+                    skipped_count += 1
+                    logger.warning(
+                        "Could not persist job listing; skipping enqueue to avoid orphaned queue item: %s",
+                        canonical_url,
+                    )
+                    continue
 
                 # Create queue item with normalized URL
                 # Generate tracking_id for this root job (all spawned items will inherit it)

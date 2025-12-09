@@ -17,7 +17,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
-from job_finder.ai.providers import auth_status
+from job_finder.ai.providers import auth_status, hydrate_auth_from_host_file
 
 from job_finder.exceptions import AIProviderError, NoAgentsAvailableError, QuotaExhaustedError
 
@@ -153,6 +153,9 @@ class AgentManager:
                 logger.warning(f"Agent {agent_id} missing provider/interface; skipping")
                 continue
 
+            # Best-effort: hydrate auth from host files (e.g., ~/.codex/auth.json)
+            hydrate_auth_from_host_file(provider)
+
             auth_req = agent_config.get("authRequirements")
             if not isinstance(auth_req, dict):
                 raise NoAgentsAvailableError(
@@ -172,13 +175,14 @@ class AgentManager:
 
             auth_ok, auth_reason = auth_status(provider, interface)
             if not auth_ok:
-                try:
-                    self.config_loader.update_agent_status(
-                        agent_id, active_scope, enabled=False, reason=auth_reason
-                    )
-                except Exception as exc:  # best-effort, don't crash caller
-                    logger.warning(f"Failed to persist disable for {agent_id}: {exc}")
-                logger.info(f"Skipping agent {agent_id}: {auth_reason}")
+                logger.info(
+                    "Skipping agent %s (%s/%s): %s (not disabling; auth may be refreshed automatically)",
+                    agent_id,
+                    provider,
+                    interface,
+                    auth_reason,
+                )
+                errors.append((agent_id, auth_reason))
                 continue
 
             # Determine model - "default" or empty means CLI uses its own default
