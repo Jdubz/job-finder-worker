@@ -82,7 +82,6 @@ services:
       ENABLE_CRON: "false"  # Cron now runs in API container
       ENABLE_CLOUD_LOGGING: "false"
       SQLITE_DB_PATH: /data/sqlite/jobfinder.db
-      CONFIG_PATH: /app/config/config.production.yaml
       JF_NODE_API_BASE: http://api:8080/api
       JF_NODE_API_TOKEN: ${WORKER_WS_TOKEN}
       JF_WORKER_WS_TOKEN: ${WORKER_WS_TOKEN}
@@ -94,14 +93,8 @@ services:
         source: ./data  # Change to your data directory
         target: /data/sqlite
       - type: bind
-        source: ./config  # Change to your config directory
-        target: /app/config
-      - type: bind
         source: ./logs  # Change to your logs directory
         target: /app/logs
-      - type: bind
-        source: ./worker-data  # Change to your worker-data directory
-        target: /app/data
       # Codex: seed (ro) + named volume (rw) to prevent host permission issues
       - type: bind
         source: ./codex-seed/.codex

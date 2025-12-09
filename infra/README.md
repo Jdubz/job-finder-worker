@@ -24,7 +24,6 @@ The `infra/` directory contains **templates and development configurations** for
 | Database | `/srv/job-finder/data/jobfinder.db` | SQLite database file |
 | Secrets | `/srv/job-finder/secrets/` | Firebase admin credentials and other secrets |
 | Logs | `/srv/job-finder/logs/` | Application logs |
-| Worker Data | `/srv/job-finder/worker-data/` | Worker state and cache |
 | Backups | `/srv/job-finder/backups/` | Database backups |
 | Artifacts | `/srv/job-finder/artifacts/` | Generated PDFs, images, etc. |
 

@@ -76,7 +76,6 @@ services:
       ENABLE_QUEUE_MODE: "true"
       ENABLE_CLOUD_LOGGING: "false"
       SQLITE_DB_PATH: /data/sqlite/jobfinder.db
-      CONFIG_PATH: /app/config/config.production.yaml
       JF_NODE_API_BASE: http://api:8080/api
       JF_WORKER_ID: default
       CODEX_CONFIG_SOURCE: /codex
@@ -97,9 +96,6 @@ services:
       - type: bind
         source: /srv/job-finder/data
         target: /data/sqlite
-      - type: bind
-        source: /srv/job-finder/config
-        target: /app/config
       # Codex: shared volume + seed (ro) for reseed on start
       - type: bind
         source: /srv/job-finder/codex-seed/.codex
@@ -119,9 +115,6 @@ services:
       - type: bind
         source: /srv/job-finder/logs
         target: /app/logs
-      - type: bind
-        source: /srv/job-finder/worker-data
-        target: /app/data
     networks:
       - jobfinder
     labels:
