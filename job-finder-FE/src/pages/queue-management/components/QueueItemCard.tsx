@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { statusBadgeClass } from "@/lib/status-badge"
-import { Calendar, Clock, ExternalLink, Trash2 } from "lucide-react"
+import { Calendar, Clock, ExternalLink, RotateCcw, Trash2 } from "lucide-react"
 import { format, formatDistanceToNow } from "date-fns"
 import {
   getCompanyName,
@@ -19,9 +19,10 @@ interface QueueItemCardProps {
   selected: boolean
   onSelect: (id: string, selected: boolean) => void
   onCancel: (id: string) => void
+  onRetry: (id: string) => void
 }
 
-export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemCardProps) {
+export function QueueItemCard({ item, selected, onSelect, onCancel, onRetry }: QueueItemCardProps) {
   if (!item.id) {
     return null
   }
@@ -134,16 +135,30 @@ export function QueueItemCard({ item, selected, onSelect, onCancel }: QueueItemC
           </div>
 
           <div className="flex flex-col items-end gap-2">
-            {canCancel && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onCancel(itemId)}
-                className="h-8 px-2"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              {item.status === "failed" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onRetry(itemId)}
+                  className="h-8 px-2"
+                  title="Retry this task"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </Button>
+              )}
+              {canCancel && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onCancel(itemId)}
+                  className="h-8 px-2"
+                  title="Cancel this task"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
             <span className="text-[11px] text-muted-foreground">
               {item.processed_at
                 ? `In flight ${formatDistanceToNow(item.processed_at as Date)}`

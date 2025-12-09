@@ -269,6 +269,24 @@ export function buildJobQueueRouter() {
     })
   )
 
+  router.post(
+    '/:id/retry',
+    asyncHandler((req, res) => {
+      try {
+        const queueItem = service.retry(req.params.id)
+        broadcastQueueEvent('item.updated', { queueItem })
+        res.json(success({ queueItem, message: 'Item queued for retry' }))
+      } catch (error) {
+        res.status(400).json(
+          failure(
+            ApiErrorCode.INVALID_REQUEST,
+            error instanceof Error ? error.message : 'Retry failed'
+          )
+        )
+      }
+    })
+  )
+
   router.delete(
     '/:id',
     asyncHandler((req, res) => {

@@ -25,6 +25,7 @@ vi.mock("@/api/config-client", () => ({
 vi.mock("@/api/queue-client", () => ({
   queueClient: {
     getStats: vi.fn(),
+    retryQueueItem: vi.fn(),
   },
 }))
 
@@ -639,6 +640,105 @@ describe("QueueManagementPage", () => {
         expect(screen.getByText("Live")).toBeInTheDocument()
         expect(screen.getByRole("button", { name: /pause queue/i })).toBeInTheDocument()
       })
+    })
+  })
+
+  describe("Retry Failed Items", () => {
+    it("shows retry button for failed items in completed tab", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderWithProvider()
+
+      // Switch to completed tab where failed items are shown
+      const completedTab = screen.getByRole("tab", { name: /completed/i })
+      await user.click(completedTab)
+
+      await waitFor(() => {
+        // Failed item should be visible with retry button
+        expect(screen.getByTestId("queue-item-queue-4")).toBeInTheDocument()
+      })
+
+      // Look for the retry button (RotateCcw icon button)
+      const failedRow = screen.getByTestId("queue-item-queue-4")
+      const retryButton = failedRow.querySelector('button[title="Retry this task"]')
+      expect(retryButton).toBeInTheDocument()
+    })
+
+    it("calls retryQueueItem API when retry button is clicked", async () => {
+      vi.mocked(queueClient.retryQueueItem).mockResolvedValue({
+        id: "queue-4",
+        type: "job",
+        status: "pending",
+        url: "https://linkedin.com/jobs/999",
+        company_name: "FailCorp",
+        created_at: new Date(),
+        updated_at: new Date(),
+      } as any)
+
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderWithProvider()
+
+      // Switch to completed tab
+      const completedTab = screen.getByRole("tab", { name: /completed/i })
+      await user.click(completedTab)
+
+      await waitFor(() => {
+        expect(screen.getByTestId("queue-item-queue-4")).toBeInTheDocument()
+      })
+
+      const failedRow = screen.getByTestId("queue-item-queue-4")
+      const retryButton = failedRow.querySelector('button[title="Retry this task"]')
+      expect(retryButton).toBeInTheDocument()
+
+      await user.click(retryButton!)
+
+      await waitFor(() => {
+        expect(queueClient.retryQueueItem).toHaveBeenCalledWith("queue-4")
+      })
+
+      await waitFor(() => {
+        expect(screen.getByText(/task queued for retry/i)).toBeInTheDocument()
+      })
+    })
+
+    it("shows error message when retry fails", async () => {
+      vi.mocked(queueClient.retryQueueItem).mockRejectedValue(new Error("Only failed items can be retried"))
+
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderWithProvider()
+
+      // Switch to completed tab
+      const completedTab = screen.getByRole("tab", { name: /completed/i })
+      await user.click(completedTab)
+
+      await waitFor(() => {
+        expect(screen.getByTestId("queue-item-queue-4")).toBeInTheDocument()
+      })
+
+      const failedRow = screen.getByTestId("queue-item-queue-4")
+      const retryButton = failedRow.querySelector('button[title="Retry this task"]')
+      await user.click(retryButton!)
+
+      await waitFor(() => {
+        expect(screen.getByText(/only failed items can be retried/i)).toBeInTheDocument()
+      })
+    })
+
+    it("does not show retry button for successful items", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderWithProvider()
+
+      // Switch to completed tab
+      const completedTab = screen.getByRole("tab", { name: /completed/i })
+      await user.click(completedTab)
+
+      await waitFor(() => {
+        expect(screen.getByTestId("queue-item-queue-3")).toBeInTheDocument()
+      })
+
+      // Success item should not have retry button
+      const successRow = screen.getByTestId("queue-item-queue-3")
+      const retryButton = successRow.querySelector('button[title="Retry this task"]')
+      expect(retryButton).not.toBeInTheDocument()
     })
   })
 })

@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Trash2 } from "lucide-react"
+import { RotateCcw, Trash2 } from "lucide-react"
 import {
   getCompanyName,
   getDomain,
@@ -25,10 +25,11 @@ export interface QueueTableProps {
   items: QueueItem[]
   onRowClick: (item: QueueItem) => void
   onCancel: (id: string) => void
+  onRetry: (id: string) => void
   formatRelativeTime: (date: unknown) => string
 }
 
-export function QueueTable({ items, onRowClick, onCancel, formatRelativeTime }: QueueTableProps) {
+export function QueueTable({ items, onRowClick, onCancel, onRetry, formatRelativeTime }: QueueTableProps) {
   return (
     <Table className="rounded-lg border border-border/70 bg-card/60 shadow-sm">
       <TableHeader className="bg-muted/40">
@@ -87,19 +88,36 @@ export function QueueTable({ items, onRowClick, onCancel, formatRelativeTime }: 
                 {item.result_message ?? "—"}
               </TableCell>
               <TableCell className="text-right">
-                {canCancel && item.id && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onCancel(item.id as string)
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
+                <div className="flex items-center justify-end gap-1">
+                  {item.status === "failed" && item.id && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8"
+                      title="Retry this task"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRetry(item.id as string)
+                      }}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {canCancel && item.id && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8"
+                      title="Cancel this task"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onCancel(item.id as string)
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           )

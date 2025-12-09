@@ -8,7 +8,12 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from job_finder.ai.agent_manager import AgentManager, AgentResult
-from job_finder.exceptions import AIProviderError, NoAgentsAvailableError, QuotaExhaustedError
+from job_finder.exceptions import (
+    AIProviderError,
+    NoAgentsAvailableError,
+    QuotaExhaustedError,
+    TransientError,
+)
 
 
 def make_ai_settings(
@@ -280,6 +285,116 @@ class TestAgentManagerExecute:
 
         assert result.model == "gemini-1.5-pro"
         config_loader.increment_agent_usage.assert_called_with("gemini.cli", "gemini-1.5-pro")
+
+    @patch("job_finder.ai.agent_manager.auth_status", return_value=(True, ""))
+    @patch("job_finder.ai.agent_manager._get_provider_class")
+    def test_retries_on_transient_error_then_succeeds(self, mock_get_provider, mock_auth):
+        """Should retry on TransientError and succeed on subsequent attempt."""
+        mock_provider = MagicMock()
+        # Fail first time, succeed second time
+        mock_provider.generate.side_effect = [
+            TransientError("timeout", provider="gemini"),
+            "success after retry",
+        ]
+        mock_get_provider.return_value = lambda model: mock_provider
+
+        config_loader = MagicMock()
+        config_loader.get_ai_settings.return_value = make_ai_settings(
+            agents={"gemini.cli": make_agent_config()},
+            task_fallbacks={"extraction": ["gemini.cli"]},
+        )
+
+        manager = AgentManager(config_loader)
+        result = manager.execute("extraction", "test prompt")
+
+        # Should have succeeded after retry
+        assert result.text == "success after retry"
+        assert result.agent_id == "gemini.cli"
+        # Should have called generate twice (initial + 1 retry)
+        assert mock_provider.generate.call_count == 2
+        # Agent should NOT be disabled (retries succeeded)
+        config_loader.update_agent_status.assert_not_called()
+
+    @patch("job_finder.ai.agent_manager.auth_status", return_value=(True, ""))
+    @patch("job_finder.ai.agent_manager._get_provider_class")
+    def test_retries_twice_then_disables_on_transient_error(self, mock_get_provider, mock_auth):
+        """Should retry 2 times then disable agent after 3 total failures."""
+        gemini_provider = MagicMock()
+        # Fail all 3 attempts for gemini
+        gemini_provider.generate.side_effect = TransientError("timeout", provider="gemini")
+
+        codex_provider = MagicMock()
+        codex_provider.generate.return_value = "success from codex"
+
+        def get_provider(provider, interface):
+            if provider == "gemini":
+                return lambda model: gemini_provider
+            return lambda model: codex_provider
+
+        mock_get_provider.side_effect = get_provider
+
+        config_loader = MagicMock()
+        config_loader.get_ai_settings.return_value = make_ai_settings(
+            agents={
+                "gemini.cli": make_agent_config(),
+                "codex.cli": make_agent_config(provider="codex"),
+            },
+            task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},
+        )
+
+        manager = AgentManager(config_loader)
+        result = manager.execute("extraction", "test prompt")
+
+        # Should have succeeded with fallback agent
+        assert result.agent_id == "codex.cli"
+        assert result.text == "success from codex"
+        # Gemini should have been called 3 times (initial + 2 retries)
+        assert gemini_provider.generate.call_count == 3
+        # First agent should be disabled after exhausting retries
+        config_loader.update_agent_status.assert_called_with(
+            "gemini.cli", "worker", enabled=False, reason="error: timeout"
+        )
+
+    @patch("job_finder.ai.agent_manager.auth_status", return_value=(True, ""))
+    @patch("job_finder.ai.agent_manager._get_provider_class")
+    def test_transient_error_does_not_break_fallback_chain(self, mock_get_provider, mock_auth):
+        """TransientError after retries should continue to next agent, not stop."""
+        gemini_provider = MagicMock()
+        gemini_provider.generate.side_effect = TransientError("timeout", provider="gemini")
+
+        codex_provider = MagicMock()
+        codex_provider.generate.side_effect = TransientError("timeout", provider="codex")
+
+        claude_provider = MagicMock()
+        claude_provider.generate.return_value = "success from claude"
+
+        def get_provider(provider, interface):
+            if provider == "gemini":
+                return lambda model: gemini_provider
+            elif provider == "codex":
+                return lambda model: codex_provider
+            return lambda model: claude_provider
+
+        mock_get_provider.side_effect = get_provider
+
+        config_loader = MagicMock()
+        config_loader.get_ai_settings.return_value = make_ai_settings(
+            agents={
+                "gemini.cli": make_agent_config(),
+                "codex.cli": make_agent_config(provider="codex"),
+                "claude.cli": make_agent_config(provider="claude"),
+            },
+            task_fallbacks={"extraction": ["gemini.cli", "codex.cli", "claude.cli"]},
+        )
+
+        manager = AgentManager(config_loader)
+        result = manager.execute("extraction", "test prompt")
+
+        # Should have succeeded with third agent
+        assert result.agent_id == "claude.cli"
+        # Both gemini and codex should have been tried 3 times each
+        assert gemini_provider.generate.call_count == 3
+        assert codex_provider.generate.call_count == 3
 
 
 class TestAgentManagerBudgetEnforcement:

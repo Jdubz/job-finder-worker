@@ -66,7 +66,7 @@ describe("QueueItemCard", () => {
     })
 
     render(
-      <QueueItemCard item={item} selected={false} onSelect={vi.fn()} onCancel={vi.fn()} />
+      <QueueItemCard item={item} selected={false} onSelect={vi.fn()} onCancel={vi.fn()} onRetry={vi.fn()} />
     )
 
     expect(screen.getByText("Frontend Lead")).toBeInTheDocument()
@@ -79,7 +79,7 @@ describe("QueueItemCard", () => {
   it("falls back when title is missing", () => {
     const item = makeItem({ company_name: "", pipeline_state: undefined })
     render(
-      <QueueItemCard item={item} selected={false} onSelect={vi.fn()} onCancel={vi.fn()} />
+      <QueueItemCard item={item} selected={false} onSelect={vi.fn()} onCancel={vi.fn()} onRetry={vi.fn()} />
     )
 
     expect(screen.getByText("Role not yet detected")).toBeInTheDocument()
