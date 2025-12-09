@@ -175,11 +175,31 @@ export class JobQueueService {
       throw new Error(`Queue item not found: ${id}`)
     }
 
+    // Block moving to pending except via dedicated retry() method
     if (updates.status === 'pending' && existing.status !== 'pending') {
-      throw new Error('Retry is disabled; items cannot be moved back to pending')
+      throw new Error('Use retry() to move failed items back to pending')
     }
 
     return this.repo.update(id, updates)
+  }
+
+  retry(id: string): QueueItem {
+    const existing = this.repo.getById(id)
+    if (!existing) {
+      throw new Error(`Queue item not found: ${id}`)
+    }
+
+    if (existing.status !== 'failed') {
+      throw new Error('Only failed items can be retried')
+    }
+
+    return this.repo.update(id, {
+      status: 'pending',
+      processed_at: null,
+      completed_at: null,
+      error_details: null,
+      updated_at: new Date()
+    })
   }
 
   delete(id: string): void {

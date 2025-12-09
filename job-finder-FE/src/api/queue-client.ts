@@ -110,6 +110,13 @@ export class QueueClient extends BaseApiClient {
     await this.delete(`/queue/${id}`)
   }
 
+  async retryQueueItem(id: string): Promise<QueueItem> {
+    const response = await this.post<ApiSuccessResponse<{ queueItem: QueueItem }>>(
+      `/queue/${id}/retry`
+    )
+    return response.data.queueItem
+  }
+
   async getStats(): Promise<GetQueueStatsResponse["stats"]> {
     const response = await this.get<ApiSuccessResponse<GetQueueStatsResponse>>(`/queue/stats`)
     return response.data.stats

@@ -248,6 +248,10 @@ export class JobQueueRepository {
       ...(updates.pipeline_state !== undefined && { pipeline_state: updates.pipeline_state })
     }
 
+    // Helper to distinguish "not provided" (undefined) from "explicitly null"
+    const resolveNullable = <T>(update: T | undefined | null, existing: T | undefined): T | null =>
+      update === undefined ? (existing ?? null) : update
+
     this.db
       .prepare(
         `UPDATE job_queue
@@ -259,16 +263,16 @@ export class JobQueueRepository {
       .run(
         updates.type ?? existing.type,
         updates.status ?? existing.status,
-        updates.url ?? existing.url ?? null,
-        updates.tracking_id ?? existing.tracking_id ?? null,
-        updates.parent_item_id ?? existing.parent_item_id ?? null,
+        resolveNullable(updates.url, existing.url),
+        resolveNullable(updates.tracking_id, existing.tracking_id),
+        resolveNullable(updates.parent_item_id, existing.parent_item_id),
         serializeJson(Object.keys(nextInput).length ? nextInput : null),
         serializeJson(Object.keys(nextOutput).length ? nextOutput : null),
-        updates.result_message ?? existing.result_message ?? null,
-        updates.error_details ?? existing.error_details ?? null,
+        resolveNullable(updates.result_message, existing.result_message),
+        resolveNullable(updates.error_details, existing.error_details),
         nextUpdatedAt,
-        toISOString(updates.processed_at) ?? toISOString(existing.processed_at) ?? null,
-        toISOString(updates.completed_at) ?? toISOString(existing.completed_at) ?? null,
+        resolveNullable(toISOString(updates.processed_at), toISOString(existing.processed_at)),
+        resolveNullable(toISOString(updates.completed_at), toISOString(existing.completed_at)),
         id
       )
 

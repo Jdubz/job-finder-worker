@@ -160,4 +160,68 @@ describe('job queue contract', () => {
       expect(secondRes.status).toBe(201)
     })
   })
+
+  describe('retry failed items', () => {
+    it('retries a failed item and sets status to pending', async () => {
+      // Create a job and mark it as failed
+      const submitRes = await request(app).post('/queue/jobs').send({
+        url: 'https://example.com/retry-test',
+        companyName: 'Retry Co'
+      })
+      expect(submitRes.status).toBe(201)
+      const itemId = submitRes.body.data.queueItem.id
+
+      // Set to failed with error details
+      db.prepare(
+        'UPDATE job_queue SET status = ?, error_details = ?, completed_at = ? WHERE id = ?'
+      ).run('failed', 'Test error message', new Date().toISOString(), itemId)
+
+      // Retry the item
+      const retryRes = await request(app).post(`/queue/${itemId}/retry`)
+      expect(retryRes.status).toBe(200)
+      expect(retryRes.body.data.queueItem.status).toBe('pending')
+      // error_details and completed_at are cleared (null in DB, undefined in API response)
+      expect(retryRes.body.data.queueItem.error_details).toBeUndefined()
+      expect(retryRes.body.data.queueItem.completed_at).toBeUndefined()
+      expect(retryRes.body.data.message).toBe('Item queued for retry')
+    })
+
+    it('returns 400 when trying to retry a non-failed item', async () => {
+      // Create a job (status is pending by default)
+      const submitRes = await request(app).post('/queue/jobs').send({
+        url: 'https://example.com/retry-pending-test',
+        companyName: 'Pending Co'
+      })
+      expect(submitRes.status).toBe(201)
+      const itemId = submitRes.body.data.queueItem.id
+
+      // Try to retry a pending item
+      const retryRes = await request(app).post(`/queue/${itemId}/retry`)
+      expect(retryRes.status).toBe(400)
+      expect(retryRes.body.error.message).toContain('Only failed items can be retried')
+    })
+
+    it('returns 400 when trying to retry a successful item', async () => {
+      // Create a job and mark it as successful
+      const submitRes = await request(app).post('/queue/jobs').send({
+        url: 'https://example.com/retry-success-test',
+        companyName: 'Success Co'
+      })
+      expect(submitRes.status).toBe(201)
+      const itemId = submitRes.body.data.queueItem.id
+
+      db.prepare('UPDATE job_queue SET status = ? WHERE id = ?').run('success', itemId)
+
+      // Try to retry a successful item
+      const retryRes = await request(app).post(`/queue/${itemId}/retry`)
+      expect(retryRes.status).toBe(400)
+      expect(retryRes.body.error.message).toContain('Only failed items can be retried')
+    })
+
+    it('returns 400 when trying to retry a non-existent item', async () => {
+      const retryRes = await request(app).post('/queue/nonexistent-id/retry')
+      expect(retryRes.status).toBe(400)
+      expect(retryRes.body.error.message).toContain('Queue item not found')
+    })
+  })
 })
