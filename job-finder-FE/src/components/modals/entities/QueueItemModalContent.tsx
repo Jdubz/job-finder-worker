@@ -1,6 +1,11 @@
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { useToast } from "@/components/ui/use-toast"
+import { ExternalLink, Link as LinkIcon, Loader2 } from "lucide-react"
+import { useEntityModal } from "@/contexts/EntityModalContext"
+import { jobListingsClient, jobMatchesClient, companiesClient, jobSourcesClient } from "@/api"
 import {
   getCompanyName,
   getDomain,
@@ -20,10 +25,95 @@ interface QueueItemModalContentProps {
 }
 
 export function QueueItemModalContent({ item, handlers }: QueueItemModalContentProps) {
+  const { toast } = useToast()
+  const { openModal } = useEntityModal()
+  const [loadingKey, setLoadingKey] = useState<string | null>(null)
+
   const title = getJobTitle(item) || getScrapeTitle(item) || getDomain(item.url || "") || "Queue Item Details"
   const company = getCompanyName(item)
   const source = getSourceLabel(item)
   const stage = getStageLabel(item)
+
+  const metadata = (item.metadata ?? {}) as Record<string, unknown>
+  const output = (item.output ?? {}) as Record<string, unknown>
+  const scraped = (item.scraped_data ?? output.scraped_data ?? {}) as Record<string, unknown>
+  const pipeline = (item.pipeline_state ?? output.pipeline_state ?? {}) as Record<string, unknown>
+
+  const getStringField = (obj: Record<string, unknown>, key: string): string | undefined => {
+    const value = obj[key]
+    return typeof value === "string" && value.trim().length > 0 ? value : undefined
+  }
+
+  const findIdInObjects = (key: string): string | undefined =>
+    getStringField(metadata, key) || getStringField(scraped, key) || getStringField(pipeline, key)
+
+  const jobListingId = findIdInObjects("job_listing_id")
+  const companyId = item.company_id || findIdInObjects("company_id")
+  const sourceId = item.source_id || findIdInObjects("source_id")
+
+  const createModalOpener = <T,>(
+    key: string,
+    id: string | undefined,
+    fetcher: () => Promise<T>,
+    onSuccess: (data: T) => void,
+    errorTitle: string
+  ) => {
+    return async () => {
+      if (!id) return
+      setLoadingKey(key)
+      try {
+        const data = await fetcher()
+        onSuccess(data)
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: errorTitle,
+          description: error instanceof Error ? error.message : "Please try again."
+        })
+      } finally {
+        setLoadingKey(null)
+      }
+    }
+  }
+
+  const openListingModal = createModalOpener(
+    "listing",
+    jobListingId,
+    () => jobListingsClient.getListing(jobListingId as string),
+    (listing) => openModal({ type: "jobListing", listing }),
+    "Unable to open job listing"
+  )
+
+  const openMatchModal = createModalOpener(
+    "match",
+    jobListingId,
+    () => jobMatchesClient.listMatches({ jobListingId: jobListingId as string, limit: 1 }),
+    (matches) => {
+      const match = matches[0] as (typeof matches)[number] | undefined
+      if (!match) {
+        toast({ variant: "info", title: "No job match yet", description: "This listing has not produced a match." })
+        return
+      }
+      openModal({ type: "jobMatch", match })
+    },
+    "Unable to open job match"
+  )
+
+  const openCompanyModal = createModalOpener(
+    "company",
+    companyId,
+    () => companiesClient.getCompany(companyId as string),
+    (companyRecord) => openModal({ type: "company", companyId, company: companyRecord }),
+    "Unable to open company"
+  )
+
+  const openSourceModal = createModalOpener(
+    "source",
+    sourceId,
+    () => jobSourcesClient.getJobSource(sourceId as string),
+    (sourceRecord) => openModal({ type: "jobSource", sourceId, source: sourceRecord }),
+    "Unable to open source"
+  )
 
   return (
     <div className="space-y-4 overflow-y-auto flex-1 pr-2" data-testid="queue-item-dialog">
@@ -65,6 +155,51 @@ export function QueueItemModalContent({ item, handlers }: QueueItemModalContentP
           >
             {item.url}
           </a>
+        </div>
+      )}
+
+      {(jobListingId || companyId || sourceId) && (
+        <div className="space-y-3">
+          <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
+            <LinkIcon className="h-3 w-3" /> Related records
+          </Label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {jobListingId && (
+              <div className="space-y-1">
+                <div className="text-xs font-mono text-muted-foreground break-all">Listing: {jobListingId}</div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={openListingModal} disabled={loadingKey === "listing"}>
+                    {loadingKey === "listing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-2 h-4 w-4" />}
+                    Open listing modal
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={openMatchModal} disabled={loadingKey === "match"}>
+                    {loadingKey === "match" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LinkIcon className="mr-2 h-4 w-4" />}
+                    View job match
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {companyId && (
+              <div className="space-y-1">
+                <div className="text-xs font-mono text-muted-foreground break-all">Company: {companyId}</div>
+                <Button size="sm" variant="secondary" onClick={openCompanyModal} disabled={loadingKey === "company"}>
+                  {loadingKey === "company" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Open company modal
+                </Button>
+              </div>
+            )}
+
+            {sourceId && (
+              <div className="space-y-1">
+                <div className="text-xs font-mono text-muted-foreground break-all">Source: {sourceId}</div>
+                <Button size="sm" variant="secondary" onClick={openSourceModal} disabled={loadingKey === "source"}>
+                  {loadingKey === "source" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Open source modal
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
