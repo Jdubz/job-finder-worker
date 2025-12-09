@@ -112,6 +112,119 @@ def test_enrich_from_detail_skips_when_no_url():
     assert scraper._enrich_from_detail(job) == job
 
 
+def test_enrich_smartrecruiters_detail(monkeypatch):
+    """SmartRecruiters detail API should hydrate description/title/location/posted_date."""
+
+    payload = {
+        "name": "Sr Backend Engineer",
+        "releasedDate": "2025-12-08T12:00:00Z",
+        "location": {"fullLocation": "Remote, US"},
+        "jobAd": {
+            "sections": {
+                "jobDescription": {"text": "<p>SR description</p>"},
+                "qualifications": {"text": "<p>Reqs</p>"},
+            }
+        },
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self_inner):
+                return payload
+
+        return Resp()
+
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0)
+
+    cfg = SourceConfig.from_dict(
+        {
+            "type": "api",
+            "url": "https://api.smartrecruiters.com/v1/companies/acme/postings?limit=200",
+            "response_path": "content",
+            "fields": {"title": "name", "url": "ref", "description": "jobAd.sections.jobDescription.text"},
+        }
+    )
+    scraper = GenericScraper(cfg)
+    job = {"url": "https://api.smartrecruiters.com/v1/companies/acme/postings/123", "description": ""}
+
+    enriched = scraper._enrich_from_detail(job)
+    assert enriched["description"] == "<p>SR description</p>"
+    assert enriched["title"] == "Sr Backend Engineer"
+    assert enriched["location"] == "Remote, US"
+    assert enriched["posted_date"] == "2025-12-08T12:00:00Z"
+
+
+def test_enrich_workday_detail(monkeypatch):
+    """Workday detail fetch should hydrate description and normalize URL."""
+
+    payload = {
+        "jobPostingInfo": {
+            "title": "Platform Engineer",
+            "jobDescription": "<p>Build platforms</p>",
+            "qualifications": "<p>5+ years</p>",
+            "location": "San Francisco, CA",
+            "postedOn": "2025-12-07",
+        }
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self_inner):
+                return payload
+
+        fake_get.last_url = url
+        return Resp()
+
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0)
+
+    cfg = SourceConfig.from_dict(
+        {
+            "type": "api",
+            "url": "https://acme.wd5.myworkdayjobs.com/en-US/careers",
+            "response_path": "jobPostings",
+            "fields": {"title": "title", "url": "externalPath"},
+        }
+    )
+    scraper = GenericScraper(cfg)
+    job = {"url": "job/12345", "description": ""}
+
+    enriched = scraper._enrich_from_detail(job)
+    assert enriched["description"] == "<p>Build platforms</p>"
+    assert enriched["title"] == "Platform Engineer"
+    assert enriched["location"] == "San Francisco, CA"
+    assert enriched["posted_date"] == "2025-12-07"
+    assert enriched["url"].endswith("job/12345")
+    assert "job/12345" in fake_get.last_url
+
+
+def test_should_enrich_rules(monkeypatch):
+    cfg = SourceConfig.from_dict(
+        {
+            "type": "api",
+            "url": "https://api.smartrecruiters.com/v1/companies/acme/postings?limit=200",
+            "response_path": "content",
+            "fields": {"title": "name", "url": "ref", "description": "jobAd.sections.jobDescription.text"},
+        }
+    )
+    scraper = GenericScraper(cfg)
+    # Missing description triggers enrichment
+    assert scraper._should_enrich({"description": "", "posted_date": None})
+    # With description and posted_date -> no enrichment unless follow_detail is set
+    assert scraper._should_enrich({"description": "d", "posted_date": "2025-01-01"}) is False
+    scraper.config.follow_detail = True
+    assert scraper._should_enrich({"description": "d", "posted_date": "2025-01-01"}) is True
 # ============================================================
 # Tests for HTML date extraction fallback strategies
 # ============================================================
