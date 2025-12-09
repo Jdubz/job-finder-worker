@@ -19,9 +19,9 @@ const EnvSchema = z.object({
   GOOGLE_API_KEY: z.string().optional(),
   WORKER_RELOAD_URL: z.string().url().optional(),
   WORKER_WS_TOKEN: z.string().optional(),
+  WORKER_URL: z.string().default('http://worker:5555'),
 
-  // Maintenance + log rotation support
-  WORKER_MAINTENANCE_URL: z.string().default('http://worker:5555/maintenance'),
+  // Log rotation support
   LOG_DIR: z.string().default('/logs'),
   LOG_ROTATE_MAX_BYTES: z.coerce.number().positive().default(100 * 1024 * 1024),
   LOG_ROTATE_RETENTION_DAYS: z.coerce.number().positive().int().default(7),

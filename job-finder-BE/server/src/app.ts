@@ -18,6 +18,7 @@ import { buildPromptsRouter } from './modules/prompts/prompts.routes'
 import { buildLoggingRouter } from './modules/logging/logging.routes'
 import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
 import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
+import { buildMaintenanceRouter } from './modules/maintenance'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError, apiErrorHandler } from './middleware/api-error'
 import { buildAuthRouter } from './routes/auth.routes'
@@ -124,6 +125,7 @@ export function buildApp() {
   app.use('/api/companies', buildCompanyRouter())
   app.use('/api/job-sources', buildJobSourceRouter())
   app.use('/api/config', requireRole('admin'), buildConfigRouter())
+  app.use('/api/maintenance', requireRole('admin'), buildMaintenanceRouter())
 
   app.get('/healthz', healthHandler)
   app.get('/readyz', healthHandler)

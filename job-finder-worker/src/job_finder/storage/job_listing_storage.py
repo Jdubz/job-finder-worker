@@ -166,14 +166,25 @@ class JobListingStorage:
             return dict(row) if row else None
 
     def listing_exists(self, url: str) -> bool:
-        """Return True if a normalized URL already exists in job_listings."""
+        """Return True if normalized URL exists in job_listings OR archive.
+
+        Checks both active listings and archived listings to prevent
+        re-queuing old job postings that have been archived.
+        """
         if not url:
             return False
 
         normalized = normalize_url(url)
         with sqlite_connection(self.db_path) as conn:
+            # Check both active and archived listings
             row = conn.execute(
-                "SELECT 1 FROM job_listings WHERE url = ? LIMIT 1", (normalized,)
+                """
+                SELECT 1 FROM job_listings WHERE url = ?
+                UNION ALL
+                SELECT 1 FROM job_listings_archive WHERE url = ?
+                LIMIT 1
+                """,
+                (normalized, normalized),
             ).fetchone()
             return row is not None
 
@@ -182,6 +193,8 @@ class JobListingStorage:
         Batch existence check for URLs.
 
         Returns dict mapping normalized URL -> exists boolean.
+        Checks both active listings and archived listings to prevent
+        re-queuing old job postings that have been archived.
         """
         normalized_urls = [normalize_url(url) for url in urls if url]
         if not normalized_urls:
@@ -194,8 +207,15 @@ class JobListingStorage:
             for chunk_start in range(0, len(normalized_urls), chunk_size):
                 chunk = normalized_urls[chunk_start : chunk_start + chunk_size]
                 placeholders = ",".join("?" for _ in chunk)
-                query = f"SELECT url FROM job_listings WHERE url IN ({placeholders})"
-                rows = conn.execute(query, tuple(chunk)).fetchall()
+                # Check both active and archived listings
+                # Use UNION ALL for performance (url is unique within each table)
+                query = f"""
+                    SELECT url FROM job_listings WHERE url IN ({placeholders})
+                    UNION ALL
+                    SELECT url FROM job_listings_archive WHERE url IN ({placeholders})
+                """
+                # Need to pass chunk twice for both tables
+                rows = conn.execute(query, tuple(chunk) + tuple(chunk)).fetchall()
                 for row in rows:
                     results[row["url"]] = True
 
