@@ -19,6 +19,10 @@ from job_finder.ai.search_client import (
     TavilySearchClient,
     get_search_client,
 )
+from job_finder.ai.wikipedia_client import (
+    WikipediaClient,
+    get_wikipedia_client,
+)
 from job_finder.ai.source_analysis_agent import (
     DisableReason,
     SourceAnalysisAgent,
@@ -49,4 +53,6 @@ __all__ = [
     "TavilySearchClient",
     "BraveSearchClient",
     "get_search_client",
+    "WikipediaClient",
+    "get_wikipedia_client",
 ]

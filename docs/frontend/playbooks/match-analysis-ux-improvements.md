@@ -1,8 +1,8 @@
 # Match Analysis UX & Calculation Plan
 
 > Status: Draft
-> Owner: FE/Worker
-> Last Updated: 2025-12-01
+> Owner: @jdubz
+> Last Updated: 2025-12-09
 
 ## Goals
 - Make match scoring transparent: show base vs. adjusted score and every adjustment applied.

@@ -1,8 +1,7 @@
----
-title: Stateful decision tree worker
-owner: worker-team
-last_updated: 2025-11-25
-status: draft
----
+# Stateful decision tree worker
+
+> Status: Draft
+> Owner: @jdubz
+> Last Updated: 2025-12-09
 
 Placeholder: document the worker decision tree behavior here.

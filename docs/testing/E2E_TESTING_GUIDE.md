@@ -1,8 +1,8 @@
 # E2E Testing Guide
 
 > Status: Active
-> Owner: Engineering Team
-> Last Updated: 2025-11-29
+> Owner: @jdubz
+> Last Updated: 2025-12-09
 
 ## Overview
 

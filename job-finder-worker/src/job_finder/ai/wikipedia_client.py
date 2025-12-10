@@ -1,63 +1,45 @@
-> Status: Active
-> Owner: @jdubz
-> Last Updated: 2025-12-09
+"""Wikipedia API client for company information.
 
-# Company Research Improvements - Phase 3: Wikipedia Integration
-
-## Background
-
-Phases 1-2 of company research improvements have been implemented:
-- Search engine URL filtering (`_is_search_engine_url()`)
-- Multi-query search strategy with fallbacks
-- Workday URL company name extraction (20+ ticker mappings)
-- Source context for disambiguation
-- JSON parsing retry logic
-
-This document covers the remaining Phase 3 work: Wikipedia API integration.
-
-## Problem
-
-For established companies, Wikipedia provides high-quality, structured data that could supplement or replace web search results. Currently, all company enrichment relies on general web search, which may return inconsistent or sparse data for well-known companies.
-
-## Proposed Solution
-
-Add Wikipedia as a high-priority data source for established companies.
-
-### 1. WikipediaClient Class
-
-**File:** `job-finder-worker/src/job_finder/ai/wikipedia_client.py`
-
-```python
-"""Wikipedia API client for company information."""
+Provides structured company data from Wikipedia and Wikidata as a high-quality
+data source for established companies. Used as STEP 0 in the company enrichment
+pipeline, before falling back to web search.
+"""
 
 import logging
 import re
-import requests
 from typing import Dict, Optional
 from urllib.parse import quote
+
+import requests
 
 logger = logging.getLogger(__name__)
 
 
 class WikipediaClient:
-    """Fetch structured company data from Wikipedia."""
+    """Fetch structured company data from Wikipedia and Wikidata."""
 
     BASE_URL = "https://en.wikipedia.org/api/rest_v1"
     SEARCH_URL = "https://en.wikipedia.org/w/api.php"
+    WIKIDATA_URL = "https://www.wikidata.org/w/api.php"
 
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "JobFinderBot/1.0 (job-finder research tool)"
-        })
+        self.session.headers.update(
+            {
+                "User-Agent": "JobFinderBot/1.0 (job-finder research tool; https://github.com/Jdubz/job-finder)"
+            }
+        )
 
     def search_company(self, company_name: str) -> Optional[Dict]:
         """
         Search Wikipedia for a company and extract structured data.
 
+        Args:
+            company_name: Name of the company to search for
+
         Returns:
             Dict with: name, website, about, headquarters, industry,
-                      founded, employee_count, or None if not found
+                      founded, employeeCount, or None if not found
         """
         page_title = self._find_company_page(company_name)
         if not page_title:
@@ -76,7 +58,7 @@ class WikipediaClient:
             "headquarters": infobox.get("headquarters", ""),
             "industry": infobox.get("industry", ""),
             "founded": infobox.get("founded", ""),
-            "employee_count": self._parse_employee_count(infobox.get("num_employees", "")),
+            "employeeCount": self._parse_employee_count(infobox.get("num_employees", "")),
         }
 
     def _find_company_page(self, company_name: str) -> Optional[str]:
@@ -100,16 +82,21 @@ class WikipediaClient:
             if not results:
                 return None
 
+            # Prefer results where company name appears in title
             company_lower = company_name.lower()
             for result in results:
                 title = result.get("title", "")
                 if company_lower in title.lower():
                     return title
 
+            # Fall back to first result
             return results[0].get("title")
 
-        except Exception as e:
+        except requests.RequestException as e:
             logger.warning(f"Wikipedia search failed for {company_name}: {e}")
+            return None
+        except (KeyError, ValueError) as e:
+            logger.debug(f"Wikipedia search parse error for {company_name}: {e}")
             return None
 
     def _get_page_summary(self, title: str) -> Optional[Dict]:
@@ -123,7 +110,7 @@ class WikipediaClient:
                 return None
             response.raise_for_status()
             return response.json()
-        except Exception as e:
+        except requests.RequestException as e:
             logger.warning(f"Wikipedia summary failed for {title}: {e}")
             return None
 
@@ -149,15 +136,23 @@ class WikipediaClient:
                     return self._get_wikidata_properties(wikidata_id)
 
             return {}
-        except Exception as e:
+        except requests.RequestException as e:
             logger.debug(f"Wikidata lookup failed for {title}: {e}")
             return {}
 
     def _get_wikidata_properties(self, entity_id: str) -> Dict:
-        """Fetch company properties from Wikidata."""
+        """Fetch company properties from Wikidata.
+
+        Wikidata property IDs:
+        - P856: official website
+        - P159: headquarters location
+        - P452: industry
+        - P571: inception (founded date)
+        - P1128: employees
+        """
         try:
             response = self.session.get(
-                "https://www.wikidata.org/w/api.php",
+                self.WIKIDATA_URL,
                 params={
                     "action": "wbgetentities",
                     "ids": entity_id,
@@ -178,7 +173,7 @@ class WikipediaClient:
                 "founded": self._get_claim_value(claims, "P571"),
                 "num_employees": self._get_claim_value(claims, "P1128"),
             }
-        except Exception as e:
+        except requests.RequestException as e:
             logger.debug(f"Wikidata fetch failed for {entity_id}: {e}")
             return {}
 
@@ -197,11 +192,19 @@ class WikipediaClient:
                 return value
             if isinstance(value, dict):
                 if "time" in value:
-                    # Time value - extract year
-                    return value["time"][:4]
+                    # Time value - extract year (format: +YYYY-MM-DD...)
+                    time_str = value["time"]
+                    # Handle both +1975-04-04 and similar formats
+                    match = re.search(r"[+-]?(\d{4})", time_str)
+                    if match:
+                        return match.group(1)
+                    return ""
                 if "id" in value:
                     # Entity reference - resolve to label
                     return self._resolve_entity_label(value["id"])
+                if "amount" in value:
+                    # Quantity value (e.g., employee count)
+                    return value["amount"].lstrip("+")
                 return ""
             return str(value)
         except (KeyError, IndexError):
@@ -211,7 +214,7 @@ class WikipediaClient:
         """Resolve a Wikidata entity ID to its English label."""
         try:
             response = self.session.get(
-                "https://www.wikidata.org/w/api.php",
+                self.WIKIDATA_URL,
                 params={
                     "action": "wbgetentities",
                     "ids": entity_id,
@@ -224,7 +227,7 @@ class WikipediaClient:
             response.raise_for_status()
             entity = response.json().get("entities", {}).get(entity_id, {})
             return entity.get("labels", {}).get("en", {}).get("value", "")
-        except Exception:
+        except requests.RequestException:
             return ""
 
     def _parse_employee_count(self, value: str) -> Optional[int]:
@@ -232,63 +235,21 @@ class WikipediaClient:
         if not value:
             return None
         try:
+            # Remove non-digit characters and parse
             digits_only = re.sub(r"[^\d]", "", value)
             if digits_only:
                 return int(digits_only)
         except ValueError:
+            # Conversion failed (shouldn't happen after regex, but be safe)
             pass
         return None
-```
 
-### 2. Integration in CompanyInfoFetcher
 
-**File:** `job-finder-worker/src/job_finder/company_info_fetcher.py`
+def get_wikipedia_client() -> WikipediaClient:
+    """
+    Factory function to get WikipediaClient.
 
-Add Wikipedia as STEP 0 before search queries:
-
-```python
-from job_finder.ai.wikipedia_client import WikipediaClient
-
-class CompanyInfoFetcher:
-    def __init__(self, ...):
-        ...
-        self.wikipedia_client = WikipediaClient()
-
-    def fetch_company_info(self, company_name: str, ...) -> Dict[str, Any]:
-        ...
-        try:
-            # STEP 0: Try Wikipedia first (fast, high-quality for established companies)
-            wiki_info = self._try_wikipedia(company_name)
-            if wiki_info:
-                result = self._merge_company_info(result, wiki_info)
-                logger.info(f"Wikipedia found data for {company_display}")
-                # If Wikipedia gave us good data, we might skip further searches
-                if len(result.get("about", "")) >= 100:
-                    return result
-
-            # STEP 1: Search for company info (existing code)
-            ...
-
-    def _try_wikipedia(self, company_name: str) -> Optional[Dict]:
-        """Attempt Wikipedia lookup for company."""
-        try:
-            return self.wikipedia_client.search_company(company_name)
-        except Exception as e:
-            logger.debug(f"Wikipedia lookup failed for {company_name}: {e}")
-            return None
-```
-
-## Implementation Tasks
-
-- [ ] Create `job-finder-worker/src/job_finder/ai/wikipedia_client.py`
-- [ ] Add `_try_wikipedia()` method to CompanyInfoFetcher
-- [ ] Integrate Wikipedia as STEP 0 in `fetch_company_info()`
-- [ ] Add unit tests for WikipediaClient
-- [ ] Add integration tests for Wikipedia pipeline
-- [ ] Update `__init__.py` exports
-
-## Success Metrics
-
-- Reduce search API calls for Fortune 500 / well-known companies
-- Improve data quality (website, headquarters, employee count) for established companies
-- Maintain current quality for startups/smaller companies (fallback to search)
+    Returns:
+        WikipediaClient instance
+    """
+    return WikipediaClient()

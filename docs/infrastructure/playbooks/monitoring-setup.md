@@ -2,7 +2,7 @@
 
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-25
+> Last Updated: 2025-12-09
 
 Monitoring and alerting setup for all job-finder services (frontend, backend API, worker). This playbook covers implementation patterns, dashboards, and alerting.
 
