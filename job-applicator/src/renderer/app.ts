@@ -315,29 +315,38 @@ async function selectJobMatch(id: string) {
 async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
   documentsList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
 
-  const result = await api.getDocuments(jobMatchId)
+  try {
+    const result = await api.getDocuments(jobMatchId)
 
-  if (result.success && result.data) {
-    documents = result.data
+    if (result.success && Array.isArray(result.data)) {
+      documents = result.data
 
-    // Auto-select logic:
-    // 1. If autoSelectId provided (e.g., newly generated), select it
-    // 2. Otherwise, select the most recent completed document
-    // 3. Documents are already sorted by createdAt desc from API
-    if (autoSelectId) {
-      selectedDocumentId = documents.find((d) => d.id === autoSelectId)?.id || null
-    } else if (!selectedDocumentId) {
-      // Find most recent completed document
-      const completed = documents.find((d) => d.status === "completed")
-      selectedDocumentId = completed?.id || null
+      // Auto-select logic:
+      // 1. If autoSelectId provided (e.g., newly generated), select it
+      // 2. Otherwise, select the most recent completed document
+      // 3. Documents are already sorted by createdAt desc from API
+      if (autoSelectId) {
+        selectedDocumentId = documents.find((d) => d.id === autoSelectId)?.id || null
+      } else if (!selectedDocumentId) {
+        // Find most recent completed document
+        const completed = documents.find((d) => d.status === "completed")
+        selectedDocumentId = completed?.id || null
+      }
+
+      renderDocumentsList()
+      updateUploadButtonsState()
+    } else {
+      documents = []
+      selectedDocumentId = null
+      documentsList.innerHTML = `<div class="empty-placeholder">${result.message || "No documents"}</div>`
+      updateUploadButtonsState()
     }
-
-    renderDocumentsList()
-    updateUploadButtonsState()
-  } else {
+  } catch (err) {
     documents = []
     selectedDocumentId = null
-    documentsList.innerHTML = `<div class="empty-placeholder">${result.message || "No documents"}</div>`
+    const message = err instanceof Error ? err.message : String(err)
+    documentsList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
+    console.error("Failed to load documents:", err)
     updateUploadButtonsState()
   }
 }
