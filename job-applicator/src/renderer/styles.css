@@ -83,6 +83,15 @@ button:disabled {
   background: #6b4a9e;
 }
 
+.btn-submit {
+  background: #10b981;
+  color: #fff;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #059669;
+}
+
 select {
   padding: 8px 12px;
   font-size: 14px;

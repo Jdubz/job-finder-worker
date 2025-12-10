@@ -25,6 +25,14 @@ interface FillInstruction {
   value: string
 }
 
+interface JobExtraction {
+  title: string | null
+  description: string | null
+  location: string | null
+  techStack: string | null
+  companyName: string | null
+}
+
 interface SelectOption {
   value: string
   text: string
@@ -309,6 +317,147 @@ ipcMain.handle("upload-resume", async (): Promise<{ success: boolean; message: s
     return { success: false, message }
   }
 })
+
+// Submit job listing for analysis
+ipcMain.handle(
+  "submit-job",
+  async (_event: IpcMainInvokeEvent, provider: CliProvider): Promise<{ success: boolean; message: string }> => {
+    try {
+      if (!browserView) throw new Error("BrowserView not initialized")
+
+      // 1. Get current URL
+      const url = browserView.webContents.getURL()
+      if (!url || url === "about:blank") {
+        return { success: false, message: "No page loaded - navigate to a job listing first" }
+      }
+
+      console.log(`Extracting job details from: ${url}`)
+
+      // 2. Extract page content (text only, limited to 10k chars)
+      const pageContent: string = await browserView.webContents.executeJavaScript(`
+        document.body.innerText.slice(0, 10000)
+      `)
+
+      if (!pageContent || pageContent.trim().length < 100) {
+        return { success: false, message: "Page content too short - is this a job listing?" }
+      }
+
+      // 3. Use AI CLI to extract job details
+      console.log(`Calling ${provider} CLI for job extraction...`)
+      const extractPrompt = buildExtractionPrompt(pageContent, url)
+      const extracted = await runCliForExtraction(provider, extractPrompt)
+      console.log("Extracted job details:", extracted)
+
+      // 4. Submit to backend API with bypassFilter
+      console.log("Submitting job to queue...")
+      const res = await fetch(`${API_URL}/queue/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url,
+          title: extracted.title,
+          description: extracted.description,
+          location: extracted.location,
+          techStack: extracted.techStack,
+          companyName: extracted.companyName,
+          bypassFilter: true,
+          source: "user_submission",
+        }),
+      })
+
+      if (!res.ok) {
+        const errorText = await res.text()
+        return { success: false, message: `API error (${res.status}): ${errorText.slice(0, 100)}` }
+      }
+
+      const result = await res.json()
+      const queueId = result.data?.id || result.id || "unknown"
+      return { success: true, message: `Job submitted (queue ID: ${queueId})` }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error("Submit job error:", message)
+      return { success: false, message }
+    }
+  }
+)
+
+function buildExtractionPrompt(pageContent: string, url: string): string {
+  return `Extract job listing details from this page content.
+
+URL: ${url}
+
+Page Content:
+${pageContent}
+
+Return a JSON object with these fields (use null if not found):
+{
+  "title": "Job title",
+  "description": "Full job description (include requirements, responsibilities)",
+  "location": "Job location (e.g., Remote, Portland, OR)",
+  "techStack": "Technologies mentioned (comma-separated)",
+  "companyName": "Company name"
+}
+
+Return ONLY valid JSON, no markdown, no explanation.`
+}
+
+function runCliForExtraction(provider: CliProvider, prompt: string): Promise<JobExtraction> {
+  const commands: Record<CliProvider, [string, string[]]> = {
+    claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
+    codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
+    gemini: ["gemini", ["-o", "json", "--yolo"]],
+  }
+
+  const [cmd, args] = commands[provider]
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args)
+    let stdout = ""
+    let stderr = ""
+
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM")
+      reject(new Error(`${provider} CLI timed out after 60s`))
+    }, 60000)
+
+    child.stdin.write(prompt)
+    child.stdin.end()
+
+    child.stdout.on("data", (d) => (stdout += d))
+    child.stderr.on("data", (d) => (stderr += d))
+
+    child.on("error", (err) => {
+      clearTimeout(timeout)
+      reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+    })
+
+    child.on("close", (code) => {
+      clearTimeout(timeout)
+      if (code === 0) {
+        try {
+          // Find JSON object in output
+          const jsonMatch = stdout.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0])
+            resolve({
+              title: parsed.title ?? null,
+              description: parsed.description ?? null,
+              location: parsed.location ?? null,
+              techStack: parsed.techStack ?? null,
+              companyName: parsed.companyName ?? null,
+            })
+          } else {
+            reject(new Error(`${provider} CLI returned no JSON object: ${stdout.slice(0, 200)}`))
+          }
+        } catch {
+          reject(new Error(`${provider} CLI returned invalid JSON: ${stdout.slice(0, 200)}`))
+        }
+      } else {
+        reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
+      }
+    })
+  })
+}
 
 function formatWorkHistory(items: ContentItem[], indent = 0): string {
   const lines: string[] = []

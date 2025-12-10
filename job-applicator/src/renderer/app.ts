@@ -4,6 +4,7 @@ interface ElectronAPI {
   getUrl: () => Promise<string>
   fillForm: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
   uploadResume: () => Promise<{ success: boolean; message: string }>
+  submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
 }
 
 // Extend Window interface
@@ -15,6 +16,7 @@ const goBtn = document.getElementById("goBtn") as HTMLButtonElement
 const providerSelect = document.getElementById("providerSelect") as HTMLSelectElement
 const fillBtn = document.getElementById("fillBtn") as HTMLButtonElement
 const uploadBtn = document.getElementById("uploadBtn") as HTMLButtonElement
+const submitJobBtn = document.getElementById("submitJobBtn") as HTMLButtonElement
 const statusEl = document.getElementById("status") as HTMLSpanElement
 
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
@@ -26,6 +28,7 @@ function setButtonsEnabled(enabled: boolean) {
   goBtn.disabled = !enabled
   fillBtn.disabled = !enabled
   uploadBtn.disabled = !enabled
+  submitJobBtn.disabled = !enabled
 }
 
 // Navigate to URL
@@ -102,6 +105,28 @@ urlInput.addEventListener("keydown", (e) => {
 
 fillBtn.addEventListener("click", fillForm)
 uploadBtn.addEventListener("click", uploadResume)
+submitJobBtn.addEventListener("click", submitJob)
+
+// Submit job listing for analysis
+async function submitJob() {
+  const provider = providerSelect.value as "claude" | "codex" | "gemini"
+
+  try {
+    setButtonsEnabled(false)
+    setStatus(`Extracting job details with ${provider}...`, "loading")
+    const result = await electronAPI.submitJob(provider)
+
+    if (result.success) {
+      setStatus(result.message, "success")
+    } else {
+      setStatus(result.message, "error")
+    }
+  } catch (err) {
+    setStatus(`Submission failed: ${err}`, "error")
+  } finally {
+    setButtonsEnabled(true)
+  }
+}
 
 // Initialize
 setStatus("Ready")
