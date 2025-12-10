@@ -671,7 +671,7 @@ async function uploadResume() {
     } else {
       // Show file path for manual fallback if available
       if (result.filePath) {
-        setStatus(`${result.message}`, "error")
+        setStatus(result.message, "error")
         console.log("Manual upload path:", result.filePath)
       } else {
         setStatus(result.message, "error")

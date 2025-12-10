@@ -292,9 +292,16 @@ ipcMain.handle(
 
       // Resolve file path from document or fallback to env var
       if (options?.documentId) {
+        // Validate documentId format (UUID v4 pattern)
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        if (!uuidPattern.test(options.documentId)) {
+          return { success: false, message: "Invalid document ID format" }
+        }
+
         // Fetch document details from backend
         const docRes = await fetch(`${API_URL}/generator/requests/${options.documentId}`)
         if (!docRes.ok) {
+          console.error(`Failed to fetch document: ${docRes.status} for documentId: ${options.documentId}`)
           return { success: false, message: `Failed to fetch document: ${docRes.status}` }
         }
         const docData = await docRes.json()
@@ -358,7 +365,8 @@ ipcMain.handle(
       }
 
       await targetPage.setInputFiles(fileInputSelector, resolvedPath)
-      return { success: true, message: "Document uploaded", filePath: resolvedPath }
+      const docTypeLabel = options?.type === "coverLetter" ? "Cover letter" : "Resume"
+      return { success: true, message: `${docTypeLabel} uploaded`, filePath: resolvedPath }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return {

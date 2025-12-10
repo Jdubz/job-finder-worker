@@ -234,13 +234,28 @@ Disability Status: ${formatEEOValue("disabilityStatus", profile.eeo.disabilitySt
 `
     : "\n## EEO Information\nNot provided - skip EEO fields\n"
 
+  // Helper to safely extract nested properties with type checking
+  const getNestedString = (obj: Record<string, unknown>, ...keys: string[]): string => {
+    let current: unknown = obj
+    for (const key of keys) {
+      if (current && typeof current === "object" && current !== null && key in current) {
+        current = (current as Record<string, unknown>)[key]
+      } else {
+        return "N/A"
+      }
+    }
+    if (current === null || current === undefined) return "N/A"
+    if (Array.isArray(current)) return current.join(", ") || "N/A"
+    return String(current)
+  }
+
   const jobContextSection = jobMatch
     ? `
 ## Job-Specific Context
-Company: ${(jobMatch.listing as Record<string, unknown>)?.companyName || "Unknown"}
-Role: ${(jobMatch.listing as Record<string, unknown>)?.title || "Unknown"}
-Matched Skills: ${(jobMatch.matchedSkills as string[])?.join(", ") || "N/A"}
-ATS Keywords: ${(jobMatch.resumeIntakeData as Record<string, unknown>)?.atsKeywords?.toString() || "N/A"}
+Company: ${getNestedString(jobMatch, "listing", "companyName")}
+Role: ${getNestedString(jobMatch, "listing", "title")}
+Matched Skills: ${Array.isArray(jobMatch.matchedSkills) ? jobMatch.matchedSkills.join(", ") : "N/A"}
+ATS Keywords: ${getNestedString(jobMatch, "resumeIntakeData", "atsKeywords")}
 `
     : ""
 
@@ -324,13 +339,58 @@ export function validateEnhancedFillInstruction(item: unknown): item is Enhanced
   return true
 }
 
+// Find matching bracket/brace pair starting from given position
+function findMatchingBracket(str: string, startIdx: number, openChar: string, closeChar: string): number {
+  let depth = 0
+  let inString = false
+  let escapeNext = false
+
+  for (let i = startIdx; i < str.length; i++) {
+    const char = str[i]
+
+    if (escapeNext) {
+      escapeNext = false
+      continue
+    }
+
+    if (char === "\\") {
+      escapeNext = true
+      continue
+    }
+
+    if (char === '"') {
+      inString = !inString
+      continue
+    }
+
+    if (inString) continue
+
+    if (char === openChar) {
+      depth++
+    } else if (char === closeChar) {
+      depth--
+      if (depth === 0) {
+        return i
+      }
+    }
+  }
+
+  return -1
+}
+
 // Parse JSON array from CLI output (handles extra text around JSON)
 export function parseJsonArrayFromOutput(output: string): unknown[] {
   const startIdx = output.indexOf("[")
-  const endIdx = output.lastIndexOf("]")
-  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+  if (startIdx === -1) {
     throw new Error(`No JSON array found in output: ${output.slice(0, 200)}`)
   }
+
+  // Find the matching closing bracket
+  const endIdx = findMatchingBracket(output, startIdx, "[", "]")
+  if (endIdx === -1) {
+    throw new Error(`Unmatched JSON array brackets in output: ${output.slice(0, 200)}`)
+  }
+
   const jsonStr = output.substring(startIdx, endIdx + 1)
   const parsed = JSON.parse(jsonStr)
   if (!Array.isArray(parsed)) {
@@ -342,10 +402,16 @@ export function parseJsonArrayFromOutput(output: string): unknown[] {
 // Parse JSON object from CLI output (handles extra text around JSON)
 export function parseJsonObjectFromOutput(output: string): Record<string, unknown> {
   const startIdx = output.indexOf("{")
-  const endIdx = output.lastIndexOf("}")
-  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+  if (startIdx === -1) {
     throw new Error(`No JSON object found in output: ${output.slice(0, 200)}`)
   }
+
+  // Find the matching closing brace
+  const endIdx = findMatchingBracket(output, startIdx, "{", "}")
+  if (endIdx === -1) {
+    throw new Error(`Unmatched JSON object braces in output: ${output.slice(0, 200)}`)
+  }
+
   const jsonStr = output.substring(startIdx, endIdx + 1)
   const parsed = JSON.parse(jsonStr)
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
