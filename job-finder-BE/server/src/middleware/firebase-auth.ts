@@ -10,6 +10,7 @@ import { SESSION_COOKIE } from '../routes/auth.routes'
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
 const IS_TEST = env.NODE_ENV === 'test'
 const CRON_API_KEY = env.CRON_API_KEY
+const ALLOW_LOCALHOST_BYPASS = env.ALLOW_LOCALHOST_BYPASS
 
 export interface AuthenticatedUser {
   uid: string
@@ -131,24 +132,22 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     }
   }
 
-  // Localhost bypass - allow desktop/hosted tools on the same machine when no other auth is present
-  // Must run after cron/dev-token checks, but before session cookie lookup to avoid downgrading
-  if (isLocalhostRequest(req)) {
-    const bypassUser: AuthenticatedUser = {
-      uid: 'localhost-desktop',
-      email: 'desktop@localhost',
-      name: 'Desktop App',
-      roles: ['admin']
-    }
-    ;(req as AuthenticatedRequest).user = bypassUser
-    return next()
-  }
-
   // Check session cookie
   const cookies = req.headers.cookie ? parseCookie(req.headers.cookie) : {}
   const sessionToken = cookies[SESSION_COOKIE]
 
   if (!sessionToken) {
+    // No session cookie: allow localhost bypass if explicitly enabled
+    if (ALLOW_LOCALHOST_BYPASS && !IS_TEST && isLocalhostRequest(req)) {
+      const bypassUser: AuthenticatedUser = {
+        uid: 'localhost-desktop',
+        email: 'desktop@localhost',
+        name: 'Desktop App',
+        roles: ['admin']
+      }
+      ;(req as AuthenticatedRequest).user = bypassUser
+      return next()
+    }
     return next(
       new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Authentication required', { status: 401 })
     )
@@ -157,6 +156,17 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   const sessionUser = userRepository.findBySessionToken(sessionToken)
   if (!sessionUser) {
     clearSessionCookie(res)
+    // Invalid session: still allow localhost bypass if enabled
+    if (ALLOW_LOCALHOST_BYPASS && !IS_TEST && isLocalhostRequest(req)) {
+      const bypassUser: AuthenticatedUser = {
+        uid: 'localhost-desktop',
+        email: 'desktop@localhost',
+        name: 'Desktop App',
+        roles: ['admin']
+      }
+      ;(req as AuthenticatedRequest).user = bypassUser
+      return next()
+    }
     return next(
       new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Invalid session', { status: 401 })
     )
@@ -169,6 +179,17 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   if (expiryMs <= Date.now()) {
     clearSessionCookie(res)
     userRepository.clearSession(sessionUser.id)
+    // Expired session: still allow localhost bypass if enabled
+    if (ALLOW_LOCALHOST_BYPASS && !IS_TEST && isLocalhostRequest(req)) {
+      const bypassUser: AuthenticatedUser = {
+        uid: 'localhost-desktop',
+        email: 'desktop@localhost',
+        name: 'Desktop App',
+        roles: ['admin']
+      }
+      ;(req as AuthenticatedRequest).user = bypassUser
+      return next()
+    }
     return next(
       new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Session expired', { status: 401 })
     )

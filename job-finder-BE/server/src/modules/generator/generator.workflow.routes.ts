@@ -29,6 +29,12 @@ const generatorRequestSchema = z.object({
 
 // Singleton service instance so generation uses shared dependencies
 let serviceInstance: GeneratorWorkflowService | null = null
+
+// Test hook: allow unit tests to inject/reset the service singleton
+export function _setGeneratorWorkflowServiceForTests(instance: GeneratorWorkflowService | null) {
+  serviceInstance = instance
+}
+
 function getService(): GeneratorWorkflowService {
   if (!serviceInstance) {
     serviceInstance = new GeneratorWorkflowService()

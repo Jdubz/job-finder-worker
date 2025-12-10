@@ -1,26 +1,23 @@
 import express from 'express'
 import request from 'supertest'
-import { describe, expect, it, vi, beforeAll } from 'vitest'
+import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest'
 import { generatorStepResponseSchema } from '@shared/types'
+import { _setGeneratorWorkflowServiceForTests } from '../generator.workflow.routes'
 
-vi.mock('../workflow/generator.workflow.service', () => {
-  return {
-    GeneratorWorkflowService: class MockService {
-      async createRequest() {
-        return { requestId: 'req-1', steps: [{ id: 's1' }] }
-      }
-      async runNextStep() {
-        return {
-          status: 'completed',
-          steps: [{ id: 's1', status: 'completed' }],
-          nextStep: null,
-          resumeUrl: 'https://example.com/resume.pdf',
-          coverLetterUrl: null,
-        }
-      }
-    },
+class MockService {
+  async createRequest() {
+    return { requestId: 'req-1', steps: [{ id: 's1' }] }
   }
-})
+  async runNextStep() {
+    return {
+      status: 'completed',
+      steps: [{ id: 's1', status: 'completed' }],
+      nextStep: null,
+      resumeUrl: 'https://example.com/resume.pdf',
+      coverLetterUrl: null,
+    }
+  }
+}
 
 const buildRouter = async () => {
   const { buildGeneratorWorkflowRouter } = await import('../generator.workflow.routes')
@@ -34,7 +31,14 @@ describe('generator step contract (mocked service)', () => {
   let app: express.Express
 
   beforeAll(async () => {
+    // Inject mocked singleton so routes don’t construct the real service (which runs AI)
+    _setGeneratorWorkflowServiceForTests(new MockService() as any)
     app = await buildRouter()
+  })
+
+  afterAll(() => {
+    // Reset singleton after tests
+    _setGeneratorWorkflowServiceForTests(null as any)
   })
 
   it('responds with shared schema on step', async () => {
