@@ -34,67 +34,11 @@ This document tracks implementation gaps between the decision tree architecture 
 
 ## Implementation Gaps
 
-### Gap 2: Full State Machine Enforcement (HIGH PRIORITY)
+### Gap 2: Explicit State Machine (REMOVED)
 
-**Status**: Required for system reliability and observability
+**Decision**: Do not add DB-enforced company/source state machines right now. The schema no longer carries `analysis_status` and introducing status enums would add migration and UI complexity without a clear reliability gain. Current monitoring uses queue events and existing `status` fields on sources; proceed with lightweight event-based visibility and revisit only if debugging gaps emerge.
 
-**Current State**:
-- Companies have `analysis_status` field but only use `"analyzing"` and `"complete"`
-- Sources have `status` field with basic states
-- No enforced state transitions
-- No `analysis_progress` tracking
-
-**Required States for Companies**:
-- `pending` - Created but not yet processing
-- `analyzing` - Currently being processed (in pipeline)
-- `active` - Analysis complete, ready for use
-- `failed` - Analysis failed permanently (after max retries)
-
-**Required States for Sources**:
-- `pending_validation` - Awaiting manual approval (medium/low confidence)
-- `active` - Validated and operational
-- `disabled` - Manually disabled or auto-disabled after failures
-- `failed` - Permanently failed
-
-**Required Implementation**:
-
-1. **State transition enforcement**:
-```python
-class CompanyStatus(str, Enum):
-    PENDING = "pending"
-    ANALYZING = "analyzing"
-    ACTIVE = "active"
-    FAILED = "failed"
-
-VALID_TRANSITIONS = {
-    CompanyStatus.PENDING: [CompanyStatus.ANALYZING],
-    CompanyStatus.ANALYZING: [CompanyStatus.ACTIVE, CompanyStatus.FAILED],
-    CompanyStatus.ACTIVE: [CompanyStatus.ANALYZING],  # Re-analysis
-    CompanyStatus.FAILED: [CompanyStatus.PENDING],    # Manual retry
-}
-
-def transition_status(current: CompanyStatus, new: CompanyStatus) -> bool:
-    if new not in VALID_TRANSITIONS.get(current, []):
-        raise InvalidStateTransition(f"Cannot transition from {current} to {new}")
-    return True
-```
-
-2. **Analysis progress tracking**:
-```python
-analysis_progress: Dict[str, bool] = {
-    "fetch": False,
-    "extract": False,
-    "analyze": False,
-    "save": False,
-}
-```
-
-3. **Update status at each pipeline stage**:
-   - FETCH start: `pending` → `analyzing`
-   - SAVE success: `analyzing` → `active`
-   - Any failure (max retries): `analyzing` → `failed`
-
-**Impact**: High priority - System reliability and debugging
+Action: None. Keep docs aligned with schema; future proposals should include the concrete reliability win before reintroducing statuses.
 
 ---
 
@@ -239,12 +183,7 @@ class QueueItemType(str, Enum):
    - Test health tracking updates
    - Test job listing submission from source scrapes
 
-2. `tests/storage/test_company_status.py` (needed for Gap 2)
-   - Test status transitions (state machine enforcement)
-   - Test invalid transition rejection
-   - Test analysis_progress tracking
-
-3. `tests/queue/test_company_wait_flow.py` (regression)
+2. `tests/queue/test_company_wait_flow.py` (regression)
    - Verify WAIT_COMPANY requeue path: spawn enrichment, increment wait counter, proceed after max waits
    - Ensure `pipeline_state.job_listing_id` persists across requeues
 
@@ -273,14 +212,7 @@ class QueueItemType(str, Enum):
      → Job listing tasks submitted to queue
    ```
 
-3. **State Machine Enforcement** (Gap 2 implementation)
-   ```
-   Company in "pending" state
-     → FETCH starts → transitions to "analyzing"
-     → EXTRACT fails (max retries) → transitions to "failed"
-     → Manual retry → transitions back to "pending"
-     → Invalid transition attempt → raises InvalidStateTransition
-   ```
+3. **(removed)** No state-machine enforcement planned; rely on queue events and source status for observability.
 
 ---
 
