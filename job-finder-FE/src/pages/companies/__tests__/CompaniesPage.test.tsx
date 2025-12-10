@@ -503,6 +503,31 @@ describe("CompaniesPage", () => {
       expect(within(acmeRow).queryByRole("button", { name: /re-analyze/i })).not.toBeInTheDocument()
     })
 
+    it("triggers re-analyze and navigation from list-level button", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      mockSubmitCompany.mockResolvedValueOnce("queue-item-999")
+
+      renderWithProviders()
+
+      await waitFor(() => {
+        expect(screen.getByText("TechCorp")).toBeInTheDocument()
+      })
+
+      const techCorpRow = screen.getByText("TechCorp").closest("tr")!
+      const listButton = within(techCorpRow).getByRole("button", { name: /re-analyze/i })
+      await user.click(listButton)
+
+      await waitFor(() => {
+        expect(mockSubmitCompany).toHaveBeenCalledWith({
+          companyName: "TechCorp",
+          websiteUrl: "https://techcorp.io",
+          companyId: "company-2",
+          allowReanalysis: true,
+        })
+        expect(mockNavigate).toHaveBeenCalledWith("/queue-management")
+      })
+    })
+
     it("should show Re-analyze button in detail modal", async () => {
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()

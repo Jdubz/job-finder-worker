@@ -77,9 +77,17 @@ function getDataStatus(company: Company, isPending: boolean): { label: string; c
 }
 
 /** Badge component showing company data completeness status */
-function CompanyStatusBadge({ company, isPending }: { company: Company; isPending: boolean }) {
-  const status = getDataStatus(company, isPending)
-  return <Badge className={status.color}>{status.label}</Badge>
+function CompanyStatusBadge({
+  company,
+  isPending,
+  status,
+}: {
+  company: Company
+  isPending: boolean
+  status?: { label: string; color: string }
+}) {
+  const computed = status ?? getDataStatus(company, isPending)
+  return <Badge className={computed.color}>{computed.label}</Badge>
 }
 
 export function CompaniesPage() {
@@ -455,6 +463,7 @@ export function CompaniesPage() {
               <TableBody>
                 {filteredCompanies.map((company: Company) => {
                   const isPending = company.id ? pendingCompanyIds.has(company.id) : false
+                  const status = getDataStatus(company, isPending)
                   return (
                     <TableRow
                       key={company.id}
@@ -477,25 +486,29 @@ export function CompaniesPage() {
                           {safeText(company.industry, "")}
                         </div>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground">
-                        {safeText(company.industry)}
-                      </TableCell>
-                      <TableCell>
-                        <CompanyStatusBadge company={company} isPending={isPending} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {getDataStatus(company, isPending).label !== "Complete" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              handleReanalyze(company)
-                            }}
-                          >
-                            Re-analyze
-                          </Button>
-                        )}
+                    <TableCell className="hidden md:table-cell text-muted-foreground">
+                      {safeText(company.industry)}
+                    </TableCell>
+                    <TableCell>
+                      <CompanyStatusBadge company={company} isPending={isPending} status={status} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {status.label !== "Complete" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async (event) => {
+                            event.stopPropagation()
+                            try {
+                              await handleReanalyze(company)
+                            } catch (_err) {
+                              // handleReanalyze already logs; swallow to avoid unhandled rejection
+                            }
+                          }}
+                        >
+                          Re-analyze
+                        </Button>
+                      )}
                       </TableCell>
                     </TableRow>
                   )
