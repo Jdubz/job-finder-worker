@@ -10,6 +10,8 @@ URL is a hint, not a requirement. AI extracts from search results.
 import json
 import logging
 
+from job_finder.ai.agent_manager import AgentManager, NoAgentsAvailableError
+from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import InitializationError
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
@@ -47,6 +49,8 @@ class CompanyProcessor(BaseProcessor):
         self.companies_manager = ctx.companies_manager
         self.sources_manager = ctx.sources_manager
         self.company_info_fetcher = ctx.company_info_fetcher
+        # AgentManager is used for intelligent source discovery (career page selection).
+        self.agent_manager = AgentManager(ctx.config_loader)
 
     # ============================================================
     # SINGLE-PASS PROCESSOR
@@ -429,8 +433,14 @@ class CompanyProcessor(BaseProcessor):
                 logger.debug("No search results for %s careers", company_name)
                 return None
 
-            # Find the best career page URL from results
+            # Step 1: heuristic scoring using aggregator domains from DB/defaults
             career_url = self._find_best_career_url(results, company_name)
+
+            # Step 2: ask an agent to pick the best source when available
+            agent_choice = self._agent_select_career_url(company_name, results, career_url)
+            if agent_choice:
+                career_url = agent_choice
+
             if career_url:
                 logger.info(
                     "Found career page for %s via search: %s",
@@ -521,6 +531,66 @@ class CompanyProcessor(BaseProcessor):
         # Return highest-scoring URL
         scored_urls.sort(key=lambda x: x[0], reverse=True)
         return scored_urls[0][1]
+
+    def _agent_select_career_url(
+        self,
+        company_name: str,
+        results: List[SearchResult],
+        heuristic_choice: Optional[str],
+    ) -> Optional[str]:
+        """
+        Use an AI agent (extraction task) to choose the best career/source URL
+        from search results. Falls back to heuristic choice if the agent is
+        unavailable or returns nothing.
+        """
+        if not results or not self.agent_manager:
+            return None
+
+        try:
+            trimmed = []
+            for idx, r in enumerate(results[:8]):
+                trimmed.append(
+                    {
+                        "rank": idx + 1,
+                        "title": r.title or "",
+                        "url": r.url or "",
+                        "snippet": r.snippet or "",
+                    }
+                )
+
+            aggregator_domains = self.sources_manager.get_aggregator_domains()
+            prompt = (
+                "You are selecting the single best career page or ATS board URL for a company.\n"
+                f"Company: {company_name}\n"
+                "Prefer company-specific pages or ATS boards (e.g., Greenhouse, Lever, Workday, Ashby) "
+                "that list jobs for this company. Avoid news, press, Reddit, LinkedIn, Indeed, "
+                "Glassdoor, or generic aggregators that are not the company's own board.\n"
+                f"Known ATS domains to prioritize: {', '.join(aggregator_domains)}.\n"
+                'Return JSON only in the shape {"best_url": "<url or null>", "reason": "short reason"}.\n'
+                f"Search results: {json.dumps(trimmed)}\n"
+                f"Heuristic choice (may be blank): {heuristic_choice or ''}\n"
+                "If none are suitable, set best_url to null."
+            )
+
+            agent_result = self.agent_manager.execute(
+                task_type="extraction",
+                prompt=prompt,
+                max_tokens=600,
+                temperature=0.0,
+            )
+
+            json_str = extract_json_from_response(agent_result.text)
+            data = json.loads(json_str)
+            best_url = data.get("best_url")
+            if isinstance(best_url, str) and best_url.strip():
+                return best_url.strip()
+            return None
+        except NoAgentsAvailableError as exc:
+            logger.info("Agent unavailable for career page selection: %s", exc)
+            return None
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Agent selection failed for %s: %s", company_name, exc)
+            return None
 
     @contextmanager
     def _handle_company_failure(self, item: JobQueueItem):
