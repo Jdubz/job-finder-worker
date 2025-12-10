@@ -436,8 +436,8 @@ class CompanyProcessor(BaseProcessor):
                 f"Company: {company_name}\n"
                 "Prefer company-specific boards (ATS hosts like Greenhouse/Lever/Workday/Ashby) "
                 "or company-owned /careers or /jobs pages. Avoid generic aggregators (LinkedIn, Indeed, Glassdoor).\n"
-                "Return JSON only as {\"best_url\": "
-                "\"<url or null>\", \"reason\": \"short reason\"}. If none are usable, use null.\n"
+                'Return JSON only as {"best_url": '
+                '"<url or null>", "reason": "short reason"}. If none are usable, use null.\n'
                 f"Search results: {json.dumps(trimmed)}\n"
             )
 

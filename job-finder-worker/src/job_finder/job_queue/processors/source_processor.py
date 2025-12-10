@@ -206,7 +206,9 @@ class SourceProcessor(BaseProcessor):
                         disabled_notes = validation.get("reason") or disabled_notes
                     elif validation.get("decision") == "update_config":
                         updated_config = validation.get("config") or source_config
-                        retry = self._probe_config(updated_config.get("type", source_type), updated_config)
+                        retry = self._probe_config(
+                            updated_config.get("type", source_type), updated_config
+                        )
                         if retry.status == "success":
                             source_config = updated_config
                             probe_result = retry
@@ -215,7 +217,9 @@ class SourceProcessor(BaseProcessor):
                             probe_result = retry
                         else:
                             should_disable = True
-                            disabled_notes = retry.hint or validation.get("reason") or disabled_notes
+                            disabled_notes = (
+                                retry.hint or validation.get("reason") or disabled_notes
+                            )
                     # valid_empty just passes through (active with 0 jobs)
 
             # Attach probe diagnostics
@@ -551,8 +555,8 @@ class SourceProcessor(BaseProcessor):
             f"Status: {probe.status_code or 'n/a'}\n"
             "Sample (truncated):\n" + sample + "\n"
             "Decide: valid_empty (board is legit but empty) | update_config (return fixed config) | invalid.\n"
-            "Respond JSON: {\"decision\": "
-            "\"valid_empty|update_config|invalid\", \"reason\": \"short\", \"config\": {..optional..}}."
+            'Respond JSON: {"decision": '
+            '"valid_empty|update_config|invalid", "reason": "short", "config": {..optional..}}.'
         )
 
         try:
