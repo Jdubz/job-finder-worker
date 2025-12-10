@@ -325,6 +325,8 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     typeof skillMatch.yearsMultiplier !== "number" ||
     typeof skillMatch.maxYearsBonus !== "number" ||
     typeof skillMatch.missingScore !== "number" ||
+    !Array.isArray(skillMatch.missingIgnore) ||
+    !skillMatch.missingIgnore.every(isString) ||
     typeof skillMatch.analogScore !== "number" ||
     typeof skillMatch.maxBonus !== "number" ||
     typeof skillMatch.maxPenalty !== "number" ||
@@ -342,7 +344,11 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
   if (
     (salary.minimum !== null && typeof salary.minimum !== "number") ||
     (salary.target !== null && typeof salary.target !== "number") ||
-    typeof salary.belowTargetScore !== "number"
+    typeof salary.belowTargetScore !== "number" ||
+    typeof salary.missingSalaryScore !== "number" ||
+    typeof salary.meetsTargetScore !== "number" ||
+    typeof salary.equityScore !== "number" ||
+    typeof salary.contractScore !== "number"
   ) {
     return false
   }
