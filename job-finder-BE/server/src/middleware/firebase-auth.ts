@@ -98,21 +98,6 @@ export function isLocalhostRequest(req: Request): boolean {
  * Localhost requests: Bypass auth for desktop app running on same machine
  */
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
-  // Localhost bypass - allows desktop app on same machine without auth
-  // IMPORTANT: Only enabled when ALLOW_LOCALHOST_BYPASS=true (disabled by default)
-  // SECURITY: Requires port to be bound to 127.0.0.1 only, and trust proxy must be disabled
-  if (env.ALLOW_LOCALHOST_BYPASS && isLocalhostRequest(req)) {
-    const user: AuthenticatedUser = {
-      uid: 'localhost-desktop',
-      email: 'desktop@localhost',
-      name: 'Desktop App',
-      // Use limited 'editor' role instead of 'admin' to reduce privilege escalation risk
-      roles: ['editor']
-    }
-    ;(req as AuthenticatedRequest).user = user
-    return next()
-  }
-
   // Machine key bypass (for internal cron or other trusted automation)
   const cronKey = req.headers['x-cron-key'] || req.headers['x-api-key']
   if (
@@ -144,6 +129,19 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
       ;(req as AuthenticatedRequest).user = user
       return next()
     }
+  }
+
+  // Localhost bypass - allow desktop/hosted tools on the same machine when no other auth is present
+  // Must run after cron/dev-token checks, but before session cookie lookup to avoid downgrading
+  if (isLocalhostRequest(req)) {
+    const bypassUser: AuthenticatedUser = {
+      uid: 'localhost-desktop',
+      email: 'desktop@localhost',
+      name: 'Desktop App',
+      roles: ['admin']
+    }
+    ;(req as AuthenticatedRequest).user = bypassUser
+    return next()
   }
 
   // Check session cookie
