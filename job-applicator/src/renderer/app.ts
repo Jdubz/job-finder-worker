@@ -129,7 +129,6 @@ console.log("[app.ts] electronAPI found!")
 const api = window.electronAPI
 
 // State
-let sidebarOpen = true // Start with sidebar open by default
 let selectedJobMatchId: string | null = null
 let selectedDocumentId: string | null = null
 let jobMatches: JobMatchListItem[] = []
@@ -160,7 +159,6 @@ const fillBtn = getElement<HTMLButtonElement>("fillBtn")
 const uploadBtn = getElement<HTMLButtonElement>("uploadBtn")
 const submitJobBtn = getElement<HTMLButtonElement>("submitJobBtn")
 const statusEl = getElement<HTMLSpanElement>("status")
-const sidebarToggle = getElement<HTMLButtonElement>("sidebarToggle")
 
 // DOM elements - Sidebar
 const sidebar = getElement<HTMLDivElement>("sidebar")
@@ -210,17 +208,6 @@ function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "comp
   updateWorkflowProgress()
 }
 
-// Sidebar toggle
-async function toggleSidebar() {
-  sidebarOpen = !sidebarOpen
-  sidebar.classList.toggle("open", sidebarOpen)
-  await api.setSidebarState(sidebarOpen)
-
-  // Load job matches when opening sidebar for the first time
-  if (sidebarOpen && jobMatches.length === 0) {
-    await loadJobMatches()
-  }
-}
 
 // Load job matches from backend
 async function loadJobMatches() {
@@ -675,11 +662,6 @@ function renderFillResults(summary: FormFillSummary) {
     </div>
   `
 
-  // Open sidebar to show results if not already open
-  if (!sidebarOpen) {
-    toggleSidebar()
-  }
-
   // Scroll to results
   resultsContent.scrollIntoView({ behavior: "smooth" })
 }
@@ -755,7 +737,6 @@ function escapeAttr(str: string): string {
 // Initialize application when DOM is ready
 function initializeApp() {
   // Event listeners
-  sidebarToggle.addEventListener("click", toggleSidebar)
   goBtn.addEventListener("click", navigate)
   urlInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {

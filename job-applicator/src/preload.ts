@@ -21,10 +21,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Job submission
   submitJob: (provider: "claude" | "codex" | "gemini") => ipcRenderer.invoke("submit-job", provider),
 
-  // Sidebar
-  setSidebarState: (open: boolean) => ipcRenderer.invoke("set-sidebar-state", open),
-  getSidebarState: () => ipcRenderer.invoke("get-sidebar-state"),
-
   // CDP status
   getCdpStatus: () => ipcRenderer.invoke("get-cdp-status"),
 

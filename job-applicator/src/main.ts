@@ -75,17 +75,15 @@ const MAX_GENERATION_STEPS = 20
 // Global state
 let mainWindow: BrowserWindow | null = null
 let browserView: BrowserView | null = null
-let sidebarOpen = false
 
-// Update BrowserView bounds based on sidebar state
+// Update BrowserView bounds (sidebar is always visible, offset by SIDEBAR_WIDTH)
 function updateBrowserViewBounds(): void {
   if (!browserView || !mainWindow) return
   const bounds = mainWindow.getBounds()
-  const offsetX = sidebarOpen ? SIDEBAR_WIDTH : 0
   browserView.setBounds({
-    x: offsetX,
+    x: SIDEBAR_WIDTH,
     y: TOOLBAR_HEIGHT,
-    width: bounds.width - offsetX,
+    width: bounds.width - SIDEBAR_WIDTH,
     height: bounds.height - TOOLBAR_HEIGHT,
   })
 }
@@ -498,16 +496,6 @@ ipcMain.handle(
     }
   }
 )
-
-// Sidebar state handlers
-ipcMain.handle("set-sidebar-state", async (_event: IpcMainInvokeEvent, open: boolean): Promise<void> => {
-  sidebarOpen = open
-  updateBrowserViewBounds()
-})
-
-ipcMain.handle("get-sidebar-state", async (): Promise<{ open: boolean }> => {
-  return { open: sidebarOpen }
-})
 
 // CDP connection status - always available now using native Electron debugger
 ipcMain.handle("get-cdp-status", async (): Promise<{ connected: boolean; message?: string }> => {
