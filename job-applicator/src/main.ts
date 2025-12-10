@@ -45,7 +45,9 @@ import {
 } from "./utils.js"
 
 // Configuration from environment
-// The API URL defaults to localhost:3000 which bypasses auth when running on the same machine
+// The API URL defaults to localhost:3000 which connects to the local development server.
+// The server's firebase-auth middleware bypasses authentication for localhost requests
+// when ALLOW_LOCALHOST_BYPASS=true is set in the server environment.
 const API_URL = process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
 // Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
 const ARTIFACTS_DIR = process.env.GENERATOR_ARTIFACTS_DIR || "/data/artifacts"
@@ -57,8 +59,8 @@ function fetchOptions(options: RequestInit = {}): RequestInit {
   return { ...options, headers }
 }
 
-// Note: HTTP is expected for localhost API (127.0.0.1:3000) - it's secure because
-// the port is only bound to localhost and the server bypasses auth for local requests
+// Note: HTTP is expected for localhost API (localhost:3000) - it's secure because
+// the port is only bound to 127.0.0.1 and requires ALLOW_LOCALHOST_BYPASS=true on server
 
 // Layout constants
 const TOOLBAR_HEIGHT = 60

@@ -54,13 +54,25 @@ function extractBearerToken(req: Request): string | null {
 }
 
 /**
- * Check if request is from localhost (127.0.0.1 or ::1)
- * Used to allow desktop app access without auth when running on same machine
+ * Check if request is from localhost (127.0.0.1, ::1, or ::ffff:127.x.x.x).
+ * Used to allow desktop app access without auth when running on same machine.
+ *
+ * SECURITY: This check assumes Express's `trust proxy` is NOT enabled.
+ * If `trust proxy` is enabled, an attacker could spoof the client IP via headers.
+ * Always ensure `app.set('trust proxy', false)` when using localhost bypass.
  */
 export function isLocalhostRequest(req: Request): boolean {
-  const ip = req.ip || req.socket?.remoteAddress || ''
-  // Check for IPv4 localhost, IPv6 localhost, and docker bridge IPs
-  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+  // Prefer raw socket address which is not affected by trust proxy
+  const ip = req.socket?.remoteAddress || req.ip || ''
+
+  // IPv4 localhost
+  if (ip === '127.0.0.1') return true
+  // IPv6 localhost
+  if (ip === '::1') return true
+  // IPv4-mapped IPv6 localhost (::ffff:127.x.x.x range)
+  if (/^::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
+
+  return false
 }
 
 /**
@@ -73,13 +85,14 @@ export function isLocalhostRequest(req: Request): boolean {
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
   // Localhost bypass - allows desktop app on same machine without auth
   // IMPORTANT: Only enabled when ALLOW_LOCALHOST_BYPASS=true (disabled by default)
-  // This is secure because: (1) opt-in only, (2) port should be bound to 127.0.0.1
+  // SECURITY: Requires port to be bound to 127.0.0.1 only, and trust proxy must be disabled
   if (env.ALLOW_LOCALHOST_BYPASS && isLocalhostRequest(req)) {
     const user: AuthenticatedUser = {
       uid: 'localhost-desktop',
       email: 'desktop@localhost',
       name: 'Desktop App',
-      roles: ['admin']
+      // Use limited 'editor' role instead of 'admin' to reduce privilege escalation risk
+      roles: ['editor']
     }
     ;(req as AuthenticatedRequest).user = user
     return next()
