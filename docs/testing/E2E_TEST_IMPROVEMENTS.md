@@ -25,12 +25,10 @@ This document outlines improvements to the E2E test suite and CI integration to 
 
 ## Identified Gaps
 
-1. **No CI Integration**: E2E tests don't run on pull requests
-2. **No Test Artifacts**: Screenshots/videos not saved on failure
-3. **No Coverage Reporting**: No e2e coverage metrics collected
-4. **No Flakiness Tracking**: No retry logic or failure analysis
-5. **Separate Test Runners**: Playwright and Vitest run independently
-6. **No Performance Benchmarks**: No metrics on test execution time
+1. **Playwright is non-blocking**: Job runs but `continue-on-error: true` — failures don't fail PRs.
+2. **No coverage/metrics**: Vitest e2e lacks coverage publishing; Playwright duration/flakiness not tracked.
+3. **No retries/critical tags**: Playwright lacks retry + @critical tagging to isolate high-signal flows.
+4. **Separate runners**: Playwright and Vitest run independently; optional unified `test:e2e:all` script would aid local DX.
 
 ## Proposed Improvements
 
