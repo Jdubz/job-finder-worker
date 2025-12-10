@@ -8,6 +8,10 @@ on:
       reason:
         description: "Optional context for manual deploy"
         required: false
+      force_all:
+        description: "Force deploy all services"
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-main
@@ -17,7 +21,39 @@ permissions:
   contents: read
 
 jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      worker: ${{ steps.filter.outputs.worker }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'job-finder-BE/**'
+              - 'shared/**'
+              - 'infra/**'
+              - 'package.json'
+              - 'package-lock.json'
+            frontend:
+              - 'job-finder-FE/**'
+              - 'shared/**'
+              - 'package.json'
+              - 'package-lock.json'
+            worker:
+              - 'job-finder-worker/**'
+              - 'infra/**'
+
   build-images:
+    needs: detect-changes
+    if: |
+      github.event.inputs.force_all == 'true' ||
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -27,6 +63,9 @@ jobs:
       OWNER: ${{ github.repository_owner }}
       API_IMAGE: ghcr.io/jdubz/job-finder-worker/api:latest
       WORKER_IMAGE: ghcr.io/jdubz/job-finder-worker/worker:latest
+    outputs:
+      api_built: ${{ steps.build-api.outcome == 'success' }}
+      worker_built: ${{ steps.build-worker.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v4
       - name: Show trigger metadata
@@ -34,6 +73,9 @@ jobs:
           echo "event=${{ github.event_name }}"
           echo "ref=${{ github.ref }}"
           echo "sha=${{ github.sha }}"
+          echo "backend_changed=${{ needs.detect-changes.outputs.backend }}"
+          echo "worker_changed=${{ needs.detect-changes.outputs.worker }}"
+          echo "force_all=${{ github.event.inputs.force_all }}"
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -45,6 +87,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push API image
+        id: build-api
+        if: github.event.inputs.force_all == 'true' || needs.detect-changes.outputs.backend == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -53,6 +97,8 @@ jobs:
           platforms: linux/amd64
           tags: ${{ env.API_IMAGE }}
       - name: Build and push worker image
+        id: build-worker
+        if: github.event.inputs.force_all == 'true' || needs.detect-changes.outputs.worker == 'true'
         uses: docker/build-push-action@v6
         with:
           context: ./job-finder-worker
@@ -62,7 +108,11 @@ jobs:
           tags: ${{ env.WORKER_IMAGE }}
 
   deploy-backend:
-    needs: build-images
+    needs: [detect-changes, build-images]
+    if: |
+      always() &&
+      (github.event.inputs.force_all == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.worker == 'true') &&
+      (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -84,7 +134,8 @@ jobs:
         run: ./scripts/deploy.sh
 
   deploy-frontend:
-    needs: build-images
+    needs: detect-changes
+    if: github.event.inputs.force_all == 'true' || needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     environment: production
     steps:
