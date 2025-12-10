@@ -293,7 +293,7 @@ ipcMain.handle(
 
       // Profile is required
       if (profileResult.status === "rejected") {
-        const errorMsg = getUserFriendlyErrorMessage(profileResult.reason)
+        const errorMsg = getUserFriendlyErrorMessage(profileResult.reason, logger)
         throw new Error(`Failed to fetch profile: ${errorMsg}`)
       }
       const profileRes = profileResult.value
@@ -634,7 +634,7 @@ ipcMain.handle(
 
       return { success: true, data: matches }
     } catch (err) {
-      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
     }
   }
@@ -655,7 +655,7 @@ ipcMain.handle(
       const match = data?.data?.match || data?.data || data?.match || data
       return { success: true, data: match }
     } catch (err) {
-      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
     }
   }
@@ -688,7 +688,7 @@ ipcMain.handle(
       }
       return { success: true, data: documents }
     } catch (err) {
-      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
     }
   }
@@ -716,7 +716,7 @@ ipcMain.handle(
       }
       return { success: true }
     } catch (err) {
-      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
     }
   }
@@ -767,7 +767,7 @@ ipcMain.handle(
 
       return { success: true, data: null } // No match found
     } catch (err) {
-      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
     }
   }

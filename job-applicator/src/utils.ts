@@ -1,3 +1,84 @@
+/**
+ * Utility functions for the job-applicator Electron app.
+ *
+ * ## Error Handling Patterns
+ *
+ * This module provides utilities for consistent error handling across IPC handlers.
+ * Use these patterns to ensure user-friendly error messages and proper logging.
+ *
+ * ### Pattern 1: Simple IPC Handler (recommended for new handlers)
+ *
+ * Use `createIpcHandler` wrapper for automatic error handling and logging:
+ *
+ * ```typescript
+ * ipcMain.handle("get-data", createIpcHandler({
+ *   name: "get-data",
+ *   logger,
+ * }, async (_event, id: string) => {
+ *   const fetchResult = await fetchForIpc(
+ *     `${API_URL}/data/${id}`,
+ *     fetchOptions(),
+ *     { name: "get-data", logger }
+ *   )
+ *   if (!fetchResult.success) return fetchResult
+ *
+ *   const data = await fetchResult.response.json()
+ *   return { success: true, data }
+ * }))
+ * ```
+ *
+ * ### Pattern 2: Manual Error Handling (for complex handlers)
+ *
+ * For handlers that need custom logic, use the utilities directly:
+ *
+ * ```typescript
+ * ipcMain.handle("complex-action", async (_event, params) => {
+ *   try {
+ *     const res = await fetchWithRetry(url, options, { maxRetries: 2, timeoutMs: 15000 })
+ *
+ *     if (!res.ok) {
+ *       const errorMsg = await parseApiError(res)
+ *       return { success: false, message: errorMsg }
+ *     }
+ *
+ *     const data = await res.json()
+ *     // Validate response structure
+ *     if (!data?.items || !Array.isArray(data.items)) {
+ *       return { success: false, message: "Invalid response format" }
+ *     }
+ *
+ *     return { success: true, data: data.items }
+ *   } catch (err) {
+ *     const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
+ *     return { success: false, message }
+ *   }
+ * })
+ * ```
+ *
+ * ### Key Utilities
+ *
+ * - `fetchWithRetry(url, options, config)` - Fetch with timeout and retry support
+ * - `parseApiError(response)` - Extract error message from API response
+ * - `getUserFriendlyErrorMessage(error, logger?)` - Convert technical errors to user-friendly messages
+ * - `createIpcHandler(config, handler)` - Wrapper with automatic error handling
+ * - `fetchForIpc(url, options, config)` - Fetch wrapper for IPC handlers
+ *
+ * ### Response Validation
+ *
+ * Always validate response structure before accessing nested properties:
+ *
+ * ```typescript
+ * const data = await res.json()
+ * // Bad: data.items.map(...) - could throw if items is undefined
+ * // Good: Validate first
+ * if (!data || !Array.isArray(data.items)) {
+ *   return { success: false, message: "Invalid response" }
+ * }
+ * ```
+ *
+ * @module utils
+ */
+
 import * as path from "path"
 
 // Configuration from environment (can be overridden in tests)
@@ -435,10 +516,22 @@ export async function parseApiError(response: Response): Promise<string> {
   return friendlyMessage
 }
 
+/** Logger interface for optional debug logging */
+interface ErrorLogger {
+  debug(...args: unknown[]): void
+}
+
+/** Maximum length for user-facing error messages */
+const MAX_ERROR_MESSAGE_LENGTH = 150
+
 /**
- * Map generic error messages to user-friendly versions
+ * Map generic error messages to user-friendly versions.
+ * Optionally logs full error message before truncation for debugging.
+ *
+ * @param error - The error to convert
+ * @param logger - Optional logger for debug output (logs full message before truncation)
  */
-export function getUserFriendlyErrorMessage(error: Error | string): string {
+export function getUserFriendlyErrorMessage(error: Error | string, logger?: ErrorLogger): string {
   const message = typeof error === "string" ? error : error.message
 
   // Network errors
@@ -473,7 +566,15 @@ export function getUserFriendlyErrorMessage(error: Error | string): string {
   }
 
   // Return original if no mapping found, but truncate if too long
-  return message.length > 150 ? message.slice(0, 147) + "..." : message
+  if (message.length > MAX_ERROR_MESSAGE_LENGTH) {
+    // Log full message for debugging before truncating for UI
+    if (logger) {
+      logger.debug("Error message truncated for UI. Full message:", message)
+    }
+    return message.slice(0, MAX_ERROR_MESSAGE_LENGTH - 3) + "..."
+  }
+
+  return message
 }
 
 // =============================================================================
@@ -608,7 +709,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Standard API result type
+ * Standard API result type for IPC handlers
  */
 export interface ApiResult<T = unknown> {
   success: boolean
@@ -618,5 +719,118 @@ export interface ApiResult<T = unknown> {
     code: string
     message: string
     details?: unknown
+  }
+}
+
+// =============================================================================
+// IPC Handler Utilities
+// =============================================================================
+
+/**
+ * Standard result type for IPC handlers
+ */
+export interface IpcResult<T = unknown> {
+  success: boolean
+  data?: T
+  message?: string
+}
+
+/**
+ * Configuration for IPC handler wrapper
+ */
+export interface IpcHandlerConfig {
+  /** Handler name for logging */
+  name: string
+  /** Optional logger instance */
+  logger?: ErrorLogger & { info(...args: unknown[]): void; error(...args: unknown[]): void }
+}
+
+/**
+ * Creates a standardized IPC handler wrapper with consistent error handling.
+ *
+ * Features:
+ * - Logs handler start/completion with timing
+ * - Catches all errors and returns user-friendly messages
+ * - Ensures consistent return type { success, data?, message? }
+ *
+ * @example
+ * ```typescript
+ * ipcMain.handle("my-action", createIpcHandler({
+ *   name: "my-action",
+ *   logger,
+ * }, async (event, params) => {
+ *   // Your handler logic here
+ *   const result = await doSomething(params)
+ *   return { success: true, data: result }
+ * }))
+ * ```
+ */
+export function createIpcHandler<TArgs extends unknown[], TData>(
+  config: IpcHandlerConfig,
+  handler: (...args: TArgs) => Promise<IpcResult<TData>>
+): (...args: TArgs) => Promise<IpcResult<TData>> {
+  return async (...args: TArgs): Promise<IpcResult<TData>> => {
+    const startTime = Date.now()
+    const { name, logger } = config
+
+    try {
+      logger?.info(`[${name}] Starting...`)
+      const result = await handler(...args)
+      const duration = Date.now() - startTime
+      logger?.info(`[${name}] Completed in ${duration}ms`)
+      return result
+    } catch (err) {
+      const duration = Date.now() - startTime
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      logger?.error(`[${name}] Failed after ${duration}ms:`, errorMessage)
+
+      const friendlyMessage = getUserFriendlyErrorMessage(
+        err instanceof Error ? err : new Error(String(err)),
+        logger
+      )
+      return { success: false, message: friendlyMessage }
+    }
+  }
+}
+
+/**
+ * Wraps a fetch call with standard error handling for IPC handlers.
+ *
+ * @example
+ * ```typescript
+ * const result = await fetchForIpc(
+ *   `${API_URL}/endpoint`,
+ *   fetchOptions(),
+ *   { name: "get-data", logger }
+ * )
+ * if (!result.success) return result
+ * // Use result.response
+ * ```
+ */
+export async function fetchForIpc(
+  url: string,
+  options: RequestInit,
+  config: IpcHandlerConfig & { retries?: number; timeoutMs?: number }
+): Promise<{ success: true; response: Response } | { success: false; message: string }> {
+  const { name, logger, retries = 2, timeoutMs = 15000 } = config
+
+  try {
+    const response = await fetchWithRetry(url, options, { maxRetries: retries, timeoutMs })
+
+    if (!response.ok) {
+      const errorMsg = await parseApiError(response)
+      logger?.error(`[${name}] HTTP ${response.status}:`, errorMsg)
+      return { success: false, message: errorMsg }
+    }
+
+    return { success: true, response }
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    logger?.error(`[${name}] Fetch failed:`, errorMessage)
+    const friendlyMessage = getUserFriendlyErrorMessage(
+      err instanceof Error ? err : new Error(String(err)),
+      logger
+    )
+    return { success: false, message: friendlyMessage }
   }
 }
