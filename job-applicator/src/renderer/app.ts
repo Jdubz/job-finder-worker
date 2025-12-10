@@ -218,13 +218,21 @@ function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "comp
 async function loadJobMatches() {
   jobList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
 
-  const result = await api.getJobMatches({ limit: 50, status: "active" })
+  try {
+    const result = await api.getJobMatches({ limit: 50, status: "active" })
 
-  if (result.success && result.data) {
-    jobMatches = result.data
-    renderJobList()
-  } else {
-    jobList.innerHTML = `<div class="empty-placeholder">${result.message || "Failed to load"}</div>`
+    if (result.success && Array.isArray(result.data)) {
+      jobMatches = result.data
+      renderJobList()
+    } else {
+      jobMatches = []
+      jobList.innerHTML = `<div class="empty-placeholder">${result.message || "Failed to load job matches"}</div>`
+    }
+  } catch (err) {
+    jobMatches = []
+    const message = err instanceof Error ? err.message : String(err)
+    jobList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
+    console.error("Failed to load job matches:", err)
   }
 }
 

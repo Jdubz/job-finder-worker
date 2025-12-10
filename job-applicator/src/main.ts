@@ -1,9 +1,14 @@
-import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent } from "electron"
+import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent, globalShortcut, Menu } from "electron"
 import { spawn } from "child_process"
 import * as path from "path"
 import * as fs from "fs"
 import * as os from "os"
 import { logger } from "./logger.js"
+
+// Disable GPU acceleration to fix DevTools issues on Linux
+app.disableHardwareAcceleration()
+app.commandLine.appendSwitch("disable-gpu")
+app.commandLine.appendSwitch("disable-software-rasterizer")
 
 logger.info("Main process starting...")
 
@@ -36,6 +41,12 @@ import type {
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
+import type {
+  ApiResponse,
+  ApiErrorResponse,
+  JobMatchWithListing,
+  ListJobMatchesResponse,
+} from "@shared/types"
 import {
   normalizeUrl,
   resolveDocumentPath,
@@ -204,6 +215,20 @@ async function createWindow(): Promise<void> {
 
   mainWindow.on("resize", () => {
     updateBrowserViewBounds()
+  })
+
+  // Keyboard shortcuts for DevTools
+  // Ctrl+Shift+I = Main window (sidebar) DevTools
+  // Ctrl+Shift+J = BrowserView (web page) DevTools
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.control && input.shift && input.key.toLowerCase() === "i") {
+      event.preventDefault()
+      mainWindow?.webContents.toggleDevTools()
+    }
+    if (input.control && input.shift && input.key.toLowerCase() === "j") {
+      event.preventDefault()
+      browserView?.webContents.toggleDevTools()
+    }
   })
 }
 
@@ -531,16 +556,24 @@ ipcMain.handle(
   async (
     _event: IpcMainInvokeEvent,
     options?: { limit?: number; status?: string }
-  ): Promise<{ success: boolean; data?: unknown[]; message?: string }> => {
+  ): Promise<{ success: boolean; data?: JobMatchWithListing[]; message?: string }> => {
     try {
       const limit = options?.limit || 50
       const status = options?.status || "active"
       const res = await fetch(`${API_URL}/job-matches/?limit=${limit}&status=${status}&sortBy=updated&sortOrder=desc`, fetchOptions())
-      if (!res.ok) {
-        return { success: false, message: `Failed to fetch job matches: ${res.status}` }
+
+      const json = await res.json() as ApiResponse<ListJobMatchesResponse> | ApiErrorResponse
+
+      if (!res.ok || !json.success) {
+        const errorJson = json as ApiErrorResponse
+        return {
+          success: false,
+          message: errorJson.error?.message || `Failed to fetch job matches: ${res.status}`,
+        }
       }
-      const data = await res.json()
-      return { success: true, data: data.data || data }
+
+      const successJson = json as ApiResponse<ListJobMatchesResponse> & { success: true }
+      return { success: true, data: successJson.data.matches }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return { success: false, message }
@@ -1224,7 +1257,85 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
 }
 
 // App lifecycle
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createWindow()
+
+  // Register global shortcuts for DevTools
+  // Use 'detach' mode to open in separate window (works better on Linux)
+  globalShortcut.register("CommandOrControl+Shift+I", () => {
+    logger.info("Opening sidebar DevTools...")
+    if (mainWindow?.webContents.isDevToolsOpened()) {
+      mainWindow.webContents.closeDevTools()
+    } else {
+      mainWindow?.webContents.openDevTools({ mode: "detach" })
+    }
+  })
+  globalShortcut.register("CommandOrControl+Shift+J", () => {
+    logger.info("Opening page DevTools...")
+    if (browserView?.webContents.isDevToolsOpened()) {
+      browserView.webContents.closeDevTools()
+    } else {
+      browserView?.webContents.openDevTools({ mode: "detach" })
+    }
+  })
+
+  // Create application menu with DevTools options
+  const menu = Menu.buildFromTemplate([
+    {
+      label: "View",
+      submenu: [
+        {
+          label: "Toggle Sidebar DevTools",
+          accelerator: "CommandOrControl+Shift+I",
+          click: () => {
+            logger.info("Menu: Opening sidebar DevTools...")
+            if (mainWindow?.webContents.isDevToolsOpened()) {
+              mainWindow.webContents.closeDevTools()
+            } else {
+              mainWindow?.webContents.openDevTools({ mode: "detach" })
+            }
+          },
+        },
+        {
+          label: "Toggle Page DevTools",
+          accelerator: "CommandOrControl+Shift+J",
+          click: () => {
+            logger.info("Menu: Opening page DevTools...")
+            if (browserView?.webContents.isDevToolsOpened()) {
+              browserView.webContents.closeDevTools()
+            } else {
+              browserView?.webContents.openDevTools({ mode: "detach" })
+            }
+          },
+        },
+        { type: "separator" },
+        { role: "reload" },
+        { role: "forceReload" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
+      ],
+    },
+  ])
+  Menu.setApplicationMenu(menu)
+})
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll()
+})
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
