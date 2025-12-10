@@ -106,7 +106,7 @@ ipcMain.handle('fill-form', async () => {
     await page.fill(selector, value)
   }
 
-  // 5. Upload resume (find file input by label containing "resume")
+  // 5. Upload resume to first file input (actual impl should match by label)
   const resumePath = await downloadResume(profile.resumeUrl)
   const fileInput = await page.$('input[type="file"]')
   if (fileInput) await fileInput.setInputFiles(resumePath)
@@ -140,7 +140,7 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
         try {
           resolve(JSON.parse(stdout))
         } catch (e) {
-          reject(new Error(`${provider} CLI returned invalid JSON: ${stdout.slice(0, 200)}`))
+          reject(new Error(`${provider} CLI returned invalid JSON: ${stdout.slice(0, 200)}${stdout.length > 200 ? '...' : ''}`))
         }
       } else {
         reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
@@ -165,7 +165,7 @@ const EXTRACT_FORM_SCRIPT = `
       : el.dataset.testid ? '[data-testid="' + el.dataset.testid + '"]'
       : null
 
-    // Find label: check for, aria-label, aria-labelledby, placeholder
+    // Find label: check label[for], aria-label, aria-labelledby
     const forLabel = el.id && document.querySelector('label[for="' + el.id + '"]')
     const ariaLabel = el.getAttribute('aria-label')
     const ariaLabelledBy = el.getAttribute('aria-labelledby')

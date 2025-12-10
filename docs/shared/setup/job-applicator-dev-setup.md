@@ -18,12 +18,12 @@
 ```bash
 cd job-applicator
 pnpm install
-pnpm start
+pnpm dev
 ```
 
 ## Testing
 
-1. Start app: `pnpm start`
+1. Start app: `pnpm dev`
 2. Paste a job application URL
 3. Navigate to the form, log in if needed
 4. Click "Fill Form"
@@ -36,11 +36,13 @@ pnpm start
 | `JOB_FINDER_API_URL` | `http://localhost:3000/api` | Backend API URL |
 | `CDP_PORT` | `9222` | Chrome DevTools Protocol port |
 
+Set via prefix: `CDP_PORT=9223 JOB_FINDER_API_URL=http://localhost:8080/api pnpm dev`
+
 ## Troubleshooting
 
 **CDP connection fails:**
 - Ensure port is free: `lsof -i :9222`
-- Or use different port: `CDP_PORT=9223 pnpm start`
+- Or use different port: `CDP_PORT=9223 pnpm dev`
 
 **CLI tool not found:**
 - Verify tool is installed: `which claude` / `which codex` / `which gemini`
