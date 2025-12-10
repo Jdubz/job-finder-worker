@@ -297,8 +297,9 @@ async function navigate() {
     setStatus("Loading...", "loading")
     await electronAPI.navigate(fullUrl)
     setStatus("Page loaded", "success")
-  } catch (err) {
-    setStatus(`Navigation failed: ${err}`, "error")
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    setStatus(`Navigation failed: ${message}`, "error")
   } finally {
     setButtonsEnabled(true)
   }
@@ -336,8 +337,9 @@ async function fillForm() {
         setStatus(result.message, "error")
       }
     }
-  } catch (err) {
-    setStatus(`Fill failed: ${err}`, "error")
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    setStatus(`Fill failed: ${message}`, "error")
   } finally {
     setButtonsEnabled(true)
   }
@@ -397,8 +399,9 @@ async function uploadResume() {
     } else {
       setStatus(result.message, "error")
     }
-  } catch (err) {
-    setStatus(`Upload failed: ${err}`, "error")
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    setStatus(`Upload failed: ${message}`, "error")
   } finally {
     setButtonsEnabled(true)
   }
@@ -418,8 +421,9 @@ async function submitJob() {
     } else {
       setStatus(result.message, "error")
     }
-  } catch (err) {
-    setStatus(`Submission failed: ${err}`, "error")
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    setStatus(`Submission failed: ${message}`, "error")
   } finally {
     setButtonsEnabled(true)
   }

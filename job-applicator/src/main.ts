@@ -348,10 +348,10 @@ ipcMain.handle("upload-resume", async (): Promise<{ success: boolean; message: s
       return { success: false, message: "No file input found on page" }
     }
 
-    // Get resume path from backend or use default
-    const resumePath = path.join(os.homedir(), "resume.pdf")
+    // Get resume path from environment variable or use default
+    const resumePath = process.env.RESUME_PATH || path.join(os.homedir(), "resume.pdf")
     if (!fs.existsSync(resumePath)) {
-      return { success: false, message: `Resume not found at ${resumePath}` }
+      return { success: false, message: `Resume not found at ${resumePath}. Set RESUME_PATH environment variable to specify location.` }
     }
 
     // File uploads require Playwright - search all pages for one with the file input
@@ -792,9 +792,12 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
       clearTimeout(timeout)
       if (code === 0) {
         try {
-          const jsonMatch = stdout.match(/\[[\s\S]*\]/)
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0])
+          // Find first [ and last ] for more robust JSON extraction
+          const startIdx = stdout.indexOf("[")
+          const endIdx = stdout.lastIndexOf("]")
+          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+            const jsonStr = stdout.substring(startIdx, endIdx + 1)
+            const parsed = JSON.parse(jsonStr)
             if (!Array.isArray(parsed)) {
               reject(new Error(`${provider} CLI did not return an array`))
               return
@@ -811,8 +814,9 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
           } else {
             reject(new Error(`${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}`))
           }
-        } catch {
-          reject(new Error(`${provider} CLI returned invalid JSON: ${stdout.slice(0, 200)}`))
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          reject(new Error(`${provider} CLI returned invalid JSON: ${msg}\n${stdout.slice(0, 200)}`))
         }
       } else {
         reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
@@ -875,10 +879,12 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
       clearTimeout(timeout)
       if (code === 0) {
         try {
-          // Find JSON object in output
-          const jsonMatch = stdout.match(/\{[\s\S]*\}/)
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0])
+          // Find first { and last } for more robust JSON extraction
+          const startIdx = stdout.indexOf("{")
+          const endIdx = stdout.lastIndexOf("}")
+          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+            const jsonStr = stdout.substring(startIdx, endIdx + 1)
+            const parsed = JSON.parse(jsonStr)
             resolve({
               title: parsed.title ?? null,
               description: parsed.description ?? null,
@@ -889,8 +895,9 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
           } else {
             reject(new Error(`${provider} CLI returned no JSON object: ${stdout.slice(0, 200)}`))
           }
-        } catch {
-          reject(new Error(`${provider} CLI returned invalid JSON: ${stdout.slice(0, 200)}`))
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          reject(new Error(`${provider} CLI returned invalid JSON: ${msg}\n${stdout.slice(0, 200)}`))
         }
       } else {
         reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
@@ -997,11 +1004,12 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
       clearTimeout(timeout)
       if (code === 0) {
         try {
-          // Try to parse the output as JSON
-          // Handle case where CLI might output extra text before/after JSON
-          const jsonMatch = stdout.match(/\[[\s\S]*\]/)
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0])
+          // Find first [ and last ] for more robust JSON extraction
+          const startIdx = stdout.indexOf("[")
+          const endIdx = stdout.lastIndexOf("]")
+          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+            const jsonStr = stdout.substring(startIdx, endIdx + 1)
+            const parsed = JSON.parse(jsonStr)
             // Validate the response structure
             if (!Array.isArray(parsed)) {
               reject(new Error(`${provider} CLI did not return an array`))
@@ -1021,10 +1029,11 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
               )
             )
           }
-        } catch {
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
           reject(
             new Error(
-              `${provider} CLI returned invalid JSON: ${stdout.slice(0, 200)}${stdout.length > 200 ? "..." : ""}`
+              `${provider} CLI returned invalid JSON: ${msg}\n${stdout.slice(0, 200)}${stdout.length > 200 ? "..." : ""}`
             )
           )
         }
