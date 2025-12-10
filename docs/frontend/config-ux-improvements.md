@@ -1,7 +1,7 @@
 # Configuration UX & Timezone Refactor Plan
-> Status: Draft
+> Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-12-01
+> Last Updated: 2025-12-10
 
 ## Goals
 - Clarify match-policy and pre-filter settings by grouping related inputs, adding contextual help, and tightening layouts (tables for tech ranks, compact numeric inputs).
@@ -17,8 +17,14 @@
 - Normalized match analysis rendering (badges, lists, raw JSON toggle) and added accessibility attributes.
 - Extended timezone handling in worker and strike filter to use user timezone deltas instead of Portland allowlists; added configurable per-hour and hard penalties.
 
-## In Progress / Next
-1) Ensure every frontend reference to entities uses the modal manager; add deep-linking between modals as needed.
-2) Further tune match-breakdown UI to highlight how each config dimension contributed (weights, strikes, timezone penalties).
-3) Add docs/examples for configuring timezone penalties in both prefilter and match policies.
-4) Validate end-to-end after next merge: run worker unit tests + frontend build to catch regressions.
+## Completed
+- Modal manager is wired globally (`EntityModalProvider` in `src/App.tsx`), and queue/listing/company/source pages open entity modals via `useEntityModal`.
+- Match breakdown UI shows base/final scores, adjustments by category (color-coded), concerns, reasons/strengths, and skills; raw JSON toggle remains for debugging.
+- Timezone penalties are exposed in match/prefilter policy forms and applied in worker scoring using user timezone deltas.
+
+## Notes / Examples
+- **Timezone penalties**: In `match-policy.location`, set `perHourPenalty` (e.g., `-2`) and `hardRejectHours` (e.g., `9`) to control diff-based scoring. In `prefilter-policy.workArrangement`, set `allowRemote`, `allowHybrid`, `allowOnsite`, and `willRelocate` for prefilter behavior.
+- **Tech ranks & strikes**: `prefilter-policy` strike weights map directly to `StrikeFilterEngine`; `match-policy.skillMatch` controls scoring weights.
+
+## Future tweaks (optional)
+- Consider widening long-form analysis layouts further if user feedback shows crowding.

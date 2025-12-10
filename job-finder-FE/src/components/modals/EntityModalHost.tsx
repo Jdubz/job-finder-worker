@@ -65,7 +65,7 @@ export function EntityModalHost() {
 
   const widthClass =
     modal.type === "jobListing" || modal.type === "jobMatch"
-      ? "w-[98vw] sm:max-w-6xl"
+      ? "w-[98vw] sm:max-w-7xl"
       : modal.type === "jobSource"
         ? "w-[95vw] sm:max-w-4xl"
         : "w-[90vw] sm:max-w-3xl"
