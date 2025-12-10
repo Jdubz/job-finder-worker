@@ -504,8 +504,9 @@ export async function parseApiError(response: Response): Promise<string> {
     try {
       const textResponse = response.clone()
       const text = await textResponse.text()
-      // Only include text if it's short and not HTML
-      if (text && text.length < 200 && !text.includes("<!DOCTYPE") && !text.includes("<html")) {
+      // Only include text if it's short and not HTML (case-insensitive check)
+      const textLower = text.toLowerCase()
+      if (text && text.length < 200 && !textLower.includes("<!doctype") && !textLower.includes("<html")) {
         return `${friendlyMessage} - ${text}`
       }
     } catch {
@@ -653,7 +654,7 @@ export async function fetchWithRetry(
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
 
-      // Don't retry on abort/timeout if it was intentional
+      // Retry on timeout errors (transient network issues)
       if (lastError.message.includes("timed out") && attempt < maxRetries) {
         const delay = Math.min(retryDelayMs * Math.pow(2, attempt), maxDelayMs)
         await sleep(delay)
@@ -704,20 +705,6 @@ function parseRetryDelay(response: Response, baseDelay: number, attempt: number,
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-/**
- * Standard API result type for IPC handlers
- */
-export interface ApiResult<T = unknown> {
-  success: boolean
-  data?: T
-  message?: string
-  error?: {
-    code: string
-    message: string
-    details?: unknown
-  }
 }
 
 // =============================================================================

@@ -215,19 +215,8 @@ async function createWindow(): Promise<void> {
     updateBrowserViewBounds()
   })
 
-  // Keyboard shortcuts for DevTools
-  // Ctrl+Shift+I = Main window (sidebar) DevTools
-  // Ctrl+Shift+J = BrowserView (web page) DevTools
-  mainWindow.webContents.on("before-input-event", (event, input) => {
-    if (input.control && input.shift && input.key.toLowerCase() === "i") {
-      event.preventDefault()
-      mainWindow?.webContents.toggleDevTools()
-    }
-    if (input.control && input.shift && input.key.toLowerCase() === "j") {
-      event.preventDefault()
-      browserView?.webContents.toggleDevTools()
-    }
-  })
+  // DevTools shortcuts are handled via globalShortcut and application menu
+  // See app.whenReady() for globalShortcut registration
 }
 
 // Navigate to URL

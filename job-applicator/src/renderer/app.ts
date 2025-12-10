@@ -318,11 +318,9 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
 
   try {
     const result = await api.getDocuments(jobMatchId)
-    console.log("[loadDocuments] Result:", result)
 
     if (result.success && Array.isArray(result.data)) {
       documents = result.data
-      console.log("[loadDocuments] Loaded documents:", documents.length, documents)
 
       // Auto-select logic:
       // 1. If autoSelectId provided (e.g., newly generated), select it
