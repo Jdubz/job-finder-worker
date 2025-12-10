@@ -240,6 +240,7 @@ class WikipediaClient:
             if digits_only:
                 return int(digits_only)
         except ValueError:
+            # Conversion failed (shouldn't happen after regex, but be safe)
             pass
         return None
 
