@@ -32,25 +32,29 @@
       <div class="sidebar-content">
         <!-- Workflow Progress Section -->
         <section class="sidebar-section workflow-section">
-          <div class="workflow-progress" id="workflowProgress">
+          <div class="workflow-progress" id="workflowProgress" role="group" aria-label="Application workflow progress">
             <div class="workflow-step" data-step="job">
-              <span class="step-indicator"></span>
+              <span class="step-indicator" aria-hidden="true"></span>
               <span class="step-label">Job</span>
+              <span class="sr-only" id="job-status">pending</span>
             </div>
-            <div class="workflow-connector"></div>
+            <div class="workflow-connector" aria-hidden="true"></div>
             <div class="workflow-step" data-step="docs">
-              <span class="step-indicator"></span>
+              <span class="step-indicator" aria-hidden="true"></span>
               <span class="step-label">Docs</span>
+              <span class="sr-only" id="docs-status">pending</span>
             </div>
-            <div class="workflow-connector"></div>
+            <div class="workflow-connector" aria-hidden="true"></div>
             <div class="workflow-step" data-step="fill">
-              <span class="step-indicator"></span>
+              <span class="step-indicator" aria-hidden="true"></span>
               <span class="step-label">Fill</span>
+              <span class="sr-only" id="fill-status">pending</span>
             </div>
-            <div class="workflow-connector"></div>
+            <div class="workflow-connector" aria-hidden="true"></div>
             <div class="workflow-step" data-step="submit">
-              <span class="step-indicator"></span>
+              <span class="step-indicator" aria-hidden="true"></span>
               <span class="step-label">Submit</span>
+              <span class="sr-only" id="submit-status">pending</span>
             </div>
           </div>
         </section>

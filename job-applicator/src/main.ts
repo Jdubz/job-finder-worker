@@ -34,11 +34,11 @@ const API_URL = process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
 // Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
 const ARTIFACTS_DIR = process.env.GENERATOR_ARTIFACTS_DIR || "/data/artifacts"
 
-// Enforce HTTPS in production
+// Warn about HTTP in production (but don't crash the app)
 if (process.env.NODE_ENV === "production" && API_URL.startsWith("http://")) {
-  throw new Error(
-    "SECURITY ERROR: API_URL must use HTTPS in production. " +
-      "Set JOB_FINDER_API_URL to a secure endpoint (https://...)."
+  console.warn(
+    "SECURITY WARNING: API_URL is using HTTP in production. " +
+      "This may expose sensitive data. Set JOB_FINDER_API_URL to a secure endpoint (https://...)."
   )
 }
 
@@ -170,7 +170,7 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
 
 // Get current URL
 ipcMain.handle("get-url", async (): Promise<string> => {
-  if (!browserView) throw new Error("BrowserView not initialized")
+  if (!browserView) return ""
   return browserView.webContents.getURL()
 })
 
@@ -697,7 +697,7 @@ ipcMain.handle(
 
       // Execute steps sequentially until complete (with safety limit)
       let stepCount = 0
-      while (nextStep && stepCount < MAX_GENERATION_STEPS) {
+      while (nextStep !== null && nextStep !== undefined && nextStep !== "" && stepCount < MAX_GENERATION_STEPS) {
         stepCount++
         // Update step status to in_progress
         currentSteps = currentSteps.map((s) =>

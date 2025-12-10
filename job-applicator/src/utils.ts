@@ -77,81 +77,21 @@ export function formatEEOValue(field: string, value: string | undefined): string
   return EEO_DISPLAY[field]?.[value] || value
 }
 
-// Types
-export interface ContentItem {
-  id: string
-  title?: string
-  role?: string
-  location?: string
-  startDate?: string
-  endDate?: string
-  description?: string
-  skills?: string[]
-  children?: ContentItem[]
-}
+// Re-export types from types.ts for backwards compatibility
+export type {
+  ContentItem,
+  PersonalInfo,
+  EEOInfo,
+  FormField,
+  SelectOption,
+  FillInstruction,
+  EnhancedFillInstruction,
+  FormFillSummary,
+  JobExtraction,
+} from "./types.js"
 
-export interface PersonalInfo {
-  name: string
-  email: string
-  phone?: string
-  location?: string
-  website?: string
-  github?: string
-  linkedin?: string
-  summary?: string
-  eeo?: EEOInfo
-}
-
-export interface EEOInfo {
-  race?: string
-  hispanicLatino?: string
-  gender?: string
-  veteranStatus?: string
-  disabilityStatus?: string
-}
-
-export interface FormField {
-  selector: string | null
-  type: string
-  label: string | null
-  placeholder: string | null
-  required: boolean
-  options: SelectOption[] | null
-}
-
-export interface SelectOption {
-  value: string
-  text: string
-}
-
-export interface FillInstruction {
-  selector: string
-  value: string
-}
-
-export interface EnhancedFillInstruction {
-  selector: string
-  value: string | null
-  status: "filled" | "skipped"
-  reason?: string
-  label?: string
-}
-
-export interface FormFillSummary {
-  totalFields: number
-  filledCount: number
-  skippedCount: number
-  skippedFields: Array<{ label: string; reason: string }>
-  duration: number
-}
-
-export interface JobExtraction {
-  title: string | null
-  description: string | null
-  location: string | null
-  techStack: string | null
-  companyName: string | null
-}
+// Import types for use in this file
+import type { ContentItem, PersonalInfo, FormField, FillInstruction, EnhancedFillInstruction } from "./types.js"
 
 // Format work history for prompt
 export function formatWorkHistory(items: ContentItem[], indent = 0): string {

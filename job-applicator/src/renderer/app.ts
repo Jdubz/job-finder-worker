@@ -129,6 +129,7 @@ const workflowState: WorkflowState = {
   submit: "pending",
 }
 let unsubscribeGenerationProgress: (() => void) | null = null
+let isGenerating = false // Prevent concurrent document generations
 
 // Helper to get DOM element with null check
 function getElement<T extends HTMLElement>(id: string): T {
@@ -182,6 +183,11 @@ function updateWorkflowProgress() {
     if (stepEl) {
       stepEl.classList.remove("pending", "active", "completed")
       stepEl.classList.add(workflowState[step])
+    }
+    // Update screen reader status text
+    const statusEl = document.getElementById(`${step}-status`)
+    if (statusEl) {
+      statusEl.textContent = workflowState[step]
     }
   })
 }
@@ -402,12 +408,13 @@ function handleGenerationProgress(progress: GenerationProgress) {
   }
 }
 
-// Clean up generation progress listener
+// Clean up generation progress listener and reset state
 function cleanupGenerationProgressListener() {
   if (unsubscribeGenerationProgress) {
     unsubscribeGenerationProgress()
     unsubscribeGenerationProgress = null
   }
+  isGenerating = false
 }
 
 // Generate new document
@@ -416,6 +423,14 @@ async function generateDocument() {
     setStatus("Select a job match first", "error")
     return
   }
+
+  // Prevent concurrent generations
+  if (isGenerating) {
+    setStatus("Generation already in progress", "error")
+    return
+  }
+
+  isGenerating = true
 
   // Show generation progress UI
   generationProgress.style.display = "block"
@@ -545,8 +560,14 @@ async function navigate() {
     return
   }
 
-  // Add https:// if no protocol (use regex to properly detect http:// or https://)
-  const fullUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`
+  // Add https:// if no protocol, and normalize protocol case to lowercase
+  let fullUrl: string
+  if (/^https?:\/\//i.test(url)) {
+    // Normalize protocol to lowercase (HTTP:// -> http://, HTTPS:// -> https://)
+    fullUrl = url.replace(/^(https?):\/\//i, (_, proto) => `${proto.toLowerCase()}://`)
+  } else {
+    fullUrl = `https://${url}`
+  }
 
   try {
     setButtonsEnabled(false)
@@ -719,20 +740,26 @@ function escapeAttr(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-// Event listeners
-sidebarToggle.addEventListener("click", toggleSidebar)
-goBtn.addEventListener("click", navigate)
-urlInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    navigate()
-  }
-})
-fillBtn.addEventListener("click", fillForm)
-uploadBtn.addEventListener("click", uploadResume)
-submitJobBtn.addEventListener("click", submitJob)
-generateBtn.addEventListener("click", generateDocument)
-markAppliedBtn.addEventListener("click", markAsApplied)
-markIgnoredBtn.addEventListener("click", markAsIgnored)
+// Initialize application when DOM is ready
+function initializeApp() {
+  // Event listeners
+  sidebarToggle.addEventListener("click", toggleSidebar)
+  goBtn.addEventListener("click", navigate)
+  urlInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      navigate()
+    }
+  })
+  fillBtn.addEventListener("click", fillForm)
+  uploadBtn.addEventListener("click", uploadResume)
+  submitJobBtn.addEventListener("click", submitJob)
+  generateBtn.addEventListener("click", generateDocument)
+  markAppliedBtn.addEventListener("click", markAsApplied)
+  markIgnoredBtn.addEventListener("click", markAsIgnored)
+
+  // Run async initialization
+  init()
+}
 
 // Initialize
 async function init() {
@@ -759,4 +786,10 @@ async function init() {
   }
 }
 
-init()
+// Wait for DOM to be ready before initializing
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initializeApp)
+} else {
+  // DOM is already ready
+  initializeApp()
+}
