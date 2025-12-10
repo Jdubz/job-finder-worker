@@ -328,7 +328,17 @@ The original proposal suggested returning early if Wikipedia provides 100+ chars
 | isRemoteFirst | No | Yes |
 | aiMlFocus | No | Yes |
 
-**Recommendation:** Always run STEP 1 (search) after Wikipedia to fill these gaps. The merge logic already handles this correctly by preferring non-empty values.
+**Recommendation:** Always run STEP 1 (search) after Wikipedia to fill these gaps.
+
+### Merge Strategy
+
+The `_merge_company_info()` function uses a smart merge strategy:
+
+1. **Text fields** (`about`, `culture`, `mission`): Prefers the **longer** value from either source, ensuring more comprehensive descriptions are retained
+2. **Website**: Prefers valid company URLs over job boards and search engine placeholders
+3. **Other fields**: Fills empty slots from secondary source
+
+This ensures that if Wikipedia provides a brief summary but web search finds a more detailed description, the longer text is used.
 
 ### Name Resolution Order
 

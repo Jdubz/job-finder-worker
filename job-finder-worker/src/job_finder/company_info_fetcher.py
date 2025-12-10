@@ -796,7 +796,10 @@ Be factual. Return ONLY valid JSON."""
     def _merge_company_info(
         self, primary: Dict[str, Any], secondary: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Merge two info dicts, preferring non-empty values."""
+        """Merge two info dicts, preferring longer text for descriptive fields."""
+        # Fields where longer text is better (prefer more comprehensive descriptions)
+        text_fields = {"about", "culture", "mission"}
+
         merged = dict(primary)
         for key, val in secondary.items():
             if key == "website":
@@ -811,6 +814,12 @@ Be factual. Return ONLY valid JSON."""
                         merged["website"] = val
             elif key == "sources":
                 merged["sources"] = val or merged.get("sources") or []
+            elif key in text_fields:
+                # For descriptive text fields, prefer the longer value
+                current = merged.get(key) or ""
+                new_val = val or ""
+                if len(new_val) > len(current):
+                    merged[key] = new_val
             elif merged.get(key) in (None, "", [], False, 0):
                 if val not in (None, "", [], False):
                     merged[key] = val
