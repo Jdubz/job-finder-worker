@@ -2,7 +2,7 @@
 
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-25
+> Last Updated: 2025-12-09
 
 Use this checklist to verify configuration alignment across environments (development, staging, production) before deployment or cutover.
 

@@ -2,7 +2,7 @@
 
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-25
+> Last Updated: 2025-12-09
 
 > **Context**: See repository-specific `ISSUE_CONTEXT.md` for project overview, tech stack, development environment, and common patterns.
 > **Architecture**: See relevant architecture documentation referenced below.
