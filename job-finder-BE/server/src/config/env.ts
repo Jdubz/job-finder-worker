@@ -28,12 +28,6 @@ const EnvSchema = z.object({
 
   // Machine-to-machine auth
   CRON_API_KEY: z.string().optional(),
-
-  // Desktop app localhost auth bypass (only enable on machines running the desktop app)
-  ALLOW_LOCALHOST_BYPASS: z
-    .string()
-    .transform((v) => v === 'true' || v === '1')
-    .default('false')
 })
 
 export type Env = z.infer<typeof EnvSchema>

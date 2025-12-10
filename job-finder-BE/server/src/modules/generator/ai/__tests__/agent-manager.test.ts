@@ -1,11 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AISettings, AgentConfig, AgentId } from '@shared/types'
 
-// Mock the cli-runner module before importing AgentManager
-vi.mock('../../workflow/services/cli-runner', () => ({
-  runCliProvider: vi.fn()
-}))
-
 // Mock the config repository
 vi.mock('../../../config/config.repository', () => ({
   ConfigRepository: vi.fn().mockImplementation(() => ({
@@ -26,7 +21,6 @@ vi.mock('../../../../logger', () => ({
 
 // Import after mocks are set up
 import { AgentManager } from '../agent-manager'
-import { runCliProvider } from '../../workflow/services/cli-runner'
 import { ConfigRepository } from '../../../config/config.repository'
 
 function createMockAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
@@ -66,12 +60,14 @@ function createMockAISettings(agents: Record<string, AgentConfig>, taskFallbacks
 describe('AgentManager timeout retry logic', () => {
   let mockConfigRepo: { get: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> }
   let agentManager: AgentManager
+  const runProviderMock = vi.fn()
+  const mockLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as any
 
   beforeEach(() => {
     vi.clearAllMocks()
 
-    // Reset the runCliProvider mock to ensure fresh state
-    vi.mocked(runCliProvider).mockReset()
+    runProviderMock.mockReset()
+    runProviderMock.mockResolvedValue({ success: true, output: '', error: undefined, errorType: undefined })
 
     // Set up mock config repository
     mockConfigRepo = {
@@ -92,16 +88,16 @@ describe('AgentManager timeout retry logic', () => {
     mockConfigRepo.get.mockReturnValue({ payload: aiSettings })
 
     // First call times out, second succeeds
-    vi.mocked(runCliProvider)
+    runProviderMock
       .mockResolvedValueOnce({ success: false, output: '', error: 'timeout', errorType: 'timeout' })
       .mockResolvedValueOnce({ success: true, output: '{"result": "success"}', error: undefined, errorType: undefined })
 
-    agentManager = new AgentManager(mockConfigRepo as any)
+    agentManager = new AgentManager(mockConfigRepo as any, mockLog, runProviderMock as any)
     const result = await agentManager.execute('extraction', 'test prompt')
 
     expect(result.output).toBe('{"result": "success"}')
     expect(result.agentId).toBe('claude.cli')
-    expect(runCliProvider).toHaveBeenCalledTimes(2)
+    expect(runProviderMock).toHaveBeenCalledTimes(2)
     // Agent should NOT be disabled since it succeeded on retry
     expect(mockConfigRepo.upsert).toHaveBeenCalledTimes(1) // Only usage update
   })
@@ -113,15 +109,14 @@ describe('AgentManager timeout retry logic', () => {
     mockConfigRepo.get.mockReturnValue({ payload: aiSettings })
 
     // All 3 attempts timeout
-    vi.mocked(runCliProvider)
-      .mockResolvedValue({ success: false, output: '', error: 'timeout after 30s', errorType: 'timeout' })
+    runProviderMock.mockResolvedValue({ success: false, output: '', error: 'timeout after 30s', errorType: 'timeout' })
 
-    agentManager = new AgentManager(mockConfigRepo as any)
+    agentManager = new AgentManager(mockConfigRepo as any, mockLog, runProviderMock as any)
 
     await expect(agentManager.execute('extraction', 'test prompt'))
       .rejects.toThrow('No agents available')
 
-    expect(runCliProvider).toHaveBeenCalledTimes(3) // 1 initial + 2 retries
+    expect(runProviderMock).toHaveBeenCalledTimes(3) // 1 initial + 2 retries
     // Agent should be disabled after all retries exhausted
     expect(mockConfigRepo.upsert).toHaveBeenCalled()
     const lastUpsertCall = mockConfigRepo.upsert.mock.calls[mockConfigRepo.upsert.mock.calls.length - 1]
@@ -148,18 +143,18 @@ describe('AgentManager timeout retry logic', () => {
     mockConfigRepo.get.mockReturnValue({ payload: aiSettings })
 
     // First agent (claude) times out all 3 times, second agent (gemini) succeeds
-    vi.mocked(runCliProvider)
+    runProviderMock
       .mockResolvedValueOnce({ success: false, output: '', error: 'timeout', errorType: 'timeout' })
       .mockResolvedValueOnce({ success: false, output: '', error: 'timeout', errorType: 'timeout' })
       .mockResolvedValueOnce({ success: false, output: '', error: 'timeout', errorType: 'timeout' })
       .mockResolvedValueOnce({ success: true, output: '{"result": "from gemini"}', error: undefined, errorType: undefined })
 
-    agentManager = new AgentManager(mockConfigRepo as any)
+    agentManager = new AgentManager(mockConfigRepo as any, mockLog, runProviderMock as any)
     const result = await agentManager.execute('extraction', 'test prompt')
 
     expect(result.output).toBe('{"result": "from gemini"}')
     expect(result.agentId).toBe('gemini.cli')
-    expect(runCliProvider).toHaveBeenCalledTimes(4) // 3 for claude + 1 for gemini
+    expect(runProviderMock).toHaveBeenCalledTimes(4) // 3 for claude + 1 for gemini
   })
 
   it('does not retry on quota exhausted error', async () => {
@@ -180,16 +175,16 @@ describe('AgentManager timeout retry logic', () => {
     mockConfigRepo.get.mockReturnValue({ payload: aiSettings })
 
     // First agent returns quota error, second succeeds
-    vi.mocked(runCliProvider)
+    runProviderMock
       .mockResolvedValueOnce({ success: false, output: '', error: 'rate limit exceeded', errorType: 'quota' })
       .mockResolvedValueOnce({ success: true, output: '{"result": "success"}', error: undefined, errorType: undefined })
 
-    agentManager = new AgentManager(mockConfigRepo as any)
+    agentManager = new AgentManager(mockConfigRepo as any, mockLog, runProviderMock as any)
     const result = await agentManager.execute('extraction', 'test prompt')
 
     expect(result.output).toBe('{"result": "success"}')
     // Should only call once for first agent (no retries for quota errors)
-    expect(runCliProvider).toHaveBeenCalledTimes(2) // 1 for claude (quota) + 1 for gemini
+    expect(runProviderMock).toHaveBeenCalledTimes(2) // 1 for claude (quota) + 1 for gemini
   })
 
   it('stops fallback chain on auth errors', async () => {
@@ -210,15 +205,15 @@ describe('AgentManager timeout retry logic', () => {
     mockConfigRepo.get.mockReturnValue({ payload: aiSettings })
 
     // First agent returns auth error - this should stop the chain
-    vi.mocked(runCliProvider)
+    runProviderMock
       .mockResolvedValueOnce({ success: false, output: '', error: 'not authenticated', errorType: 'auth' })
 
-    agentManager = new AgentManager(mockConfigRepo as any)
+    agentManager = new AgentManager(mockConfigRepo as any, mockLog, runProviderMock as any)
 
     await expect(agentManager.execute('extraction', 'test prompt'))
       .rejects.toThrow('AI generation failed')
 
     // Should only try first agent - auth errors stop the chain
-    expect(runCliProvider).toHaveBeenCalledTimes(1)
+    expect(runProviderMock).toHaveBeenCalledTimes(1)
   })
 })

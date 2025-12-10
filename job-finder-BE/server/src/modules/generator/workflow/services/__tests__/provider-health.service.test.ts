@@ -6,7 +6,7 @@ const importWithMocks = async () => {
   vi.resetModules()
   readFileMock.mockReset()
 
-  vi.doMock('node:fs/promises', () => ({ __esModule: true, readFile: readFileMock }))
+  vi.doMock('node:fs/promises', () => ({ __esModule: true, default: { readFile: readFileMock }, readFile: readFileMock }))
   vi.doMock('node:os', () => ({ __esModule: true, homedir: () => '/home/testuser' }))
 
   return import('../provider-health.service')
