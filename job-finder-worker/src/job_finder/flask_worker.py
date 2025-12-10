@@ -76,6 +76,13 @@ DEFAULT_WORKER_PORT = 5555
 DEFAULT_WORKER_HOST = "0.0.0.0"
 WORKER_SHUTDOWN_TIMEOUT_SECONDS = 30
 
+# Migration guards
+REQUIRED_CONFIG_MIGRATIONS = {
+    "20251205_001_ai-settings-agent-manager",
+    "20251205_002_tech-ranks-normalize",
+}
+REQUIRED_SCHEMA_MIN_ID = 46  # latest known schema migration in repo
+
 # Global state with thread-safe access
 _state_lock = threading.Lock()
 worker_state = {
@@ -524,21 +531,15 @@ def _verify_migrations(db_path: str) -> None:
     starting the worker. Fail fast instead of letting runtime errors surface
     mid-pipeline.
     """
-    required_config = {
-        "20251205_001_ai-settings-agent-manager",
-        "20251205_002_tech-ranks-normalize",
-    }
-    required_schema_min_id = 46  # latest known schema migration in repo
-
     with sqlite_connection(db_path) as conn:
         cfg_rows = conn.execute("SELECT name FROM config_migrations").fetchall()
         schema_rows = conn.execute("SELECT id FROM schema_migrations").fetchall()
 
     applied_config = {row["name"] for row in cfg_rows}
-    missing_config = required_config.difference(applied_config)
+    missing_config = REQUIRED_CONFIG_MIGRATIONS.difference(applied_config)
 
     applied_schema_ids = {row["id"] for row in schema_rows}
-    schema_ok = applied_schema_ids and max(applied_schema_ids) >= required_schema_min_id
+    schema_ok = applied_schema_ids and max(applied_schema_ids) >= REQUIRED_SCHEMA_MIN_ID
 
     if missing_config or not schema_ok:
         details = []
@@ -546,7 +547,7 @@ def _verify_migrations(db_path: str) -> None:
             details.append(f"config migrations missing: {sorted(missing_config)}")
         if not schema_ok:
             details.append(
-                f"schema migrations missing: expected >= {required_schema_min_id}, found {max(applied_schema_ids) if applied_schema_ids else 'none'}"
+                f"schema migrations missing: expected >= {REQUIRED_SCHEMA_MIN_ID}, found {max(applied_schema_ids) if applied_schema_ids else 'none'}"
             )
         raise InitializationError("Migrations not up to date. " + "; ".join(details))
 

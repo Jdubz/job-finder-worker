@@ -176,11 +176,8 @@ class AgentManager:
             auth_ok, auth_reason = auth_status(provider, interface)
             if not auth_ok:
                 logger.info(
-                    "Skipping agent %s (%s/%s): %s (not disabling; auth may be refreshed automatically)",
-                    agent_id,
-                    provider,
-                    interface,
-                    auth_reason,
+                    f"Skipping agent {agent_id} ({provider}/{interface}): {auth_reason} "
+                    "(not disabling; auth may be refreshed automatically)"
                 )
                 errors.append((agent_id, auth_reason))
                 continue

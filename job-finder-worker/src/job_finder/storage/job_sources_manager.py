@@ -246,11 +246,14 @@ class JobSourcesManager:
         if url:
             try:
                 host = urlparse(url).hostname
-            except Exception:
+            except ValueError:
                 host = None
 
         with sqlite_connection(self.db_path) as conn:
-            rows = conn.execute("SELECT * FROM job_sources").fetchall()
+            rows = conn.execute(
+                "SELECT * FROM job_sources WHERE LOWER(name) = LOWER(?) OR company_id IS NOT NULL OR aggregator_domain IS NOT NULL",
+                (name or "",),
+            ).fetchall()
 
         for row in rows:
             source = self._row_to_source(dict(row))

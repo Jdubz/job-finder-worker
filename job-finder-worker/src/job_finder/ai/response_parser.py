@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Union
 logger = logging.getLogger(__name__)
 
 
-def extract_json_from_response(response: Optional[str]) -> str:
+def extract_json_from_response(response: Optional[str], max_depth: int = 8) -> str:
     """Extract JSON content from an AI response that may contain markdown.
 
     Handles common AI response patterns:
@@ -22,12 +22,15 @@ def extract_json_from_response(response: Optional[str]) -> str:
 
     Args:
         response: Raw AI response string
+        max_depth: recursion guard for nested envelopes
 
     Returns:
         Cleaned string containing just the JSON content
     """
     if not response:
         return ""
+    if max_depth <= 0:
+        return response
 
     cleaned = response.strip()
 
@@ -37,8 +40,8 @@ def extract_json_from_response(response: Optional[str]) -> str:
             outer = json.loads(cleaned)
             inner = outer.get("result")
             if isinstance(inner, str) and inner.strip():
-                return extract_json_from_response(inner)
-        except Exception:
+                return extract_json_from_response(inner, max_depth - 1)
+        except json.JSONDecodeError:
             # Fall back to normal parsing
             pass
 
@@ -77,6 +80,7 @@ def extract_json_from_response(response: Optional[str]) -> str:
 def parse_json_response(
     response: Optional[str],
     default: Optional[Union[Dict[str, Any], List[Any]]] = None,
+    max_depth: int = 8,
 ) -> Optional[Union[Dict[str, Any], List[Any]]]:
     """Parse JSON from an AI response, handling markdown formatting.
 
@@ -93,7 +97,7 @@ def parse_json_response(
         return default
 
     try:
-        json_str = extract_json_from_response(response)
+        json_str = extract_json_from_response(response, max_depth=max_depth)
         return json.loads(json_str)
     except json.JSONDecodeError as e:
         logger.warning("Failed to parse AI response as JSON: %s", e)

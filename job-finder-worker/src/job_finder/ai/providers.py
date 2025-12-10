@@ -532,7 +532,7 @@ def hydrate_auth_from_host_file(provider: str) -> None:
     try:
         with file_path.open() as fh:
             parsed = json.load(fh)
-    except Exception:
+    except (json.JSONDecodeError, OSError, PermissionError):
         return
 
     # Provider-specific key extraction

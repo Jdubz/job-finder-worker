@@ -454,13 +454,17 @@ class GenericScraper:
     def _enrich_smartrecruiters(self, job: Dict[str, Any]) -> Dict[str, Any]:
         """Fetch SmartRecruiters job detail to fill description and metadata."""
         ref_url = job.get("url") or ""
+        delay = get_fetch_delay_seconds()
         try:
             response = requests.get(ref_url, headers=DEFAULT_HEADERS, timeout=15)
             response.raise_for_status()
             data = response.json()
-        except Exception as e:
+        except (requests.RequestException, json.JSONDecodeError) as e:
             logger.info("SmartRecruiters detail fetch failed for %s: %s", ref_url, e)
             return job
+        finally:
+            if delay > 0:
+                time.sleep(delay)
 
         ad = (data.get("jobAd") or {}).get("sections") or {}
         desc = ((ad.get("jobDescription") or {}).get("text") or "").strip()
@@ -491,13 +495,17 @@ class GenericScraper:
         else:
             detail_url = f"{base_url.rstrip('/')}/{external_path.lstrip('/')}"
 
+        delay = get_fetch_delay_seconds()
         try:
             response = requests.get(detail_url, headers=DEFAULT_HEADERS, timeout=15)
             response.raise_for_status()
             data = response.json()
-        except Exception as e:
+        except (requests.RequestException, json.JSONDecodeError) as e:
             logger.info("Workday detail fetch failed for %s: %s", detail_url, e)
             return job
+        finally:
+            if delay > 0:
+                time.sleep(delay)
 
         info = data.get("jobPostingInfo") or {}
         desc = (info.get("jobDescription") or "").strip()
