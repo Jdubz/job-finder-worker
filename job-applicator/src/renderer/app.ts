@@ -79,8 +79,6 @@ interface ElectronAPI {
     type?: "resume" | "coverLetter"
   }) => Promise<{ success: boolean; message: string; filePath?: string }>
   submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
-  setSidebarState: (open: boolean) => Promise<void>
-  getSidebarState: () => Promise<{ open: boolean }>
   getCdpStatus: () => Promise<{ connected: boolean; message?: string }>
   getJobMatches: (options?: { limit?: number; status?: string }) => Promise<{
     success: boolean
@@ -129,7 +127,6 @@ console.log("[app.ts] electronAPI found!")
 const api = window.electronAPI
 
 // State
-let sidebarOpen = true // Start with sidebar open by default
 let selectedJobMatchId: string | null = null
 let selectedDocumentId: string | null = null
 let jobMatches: JobMatchListItem[] = []
@@ -160,10 +157,8 @@ const fillBtn = getElement<HTMLButtonElement>("fillBtn")
 const uploadBtn = getElement<HTMLButtonElement>("uploadBtn")
 const submitJobBtn = getElement<HTMLButtonElement>("submitJobBtn")
 const statusEl = getElement<HTMLSpanElement>("status")
-const sidebarToggle = getElement<HTMLButtonElement>("sidebarToggle")
 
 // DOM elements - Sidebar
-const sidebar = getElement<HTMLDivElement>("sidebar")
 const jobList = getElement<HTMLDivElement>("jobList")
 const documentsList = getElement<HTMLDivElement>("documentsList")
 const generateBtn = getElement<HTMLButtonElement>("generateBtn")
@@ -210,17 +205,6 @@ function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "comp
   updateWorkflowProgress()
 }
 
-// Sidebar toggle
-async function toggleSidebar() {
-  sidebarOpen = !sidebarOpen
-  sidebar.classList.toggle("open", sidebarOpen)
-  await api.setSidebarState(sidebarOpen)
-
-  // Load job matches when opening sidebar for the first time
-  if (sidebarOpen && jobMatches.length === 0) {
-    await loadJobMatches()
-  }
-}
 
 // Load job matches from backend
 async function loadJobMatches() {
@@ -675,11 +659,6 @@ function renderFillResults(summary: FormFillSummary) {
     </div>
   `
 
-  // Open sidebar to show results if not already open
-  if (!sidebarOpen) {
-    toggleSidebar()
-  }
-
   // Scroll to results
   resultsContent.scrollIntoView({ behavior: "smooth" })
 }
@@ -755,7 +734,6 @@ function escapeAttr(str: string): string {
 // Initialize application when DOM is ready
 function initializeApp() {
   // Event listeners
-  sidebarToggle.addEventListener("click", toggleSidebar)
   goBtn.addEventListener("click", navigate)
   urlInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -789,9 +767,7 @@ async function init() {
     console.warn("CDP not connected:", cdpStatus.message)
   }
 
-  // Open sidebar by default and load job matches
-  sidebar.classList.add("open")
-  await api.setSidebarState(true)
+  // Load job matches on startup (sidebar is always visible)
   await loadJobMatches()
 }
 

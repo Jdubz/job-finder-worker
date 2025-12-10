@@ -75,17 +75,15 @@ const MAX_GENERATION_STEPS = 20
 // Global state
 let mainWindow: BrowserWindow | null = null
 let browserView: BrowserView | null = null
-let sidebarOpen = false
 
-// Update BrowserView bounds based on sidebar state
+// Update BrowserView bounds (sidebar is always visible, offset by SIDEBAR_WIDTH)
 function updateBrowserViewBounds(): void {
   if (!browserView || !mainWindow) return
   const bounds = mainWindow.getBounds()
-  const offsetX = sidebarOpen ? SIDEBAR_WIDTH : 0
   browserView.setBounds({
-    x: offsetX,
+    x: SIDEBAR_WIDTH,
     y: TOOLBAR_HEIGHT,
-    width: bounds.width - offsetX,
+    width: bounds.width - SIDEBAR_WIDTH,
     height: bounds.height - TOOLBAR_HEIGHT,
   })
 }
@@ -498,16 +496,6 @@ ipcMain.handle(
     }
   }
 )
-
-// Sidebar state handlers
-ipcMain.handle("set-sidebar-state", async (_event: IpcMainInvokeEvent, open: boolean): Promise<void> => {
-  sidebarOpen = open
-  updateBrowserViewBounds()
-})
-
-ipcMain.handle("get-sidebar-state", async (): Promise<{ open: boolean }> => {
-  return { open: sidebarOpen }
-})
 
 // CDP connection status - always available now using native Electron debugger
 ipcMain.handle("get-cdp-status", async (): Promise<{ connected: boolean; message?: string }> => {
@@ -1088,27 +1076,48 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
 
     child.on("close", (code) => {
       clearTimeout(timeout)
+      logger.info(`[CLI] Exit code: ${code}, stdout length: ${stdout.length}`)
       if (code === 0) {
         try {
-          // Find first { and last } for more robust JSON extraction
-          const startIdx = stdout.indexOf("{")
-          const endIdx = stdout.lastIndexOf("}")
-          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-            const jsonStr = stdout.substring(startIdx, endIdx + 1)
-            const parsed = JSON.parse(jsonStr)
-            resolve({
-              title: parsed.title ?? null,
-              description: parsed.description ?? null,
-              location: parsed.location ?? null,
-              techStack: parsed.techStack ?? null,
-              companyName: parsed.companyName ?? null,
-            })
+          // Claude CLI returns: {"type":"result","result":"...JSON or markdown with JSON..."}
+          // We need to extract the actual job data from the result field
+          const outerJson = JSON.parse(stdout)
+          let jobData: Record<string, unknown>
+
+          if (outerJson.result && typeof outerJson.result === "string") {
+            // Result is a string - extract JSON from it (may be in markdown code block)
+            const resultStr = outerJson.result
+            // Try to find JSON in markdown code block first
+            const codeBlockMatch = resultStr.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
+            if (codeBlockMatch) {
+              jobData = JSON.parse(codeBlockMatch[1])
+            } else {
+              // Try to find raw JSON object
+              const jsonMatch = resultStr.match(/\{[\s\S]*\}/)
+              if (jsonMatch) {
+                jobData = JSON.parse(jsonMatch[0])
+              } else {
+                throw new Error("No JSON found in result")
+              }
+            }
+          } else if (outerJson.title !== undefined) {
+            // Direct job data (no wrapper)
+            jobData = outerJson
           } else {
-            reject(new Error(`${provider} CLI returned no JSON object: ${stdout.slice(0, 200)}`))
+            throw new Error("Unexpected response format")
           }
+
+          logger.info(`[CLI] Parsed job data:`, jobData)
+          resolve({
+            title: (jobData.title as string) ?? null,
+            description: (jobData.description as string) ?? null,
+            location: (jobData.location as string) ?? null,
+            techStack: (jobData.techStack as string) ?? null,
+            companyName: (jobData.companyName as string) ?? null,
+          })
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          reject(new Error(`${provider} CLI returned invalid JSON: ${msg}\n${stdout.slice(0, 200)}`))
+          reject(new Error(`${provider} CLI returned invalid JSON: ${msg}\n${stdout.slice(0, 300)}`))
         }
       } else {
         reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))

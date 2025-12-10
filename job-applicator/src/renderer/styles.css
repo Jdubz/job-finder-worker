@@ -41,48 +41,6 @@ body {
   height: 60px;
 }
 
-.sidebar-toggle {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: #0f3460;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.sidebar-toggle:hover {
-  background: #1a4a7a;
-}
-
-.toggle-icon {
-  width: 16px;
-  height: 2px;
-  background: #eee;
-  position: relative;
-}
-
-.toggle-icon::before,
-.toggle-icon::after {
-  content: "";
-  position: absolute;
-  width: 16px;
-  height: 2px;
-  background: #eee;
-  left: 0;
-}
-
-.toggle-icon::before {
-  top: -5px;
-}
-
-.toggle-icon::after {
-  top: 5px;
-}
 
 .url-input {
   flex: 1;
@@ -188,7 +146,7 @@ select:focus {
   color: #fbbf24;
 }
 
-/* Sidebar */
+/* Sidebar - always visible */
 .sidebar {
   position: fixed;
   left: 0;
@@ -197,16 +155,10 @@ select:focus {
   height: calc(100vh - 60px);
   background: #16213e;
   border-right: 1px solid #0f3460;
-  transform: translateX(-300px);
-  transition: transform 0.3s ease;
   z-index: 100;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.sidebar.open {
-  transform: translateX(0);
 }
 
 .sidebar-content {
