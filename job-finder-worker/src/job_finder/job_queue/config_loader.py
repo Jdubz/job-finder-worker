@@ -119,12 +119,31 @@ class ConfigLoader:
             "maxBonus",
             "maxPenalty",
             "analogGroups",
+            "missingIgnore",
         ]
         skill_missing = [k for k in skill_required if k not in skill_match]
         if skill_missing:
             raise InitializationError(
                 f"match-policy.skillMatch missing required keys: {skill_missing}. "
                 "Add skillMatch fields to match-policy."
+            )
+
+        # Enforce required salary fields (no hidden defaults)
+        salary = config.get("salary", {})
+        salary_required = [
+            "minimum",
+            "target",
+            "belowTargetScore",
+            "missingSalaryScore",
+            "meetsTargetScore",
+            "equityScore",
+            "contractScore",
+        ]
+        salary_missing = [k for k in salary_required if k not in salary]
+        if salary_missing:
+            raise InitializationError(
+                f"match-policy.salary missing required keys: {salary_missing}. "
+                "Add salary fields to match-policy."
             )
 
         return config

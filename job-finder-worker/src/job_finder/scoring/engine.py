@@ -519,6 +519,7 @@ class ScoringEngine:
         analog_score = self.skill_match_config["analogScore"]
         max_bonus = self.skill_match_config["maxBonus"]
         max_penalty = self.skill_match_config["maxPenalty"]
+        missing_ignore = set(s.lower() for s in self.skill_match_config.get("missingIgnore", []))
 
         matched: List[tuple[str, float, float]] = []
         analogs: List[tuple[str, str]] = []
@@ -536,12 +537,12 @@ class ScoringEngine:
             elif self._has_analog(skill_lower):
                 analog = self._get_analog(skill_lower)
                 analogs.append((skill, analog))
-            else:
+            elif skill_lower not in missing_ignore:
                 missing.append(skill)
 
         bonus = min(total_bonus, max_bonus)
         analog_points = len(analogs) * analog_score
-        penalty = max(len(missing) * missing_score, max_penalty)
+        penalty = 0 if missing_score == 0 else max(len(missing) * missing_score, max_penalty)
 
         adjustments: List[ScoreAdjustment] = []
         if matched:
@@ -595,7 +596,7 @@ class ScoringEngine:
         below_target_score = self.salary_config.get("belowTargetScore", -2)
         equity_score = self.salary_config.get("equityScore", 5)
         contract_score = self.salary_config.get("contractScore", -15)
-        missing_salary_score = self.salary_config.get("missingSalaryScore", -5)
+        missing_salary_score = self.salary_config.get("missingSalaryScore", 0)
         meets_target_score = self.salary_config.get("meetsTargetScore", 5)
 
         points = 0
