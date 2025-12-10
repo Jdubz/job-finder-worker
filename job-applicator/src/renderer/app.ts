@@ -80,6 +80,7 @@ interface ElectronAPI {
   }) => Promise<{ success: boolean; message: string; filePath?: string }>
   submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
   getCdpStatus: () => Promise<{ connected: boolean; message?: string }>
+  checkFileInput: () => Promise<{ hasFileInput: boolean; selector?: string }>
   getJobMatches: (options?: { limit?: number; status?: string }) => Promise<{
     success: boolean
     data?: JobMatchListItem[]
@@ -139,6 +140,7 @@ const workflowState: WorkflowState = {
 }
 let unsubscribeGenerationProgress: (() => void) | null = null
 let isGenerating = false // Prevent concurrent document generations
+let hasFileInput = false // Whether current page has a file input element
 
 // Helper to get DOM element with null check
 function getElement<T extends HTMLElement>(id: string): T {
@@ -154,7 +156,6 @@ const urlInput = getElement<HTMLInputElement>("urlInput")
 const goBtn = getElement<HTMLButtonElement>("goBtn")
 const providerSelect = getElement<HTMLSelectElement>("providerSelect")
 const fillBtn = getElement<HTMLButtonElement>("fillBtn")
-const uploadBtn = getElement<HTMLButtonElement>("uploadBtn")
 const submitJobBtn = getElement<HTMLButtonElement>("submitJobBtn")
 const statusEl = getElement<HTMLSpanElement>("status")
 
@@ -170,6 +171,12 @@ const workflowProgress = getElement<HTMLDivElement>("workflowProgress")
 const generationProgress = getElement<HTMLDivElement>("generationProgress")
 const generationSteps = getElement<HTMLDivElement>("generationSteps")
 
+// DOM elements - Upload section
+const uploadResumeBtn = getElement<HTMLButtonElement>("uploadResumeBtn")
+const uploadCoverBtn = getElement<HTMLButtonElement>("uploadCoverBtn")
+const uploadStatusText = getElement<HTMLSpanElement>("uploadStatusText")
+const uploadStatus = getElement<HTMLDivElement>("uploadStatus")
+
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
   statusEl.textContent = message
   statusEl.className = "status" + (type ? ` ${type}` : "")
@@ -178,8 +185,9 @@ function setStatus(message: string, type: "success" | "error" | "loading" | "" =
 function setButtonsEnabled(enabled: boolean) {
   goBtn.disabled = !enabled
   fillBtn.disabled = !enabled
-  uploadBtn.disabled = !enabled
   submitJobBtn.disabled = !enabled
+  // Upload buttons have their own enable logic based on file input and document selection
+  updateUploadButtonsState()
 }
 
 // Update workflow progress UI
@@ -294,16 +302,35 @@ async function selectJobMatch(id: string) {
 }
 
 // Load documents for a job match
-async function loadDocuments(jobMatchId: string) {
+// If autoSelectId is provided, auto-select that document
+// Otherwise, auto-select the most recent completed document
+async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
   documentsList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
 
   const result = await api.getDocuments(jobMatchId)
 
   if (result.success && result.data) {
     documents = result.data
+
+    // Auto-select logic:
+    // 1. If autoSelectId provided (e.g., newly generated), select it
+    // 2. Otherwise, select the most recent completed document
+    // 3. Documents are already sorted by createdAt desc from API
+    if (autoSelectId) {
+      selectedDocumentId = documents.find((d) => d.id === autoSelectId)?.id || null
+    } else if (!selectedDocumentId) {
+      // Find most recent completed document
+      const completed = documents.find((d) => d.status === "completed")
+      selectedDocumentId = completed?.id || null
+    }
+
     renderDocumentsList()
+    updateUploadButtonsState()
   } else {
+    documents = []
+    selectedDocumentId = null
     documentsList.innerHTML = `<div class="empty-placeholder">${result.message || "No documents"}</div>`
+    updateUploadButtonsState()
   }
 }
 
@@ -361,6 +388,60 @@ function renderDocumentsList() {
 function selectDocument(id: string) {
   selectedDocumentId = selectedDocumentId === id ? null : id // Toggle selection
   renderDocumentsList()
+  updateUploadButtonsState()
+}
+
+// Get the currently selected document
+function getSelectedDocument(): DocumentInfo | null {
+  if (!selectedDocumentId) return null
+  return documents.find((d) => d.id === selectedDocumentId) || null
+}
+
+// Update upload buttons enabled state based on requirements:
+// 1. File input must exist on page
+// 2. A document must be selected
+// 3. The document must have the appropriate file (resumeUrl or coverLetterUrl)
+function updateUploadButtonsState() {
+  const doc = getSelectedDocument()
+  const canUploadResume = hasFileInput && doc?.resumeUrl
+  const canUploadCover = hasFileInput && doc?.coverLetterUrl
+
+  uploadResumeBtn.disabled = !canUploadResume
+  uploadCoverBtn.disabled = !canUploadCover
+
+  // Update status message
+  if (!hasFileInput) {
+    uploadStatus.className = "upload-status warning"
+    uploadStatusText.textContent = "No file input detected on page"
+  } else if (!doc) {
+    uploadStatus.className = "upload-status info"
+    uploadStatusText.textContent = "Select a document to upload"
+  } else {
+    uploadStatus.className = "upload-status ready"
+    const available: string[] = []
+    if (doc.resumeUrl) available.push("Resume")
+    if (doc.coverLetterUrl) available.push("Cover Letter")
+    uploadStatusText.textContent = available.length > 0 ? `Ready: ${available.join(", ")}` : "No files generated yet"
+  }
+
+  // Update button titles for better UX
+  if (!hasFileInput) {
+    uploadResumeBtn.title = "Navigate to a page with file upload"
+    uploadCoverBtn.title = "Navigate to a page with file upload"
+  } else if (!doc) {
+    uploadResumeBtn.title = "Select a document first"
+    uploadCoverBtn.title = "Select a document first"
+  } else {
+    uploadResumeBtn.title = doc.resumeUrl ? "Upload resume to file input" : "No resume generated"
+    uploadCoverBtn.title = doc.coverLetterUrl ? "Upload cover letter to file input" : "No cover letter generated"
+  }
+}
+
+// Check for file input on the current page
+async function checkForFileInput() {
+  const result = await api.checkFileInput()
+  hasFileInput = result.hasFileInput
+  updateUploadButtonsState()
 }
 
 // Render generation progress steps
@@ -392,9 +473,9 @@ function handleGenerationProgress(progress: GenerationProgress) {
     setWorkflowStep("fill", "active")
     // Clean up the listener now that generation is complete
     cleanupGenerationProgressListener()
-    // Reload documents to show the new ones
+    // Reload documents and auto-select the newly generated one
     if (selectedJobMatchId) {
-      loadDocuments(selectedJobMatchId)
+      loadDocuments(selectedJobMatchId, progress.requestId)
     }
   } else if (progress.status === "failed") {
     setStatus(progress.error || "Generation failed", "error")
@@ -573,6 +654,9 @@ async function navigate() {
 
     // Check if this URL matches any job match
     await checkUrlForJobMatch(fullUrl)
+
+    // Check for file input on the new page (with delay for page to render)
+    setTimeout(checkForFileInput, 500)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     setStatus(`Navigation failed: ${message}`, "error")
@@ -663,30 +747,27 @@ function renderFillResults(summary: FormFillSummary) {
   resultsContent.scrollIntoView({ behavior: "smooth" })
 }
 
-// Upload resume/document
-async function uploadResume() {
+// Upload document (resume or cover letter)
+async function uploadDocument(type: "resume" | "coverLetter") {
+  if (!selectedDocumentId) {
+    setStatus("Select a document first", "error")
+    return
+  }
+
+  const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
+
   try {
     setButtonsEnabled(false)
+    setStatus(`Uploading ${typeLabel}...`, "loading")
 
-    // Use selected document if available
-    const options = selectedDocumentId
-      ? { documentId: selectedDocumentId, type: "resume" as const }
-      : undefined
-
-    const statusMsg = selectedDocumentId ? "Uploading selected document..." : "Uploading resume..."
-    setStatus(statusMsg, "loading")
-
-    const result = await api.uploadResume(options)
+    const result = await api.uploadResume({ documentId: selectedDocumentId, type })
 
     if (result.success) {
       setStatus(result.message, "success")
     } else {
-      // Show file path for manual fallback if available
+      setStatus(result.message, "error")
       if (result.filePath) {
-        setStatus(result.message, "error")
         console.log("Manual upload path:", result.filePath)
-      } else {
-        setStatus(result.message, "error")
       }
     }
   } catch (err: unknown) {
@@ -695,6 +776,15 @@ async function uploadResume() {
   } finally {
     setButtonsEnabled(true)
   }
+}
+
+// Convenience wrappers for upload buttons
+function uploadResumeFile() {
+  uploadDocument("resume")
+}
+
+function uploadCoverLetterFile() {
+  uploadDocument("coverLetter")
 }
 
 // Submit job listing for analysis
@@ -733,7 +823,7 @@ function escapeAttr(str: string): string {
 
 // Initialize application when DOM is ready
 function initializeApp() {
-  // Event listeners
+  // Event listeners - Toolbar
   goBtn.addEventListener("click", navigate)
   urlInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -741,11 +831,14 @@ function initializeApp() {
     }
   })
   fillBtn.addEventListener("click", fillForm)
-  uploadBtn.addEventListener("click", uploadResume)
   submitJobBtn.addEventListener("click", submitJob)
+
+  // Event listeners - Sidebar
   generateBtn.addEventListener("click", generateDocument)
   markAppliedBtn.addEventListener("click", markAsApplied)
   markIgnoredBtn.addEventListener("click", markAsIgnored)
+  uploadResumeBtn.addEventListener("click", uploadResumeFile)
+  uploadCoverBtn.addEventListener("click", uploadCoverLetterFile)
 
   // Run async initialization
   init()
@@ -758,14 +851,8 @@ async function init() {
   // Initialize workflow progress
   updateWorkflowProgress()
 
-  // Check CDP connection status and warn if unavailable
-  const cdpStatus = await api.getCdpStatus()
-  if (!cdpStatus.connected) {
-    // Disable upload button and show warning
-    uploadBtn.disabled = true
-    uploadBtn.title = cdpStatus.message || "File uploads unavailable"
-    console.warn("CDP not connected:", cdpStatus.message)
-  }
+  // Initialize upload button state
+  updateUploadButtonsState()
 
   // Load job matches on startup (sidebar is always visible)
   await loadJobMatches()

@@ -502,6 +502,29 @@ ipcMain.handle("get-cdp-status", async (): Promise<{ connected: boolean; message
   return { connected: true }
 })
 
+// Check if a file input exists on the current page
+ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; selector?: string }> => {
+  if (!browserView) {
+    return { hasFileInput: false }
+  }
+
+  try {
+    const result = await browserView.webContents.executeJavaScript(`
+      (() => {
+        const fileInput = document.querySelector('input[type="file"]');
+        if (!fileInput) return { hasFileInput: false };
+        let selector = 'input[type="file"]';
+        if (fileInput.id) selector = '#' + CSS.escape(fileInput.id);
+        else if (fileInput.name) selector = 'input[type="file"][name="' + CSS.escape(fileInput.name) + '"]';
+        return { hasFileInput: true, selector };
+      })()
+    `)
+    return result
+  } catch {
+    return { hasFileInput: false }
+  }
+})
+
 // Get job matches from backend
 ipcMain.handle(
   "get-job-matches",

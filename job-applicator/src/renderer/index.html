@@ -20,7 +20,6 @@
         <option value="gemini">Gemini</option>
       </select>
       <button class="btn-fill" id="fillBtn">Fill Form</button>
-      <button class="btn-upload" id="uploadBtn">Upload Resume</button>
       <button class="btn-submit" id="submitJobBtn">Submit Job</button>
       <span class="status" id="status">Ready</span>
     </div>
@@ -85,6 +84,21 @@
           <!-- Generation Progress -->
           <div class="generation-progress hidden" id="generationProgress">
             <div class="generation-steps" id="generationSteps"></div>
+          </div>
+          <!-- Upload Actions (enabled when file input detected and document selected) -->
+          <div class="upload-actions" id="uploadActions">
+            <div class="upload-status" id="uploadStatus">
+              <span class="upload-status-icon">⚠</span>
+              <span class="upload-status-text" id="uploadStatusText">No file input detected</span>
+            </div>
+            <div class="upload-buttons">
+              <button class="btn-upload-resume" id="uploadResumeBtn" disabled title="Select a document and navigate to a page with file upload">
+                Upload Resume
+              </button>
+              <button class="btn-upload-cover" id="uploadCoverBtn" disabled title="Select a document and navigate to a page with file upload">
+                Upload Cover Letter
+              </button>
+            </div>
           </div>
         </section>
 
