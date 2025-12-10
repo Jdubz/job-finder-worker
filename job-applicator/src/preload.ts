@@ -24,6 +24,32 @@ export interface DocumentInfo {
   jobMatchId?: string
 }
 
+export interface GenerationStep {
+  id: string
+  name: string
+  description: string
+  status: "pending" | "in_progress" | "completed" | "failed" | "skipped"
+  duration?: number
+  result?: {
+    resumeUrl?: string
+    coverLetterUrl?: string
+  }
+  error?: {
+    message: string
+    code?: string
+  }
+}
+
+export interface GenerationProgress {
+  requestId: string
+  status: string
+  steps: GenerationStep[]
+  currentStep?: string
+  resumeUrl?: string
+  coverLetterUrl?: string
+  error?: string
+}
+
 export interface FormFillSummary {
   totalFields: number
   filledCount: number
@@ -68,6 +94,11 @@ export interface ElectronAPI {
     message?: string
   }>
   getJobMatch: (id: string) => Promise<{ success: boolean; data?: unknown; message?: string }>
+  findJobMatchByUrl: (url: string) => Promise<{ success: boolean; data?: JobMatchListItem | null; message?: string }>
+  updateJobMatchStatus: (options: {
+    id: string
+    status: "active" | "ignored" | "applied"
+  }) => Promise<{ success: boolean; message?: string }>
 
   // Documents
   getDocuments: (jobMatchId: string) => Promise<{
@@ -79,6 +110,13 @@ export interface ElectronAPI {
     jobMatchId: string
     type: "resume" | "coverLetter" | "both"
   }) => Promise<{ success: boolean; requestId?: string; message?: string }>
+  runGeneration: (options: {
+    jobMatchId: string
+    type: "resume" | "coverLetter" | "both"
+  }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
+
+  // Event listeners for generation progress
+  onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
 }
 
 contextBridge.exposeInMainWorld("electronAPI", {
@@ -108,9 +146,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Job matches
   getJobMatches: (options?: { limit?: number; status?: string }) => ipcRenderer.invoke("get-job-matches", options),
   getJobMatch: (id: string) => ipcRenderer.invoke("get-job-match", id),
+  findJobMatchByUrl: (url: string) => ipcRenderer.invoke("find-job-match-by-url", url),
+  updateJobMatchStatus: (options: { id: string; status: "active" | "ignored" | "applied" }) =>
+    ipcRenderer.invoke("update-job-match-status", options),
 
   // Documents
   getDocuments: (jobMatchId: string) => ipcRenderer.invoke("get-documents", jobMatchId),
   startGeneration: (options: { jobMatchId: string; type: "resume" | "coverLetter" | "both" }) =>
     ipcRenderer.invoke("start-generation", options),
+  runGeneration: (options: { jobMatchId: string; type: "resume" | "coverLetter" | "both" }) =>
+    ipcRenderer.invoke("run-generation", options),
+
+  // Event listeners for generation progress
+  onGenerationProgress: (callback: (progress: GenerationProgress) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: GenerationProgress) => callback(progress)
+    ipcRenderer.on("generation-progress", handler)
+    // Return unsubscribe function
+    return () => ipcRenderer.removeListener("generation-progress", handler)
+  },
 } satisfies ElectronAPI)

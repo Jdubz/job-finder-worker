@@ -30,6 +30,41 @@ interface FormFillSummary {
   duration: number
 }
 
+interface GenerationStep {
+  id: string
+  name: string
+  description: string
+  status: "pending" | "in_progress" | "completed" | "failed" | "skipped"
+  duration?: number
+  result?: {
+    resumeUrl?: string
+    coverLetterUrl?: string
+  }
+  error?: {
+    message: string
+    code?: string
+  }
+}
+
+interface GenerationProgress {
+  requestId: string
+  status: string
+  steps: GenerationStep[]
+  currentStep?: string
+  resumeUrl?: string
+  coverLetterUrl?: string
+  error?: string
+}
+
+// Workflow steps tracking
+type WorkflowStep = "job" | "docs" | "fill" | "submit"
+interface WorkflowState {
+  job: "pending" | "active" | "completed"
+  docs: "pending" | "active" | "completed"
+  fill: "pending" | "active" | "completed"
+  submit: "pending" | "active" | "completed"
+}
+
 interface ElectronAPI {
   navigate: (url: string) => Promise<void>
   getUrl: () => Promise<string>
@@ -53,6 +88,11 @@ interface ElectronAPI {
     message?: string
   }>
   getJobMatch: (id: string) => Promise<{ success: boolean; data?: unknown; message?: string }>
+  findJobMatchByUrl: (url: string) => Promise<{ success: boolean; data?: JobMatchListItem | null; message?: string }>
+  updateJobMatchStatus: (options: {
+    id: string
+    status: "active" | "ignored" | "applied"
+  }) => Promise<{ success: boolean; message?: string }>
   getDocuments: (jobMatchId: string) => Promise<{
     success: boolean
     data?: DocumentInfo[]
@@ -62,6 +102,11 @@ interface ElectronAPI {
     jobMatchId: string
     type: "resume" | "coverLetter" | "both"
   }) => Promise<{ success: boolean; requestId?: string; message?: string }>
+  runGeneration: (options: {
+    jobMatchId: string
+    type: "resume" | "coverLetter" | "both"
+  }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
+  onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
 }
 
 // Extend Window interface - with safety check for missing preload
@@ -77,6 +122,13 @@ let selectedJobMatchId: string | null = null
 let selectedDocumentId: string | null = null
 let jobMatches: JobMatchListItem[] = []
 let documents: DocumentInfo[] = []
+const workflowState: WorkflowState = {
+  job: "pending",
+  docs: "pending",
+  fill: "pending",
+  submit: "pending",
+}
+let unsubscribeGenerationProgress: (() => void) | null = null
 
 // DOM elements - Toolbar
 const urlInput = document.getElementById("urlInput") as HTMLInputElement
@@ -94,6 +146,12 @@ const jobList = document.getElementById("jobList") as HTMLDivElement
 const documentsList = document.getElementById("documentsList") as HTMLDivElement
 const generateBtn = document.getElementById("generateBtn") as HTMLButtonElement
 const resultsContent = document.getElementById("resultsContent") as HTMLDivElement
+const jobActionsSection = document.getElementById("jobActionsSection") as HTMLDivElement
+const markAppliedBtn = document.getElementById("markAppliedBtn") as HTMLButtonElement
+const markIgnoredBtn = document.getElementById("markIgnoredBtn") as HTMLButtonElement
+const workflowProgress = document.getElementById("workflowProgress") as HTMLDivElement
+const generationProgress = document.getElementById("generationProgress") as HTMLDivElement
+const generationSteps = document.getElementById("generationSteps") as HTMLDivElement
 
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
   statusEl.textContent = message
@@ -105,6 +163,24 @@ function setButtonsEnabled(enabled: boolean) {
   fillBtn.disabled = !enabled
   uploadBtn.disabled = !enabled
   submitJobBtn.disabled = !enabled
+}
+
+// Update workflow progress UI
+function updateWorkflowProgress() {
+  const steps: WorkflowStep[] = ["job", "docs", "fill", "submit"]
+  steps.forEach((step) => {
+    const stepEl = workflowProgress.querySelector(`[data-step="${step}"]`)
+    if (stepEl) {
+      stepEl.classList.remove("pending", "active", "completed")
+      stepEl.classList.add(workflowState[step])
+    }
+  })
+}
+
+// Set workflow step state
+function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "completed") {
+  workflowState[step] = state
+  updateWorkflowProgress()
 }
 
 // Sidebar toggle
@@ -144,9 +220,12 @@ function renderJobList() {
     .map((match) => {
       const scoreClass = match.matchScore >= 85 ? "high" : match.matchScore >= 70 ? "medium" : "low"
       const isSelected = match.id === selectedJobMatchId
+      const statusBadge = match.status !== "active"
+        ? `<span class="job-status-badge ${match.status}">${match.status}</span>`
+        : ""
       return `
       <div class="job-item${isSelected ? " selected" : ""}" data-id="${escapeAttr(match.id)}">
-        <div class="job-title">${escapeHtml(match.listing.title)}</div>
+        <div class="job-title">${escapeHtml(match.listing.title)}${statusBadge}</div>
         <div class="job-company">${escapeHtml(match.listing.companyName)}</div>
         <div class="job-score ${scoreClass}">${match.matchScore}% match</div>
       </div>
@@ -171,6 +250,17 @@ async function selectJobMatch(id: string) {
   // Find the match
   const match = jobMatches.find((m) => m.id === id)
   if (!match) return
+
+  // Update workflow state - job step is now completed
+  setWorkflowStep("job", "completed")
+  setWorkflowStep("docs", "active")
+
+  // Show job actions section
+  jobActionsSection.style.display = "block"
+
+  // Update button states based on match status
+  markAppliedBtn.disabled = match.status === "applied"
+  markIgnoredBtn.disabled = match.status === "ignored"
 
   // Load the job URL in BrowserView
   setStatus("Loading job listing...", "loading")
@@ -258,6 +348,55 @@ function selectDocument(id: string) {
   renderDocumentsList()
 }
 
+// Render generation progress steps
+function renderGenerationSteps(steps: GenerationStep[]) {
+  if (steps.length === 0) {
+    generationSteps.innerHTML = '<div class="empty-placeholder">Starting...</div>'
+    return
+  }
+
+  generationSteps.innerHTML = steps
+    .map((step) => `
+      <div class="gen-step ${step.status}">
+        <span class="gen-step-indicator"></span>
+        <span class="gen-step-name">${escapeHtml(step.name)}</span>
+      </div>
+    `)
+    .join("")
+}
+
+// Handle generation progress updates
+function handleGenerationProgress(progress: GenerationProgress) {
+  renderGenerationSteps(progress.steps)
+
+  if (progress.status === "completed") {
+    setStatus("Documents generated successfully", "success")
+    generationProgress.style.display = "none"
+    generateBtn.disabled = false
+    setWorkflowStep("docs", "completed")
+    setWorkflowStep("fill", "active")
+    // Clean up the listener now that generation is complete
+    cleanupGenerationProgressListener()
+    // Reload documents to show the new ones
+    if (selectedJobMatchId) {
+      loadDocuments(selectedJobMatchId)
+    }
+  } else if (progress.status === "failed") {
+    setStatus(progress.error || "Generation failed", "error")
+    generateBtn.disabled = false
+    // Clean up the listener on failure too
+    cleanupGenerationProgressListener()
+  }
+}
+
+// Clean up generation progress listener
+function cleanupGenerationProgressListener() {
+  if (unsubscribeGenerationProgress) {
+    unsubscribeGenerationProgress()
+    unsubscribeGenerationProgress = null
+  }
+}
+
 // Generate new document
 async function generateDocument() {
   if (!selectedJobMatchId) {
@@ -265,24 +404,124 @@ async function generateDocument() {
     return
   }
 
-  // For simplicity, generate both resume and cover letter
-  setStatus("Starting document generation...", "loading")
+  // Show generation progress UI
+  generationProgress.style.display = "block"
+  generationSteps.innerHTML = '<div class="loading-placeholder">Starting generation...</div>'
+  setStatus("Generating documents...", "loading")
   generateBtn.disabled = true
 
-  const result = await electronAPI.startGeneration({
+  // Subscribe to progress updates (clean up any existing listener first)
+  cleanupGenerationProgressListener()
+  unsubscribeGenerationProgress = electronAPI.onGenerationProgress(handleGenerationProgress)
+
+  // Start generation with sequential step execution
+  const result = await electronAPI.runGeneration({
     jobMatchId: selectedJobMatchId,
     type: "both",
   })
 
-  if (result.success) {
-    setStatus(`Generation started (ID: ${result.requestId})`, "success")
-    // Reload documents after a delay
-    setTimeout(() => loadDocuments(selectedJobMatchId!), 3000)
-  } else {
+  if (result.success && result.data) {
+    // Final update from result (will also cleanup listener)
+    handleGenerationProgress(result.data)
+  } else if (!result.success) {
     setStatus(result.message || "Generation failed", "error")
+    generationProgress.style.display = "none"
+    generateBtn.disabled = false
+    // Clean up listener on error path
+    cleanupGenerationProgressListener()
   }
+}
 
-  generateBtn.disabled = false
+// Mark job match as applied
+async function markAsApplied() {
+  if (!selectedJobMatchId) return
+
+  setStatus("Marking as applied...", "loading")
+  markAppliedBtn.disabled = true
+
+  const result = await electronAPI.updateJobMatchStatus({
+    id: selectedJobMatchId,
+    status: "applied",
+  })
+
+  if (result.success) {
+    setStatus("Marked as applied", "success")
+    // Update local state
+    const match = jobMatches.find((m) => m.id === selectedJobMatchId)
+    if (match) {
+      match.status = "applied"
+    }
+    // Update workflow
+    setWorkflowStep("submit", "completed")
+    renderJobList()
+    markIgnoredBtn.disabled = false
+  } else {
+    setStatus(result.message || "Failed to update status", "error")
+    markAppliedBtn.disabled = false
+  }
+}
+
+// Mark job match as ignored
+async function markAsIgnored() {
+  if (!selectedJobMatchId) return
+
+  setStatus("Marking as ignored...", "loading")
+  markIgnoredBtn.disabled = true
+
+  const result = await electronAPI.updateJobMatchStatus({
+    id: selectedJobMatchId,
+    status: "ignored",
+  })
+
+  if (result.success) {
+    setStatus("Marked as ignored", "success")
+    // Update local state
+    const match = jobMatches.find((m) => m.id === selectedJobMatchId)
+    if (match) {
+      match.status = "ignored"
+    }
+    renderJobList()
+    markAppliedBtn.disabled = false
+  } else {
+    setStatus(result.message || "Failed to update status", "error")
+    markIgnoredBtn.disabled = false
+  }
+}
+
+// Check if a URL matches any job match and auto-select it
+async function checkUrlForJobMatch(url: string) {
+  try {
+    const result = await electronAPI.findJobMatchByUrl(url)
+    if (result.success && result.data) {
+      const match = result.data
+      // Add to job matches list if not present
+      if (!jobMatches.find((m) => m.id === match.id)) {
+        jobMatches.unshift(match)
+        renderJobList()
+      }
+      // Auto-select the match (but don't navigate again)
+      selectedJobMatchId = match.id
+      selectedDocumentId = null
+      renderJobList()
+
+      // Update workflow state
+      setWorkflowStep("job", "completed")
+      setWorkflowStep("docs", "active")
+
+      // Show job actions section
+      jobActionsSection.style.display = "block"
+      markAppliedBtn.disabled = match.status === "applied"
+      markIgnoredBtn.disabled = match.status === "ignored"
+
+      // Load documents
+      await loadDocuments(match.id)
+      generateBtn.disabled = false
+
+      setStatus(`Matched: ${match.listing.title} at ${match.listing.companyName}`, "success")
+    }
+  } catch (err) {
+    console.warn("Failed to check URL for job match:", err)
+  }
 }
 
 // Navigate to URL
@@ -301,6 +540,9 @@ async function navigate() {
     setStatus("Loading...", "loading")
     await electronAPI.navigate(fullUrl)
     setStatus("Page loaded", "success")
+
+    // Check if this URL matches any job match
+    await checkUrlForJobMatch(fullUrl)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     setStatus(`Navigation failed: ${message}`, "error")
@@ -316,6 +558,7 @@ async function fillForm() {
   try {
     setButtonsEnabled(false)
     setStatus(`Filling form with ${provider}...`, "loading")
+    setWorkflowStep("fill", "active")
 
     // Use enhanced fill if we have a job match selected
     if (selectedJobMatchId) {
@@ -328,6 +571,8 @@ async function fillForm() {
       if (result.success && result.data) {
         renderFillResults(result.data)
         setStatus(`Filled ${result.data.filledCount}/${result.data.totalFields} fields`, "success")
+        setWorkflowStep("fill", "completed")
+        setWorkflowStep("submit", "active")
       } else {
         setStatus(result.message || "Fill failed", "error")
       }
@@ -337,6 +582,8 @@ async function fillForm() {
 
       if (result.success) {
         setStatus(result.message, "success")
+        setWorkflowStep("fill", "completed")
+        setWorkflowStep("submit", "active")
       } else {
         setStatus(result.message, "error")
       }
@@ -471,10 +718,15 @@ fillBtn.addEventListener("click", fillForm)
 uploadBtn.addEventListener("click", uploadResume)
 submitJobBtn.addEventListener("click", submitJob)
 generateBtn.addEventListener("click", generateDocument)
+markAppliedBtn.addEventListener("click", markAsApplied)
+markIgnoredBtn.addEventListener("click", markAsIgnored)
 
 // Initialize
 async function init() {
   setStatus("Ready")
+
+  // Initialize workflow progress
+  updateWorkflowProgress()
 
   // Check CDP connection status and warn if unavailable
   const cdpStatus = await electronAPI.getCdpStatus()

@@ -5,6 +5,27 @@ import * as path from "path"
 import * as fs from "fs"
 import * as os from "os"
 
+// Import shared types and utilities
+import type {
+  CliProvider,
+  PersonalInfo,
+  ContentItem,
+  FormField,
+  FillInstruction,
+  EnhancedFillInstruction,
+  FormFillSummary,
+  JobExtraction,
+  GenerationStep,
+  GenerationProgress,
+} from "./types.js"
+import {
+  normalizeUrl,
+  resolveDocumentPath,
+  buildPrompt,
+  buildEnhancedPrompt,
+  buildExtractionPrompt,
+} from "./utils.js"
+
 // Configuration from environment
 const CDP_PORT = process.env.CDP_PORT || "9222"
 // NOTE: The default API_URL uses HTTP and is intended for local development only.
@@ -13,17 +34,23 @@ const API_URL = process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
 // Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
 const ARTIFACTS_DIR = process.env.GENERATOR_ARTIFACTS_DIR || "/data/artifacts"
 
-// Warn if using HTTP in non-development environments
-if (API_URL.startsWith("http://") && process.env.NODE_ENV === "production") {
-  console.warn(
-    "[SECURITY WARNING] API_URL is using HTTP in production. " +
-      "This may expose sensitive data. Please use HTTPS for production deployments."
+// Enforce HTTPS in production
+if (process.env.NODE_ENV === "production" && API_URL.startsWith("http://")) {
+  throw new Error(
+    "SECURITY ERROR: API_URL must use HTTPS in production. " +
+      "Set JOB_FINDER_API_URL to a secure endpoint (https://...)."
   )
 }
 
 // Layout constants
 const TOOLBAR_HEIGHT = 60
 const SIDEBAR_WIDTH = 300
+
+// CLI timeout constant
+const CLI_TIMEOUT_MS = 60000
+
+// Maximum steps for generation workflow (prevent infinite loops)
+const MAX_GENERATION_STEPS = 20
 
 // Enable remote debugging for Playwright CDP connection
 app.commandLine.appendSwitch("remote-debugging-port", CDP_PORT)
@@ -34,118 +61,6 @@ let browserView: BrowserView | null = null
 let playwrightBrowser: Browser | null = null
 let sidebarOpen = false
 let cdpConnected = false
-
-// CLI provider types
-type CliProvider = "claude" | "codex" | "gemini"
-
-interface FillInstruction {
-  selector: string
-  value: string
-}
-
-interface JobExtraction {
-  title: string | null
-  description: string | null
-  location: string | null
-  techStack: string | null
-  companyName: string | null
-}
-
-interface SelectOption {
-  value: string
-  text: string
-}
-
-interface FormField {
-  selector: string | null
-  type: string
-  label: string | null
-  placeholder: string | null
-  required: boolean
-  options: SelectOption[] | null
-}
-
-interface EEOInfo {
-  race?: string
-  hispanicLatino?: string
-  gender?: string
-  veteranStatus?: string
-  disabilityStatus?: string
-}
-
-interface PersonalInfo {
-  name: string
-  email: string
-  phone?: string
-  location?: string
-  website?: string
-  github?: string
-  linkedin?: string
-  summary?: string
-  eeo?: EEOInfo
-}
-
-interface FormFillSummary {
-  totalFields: number
-  filledCount: number
-  skippedCount: number
-  skippedFields: Array<{ label: string; reason: string }>
-  duration: number
-}
-
-interface EnhancedFillInstruction {
-  selector: string
-  value: string | null
-  status: "filled" | "skipped"
-  reason?: string
-  label?: string
-}
-
-// EEO display values for form filling
-const EEO_DISPLAY: Record<string, Record<string, string>> = {
-  race: {
-    american_indian_alaska_native: "American Indian or Alaska Native",
-    asian: "Asian",
-    black_african_american: "Black or African American",
-    native_hawaiian_pacific_islander: "Native Hawaiian or Other Pacific Islander",
-    white: "White",
-    two_or_more_races: "Two or More Races",
-    decline_to_identify: "Decline to Self-Identify",
-  },
-  hispanicLatino: {
-    yes: "Yes",
-    no: "No",
-    decline_to_identify: "Decline to Self-Identify",
-  },
-  gender: {
-    male: "Male",
-    female: "Female",
-    decline_to_identify: "Decline to Self-Identify",
-  },
-  veteranStatus: {
-    not_protected_veteran: "I am not a protected veteran",
-    protected_veteran: "I identify as one or more of the classifications of a protected veteran",
-    disabled_veteran: "I am a disabled veteran",
-    decline_to_identify: "Decline to Self-Identify",
-  },
-  disabilityStatus: {
-    yes: "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
-    no: "No, I Don't Have A Disability",
-    decline_to_identify: "Decline to Self-Identify",
-  },
-}
-
-interface ContentItem {
-  id: string
-  title?: string
-  role?: string
-  location?: string
-  startDate?: string
-  endDate?: string
-  description?: string
-  skills?: string[]
-  children?: ContentItem[]
-}
 
 // Update BrowserView bounds based on sidebar state
 function updateBrowserViewBounds(): void {
@@ -158,16 +73,6 @@ function updateBrowserViewBounds(): void {
     width: bounds.width - offsetX,
     height: bounds.height - TOOLBAR_HEIGHT,
   })
-}
-
-// Normalize URL for comparison (origin + pathname only)
-function normalizeUrl(url: string): string {
-  try {
-    const parsed = new URL(url)
-    return `${parsed.origin}${parsed.pathname}`
-  } catch {
-    return url
-  }
 }
 
 // Form extraction script - injected into page
@@ -358,23 +263,6 @@ ipcMain.handle(
   }
 )
 
-// Helper to resolve document file path from URL
-function resolveDocumentPath(documentUrl: string): string {
-  // documentUrl is like "/api/generator/artifacts/2025-12-04/filename.pdf"
-  // Extract the relative path after /api/generator/artifacts/
-  const prefix = "/api/generator/artifacts/"
-  if (documentUrl.startsWith(prefix)) {
-    const relativePath = documentUrl.substring(prefix.length)
-    return path.join(ARTIFACTS_DIR, relativePath)
-  }
-  // If it's already an absolute path, return as-is
-  if (path.isAbsolute(documentUrl)) {
-    return documentUrl
-  }
-  // Otherwise treat as relative to artifacts dir
-  return path.join(ARTIFACTS_DIR, documentUrl)
-}
-
 // Upload resume/document to form
 ipcMain.handle(
   "upload-resume",
@@ -423,7 +311,7 @@ ipcMain.handle(
           }
         }
 
-        resolvedPath = resolveDocumentPath(docUrl)
+        resolvedPath = resolveDocumentPath(docUrl, ARTIFACTS_DIR)
       } else {
         // Fallback to RESUME_PATH environment variable
         resolvedPath = process.env.RESUME_PATH || path.join(os.homedir(), "resume.pdf")
@@ -626,7 +514,66 @@ ipcMain.handle(
   }
 )
 
-// Start document generation
+// Update job match status (mark as applied, ignored, etc.)
+ipcMain.handle(
+  "update-job-match-status",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: { id: string; status: "active" | "ignored" | "applied" }
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const res = await fetch(`${API_URL}/job-matches/${options.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: options.status }),
+      })
+      if (!res.ok) {
+        const errorText = await res.text()
+        return { success: false, message: `Failed to update status: ${errorText.slice(0, 100)}` }
+      }
+      return { success: true }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, message }
+    }
+  }
+)
+
+// Find job match by URL (for auto-detection)
+ipcMain.handle(
+  "find-job-match-by-url",
+  async (
+    _event: IpcMainInvokeEvent,
+    url: string
+  ): Promise<{ success: boolean; data?: unknown; message?: string }> => {
+    try {
+      // Normalize the URL for comparison
+      const normalizedUrl = normalizeUrl(url)
+
+      // Fetch recent job matches and compare URLs
+      const res = await fetch(`${API_URL}/job-matches/?limit=100&sortBy=updated&sortOrder=desc`)
+      if (!res.ok) {
+        return { success: false, message: `Failed to fetch job matches: ${res.status}` }
+      }
+      const data = await res.json()
+      const matches = data.data || data || []
+
+      // Find a match where the listing URL matches (normalized)
+      for (const match of matches) {
+        if (match.listing?.url && normalizeUrl(match.listing.url) === normalizedUrl) {
+          return { success: true, data: match }
+        }
+      }
+
+      return { success: true, data: null } // No match found
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, message }
+    }
+  }
+)
+
+// Start document generation (simple - returns requestId only)
 ipcMain.handle(
   "start-generation",
   async (
@@ -656,6 +603,7 @@ ipcMain.handle(
             location: match.listing?.location,
           },
           jobMatchId: options.jobMatchId,
+          date: new Date().toLocaleDateString(),
         }),
       })
 
@@ -665,9 +613,195 @@ ipcMain.handle(
       }
 
       const data = await res.json()
-      return { success: true, requestId: data.requestId || data.id }
+      return { success: true, requestId: data.requestId || data.data?.requestId || data.id }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      return { success: false, message }
+    }
+  }
+)
+
+// Run full document generation with sequential step execution (matches frontend pattern)
+// This sends progress updates via IPC as steps complete
+ipcMain.handle(
+  "run-generation",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: { jobMatchId: string; type: "resume" | "coverLetter" | "both" }
+  ): Promise<{
+    success: boolean
+    data?: GenerationProgress
+    message?: string
+  }> => {
+    try {
+      // First get the job match to get job details
+      const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`)
+      if (!matchRes.ok) {
+        return { success: false, message: `Failed to fetch job match: ${matchRes.status}` }
+      }
+      const matchData = await matchRes.json()
+      const match = matchData.data || matchData
+
+      // Start generation
+      console.log("Starting document generation...")
+      const startRes = await fetch(`${API_URL}/generator/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generateType: options.type,
+          job: {
+            role: match.listing?.title || "Unknown Role",
+            company: match.listing?.companyName || "Unknown Company",
+            jobDescriptionUrl: match.listing?.url,
+            jobDescriptionText: match.listing?.description,
+            location: match.listing?.location,
+          },
+          jobMatchId: options.jobMatchId,
+          date: new Date().toLocaleDateString(),
+        }),
+      })
+
+      if (!startRes.ok) {
+        const errorText = await startRes.text()
+        return { success: false, message: `Generation failed to start: ${errorText.slice(0, 100)}` }
+      }
+
+      const startData = await startRes.json()
+      const requestId = startData.requestId || startData.data?.requestId
+      let nextStep = startData.data?.nextStep || startData.nextStep
+      let currentSteps: GenerationStep[] = startData.data?.steps || startData.steps || []
+      let resumeUrl = startData.data?.resumeUrl || startData.resumeUrl
+      let coverLetterUrl = startData.data?.coverLetterUrl || startData.coverLetterUrl
+
+      console.log(`Generation started: ${requestId}, next step: ${nextStep}`)
+
+      // Send initial progress to renderer
+      if (mainWindow) {
+        mainWindow.webContents.send("generation-progress", {
+          requestId,
+          status: "processing",
+          steps: currentSteps,
+          currentStep: nextStep,
+          resumeUrl,
+          coverLetterUrl,
+        })
+      }
+
+      // Execute steps sequentially until complete (with safety limit)
+      let stepCount = 0
+      while (nextStep && stepCount < MAX_GENERATION_STEPS) {
+        stepCount++
+        // Update step status to in_progress
+        currentSteps = currentSteps.map((s) =>
+          s.id === nextStep ? { ...s, status: "in_progress" as const } : s
+        )
+
+        // Send progress update
+        if (mainWindow) {
+          mainWindow.webContents.send("generation-progress", {
+            requestId,
+            status: "processing",
+            steps: currentSteps,
+            currentStep: nextStep,
+            resumeUrl,
+            coverLetterUrl,
+          })
+        }
+
+        console.log(`Executing step: ${nextStep}`)
+        const stepRes = await fetch(`${API_URL}/generator/step/${requestId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        })
+
+        if (!stepRes.ok) {
+          const errorText = await stepRes.text()
+          return {
+            success: false,
+            message: `Step execution failed: ${errorText.slice(0, 100)}`,
+            data: {
+              requestId,
+              status: "failed",
+              steps: currentSteps,
+              error: errorText.slice(0, 100),
+            },
+          }
+        }
+
+        const stepData = await stepRes.json()
+        const stepResult = stepData.data || stepData
+
+        // Check for failure
+        if (stepResult.status === "failed") {
+          return {
+            success: false,
+            message: stepResult.error || "Generation step failed",
+            data: {
+              requestId,
+              status: "failed",
+              steps: stepResult.steps || currentSteps,
+              error: stepResult.error,
+            },
+          }
+        }
+
+        // Update state from step result
+        if (stepResult.steps) {
+          currentSteps = stepResult.steps
+        }
+        if (stepResult.resumeUrl) {
+          resumeUrl = stepResult.resumeUrl
+        }
+        if (stepResult.coverLetterUrl) {
+          coverLetterUrl = stepResult.coverLetterUrl
+        }
+        nextStep = stepResult.nextStep
+
+        console.log(`Step completed, next: ${nextStep || "done"}`)
+
+        // Send progress update
+        if (mainWindow) {
+          mainWindow.webContents.send("generation-progress", {
+            requestId,
+            status: nextStep ? "processing" : "completed",
+            steps: currentSteps,
+            currentStep: nextStep,
+            resumeUrl,
+            coverLetterUrl,
+          })
+        }
+      }
+
+      // Safety check: if we hit max steps but nextStep is still set, something went wrong
+      if (nextStep && stepCount >= MAX_GENERATION_STEPS) {
+        console.error(`Generation exceeded max steps (${MAX_GENERATION_STEPS})`)
+        return {
+          success: false,
+          message: `Generation exceeded maximum steps (${MAX_GENERATION_STEPS}). This may indicate a backend issue.`,
+          data: {
+            requestId,
+            status: "failed",
+            steps: currentSteps,
+            error: "Exceeded maximum generation steps",
+          },
+        }
+      }
+
+      console.log("Generation completed successfully")
+      return {
+        success: true,
+        data: {
+          requestId,
+          status: "completed",
+          steps: currentSteps,
+          resumeUrl,
+          coverLetterUrl,
+        },
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error("Generation error:", message)
       return { success: false, message }
     }
   }
@@ -791,85 +925,15 @@ ipcMain.handle(
   }
 )
 
-function formatEEOValue(field: string, value: string | undefined): string {
-  if (!value) return "Not provided - skip this field"
-  return EEO_DISPLAY[field]?.[value] || value
-}
-
-function buildEnhancedPrompt(
-  fields: FormField[],
-  profile: PersonalInfo,
-  workHistory: ContentItem[],
-  jobMatch: Record<string, unknown> | null
-): string {
-  const eeoSection = profile.eeo
-    ? `
-## EEO Information (US Equal Employment Opportunity)
-Race: ${formatEEOValue("race", profile.eeo.race)}
-Hispanic/Latino: ${formatEEOValue("hispanicLatino", profile.eeo.hispanicLatino)}
-Gender: ${formatEEOValue("gender", profile.eeo.gender)}
-Veteran Status: ${formatEEOValue("veteranStatus", profile.eeo.veteranStatus)}
-Disability Status: ${formatEEOValue("disabilityStatus", profile.eeo.disabilityStatus)}
-`
-    : "\n## EEO Information\nNot provided - skip EEO fields\n"
-
-  const jobContextSection = jobMatch
-    ? `
-## Job-Specific Context
-Company: ${(jobMatch.listing as Record<string, unknown>)?.companyName || "Unknown"}
-Role: ${(jobMatch.listing as Record<string, unknown>)?.title || "Unknown"}
-Matched Skills: ${(jobMatch.matchedSkills as string[])?.join(", ") || "N/A"}
-ATS Keywords: ${(jobMatch.resumeIntakeData as Record<string, unknown>)?.atsKeywords?.toString() || "N/A"}
-`
-    : ""
-
-  return `Fill this job application form. Return a JSON array with status for each field.
-
-## CRITICAL SAFETY RULES
-1. NEVER fill or interact with submit/apply buttons
-2. Skip any field that would submit the form
-3. The user must manually click the final submit button
-
-## User Profile
-Name: ${profile.name}
-Email: ${profile.email}
-Phone: ${profile.phone || "Not provided"}
-Location: ${profile.location || "Not provided"}
-Website: ${profile.website || "Not provided"}
-GitHub: ${profile.github || "Not provided"}
-LinkedIn: ${profile.linkedin || "Not provided"}
-Summary: ${profile.summary || "Not provided"}
-${eeoSection}
-## Work History / Experience
-${workHistory.length > 0 ? formatWorkHistory(workHistory) : "Not provided"}
-${jobContextSection}
-## Form Fields
-${JSON.stringify(fields, null, 2)}
-
-## Response Format
-Return a JSON array. For EACH form field, include a status and label:
-[
-  {"selector": "#email", "label": "Email Address", "value": "user@example.com", "status": "filled"},
-  {"selector": "#coverLetter", "label": "Cover Letter", "value": null, "status": "skipped", "reason": "Requires custom text"}
-]
-
-Rules:
-1. For select dropdowns, use the "value" property from options (not "text")
-2. Skip file upload fields (type="file") - status: "skipped", reason: "File upload"
-3. Skip submit buttons - status: "skipped", reason: "Submit button"
-4. For EEO fields, use the display values provided above or skip if not provided
-5. If no data available for a required field, mark status: "skipped" with reason
-6. Return ONLY valid JSON array, no markdown, no explanation`
+// CLI command configurations
+const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
+  claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
+  codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
+  gemini: ["gemini", ["-o", "json", "--yolo"]],
 }
 
 function runEnhancedCli(provider: CliProvider, prompt: string): Promise<EnhancedFillInstruction[]> {
-  const commands: Record<CliProvider, [string, string[]]> = {
-    claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
-    codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
-    gemini: ["gemini", ["-o", "json", "--yolo"]],
-  }
-
-  const [cmd, args] = commands[provider]
+  const [cmd, args] = CLI_COMMANDS[provider]
 
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args)
@@ -878,8 +942,8 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
 
     const timeout = setTimeout(() => {
       child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out after 60s`))
-    }, 60000)
+      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s`))
+    }, CLI_TIMEOUT_MS)
 
     child.stdin.write(prompt)
     child.stdin.end()
@@ -934,34 +998,8 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
   })
 }
 
-function buildExtractionPrompt(pageContent: string, url: string): string {
-  return `Extract job listing details from this page content.
-
-URL: ${url}
-
-Page Content:
-${pageContent}
-
-Return a JSON object with these fields (use null if not found):
-{
-  "title": "Job title",
-  "description": "Full job description (include requirements, responsibilities)",
-  "location": "Job location (e.g., Remote, Portland, OR)",
-  "techStack": "Technologies mentioned (comma-separated)",
-  "companyName": "Company name"
-}
-
-Return ONLY valid JSON, no markdown, no explanation.`
-}
-
 function runCliForExtraction(provider: CliProvider, prompt: string): Promise<JobExtraction> {
-  const commands: Record<CliProvider, [string, string[]]> = {
-    claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
-    codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
-    gemini: ["gemini", ["-o", "json", "--yolo"]],
-  }
-
-  const [cmd, args] = commands[provider]
+  const [cmd, args] = CLI_COMMANDS[provider]
 
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args)
@@ -970,8 +1008,8 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
 
     const timeout = setTimeout(() => {
       child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out after 60s`))
-    }, 60000)
+      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s`))
+    }, CLI_TIMEOUT_MS)
 
     child.stdin.write(prompt)
     child.stdin.end()
@@ -1020,87 +1058,18 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
   })
 }
 
-function formatWorkHistory(items: ContentItem[], indent = 0): string {
-  const lines: string[] = []
-  for (const item of items) {
-    const prefix = "  ".repeat(indent)
-    if (item.title) {
-      lines.push(`${prefix}- ${item.title}${item.role ? ` (${item.role})` : ""}`)
-      if (item.startDate || item.endDate) {
-        lines.push(`${prefix}  Period: ${item.startDate || "?"} - ${item.endDate || "present"}`)
-      }
-      if (item.location) lines.push(`${prefix}  Location: ${item.location}`)
-      if (item.description) lines.push(`${prefix}  ${item.description}`)
-      if (item.skills?.length) lines.push(`${prefix}  Skills: ${item.skills.join(", ")}`)
-      if (item.children?.length) {
-        lines.push(formatWorkHistory(item.children, indent + 1))
-      }
-    }
-  }
-  return lines.join("\n")
-}
-
-function buildPrompt(fields: FormField[], profile: PersonalInfo, workHistory: ContentItem[]): string {
-  const profileStr = `
-Name: ${profile.name}
-Email: ${profile.email}
-Phone: ${profile.phone || "Not provided"}
-Location: ${profile.location || "Not provided"}
-Website: ${profile.website || "Not provided"}
-GitHub: ${profile.github || "Not provided"}
-LinkedIn: ${profile.linkedin || "Not provided"}
-`.trim()
-
-  const workHistoryStr = workHistory.length > 0 ? formatWorkHistory(workHistory) : "Not provided"
-  const fieldsJson = JSON.stringify(fields, null, 2)
-
-  return `Fill this job application form. Return ONLY a JSON array of fill instructions.
-
-## User Profile
-${profileStr}
-
-## Work History / Experience
-${workHistoryStr}
-
-## Form Fields
-${fieldsJson}
-
-## Instructions
-Return a JSON array where each item has:
-- "selector": the CSS selector from the form fields above
-- "value": the value to fill
-
-Rules:
-1. Only fill fields you're confident about
-2. Skip file upload fields (type="file")
-3. Skip cover letter or free-text fields asking "why do you want this job"
-4. For select dropdowns, use the "value" property from the options array (not the "text")
-5. Return ONLY valid JSON array, no markdown, no explanation
-
-Example output:
-[{"selector": "#email", "value": "john@example.com"}, {"selector": "#phone", "value": "555-1234"}]`
-}
-
 function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[]> {
-  // Commands without the prompt - we'll pass it via stdin for security
-  const commands: Record<CliProvider, [string, string[]]> = {
-    claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
-    codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
-    gemini: ["gemini", ["-o", "json", "--yolo"]],
-  }
-
-  const [cmd, args] = commands[provider]
+  const [cmd, args] = CLI_COMMANDS[provider]
 
   return new Promise((resolve, reject) => {
-    // Use shell: false for security - avoids command injection
     const child = spawn(cmd, args)
     let stdout = ""
     let stderr = ""
 
     const timeout = setTimeout(() => {
       child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out after 60s`))
-    }, 60000)
+      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s`))
+    }, CLI_TIMEOUT_MS)
 
     // Pass prompt via stdin to avoid shell injection
     child.stdin.write(prompt)

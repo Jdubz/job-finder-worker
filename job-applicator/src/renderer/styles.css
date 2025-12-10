@@ -433,3 +433,196 @@ select:focus {
 .loading-placeholder {
   color: #fbbf24;
 }
+
+/* Workflow Progress */
+.workflow-section {
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.workflow-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.workflow-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.step-indicator {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #1a1a2e;
+  border: 2px solid #444;
+  transition: all 0.2s ease;
+}
+
+.workflow-step.completed .step-indicator {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.workflow-step.active .step-indicator {
+  background: #e94560;
+  border-color: #e94560;
+  animation: pulse 1.5s infinite;
+}
+
+.workflow-step.pending .step-indicator {
+  background: #1a1a2e;
+  border-color: #444;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.step-label {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+}
+
+.workflow-step.completed .step-label,
+.workflow-step.active .step-label {
+  color: #eee;
+}
+
+.workflow-connector {
+  width: 20px;
+  height: 2px;
+  background: #444;
+  margin-bottom: 16px;
+}
+
+.workflow-step.completed + .workflow-connector,
+.workflow-connector:has(+ .workflow-step.completed),
+.workflow-connector:has(+ .workflow-step.active) {
+  background: #10b981;
+}
+
+/* Job Actions */
+.job-actions-section {
+  border-top: 1px solid #0f3460;
+  padding-top: 12px;
+}
+
+.job-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-mark-applied {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 12px;
+  background: #10b981;
+  color: #fff;
+}
+
+.btn-mark-applied:hover:not(:disabled) {
+  background: #059669;
+}
+
+.btn-mark-ignored {
+  padding: 8px 12px;
+  font-size: 12px;
+  background: #6b7280;
+  color: #fff;
+}
+
+.btn-mark-ignored:hover:not(:disabled) {
+  background: #4b5563;
+}
+
+/* Generation Progress */
+.generation-progress {
+  margin-top: 12px;
+  padding: 12px;
+  background: #1a1a2e;
+  border-radius: 6px;
+}
+
+.generation-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gen-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #888;
+}
+
+.gen-step-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #333;
+  border: 2px solid #444;
+  flex-shrink: 0;
+}
+
+.gen-step.completed .gen-step-indicator {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.gen-step.in_progress .gen-step-indicator {
+  background: #fbbf24;
+  border-color: #fbbf24;
+  animation: pulse 1s infinite;
+}
+
+.gen-step.failed .gen-step-indicator {
+  background: #f87171;
+  border-color: #f87171;
+}
+
+.gen-step-name {
+  flex: 1;
+}
+
+.gen-step.completed .gen-step-name {
+  color: #eee;
+}
+
+.gen-step.in_progress .gen-step-name {
+  color: #fbbf24;
+}
+
+.gen-step.failed .gen-step-name {
+  color: #f87171;
+}
+
+/* Job status badges */
+.job-status-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 3px;
+  margin-left: 6px;
+}
+
+.job-status-badge.applied {
+  background: #10b981;
+  color: #fff;
+}
+
+.job-status-badge.ignored {
+  background: #6b7280;
+  color: #fff;
+}
