@@ -151,11 +151,29 @@ for skill in job_technologies:
         points = missingScore (negative)
 ```
 
+### Location/Timezone Scoring
+
+Personal-info values (city, timezone, relocationAllowed) are merged into LocationConfig at scoring time:
+
+```
+personal-info.timezone    → location.userTimezone
+personal-info.city        → location.userCity
+personal-info.relocationAllowed → location.relocationAllowed
+```
+
+**Scoring behavior:**
+- **Remote**: Bonus if allowed, no timezone/city check
+- **Hybrid same city**: Bonus (hybridSameCityScore)
+- **Hybrid different city**: Hard reject if `relocationAllowed=false`, else penalty (relocationScore)
+- **Onsite same city**: Neutral (just timezone adjustment)
+- **Onsite different city**: Hard reject if `relocationAllowed=false`, else penalty (relocationScore)
+- **Timezone diff**: Per-hour penalty up to maxTimezoneDiffHours, then hard reject
+
 ### Files
 
 - Profile Reducer: `job-finder-worker/src/job_finder/profile/reducer.py`
 - Scoring Engine: `job-finder-worker/src/job_finder/scoring/engine.py`
-- Config Types: `shared/src/config.types.ts` (SkillMatchConfig)
+- Config Types: `shared/src/config.types.ts` (SkillMatchConfig, LocationConfig)
 
 ## Data Flow
 

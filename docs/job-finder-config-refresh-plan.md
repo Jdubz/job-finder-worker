@@ -12,74 +12,18 @@ The following items from the original config refresh plan have been completed:
 - AI defaults to Gemini (via agent manager migration)
 - Removal of legacy config rows (migrations applied)
 - Config repository infrastructure for per-item reload
+- **Location/timezone scoring in matcher**:
+  - `ConfigLoader.get_personal_info()` loads user location data
+  - `JobProcessor._build_scoring_engine()` merges personal-info into LocationConfig
+  - Personal-info values override static config: `timezone→userTimezone`, `city→userCity`, `relocationAllowed`
+  - Hybrid/onsite different city: hard reject if `relocationAllowed=false`, else penalty
+  - 19 unit tests covering all location scoring scenarios
 
 This document tracks remaining implementation work.
 
 ## Remaining Work
 
-### 1. Location/Timezone Scoring in Matcher
-
-The `LocationConfig` interface exists in `shared/src/config.types.ts` with penalty fields, but the scoring engine does not yet apply these penalties.
-
-**Implementation needed in:** `job-finder-worker/src/job_finder/scoring/engine.py`
-
-```python
-def _score_location(self, job: Dict[str, Any]) -> Dict[str, Any]:
-    """Score based on location compatibility."""
-    location_config = self.config.get("location", {})
-    user_city = self.personal_info.get("city", "")
-    user_timezone = self.personal_info.get("timezone")
-    relocation_allowed = self.personal_info.get("relocationAllowed", False)
-
-    work_type = job.get("work_arrangement", "").lower()
-    job_location = job.get("location", "")
-    job_timezone = job.get("timezone")
-
-    adjustments = []
-    total = 0
-
-    # Remote roles: timezone penalty
-    if work_type == "remote" and user_timezone and job_timezone:
-        tz_diff = abs(user_timezone - job_timezone)
-        max_diff = location_config.get("maxTimezoneDiffHours", 4)
-        per_hour = location_config.get("perHourScore", -2)
-
-        if tz_diff > max_diff:
-            # Hard penalty for extreme timezone differences
-            penalty = location_config.get("hardTimezonePenalty", -50)
-            adjustments.append(ScoreAdjustment("location", f"Timezone diff {tz_diff}h exceeds max", penalty))
-            total += penalty
-        elif tz_diff > 0:
-            penalty = tz_diff * per_hour
-            adjustments.append(ScoreAdjustment("location", f"Timezone diff {tz_diff}h", penalty))
-            total += penalty
-
-    # Onsite/Hybrid: city match or relocation
-    if work_type in ("onsite", "hybrid"):
-        if user_city and job_location:
-            if user_city.lower() not in job_location.lower():
-                if not relocation_allowed:
-                    # Hard reject - return special marker
-                    return {"hard_reject": True, "reason": "Location mismatch, relocation not allowed"}
-                else:
-                    penalty = location_config.get("relocationScore", -15)
-                    adjustments.append(ScoreAdjustment("location", "Relocation required", penalty))
-                    total += penalty
-            else:
-                bonus = location_config.get("hybridSameCityScore", 5)
-                adjustments.append(ScoreAdjustment("location", "Same city", bonus))
-                total += bonus
-
-    return {"points": total, "adjustments": adjustments}
-```
-
-**Tasks:**
-- [ ] Add `_score_location()` method to ScoringEngine
-- [ ] Integrate location scoring into `calculate_score()` flow
-- [ ] Handle hard reject case for location mismatch
-- [ ] Add unit tests for location/timezone scoring
-
-### 2. Strike-First Filtering Architecture
+### 1. Strike-First Filtering Architecture
 
 Current state uses hard rejects liberally. The plan calls for strike accumulation with thresholds.
 
@@ -113,7 +57,7 @@ class StrikeAccumulator:
 - [ ] Update matcher to use consistent strike logic
 - [ ] Document scoring order: stop-list -> hard-fail -> strikes -> threshold
 
-### 3. Per-Item Config Reload Verification
+### 2. Per-Item Config Reload Verification
 
 Infrastructure exists but needs verification that worker processors actually reload config per item.
 

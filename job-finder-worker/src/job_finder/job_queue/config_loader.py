@@ -67,6 +67,19 @@ class ConfigLoader:
 
         return config
 
+    def get_personal_info(self) -> Dict[str, Any]:
+        """
+        Get personal info configuration.
+
+        Returns user profile data including location/timezone for scoring.
+        Returns empty dict if not configured (graceful degradation).
+        """
+        try:
+            return self._get_config("personal-info")
+        except InitializationError:
+            logger.debug("personal-info config not found, using defaults")
+            return {}
+
     def get_match_policy(self) -> Dict[str, Any]:
         """
         Get match policy configuration for scoring engine.

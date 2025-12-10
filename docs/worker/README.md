@@ -55,6 +55,12 @@ Experience-weighted skill matching:
 - Missing skills apply `missingScore` penalty
 - Capped by `maxBonus` and `maxPenalty`
 
+Location/timezone scoring (uses personal-info):
+- Remote: Bonus if allowed
+- Hybrid/Onsite same city: Bonus (hybrid) or neutral (onsite)
+- Hybrid/Onsite different city: Hard reject if `relocationAllowed=false`, else penalty
+- Timezone: Per-hour penalty up to max, then hard reject
+
 ### Company Info Fetcher (`company_info_fetcher.py`)
 
 Multi-source company enrichment:
