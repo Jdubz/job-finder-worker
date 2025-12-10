@@ -662,11 +662,14 @@ ipcMain.handle(
 
       const data = await res.json()
       // Handle both wrapped and unwrapped response formats with null safety
+      // API shape: { success, data: { requests: GeneratorRequestRecord[], count } }
       let documents: unknown[] = []
       if (Array.isArray(data)) {
         documents = data
-      } else if (data && typeof data === "object" && Array.isArray(data.data)) {
+      } else if (Array.isArray(data?.data)) {
         documents = data.data
+      } else if (Array.isArray(data?.data?.requests)) {
+        documents = data.data.requests
       }
       return { success: true, data: documents }
     } catch (err) {
@@ -769,7 +772,7 @@ ipcMain.handle(
         return { success: false, message: `Failed to fetch job match: ${matchRes.status}` }
       }
       const matchData = await matchRes.json()
-      const match = matchData.data || matchData
+      const match = matchData?.data?.match || matchData?.match || matchData?.data || matchData
 
       // Start generation
       const res = await fetch(`${API_URL}/generator/start`, fetchOptions({
@@ -777,11 +780,11 @@ ipcMain.handle(
         body: JSON.stringify({
           generateType: options.type,
           job: {
-            role: match.listing?.title || "Unknown Role",
-            company: match.listing?.companyName || "Unknown Company",
-            jobDescriptionUrl: match.listing?.url,
-            jobDescriptionText: match.listing?.description,
-            location: match.listing?.location,
+            role: match?.listing?.title || "Unknown Role",
+            company: match?.listing?.companyName || "Unknown Company",
+            jobDescriptionUrl: match?.listing?.url,
+            jobDescriptionText: match?.listing?.description,
+            location: match?.listing?.location,
           },
           jobMatchId: options.jobMatchId,
           date: new Date().toLocaleDateString(),
@@ -821,7 +824,7 @@ ipcMain.handle(
         return { success: false, message: `Failed to fetch job match: ${matchRes.status}` }
       }
       const matchData = await matchRes.json()
-      const match = matchData.data || matchData
+      const match = matchData?.data?.match || matchData?.match || matchData?.data || matchData
 
       // Start generation
       logger.info("Starting document generation...")
@@ -830,11 +833,11 @@ ipcMain.handle(
         body: JSON.stringify({
           generateType: options.type,
           job: {
-            role: match.listing?.title || "Unknown Role",
-            company: match.listing?.companyName || "Unknown Company",
-            jobDescriptionUrl: match.listing?.url,
-            jobDescriptionText: match.listing?.description,
-            location: match.listing?.location,
+            role: match?.listing?.title || "Unknown Role",
+            company: match?.listing?.companyName || "Unknown Company",
+            jobDescriptionUrl: match?.listing?.url,
+            jobDescriptionText: match?.listing?.description,
+            location: match?.listing?.location,
           },
           jobMatchId: options.jobMatchId,
           date: new Date().toLocaleDateString(),
@@ -1026,7 +1029,7 @@ ipcMain.handle(
         const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`, fetchOptions())
         if (matchRes.ok) {
           const matchJson = await matchRes.json()
-          jobMatchData = matchJson.data || matchJson
+          jobMatchData = matchJson?.data?.match || matchJson?.match || matchJson?.data || matchJson
         }
       }
 
