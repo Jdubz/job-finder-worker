@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
 from job_finder.ai.extraction import JobExtractionResult
+from job_finder.scoring.taxonomy import SkillTaxonomyRepository
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ class ScoringEngine:
         skill_years: Optional[Dict[str, float]] = None,
         user_experience_years: float = 0.0,
         skill_analogs: Optional[Dict[str, Set[str]]] = None,
+        taxonomy_repo: Optional[SkillTaxonomyRepository] = None,
     ):
         """
         Initialize the scoring engine.
@@ -109,6 +111,7 @@ class ScoringEngine:
         self.user_skills: Set[str] = {s.lower().strip() for s in self.skill_years.keys()}
         self.user_experience_years = user_experience_years
         self.skill_analogs = skill_analogs or {}
+        self.taxonomy_lookup = (taxonomy_repo or SkillTaxonomyRepository()).load_lookup()
 
         # Pre-process seniority lists (required fields)
         self._preferred_seniority = {s.lower() for s in self.seniority_config["preferred"]}
@@ -512,6 +515,20 @@ class ScoringEngine:
         if not job_technologies:
             return {"points": 0, "adjustments": []}
 
+        # Map terms via taxonomy; fall back to original term when better for matching
+        def map_term(term: str) -> str:
+            key = term.lower().strip()
+            taxon = self.taxonomy_lookup.get(key)
+            if not taxon:
+                return key
+            canonical = taxon.canonical.lower()
+            # If user already has the original skill but not the canonical, keep original to avoid losing matches
+            if canonical not in self.user_skills and key in self.user_skills:
+                return key
+            return canonical
+
+        mapped_terms = [map_term(t) for t in job_technologies]
+
         base_score = self.skill_match_config["baseMatchScore"]
         years_mult = self.skill_match_config["yearsMultiplier"]
         max_years = self.skill_match_config["maxYearsBonus"]
@@ -526,19 +543,23 @@ class ScoringEngine:
         missing: List[str] = []
         total_bonus = 0.0
 
-        for skill in job_technologies:
-            skill_lower = skill.lower()
+        for original, mapped in zip(job_technologies, mapped_terms):
+            skill_lower = mapped.lower()
+            original_lower = original.lower()
             if skill_lower in self.user_skills:
                 years = self.skill_years.get(skill_lower, 0.0)
                 capped_years = min(years, max_years)
                 points = base_score + (capped_years * years_mult)
-                matched.append((skill, years, points))
+                matched.append((mapped, years, points))
                 total_bonus += points
             elif self._has_analog(skill_lower):
                 analog = self._get_analog(skill_lower)
-                analogs.append((skill, analog))
+                analogs.append((mapped, analog))
+            elif original_lower != skill_lower and self._has_analog(original_lower):
+                analog = self._get_analog(original_lower)
+                analogs.append((original_lower, analog))
             elif skill_lower not in missing_ignore:
-                missing.append(skill)
+                missing.append(mapped)
 
         bonus = min(total_bonus, max_bonus)
         analog_points = len(analogs) * analog_score
