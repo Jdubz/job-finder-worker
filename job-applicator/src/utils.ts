@@ -632,12 +632,10 @@ export async function fetchWithRetry(
   } = config
 
   let lastError: Error | null = null
-  let lastResponse: Response | null = null
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const response = await fetchWithTimeout(url, options, timeoutMs)
-      lastResponse = response
 
       // Check if we should retry based on status code
       if (retryOn.includes(response.status) && attempt < maxRetries) {

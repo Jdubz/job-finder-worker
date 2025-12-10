@@ -41,19 +41,13 @@ import type {
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
-import type {
-  ApiResponse,
-  ApiErrorResponse,
-  JobMatchWithListing,
-  ListJobMatchesResponse,
-} from "@shared/types"
+import type { JobMatchWithListing } from "@shared/types"
 import {
   normalizeUrl,
   resolveDocumentPath,
   buildPrompt,
   buildEnhancedPrompt,
   buildExtractionPrompt,
-  fetchWithTimeout,
   fetchWithRetry,
   parseApiError,
   getUserFriendlyErrorMessage,
