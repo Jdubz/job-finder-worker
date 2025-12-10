@@ -6,6 +6,20 @@ import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import type { JobAnalysisResult, ScoreAdjustment } from "@shared/types"
 
+const categoryStyle: Record<string, string> = {
+  timezone: "bg-sky-50 text-sky-800 border-sky-200",
+  location: "bg-sky-50 text-sky-800 border-sky-200",
+  company: "bg-amber-50 text-amber-800 border-amber-200",
+  skills: "bg-emerald-50 text-emerald-800 border-emerald-200",
+  salary: "bg-fuchsia-50 text-fuchsia-800 border-fuchsia-200",
+  default: "bg-secondary/60 text-foreground border-border",
+}
+
+function badgeClassForCategory(category?: string) {
+  if (!category) return categoryStyle.default
+  return categoryStyle[category.toLowerCase()] ?? categoryStyle.default
+}
+
 interface MatchBreakdownProps {
   analysis?: JobAnalysisResult
 }
@@ -29,7 +43,7 @@ export function MatchBreakdown({ analysis }: MatchBreakdownProps) {
             {scoringResult && (
               <>
                 <Badge variant="outline">Base: {scoringResult.baseScore}</Badge>
-                <Badge>{scoringResult.finalScore}</Badge>
+                <Badge className="bg-foreground text-background">{scoringResult.finalScore}</Badge>
               </>
             )}
           </div>
@@ -47,8 +61,11 @@ export function MatchBreakdown({ analysis }: MatchBreakdownProps) {
                   className="flex items-center justify-between text-sm bg-secondary/30 px-2 py-1.5 rounded"
                 >
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs font-normal">
-                      {adj.category}
+                    <Badge
+                      variant="outline"
+                      className={`text-xs font-normal ${badgeClassForCategory(adj.category)}`}
+                    >
+                      {adj.category || "other"}
                     </Badge>
                     <span className="text-muted-foreground">{adj.reason}</span>
                   </div>
