@@ -493,16 +493,17 @@ describe("URL-based Job Match Detection", () => {
     const data = await res.json() as ApiResponse<ListJobMatchesResponse>
 
     expect(data.success).toBe(true)
-    if (!data.success) return
 
-    // Simulate URL matching logic
-    const targetUrl = "https://example.com/careers/software-engineer"
-    const foundMatch = data.data.matches.find(
-      (m) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
-    )
+    if (data.success) {
+      // Simulate URL matching logic
+      const targetUrl = "https://example.com/careers/software-engineer"
+      const foundMatch = data.data.matches.find(
+        (m) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
+      )
 
-    expect(foundMatch).toBeDefined()
-    expect(foundMatch?.id).toBe("match-1")
+      expect(foundMatch).toBeDefined()
+      expect(foundMatch?.id).toBe("match-1")
+    }
   })
 
   it("should find job match ignoring query parameters", async () => {
@@ -529,16 +530,17 @@ describe("URL-based Job Match Detection", () => {
     const data = await res.json() as ApiResponse<ListJobMatchesResponse>
 
     expect(data.success).toBe(true)
-    if (!data.success) return
 
-    // URL with query params should still match
-    const targetUrl = "https://jobs.example.com/apply/123?ref=linkedin&utm_source=google"
-    const foundMatch = data.data.matches.find(
-      (m) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
-    )
+    if (data.success) {
+      // URL with query params should still match
+      const targetUrl = "https://jobs.example.com/apply/123?ref=linkedin&utm_source=google"
+      const foundMatch = data.data.matches.find(
+        (m) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
+      )
 
-    expect(foundMatch).toBeDefined()
-    expect(foundMatch?.id).toBe("match-2")
+      expect(foundMatch).toBeDefined()
+      expect(foundMatch?.id).toBe("match-2")
+    }
   })
 
   it("should return undefined when no match found", async () => {
@@ -565,14 +567,15 @@ describe("URL-based Job Match Detection", () => {
     const data = await res.json() as ApiResponse<ListJobMatchesResponse>
 
     expect(data.success).toBe(true)
-    if (!data.success) return
 
-    const targetUrl = "https://different-site.com/careers/job"
-    const foundMatch = data.data.matches.find(
-      (m) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
-    )
+    if (data.success) {
+      const targetUrl = "https://different-site.com/careers/job"
+      const foundMatch = data.data.matches.find(
+        (m) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
+      )
 
-    expect(foundMatch).toBeUndefined()
+      expect(foundMatch).toBeUndefined()
+    }
   })
 
   it("should handle empty job matches list", async () => {

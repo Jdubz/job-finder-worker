@@ -78,8 +78,13 @@
           <div class="documents-list" id="documentsList">
             <div class="empty-placeholder">Select a job match</div>
           </div>
-          <div class="section-actions">
-            <button class="btn-generate" id="generateBtn" disabled>Generate New</button>
+          <div class="section-actions generate-actions">
+            <select id="generateType" class="generate-type-select">
+              <option value="both">Resume + Cover Letter</option>
+              <option value="resume">Resume Only</option>
+              <option value="coverLetter">Cover Letter Only</option>
+            </select>
+            <button class="btn-generate" id="generateBtn" disabled>Generate</button>
           </div>
           <!-- Generation Progress -->
           <div class="generation-progress hidden" id="generationProgress">
