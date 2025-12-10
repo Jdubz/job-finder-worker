@@ -47,12 +47,14 @@ import {
   resolveDocumentPath,
   buildPrompt,
   buildEnhancedPrompt,
+  buildPromptFromProfileText,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
 } from "./utils.js"
 // Typed API client
 import {
   fetchPersonalInfo,
+  fetchApplicatorProfile,
   fetchContentItems,
   fetchJobMatches,
   fetchJobMatch,
@@ -75,7 +77,7 @@ const TOOLBAR_HEIGHT = 60
 const SIDEBAR_WIDTH = 300
 
 // CLI timeout constant
-const CLI_TIMEOUT_MS = 60000
+const CLI_TIMEOUT_MS = 120000 // 2 minutes for complex form fills
 
 // Maximum steps for generation workflow (prevent infinite loops)
 const MAX_GENERATION_STEPS = 20
@@ -274,7 +276,7 @@ ipcMain.handle(
       logger.info("Fetching profile from backend...")
       const [profileResult, contentResult] = await Promise.allSettled([
         fetchPersonalInfo(),
-        fetchContentItems({ limit: 100 })
+        fetchContentItems({ limit: 100 }) // Get all content for complete work history
       ])
 
       // Profile is required
@@ -789,7 +791,7 @@ ipcMain.handle(
 )
 
 // Enhanced form fill with EEO, job match context, and results tracking
-// Uses typed API client for all backend calls
+// Uses the optimized /api/applicator/profile endpoint for pre-formatted profile data
 ipcMain.handle(
   "fill-form-enhanced",
   async (
@@ -801,31 +803,29 @@ ipcMain.handle(
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
-      // 1. Get profile with EEO from backend using typed API client
-      logger.info("Fetching profile from backend...")
-      const profile = await fetchPersonalInfo()
+      // 1. Get pre-formatted profile text from optimized applicator endpoint
+      // This includes personal info, EEO, work history, education, and skills - all pre-serialized
+      logger.info("Fetching applicator profile from backend...")
+      const profileText = await fetchApplicatorProfile()
+      logger.info(`Received profile text (${profileText.length} chars)`)
 
-      // Validate required profile fields
-      if (!profile.name || !profile.email) {
-        throw new Error("Profile missing required fields (name, email). Please configure your profile first.")
-      }
-
-      // 2. Get content items (work history) using typed API client
-      const workHistory = await fetchContentItems({ limit: 100 })
-
-      // 3. Get job match data if provided using typed API client
-      let jobMatchData: Record<string, unknown> | null = null
+      // 2. Get job match context if provided
+      let jobContext: { company?: string; role?: string; matchedSkills?: string[] } | null = null
       if (options.jobMatchId) {
         try {
           const match = await fetchJobMatch(options.jobMatchId)
-          jobMatchData = match as unknown as Record<string, unknown>
+          jobContext = {
+            company: match.listing?.companyName,
+            role: match.listing?.title,
+            matchedSkills: match.matchedSkills as string[] | undefined,
+          }
         } catch {
           // Non-critical - continue without job match data
           logger.warn("Failed to fetch job match data, continuing without it")
         }
       }
 
-      // 4. Extract form fields from page
+      // 3. Extract form fields from page
       logger.info("Extracting form fields...")
       const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
       logger.info(`Found ${fields.length} form fields`)
@@ -834,8 +834,8 @@ ipcMain.handle(
         return { success: false, message: "No form fields found on page" }
       }
 
-      // 5. Build enhanced prompt
-      const prompt = buildEnhancedPrompt(fields, profile, workHistory, jobMatchData)
+      // 4. Build prompt using pre-formatted profile text (much more efficient)
+      const prompt = buildPromptFromProfileText(fields, profileText, jobContext)
       logger.info(`Calling ${options.provider} CLI for enhanced field mapping...`)
 
       // 6. Call CLI for fill instructions with skip tracking
@@ -939,28 +939,44 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
       clearTimeout(timeout)
       if (code === 0) {
         try {
-          // Find first [ and last ] for more robust JSON extraction
-          const startIdx = stdout.indexOf("[")
-          const endIdx = stdout.lastIndexOf("]")
-          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-            const jsonStr = stdout.substring(startIdx, endIdx + 1)
-            const parsed = JSON.parse(jsonStr)
-            if (!Array.isArray(parsed)) {
-              reject(new Error(`${provider} CLI did not return an array`))
+          let jsonStr: string
+
+          // Claude CLI returns a wrapper object: {"type":"result","result":"[...]"}
+          // where "result" contains the JSON array as an escaped string
+          if (stdout.trim().startsWith("{") && stdout.includes('"result"')) {
+            const wrapper = JSON.parse(stdout)
+            if (wrapper.result && typeof wrapper.result === "string") {
+              jsonStr = wrapper.result
+            } else {
+              reject(new Error(`${provider} CLI wrapper missing result field`))
               return
             }
-            resolve(
-              parsed.map((item: Record<string, unknown>) => ({
-                selector: String(item.selector || ""),
-                value: item.value != null ? String(item.value) : null,
-                status: item.status === "skipped" ? "skipped" : "filled",
-                reason: item.reason ? String(item.reason) : undefined,
-                label: item.label ? String(item.label) : undefined,
-              }))
-            )
           } else {
-            reject(new Error(`${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}`))
+            // Fallback: find first [ and last ] for raw JSON array
+            const startIdx = stdout.indexOf("[")
+            const endIdx = stdout.lastIndexOf("]")
+            if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+              jsonStr = stdout.substring(startIdx, endIdx + 1)
+            } else {
+              reject(new Error(`${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}`))
+              return
+            }
           }
+
+          const parsed = JSON.parse(jsonStr)
+          if (!Array.isArray(parsed)) {
+            reject(new Error(`${provider} CLI did not return an array`))
+            return
+          }
+          resolve(
+            parsed.map((item: Record<string, unknown>) => ({
+              selector: String(item.selector || ""),
+              value: item.value != null ? String(item.value) : null,
+              status: item.status === "skipped" ? "skipped" : "filled",
+              reason: item.reason ? String(item.reason) : undefined,
+              label: item.label ? String(item.label) : undefined,
+            }))
+          )
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           reject(new Error(`${provider} CLI returned invalid JSON: ${msg}\n${stdout.slice(0, 200)}`))
@@ -1087,31 +1103,47 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
       clearTimeout(timeout)
       if (code === 0) {
         try {
-          // Find first [ and last ] for more robust JSON extraction
-          const startIdx = stdout.indexOf("[")
-          const endIdx = stdout.lastIndexOf("]")
-          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-            const jsonStr = stdout.substring(startIdx, endIdx + 1)
-            const parsed = JSON.parse(jsonStr)
-            // Validate the response structure
-            if (!Array.isArray(parsed)) {
-              reject(new Error(`${provider} CLI did not return an array`))
+          let jsonStr: string
+
+          // Claude CLI returns a wrapper object: {"type":"result","result":"[...]"}
+          // where "result" contains the JSON array as an escaped string
+          if (stdout.trim().startsWith("{") && stdout.includes('"result"')) {
+            const wrapper = JSON.parse(stdout)
+            if (wrapper.result && typeof wrapper.result === "string") {
+              jsonStr = wrapper.result
+            } else {
+              reject(new Error(`${provider} CLI wrapper missing result field`))
               return
             }
-            for (const item of parsed) {
-              if (typeof item?.selector !== "string" || typeof item?.value !== "string") {
-                reject(new Error(`${provider} CLI returned invalid FillInstruction format`))
-                return
-              }
-            }
-            resolve(parsed)
           } else {
-            reject(
-              new Error(
-                `${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}${stdout.length > 200 ? "..." : ""}`
+            // Fallback: find first [ and last ] for raw JSON array
+            const startIdx = stdout.indexOf("[")
+            const endIdx = stdout.lastIndexOf("]")
+            if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+              jsonStr = stdout.substring(startIdx, endIdx + 1)
+            } else {
+              reject(
+                new Error(
+                  `${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}${stdout.length > 200 ? "..." : ""}`
+                )
               )
-            )
+              return
+            }
           }
+
+          const parsed = JSON.parse(jsonStr)
+          // Validate the response structure
+          if (!Array.isArray(parsed)) {
+            reject(new Error(`${provider} CLI did not return an array`))
+            return
+          }
+          for (const item of parsed) {
+            if (typeof item?.selector !== "string" || typeof item?.value !== "string") {
+              reject(new Error(`${provider} CLI returned invalid FillInstruction format`))
+              return
+            }
+          }
+          resolve(parsed)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           reject(

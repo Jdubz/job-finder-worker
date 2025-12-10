@@ -174,21 +174,44 @@ export type {
 // Import types for use in this file
 import type { ContentItem, PersonalInfo, FormField, FillInstruction, EnhancedFillInstruction } from "./types.js"
 
-// Format work history for prompt
-export function formatWorkHistory(items: ContentItem[], indent = 0): string {
+/**
+ * Format work history for form fill prompts.
+ * Optimized for token efficiency while preserving all relevant information.
+ * - Removes empty/null fields
+ * - Skills only at top-level items (not duplicated in children)
+ * - Compact single-line format for each entry
+ */
+export function formatWorkHistory(items: ContentItem[], indent = 0, includeSkills = true): string {
   const lines: string[] = []
   for (const item of items) {
     const prefix = "  ".repeat(indent)
     if (item.title) {
-      lines.push(`${prefix}- ${item.title}${item.role ? ` (${item.role})` : ""}`)
+      // Build compact header: "Company (Role) | Period | Location"
+      const parts: string[] = []
+      parts.push(item.title)
+      if (item.role) parts[0] += ` - ${item.role}`
       if (item.startDate || item.endDate) {
-        lines.push(`${prefix}  Period: ${item.startDate || "?"} - ${item.endDate || "present"}`)
+        parts.push(`${item.startDate || "?"} to ${item.endDate || "present"}`)
       }
-      if (item.location) lines.push(`${prefix}  Location: ${item.location}`)
-      if (item.description) lines.push(`${prefix}  ${item.description}`)
-      if (item.skills?.length) lines.push(`${prefix}  Skills: ${item.skills.join(", ")}`)
+      if (item.location) parts.push(item.location)
+      lines.push(`${prefix}• ${parts.join(" | ")}`)
+
+      // Description on next line (truncate if very long to save tokens)
+      if (item.description) {
+        const desc = item.description.length > 500
+          ? item.description.slice(0, 500) + "..."
+          : item.description
+        lines.push(`${prefix}  ${desc}`)
+      }
+
+      // Skills only at top level to avoid duplication
+      if (includeSkills && item.skills?.length) {
+        lines.push(`${prefix}  Skills: ${item.skills.join(", ")}`)
+      }
+
+      // Children (highlights/projects) - no skills to avoid duplication
       if (item.children?.length) {
-        lines.push(formatWorkHistory(item.children, indent + 1))
+        lines.push(formatWorkHistory(item.children, indent + 1, false))
       }
     }
   }
@@ -231,7 +254,8 @@ Rules:
 2. Skip file upload fields (type="file")
 3. Skip cover letter or free-text fields asking "why do you want this job"
 4. For select dropdowns, use the "value" property from the options array (not the "text")
-5. Return ONLY valid JSON array, no markdown, no explanation
+5. CRITICAL: Experience/employment history fields MUST exactly match the work history above - this ensures consistency with the uploaded resume
+6. Return ONLY valid JSON array, no markdown, no explanation
 
 Example output:
 [{"selector": "#email", "value": "john@example.com"}, {"selector": "#phone", "value": "555-1234"}]`
@@ -316,7 +340,54 @@ Rules:
 3. Skip submit buttons - status: "skipped", reason: "Submit button"
 4. For EEO fields, use the display values provided above or skip if not provided
 5. If no data available for a required field, mark status: "skipped" with reason
-6. Return ONLY valid JSON array, no markdown, no explanation`
+6. CRITICAL: Experience/employment history fields MUST exactly match the work history above - this ensures consistency with the uploaded resume. Use exact company names, roles, and dates.
+7. Return ONLY valid JSON array, no markdown, no explanation`
+}
+
+/**
+ * Build form fill prompt using pre-formatted profile text from the applicator API.
+ * This is the preferred method - uses server-side optimized serialization.
+ */
+export function buildPromptFromProfileText(
+  fields: FormField[],
+  profileText: string,
+  jobContext?: { company?: string; role?: string; matchedSkills?: string[] } | null
+): string {
+  const jobContextSection = jobContext
+    ? `
+## Job Context
+Company: ${jobContext.company || "N/A"}
+Role: ${jobContext.role || "N/A"}
+${jobContext.matchedSkills?.length ? `Matched Skills: ${jobContext.matchedSkills.join(", ")}` : ""}
+`
+    : ""
+
+  return `Fill this job application form. Return a JSON array with status for each field.
+
+## CRITICAL RULES
+1. NEVER fill or interact with submit/apply buttons
+2. Skip any field that would submit the form
+3. Experience/employment fields MUST exactly match the work history below - ensures consistency with uploaded resume
+4. Use exact company names, job titles, and dates from the profile
+
+${profileText}
+${jobContextSection}
+## Form Fields
+${JSON.stringify(fields, null, 2)}
+
+## Response Format
+Return a JSON array. For EACH form field:
+[
+  {"selector": "#email", "label": "Email", "value": "user@example.com", "status": "filled"},
+  {"selector": "#coverLetter", "label": "Cover Letter", "value": null, "status": "skipped", "reason": "Requires custom text"}
+]
+
+Rules:
+1. For select dropdowns, use the "value" property from options (not "text")
+2. Skip file upload fields (type="file") - status: "skipped", reason: "File upload"
+3. Skip submit buttons - status: "skipped", reason: "Submit button"
+4. If no data available, mark status: "skipped" with reason
+5. Return ONLY valid JSON array, no markdown, no explanation`
 }
 
 // Build job extraction prompt

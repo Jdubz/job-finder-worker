@@ -55,6 +55,31 @@ export async function fetchPersonalInfo(): Promise<PersonalInfo> {
 }
 
 // ============================================================================
+// Applicator API (optimized for form filling)
+// ============================================================================
+
+/**
+ * Fetch pre-formatted profile text optimized for AI form filling.
+ * Returns complete user data (personal info, EEO, work history, education, skills)
+ * as markdown-formatted text ready for injection into prompts.
+ */
+export async function fetchApplicatorProfile(): Promise<string> {
+  const res = await fetchWithRetry(
+    `${API_URL}/applicator/profile`,
+    fetchOptions(),
+    { maxRetries: 2, timeoutMs: 15000 }
+  )
+
+  if (!res.ok) {
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Failed to fetch applicator profile: ${errorMsg}`)
+  }
+
+  const data: ApiSuccessResponse<{ profileText: string }> = await res.json()
+  return data.data.profileText
+}
+
+// ============================================================================
 // Content Items API
 // ============================================================================
 
@@ -80,7 +105,7 @@ export async function fetchContentItems(options?: {
     }
 
     const data: ApiSuccessResponse<ListContentItemsResponse> = await res.json()
-    return data.data.items
+    return data.data?.items || []
   } catch (err) {
     logger.warn("Content items unavailable:", err)
     return []
