@@ -2,6 +2,8 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron")
 
+import type { GenerationProgress } from "./types.js"
+
 contextBridge.exposeInMainWorld("electronAPI", {
   // Navigation
   navigate: (url: string) => ipcRenderer.invoke("navigate", url),
@@ -41,8 +43,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("run-generation", options),
 
   // Event listeners for generation progress
-  onGenerationProgress: (callback: (progress: unknown) => void) => {
-    const handler = (_event: unknown, progress: unknown) => callback(progress)
+  onGenerationProgress: (callback: (progress: GenerationProgress) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: GenerationProgress) => callback(progress)
     ipcRenderer.on("generation-progress", handler)
     // Return unsubscribe function
     return () => ipcRenderer.removeListener("generation-progress", handler)

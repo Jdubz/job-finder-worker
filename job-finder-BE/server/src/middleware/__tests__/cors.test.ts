@@ -180,16 +180,14 @@ describe('CORS configuration', () => {
       expect(res.headers['access-control-allow-origin']).toBe(productionOrigin)
     })
 
-    it('includes CORS headers on error responses', async () => {
-      // Note: We test with a non-existent resource to get a 404 on an authenticated route.
-      // Localhost requests bypass auth, so we can test that CORS is included on errors.
+    it('includes CORS headers on 401 errors (protected routes)', async () => {
+      // ALLOW_LOCALHOST_BYPASS is disabled by default in tests, so localhost gets 401
       const res = await request(app)
-        .get('/api/job-matches/non-existent-id-12345')
+        .get('/api/queue')
         .set('Origin', productionOrigin)
+        // No auth token - should get 401
 
-      // Expect a 4xx error (404 for not found)
-      expect(res.status).toBeGreaterThanOrEqual(400)
-      expect(res.status).toBeLessThan(500)
+      expect(res.status).toBe(401)
       expect(res.headers['access-control-allow-origin']).toBe(productionOrigin)
     })
 

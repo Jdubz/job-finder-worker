@@ -72,8 +72,9 @@ export function isLocalhostRequest(req: Request): boolean {
  */
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
   // Localhost bypass - allows desktop app on same machine without auth
-  // This is secure because the port is bound to 127.0.0.1 only
-  if (isLocalhostRequest(req)) {
+  // IMPORTANT: Only enabled when ALLOW_LOCALHOST_BYPASS=true (disabled by default)
+  // This is secure because: (1) opt-in only, (2) port should be bound to 127.0.0.1
+  if (env.ALLOW_LOCALHOST_BYPASS && isLocalhostRequest(req)) {
     const user: AuthenticatedUser = {
       uid: 'localhost-desktop',
       email: 'desktop@localhost',

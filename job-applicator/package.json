@@ -17,7 +17,7 @@
   "scripts": {
     "dev": "npm run build && electron .",
     "build": "tsc && npm run postbuild",
-    "postbuild": "node --input-type=module -e \"import fs from 'fs'; fs.cpSync('src/renderer/index.html', 'dist/renderer/index.html'); fs.cpSync('src/renderer/styles.css', 'dist/renderer/styles.css'); const app = fs.readFileSync('dist/renderer/app.js', 'utf8'); fs.writeFileSync('dist/renderer/app.js', app.replace(/export\\s*\\{\\s*\\};?\\s*$/, '')); if(fs.existsSync('dist/preload.js')){fs.rmSync('dist/preload.cjs',{force:true});fs.renameSync('dist/preload.js','dist/preload.cjs');} const preload = fs.readFileSync('dist/preload.cjs', 'utf8'); fs.writeFileSync('dist/preload.cjs', preload.replace(/export\\s*\\{\\s*\\};?\\s*$/, ''));\"",
+    "postbuild": "node scripts/postbuild.mjs",
     "watch:build": "nodemon --watch src --ext ts,html,css --exec 'npm run build'",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",

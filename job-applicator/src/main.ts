@@ -341,8 +341,9 @@ async function setFileInputFiles(webContents: Electron.WebContents, selector: st
   } finally {
     try {
       debugger_.detach()
-    } catch {
-      // Ignore detach errors
+    } catch (err) {
+      // Log detach errors for debugging (may be expected if target is already closed)
+      logger.warn("Failed to detach debugger, this may be expected:", err)
     }
   }
 }

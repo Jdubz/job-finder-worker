@@ -18,7 +18,13 @@ function writeToFile(level: string, ...args: unknown[]): void {
     .map((arg) => (typeof arg === "object" ? JSON.stringify(arg, null, 2) : String(arg)))
     .join(" ")
   const line = `[${timestamp()}] [${level}] ${message}\n`
-  fs.appendFileSync(LOG_FILE, line)
+  // Use async append to avoid blocking the main thread
+  fs.appendFile(LOG_FILE, line, (err) => {
+    if (err) {
+      // Use console.error to avoid recursive logging loop
+      console.error("Failed to write to log file:", err)
+    }
+  })
 }
 
 export const logger = {
