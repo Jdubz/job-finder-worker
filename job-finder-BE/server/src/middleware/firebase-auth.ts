@@ -8,7 +8,7 @@ import { ApiHttpError } from './api-error'
 import { SESSION_COOKIE } from '../routes/auth.routes'
 
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
-const IS_TEST = env.NODE_ENV === 'test'
+const IS_TEST = process.env.NODE_ENV === 'test'
 const CRON_API_KEY = env.CRON_API_KEY
 
 export interface AuthenticatedUser {

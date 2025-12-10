@@ -2,6 +2,8 @@ import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import { buildApp } from '../../app'
 
+process.env.NODE_ENV = 'test'
+
 /**
  * CORS Configuration Tests
  *

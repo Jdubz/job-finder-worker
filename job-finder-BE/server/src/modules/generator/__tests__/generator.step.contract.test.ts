@@ -1,6 +1,6 @@
 import express from 'express'
 import request from 'supertest'
-import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest'
+import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { generatorStepResponseSchema } from '@shared/types'
 import { _setGeneratorWorkflowServiceForTests } from '../generator.workflow.routes'
 

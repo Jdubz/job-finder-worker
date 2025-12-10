@@ -1,8 +1,26 @@
 import express from 'express'
 import request from 'supertest'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { generatorStartResponseSchema } from '@shared/types'
-import { buildGeneratorWorkflowRouter } from '../generator.workflow.routes'
+import { buildGeneratorWorkflowRouter, _setGeneratorWorkflowServiceForTests } from '../generator.workflow.routes'
+
+class MockService {
+  async createRequest() {
+    return {
+      requestId: 'req-123',
+      steps: [{ id: 's1' }],
+    }
+  }
+  async runNextStep() {
+    return {
+      status: 'completed',
+      steps: [{ id: 's1', status: 'completed' }],
+      nextStep: null,
+      resumeUrl: 'https://example.com/resume.pdf',
+      coverLetterUrl: null,
+    }
+  }
+}
 
 const createApp = () => {
   const app = express()
@@ -12,7 +30,16 @@ const createApp = () => {
 }
 
 describe('generator start contract', () => {
-  const app = createApp()
+  let app: express.Express
+
+  beforeAll(() => {
+    _setGeneratorWorkflowServiceForTests(new MockService() as any)
+    app = createApp()
+  })
+
+  afterAll(() => {
+    _setGeneratorWorkflowServiceForTests(null as any)
+  })
 
   it('responds with shared schema on start', async () => {
     const res = await request(app).post('/generator/start').send({
