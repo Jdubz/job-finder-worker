@@ -1,10 +1,10 @@
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-25
+> Last Updated: 2025-12-10
 
 # Queue Worker Decision Tree
 
-This document describes the decision tree logic for the worker queue system. It provides both a high-level conceptual flow and detailed implementation specifics.
+This document describes the decision tree logic for the worker queue system. It reflects the current single-task pipelines (post refactor) and how queue items flow end-to-end.
 
 ## Terminology
 
@@ -29,7 +29,7 @@ This document describes the decision tree logic for the worker queue system. It 
 8. [Job Listing Pipeline](#job-listing-pipeline)
 9. [Scraper Instruction Schemas](#scraper-instruction-schemas)
 10. [Error Handling](#error-handling)
-11. [Configuration Constants](#configuration-constants)
+11. [Runtime Configuration](#runtime-configuration-from-job_finder_config)
 
 ---
 
@@ -64,55 +64,7 @@ The system processes three main entity types through queue tasks:
 
 ## State Machine Architecture
 
-The queue worker implements a **state machine** where:
-- **Task state** determines processing eligibility (PENDING, PROCESSING, SUCCESS, etc.)
-- **Pipeline stage** determines which operation to perform next (FETCH, EXTRACT, etc.)
-- **Pipeline state** (data accumulated) determines stage routing
-
-### State vs Stage vs Pipeline State
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Task                                                                 │
-├─────────────────────────────────────────────────────────────────────┤
-│ status: PROCESSING          ← Task STATE (queue status)             │
-│ pipeline_stage: "extract"   ← Current STAGE in pipeline             │
-│ pipeline_state: {           ← Accumulated data (determines routing) │
-│   "html_content": "...",                                            │
-│   "extracted_info": {...}                                           │
-│ }                                                                   │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### Stage Routing Patterns
-
-**Company Pipeline** - Single pass (no staging):
-```python
-if item.type == QueueItemType.COMPANY:
-    → process_company()  # fetch → extract → analyze → save
-```
-
-**Job Listing Pipeline** - Uses state-based routing via `pipeline_state`:
-```python
-state = item.pipeline_state or {}
-if "job_data" not in state:
-    → do_job_scrape()      # Stage: SCRAPE
-elif "filter_result" not in state:
-    → do_job_filter()      # Stage: FILTER
-elif "match_result" not in state:
-    → do_job_analyze()     # Stage: ANALYZE
-else:
-    → do_job_save()        # Stage: SAVE
-```
-
-### Why Two Routing Patterns?
-
-| Pattern | Used By | Behavior | Rationale |
-|---------|---------|----------|-----------|
-| Explicit sub_task | Company | Spawns new task per stage | Granular control, independent retries |
-| State-based | Job Listing | Same task progresses through stages | Simpler E2E monitoring, atomic flow |
-
-Both patterns use the same underlying state machine for task status transitions.
+The worker now runs **single-task pipelines** for all queue item types. Task state still tracks lifecycle (PENDING → PROCESSING → SUCCESS/SKIPPED/FAILED), but stage routing happens entirely in-memory inside each processor. `pipeline_state` is used only for lightweight status metadata (e.g., current stage, company wait counters, listing id) and no longer stores intermediate payloads for routing.
 
 ---
 
@@ -205,151 +157,51 @@ PENDING ──▶ PROCESSING ──┬──▶ SUCCESS ──▶ (spawn next st
 ```
 
 ### Terminal vs Non-Terminal SUCCESS
-- **Non-terminal SUCCESS**: Intermediate pipeline stages (SCRAPE, FILTER, ANALYZE)
-  - Task marked SUCCESS, spawns/continues to next stage
-  - Allows same URL to progress through pipeline
-- **Terminal SUCCESS**: Final stage (SAVE)
-  - Task marked SUCCESS, no further spawning
-  - Blocks future spawns for same URL in this lineage
+- **Single-task flow**: Tasks only mark SUCCESS once, at the end of SAVE (jobs) or save step (companies).
+- **Requeue-only for company wait**: The only non-terminal hop is WAIT_COMPANY, which requeues the same JOB item with updated `pipeline_state`.
 
 ---
 
 ## Company Pipeline
 
-**Single-pass**: `fetch → extract → analyze → save`
+**Single-pass (search → extract → save)**
 
-Executed inside one queue item (no company_sub_task field, no spawned stages).
+Executed inside one queue item. No `company_sub_task`, no per-stage respawns.
 
-**Process**:
-1. Fetch HTML from multiple pages ({website}/about, /about-us, /company, /careers, homepage).
-2. Extract about/culture/mission via heuristics + AI fallback.
-3. Analyze tech stack and detect job board URL from fetched content.
-4. Save company record with extracted fields and tech stack.
-5. If a job board URL is detected and no existing source matches, enqueue a SOURCE_DISCOVERY item.
+**Process (matches `CompanyProcessor.process_company`)**
+1) Resolve company name/ID and mark PROCESSING.
+2) Fetch structured info via `CompanyInfoFetcher` (Wikipedia/Wikidata → web search → optional scrape); URL in the queue item is a hint only.
+3) Save/upsert company record and normalize keys (e.g., `headquarters` → `headquartersLocation`).
+4) Self-heal source links for the company when possible.
+5) Detect job board URL from extracted website or provided URL; if found and not tracked, spawn `SOURCE_DISCOVERY` (single allowed spawn).
 
-**Success**: Company record saved; if a job board is detected and no source exists, spawn SOURCE_DISCOVERY.
-**Failure**: Mark FAILED (retry up to 3 times) with error details; no additional company stages are spawned.
+**Success**: Company record saved (complete/partial/minimal). **Failure**: Only for unrecoverable issues (e.g., missing company_name).
 
----
-
-### Stage 2: COMPANY_EXTRACT
-**Input**: `pipeline_state.html_content` from FETCH
-
-**Process**:
-1. Combine all HTML content
-2. Use AI (Claude Sonnet - expensive but accurate) to extract:
-   - `about`: Company description
-   - `culture`: Culture/values information
-   - `mission`: Mission statement
-   - `size`: Employee count or size description
-   - `headquarters_location`: HQ location
-   - `industry`: Industry/sector
-   - `founded`: Year founded
-3. Fallback to heuristics if AI extraction fails
-4. Store extracted info in `pipeline_state.extracted_info`
-
-**Success**: Spawn `COMPANY_ANALYZE`
-**Failure**: Mark FAILED (retry up to 3 times)
+Source auto-disable, spawn safety, and terminal state handling follow the shared rules in [Queue Processing States](#queue-processing-states).
 
 ---
 
-### Stage 3: COMPANY_ANALYZE
-**Input**: `pipeline_state.extracted_info` from EXTRACT
+## Job Listing Pipeline
 
-**Process** (rule-based, no AI cost):
+**Single-task with optional company wait**
 
-#### 3.1 Tech Stack Detection
-Pattern match from company info + HTML for technologies:
-- Languages: Python, JavaScript, Java, Go, Rust, Ruby, PHP, C#
-- Frontend: React, Vue, Angular, Svelte
-- Backend/Infra: Docker, Kubernetes, AWS, GCP, Azure
-- Databases: PostgreSQL, MySQL, MongoDB, Redis
-- ML/AI: TensorFlow, PyTorch, machine learning keywords
+Pipeline (matches `JobProcessor.process_job`):
+1) **SCRAPE** – Load job data from the source (manual submission, job_listings row, or legacy scraped_data).
+2) **COMPANY_LOOKUP** – Attach company record (create stub if missing) and persist `company_id` on the listing.
+3) **WAIT_COMPANY (optional requeue)** – If company data is sparse, spawn enrichment and requeue the job (max `MAX_COMPANY_WAIT_RETRIES`). When the company is “good” (see CompaniesManager.has_good_company_data), continue immediately.
+4) **AI_EXTRACTION** – Extract structured job info (seniority, tech, arrangement, dates). Failures mark the item FAILED.
+5) **SCORING** – Deterministic ScoringEngine returns `ScoreBreakdown` (final_score, adjustments, rejection_reason). If `passed=False`, item is SKIPPED.
+6) **AI_MATCH_ANALYSIS** – AI matcher returns reasoning; uses deterministic score as `deterministic_score` and enforces `min_match_score`.
+7) **SAVE_MATCH** – Persist to job_matches, update job_listings status/match_score, mark queue SUCCESS.
 
-#### 3.2 Job Board Discovery
-Search for job board patterns in careers page:
-- Greenhouse: `boards.greenhouse.io/{board_token}`
-- Workday: `{company}.myworkdayjobs.com`
-- Lever, Jobvite, SmartRecruiters, etc.
-- Generic careers pages: `{website}/careers`, `{website}/jobs`
+Status updates are written via `update_status(..., pipeline_state={"pipeline_stage": stage})` for UI visibility only; stages do not spawn new queue items.
 
-**Confidence Levels**:
-- **High**: Greenhouse (API available), Workday (standard structure), RSS feeds
-- **Medium**: Lever, Jobvite (requires testing)
-- **Low**: Generic HTML careers pages (AI selector discovery needed)
+Failure/skip handling:
+- SCRAPE/EXTRACTION/ANALYSIS errors → FAILED
+- Deterministic scoring rejection → SKIPPED (with scoring/extraction data on listing)
+- Below `min_match_score` → SKIPPED
 
-#### 3.3 Priority Scoring
-Calculate numeric score and assign tier (S/A/B/C/D):
-- Portland office: **+50 points**
-- Tech stack alignment: **up to +100 points** (based on user's tech ranks from config)
-- Remote-first culture: **+15 points**
-- AI/ML focus: **+10 points**
-
-**Tiers**:
-- **S**: 150+ points (top priority)
-- **A**: 100-149 points (high priority)
-- **B**: 70-99 points (medium priority)
-- **C**: 50-69 points (low priority)
-- **D**: 0-49 points (minimal priority)
-
-#### 3.4 Job Board Spawn Decision
-If job board found:
-- **High confidence**: Immediately spawn `SOURCE_DISCOVERY` queue item
-- **Medium/Low confidence**: Store as company metadata `{ job_board_url, confidence }`, require manual approval
-
-**Success**: Spawn `COMPANY_SAVE`
-**Skip**: If insufficient data extracted, mark SKIPPED
-
----
-
-### Stage 4: COMPANY_SAVE
-**Input**: All `pipeline_state` data from previous stages
-
-**Process**:
-1. Build complete company record:
-   ```json
-   {
-     "name": "Company Name",
-     "website": "https://...",
-     "about": "...",
-     "culture": "...",
-     "mission": "...",
-     "size": "...",
-     "company_size_category": "large|medium|small",
-     "headquarters_location": "...",
-     "industry": "...",
-     "founded": "...",
-     "techStack": ["python", "react", ...],
-     "tier": "A",
-     "priorityScore": 105,
-     "analysis_status": "complete"
-   }
-   ```
-2. Save enriched company and match data into SQLite tables (companies, job_matches); SQLite transactions guarantee atomicity for critical operations
-- Queue deduplication catches most races:
-  - Check URL not in queue before adding
-  - Check URL not in job-matches before adding
-- Spawn safety checks prevent loops but may allow duplicate analysis attempts
-- **Trade-off**: Better performance vs 100% deduplication guarantee
-
-### Source Health Tracking
-**Auto-disable failing sources:**
-1. Track `consecutiveFailures` counter per source
-2. Increment on each scraping failure
-3. Reset to 0 on successful scrape
-4. **Auto-disable** after 5 consecutive failures
-5. Require manual re-enable after auto-disable
-
-**Purpose**: Prevent wasting resources on broken scrapers while allowing transient failures
-
-### Terminal State Handling
-Once a task reaches a terminal state, it cannot be re-processed in the same lineage:
-- **FILTERED**: Job listing failed strike-based filters (no retry)
-- **SKIPPED**: Job listing below match threshold or duplicate (no retry)
-- **FAILED**: Error after max retries (requires manual intervention)
-- **SUCCESS (final)**: Completed SAVE stage (no further processing)
-
-**Non-terminal SUCCESS**: Intermediate stages (SCRAPE, FILTER, ANALYZE) mark SUCCESS then continue/spawn next stage
+Emitted events: `job:scraped`, `job:company_lookup`, `job:waiting_company`, `job:extraction`, `job:scoring`, `job:analysis`, `job:saved`.
 
 ---
 
@@ -367,7 +219,7 @@ Once a task reaches a terminal state, it cannot be re-processed in the same line
 - Excluded domains: Block entire domains (e.g., competitors)
 - Excluded keywords: Filter by patterns in URL/title
 
-**Location**: `config/config.yaml` under `filters.stopList`
+**Config location**: `job_finder_config` row `job-filters` (stop lists + strike settings).
 
 ### Performance Optimization
 
@@ -391,77 +243,17 @@ Once a task reaches a terminal state, it cannot be re-processed in the same line
 
 ---
 
-## Configuration Constants
+## Runtime Configuration (from `job_finder_config`)
 
-Key constants used by the queue worker. These are currently hardcoded in `constants.py` but are candidates for future configurability via the `job-finder-config` database table.
+All operational knobs are loaded by `ConfigLoader` from SQLite. Processors fail fast if required sections are missing to avoid silent drift.
 
-### Filter Thresholds
+- `prefilter-policy` – Hard rejections + strike settings applied in `ScraperIntake` before queueing.
+- `match-policy` – Deterministic scoring weights/thresholds (timezone penalties, skill weights, company weights) used by `ScoringEngine`.
+- `worker-settings` – Runtime flags (`isProcessingEnabled`, scrape config, task delays) consumed by all processors.
+- `ai-settings` – AgentManager agents, budgets, and taskFallbacks.
+- `personal-info` – User timezone/city/relocation flags merged into location scoring.
 
-| Constant | Value | Location | Description |
-|----------|-------|----------|-------------|
-| `DEFAULT_STRIKE_THRESHOLD` | 5 | `constants.py` | Maximum strikes before job listing is FILTERED |
-| `MIN_MATCH_SCORE` | 80 | `constants.py` | Minimum AI match score to save job match |
-| `PORTLAND_MATCH_SCORE` | 65 | `constants.py` | Lower threshold when Portland office detected |
-| `HIGH_PRIORITY_THRESHOLD` | 85 | `constants.py` | Score threshold for "High" priority |
-| `MEDIUM_PRIORITY_THRESHOLD` | 70 | `constants.py` | Score threshold for "Medium" priority |
-
-### Company Scoring
-
-| Constant | Value | Location | Description |
-|----------|-------|----------|-------------|
-| `PORTLAND_OFFICE_BONUS` | 50 | `constants.py` | Priority points for Portland office |
-| `TECH_STACK_MAX_POINTS` | 100 | `constants.py` | Max points from tech stack alignment |
-| `REMOTE_FIRST_BONUS` | 15 | `constants.py` | Bonus for remote-first culture |
-| `AI_ML_FOCUS_BONUS` | 10 | `constants.py` | Bonus for AI/ML companies |
-
-### Company Tier Thresholds
-
-| Tier | Points | Description |
-|------|--------|-------------|
-| S | 150+ | Top priority - immediate processing |
-| A | 100-149 | High priority |
-| B | 70-99 | Medium priority |
-| C | 50-69 | Low priority |
-| D | 0-49 | Minimal priority |
-
-### Queue Processing
-
-| Constant | Value | Location | Description |
-|----------|-------|----------|-------------|
-| `MAX_RETRIES` | 3 | `constants.py` | Maximum retry attempts before FAILED |
-| `MAX_SPAWN_DEPTH` | 10 | `models.py` | Maximum task spawn depth |
-| `MAX_CONSECUTIVE_FAILURES` | 5 | `constants.py` | Source auto-disable threshold |
-
-### Data Quality
-
-| Constant | Value | Location | Description |
-|----------|-------|----------|-------------|
-| `COMPANY_ABOUT_MIN` | 50 | `companies_manager.py` | Minimal about text length |
-| `COMPANY_ABOUT_GOOD` | 100 | `companies_manager.py` | Good about text length |
-| `COMPANY_CULTURE_MIN` | 25 | `companies_manager.py` | Minimal culture text length |
-| `COMPANY_CULTURE_GOOD` | 50 | `companies_manager.py` | Good culture text length |
-
-### Future Configurability
-
-These constants should eventually be stored in the `job-finder-config` SQLite table to allow runtime configuration without code changes:
-
-```sql
-CREATE TABLE job_finder_config (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    value_type TEXT NOT NULL,  -- 'int', 'float', 'string', 'json'
-    description TEXT,
-    updated_at TEXT
-);
-
--- Example entries:
-INSERT INTO job_finder_config VALUES
-    ('filter.strike_threshold', '5', 'int', 'Max strikes before FILTERED', ...),
-    ('match.min_score', '80', 'int', 'Minimum AI match score', ...),
-    ('company.portland_bonus', '50', 'int', 'Portland office priority bonus', ...);
-```
-
-**Priority**: Low - Implement after system proves stable with hardcoded values.
+To change thresholds or weights, update these config rows (not code) and ensure required fields remain present; see `ConfigLoader` validations for required keys.
 
 ---
 
