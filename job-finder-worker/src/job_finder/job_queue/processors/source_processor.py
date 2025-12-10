@@ -7,20 +7,21 @@ This processor handles all source-related queue items:
 All sources use the GenericScraper with unified SourceConfig format.
 """
 
+import json
 import logging
 import traceback
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
+import feedparser
 import requests
+from bs4 import BeautifulSoup
 
 from job_finder.ai.agent_manager import AgentManager
 from job_finder.ai.search_client import get_search_client
-from job_finder.ai.source_analysis_agent import (
-    SourceAnalysisAgent,
-    SourceAnalysisResult,
-    SourceClassification,
-)
+from job_finder.ai.source_analysis_agent import SourceAnalysisAgent, SourceClassification
+from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import DuplicateSourceError, QueueProcessingError, ScrapeBlockedError
 from job_finder.filters.prefilter import PreFilter
 from job_finder.filters.title_filter import TitleFilter
@@ -39,6 +40,16 @@ from job_finder.scrapers.source_config import SourceConfig
 from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ProbeResult:
+    status: str  # success | empty | error
+    job_count: int = 0
+    status_code: Optional[int] = None
+    hint: str = ""
+    sample: str = ""
+    config: Optional[Dict[str, Any]] = None
 
 
 class SourceProcessor(BaseProcessor):
@@ -94,17 +105,13 @@ class SourceProcessor(BaseProcessor):
 
     def process_source_discovery(self, item: JobQueueItem) -> None:
         """
-        Process SOURCE_DISCOVERY queue item using intelligent agent-based analysis.
-
-        This method uses the SourceAnalysisAgent to intelligently classify and
-        analyze sources, replacing fragile pattern matching with AI reasoning.
+        Agent-first source discovery for all entry points (company + UI).
 
         Flow:
-        1. Gather context (fetch attempt, search results)
-        2. Run AI analysis to classify the source
-        3. Use classification to properly set company_id / aggregator_domain
-        4. Create source with meaningful disable notes if needed
-        5. Spawn follow-up tasks if source is active
+        1) Ask agent to propose source config (given URL/company + fetch/search context)
+        2) Probe once with proposed config
+        3) If jobs > 0 => active; if jobs == 0 => agent validates/fixes; errors => disabled
+        4) Persist source and spawn scrape/company tasks as needed
 
         Args:
             item: Queue item with source_discovery_config
@@ -114,23 +121,21 @@ class SourceProcessor(BaseProcessor):
             return
 
         config = item.source_discovery_config
-        url = config.url
+        url = config.url or ""
 
-        logger.info(f"SOURCE_DISCOVERY: Processing {url}")
+        logger.info(f"SOURCE_DISCOVERY: Processing {url or config.company_name}")
 
         # Set PROCESSING status at the start
         self.queue_manager.update_status(
-            item.id, QueueStatus.PROCESSING, f"Analyzing source at {url}"
+            item.id, QueueStatus.PROCESSING, f"Analyzing source {url or config.company_name}"
         )
 
         try:
-            # Step 1: Gather context for the agent
-            fetch_result = self._attempt_fetch(url)
-            search_results = (
-                self._gather_search_context(url) if not fetch_result.get("success") else None
-            )
+            # Step 1: Gather context for agent proposal
+            fetch_result = self._attempt_fetch(url) if url else {"success": False}
+            search_results = self._gather_search_context(url or config.company_name or "")
 
-            # Step 2: Run intelligent agent analysis
+            # Step 2: Agent proposal (URL + config + classification)
             analysis_agent = SourceAnalysisAgent(self.agent_manager)
             analysis = analysis_agent.analyze(
                 url=url,
@@ -140,32 +145,132 @@ class SourceProcessor(BaseProcessor):
                 search_results=search_results,
             )
 
-            logger.info(
-                f"Source analysis: classification={analysis.classification.value}, "
-                f"aggregator={analysis.aggregator_domain}, company={analysis.company_name}, "
-                f"disable={analysis.should_disable}, confidence={analysis.confidence:.2f}"
+            # Resolve company + aggregator
+            aggregator_domain = analysis.aggregator_domain
+            company_name = config.company_name or analysis.company_name
+            company_id = config.company_id
+            company_created = False
+
+            if company_name and not company_id:
+                company_record = self.companies_manager.get_or_create_company(
+                    company_name=company_name,
+                    company_website=None,
+                )
+                company_id = company_record.get("id")
+                company_created = not company_record.get("about")
+
+            # Deduplicate existing source on same aggregator + company
+            if company_id and aggregator_domain:
+                existing = self.sources_manager.get_source_by_company_and_aggregator(
+                    company_id, aggregator_domain
+                )
+                if existing:
+                    self._handle_existing_source(item, existing, context="duplicate")
+                    return
+
+            # Build source name
+            if company_name and aggregator_domain:
+                source_name = f"{company_name} Jobs ({aggregator_domain})"
+            elif company_name:
+                source_name = f"{company_name} Jobs"
+            elif aggregator_domain:
+                source_name = f"{aggregator_domain.split('.')[0].title()} Jobs"
+            else:
+                source_name = f"{(urlparse(url).netloc if url else company_name) or 'Unknown'} Jobs"
+
+            source_config = analysis.source_config or {"type": "html", "url": url, "headers": {}}
+            source_type = source_config.get("type", "unknown")
+
+            disabled_notes = analysis.disable_notes or ""
+            should_disable = analysis.should_disable or analysis.classification in (
+                SourceClassification.SINGLE_JOB_LISTING,
+                SourceClassification.ATS_PROVIDER_SITE,
+                SourceClassification.INVALID,
             )
 
-            # Step 3: Handle the analysis result
-            result = self._handle_analysis_result(item, config, url, analysis, fetch_result)
+            probe_result = None
+            if not should_disable:
+                probe_result = self._probe_config(source_type, source_config)
 
-            if result.get("handled"):
-                return  # Already handled (e.g., existing source found)
+                if probe_result.status == "error":
+                    should_disable = True
+                    disabled_notes = disabled_notes or probe_result.hint
+                elif probe_result.status == "empty":
+                    validation = self._agent_validate_empty(
+                        company_name=company_name,
+                        config=source_config,
+                        probe=probe_result,
+                    )
+                    if validation.get("decision") == "invalid":
+                        should_disable = True
+                        disabled_notes = validation.get("reason") or disabled_notes
+                    elif validation.get("decision") == "update_config":
+                        updated_config = validation.get("config") or source_config
+                        retry = self._probe_config(updated_config.get("type", source_type), updated_config)
+                        if retry.status == "success":
+                            source_config = updated_config
+                            probe_result = retry
+                        elif retry.status == "empty":
+                            source_config = updated_config
+                            probe_result = retry
+                        else:
+                            should_disable = True
+                            disabled_notes = retry.hint or validation.get("reason") or disabled_notes
+                    # valid_empty just passes through (active with 0 jobs)
 
-            # Step 4: Create the source based on analysis
-            source_id = result.get("source_id")
-            if source_id:
-                self._finalize_source_creation(
-                    item=item,
-                    source_id=source_id,
-                    source_type=result.get("source_type", "unknown"),
-                    company_id=result.get("company_id"),
-                    company_name=result.get("company_name"),
-                    company_created=result.get("company_created", False),
-                    disabled_notes=result.get("disabled_notes", ""),
-                    initial_status=result.get("initial_status", SourceStatus.ACTIVE),
+            # Attach probe diagnostics
+            if probe_result:
+                source_config = dict(source_config)
+                source_config["probe_status"] = probe_result.status
+                source_config["probe_job_count"] = probe_result.job_count
+                if probe_result.hint:
+                    source_config["probe_hint"] = probe_result.hint
+
+            if disabled_notes and not source_config.get("disabled_notes"):
+                source_config["disabled_notes"] = disabled_notes
+
+            initial_status = SourceStatus.DISABLED if should_disable else SourceStatus.ACTIVE
+
+            try:
+                dup = self.sources_manager.find_duplicate_candidate(
+                    name=source_name,
+                    company_id=company_id,
+                    aggregator_domain=aggregator_domain,
                     url=url,
                 )
+                if dup:
+                    self._handle_existing_source(item, dup, context="preflight")
+                    return
+
+                source_id = self.sources_manager.create_from_discovery(
+                    name=source_name,
+                    source_type=source_type,
+                    config=source_config,
+                    company_id=company_id,
+                    aggregator_domain=aggregator_domain,
+                    status=initial_status,
+                )
+            except DuplicateSourceError:
+                if company_id and aggregator_domain:
+                    existing = self.sources_manager.get_source_by_company_and_aggregator(
+                        company_id, aggregator_domain
+                    )
+                    if existing:
+                        self._handle_existing_source(item, existing, context="race")
+                        return
+                raise
+
+            self._finalize_source_creation(
+                item=item,
+                source_id=source_id,
+                source_type=source_type,
+                company_id=company_id,
+                company_name=company_name,
+                company_created=company_created,
+                disabled_notes=disabled_notes,
+                initial_status=initial_status,
+                url=url,
+            )
 
         except Exception as e:
             logger.error(f"Error in SOURCE_DISCOVERY: {e}")
@@ -177,14 +282,10 @@ class SourceProcessor(BaseProcessor):
             )
 
     def _attempt_fetch(self, url: str) -> Dict[str, Any]:
-        """Attempt to fetch URL content and return result context.
+        """Attempt to fetch URL content and return result context."""
+        if not url:
+            return {"success": False, "error": "no_url"}
 
-        Args:
-            url: URL to fetch
-
-        Returns:
-            Dict with fetch result details for agent context
-        """
         headers = {
             "User-Agent": "JobFinderBot/1.0",
             "Accept": "application/json, application/rss+xml, application/xml, text/xml, text/html, */*",
@@ -236,10 +337,11 @@ class SourceProcessor(BaseProcessor):
         if not search_client:
             return None
 
-        domain = urlparse(url).netloc
+        parsed = urlparse(url)
+        domain = parsed.netloc or url
         queries = [
             f"{domain} jobs api",
-            f"{domain} careers api documentation",
+            f"{domain} careers api",
         ]
 
         results = []
@@ -259,148 +361,6 @@ class SourceProcessor(BaseProcessor):
                 logger.debug(f"Search failed for '{query}': {e}")
 
         return results if results else None
-
-    def _handle_analysis_result(
-        self,
-        item: JobQueueItem,
-        config: Any,
-        url: str,
-        analysis: SourceAnalysisResult,
-        fetch_result: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Handle the source analysis result and prepare for source creation.
-
-        The agent is the single source of truth for classification, company_name,
-        and aggregator_domain. We trust its output completely.
-
-        Args:
-            item: The queue item being processed
-            config: Source discovery config
-            url: The source URL
-            analysis: The analysis result from the agent
-            fetch_result: The fetch attempt result
-
-        Returns:
-            Dict with handling result and source creation params
-        """
-        result: Dict[str, Any] = {"handled": False}
-
-        # Trust the agent's analysis - it's the primary source of truth
-        aggregator_domain = analysis.aggregator_domain
-        company_name = config.company_name or analysis.company_name
-        company_id = config.company_id
-        company_created = False
-
-        # If agent identified a company, resolve to company_id
-        if company_name and not company_id:
-            company_record = self.companies_manager.get_or_create_company(
-                company_name=company_name,
-                company_website=None,
-            )
-            company_id = company_record.get("id")
-            company_created = not company_record.get("about")
-            logger.info(
-                "Resolved company for source: %s -> %s (created=%s)",
-                company_name,
-                company_id,
-                company_created,
-            )
-
-        # Check for existing source to avoid duplicates
-        if company_id and aggregator_domain:
-            existing = self.sources_manager.get_source_by_company_and_aggregator(
-                company_id, aggregator_domain
-            )
-            if existing:
-                self._handle_existing_source(item, existing, context="duplicate")
-                result["handled"] = True
-                return result
-
-        # Build source name
-        if company_name and aggregator_domain:
-            source_name = f"{company_name} Jobs ({aggregator_domain})"
-        elif company_name:
-            source_name = f"{company_name} Jobs"
-        elif aggregator_domain:
-            source_name = f"{aggregator_domain.split('.')[0].title()} Jobs"
-        else:
-            source_name = f"{urlparse(url).netloc} Jobs"
-
-        # Determine if source should be disabled
-        should_disable = analysis.should_disable
-        disabled_notes = analysis.disable_notes
-
-        # Handle invalid classifications
-        if analysis.classification in (
-            SourceClassification.SINGLE_JOB_LISTING,
-            SourceClassification.ATS_PROVIDER_SITE,
-            SourceClassification.INVALID,
-        ):
-            should_disable = True
-            if not disabled_notes:
-                disabled_notes = f"Invalid source type: {analysis.classification.value}"
-
-        # Determine source config and type
-        source_config = analysis.source_config or {
-            "type": "html",
-            "url": url,
-            "headers": {},
-        }
-        source_type = source_config.get("type", "unknown")
-
-        if should_disable:
-            source_config["disabled_notes"] = disabled_notes
-
-        # Create the source
-        initial_status = SourceStatus.DISABLED if should_disable else SourceStatus.ACTIVE
-
-        try:
-            # Thorough duplicate detection before persisting
-            dup = self.sources_manager.find_duplicate_candidate(
-                name=source_name,
-                company_id=company_id,
-                aggregator_domain=aggregator_domain,
-                url=url,
-            )
-            if dup:
-                self._handle_existing_source(item, dup, context="preflight")
-                result["handled"] = True
-                return result
-
-            source_id = self.sources_manager.create_from_discovery(
-                name=source_name,
-                source_type=source_type,
-                config=source_config,
-                company_id=company_id,
-                aggregator_domain=aggregator_domain,
-                status=initial_status,
-            )
-        except DuplicateSourceError:
-            # Race condition - check again
-            if company_id and aggregator_domain:
-                existing = self.sources_manager.get_source_by_company_and_aggregator(
-                    company_id, aggregator_domain
-                )
-                if existing:
-                    self._handle_existing_source(item, existing, context="race")
-                    result["handled"] = True
-                    return result
-            raise
-
-        result.update(
-            {
-                "source_id": source_id,
-                "source_type": source_type,
-                "company_id": company_id,
-                "company_name": company_name,
-                "company_created": company_created,
-                "aggregator_domain": aggregator_domain,
-                "disabled_notes": disabled_notes,
-                "initial_status": initial_status,
-            }
-        )
-
-        return result
 
     def _finalize_source_creation(
         self,
@@ -494,6 +454,118 @@ class SourceProcessor(BaseProcessor):
             return f"{parsed.scheme}://{parsed.netloc}"
         except Exception:
             return url
+
+    # ============================================================
+    # PROBE + VALIDATION HELPERS
+    # ============================================================
+
+    def _probe_config(self, source_type: str, config: Dict[str, Any]) -> ProbeResult:
+        """Lightweight probe: one request + count jobs, with a hint/sample."""
+        try:
+            expanded = expand_config(source_type, config)
+            sc = SourceConfig.from_dict(expanded)
+            sc.validate()
+        except Exception as exc:  # noqa: BLE001
+            return ProbeResult(status="error", hint=f"Invalid config: {exc}")
+
+        headers = {
+            "User-Agent": "JobFinderBot/1.0",
+            "Accept": "application/json, application/rss+xml, application/xml, text/xml, text/html, */*",
+        }
+        headers.update(sc.headers or {})
+
+        try:
+            if sc.type == "api":
+                resp = None
+                if sc.method.upper() == "POST":
+                    headers.setdefault("Content-Type", "application/json")
+                    resp = requests.post(sc.url, headers=headers, json=sc.post_body, timeout=25)
+                else:
+                    resp = requests.get(sc.url, headers=headers, timeout=25)
+                status_code = resp.status_code
+                text_sample = (resp.text or "")[:4000]
+                resp.raise_for_status()
+                data = resp.json()
+                scraper = GenericScraper(SourceConfig.from_dict(expanded))
+                items = scraper._navigate_path(data, sc.response_path)  # type: ignore[attr-defined]
+                job_count = len(items or [])
+                return ProbeResult(
+                    status="success" if job_count > 0 else "empty",
+                    job_count=job_count,
+                    status_code=status_code,
+                    sample=text_sample,
+                )
+
+            if sc.type == "rss":
+                resp = requests.get(sc.url, headers=headers, timeout=25)
+                status_code = resp.status_code
+                text_sample = (resp.text or "")[:4000]
+                resp.raise_for_status()
+                feed = feedparser.parse(resp.text)
+                job_count = len(feed.entries or [])
+                return ProbeResult(
+                    status="success" if job_count > 0 else "empty",
+                    job_count=job_count,
+                    status_code=status_code,
+                    sample=text_sample,
+                )
+
+            if sc.type == "html":
+                resp = requests.get(sc.url, headers=headers, timeout=25)
+                status_code = resp.status_code
+                html = resp.text
+                resp.raise_for_status()
+                soup = BeautifulSoup(html, "html.parser")
+                items = soup.select(sc.job_selector)
+                job_count = len(items)
+                return ProbeResult(
+                    status="success" if job_count > 0 else "empty",
+                    job_count=job_count,
+                    status_code=status_code,
+                    sample=html[:4000],
+                )
+
+            return ProbeResult(status="error", hint=f"Unknown source type {sc.type}")
+
+        except Exception as exc:  # noqa: BLE001
+            resp = locals().get("resp")
+            status_code = resp.status_code if resp is not None else None
+            return ProbeResult(status="error", status_code=status_code, hint=str(exc))
+
+    def _agent_validate_empty(
+        self,
+        company_name: Optional[str],
+        config: Dict[str, Any],
+        probe: ProbeResult,
+    ) -> Dict[str, Any]:
+        """Ask agent what to do when probe returns zero jobs."""
+        if not self.agent_manager:
+            return {"decision": "valid_empty"}
+
+        sample = (probe.sample or "")[:2000]
+        prompt = (
+            "You proposed a job board config but the probe returned 0 jobs.\n"
+            f"Company: {company_name or 'Unknown'}\n"
+            f"URL: {config.get('url', '')}\n"
+            f"Type: {config.get('type', '')}\n"
+            f"Status: {probe.status_code or 'n/a'}\n"
+            "Sample (truncated):\n" + sample + "\n"
+            "Decide: valid_empty (board is legit but empty) | update_config (return fixed config) | invalid.\n"
+            "Respond JSON: {\"decision\": "
+            "\"valid_empty|update_config|invalid\", \"reason\": \"short\", \"config\": {..optional..}}."
+        )
+
+        try:
+            agent_result = self.agent_manager.execute(
+                task_type="analysis",
+                prompt=prompt,
+                max_tokens=500,
+                temperature=0.0,
+            )
+            data = json.loads(extract_json_from_response(agent_result.text))
+            return data if isinstance(data, dict) else {"decision": "valid_empty"}
+        except Exception:  # noqa: BLE001
+            return {"decision": "valid_empty"}
 
     # ============================================================
     # SOURCE SCRAPING
