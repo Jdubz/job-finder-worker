@@ -130,28 +130,37 @@ const workflowState: WorkflowState = {
 }
 let unsubscribeGenerationProgress: (() => void) | null = null
 
+// Helper to get DOM element with null check
+function getElement<T extends HTMLElement>(id: string): T {
+  const el = document.getElementById(id)
+  if (!el) {
+    throw new Error(`Required DOM element not found: #${id}`)
+  }
+  return el as T
+}
+
 // DOM elements - Toolbar
-const urlInput = document.getElementById("urlInput") as HTMLInputElement
-const goBtn = document.getElementById("goBtn") as HTMLButtonElement
-const providerSelect = document.getElementById("providerSelect") as HTMLSelectElement
-const fillBtn = document.getElementById("fillBtn") as HTMLButtonElement
-const uploadBtn = document.getElementById("uploadBtn") as HTMLButtonElement
-const submitJobBtn = document.getElementById("submitJobBtn") as HTMLButtonElement
-const statusEl = document.getElementById("status") as HTMLSpanElement
-const sidebarToggle = document.getElementById("sidebarToggle") as HTMLButtonElement
+const urlInput = getElement<HTMLInputElement>("urlInput")
+const goBtn = getElement<HTMLButtonElement>("goBtn")
+const providerSelect = getElement<HTMLSelectElement>("providerSelect")
+const fillBtn = getElement<HTMLButtonElement>("fillBtn")
+const uploadBtn = getElement<HTMLButtonElement>("uploadBtn")
+const submitJobBtn = getElement<HTMLButtonElement>("submitJobBtn")
+const statusEl = getElement<HTMLSpanElement>("status")
+const sidebarToggle = getElement<HTMLButtonElement>("sidebarToggle")
 
 // DOM elements - Sidebar
-const sidebar = document.getElementById("sidebar") as HTMLDivElement
-const jobList = document.getElementById("jobList") as HTMLDivElement
-const documentsList = document.getElementById("documentsList") as HTMLDivElement
-const generateBtn = document.getElementById("generateBtn") as HTMLButtonElement
-const resultsContent = document.getElementById("resultsContent") as HTMLDivElement
-const jobActionsSection = document.getElementById("jobActionsSection") as HTMLDivElement
-const markAppliedBtn = document.getElementById("markAppliedBtn") as HTMLButtonElement
-const markIgnoredBtn = document.getElementById("markIgnoredBtn") as HTMLButtonElement
-const workflowProgress = document.getElementById("workflowProgress") as HTMLDivElement
-const generationProgress = document.getElementById("generationProgress") as HTMLDivElement
-const generationSteps = document.getElementById("generationSteps") as HTMLDivElement
+const sidebar = getElement<HTMLDivElement>("sidebar")
+const jobList = getElement<HTMLDivElement>("jobList")
+const documentsList = getElement<HTMLDivElement>("documentsList")
+const generateBtn = getElement<HTMLButtonElement>("generateBtn")
+const resultsContent = getElement<HTMLDivElement>("resultsContent")
+const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
+const markAppliedBtn = getElement<HTMLButtonElement>("markAppliedBtn")
+const markIgnoredBtn = getElement<HTMLButtonElement>("markIgnoredBtn")
+const workflowProgress = getElement<HTMLDivElement>("workflowProgress")
+const generationProgress = getElement<HTMLDivElement>("generationProgress")
+const generationSteps = getElement<HTMLDivElement>("generationSteps")
 
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
   statusEl.textContent = message
@@ -235,7 +244,10 @@ function renderJobList() {
 
   // Add click handlers
   jobList.querySelectorAll(".job-item").forEach((el) => {
-    el.addEventListener("click", () => selectJobMatch((el as HTMLElement).dataset.id!))
+    el.addEventListener("click", () => {
+      const id = (el as HTMLElement).dataset.id
+      if (id) selectJobMatch(id)
+    })
   })
 }
 
@@ -328,7 +340,8 @@ function renderDocumentsList() {
     el.addEventListener("click", (e) => {
       // Don't select if clicking a button
       if ((e.target as HTMLElement).tagName === "BUTTON") return
-      selectDocument((el as HTMLElement).dataset.id!)
+      const id = (el as HTMLElement).dataset.id
+      if (id) selectDocument(id)
     })
   })
 
@@ -532,8 +545,8 @@ async function navigate() {
     return
   }
 
-  // Add https:// if no protocol
-  const fullUrl = url.startsWith("http") ? url : `https://${url}`
+  // Add https:// if no protocol (use regex to properly detect http:// or https://)
+  const fullUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`
 
   try {
     setButtonsEnabled(false)

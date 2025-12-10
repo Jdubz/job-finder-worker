@@ -170,7 +170,7 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
 
 // Get current URL
 ipcMain.handle("get-url", async (): Promise<string> => {
-  if (!browserView) return ""
+  if (!browserView) throw new Error("BrowserView not initialized")
   return browserView.webContents.getURL()
 })
 
