@@ -28,6 +28,55 @@ export interface TokenUsage {
 }
 
 /**
+ * EEO (Equal Employment Opportunity) Race Categories
+ * Based on official EEOC categories for US employment applications
+ */
+export type EEORace =
+  | "american_indian_alaska_native"
+  | "asian"
+  | "black_african_american"
+  | "native_hawaiian_pacific_islander"
+  | "white"
+  | "two_or_more_races"
+  | "decline_to_identify"
+
+/**
+ * EEO Hispanic/Latino ethnicity
+ */
+export type EEOHispanicLatino = "yes" | "no" | "decline_to_identify"
+
+/**
+ * EEO Gender categories
+ */
+export type EEOGender = "male" | "female" | "decline_to_identify"
+
+/**
+ * EEO Veteran Status categories
+ */
+export type EEOVeteranStatus =
+  | "not_protected_veteran"
+  | "protected_veteran"
+  | "disabled_veteran"
+  | "decline_to_identify"
+
+/**
+ * EEO Disability Status
+ */
+export type EEODisabilityStatus = "yes" | "no" | "decline_to_identify"
+
+/**
+ * EEO Information for job applications
+ * All fields are optional as users may choose not to disclose
+ */
+export interface EEOInfo {
+  race?: EEORace
+  hispanicLatino?: EEOHispanicLatino
+  gender?: EEOGender
+  veteranStatus?: EEOVeteranStatus
+  disabilityStatus?: EEODisabilityStatus
+}
+
+/**
  * Personal information for document generation
  */
 export interface PersonalInfo {
@@ -52,6 +101,10 @@ export interface PersonalInfo {
   avatar?: string
   logo?: string
   accentColor?: string
+  /**
+   * EEO demographic information for job applications
+   */
+  eeo?: EEOInfo
 }
 
 /**

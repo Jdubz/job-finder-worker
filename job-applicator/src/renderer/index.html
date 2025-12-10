@@ -12,6 +12,9 @@
   </head>
   <body>
     <div class="toolbar">
+      <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">
+        <span class="toggle-icon"></span>
+      </button>
       <input type="text" class="url-input" id="urlInput" placeholder="Enter job application URL..." />
       <button class="btn-go" id="goBtn">Go</button>
       <select id="providerSelect">
@@ -24,6 +27,38 @@
       <button class="btn-submit" id="submitJobBtn">Submit Job</button>
       <span class="status" id="status">Ready</span>
     </div>
+
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-content">
+        <!-- Job Matches Section -->
+        <section class="sidebar-section">
+          <h3 class="section-title">Job Matches</h3>
+          <div class="job-list" id="jobList">
+            <div class="loading-placeholder">Loading...</div>
+          </div>
+        </section>
+
+        <!-- Documents Section -->
+        <section class="sidebar-section" id="documentsSection">
+          <h3 class="section-title">Documents</h3>
+          <div class="documents-list" id="documentsList">
+            <div class="empty-placeholder">Select a job match</div>
+          </div>
+          <div class="section-actions">
+            <button class="btn-generate" id="generateBtn" disabled>Generate New</button>
+          </div>
+        </section>
+
+        <!-- Results Section -->
+        <section class="sidebar-section" id="resultsSection">
+          <h3 class="section-title">Fill Results</h3>
+          <div class="results-content" id="resultsContent">
+            <div class="empty-placeholder">No results yet</div>
+          </div>
+        </section>
+      </div>
+    </div>
+
     <script src="app.js"></script>
   </body>
 </html>

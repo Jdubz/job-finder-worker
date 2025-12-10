@@ -9,6 +9,10 @@ import * as os from "os"
 const CDP_PORT = process.env.CDP_PORT || "9222"
 const API_URL = process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
 
+// Layout constants
+const TOOLBAR_HEIGHT = 60
+const SIDEBAR_WIDTH = 300
+
 // Enable remote debugging for Playwright CDP connection
 app.commandLine.appendSwitch("remote-debugging-port", CDP_PORT)
 
@@ -16,6 +20,7 @@ app.commandLine.appendSwitch("remote-debugging-port", CDP_PORT)
 let mainWindow: BrowserWindow | null = null
 let browserView: BrowserView | null = null
 let playwrightBrowser: Browser | null = null
+let sidebarOpen = false
 
 // CLI provider types
 type CliProvider = "claude" | "codex" | "gemini"
@@ -47,6 +52,14 @@ interface FormField {
   options: SelectOption[] | null
 }
 
+interface EEOInfo {
+  race?: string
+  hispanicLatino?: string
+  gender?: string
+  veteranStatus?: string
+  disabilityStatus?: string
+}
+
 interface PersonalInfo {
   name: string
   email: string
@@ -55,6 +68,58 @@ interface PersonalInfo {
   website?: string
   github?: string
   linkedin?: string
+  summary?: string
+  eeo?: EEOInfo
+}
+
+interface FormFillSummary {
+  totalFields: number
+  filledCount: number
+  skippedCount: number
+  skippedFields: Array<{ label: string; reason: string }>
+  duration: number
+}
+
+interface EnhancedFillInstruction {
+  selector: string
+  value: string | null
+  status: "filled" | "skipped"
+  reason?: string
+  label?: string
+}
+
+// EEO display values for form filling
+const EEO_DISPLAY: Record<string, Record<string, string>> = {
+  race: {
+    american_indian_alaska_native: "American Indian or Alaska Native",
+    asian: "Asian",
+    black_african_american: "Black or African American",
+    native_hawaiian_pacific_islander: "Native Hawaiian or Other Pacific Islander",
+    white: "White",
+    two_or_more_races: "Two or More Races",
+    decline_to_identify: "Decline to Self-Identify",
+  },
+  hispanicLatino: {
+    yes: "Yes",
+    no: "No",
+    decline_to_identify: "Decline to Self-Identify",
+  },
+  gender: {
+    male: "Male",
+    female: "Female",
+    decline_to_identify: "Decline to Self-Identify",
+  },
+  veteranStatus: {
+    not_protected_veteran: "I am not a protected veteran",
+    protected_veteran: "I identify as one or more of the classifications of a protected veteran",
+    disabled_veteran: "I am a disabled veteran",
+    decline_to_identify: "Decline to Self-Identify",
+  },
+  disabilityStatus: {
+    yes: "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
+    no: "No, I Don't Have A Disability",
+    decline_to_identify: "Decline to Self-Identify",
+  },
 }
 
 interface ContentItem {
@@ -67,6 +132,19 @@ interface ContentItem {
   description?: string
   skills?: string[]
   children?: ContentItem[]
+}
+
+// Update BrowserView bounds based on sidebar state
+function updateBrowserViewBounds(): void {
+  if (!browserView || !mainWindow) return
+  const bounds = mainWindow.getBounds()
+  const offsetX = sidebarOpen ? SIDEBAR_WIDTH : 0
+  browserView.setBounds({
+    x: offsetX,
+    y: TOOLBAR_HEIGHT,
+    width: bounds.width - offsetX,
+    height: bounds.height - TOOLBAR_HEIGHT,
+  })
 }
 
 // Form extraction script - injected into page
@@ -124,15 +202,8 @@ async function createWindow(): Promise<void> {
 
   mainWindow.setBrowserView(browserView)
 
-  // Position BrowserView below toolbar (toolbar height ~60px)
-  const TOOLBAR_HEIGHT = 60
-  const bounds = mainWindow.getBounds()
-  browserView.setBounds({
-    x: 0,
-    y: TOOLBAR_HEIGHT,
-    width: bounds.width,
-    height: bounds.height - TOOLBAR_HEIGHT,
-  })
+  // Position BrowserView below toolbar, accounting for sidebar state
+  updateBrowserViewBounds()
   browserView.setAutoResize({ width: true, height: true })
 
   // Load the renderer UI (toolbar)
@@ -152,15 +223,7 @@ async function createWindow(): Promise<void> {
   })
 
   mainWindow.on("resize", () => {
-    if (browserView && mainWindow) {
-      const newBounds = mainWindow.getBounds()
-      browserView.setBounds({
-        x: 0,
-        y: TOOLBAR_HEIGHT,
-        width: newBounds.width,
-        height: newBounds.height - TOOLBAR_HEIGHT,
-      })
-    }
+    updateBrowserViewBounds()
   })
 }
 
@@ -195,11 +258,16 @@ ipcMain.handle(
       const profileData = await profileRes.json()
       const profile: PersonalInfo = profileData.data || profileData
 
+      // Validate required profile fields
+      if (!profile.name || !profile.email) {
+        throw new Error("Profile missing required fields (name, email). Please configure your profile first.")
+      }
+
       // Parse work history (optional - don't fail if unavailable)
       let workHistory: ContentItem[] = []
       if (contentRes.ok) {
         const contentData = await contentRes.json()
-        workHistory = contentData.data?.items || []
+        workHistory = contentData.data || []
         console.log(`Fetched ${workHistory.length} work history items`)
       }
 
@@ -380,6 +448,378 @@ ipcMain.handle(
     }
   }
 )
+
+// Sidebar state handlers
+ipcMain.handle("set-sidebar-state", async (_event: IpcMainInvokeEvent, open: boolean): Promise<void> => {
+  sidebarOpen = open
+  updateBrowserViewBounds()
+})
+
+ipcMain.handle("get-sidebar-state", async (): Promise<{ open: boolean }> => {
+  return { open: sidebarOpen }
+})
+
+// Get job matches from backend
+ipcMain.handle(
+  "get-job-matches",
+  async (
+    _event: IpcMainInvokeEvent,
+    options?: { limit?: number; status?: string }
+  ): Promise<{ success: boolean; data?: unknown[]; message?: string }> => {
+    try {
+      const limit = options?.limit || 50
+      const status = options?.status || "active"
+      const res = await fetch(`${API_URL}/job-matches/?limit=${limit}&status=${status}&sortBy=updated&sortOrder=desc`)
+      if (!res.ok) {
+        return { success: false, message: `Failed to fetch job matches: ${res.status}` }
+      }
+      const data = await res.json()
+      return { success: true, data: data.data || data }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, message }
+    }
+  }
+)
+
+// Get single job match with full details
+ipcMain.handle(
+  "get-job-match",
+  async (_event: IpcMainInvokeEvent, id: string): Promise<{ success: boolean; data?: unknown; message?: string }> => {
+    try {
+      const res = await fetch(`${API_URL}/job-matches/${id}`)
+      if (!res.ok) {
+        return { success: false, message: `Failed to fetch job match: ${res.status}` }
+      }
+      const data = await res.json()
+      return { success: true, data: data.data || data }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, message }
+    }
+  }
+)
+
+// Get documents for a job match
+ipcMain.handle(
+  "get-documents",
+  async (_event: IpcMainInvokeEvent, jobMatchId: string): Promise<{ success: boolean; data?: unknown[]; message?: string }> => {
+    try {
+      const res = await fetch(`${API_URL}/generator/job-matches/${jobMatchId}/documents`)
+      if (!res.ok) {
+        // 404 is fine - means no documents yet
+        if (res.status === 404) {
+          return { success: true, data: [] }
+        }
+        return { success: false, message: `Failed to fetch documents: ${res.status}` }
+      }
+      const data = await res.json()
+      return { success: true, data: data.data || data || [] }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, message }
+    }
+  }
+)
+
+// Start document generation
+ipcMain.handle(
+  "start-generation",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: { jobMatchId: string; type: "resume" | "coverLetter" | "both" }
+  ): Promise<{ success: boolean; requestId?: string; message?: string }> => {
+    try {
+      // First get the job match to get job details
+      const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`)
+      if (!matchRes.ok) {
+        return { success: false, message: `Failed to fetch job match: ${matchRes.status}` }
+      }
+      const matchData = await matchRes.json()
+      const match = matchData.data || matchData
+
+      // Start generation
+      const res = await fetch(`${API_URL}/generator/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generateType: options.type,
+          job: {
+            role: match.listing?.title || "Unknown Role",
+            company: match.listing?.companyName || "Unknown Company",
+            jobDescriptionUrl: match.listing?.url,
+            jobDescriptionText: match.listing?.description,
+            location: match.listing?.location,
+          },
+          jobMatchId: options.jobMatchId,
+        }),
+      })
+
+      if (!res.ok) {
+        const errorText = await res.text()
+        return { success: false, message: `Generation failed: ${errorText.slice(0, 100)}` }
+      }
+
+      const data = await res.json()
+      return { success: true, requestId: data.requestId || data.id }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, message }
+    }
+  }
+)
+
+// Enhanced form fill with EEO, job match context, and results tracking
+ipcMain.handle(
+  "fill-form-enhanced",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: { provider: CliProvider; jobMatchId?: string; documentId?: string }
+  ): Promise<{ success: boolean; data?: FormFillSummary; message?: string }> => {
+    const startTime = Date.now()
+
+    try {
+      if (!browserView) throw new Error("BrowserView not initialized")
+
+      // 1. Get profile with EEO from backend
+      console.log("Fetching profile from backend...")
+      const profileRes = await fetch(`${API_URL}/config/personal-info`)
+      if (!profileRes.ok) {
+        throw new Error(`Failed to fetch profile: ${profileRes.status}`)
+      }
+      const profileData = await profileRes.json()
+      const profile: PersonalInfo = profileData.data || profileData
+
+      // Validate required profile fields
+      if (!profile.name || !profile.email) {
+        throw new Error("Profile missing required fields (name, email). Please configure your profile first.")
+      }
+
+      // 2. Get content items (work history)
+      const contentRes = await fetch(`${API_URL}/content-items?limit=100`)
+      let workHistory: ContentItem[] = []
+      if (contentRes.ok) {
+        const contentData = await contentRes.json()
+        workHistory = contentData.data || []
+      }
+
+      // 3. Get job match data if provided
+      let jobMatchData: Record<string, unknown> | null = null
+      if (options.jobMatchId) {
+        const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`)
+        if (matchRes.ok) {
+          const matchJson = await matchRes.json()
+          jobMatchData = matchJson.data || matchJson
+        }
+      }
+
+      // 4. Extract form fields from page
+      console.log("Extracting form fields...")
+      const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
+      console.log(`Found ${fields.length} form fields`)
+
+      if (fields.length === 0) {
+        return { success: false, message: "No form fields found on page" }
+      }
+
+      // 5. Build enhanced prompt
+      const prompt = buildEnhancedPrompt(fields, profile, workHistory, jobMatchData)
+      console.log(`Calling ${options.provider} CLI for enhanced field mapping...`)
+
+      // 6. Call CLI for fill instructions with skip tracking
+      const instructions = await runEnhancedCli(options.provider, prompt)
+      console.log(`Got ${instructions.length} fill instructions`)
+
+      // 7. Fill fields and track results
+      let filledCount = 0
+      const skippedFields: Array<{ label: string; reason: string }> = []
+
+      for (const instruction of instructions) {
+        if (instruction.status === "skipped") {
+          skippedFields.push({
+            label: instruction.label || instruction.selector || "Unknown field",
+            reason: instruction.reason || "No data available",
+          })
+          continue
+        }
+
+        if (!instruction.value) continue
+
+        try {
+          const safeSelector = JSON.stringify(instruction.selector)
+          const safeValue = JSON.stringify(instruction.value)
+          const filled = await browserView.webContents.executeJavaScript(`
+            (() => {
+              const el = document.querySelector(${safeSelector});
+              if (!el) return false;
+              if (el.tagName.toLowerCase() === 'select') {
+                el.value = ${safeValue};
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              } else {
+                el.value = ${safeValue};
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+              return true;
+            })()
+          `)
+          if (filled) filledCount++
+        } catch (err) {
+          console.warn(`Failed to fill ${instruction.selector}:`, err)
+        }
+      }
+
+      const duration = Date.now() - startTime
+      const summary: FormFillSummary = {
+        totalFields: fields.length,
+        filledCount,
+        skippedCount: skippedFields.length,
+        skippedFields,
+        duration,
+      }
+
+      return { success: true, data: summary }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error("Enhanced fill form error:", message)
+      return { success: false, message }
+    }
+  }
+)
+
+function formatEEOValue(field: string, value: string | undefined): string {
+  if (!value) return "Not provided - skip this field"
+  return EEO_DISPLAY[field]?.[value] || value
+}
+
+function buildEnhancedPrompt(
+  fields: FormField[],
+  profile: PersonalInfo,
+  workHistory: ContentItem[],
+  jobMatch: Record<string, unknown> | null
+): string {
+  const eeoSection = profile.eeo
+    ? `
+## EEO Information (US Equal Employment Opportunity)
+Race: ${formatEEOValue("race", profile.eeo.race)}
+Hispanic/Latino: ${formatEEOValue("hispanicLatino", profile.eeo.hispanicLatino)}
+Gender: ${formatEEOValue("gender", profile.eeo.gender)}
+Veteran Status: ${formatEEOValue("veteranStatus", profile.eeo.veteranStatus)}
+Disability Status: ${formatEEOValue("disabilityStatus", profile.eeo.disabilityStatus)}
+`
+    : "\n## EEO Information\nNot provided - skip EEO fields\n"
+
+  const jobContextSection = jobMatch
+    ? `
+## Job-Specific Context
+Company: ${(jobMatch.listing as Record<string, unknown>)?.companyName || "Unknown"}
+Role: ${(jobMatch.listing as Record<string, unknown>)?.title || "Unknown"}
+Matched Skills: ${(jobMatch.matchedSkills as string[])?.join(", ") || "N/A"}
+ATS Keywords: ${(jobMatch.resumeIntakeData as Record<string, unknown>)?.atsKeywords?.toString() || "N/A"}
+`
+    : ""
+
+  return `Fill this job application form. Return a JSON array with status for each field.
+
+## CRITICAL SAFETY RULES
+1. NEVER fill or interact with submit/apply buttons
+2. Skip any field that would submit the form
+3. The user must manually click the final submit button
+
+## User Profile
+Name: ${profile.name}
+Email: ${profile.email}
+Phone: ${profile.phone || "Not provided"}
+Location: ${profile.location || "Not provided"}
+Website: ${profile.website || "Not provided"}
+GitHub: ${profile.github || "Not provided"}
+LinkedIn: ${profile.linkedin || "Not provided"}
+Summary: ${profile.summary || "Not provided"}
+${eeoSection}
+## Work History / Experience
+${workHistory.length > 0 ? formatWorkHistory(workHistory) : "Not provided"}
+${jobContextSection}
+## Form Fields
+${JSON.stringify(fields, null, 2)}
+
+## Response Format
+Return a JSON array. For EACH form field, include a status and label:
+[
+  {"selector": "#email", "label": "Email Address", "value": "user@example.com", "status": "filled"},
+  {"selector": "#coverLetter", "label": "Cover Letter", "value": null, "status": "skipped", "reason": "Requires custom text"}
+]
+
+Rules:
+1. For select dropdowns, use the "value" property from options (not "text")
+2. Skip file upload fields (type="file") - status: "skipped", reason: "File upload"
+3. Skip submit buttons - status: "skipped", reason: "Submit button"
+4. For EEO fields, use the display values provided above or skip if not provided
+5. If no data available for a required field, mark status: "skipped" with reason
+6. Return ONLY valid JSON array, no markdown, no explanation`
+}
+
+function runEnhancedCli(provider: CliProvider, prompt: string): Promise<EnhancedFillInstruction[]> {
+  const commands: Record<CliProvider, [string, string[]]> = {
+    claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
+    codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
+    gemini: ["gemini", ["-o", "json", "--yolo"]],
+  }
+
+  const [cmd, args] = commands[provider]
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args)
+    let stdout = ""
+    let stderr = ""
+
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM")
+      reject(new Error(`${provider} CLI timed out after 60s`))
+    }, 60000)
+
+    child.stdin.write(prompt)
+    child.stdin.end()
+
+    child.stdout.on("data", (d) => (stdout += d))
+    child.stderr.on("data", (d) => (stderr += d))
+
+    child.on("error", (err) => {
+      clearTimeout(timeout)
+      reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+    })
+
+    child.on("close", (code) => {
+      clearTimeout(timeout)
+      if (code === 0) {
+        try {
+          const jsonMatch = stdout.match(/\[[\s\S]*\]/)
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0])
+            if (!Array.isArray(parsed)) {
+              reject(new Error(`${provider} CLI did not return an array`))
+              return
+            }
+            resolve(
+              parsed.map((item: Record<string, unknown>) => ({
+                selector: String(item.selector || ""),
+                value: item.value != null ? String(item.value) : null,
+                status: item.status === "skipped" ? "skipped" : "filled",
+                reason: item.reason ? String(item.reason) : undefined,
+                label: item.label ? String(item.label) : undefined,
+              }))
+            )
+          } else {
+            reject(new Error(`${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}`))
+          }
+        } catch {
+          reject(new Error(`${provider} CLI returned invalid JSON: ${stdout.slice(0, 200)}`))
+        }
+      } else {
+        reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
+      }
+    })
+  })
+}
 
 function buildExtractionPrompt(pageContent: string, url: string): string {
   return `Extract job listing details from this page content.
