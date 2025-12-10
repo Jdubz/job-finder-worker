@@ -48,28 +48,27 @@ import {
   buildPrompt,
   buildEnhancedPrompt,
   buildExtractionPrompt,
-  fetchWithRetry,
-  parseApiError,
   getUserFriendlyErrorMessage,
 } from "./utils.js"
+// Typed API client
+import {
+  fetchPersonalInfo,
+  fetchContentItems,
+  fetchJobMatches,
+  fetchJobMatch,
+  findJobMatchByUrl,
+  updateJobMatchStatus,
+  fetchDocuments,
+  fetchGeneratorRequest,
+  startGeneration,
+  executeGenerationStep,
+  submitJobToQueue,
+  API_URL,
+  fetchOptions,
+} from "./api-client.js"
 
-// Configuration from environment
-// The API URL defaults to localhost:3000 which connects to the local development server.
-// The server's firebase-auth middleware bypasses authentication for localhost requests
-// when ALLOW_LOCALHOST_BYPASS=true is set in the server environment.
-const API_URL = process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
 // Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
 const ARTIFACTS_DIR = process.env.GENERATOR_ARTIFACTS_DIR || "/data/artifacts"
-
-// Helper to create fetch options
-function fetchOptions(options: RequestInit = {}): RequestInit {
-  const headers = new Headers(options.headers)
-  headers.set("Content-Type", "application/json")
-  return { ...options, headers }
-}
-
-// Note: HTTP is expected for localhost API (localhost:3000) - it's secure because
-// the port is only bound to 127.0.0.1 and requires ALLOW_LOCALHOST_BYPASS=true on server
 
 // Layout constants
 const TOOLBAR_HEIGHT = 60
@@ -249,6 +248,11 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
     if (message.includes("ERR_CERT")) {
       return { success: false, message: "SSL certificate error. The website may not be secure." }
     }
+    if (message.includes("ERR_ABORTED")) {
+      // Navigation was aborted (e.g., user navigated again quickly, or page redirected)
+      // This is often not a real error, so we return success
+      return { success: true }
+    }
     return { success: false, message: `Navigation failed: ${message}` }
   }
 })
@@ -266,12 +270,11 @@ ipcMain.handle(
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
-      // 1. Get profile and work history from job-finder backend
-      // Use Promise.allSettled so one failure doesn't block the other
+      // 1. Get profile and work history from job-finder backend using typed API client
       logger.info("Fetching profile from backend...")
       const [profileResult, contentResult] = await Promise.allSettled([
-        fetchWithRetry(`${API_URL}/config/personal-info`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 }),
-        fetchWithRetry(`${API_URL}/content-items?limit=100`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
+        fetchPersonalInfo(),
+        fetchContentItems({ limit: 100 })
       ])
 
       // Profile is required
@@ -279,13 +282,7 @@ ipcMain.handle(
         const errorMsg = getUserFriendlyErrorMessage(profileResult.reason, logger)
         throw new Error(`Failed to fetch profile: ${errorMsg}`)
       }
-      const profileRes = profileResult.value
-      if (!profileRes.ok) {
-        const errorMsg = await parseApiError(profileRes)
-        throw new Error(`Failed to fetch profile: ${errorMsg}`)
-      }
-      const profileData = await profileRes.json()
-      const profile: PersonalInfo = profileData.data || profileData
+      const profile = profileResult.value
 
       // Validate required profile fields
       if (!profile.name || !profile.email) {
@@ -294,9 +291,8 @@ ipcMain.handle(
 
       // Parse work history (optional - don't fail if unavailable)
       let workHistory: ContentItem[] = []
-      if (contentResult.status === "fulfilled" && contentResult.value.ok) {
-        const contentData = await contentResult.value.json()
-        workHistory = contentData.data || []
+      if (contentResult.status === "fulfilled") {
+        workHistory = contentResult.value
         logger.info(`Fetched ${workHistory.length} work history items`)
       } else {
         logger.warn("Work history unavailable, continuing with profile only")
@@ -434,14 +430,8 @@ ipcMain.handle(
           return { success: false, message: "Invalid document ID format" }
         }
 
-        // Fetch document details from backend
-        const docRes = await fetch(`${API_URL}/generator/requests/${options.documentId}`, fetchOptions())
-        if (!docRes.ok) {
-          logger.error(`Failed to fetch document: ${docRes.status} for documentId: ${options.documentId}`)
-          return { success: false, message: `Failed to fetch document: ${docRes.status}` }
-        }
-        const docData = await docRes.json()
-        const doc = docData.data || docData
+        // Fetch document details from backend using typed API client
+        const doc = await fetchGeneratorRequest(options.documentId)
 
         // Get the appropriate URL based on type
         const docType = options.type || "resume"
@@ -516,30 +506,18 @@ ipcMain.handle(
       const extracted = await runCliForExtraction(provider, extractPrompt)
       logger.info("Extracted job details:", extracted)
 
-      // 4. Submit to backend API with bypassFilter
+      // 4. Submit to backend API using typed API client
       logger.info("Submitting job to queue...")
-      const res = await fetch(`${API_URL}/queue/jobs`, fetchOptions({
-        method: "POST",
-        body: JSON.stringify({
-          url,
-          title: extracted.title,
-          description: extracted.description,
-          location: extracted.location,
-          techStack: extracted.techStack,
-          companyName: extracted.companyName,
-          bypassFilter: true,
-          source: "user_submission",
-        }),
-      }))
+      const result = await submitJobToQueue({
+        url,
+        title: extracted.title,
+        description: extracted.description,
+        location: extracted.location,
+        techStack: extracted.techStack,
+        companyName: extracted.companyName,
+      })
 
-      if (!res.ok) {
-        const errorText = await res.text()
-        return { success: false, message: `API error (${res.status}): ${errorText.slice(0, 100)}` }
-      }
-
-      const result = await res.json()
-      const queueId = result.data?.id || result.id || "unknown"
-      return { success: true, message: `Job submitted (queue ID: ${queueId})` }
+      return { success: true, message: `Job submitted (queue ID: ${result.id})` }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       logger.error("Submit job error:", message)
@@ -576,7 +554,7 @@ ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; se
   }
 })
 
-// Get job matches from backend
+// Get job matches from backend using typed API client
 ipcMain.handle(
   "get-job-matches",
   async (
@@ -584,37 +562,10 @@ ipcMain.handle(
     options?: { limit?: number; status?: string }
   ): Promise<{ success: boolean; data?: JobMatchWithListing[]; message?: string }> => {
     try {
-      const limit = options?.limit || 50
-      const status = options?.status || "active"
-      const url = `${API_URL}/job-matches/?limit=${limit}&status=${status}&sortBy=updated&sortOrder=desc`
-
-      const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
-
-      if (!res.ok) {
-        const errorMsg = await parseApiError(res)
-        return { success: false, message: errorMsg }
-      }
-
-      const json = await res.json()
-
-      // Validate response structure
-      if (!json || typeof json !== "object") {
-        return { success: false, message: "Invalid response from server" }
-      }
-
-      if (!json.success) {
-        return {
-          success: false,
-          message: json.error?.message || "Failed to fetch job matches",
-        }
-      }
-
-      // Safely access nested data with validation
-      const matches = json.data?.matches
-      if (!Array.isArray(matches)) {
-        return { success: false, message: "Invalid response format: missing matches array" }
-      }
-
+      const matches = await fetchJobMatches({
+        limit: options?.limit,
+        status: options?.status as "active" | "ignored" | "applied" | "all" | undefined,
+      })
       return { success: true, data: matches }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
@@ -623,19 +574,12 @@ ipcMain.handle(
   }
 )
 
-// Get single job match with full details
+// Get single job match with full details using typed API client
 ipcMain.handle(
   "get-job-match",
-  async (_event: IpcMainInvokeEvent, id: string): Promise<{ success: boolean; data?: unknown; message?: string }> => {
+  async (_event: IpcMainInvokeEvent, id: string): Promise<{ success: boolean; data?: JobMatchWithListing; message?: string }> => {
     try {
-      const res = await fetchWithRetry(`${API_URL}/job-matches/${id}`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
-      if (!res.ok) {
-        const errorMsg = await parseApiError(res)
-        return { success: false, message: errorMsg }
-      }
-      const data = await res.json()
-      // Safely access nested data
-      const match = data?.data?.match || data?.data || data?.match || data
+      const match = await fetchJobMatch(id)
       return { success: true, data: match }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
@@ -644,31 +588,12 @@ ipcMain.handle(
   }
 )
 
-// Get documents for a job match
+// Get documents for a job match using typed API client
 ipcMain.handle(
   "get-documents",
   async (_event: IpcMainInvokeEvent, jobMatchId: string): Promise<{ success: boolean; data?: unknown[]; message?: string }> => {
     try {
-      const url = `${API_URL}/generator/job-matches/${jobMatchId}/documents`
-      const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
-
-      if (!res.ok) {
-        // 404 is fine - means no documents yet
-        if (res.status === 404) {
-          return { success: true, data: [] }
-        }
-        const errorMsg = await parseApiError(res)
-        return { success: false, message: errorMsg }
-      }
-
-      const data = await res.json()
-      // Handle both wrapped and unwrapped response formats with null safety
-      let documents: unknown[] = []
-      if (Array.isArray(data)) {
-        documents = data
-      } else if (data && typeof data === "object" && Array.isArray(data.data)) {
-        documents = data.data
-      }
+      const documents = await fetchDocuments(jobMatchId)
       return { success: true, data: documents }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
@@ -677,7 +602,7 @@ ipcMain.handle(
   }
 )
 
-// Update job match status (mark as applied, ignored, etc.)
+// Update job match status (mark as applied, ignored, etc.) using typed API client
 ipcMain.handle(
   "update-job-match-status",
   async (
@@ -685,18 +610,7 @@ ipcMain.handle(
     options: { id: string; status: "active" | "ignored" | "applied" }
   ): Promise<{ success: boolean; message?: string }> => {
     try {
-      const res = await fetchWithRetry(
-        `${API_URL}/job-matches/${options.id}/status`,
-        fetchOptions({
-          method: "PATCH",
-          body: JSON.stringify({ status: options.status }),
-        }),
-        { maxRetries: 2, timeoutMs: 15000 }
-      )
-      if (!res.ok) {
-        const errorMsg = await parseApiError(res)
-        return { success: false, message: errorMsg }
-      }
+      await updateJobMatchStatus(options.id, options.status)
       return { success: true }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
@@ -705,50 +619,16 @@ ipcMain.handle(
   }
 )
 
-// Find job match by URL (for auto-detection)
+// Find job match by URL (for auto-detection) using typed API client
 ipcMain.handle(
   "find-job-match-by-url",
   async (
     _event: IpcMainInvokeEvent,
     url: string
-  ): Promise<{ success: boolean; data?: unknown; message?: string }> => {
+  ): Promise<{ success: boolean; data?: JobMatchWithListing | null; message?: string }> => {
     try {
-      // Normalize the URL for comparison
-      const normalizedUrl = normalizeUrl(url)
-
-      // Fetch recent job matches and compare URLs
-      const res = await fetchWithRetry(
-        `${API_URL}/job-matches/?limit=100&sortBy=updated&sortOrder=desc`,
-        fetchOptions(),
-        { maxRetries: 2, timeoutMs: 15000 }
-      )
-      if (!res.ok) {
-        const errorMsg = await parseApiError(res)
-        return { success: false, message: errorMsg }
-      }
-      const data = await res.json()
-
-      // Safely access matches array with validation
-      let matches: unknown[] = []
-      if (data?.data?.matches && Array.isArray(data.data.matches)) {
-        matches = data.data.matches
-      } else if (Array.isArray(data?.data)) {
-        matches = data.data
-      } else if (Array.isArray(data)) {
-        matches = data
-      }
-
-      // Find a match where the listing URL matches (normalized)
-      for (const match of matches) {
-        if (match && typeof match === "object" && "listing" in match) {
-          const listing = (match as { listing?: { url?: string } }).listing
-          if (listing?.url && normalizeUrl(listing.url) === normalizedUrl) {
-            return { success: true, data: match }
-          }
-        }
-      }
-
-      return { success: true, data: null } // No match found
+      const match = await findJobMatchByUrl(url)
+      return { success: true, data: match }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
@@ -756,7 +636,7 @@ ipcMain.handle(
   }
 )
 
-// Start document generation (simple - returns requestId only)
+// Start document generation (simple - returns requestId only) using typed API client
 ipcMain.handle(
   "start-generation",
   async (
@@ -764,38 +644,8 @@ ipcMain.handle(
     options: { jobMatchId: string; type: "resume" | "coverLetter" | "both" }
   ): Promise<{ success: boolean; requestId?: string; message?: string }> => {
     try {
-      // First get the job match to get job details
-      const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`, fetchOptions())
-      if (!matchRes.ok) {
-        return { success: false, message: `Failed to fetch job match: ${matchRes.status}` }
-      }
-      const matchData = await matchRes.json()
-      const match = matchData.data || matchData
-
-      // Start generation
-      const res = await fetch(`${API_URL}/generator/start`, fetchOptions({
-        method: "POST",
-        body: JSON.stringify({
-          generateType: options.type,
-          job: {
-            role: match.listing?.title || "Unknown Role",
-            company: match.listing?.companyName || "Unknown Company",
-            jobDescriptionUrl: match.listing?.url,
-            jobDescriptionText: match.listing?.description,
-            location: match.listing?.location,
-          },
-          jobMatchId: options.jobMatchId,
-          date: new Date().toLocaleDateString(),
-        }),
-      }))
-
-      if (!res.ok) {
-        const errorText = await res.text()
-        return { success: false, message: `Generation failed: ${errorText.slice(0, 100)}` }
-      }
-
-      const data = await res.json()
-      return { success: true, requestId: data.requestId || data.data?.requestId || data.id }
+      const result = await startGeneration(options)
+      return { success: true, requestId: result.requestId }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return { success: false, message }
@@ -804,7 +654,7 @@ ipcMain.handle(
 )
 
 // Run full document generation with sequential step execution (matches frontend pattern)
-// This sends progress updates via IPC as steps complete
+// This sends progress updates via IPC as steps complete, using typed API client
 ipcMain.handle(
   "run-generation",
   async (
@@ -816,43 +666,14 @@ ipcMain.handle(
     message?: string
   }> => {
     try {
-      // First get the job match to get job details
-      const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`, fetchOptions())
-      if (!matchRes.ok) {
-        return { success: false, message: `Failed to fetch job match: ${matchRes.status}` }
-      }
-      const matchData = await matchRes.json()
-      const match = matchData.data || matchData
-
-      // Start generation
+      // Start generation using typed API client
       logger.info("Starting document generation...")
-      const startRes = await fetch(`${API_URL}/generator/start`, fetchOptions({
-        method: "POST",
-        body: JSON.stringify({
-          generateType: options.type,
-          job: {
-            role: match.listing?.title || "Unknown Role",
-            company: match.listing?.companyName || "Unknown Company",
-            jobDescriptionUrl: match.listing?.url,
-            jobDescriptionText: match.listing?.description,
-            location: match.listing?.location,
-          },
-          jobMatchId: options.jobMatchId,
-          date: new Date().toLocaleDateString(),
-        }),
-      }))
-
-      if (!startRes.ok) {
-        const errorText = await startRes.text()
-        return { success: false, message: `Generation failed to start: ${errorText.slice(0, 100)}` }
-      }
-
-      const startData = await startRes.json()
-      const requestId = startData.requestId || startData.data?.requestId
-      let nextStep = startData.data?.nextStep || startData.nextStep
-      let currentSteps: GenerationStep[] = startData.data?.steps || startData.steps || []
-      let resumeUrl = startData.data?.resumeUrl || startData.resumeUrl
-      let coverLetterUrl = startData.data?.coverLetterUrl || startData.coverLetterUrl
+      const startResult = await startGeneration(options)
+      const requestId = startResult.requestId
+      let nextStep = startResult.nextStep
+      let currentSteps: GenerationStep[] = startResult.steps || []
+      let resumeUrl = startResult.resumeUrl
+      let coverLetterUrl = startResult.coverLetterUrl
 
       logger.info(`Generation started: ${requestId}, next step: ${nextStep}`)
 
@@ -890,27 +711,7 @@ ipcMain.handle(
         }
 
         logger.info(`Executing step: ${nextStep}`)
-        const stepRes = await fetch(`${API_URL}/generator/step/${requestId}`, fetchOptions({
-          method: "POST",
-          body: JSON.stringify({}),
-        }))
-
-        if (!stepRes.ok) {
-          const errorText = await stepRes.text()
-          return {
-            success: false,
-            message: `Step execution failed: ${errorText.slice(0, 100)}`,
-            data: {
-              requestId,
-              status: "failed",
-              steps: currentSteps,
-              error: errorText.slice(0, 100),
-            },
-          }
-        }
-
-        const stepData = await stepRes.json()
-        const stepResult = stepData.data || stepData
+        const stepResult = await executeGenerationStep(requestId)
 
         // Check for failure
         if (stepResult.status === "failed") {
@@ -988,6 +789,7 @@ ipcMain.handle(
 )
 
 // Enhanced form fill with EEO, job match context, and results tracking
+// Uses typed API client for all backend calls
 ipcMain.handle(
   "fill-form-enhanced",
   async (
@@ -999,35 +801,27 @@ ipcMain.handle(
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
-      // 1. Get profile with EEO from backend
+      // 1. Get profile with EEO from backend using typed API client
       logger.info("Fetching profile from backend...")
-      const profileRes = await fetch(`${API_URL}/config/personal-info`, fetchOptions())
-      if (!profileRes.ok) {
-        throw new Error(`Failed to fetch profile: ${profileRes.status}`)
-      }
-      const profileData = await profileRes.json()
-      const profile: PersonalInfo = profileData.data || profileData
+      const profile = await fetchPersonalInfo()
 
       // Validate required profile fields
       if (!profile.name || !profile.email) {
         throw new Error("Profile missing required fields (name, email). Please configure your profile first.")
       }
 
-      // 2. Get content items (work history)
-      const contentRes = await fetch(`${API_URL}/content-items?limit=100`, fetchOptions())
-      let workHistory: ContentItem[] = []
-      if (contentRes.ok) {
-        const contentData = await contentRes.json()
-        workHistory = contentData.data || []
-      }
+      // 2. Get content items (work history) using typed API client
+      const workHistory = await fetchContentItems({ limit: 100 })
 
-      // 3. Get job match data if provided
+      // 3. Get job match data if provided using typed API client
       let jobMatchData: Record<string, unknown> | null = null
       if (options.jobMatchId) {
-        const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`, fetchOptions())
-        if (matchRes.ok) {
-          const matchJson = await matchRes.json()
-          jobMatchData = matchJson.data || matchJson
+        try {
+          const match = await fetchJobMatch(options.jobMatchId)
+          jobMatchData = match as unknown as Record<string, unknown>
+        } catch {
+          // Non-critical - continue without job match data
+          logger.warn("Failed to fetch job match data, continuing without it")
         }
       }
 

@@ -370,6 +370,26 @@ select:focus {
   font-size: 12px;
 }
 
+.upload-status-text {
+  flex: 1;
+}
+
+.btn-rescan {
+  padding: 2px 8px;
+  font-size: 10px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.btn-rescan:hover {
+  opacity: 1;
+}
+
 .upload-buttons {
   display: flex;
   gap: 8px;

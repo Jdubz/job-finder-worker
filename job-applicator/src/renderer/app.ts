@@ -177,6 +177,7 @@ const uploadResumeBtn = getElement<HTMLButtonElement>("uploadResumeBtn")
 const uploadCoverBtn = getElement<HTMLButtonElement>("uploadCoverBtn")
 const uploadStatusText = getElement<HTMLSpanElement>("uploadStatusText")
 const uploadStatus = getElement<HTMLDivElement>("uploadStatus")
+const rescanBtn = getElement<HTMLButtonElement>("rescanBtn")
 
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
   statusEl.textContent = message
@@ -296,11 +297,11 @@ async function selectJobMatch(id: string) {
   // Load the job URL in BrowserView
   setStatus("Loading job listing...", "loading")
   const navResult = await api.navigate(match.listing.url)
-  if (navResult.success) {
+  if (navResult?.success) {
     urlInput.value = match.listing.url
     setStatus("Job listing loaded", "success")
   } else {
-    setStatus(navResult.message || "Failed to load job listing", "error")
+    setStatus(navResult?.message || "Failed to load job listing", "error")
   }
 
   // Load documents for this job match
@@ -680,7 +681,7 @@ async function navigate() {
 
   const navResult = await api.navigate(fullUrl)
 
-  if (navResult.success) {
+  if (navResult?.success) {
     setStatus("Page loaded", "success")
 
     // Check if this URL matches any job match
@@ -689,7 +690,7 @@ async function navigate() {
     // Check for file input on the new page (with delay for page to render)
     setTimeout(checkForFileInput, 500)
   } else {
-    setStatus(navResult.message || "Navigation failed", "error")
+    setStatus(navResult?.message || "Navigation failed", "error")
   }
 
   setButtonsEnabled(true)
@@ -869,6 +870,7 @@ function initializeApp() {
   markIgnoredBtn.addEventListener("click", markAsIgnored)
   uploadResumeBtn.addEventListener("click", uploadResumeFile)
   uploadCoverBtn.addEventListener("click", uploadCoverLetterFile)
+  rescanBtn.addEventListener("click", checkForFileInput)
 
   // Run async initialization
   init()

@@ -5,6 +5,8 @@
  * app-specific types that are unique to the job-applicator.
  */
 
+import type { ContentItemNode as SharedContentItemNode } from "@shared/types"
+
 // ============================================================================
 // Re-exports from @shared/types
 // ============================================================================
@@ -15,25 +17,33 @@ export type {
   PersonalInfo,
   GenerationStep,
   GenerationType,
+  GenerationStepStatus,
+  ContentItemNode,
 } from "@shared/types"
 
 // Job types from shared
 export type { JobMatchWithListing } from "@shared/types"
 
+// API response types from shared
+export type {
+  ApiSuccessResponse,
+  ApiErrorResponse,
+  ApiResponse,
+  GetConfigEntryResponse,
+  ListJobMatchesResponse,
+  GetJobMatchResponse,
+  ListContentItemsResponse,
+} from "@shared/types"
+
 /**
  * Simplified ContentItem for form filling prompts.
- * This is a subset of the full ContentItemNode from shared, containing
- * only the fields needed for building AI prompts in the job-applicator.
+ * Uses Pick<> from shared ContentItemNode to ensure type alignment.
+ * Includes children for recursive structure needed in prompts.
  */
-export interface ContentItem {
-  id: string
-  title?: string | null
-  role?: string | null
-  location?: string | null
-  startDate?: string | null
-  endDate?: string | null
-  description?: string | null
-  skills?: string[] | null
+export type ContentItem = Pick<
+  SharedContentItemNode,
+  "id" | "title" | "role" | "location" | "startDate" | "endDate" | "description" | "skills"
+> & {
   children?: ContentItem[]
 }
 
