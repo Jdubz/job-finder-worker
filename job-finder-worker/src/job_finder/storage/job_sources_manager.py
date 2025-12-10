@@ -227,6 +227,64 @@ class JobSourcesManager:
             row = conn.execute("SELECT * FROM job_sources WHERE name = ?", (name,)).fetchone()
         return self._row_to_source(dict(row)) if row else None
 
+    def find_duplicate_candidate(
+        self,
+        name: Optional[str],
+        company_id: Optional[str],
+        aggregator_domain: Optional[str],
+        url: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Broader duplicate check used before creating a source.
+
+        Heuristics:
+        - Case-insensitive name match
+        - Exact (company_id, aggregator_domain) pair
+        - Same host as existing source config URL (helps with renamed sources)
+        """
+        host = None
+        if url:
+            try:
+                host = urlparse(url).hostname
+            except ValueError:
+                host = None
+
+        with sqlite_connection(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT * FROM job_sources WHERE LOWER(name) = LOWER(?) OR company_id IS NOT NULL OR aggregator_domain IS NOT NULL",
+                (name or "",),
+            ).fetchall()
+
+        for row in rows:
+            source = self._row_to_source(dict(row))
+            if not source:
+                continue
+
+            # Case-insensitive name collision
+            if name and source.get("name", "").lower() == name.lower():
+                return source
+
+            # Company/aggregator pair collision
+            if company_id and aggregator_domain:
+                if (
+                    source.get("companyId") == company_id
+                    and source.get("aggregatorDomain") == aggregator_domain
+                ):
+                    return source
+
+            # Host collision (e.g., renamed source pointing at same board)
+            cfg = source.get("config") or {}
+            cfg_url = cfg.get("url") or ""
+            try:
+                cfg_host = urlparse(cfg_url).hostname
+            except Exception:
+                cfg_host = None
+
+            if host and cfg_host and host == cfg_host:
+                return source
+
+        return None
+
     def get_source_for_url(self, url: str) -> Optional[Dict[str, Any]]:
         """
         Simple heuristic: find the first source whose config contains the board token or URL domain.

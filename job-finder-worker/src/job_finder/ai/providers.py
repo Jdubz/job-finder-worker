@@ -521,6 +521,43 @@ def _get_missing_api_key_names(provider: str, interface: str) -> list:
     return [var for var in required_vars if not os.getenv(var)]
 
 
+def hydrate_auth_from_host_file(provider: str) -> None:
+    """
+    Best-effort attempt to populate required env vars from provider host files.
+
+    This is intentionally permissive: if a file is missing or unreadable we do
+    nothing and let normal auth_status checks handle the failure.
+    """
+    cfg = _CLI_AUTH_CONFIG.get(provider)
+    if not cfg:
+        return
+
+    file_path = cfg.get("file_path")
+    if not file_path or not file_path.exists():
+        return
+
+    try:
+        with file_path.open() as fh:
+            parsed = json.load(fh)
+    except (json.JSONDecodeError, OSError, PermissionError):
+        return
+
+    # Provider-specific key extraction
+    if provider == "codex":
+        candidate = parsed.get("openai_api_key") or parsed.get("api_key")
+        if candidate and not os.getenv("OPENAI_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = candidate
+    elif provider == "gemini":
+        candidate = parsed.get("api_key") or parsed.get("key")
+        for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
+            if candidate and not os.getenv(var):
+                os.environ[var] = candidate
+    elif provider == "claude":
+        candidate = parsed.get("token") or parsed.get("auth_token")
+        if candidate and not os.getenv("CLAUDE_CODE_OAUTH_TOKEN"):
+            os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = candidate
+
+
 def auth_status(provider: str, interface: str) -> Tuple[bool, str]:
     """Return (is_available, reason)."""
     if interface == "api":

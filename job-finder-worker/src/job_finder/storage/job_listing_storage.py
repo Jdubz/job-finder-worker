@@ -57,6 +57,14 @@ class JobListingStorage:
 
         Note: Analysis data is stored in job_matches, not job_listings.
         """
+        # Defensive: refuse to create hollow listings that would break downstream
+        if not url:
+            raise StorageError("Cannot create job listing without a URL")
+        if not title or not title.strip():
+            raise StorageError("Cannot create job listing without a title")
+        if not description or not description.strip():
+            raise StorageError("Cannot create job listing without a description")
+
         normalized_url = normalize_url(url) if url else ""
         listing_id = listing_id or str(uuid4())
         now = utcnow_iso()

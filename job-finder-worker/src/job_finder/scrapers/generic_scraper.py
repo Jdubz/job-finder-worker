@@ -121,8 +121,9 @@ class GenericScraper:
             for item in data:
                 job = self._extract_fields(item)
 
-                # Enrich from detail page if posted_date is missing (to get complete data)
-                if job.get("url") and not job.get("posted_date"):
+                # Enrich from detail page/API when we lack description/posted_date,
+                # or when the platform is marked for detail following.
+                if job.get("url") and self._should_enrich(job):
                     job = self._enrich_from_detail(job)
 
                 if job.get("title") and job.get("url"):
@@ -184,6 +185,21 @@ class GenericScraper:
 
         # Navigate to jobs array using response_path
         return self._navigate_path(data, self.config.response_path)
+
+    def _should_enrich(self, job: Dict[str, Any]) -> bool:
+        """
+        Decide whether to follow the detail page/API for enrichment.
+
+        Rules:
+        - Always if config.follow_detail is set
+        - Always if description is missing/empty
+        - Always if posted_date is missing (legacy behavior)
+        """
+        return (
+            self.config.follow_detail
+            or not (job.get("description") or "").strip()
+            or not job.get("posted_date")
+        )
 
     def _fetch_json_paginated(self) -> List[Dict[str, Any]]:
         """
@@ -398,6 +414,12 @@ class GenericScraper:
         if not url:
             return job
 
+        platform = self._detect_platform()
+        if platform == "smartrecruiters":
+            return self._enrich_smartrecruiters(job)
+        if platform == "workday":
+            return self._enrich_workday(job)
+
         delay = get_fetch_delay_seconds()
         try:
             headers = {**DEFAULT_HEADERS, **self.config.headers}
@@ -418,6 +440,97 @@ class GenericScraper:
             if delay > 0:
                 time.sleep(delay)
 
+        return job
+
+    def _detect_platform(self) -> Optional[str]:
+        """Lightweight platform detector based on config and job URL."""
+        url = (self.config.url or "").lower()
+        if "smartrecruiters.com" in url:
+            return "smartrecruiters"
+        if "myworkdayjobs.com" in url:
+            return "workday"
+        return None
+
+    def _enrich_smartrecruiters(self, job: Dict[str, Any]) -> Dict[str, Any]:
+        """Fetch SmartRecruiters job detail to fill description and metadata."""
+        ref_url = job.get("url") or ""
+        delay = get_fetch_delay_seconds()
+        try:
+            response = requests.get(ref_url, headers=DEFAULT_HEADERS, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+        except (requests.RequestException, json.JSONDecodeError) as e:
+            logger.info("SmartRecruiters detail fetch failed for %s: %s", ref_url, e)
+            return job
+        finally:
+            if delay > 0:
+                time.sleep(delay)
+
+        ad = (data.get("jobAd") or {}).get("sections") or {}
+        desc = ((ad.get("jobDescription") or {}).get("text") or "").strip()
+        reqs = ((ad.get("qualifications") or {}).get("text") or "").strip()
+        title = (data.get("name") or "").strip()
+        location = ((data.get("location") or {}).get("fullLocation") or "").strip()
+        posted = data.get("releasedDate") or data.get("posted") or job.get("posted_date")
+
+        if desc:
+            job["description"] = desc
+        elif reqs:
+            job["description"] = reqs
+        if title:
+            job.setdefault("title", title)
+        if location:
+            job.setdefault("location", location)
+        if posted:
+            job.setdefault("posted_date", posted)
+
+        return job
+
+    def _enrich_workday(self, job: Dict[str, Any]) -> Dict[str, Any]:
+        """Fetch Workday job detail for description and qualifications."""
+        external_path = job.get("url") or ""
+        base_url = self.config.base_url or self.config.url
+        if external_path.startswith("http"):
+            detail_url = external_path
+        else:
+            detail_url = f"{base_url.rstrip('/')}/{external_path.lstrip('/')}"
+
+        delay = get_fetch_delay_seconds()
+        try:
+            response = requests.get(detail_url, headers=DEFAULT_HEADERS, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+        except (requests.RequestException, json.JSONDecodeError) as e:
+            logger.info("Workday detail fetch failed for %s: %s", detail_url, e)
+            return job
+        finally:
+            if delay > 0:
+                time.sleep(delay)
+
+        info = data.get("jobPostingInfo") or {}
+        desc = (info.get("jobDescription") or "").strip()
+        quals = (info.get("qualifications") or "").strip()
+        title = (info.get("title") or "").strip()
+        location = (
+            (info.get("location") or "").strip()
+            or (info.get("locationNames") or "").strip()
+            or job.get("location")
+        )
+        posted = info.get("startDate") or info.get("postedOn")
+
+        if desc:
+            job["description"] = desc
+        elif quals:
+            job["description"] = quals
+        if title:
+            job.setdefault("title", title)
+        if location:
+            job.setdefault("location", location)
+        if posted:
+            job.setdefault("posted_date", posted)
+
+        # Normalize URL to be absolute
+        job["url"] = detail_url
         return job
 
     def _extract_from_jsonld(self, soup: BeautifulSoup, job: Dict[str, Any]) -> None:

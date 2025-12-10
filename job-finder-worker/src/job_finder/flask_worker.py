@@ -75,6 +75,13 @@ DEFAULT_WORKER_PORT = 5555
 DEFAULT_WORKER_HOST = "0.0.0.0"
 WORKER_SHUTDOWN_TIMEOUT_SECONDS = 30
 
+# Migration guards
+REQUIRED_CONFIG_MIGRATIONS = {
+    "20251205_001_ai-settings-agent-manager",
+    "20251205_002_tech-ranks-normalize",
+}
+REQUIRED_SCHEMA_MIN_ID = 46  # latest known schema migration in repo
+
 # Global state with thread-safe access
 _state_lock = threading.Lock()
 worker_state = {
@@ -428,6 +435,9 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     if db_path:
         slogger.worker_status("sqlite_path_selected", {"path": db_path})
 
+    # Fail fast if migrations are missing
+    _verify_migrations(db_path or "")
+
     storage = JobStorage(db_path)
     job_listing_storage = JobListingStorage(db_path)
     job_sources_manager = JobSourcesManager(db_path)
@@ -512,6 +522,33 @@ def _poll_remote_commands() -> None:
     if queue_manager and queue_manager.notifier and not queue_manager.notifier.ws_connected:
         for cmd in queue_manager.notifier.poll_commands():
             queue_manager.handle_command({"event": f"command.{cmd.get('command')}", **cmd})
+
+
+def _verify_migrations(db_path: str) -> None:
+    """
+    Ensure required schema and config migrations have been applied before
+    starting the worker. Fail fast instead of letting runtime errors surface
+    mid-pipeline.
+    """
+    with sqlite_connection(db_path) as conn:
+        cfg_rows = conn.execute("SELECT name FROM config_migrations").fetchall()
+        schema_rows = conn.execute("SELECT id FROM schema_migrations").fetchall()
+
+    applied_config = {row["name"] for row in cfg_rows}
+    missing_config = REQUIRED_CONFIG_MIGRATIONS.difference(applied_config)
+
+    applied_schema_ids = {row["id"] for row in schema_rows}
+    schema_ok = applied_schema_ids and max(applied_schema_ids) >= REQUIRED_SCHEMA_MIN_ID
+
+    if missing_config or not schema_ok:
+        details = []
+        if missing_config:
+            details.append(f"config migrations missing: {sorted(missing_config)}")
+        if not schema_ok:
+            details.append(
+                f"schema migrations missing: expected >= {REQUIRED_SCHEMA_MIN_ID}, found {max(applied_schema_ids) if applied_schema_ids else 'none'}"
+            )
+        raise InitializationError("Migrations not up to date. " + "; ".join(details))
 
 
 def _get_task_delay() -> float:

@@ -84,6 +84,13 @@ class TestExtractJsonFromResponse:
         result = extract_json_from_response(response)
         assert "key" in result
 
+    def test_envelope_object_with_embedded_json_block(self):
+        """Handle envelopes like {"type":"result","result":"```json ...```"}."""
+        response = (
+            '{"type":"result","result":"```json\\n{\\"key\\": \\"value\\", \\"n\\": 1}\\n```"}'
+        )
+        assert extract_json_from_response(response) == '{"key": "value", "n": 1}'
+
 
 class TestParseJsonResponse:
     """Test JSON parsing with error handling."""
