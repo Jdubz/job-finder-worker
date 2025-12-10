@@ -10,6 +10,8 @@ const CDP_PORT = process.env.CDP_PORT || "9222"
 // NOTE: The default API_URL uses HTTP and is intended for local development only.
 // In production, always set JOB_FINDER_API_URL to a secure HTTPS endpoint.
 const API_URL = process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
+// Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
+const ARTIFACTS_DIR = process.env.GENERATOR_ARTIFACTS_DIR || "/data/artifacts"
 
 // Warn if using HTTP in non-development environments
 if (API_URL.startsWith("http://") && process.env.NODE_ENV === "production") {
@@ -356,13 +358,37 @@ ipcMain.handle(
   }
 )
 
-// Upload resume
-ipcMain.handle("upload-resume", async (): Promise<{ success: boolean; message: string }> => {
-  try {
-    if (!browserView) throw new Error("BrowserView not initialized")
+// Helper to resolve document file path from URL
+function resolveDocumentPath(documentUrl: string): string {
+  // documentUrl is like "/api/generator/artifacts/2025-12-04/filename.pdf"
+  // Extract the relative path after /api/generator/artifacts/
+  const prefix = "/api/generator/artifacts/"
+  if (documentUrl.startsWith(prefix)) {
+    const relativePath = documentUrl.substring(prefix.length)
+    return path.join(ARTIFACTS_DIR, relativePath)
+  }
+  // If it's already an absolute path, return as-is
+  if (path.isAbsolute(documentUrl)) {
+    return documentUrl
+  }
+  // Otherwise treat as relative to artifacts dir
+  return path.join(ARTIFACTS_DIR, documentUrl)
+}
 
-    // Find file input
-    const fileInputSelector = await browserView.webContents.executeJavaScript(`
+// Upload resume/document to form
+ipcMain.handle(
+  "upload-resume",
+  async (
+    _event: IpcMainInvokeEvent,
+    options?: { documentId?: string; type?: "resume" | "coverLetter" }
+  ): Promise<{ success: boolean; message: string; filePath?: string }> => {
+    let resolvedPath: string | null = null
+
+    try {
+      if (!browserView) throw new Error("BrowserView not initialized")
+
+      // Find file input
+      const fileInputSelector = await browserView.webContents.executeJavaScript(`
       (() => {
         const fileInput = document.querySelector('input[type="file"]');
         if (!fileInput) return null;
@@ -372,48 +398,89 @@ ipcMain.handle("upload-resume", async (): Promise<{ success: boolean; message: s
       })()
     `)
 
-    if (!fileInputSelector) {
-      return { success: false, message: "No file input found on page" }
-    }
+      if (!fileInputSelector) {
+        return { success: false, message: "No file input found on page" }
+      }
 
-    // Get resume path from environment variable or use default
-    const resumePath = process.env.RESUME_PATH || path.join(os.homedir(), "resume.pdf")
-    if (!fs.existsSync(resumePath)) {
-      return { success: false, message: `Resume not found at ${resumePath}. Set RESUME_PATH environment variable to specify location.` }
-    }
+      // Resolve file path from document or fallback to env var
+      if (options?.documentId) {
+        // Fetch document details from backend
+        const docRes = await fetch(`${API_URL}/generator/requests/${options.documentId}`)
+        if (!docRes.ok) {
+          return { success: false, message: `Failed to fetch document: ${docRes.status}` }
+        }
+        const docData = await docRes.json()
+        const doc = docData.data || docData
 
-    // File uploads require Playwright - search all pages for one with the file input
-    if (!playwrightBrowser) {
-      return { success: false, message: "Playwright connection required for file upload" }
-    }
+        // Get the appropriate URL based on type
+        const docType = options.type || "resume"
+        const docUrl = docType === "coverLetter" ? doc.coverLetterUrl : doc.resumeUrl
 
-    // Get the current URL from BrowserView to find the matching page
-    const currentUrl = browserView.webContents.getURL()
-    const currentNormalized = normalizeUrl(currentUrl)
-    let targetPage: Page | null = null
+        if (!docUrl) {
+          return {
+            success: false,
+            message: `No ${docType} file found for this document. Generate one first.`,
+          }
+        }
 
-    for (const context of playwrightBrowser.contexts()) {
-      for (const page of context.pages()) {
-        // Match by normalized URL (origin + pathname)
-        if (normalizeUrl(page.url()) === currentNormalized) {
-          targetPage = page
-          break
+        resolvedPath = resolveDocumentPath(docUrl)
+      } else {
+        // Fallback to RESUME_PATH environment variable
+        resolvedPath = process.env.RESUME_PATH || path.join(os.homedir(), "resume.pdf")
+      }
+
+      if (!fs.existsSync(resolvedPath)) {
+        return {
+          success: false,
+          message: `File not found at ${resolvedPath}`,
+          filePath: resolvedPath,
         }
       }
-      if (targetPage) break
-    }
 
-    if (!targetPage) {
-      return { success: false, message: "Could not find Playwright page handle for file upload" }
-    }
+      // File uploads require Playwright
+      if (!playwrightBrowser) {
+        return {
+          success: false,
+          message: `Playwright connection required for file upload. Manual upload: ${resolvedPath}`,
+          filePath: resolvedPath,
+        }
+      }
 
-    await targetPage.setInputFiles(fileInputSelector, resumePath)
-    return { success: true, message: "Resume uploaded" }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { success: false, message }
+      // Get the current URL from BrowserView to find the matching page
+      const currentUrl = browserView.webContents.getURL()
+      const currentNormalized = normalizeUrl(currentUrl)
+      let targetPage: Page | null = null
+
+      for (const context of playwrightBrowser.contexts()) {
+        for (const page of context.pages()) {
+          if (normalizeUrl(page.url()) === currentNormalized) {
+            targetPage = page
+            break
+          }
+        }
+        if (targetPage) break
+      }
+
+      if (!targetPage) {
+        return {
+          success: false,
+          message: `Could not find page handle for upload. Manual upload: ${resolvedPath}`,
+          filePath: resolvedPath,
+        }
+      }
+
+      await targetPage.setInputFiles(fileInputSelector, resolvedPath)
+      return { success: true, message: "Document uploaded", filePath: resolvedPath }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return {
+        success: false,
+        message: resolvedPath ? `Upload failed: ${message}. Manual upload: ${resolvedPath}` : message,
+        filePath: resolvedPath || undefined,
+      }
+    }
   }
-})
+)
 
 // Submit job listing for analysis
 ipcMain.handle(

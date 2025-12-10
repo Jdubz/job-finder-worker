@@ -39,7 +39,10 @@ interface ElectronAPI {
     jobMatchId?: string
     documentId?: string
   }) => Promise<{ success: boolean; data?: FormFillSummary; message?: string }>
-  uploadResume: () => Promise<{ success: boolean; message: string }>
+  uploadResume: (options?: {
+    documentId?: string
+    type?: "resume" | "coverLetter"
+  }) => Promise<{ success: boolean; message: string; filePath?: string }>
   submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
   setSidebarState: (open: boolean) => Promise<void>
   getSidebarState: () => Promise<{ open: boolean }>
@@ -388,17 +391,31 @@ function renderFillResults(summary: FormFillSummary) {
   resultsContent.scrollIntoView({ behavior: "smooth" })
 }
 
-// Upload resume
+// Upload resume/document
 async function uploadResume() {
   try {
     setButtonsEnabled(false)
-    setStatus("Uploading resume...", "loading")
-    const result = await electronAPI.uploadResume()
+
+    // Use selected document if available
+    const options = selectedDocumentId
+      ? { documentId: selectedDocumentId, type: "resume" as const }
+      : undefined
+
+    const statusMsg = selectedDocumentId ? "Uploading selected document..." : "Uploading resume..."
+    setStatus(statusMsg, "loading")
+
+    const result = await electronAPI.uploadResume(options)
 
     if (result.success) {
       setStatus(result.message, "success")
     } else {
-      setStatus(result.message, "error")
+      // Show file path for manual fallback if available
+      if (result.filePath) {
+        setStatus(`${result.message}`, "error")
+        console.log("Manual upload path:", result.filePath)
+      } else {
+        setStatus(result.message, "error")
+      }
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)

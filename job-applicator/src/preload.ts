@@ -46,7 +46,10 @@ export interface ElectronAPI {
   }) => Promise<{ success: boolean; data?: FormFillSummary; message?: string }>
 
   // File upload
-  uploadResume: () => Promise<{ success: boolean; message: string }>
+  uploadResume: (options?: {
+    documentId?: string
+    type?: "resume" | "coverLetter"
+  }) => Promise<{ success: boolean; message: string; filePath?: string }>
 
   // Job submission
   submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
@@ -89,7 +92,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("fill-form-enhanced", options),
 
   // File upload
-  uploadResume: () => ipcRenderer.invoke("upload-resume"),
+  uploadResume: (options?: { documentId?: string; type?: "resume" | "coverLetter" }) =>
+    ipcRenderer.invoke("upload-resume", options),
 
   // Job submission
   submitJob: (provider: "claude" | "codex" | "gemini") => ipcRenderer.invoke("submit-job", provider),
