@@ -54,12 +54,19 @@ function extractBearerToken(req: Request): string | null {
 }
 
 /**
- * Check if request is from localhost (127.0.0.1, ::1, or ::ffff:127.x.x.x).
+ * Check if request is from localhost or Docker host.
  * Used to allow desktop app access without auth when running on same machine.
+ *
+ * Accepts:
+ * - 127.0.0.1, ::1, ::ffff:127.x.x.x (localhost)
+ * - 172.x.x.x, ::ffff:172.x.x.x (Docker bridge network - host to container)
  *
  * SECURITY: This check assumes Express's `trust proxy` is NOT enabled.
  * If `trust proxy` is enabled, an attacker could spoof the client IP via headers.
  * Always ensure `app.set('trust proxy', false)` when using localhost bypass.
+ *
+ * SECURITY: 172.x.x.x is safe because the port is bound to 127.0.0.1 only,
+ * so only the Docker host machine can reach it via the bridge network.
  */
 export function isLocalhostRequest(req: Request): boolean {
   // Prefer raw socket address which is not affected by trust proxy
@@ -71,6 +78,10 @@ export function isLocalhostRequest(req: Request): boolean {
   if (ip === '::1') return true
   // IPv4-mapped IPv6 localhost (::ffff:127.x.x.x range)
   if (/^::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
+  // Docker bridge network (172.16.0.0/12 range - host to container communication)
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
+  // IPv4-mapped IPv6 Docker bridge (::ffff:172.x.x.x)
+  if (/^::ffff:172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
 
   return false
 }
