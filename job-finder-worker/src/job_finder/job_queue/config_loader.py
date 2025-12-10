@@ -67,6 +67,19 @@ class ConfigLoader:
 
         return config
 
+    def get_personal_info(self) -> Dict[str, Any]:
+        """
+        Get personal info configuration.
+
+        Returns user profile data including location/timezone for scoring.
+        Returns empty dict if not configured (graceful degradation).
+        """
+        try:
+            return self._get_config("personal-info")
+        except InitializationError:
+            logger.debug("personal-info config not found, using defaults")
+            return {}
+
     def get_match_policy(self) -> Dict[str, Any]:
         """
         Get match policy configuration for scoring engine.
@@ -383,8 +396,6 @@ class ConfigLoader:
     MIN_TASK_DELAY_SECONDS = 0
     MAX_TASK_DELAY_SECONDS = 60
     DEFAULT_TASK_DELAY_SECONDS = 1
-    MIN_POLL_INTERVAL_SECONDS = 10
-    DEFAULT_POLL_INTERVAL_SECONDS = 60
 
     def get_processing_timeout(self) -> int:
         """
@@ -433,15 +444,3 @@ class ConfigLoader:
                 self.DEFAULT_TASK_DELAY_SECONDS,
             )
             return float(self.DEFAULT_TASK_DELAY_SECONDS)
-
-    def get_poll_interval(self) -> int:
-        """
-        Get poll interval in seconds with bounds validation.
-
-        Returns:
-            Poll interval (minimum 10 seconds, default 60).
-        """
-        worker_settings = self.get_worker_settings()
-        runtime = worker_settings.get("runtime", {})
-        interval = runtime.get("pollIntervalSeconds", self.DEFAULT_POLL_INTERVAL_SECONDS)
-        return max(self.MIN_POLL_INTERVAL_SECONDS, int(interval))

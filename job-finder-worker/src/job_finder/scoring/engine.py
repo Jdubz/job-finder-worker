@@ -423,20 +423,32 @@ class ScoringEngine:
         tz_adjustment = int(tz_diff * per_hour_score)
         adjustments: List[ScoreAdjustment] = []
 
-        # For hybrid roles, check if in user's city
-        if is_hybrid and extraction.city:
+        # For hybrid/onsite roles, check if in user's city
+        if extraction.city:
             user_city = self.location_config.get("userCity", "").lower()
             job_city = extraction.city.lower()
+            role_type = "Hybrid" if is_hybrid else "Onsite"
             if user_city and job_city == user_city:
-                # Bonus for hybrid in same city
-                same_city_score = self.location_config.get("hybridSameCityScore", 10)
-                adjustments.append(
-                    ScoreAdjustment(
-                        category="location",
-                        reason="Hybrid in same city",
-                        points=same_city_score,
+                # Bonus for hybrid in same city (onsite same city is neutral)
+                if is_hybrid:
+                    same_city_score = self.location_config.get("hybridSameCityScore", 10)
+                    adjustments.append(
+                        ScoreAdjustment(
+                            category="location",
+                            reason="Hybrid in same city",
+                            points=same_city_score,
+                        )
                     )
-                )
+                    if tz_adjustment != 0:
+                        adjustments.append(
+                            ScoreAdjustment(
+                                category="location",
+                                reason=f"Timezone diff {tz_diff}h",
+                                points=tz_adjustment,
+                            )
+                        )
+                    return {"points": tz_adjustment + same_city_score, "adjustments": adjustments}
+                # Onsite same city - just timezone adjustment
                 if tz_adjustment != 0:
                     adjustments.append(
                         ScoreAdjustment(
@@ -445,15 +457,30 @@ class ScoringEngine:
                             points=tz_adjustment,
                         )
                     )
-                return {"points": tz_adjustment + same_city_score, "adjustments": adjustments}
+                return {"points": tz_adjustment, "adjustments": adjustments}
             elif user_city:
-                # Hybrid in different city - requires relocation
-                # Apply same penalty as onsite roles requiring relocation
-                relocation_score = self.location_config.get("relocationScore", -80)
+                # Different city - check if user allows relocation
+                relocation_allowed = self.location_config.get("relocationAllowed", False)
+                if not relocation_allowed:
+                    # User won't relocate - hard reject
+                    return {
+                        "points": 0,
+                        "hard_reject": True,
+                        "rejection_reason": f"{role_type} requires presence in {extraction.city}, relocation not allowed",
+                        "adjustments": [
+                            ScoreAdjustment(
+                                category="location",
+                                reason=f"{role_type} in {extraction.city} (user in {user_city.title()}, won't relocate)",
+                                points=0,
+                            )
+                        ],
+                    }
+                # User willing to relocate - apply penalty but don't reject
+                relocation_score = self.location_config.get("relocationScore", -15)
                 adjustments.append(
                     ScoreAdjustment(
                         category="location",
-                        reason=f"Hybrid requires presence in {extraction.city} (not {user_city.title()})",
+                        reason=f"{role_type} requires relocation to {extraction.city}",
                         points=relocation_score,
                     )
                 )

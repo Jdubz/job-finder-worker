@@ -70,6 +70,27 @@ class SourceProcessor(BaseProcessor):
             prefilter=self.prefilter,
         )
 
+    def _refresh_runtime_config(self) -> None:
+        """
+        Reload config-driven components so each item uses fresh settings.
+
+        Rebuilds title_filter, prefilter, and scraper_intake from latest config.
+        AgentManager reads config fresh on each call, so no explicit refresh needed.
+        """
+        prefilter_policy = self.config_loader.get_prefilter_policy()
+        title_cfg = prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
+
+        # Rebuild filters with latest config
+        self.title_filter = TitleFilter(title_cfg) if title_cfg else None
+        self.prefilter = PreFilter(prefilter_policy) if prefilter_policy else None
+
+        # Rebuild scraper intake with updated filters
+        self.scraper_intake = ScraperIntake(
+            queue_manager=self.queue_manager,
+            title_filter=self.title_filter,
+            prefilter=self.prefilter,
+        )
+
     def _handle_existing_source(
         self, item: JobQueueItem, existing_source: Dict[str, Any], context: str
     ) -> None:
@@ -112,6 +133,9 @@ class SourceProcessor(BaseProcessor):
         if not item.id or not item.source_discovery_config:
             logger.error("Cannot process SOURCE_DISCOVERY without ID or config")
             return
+
+        # Refresh config-driven components before processing
+        self._refresh_runtime_config()
 
         config = item.source_discovery_config
         url = config.url
@@ -517,6 +541,9 @@ class SourceProcessor(BaseProcessor):
         if not item.id:
             logger.error("Cannot process SCRAPE_SOURCE without ID")
             return
+
+        # Refresh config-driven components before processing
+        self._refresh_runtime_config()
 
         source_id = item.scraped_data.get("source_id") if item.scraped_data else None
         source_url = item.url if item.url else None
