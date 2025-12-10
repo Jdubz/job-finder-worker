@@ -1,52 +1,64 @@
 /**
  * Shared types for job-applicator Electron app.
  *
- * This file consolidates all type definitions used across main.ts, preload.ts,
- * and renderer/app.ts to eliminate duplication and ensure consistency.
+ * This file re-exports types from @shared/types where available and defines
+ * app-specific types that are unique to the job-applicator.
  */
 
 // ============================================================================
-// EEO Types (Equal Employment Opportunity)
+// Re-exports from @shared/types
 // ============================================================================
 
-export interface EEOInfo {
-  race?: string
-  hispanicLatino?: string
-  gender?: string
-  veteranStatus?: string
-  disabilityStatus?: string
-}
+// Personal & Content Types from shared
+export type {
+  EEOInfo,
+  PersonalInfo,
+  GenerationStep,
+  GenerationType,
+} from "@shared/types"
 
-// ============================================================================
-// Personal & Content Types
-// ============================================================================
+// Job types from shared
+export type { JobMatchWithListing } from "@shared/types"
 
-export interface PersonalInfo {
-  name: string
-  email: string
-  phone?: string
-  location?: string
-  website?: string
-  github?: string
-  linkedin?: string
-  summary?: string
-  eeo?: EEOInfo
-}
-
+/**
+ * Simplified ContentItem for form filling prompts.
+ * This is a subset of the full ContentItemNode from shared, containing
+ * only the fields needed for building AI prompts in the job-applicator.
+ */
 export interface ContentItem {
   id: string
-  title?: string
-  role?: string
-  location?: string
-  startDate?: string
-  endDate?: string
-  description?: string
-  skills?: string[]
+  title?: string | null
+  role?: string | null
+  location?: string | null
+  startDate?: string | null
+  endDate?: string | null
+  description?: string | null
+  skills?: string[] | null
   children?: ContentItem[]
 }
 
 // ============================================================================
-// Form Types
+// App-Specific Types (not in shared)
+// ============================================================================
+
+/**
+ * Simplified job match for list display in sidebar
+ */
+export interface JobMatchListItem {
+  id: string
+  matchScore: number
+  status: "active" | "ignored" | "applied"
+  listing: {
+    id: string
+    url: string
+    title: string
+    companyName: string
+    location?: string
+  }
+}
+
+// ============================================================================
+// Form Types (app-specific)
 // ============================================================================
 
 export interface SelectOption {
@@ -85,7 +97,7 @@ export interface FormFillSummary {
 }
 
 // ============================================================================
-// Job Types
+// Job Extraction Types (app-specific)
 // ============================================================================
 
 export interface JobExtraction {
@@ -96,21 +108,8 @@ export interface JobExtraction {
   companyName: string | null
 }
 
-export interface JobMatchListItem {
-  id: string
-  matchScore: number
-  status: "active" | "ignored" | "applied"
-  listing: {
-    id: string
-    url: string
-    title: string
-    companyName: string
-    location?: string
-  }
-}
-
 // ============================================================================
-// Document Types
+// Document Types (app-specific UI types)
 // ============================================================================
 
 export interface DocumentInfo {
@@ -123,27 +122,10 @@ export interface DocumentInfo {
   jobMatchId?: string
 }
 
-export interface GenerationStep {
-  id: string
-  name: string
-  description: string
-  status: "pending" | "in_progress" | "completed" | "failed" | "skipped"
-  duration?: number
-  result?: {
-    resumeUrl?: string
-    coverLetterUrl?: string
-    [key: string]: unknown
-  }
-  error?: {
-    message: string
-    code?: string
-  }
-}
-
 export interface GenerationProgress {
   requestId: string
   status: string
-  steps: GenerationStep[]
+  steps: import("@shared/types").GenerationStep[]
   currentStep?: string
   resumeUrl?: string
   coverLetterUrl?: string
@@ -151,13 +133,13 @@ export interface GenerationProgress {
 }
 
 // ============================================================================
-// CLI Types
+// CLI Types (app-specific)
 // ============================================================================
 
 export type CliProvider = "claude" | "codex" | "gemini"
 
 // ============================================================================
-// Workflow Types
+// Workflow Types (app-specific)
 // ============================================================================
 
 export type WorkflowStep = "job" | "docs" | "fill" | "submit"
