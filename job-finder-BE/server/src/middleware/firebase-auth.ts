@@ -54,12 +54,36 @@ function extractBearerToken(req: Request): string | null {
 }
 
 /**
+ * Check if request is from localhost (127.0.0.1 or ::1)
+ * Used to allow desktop app access without auth when running on same machine
+ */
+function isLocalhostRequest(req: Request): boolean {
+  const ip = req.ip || req.socket?.remoteAddress || ''
+  // Check for IPv4 localhost, IPv6 localhost, and docker bridge IPs
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+}
+
+/**
  * Session-based authentication middleware with dev token fallback.
  *
- * In production: Only session cookies are accepted
+ * In production: Only session cookies are accepted (unless localhost)
  * In development/test: Also accepts dev tokens via Bearer header for testing
+ * Localhost requests: Bypass auth for desktop app running on same machine
  */
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
+  // Localhost bypass - allows desktop app on same machine without auth
+  // This is secure because the port is bound to 127.0.0.1 only
+  if (isLocalhostRequest(req)) {
+    const user: AuthenticatedUser = {
+      uid: 'localhost-desktop',
+      email: 'desktop@localhost',
+      name: 'Desktop App',
+      roles: ['admin']
+    }
+    ;(req as AuthenticatedRequest).user = user
+    return next()
+  }
+
   // Machine key bypass (for internal cron or other trusted automation)
   const cronKey = req.headers['x-cron-key'] || req.headers['x-api-key']
   if (

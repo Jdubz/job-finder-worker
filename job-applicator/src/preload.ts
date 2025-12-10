@@ -1,123 +1,6 @@
-import { contextBridge, ipcRenderer } from "electron"
-
-// Types for job matches and documents
-export interface JobMatchListItem {
-  id: string
-  matchScore: number
-  status: "active" | "ignored" | "applied"
-  listing: {
-    id: string
-    url: string
-    title: string
-    companyName: string
-    location?: string
-  }
-}
-
-export interface DocumentInfo {
-  id: string
-  generateType: "resume" | "coverLetter" | "both"
-  status: "pending" | "processing" | "completed" | "failed"
-  resumeUrl?: string
-  coverLetterUrl?: string
-  createdAt: string
-  jobMatchId?: string
-}
-
-export interface GenerationStep {
-  id: string
-  name: string
-  description: string
-  status: "pending" | "in_progress" | "completed" | "failed" | "skipped"
-  duration?: number
-  result?: {
-    resumeUrl?: string
-    coverLetterUrl?: string
-  }
-  error?: {
-    message: string
-    code?: string
-  }
-}
-
-export interface GenerationProgress {
-  requestId: string
-  status: string
-  steps: GenerationStep[]
-  currentStep?: string
-  resumeUrl?: string
-  coverLetterUrl?: string
-  error?: string
-}
-
-export interface FormFillSummary {
-  totalFields: number
-  filledCount: number
-  skippedCount: number
-  skippedFields: Array<{ label: string; reason: string }>
-  duration: number
-}
-
-export interface ElectronAPI {
-  // Navigation
-  navigate: (url: string) => Promise<void>
-  getUrl: () => Promise<string>
-
-  // Form filling
-  fillForm: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
-  fillFormEnhanced: (options: {
-    provider: "claude" | "codex" | "gemini"
-    jobMatchId?: string
-    documentId?: string
-  }) => Promise<{ success: boolean; data?: FormFillSummary; message?: string }>
-
-  // File upload
-  uploadResume: (options?: {
-    documentId?: string
-    type?: "resume" | "coverLetter"
-  }) => Promise<{ success: boolean; message: string; filePath?: string }>
-
-  // Job submission
-  submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
-
-  // Sidebar
-  setSidebarState: (open: boolean) => Promise<void>
-  getSidebarState: () => Promise<{ open: boolean }>
-
-  // CDP status
-  getCdpStatus: () => Promise<{ connected: boolean; message?: string }>
-
-  // Job matches
-  getJobMatches: (options?: { limit?: number; status?: string }) => Promise<{
-    success: boolean
-    data?: JobMatchListItem[]
-    message?: string
-  }>
-  getJobMatch: (id: string) => Promise<{ success: boolean; data?: unknown; message?: string }>
-  findJobMatchByUrl: (url: string) => Promise<{ success: boolean; data?: JobMatchListItem | null; message?: string }>
-  updateJobMatchStatus: (options: {
-    id: string
-    status: "active" | "ignored" | "applied"
-  }) => Promise<{ success: boolean; message?: string }>
-
-  // Documents
-  getDocuments: (jobMatchId: string) => Promise<{
-    success: boolean
-    data?: DocumentInfo[]
-    message?: string
-  }>
-  startGeneration: (options: {
-    jobMatchId: string
-    type: "resume" | "coverLetter" | "both"
-  }) => Promise<{ success: boolean; requestId?: string; message?: string }>
-  runGeneration: (options: {
-    jobMatchId: string
-    type: "resume" | "coverLetter" | "both"
-  }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
-
-  // Event listeners for generation progress
-  onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
-}
+// Preload script - must use CommonJS require() for Electron compatibility
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron")
 
 contextBridge.exposeInMainWorld("electronAPI", {
   // Navigation
@@ -158,10 +41,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("run-generation", options),
 
   // Event listeners for generation progress
-  onGenerationProgress: (callback: (progress: GenerationProgress) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, progress: GenerationProgress) => callback(progress)
+  onGenerationProgress: (callback: (progress: unknown) => void) => {
+    const handler = (_event: unknown, progress: unknown) => callback(progress)
     ipcRenderer.on("generation-progress", handler)
     // Return unsubscribe function
     return () => ipcRenderer.removeListener("generation-progress", handler)
   },
-} satisfies ElectronAPI)
+})

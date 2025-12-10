@@ -109,15 +109,27 @@ interface ElectronAPI {
   onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
 }
 
+// Debug: log immediately when script loads
+console.log("[app.ts] Script loaded")
+
 // Extend Window interface - with safety check for missing preload
-const maybeAPI = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI
-if (!maybeAPI) {
+// Use window.electronAPI directly to avoid any naming conflicts
+declare global {
+  interface Window {
+    electronAPI?: ElectronAPI
+  }
+}
+
+console.log("[app.ts] Checking for api...", window.electronAPI)
+if (!window.electronAPI) {
+  console.error("[app.ts] electronAPI not found!")
   throw new Error("Electron API not available. Preload script may have failed to load.")
 }
-const electronAPI: ElectronAPI = maybeAPI
+console.log("[app.ts] electronAPI found!")
+const api = window.electronAPI
 
 // State
-let sidebarOpen = false
+let sidebarOpen = true // Start with sidebar open by default
 let selectedJobMatchId: string | null = null
 let selectedDocumentId: string | null = null
 let jobMatches: JobMatchListItem[] = []
@@ -202,7 +214,7 @@ function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "comp
 async function toggleSidebar() {
   sidebarOpen = !sidebarOpen
   sidebar.classList.toggle("open", sidebarOpen)
-  await electronAPI.setSidebarState(sidebarOpen)
+  await api.setSidebarState(sidebarOpen)
 
   // Load job matches when opening sidebar for the first time
   if (sidebarOpen && jobMatches.length === 0) {
@@ -214,7 +226,7 @@ async function toggleSidebar() {
 async function loadJobMatches() {
   jobList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
 
-  const result = await electronAPI.getJobMatches({ limit: 50, status: "active" })
+  const result = await api.getJobMatches({ limit: 50, status: "active" })
 
   if (result.success && result.data) {
     jobMatches = result.data
@@ -274,7 +286,7 @@ async function selectJobMatch(id: string) {
   setWorkflowStep("docs", "active")
 
   // Show job actions section
-  jobActionsSection.style.display = "block"
+  jobActionsSection.classList.remove("hidden")
 
   // Update button states based on match status
   markAppliedBtn.disabled = match.status === "applied"
@@ -283,7 +295,7 @@ async function selectJobMatch(id: string) {
   // Load the job URL in BrowserView
   setStatus("Loading job listing...", "loading")
   try {
-    await electronAPI.navigate(match.listing.url)
+    await api.navigate(match.listing.url)
     urlInput.value = match.listing.url
     setStatus("Job listing loaded", "success")
   } catch (err) {
@@ -301,7 +313,7 @@ async function selectJobMatch(id: string) {
 async function loadDocuments(jobMatchId: string) {
   documentsList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
 
-  const result = await electronAPI.getDocuments(jobMatchId)
+  const result = await api.getDocuments(jobMatchId)
 
   if (result.success && result.data) {
     documents = result.data
@@ -390,7 +402,7 @@ function handleGenerationProgress(progress: GenerationProgress) {
 
   if (progress.status === "completed") {
     setStatus("Documents generated successfully", "success")
-    generationProgress.style.display = "none"
+    generationProgress.classList.add("hidden")
     generateBtn.disabled = false
     setWorkflowStep("docs", "completed")
     setWorkflowStep("fill", "active")
@@ -433,17 +445,17 @@ async function generateDocument() {
   isGenerating = true
 
   // Show generation progress UI
-  generationProgress.style.display = "block"
+  generationProgress.classList.remove("hidden")
   generationSteps.innerHTML = '<div class="loading-placeholder">Starting generation...</div>'
   setStatus("Generating documents...", "loading")
   generateBtn.disabled = true
 
   // Subscribe to progress updates (clean up any existing listener first)
   cleanupGenerationProgressListener()
-  unsubscribeGenerationProgress = electronAPI.onGenerationProgress(handleGenerationProgress)
+  unsubscribeGenerationProgress = api.onGenerationProgress(handleGenerationProgress)
 
   // Start generation with sequential step execution
-  const result = await electronAPI.runGeneration({
+  const result = await api.runGeneration({
     jobMatchId: selectedJobMatchId,
     type: "both",
   })
@@ -453,7 +465,7 @@ async function generateDocument() {
     handleGenerationProgress(result.data)
   } else if (!result.success) {
     setStatus(result.message || "Generation failed", "error")
-    generationProgress.style.display = "none"
+    generationProgress.classList.add("hidden")
     generateBtn.disabled = false
     // Clean up listener on error path
     cleanupGenerationProgressListener()
@@ -467,7 +479,7 @@ async function markAsApplied() {
   setStatus("Marking as applied...", "loading")
   markAppliedBtn.disabled = true
 
-  const result = await electronAPI.updateJobMatchStatus({
+  const result = await api.updateJobMatchStatus({
     id: selectedJobMatchId,
     status: "applied",
   })
@@ -496,7 +508,7 @@ async function markAsIgnored() {
   setStatus("Marking as ignored...", "loading")
   markIgnoredBtn.disabled = true
 
-  const result = await electronAPI.updateJobMatchStatus({
+  const result = await api.updateJobMatchStatus({
     id: selectedJobMatchId,
     status: "ignored",
   })
@@ -519,7 +531,7 @@ async function markAsIgnored() {
 // Check if a URL matches any job match and auto-select it
 async function checkUrlForJobMatch(url: string) {
   try {
-    const result = await electronAPI.findJobMatchByUrl(url)
+    const result = await api.findJobMatchByUrl(url)
     if (result.success && result.data) {
       const match = result.data
       // Add to job matches list if not present
@@ -537,7 +549,7 @@ async function checkUrlForJobMatch(url: string) {
       setWorkflowStep("docs", "active")
 
       // Show job actions section
-      jobActionsSection.style.display = "block"
+      jobActionsSection.classList.remove("hidden")
       markAppliedBtn.disabled = match.status === "applied"
       markIgnoredBtn.disabled = match.status === "ignored"
 
@@ -572,7 +584,7 @@ async function navigate() {
   try {
     setButtonsEnabled(false)
     setStatus("Loading...", "loading")
-    await electronAPI.navigate(fullUrl)
+    await api.navigate(fullUrl)
     setStatus("Page loaded", "success")
 
     // Check if this URL matches any job match
@@ -596,7 +608,7 @@ async function fillForm() {
 
     // Use enhanced fill if we have a job match selected
     if (selectedJobMatchId) {
-      const result = await electronAPI.fillFormEnhanced({
+      const result = await api.fillFormEnhanced({
         provider,
         jobMatchId: selectedJobMatchId,
         documentId: selectedDocumentId || undefined,
@@ -612,7 +624,7 @@ async function fillForm() {
       }
     } else {
       // Fall back to basic fill
-      const result = await electronAPI.fillForm(provider)
+      const result = await api.fillForm(provider)
 
       if (result.success) {
         setStatus(result.message, "success")
@@ -685,7 +697,7 @@ async function uploadResume() {
     const statusMsg = selectedDocumentId ? "Uploading selected document..." : "Uploading resume..."
     setStatus(statusMsg, "loading")
 
-    const result = await electronAPI.uploadResume(options)
+    const result = await api.uploadResume(options)
 
     if (result.success) {
       setStatus(result.message, "success")
@@ -713,7 +725,7 @@ async function submitJob() {
   try {
     setButtonsEnabled(false)
     setStatus(`Extracting job details with ${provider}...`, "loading")
-    const result = await electronAPI.submitJob(provider)
+    const result = await api.submitJob(provider)
 
     if (result.success) {
       setStatus(result.message, "success")
@@ -769,7 +781,7 @@ async function init() {
   updateWorkflowProgress()
 
   // Check CDP connection status and warn if unavailable
-  const cdpStatus = await electronAPI.getCdpStatus()
+  const cdpStatus = await api.getCdpStatus()
   if (!cdpStatus.connected) {
     // Disable upload button and show warning
     uploadBtn.disabled = true
@@ -777,19 +789,22 @@ async function init() {
     console.warn("CDP not connected:", cdpStatus.message)
   }
 
-  // Check if sidebar was previously open
-  const state = await electronAPI.getSidebarState()
-  if (state.open) {
-    sidebarOpen = true
-    sidebar.classList.add("open")
-    await loadJobMatches()
-  }
+  // Open sidebar by default and load job matches
+  sidebar.classList.add("open")
+  await api.setSidebarState(true)
+  await loadJobMatches()
 }
 
 // Wait for DOM to be ready before initializing
+console.log("[app.ts] document.readyState:", document.readyState)
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initializeApp)
+  console.log("[app.ts] Waiting for DOMContentLoaded...")
+  document.addEventListener("DOMContentLoaded", () => {
+    console.log("[app.ts] DOMContentLoaded fired, calling initializeApp")
+    initializeApp()
+  })
 } else {
   // DOM is already ready
+  console.log("[app.ts] DOM already ready, calling initializeApp")
   initializeApp()
 }
