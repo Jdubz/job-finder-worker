@@ -1,0 +1,27 @@
+{
+  "name": "job-applicator",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build && electron .",
+    "build": "tsc && node --input-type=module -e \"import fs from 'fs'; fs.cpSync('src/renderer/index.html', 'dist/renderer/index.html'); fs.cpSync('src/renderer/styles.css', 'dist/renderer/styles.css')\"",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "playwright-core": "^1.47.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "@types/node": "^20.17.50",
+    "electron": "^33.2.1",
+    "eslint": "^9.28.0",
+    "eslint-config-prettier": "^10.1.5",
+    "globals": "^16.2.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.1"
+  }
+}

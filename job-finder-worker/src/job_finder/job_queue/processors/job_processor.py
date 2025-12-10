@@ -424,10 +424,16 @@ class JobProcessor(BaseProcessor):
             )
 
             if not ctx.score_result.passed:
-                self._finalize_skipped(
-                    ctx, f"Scoring rejected: {ctx.score_result.rejection_reason}"
-                )
-                return
+                # Check for bypassFilter flag in metadata (from user submissions)
+                if not metadata.get("bypassFilter", False):
+                    self._finalize_skipped(
+                        ctx, f"Scoring rejected: {ctx.score_result.rejection_reason}"
+                    )
+                    return
+                else:
+                    logger.info(
+                        f"[PIPELINE] {url_preview} -> Bypassing score threshold via bypassFilter flag"
+                    )
 
             # STAGE 5: AI MATCH ANALYSIS
             ctx.stage = "analysis"
@@ -450,10 +456,16 @@ class JobProcessor(BaseProcessor):
             # Check score threshold using deterministic score (not AI score)
             min_score = getattr(self.ai_matcher, "min_match_score", 0)
             if ctx.score_result.final_score < min_score:
-                self._finalize_skipped(
-                    ctx, f"Score {ctx.score_result.final_score} below threshold {min_score}"
-                )
-                return
+                # Check for bypassFilter flag in metadata (from user submissions)
+                if not metadata.get("bypassFilter", False):
+                    self._finalize_skipped(
+                        ctx, f"Score {ctx.score_result.final_score} below threshold {min_score}"
+                    )
+                    return
+                else:
+                    logger.info(
+                        f"[PIPELINE] {url_preview} -> Bypassing min_score threshold via bypassFilter flag"
+                    )
 
             # STAGE 6: SAVE MATCH
             ctx.stage = "save"
