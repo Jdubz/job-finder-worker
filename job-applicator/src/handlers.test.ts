@@ -6,10 +6,83 @@ import {
   parseJsonArrayFromOutput,
   parseJsonObjectFromOutput,
 } from "./utils.js"
+import type {
+  ApiResponse,
+  ApiErrorResponse,
+  ApiSuccessResponse,
+  JobMatchWithListing,
+  ListJobMatchesResponse,
+  JobListingRecord,
+  TimestampLike,
+} from "@shared/types"
 
 // Mock fetch for API calls
 const mockFetch = vi.fn()
 global.fetch = mockFetch as unknown as typeof fetch
+
+/**
+ * Helper to create a mock TimestampLike for tests
+ */
+function mockTimestamp(isoString = "2025-12-10T10:00:00Z"): TimestampLike {
+  return new Date(isoString)
+}
+
+/**
+ * Helper to create a properly typed API success response
+ */
+function createSuccessResponse<T>(data: T): ApiSuccessResponse<T> {
+  return { success: true, data }
+}
+
+/**
+ * Helper to create a properly typed API error response
+ */
+function createErrorResponse(code: string, message: string): ApiErrorResponse {
+  return { success: false, error: { code, message } }
+}
+
+/**
+ * Helper to create a minimal JobListingRecord for tests
+ */
+function createTestListing(overrides: Partial<JobListingRecord> & { url: string; title: string; companyName: string }): JobListingRecord {
+  return {
+    id: overrides.id ?? `listing-${Math.random().toString(36).slice(2)}`,
+    url: overrides.url,
+    title: overrides.title,
+    companyName: overrides.companyName,
+    description: overrides.description ?? "Test job description",
+    sourceId: overrides.sourceId ?? "linkedin",
+    status: overrides.status ?? "matched",
+    createdAt: overrides.createdAt ?? mockTimestamp(),
+    updatedAt: overrides.updatedAt ?? mockTimestamp(),
+  }
+}
+
+/**
+ * Helper to create a minimal JobMatchWithListing for tests
+ */
+function createTestJobMatch(overrides: { id: string; listing: { url: string; title: string; companyName: string }; matchScore?: number; status?: "active" | "ignored" | "applied" }): JobMatchWithListing {
+  const listing = createTestListing(overrides.listing)
+  return {
+    id: overrides.id,
+    jobListingId: listing.id,
+    matchScore: overrides.matchScore ?? 85,
+    status: overrides.status ?? "active",
+    matchedSkills: [],
+    missingSkills: [],
+    matchReasons: [],
+    keyStrengths: [],
+    potentialConcerns: [],
+    experienceMatch: 80,
+    customizationRecommendations: [],
+    analyzedAt: mockTimestamp(),
+    createdAt: mockTimestamp(),
+    updatedAt: mockTimestamp(),
+    submittedBy: null,
+    queueItemId: "queue-1",
+    listing,
+  }
+}
 
 describe("API Integration Helpers", () => {
   beforeEach(() => {
@@ -58,41 +131,65 @@ describe("API Integration Helpers", () => {
 
   describe("Job matches fetching", () => {
     it("should handle job matches list response", async () => {
-      const mockMatches = {
-        data: [
-          {
+      const mockResponse = createSuccessResponse<ListJobMatchesResponse>({
+        matches: [
+          createTestJobMatch({
             id: "match-1",
             matchScore: 85,
-            status: "active",
             listing: {
-              id: "job-1",
               url: "https://example.com/job/1",
               title: "Software Engineer",
               companyName: "Acme Corp",
             },
-          },
+          }),
         ],
-      }
+        count: 1,
+      })
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve(mockMatches),
+        json: () => Promise.resolve(mockResponse),
       })
 
       const res = await fetch("http://localhost:3000/api/job-matches/?status=active&limit=50")
-      const data = await res.json()
-      expect(data.data).toHaveLength(1)
-      expect(data.data[0].matchScore).toBe(85)
+      const data = await res.json() as ApiResponse<ListJobMatchesResponse>
+      expect(data.success).toBe(true)
+      if (data.success) {
+        expect(data.data.matches).toHaveLength(1)
+        expect(data.data.matches[0].matchScore).toBe(85)
+      }
     })
 
     it("should handle empty job matches", async () => {
+      const mockResponse = createSuccessResponse<ListJobMatchesResponse>({
+        matches: [],
+        count: 0,
+      })
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: [] }),
+        json: () => Promise.resolve(mockResponse),
       })
 
       const res = await fetch("http://localhost:3000/api/job-matches/?status=active")
-      const data = await res.json()
-      expect(data.data).toHaveLength(0)
+      const data = await res.json() as ApiResponse<ListJobMatchesResponse>
+      expect(data.success).toBe(true)
+      if (data.success) {
+        expect(data.data.matches).toHaveLength(0)
+      }
+    })
+
+    it("should handle 401 unauthorized error", async () => {
+      const mockResponse = createErrorResponse("UNAUTHORIZED", "Authentication required")
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve(mockResponse),
+      })
+
+      const res = await fetch("http://localhost:3000/api/job-matches/?status=active")
+      expect(res.ok).toBe(false)
+      const data = await res.json() as ApiErrorResponse
+      expect(data.success).toBe(false)
+      expect(data.error.code).toBe("UNAUTHORIZED")
     })
   })
 
@@ -373,115 +470,128 @@ describe("URL-based Job Match Detection", () => {
   })
 
   it("should find job match by exact URL", async () => {
-    const mockMatches = {
-      data: [
-        {
+    const mockResponse = createSuccessResponse<ListJobMatchesResponse>({
+      matches: [
+        createTestJobMatch({
           id: "match-1",
           matchScore: 85,
-          status: "active",
           listing: {
-            id: "job-1",
             url: "https://example.com/careers/software-engineer",
             title: "Software Engineer",
             companyName: "Example Corp",
           },
-        },
+        }),
       ],
-    }
+      count: 1,
+    })
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve(mockMatches),
+      json: () => Promise.resolve(mockResponse),
     })
 
     const res = await fetch("http://localhost:3000/api/job-matches/?limit=100")
-    const data = await res.json()
+    const data = await res.json() as ApiResponse<ListJobMatchesResponse>
+
+    expect(data.success).toBe(true)
+    if (!data.success) return
 
     // Simulate URL matching logic
     const targetUrl = "https://example.com/careers/software-engineer"
-    const foundMatch = data.data.find(
-      (m: { listing: { url: string } }) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
+    const foundMatch = data.data.matches.find(
+      (m) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
     )
 
     expect(foundMatch).toBeDefined()
-    expect(foundMatch.id).toBe("match-1")
+    expect(foundMatch?.id).toBe("match-1")
   })
 
   it("should find job match ignoring query parameters", async () => {
-    const mockMatches = {
-      data: [
-        {
+    const mockResponse = createSuccessResponse<ListJobMatchesResponse>({
+      matches: [
+        createTestJobMatch({
           id: "match-2",
           matchScore: 90,
-          status: "active",
           listing: {
-            id: "job-2",
             url: "https://jobs.example.com/apply/123",
             title: "Senior Developer",
             companyName: "Jobs Inc",
           },
-        },
+        }),
       ],
-    }
+      count: 1,
+    })
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve(mockMatches),
+      json: () => Promise.resolve(mockResponse),
     })
 
     const res = await fetch("http://localhost:3000/api/job-matches/?limit=100")
-    const data = await res.json()
+    const data = await res.json() as ApiResponse<ListJobMatchesResponse>
+
+    expect(data.success).toBe(true)
+    if (!data.success) return
 
     // URL with query params should still match
     const targetUrl = "https://jobs.example.com/apply/123?ref=linkedin&utm_source=google"
-    const foundMatch = data.data.find(
-      (m: { listing: { url: string } }) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
+    const foundMatch = data.data.matches.find(
+      (m) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
     )
 
     expect(foundMatch).toBeDefined()
-    expect(foundMatch.id).toBe("match-2")
+    expect(foundMatch?.id).toBe("match-2")
   })
 
-  it("should return null when no match found", async () => {
-    const mockMatches = {
-      data: [
-        {
+  it("should return undefined when no match found", async () => {
+    const mockResponse = createSuccessResponse<ListJobMatchesResponse>({
+      matches: [
+        createTestJobMatch({
           id: "match-1",
           matchScore: 85,
-          status: "active",
           listing: {
-            id: "job-1",
             url: "https://example.com/job/1",
             title: "Software Engineer",
             companyName: "Example Corp",
           },
-        },
+        }),
       ],
-    }
+      count: 1,
+    })
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve(mockMatches),
+      json: () => Promise.resolve(mockResponse),
     })
 
     const res = await fetch("http://localhost:3000/api/job-matches/?limit=100")
-    const data = await res.json()
+    const data = await res.json() as ApiResponse<ListJobMatchesResponse>
+
+    expect(data.success).toBe(true)
+    if (!data.success) return
 
     const targetUrl = "https://different-site.com/careers/job"
-    const foundMatch = data.data.find(
-      (m: { listing: { url: string } }) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
+    const foundMatch = data.data.matches.find(
+      (m) => normalizeUrl(m.listing.url) === normalizeUrl(targetUrl)
     )
 
     expect(foundMatch).toBeUndefined()
   })
 
   it("should handle empty job matches list", async () => {
+    const mockResponse = createSuccessResponse<ListJobMatchesResponse>({
+      matches: [],
+      count: 0,
+    })
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ data: [] }),
+      json: () => Promise.resolve(mockResponse),
     })
 
     const res = await fetch("http://localhost:3000/api/job-matches/?limit=100")
-    const data = await res.json()
+    const data = await res.json() as ApiResponse<ListJobMatchesResponse>
 
-    expect(data.data).toHaveLength(0)
+    expect(data.success).toBe(true)
+    if (data.success) {
+      expect(data.data.matches).toHaveLength(0)
+    }
   })
 })
 
@@ -987,17 +1097,9 @@ describe("Generation Progress Events", () => {
 })
 
 describe("Job Match Status Badge Rendering", () => {
-  interface JobMatchListItem {
-    id: string
-    matchScore: number
-    status: "active" | "ignored" | "applied"
-    listing: {
-      title: string
-      companyName: string
-    }
-  }
+  // Uses JobMatchWithListing from @shared/types - status field is "active" | "ignored" | "applied"
 
-  function getStatusBadgeClass(status: string): string {
+  function getStatusBadgeClass(status: JobMatchWithListing["status"]): string {
     return status !== "active" ? `job-status-badge ${status}` : ""
   }
 
@@ -1008,38 +1110,20 @@ describe("Job Match Status Badge Rendering", () => {
   }
 
   it("should not show badge for active status", () => {
-    const match: JobMatchListItem = {
-      id: "1",
-      matchScore: 85,
-      status: "active",
-      listing: { title: "Developer", companyName: "Acme" },
-    }
-
-    const badgeClass = getStatusBadgeClass(match.status)
+    const status: JobMatchWithListing["status"] = "active"
+    const badgeClass = getStatusBadgeClass(status)
     expect(badgeClass).toBe("")
   })
 
   it("should show applied badge", () => {
-    const match: JobMatchListItem = {
-      id: "2",
-      matchScore: 90,
-      status: "applied",
-      listing: { title: "Engineer", companyName: "Tech Co" },
-    }
-
-    const badgeClass = getStatusBadgeClass(match.status)
+    const status: JobMatchWithListing["status"] = "applied"
+    const badgeClass = getStatusBadgeClass(status)
     expect(badgeClass).toBe("job-status-badge applied")
   })
 
   it("should show ignored badge", () => {
-    const match: JobMatchListItem = {
-      id: "3",
-      matchScore: 60,
-      status: "ignored",
-      listing: { title: "Intern", companyName: "Startup" },
-    }
-
-    const badgeClass = getStatusBadgeClass(match.status)
+    const status: JobMatchWithListing["status"] = "ignored"
+    const badgeClass = getStatusBadgeClass(status)
     expect(badgeClass).toBe("job-status-badge ignored")
   })
 
