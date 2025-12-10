@@ -20,12 +20,12 @@ describe('cron - getWorkerCliHealth', () => {
     vi.resetModules()
     vi.clearAllMocks()
     originalFetch = global.fetch
-    process.env.WORKER_MAINTENANCE_URL = 'http://localhost:5555/maintenance'
+    process.env.WORKER_URL = MOCK_WORKER_URL
 
     // Mock env config after reset
     vi.doMock('../config/env', () => ({
       env: {
-        WORKER_MAINTENANCE_URL: `${MOCK_WORKER_URL}/maintenance`,
+        WORKER_URL: MOCK_WORKER_URL,
         NODE_ENV: 'test',
         LOG_DIR: '/tmp/logs',
         LOG_ROTATE_MAX_BYTES: 10485760,
@@ -40,7 +40,7 @@ describe('cron - getWorkerCliHealth', () => {
 
   afterEach(() => {
     global.fetch = originalFetch
-    delete process.env.WORKER_MAINTENANCE_URL
+    delete process.env.WORKER_URL
     vi.resetModules()
   })
 
@@ -125,7 +125,7 @@ describe('cron - getWorkerCliHealth', () => {
     expect(result.error).toBe('string error')
   })
 
-  it('should derive worker URL correctly from maintenance URL', async () => {
+  it('should use worker URL correctly', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ providers: {} })
@@ -133,7 +133,6 @@ describe('cron - getWorkerCliHealth', () => {
 
     const result = await getWorkerCliHealth()
 
-    // The worker base URL should strip the /maintenance path
     expect(result.workerUrl).toBe(MOCK_WORKER_URL)
     expect(global.fetch).toHaveBeenCalledWith(
       'http://localhost:5555/cli/health',

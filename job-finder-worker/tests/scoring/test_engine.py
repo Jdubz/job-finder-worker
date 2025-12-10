@@ -263,3 +263,229 @@ class TestScoringEngine:
         assert any("timezone" in adj.reason.lower() for adj in result.adjustments)
         # Note: job may still fail overall due to other factors (no salary info, etc.)
         # but it should NOT be a hard reject for timezone since within max
+
+    def test_hybrid_different_city_relocation_not_allowed_rejects(self, default_config):
+        """Hybrid role in different city rejected when relocationAllowed=False."""
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "userCity": "Portland",
+                "userTimezone": -8,
+                "relocationAllowed": False,  # User won't relocate
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="hybrid",
+            city="San Francisco",  # Different city
+            timezone=-8,  # Same timezone
+        )
+
+        result = engine.score(extraction, "Engineer", "Hybrid position in SF")
+
+        assert result.passed is False
+        assert result.hard_reject is True if hasattr(result, "hard_reject") else True
+        assert "relocation" in result.rejection_reason.lower()
+
+    def test_hybrid_different_city_relocation_allowed_applies_penalty(self, default_config):
+        """Hybrid role in different city applies penalty when relocationAllowed=True."""
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "userCity": "Portland",
+                "userTimezone": -8,
+                "relocationAllowed": True,  # User willing to relocate
+                "relocationScore": -15,
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="hybrid",
+            city="San Francisco",  # Different city
+            timezone=-8,  # Same timezone
+            seniority="senior",
+            technologies=["typescript", "react"],
+        )
+
+        result = engine.score(extraction, "Senior Engineer", "Hybrid position in SF")
+
+        # Should NOT be a hard reject
+        assert (
+            result.rejection_reason is None or "relocation" not in result.rejection_reason.lower()
+        )
+        # Should have relocation penalty adjustment
+        assert any("relocation" in adj.reason.lower() for adj in result.adjustments)
+        # Penalty should be applied
+        relocation_adj = next(
+            (a for a in result.adjustments if "relocation" in a.reason.lower()), None
+        )
+        assert relocation_adj is not None
+        assert relocation_adj.points == -15
+
+    def test_hybrid_same_city_gets_bonus(self, default_config):
+        """Hybrid role in same city as user gets bonus."""
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "userCity": "Portland",
+                "userTimezone": -8,
+                "hybridSameCityScore": 10,
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="hybrid",
+            city="Portland",  # Same city
+            timezone=-8,
+            seniority="senior",
+        )
+
+        result = engine.score(extraction, "Senior Engineer", "Hybrid position in Portland")
+
+        # Should have same-city bonus
+        assert any("same city" in adj.reason.lower() for adj in result.adjustments)
+        same_city_adj = next(
+            (a for a in result.adjustments if "same city" in a.reason.lower()), None
+        )
+        assert same_city_adj is not None
+        assert same_city_adj.points == 10
+
+    def test_timezone_from_personal_info_used(self, default_config):
+        """Timezone from personal-info (via userTimezone) is used for scoring."""
+        # User is at UTC+1 (Europe), job is at UTC-8 (Pacific) = 9 hour diff
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "userTimezone": 1,  # Simulating value from personal-info
+                "maxTimezoneDiffHours": 4,
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="hybrid",
+            timezone=-8,  # Pacific time
+        )
+
+        result = engine.score(extraction, "Engineer", "Hybrid position")
+
+        # 9 hour diff exceeds max of 4 - should be rejected
+        assert result.passed is False
+        assert "timezone" in result.rejection_reason.lower()
+
+    def test_city_from_personal_info_used(self, default_config):
+        """City from personal-info (via userCity) is used for hybrid city matching."""
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "userCity": "Seattle",  # Simulating value from personal-info
+                "userTimezone": -8,
+                "hybridSameCityScore": 10,
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="hybrid",
+            city="Seattle",
+            timezone=-8,
+            seniority="senior",
+        )
+
+        result = engine.score(extraction, "Senior Engineer", "Hybrid position")
+
+        # Should match Seattle and get bonus
+        assert any("same city" in adj.reason.lower() for adj in result.adjustments)
+
+    def test_onsite_different_city_relocation_not_allowed_rejects(self, default_config):
+        """Onsite role in different city rejected when relocationAllowed=False."""
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "allowOnsite": True,
+                "userCity": "Portland",
+                "userTimezone": -8,
+                "relocationAllowed": False,
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="onsite",
+            city="New York",
+            timezone=-5,
+        )
+
+        result = engine.score(extraction, "Engineer", "Onsite position in NYC")
+
+        assert result.passed is False
+        assert "relocation" in result.rejection_reason.lower()
+        assert "onsite" in result.rejection_reason.lower()
+
+    def test_onsite_different_city_relocation_allowed_applies_penalty(self, default_config):
+        """Onsite role in different city applies penalty when relocationAllowed=True."""
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "allowOnsite": True,
+                "userCity": "Portland",
+                "userTimezone": -8,
+                "relocationAllowed": True,
+                "relocationScore": -20,
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="onsite",
+            city="Seattle",
+            timezone=-8,
+            seniority="senior",
+        )
+
+        result = engine.score(extraction, "Senior Engineer", "Onsite position in Seattle")
+
+        # Should NOT be a hard reject
+        assert (
+            result.rejection_reason is None or "relocation" not in result.rejection_reason.lower()
+        )
+        # Should have relocation penalty
+        assert any("relocation" in adj.reason.lower() for adj in result.adjustments)
+        relocation_adj = next(
+            (a for a in result.adjustments if "relocation" in a.reason.lower()), None
+        )
+        assert relocation_adj is not None
+        assert relocation_adj.points == -20
+
+    def test_onsite_same_city_no_relocation_check(self, default_config):
+        """Onsite role in same city doesn't trigger relocation logic."""
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "allowOnsite": True,
+                "userCity": "Portland",
+                "userTimezone": -8,
+                "relocationAllowed": False,  # Should not matter for same city
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="onsite",
+            city="Portland",
+            timezone=-8,
+            seniority="senior",
+        )
+
+        result = engine.score(extraction, "Senior Engineer", "Onsite position in Portland")
+
+        # Should pass (same city)
+        assert (
+            result.rejection_reason is None
+            or "relocation" not in (result.rejection_reason or "").lower()
+        )
+        # No relocation adjustment
+        assert not any("relocation" in adj.reason.lower() for adj in result.adjustments)

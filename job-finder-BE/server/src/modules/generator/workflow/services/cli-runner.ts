@@ -23,6 +23,27 @@ export interface CliRunOptions {
 
 const DEFAULT_TIMEOUT_MS = 120_000 // 2 minutes
 
+// CLI argument constants for maintainability
+const CLI_FLAGS = {
+  // Common flags
+  PRINT: '--print',
+  MODEL: '--model',
+  // Codex-specific
+  CODEX_EXEC: 'exec',
+  CODEX_SKIP_GIT_CHECK: '--skip-git-repo-check',
+  CODEX_CD: '--cd',
+  CODEX_BYPASS_APPROVALS: '--dangerously-bypass-approvals-and-sandbox',
+  // Gemini-specific
+  GEMINI_OUTPUT: '--output',
+  GEMINI_OUTPUT_JSON: 'json',
+  // Note: Gemini CLI --prompt flag is deprecated, use positional argument instead
+  // Claude-specific
+  CLAUDE_OUTPUT_FORMAT: '--output-format',
+  CLAUDE_OUTPUT_JSON: 'json',
+  CLAUDE_SKIP_PERMISSIONS: '--dangerously-skip-permissions'
+  // Note: Claude CLI uses positional prompt argument, not a flag
+} as const
+
 function classifyError(message?: string): CliErrorType {
   if (!message) return 'other'
   if (isQuotaError(message)) return 'quota'
@@ -53,29 +74,38 @@ function buildCommand(provider: CliProvider, prompt: string, model?: string): { 
     return {
       cmd: 'codex',
       // Skip Codex's git repo trust check because production containers don't include the .git folder
-      args: ['exec', '--skip-git-repo-check', '--cd', process.cwd(), '--dangerously-bypass-approvals-and-sandbox', prompt]
+      args: [
+        CLI_FLAGS.CODEX_EXEC,
+        CLI_FLAGS.CODEX_SKIP_GIT_CHECK,
+        CLI_FLAGS.CODEX_CD,
+        process.cwd(),
+        CLI_FLAGS.CODEX_BYPASS_APPROVALS,
+        prompt
+      ]
     }
   }
   if (provider === 'gemini') {
-    const args = ['--print', '--output', 'json']
+    const args: string[] = [CLI_FLAGS.PRINT, CLI_FLAGS.GEMINI_OUTPUT, CLI_FLAGS.GEMINI_OUTPUT_JSON]
     if (model) {
-      args.push('--model', model)
+      args.push(CLI_FLAGS.MODEL, model)
     }
-    args.push('--prompt', prompt)
+    // Gemini CLI --prompt flag is deprecated, use positional argument
+    args.push(prompt)
     return {
       cmd: 'gemini',
       args
     }
   }
   if (provider === 'claude') {
-    const args = ['--print', '--output-format', 'json']
+    const args: string[] = [CLI_FLAGS.PRINT, CLI_FLAGS.CLAUDE_OUTPUT_FORMAT, CLI_FLAGS.CLAUDE_OUTPUT_JSON]
     if (model) {
-      args.push('--model', model)
+      args.push(CLI_FLAGS.MODEL, model)
     }
     if (process.env.CLAUDE_SKIP_PERMISSIONS !== 'false') {
-      args.push('--dangerously-skip-permissions')
+      args.push(CLI_FLAGS.CLAUDE_SKIP_PERMISSIONS)
     }
-    args.push('--prompt', prompt)
+    // Claude CLI uses positional prompt argument, not a flag
+    args.push(prompt)
     return {
       cmd: 'claude',
       args
@@ -83,7 +113,7 @@ function buildCommand(provider: CliProvider, prompt: string, model?: string): { 
   }
   return {
     cmd: 'codex',
-    args: ['exec', '--cd', process.cwd(), '--dangerously-bypass-approvals-and-sandbox', prompt]
+    args: [CLI_FLAGS.CODEX_EXEC, CLI_FLAGS.CODEX_CD, process.cwd(), CLI_FLAGS.CODEX_BYPASS_APPROVALS, prompt]
   }
 }
 

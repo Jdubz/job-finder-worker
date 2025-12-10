@@ -257,7 +257,7 @@ export interface LocationConfig {
   allowHybrid: boolean
   /** Allow onsite-only positions */
   allowOnsite: boolean
-  /** User's timezone offset from UTC (e.g., -8 for PST) */
+  /** User's timezone offset from UTC (e.g., -8 for PST). Overridden by personal-info.timezone if set. */
   userTimezone: number
   /** Maximum timezone difference allowed (hours) */
   maxTimezoneDiffHours: number
@@ -265,7 +265,7 @@ export interface LocationConfig {
   perHourScore: number
   /** Score adjustment for hybrid in same city (positive) */
   hybridSameCityScore: number
-  /** User's city for hybrid matching */
+  /** User's city for hybrid matching. Overridden by personal-info.city if set. */
   userCity?: string
   /** Score adjustment for remote positions (positive) */
   remoteScore?: number
@@ -273,6 +273,8 @@ export interface LocationConfig {
   relocationScore?: number
   /** Score adjustment for unknown timezone (negative) */
   unknownTimezoneScore?: number
+  /** Whether user is willing to relocate. Set from personal-info.relocationAllowed. Defaults to false. */
+  relocationAllowed?: boolean
 }
 
 /** Skill/technology matching with experience weighting */

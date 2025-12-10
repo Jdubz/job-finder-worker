@@ -1,10 +1,8 @@
----
-title: Document Generator Architecture
-updated: 2025-11-25
-author: system
----
-
 # Document Generator Architecture
+
+> Status: Active
+> Owner: @jdubz
+> Last Updated: 2025-12-09
 
 The document generator creates tailored resumes and cover letters using AI to customize content for specific job listings.
 

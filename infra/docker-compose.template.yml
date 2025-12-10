@@ -34,7 +34,7 @@ services:
       WORKER_WS_TOKEN: ${WORKER_WS_TOKEN}
       TZ: America/Los_Angeles
       LOG_DIR: /logs
-      WORKER_MAINTENANCE_URL: http://worker:5555/maintenance
+      WORKER_URL: http://worker:5555
       # CORS_ALLOWED_ORIGINS: "https://your-frontend-domain.com,https://another-domain.com"
     volumes:
       # Update these paths to match your production server

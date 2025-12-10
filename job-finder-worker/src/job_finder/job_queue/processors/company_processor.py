@@ -52,6 +52,19 @@ class CompanyProcessor(BaseProcessor):
         # AgentManager is used for intelligent source discovery (career page selection).
         self.agent_manager = AgentManager(ctx.config_loader)
 
+    def _refresh_runtime_config(self) -> None:
+        """
+        Reload config-driven components so each item uses fresh settings.
+
+        CompanyProcessor doesn't have filters or scoring engines to rebuild.
+        AgentManager reads config fresh on each call, so no explicit refresh needed.
+        This method validates config is available and logs for consistency with other processors.
+        """
+        try:
+            self.config_loader.get_worker_settings()
+        except Exception as exc:
+            logger.debug("Config refresh check failed (non-fatal): %s", exc)
+
     # ============================================================
     # SINGLE-PASS PROCESSOR
     # ============================================================
@@ -74,10 +87,13 @@ class CompanyProcessor(BaseProcessor):
             logger.error("Cannot process item without ID")
             return
 
+        # Refresh config-driven components before processing
+        self._refresh_runtime_config()
+
         company_id = item.company_id
         company_name = item.company_name
 
-        # Refresh configs so each company task uses latest settings and fails loudly if missing.
+        # Validate worker settings (fail gracefully for test compatibility).
         try:
             worker_settings = self.config_loader.get_worker_settings()
             if not isinstance(worker_settings.get("runtime"), dict):

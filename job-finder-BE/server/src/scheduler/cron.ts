@@ -8,6 +8,7 @@ import { env } from '../config/env'
 import { JobQueueService } from '../modules/job-queue/job-queue.service'
 import { ConfigRepository } from '../modules/config/config.repository'
 import { isWorkerSettings, isCronConfig, type WorkerSettings, type CronConfig, type AISettings } from '@shared/types'
+import { MaintenanceService } from '../modules/maintenance'
 
 type CronJobKey = keyof CronConfig['jobs']
 
@@ -35,6 +36,14 @@ const getConfigRepo = (() => {
   return () => {
     if (!repo) repo = new ConfigRepository()
     return repo
+  }
+})()
+
+const getMaintenanceService = (() => {
+  let svc: MaintenanceService | null = null
+  return () => {
+    if (!svc) svc = new MaintenanceService()
+    return svc
   }
 })()
 
@@ -98,21 +107,14 @@ export async function enqueueScrapeJob() {
 }
 
 export async function triggerMaintenance() {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 30_000)
   try {
-    logger.info({ url: env.WORKER_MAINTENANCE_URL, at: utcNowIso() }, 'Cron maintenance starting')
-    const res = await fetch(env.WORKER_MAINTENANCE_URL, { method: 'POST', signal: controller.signal })
-    if (!res.ok) {
-      throw new Error(`Maintenance HTTP ${res.status}`)
-    }
-    logger.info({ status: res.status, at: utcNowIso() }, 'Cron triggered worker maintenance')
-    return { success: true, status: res.status }
+    logger.info({ at: utcNowIso() }, 'Cron maintenance starting')
+    const result = getMaintenanceService().runMaintenance()
+    logger.info({ result, at: utcNowIso() }, 'Cron maintenance completed')
+    return result
   } catch (error) {
-    logger.error({ error, at: utcNowIso() }, 'Cron failed to trigger maintenance')
+    logger.error({ error, at: utcNowIso() }, 'Cron maintenance failed')
     return { success: false, error: error instanceof Error ? error.message : String(error) }
-  } finally {
-    clearTimeout(timeout)
   }
 }
 
@@ -395,10 +397,8 @@ export const __cronTestInternals = {
 }
 
 function getWorkerBaseUrl() {
-  const maintenanceUrlValue = process.env.WORKER_MAINTENANCE_URL ?? env.WORKER_MAINTENANCE_URL
-  const maintenanceUrl = new URL(maintenanceUrlValue)
-  maintenanceUrl.pathname = maintenanceUrl.pathname.replace(/\/[^/]+$/, '')
-  return maintenanceUrl.href.replace(/\/$/, '')
+  const workerUrl = process.env.WORKER_URL ?? env.WORKER_URL
+  return workerUrl.replace(/\/$/, '')
 }
 
 export function getCronStatus() {
@@ -408,7 +408,7 @@ export function getCronStatus() {
     nodeEnv: env.NODE_ENV,
     timezone: getContainerTimezone(),
     jobs: config.jobs,
-    workerMaintenanceUrl: env.WORKER_MAINTENANCE_URL,
+    workerUrl: env.WORKER_URL,
     logDir: env.LOG_DIR
   }
 }

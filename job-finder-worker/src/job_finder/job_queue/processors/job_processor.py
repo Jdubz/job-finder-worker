@@ -164,7 +164,7 @@ class JobProcessor(BaseProcessor):
         self.ai_matcher.min_match_score = match_policy["minScore"]
 
     def _build_scoring_engine(self, match_policy: Dict[str, Any]) -> ScoringEngine:
-        """Create ScoringEngine with derived profile and analog map."""
+        """Create ScoringEngine with derived profile, analog map, and personal info."""
         db_path = (
             self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
         )
@@ -173,6 +173,22 @@ class JobProcessor(BaseProcessor):
         profile = load_scoring_profile(db_path, relevant_experience_start=relevant_exp_start)
         analog_groups = match_policy.get("skillMatch", {}).get("analogGroups", [])
         analog_map = build_analog_map(analog_groups)
+
+        # Merge personal-info into location config for scoring
+        # Personal info values override static config values (userTimezone, userCity)
+        personal_info = self.config_loader.get_personal_info()
+        if personal_info:
+            location_config = match_policy.get("location", {})
+            # timezone from personal-info overrides userTimezone in location config
+            if personal_info.get("timezone") is not None:
+                location_config["userTimezone"] = personal_info["timezone"]
+            # city from personal-info overrides userCity in location config
+            if personal_info.get("city"):
+                location_config["userCity"] = personal_info["city"]
+            # relocationAllowed is new - pass through to scoring
+            if "relocationAllowed" in personal_info:
+                location_config["relocationAllowed"] = personal_info["relocationAllowed"]
+
         return ScoringEngine(
             match_policy,
             skill_years=profile.skill_years,

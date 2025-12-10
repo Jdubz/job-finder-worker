@@ -33,7 +33,6 @@ from job_finder.ai import AIJobMatcher
 from job_finder.ai.agent_manager import AgentManager
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.logging_config import get_structured_logger, setup_logging
-from job_finder.maintenance import run_maintenance
 from job_finder.profile import SQLiteProfileLoader
 from job_finder.profile.schema import Profile
 from job_finder.job_queue import ConfigLoader, QueueManager
@@ -898,39 +897,6 @@ def config_endpoint():
         _set_state("poll_interval", max(MIN_POLL_INTERVAL_SECONDS, int(data["poll_interval"])))
 
     return jsonify({"message": "Configuration updated"})
-
-
-@app.route("/maintenance", methods=["POST"])
-def maintenance_endpoint():
-    """
-    Run maintenance tasks: delete stale matches and recalculate priorities.
-
-    This endpoint triggers the maintenance cycle which:
-    - Deletes job matches older than 2 weeks
-    - Recalculates application priorities based on match scores
-    """
-    slogger.worker_status("maintenance_started")
-    results = run_maintenance()  # db_path resolved internally via resolve_db_path
-    slogger.worker_status("maintenance_completed", results)
-
-    if results["success"]:
-        return jsonify(
-            {
-                "message": "Maintenance completed successfully",
-                "deleted_count": results["deleted_count"],
-                "updated_count": results["updated_count"],
-            }
-        )
-    else:
-        return (
-            jsonify(
-                {
-                    "message": "Maintenance failed",
-                    "error": results["error"],
-                }
-            ),
-            500,
-        )
 
 
 def signal_handler(signum, frame):

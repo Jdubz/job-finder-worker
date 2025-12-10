@@ -2,7 +2,7 @@
 
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-25
+> Last Updated: 2025-12-09
 
 Structured JSON logging is now standard across the Job Finder platform. Every service emits log entries that conform to the `StructuredLogEntry` schema published in `job-finder-shared-types`. Aggregation, local streaming, and cloud forwarding are coordinated through App Monitor.
 

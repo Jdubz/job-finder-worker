@@ -1,8 +1,8 @@
 # Company Single-Pass Pipeline Refactor
 
-> Status: In Progress
+> Status: Draft
 > Owner: @jdubz
-> Last Updated: 2025-11-28
+> Last Updated: 2025-12-09
 - **Goal:** Collapse company processing into a single queue item (fetch → extract → analyze → save) so every company submission yields a hydrated record and optional source discovery without inter-item spawning.
 
 ## Problem

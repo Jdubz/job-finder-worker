@@ -28,6 +28,7 @@ import { useQueueStats } from "./hooks/useQueueStats"
 import { useProcessingToggle } from "./hooks/useProcessingToggle"
 import { SSEEventLogDrawer } from "./components/SSEEventLogDrawer"
 import { ConfirmToggleDialog } from "./components/ConfirmToggleDialog"
+import { queueClient } from "@/api/queue-client"
 
 type CompletedStatus = "success" | "failed" | "skipped"
 const COMPLETED_STATUSES: CompletedStatus[] = ["success", "failed", "skipped"]
@@ -191,6 +192,18 @@ export function QueueManagementPage() {
     }
   }
 
+  const handleRetryItem = async (id: string) => {
+    try {
+      await queueClient.retryQueueItem(id)
+      setAlert({ type: "success", message: "Task queued for retry" })
+    } catch (err) {
+      logger.error("QueueManagement", "retryItem", "Failed to retry item", {
+        error: { type: "RetryError", message: err instanceof Error ? err.message : String(err) },
+      })
+      setAlert({ type: "error", message: err instanceof Error ? err.message : "Failed to retry queue item" })
+    }
+  }
+
   const formatRelativeTime = (date: unknown): string => {
     const parsed = normalizeDateValue(date)
     if (!parsed) return "—"
@@ -248,8 +261,8 @@ export function QueueManagementPage() {
             <ConnectionStatusBadge status={connectionStatus} />
           </div>
           <p className="text-muted-foreground mt-2">
-            Monitor and manage the job processing queue in real-time. Retries are temporarily
-            disabled; cancel stuck items and re-submit only after fixing root causes.
+            Monitor and manage the job processing queue in real-time. Failed tasks can be retried
+            using the retry button.
           </p>
         </div>
 
@@ -395,6 +408,7 @@ export function QueueManagementPage() {
                     })
                   }
                   onCancel={handleCancelItem}
+                  onRetry={handleRetryItem}
                   formatRelativeTime={formatRelativeTime}
                 />
               )}
@@ -419,6 +433,7 @@ export function QueueManagementPage() {
                   items={completedItems}
                   onRowClick={(item) => openModal({ type: "jobQueueItem", item })}
                   onCancel={handleCancelItem}
+                  onRetry={handleRetryItem}
                   formatRelativeTime={formatRelativeTime}
                 />
               )}

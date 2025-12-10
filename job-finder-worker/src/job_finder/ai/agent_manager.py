@@ -19,7 +19,12 @@ from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from job_finder.ai.providers import auth_status, hydrate_auth_from_host_file
 
-from job_finder.exceptions import AIProviderError, NoAgentsAvailableError, QuotaExhaustedError
+from job_finder.exceptions import (
+    AIProviderError,
+    NoAgentsAvailableError,
+    QuotaExhaustedError,
+    TransientError,
+)
 
 if TYPE_CHECKING:
     from job_finder.job_queue.config_loader import ConfigLoader
@@ -213,37 +218,61 @@ class AgentManager:
                 self._disable_agent(agent_id, active_scope, "quota_exhausted: daily budget reached")
                 continue
 
-            # Try to call the agent
-            try:
-                result = self._call_agent(
-                    agent_id, agent_config, prompt, model, max_tokens, temperature
-                )
+            # Try to call the agent with retry logic for transient errors
+            max_retries = 2  # 2 retries = 3 total attempts
+            stop_fallback_chain = False
 
-                # Increment usage after successful call
-                cost = model_rates.get(model, 1.0)
-                self.config_loader.increment_agent_usage(agent_id, model)
-                logger.info(
-                    f"Agent {agent_id} executed successfully (model={model}, cost={cost}, scope={active_scope})"
-                )
+            for attempt in range(max_retries + 1):
+                try:
+                    result = self._call_agent(
+                        agent_id, agent_config, prompt, model, max_tokens, temperature
+                    )
 
-                return result
+                    # Increment usage after successful call (cost already calculated above)
+                    self.config_loader.increment_agent_usage(agent_id, model)
+                    logger.info(
+                        f"Agent {agent_id} executed successfully (model={model}, cost={cost}, scope={active_scope})"
+                    )
 
-            except QuotaExhaustedError as e:
-                # Quota/rate limit errors - disable agent but continue to next
-                error_msg = str(e)
-                logger.warning(f"Agent {agent_id} quota exhausted: {error_msg}")
-                self._disable_agent(agent_id, active_scope, f"quota_exhausted: {error_msg}")
-                errors.append((agent_id, error_msg))
-                continue  # Try next agent in fallback chain
+                    return result
 
-            except AIProviderError as e:
-                # Other API errors - disable agent and stop (requires investigation)
-                error_msg = str(e)
-                logger.error(f"Agent {agent_id} failed: {error_msg}")
-                self._disable_agent(agent_id, active_scope, f"error: {error_msg}")
-                errors.append((agent_id, error_msg))
-                # Don't continue - non-quota errors may indicate systemic issues
-                break
+                except QuotaExhaustedError as e:
+                    # Quota/rate limit errors - disable agent but continue to next
+                    error_msg = str(e)
+                    logger.warning(f"Agent {agent_id} quota exhausted: {error_msg}")
+                    self._disable_agent(agent_id, active_scope, f"quota_exhausted: {error_msg}")
+                    errors.append((agent_id, error_msg))
+                    break  # Exit retry loop, continue to next agent
+
+                except TransientError as e:
+                    # Transient errors (timeout, network) - retry up to max_retries times
+                    error_msg = str(e)
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Agent {agent_id} transient error (attempt {attempt + 1}/{max_retries + 1}): {error_msg}, retrying..."
+                        )
+                        continue  # Retry same agent
+                    else:
+                        # All retries exhausted - disable agent and continue to next
+                        logger.error(
+                            f"Agent {agent_id} transient error after {max_retries + 1} attempts: {error_msg}, disabling"
+                        )
+                        self._disable_agent(agent_id, active_scope, f"error: {error_msg}")
+                        errors.append((agent_id, error_msg))
+                        break  # Exit retry loop, continue to next agent
+
+                except AIProviderError as e:
+                    # Other API errors - disable agent and stop (requires investigation)
+                    error_msg = str(e)
+                    logger.error(f"Agent {agent_id} failed: {error_msg}")
+                    self._disable_agent(agent_id, active_scope, f"error: {error_msg}")
+                    errors.append((agent_id, error_msg))
+                    # Don't continue - non-quota errors may indicate systemic issues
+                    stop_fallback_chain = True
+                    break
+
+            if stop_fallback_chain:
+                break  # Stop trying other agents
 
         # All agents exhausted
         error_summary = (

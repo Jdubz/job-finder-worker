@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.ai.search_client import get_search_client, SearchResult
+from job_finder.ai.wikipedia_client import get_wikipedia_client
 from job_finder.logging_config import format_company_name
 from job_finder.settings import get_text_limits
 
@@ -79,6 +80,7 @@ class CompanyInfoFetcher:
             {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         )
         self.search_client = get_search_client()
+        self.wikipedia_client = get_wikipedia_client()
 
     # ============================================================
     # MAIN ENTRY POINT
@@ -93,8 +95,9 @@ class CompanyInfoFetcher:
         """
         Fetch comprehensive company information.
 
-        Strategy (search-first):
-        1. Search for company by name (primary data source)
+        Strategy:
+        0. Try Wikipedia first (fast, high-quality for established companies)
+        1. Search for company by name (fills gaps Wikipedia doesn't cover)
         2. AI extracts structured data from search results
         3. Optionally scrape website for additional detail (if valid URL found)
 
@@ -148,7 +151,19 @@ class CompanyInfoFetcher:
         }
 
         try:
-            # STEP 1: Search for company info (primary method)
+            # STEP 0: Try Wikipedia first (fast, high-quality for established companies)
+            # Uses search_name (post-Workday resolution) for better accuracy
+            wiki_info = self._try_wikipedia(search_name)
+            if wiki_info:
+                result = self._merge_company_info(result, wiki_info)
+                logger.info(
+                    "Wikipedia found data for %s: about=%d chars",
+                    company_display,
+                    len(result.get("about", "")),
+                )
+
+            # STEP 1: Search for company info (fills gaps Wikipedia doesn't cover)
+            # Wikipedia doesn't provide: culture, mission, techStack, products, etc.
             search_info = self._search_and_extract(search_name, source_context)
             if search_info:
                 result = self._merge_company_info(result, search_info)
@@ -195,6 +210,26 @@ class CompanyInfoFetcher:
             )
 
         return result
+
+    # ============================================================
+    # WIKIPEDIA LOOKUP (STEP 0)
+    # ============================================================
+
+    def _try_wikipedia(self, company_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Attempt Wikipedia lookup for company.
+
+        Args:
+            company_name: Company name to search for (should be post-Workday resolution)
+
+        Returns:
+            Dict with company info fields, or None if not found/error
+        """
+        try:
+            return self.wikipedia_client.search_company(company_name)
+        except Exception as e:
+            logger.debug(f"Wikipedia lookup failed for {company_name}: {e}")
+            return None
 
     # ============================================================
     # SEARCH + AI EXTRACTION (Primary Method)
@@ -758,14 +793,13 @@ Be factual. Return ONLY valid JSON."""
         about_len = len(info.get("about", "") or "")
         return about_len < min_about
 
-    def _needs_ai_enrichment(self, info: Dict[str, Any]) -> bool:
-        """Check if info is sparse enough to warrant AI enrichment."""
-        return self._needs_enrichment(info)
-
     def _merge_company_info(
         self, primary: Dict[str, Any], secondary: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Merge two info dicts, preferring non-empty values."""
+        """Merge two info dicts, preferring longer text for descriptive fields."""
+        # Fields where longer text is better (prefer more comprehensive descriptions)
+        text_fields = {"about", "culture", "mission"}
+
         merged = dict(primary)
         for key, val in secondary.items():
             if key == "website":
@@ -780,6 +814,12 @@ Be factual. Return ONLY valid JSON."""
                         merged["website"] = val
             elif key == "sources":
                 merged["sources"] = val or merged.get("sources") or []
+            elif key in text_fields:
+                # For descriptive text fields, prefer the longer value
+                current = merged.get(key) or ""
+                new_val = val or ""
+                if len(new_val) > len(current):
+                    merged[key] = new_val
             elif merged.get(key) in (None, "", [], False, 0):
                 if val not in (None, "", [], False):
                     merged[key] = val

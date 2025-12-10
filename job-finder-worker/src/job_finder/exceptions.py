@@ -99,6 +99,27 @@ class QuotaExhaustedError(AIProviderError):
         super().__init__(message)
 
 
+class TransientError(AIProviderError):
+    """Raised for transient errors that allow retries before disabling.
+
+    Unlike permanent AIProviderError which disables the agent immediately,
+    TransientError triggers retry logic (up to 2 retries = 3 total attempts).
+    The agent is only disabled after all retries are exhausted.
+
+    Examples:
+    - Network timeout
+    - Temporary connection failure
+    - Service temporarily unavailable
+
+    Attributes:
+        provider: The AI provider that experienced the transient error
+    """
+
+    def __init__(self, message: str, provider: str = "unknown"):
+        self.provider = provider
+        super().__init__(message)
+
+
 class NoAgentsAvailableError(AIProviderError):
     """Raised when no agents are available to handle a task.
 
