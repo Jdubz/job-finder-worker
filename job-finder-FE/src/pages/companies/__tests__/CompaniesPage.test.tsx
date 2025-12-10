@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { CompaniesPage } from "../CompaniesPage"
 import { useAuth } from "@/contexts/AuthContext"
@@ -88,6 +88,7 @@ describe("CompaniesPage", () => {
   const mockDeleteCompany = vi.fn()
   const mockRefetch = vi.fn()
   const mockSetFilters = vi.fn()
+  let mockQueueItems: any[] = []
   const mockJobSources = [
     { id: "source-1", name: "Acme RSS", sourceType: "rss", status: "active", companyId: "company-1" },
   ] as any
@@ -97,6 +98,7 @@ describe("CompaniesPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockQueueItems = []
 
     vi.mocked(useAuth).mockReturnValue({
       user: mockUser as any,
@@ -117,17 +119,19 @@ describe("CompaniesPage", () => {
       setFilters: mockSetFilters,
     } as any)
 
-    vi.mocked(useQueueItems).mockReturnValue({
-      queueItems: [],
+    vi.mocked(useQueueItems).mockImplementation(() => ({
+      queueItems: mockQueueItems as any,
       loading: false,
       error: null,
+      connectionStatus: "connected",
+      eventLog: [],
       submitJob: vi.fn(),
       submitCompany: mockSubmitCompany,
       submitSourceDiscovery: vi.fn(),
       updateQueueItem: vi.fn(),
       deleteQueueItem: vi.fn(),
       refetch: vi.fn(),
-    } as any)
+    } as any))
 
     vi.mocked(useJobSources).mockReturnValue({
       sources: mockJobSources,
@@ -204,6 +208,28 @@ describe("CompaniesPage", () => {
 
       await waitFor(() => {
         expect(screen.getByText(/click on a company to view details/i)).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe("Status badges", () => {
+    it("marks company as Pending when a pending queue item exists", async () => {
+      mockQueueItems = [
+        {
+          id: "queue-1",
+          type: "company",
+          status: "pending",
+          company_id: "company-3",
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      ] as any
+
+      renderWithProviders()
+
+      await waitFor(() => {
+        const row = screen.getByText("StartupXYZ").closest("tr")!
+        expect(within(row).getByText(/pending/i)).toBeInTheDocument()
       })
     })
   })
@@ -455,6 +481,53 @@ describe("CompaniesPage", () => {
   })
 
   describe("Re-analyze Feature", () => {
+    it("shows list-level Re-analyze button for non-complete companies", async () => {
+      renderWithProviders()
+
+      await waitFor(() => {
+        expect(screen.getByText("TechCorp")).toBeInTheDocument()
+      })
+
+      const techCorpRow = screen.getByText("TechCorp").closest("tr")!
+      expect(within(techCorpRow).getByRole("button", { name: /re-analyze/i })).toBeInTheDocument()
+    })
+
+    it("hides list-level Re-analyze button for complete companies", async () => {
+      renderWithProviders()
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const acmeRow = screen.getByText("Acme Corporation").closest("tr")!
+      expect(within(acmeRow).queryByRole("button", { name: /re-analyze/i })).not.toBeInTheDocument()
+    })
+
+    it("triggers re-analyze and navigation from list-level button", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      mockSubmitCompany.mockResolvedValueOnce("queue-item-999")
+
+      renderWithProviders()
+
+      await waitFor(() => {
+        expect(screen.getByText("TechCorp")).toBeInTheDocument()
+      })
+
+      const techCorpRow = screen.getByText("TechCorp").closest("tr")!
+      const listButton = within(techCorpRow).getByRole("button", { name: /re-analyze/i })
+      await user.click(listButton)
+
+      await waitFor(() => {
+        expect(mockSubmitCompany).toHaveBeenCalledWith({
+          companyName: "TechCorp",
+          websiteUrl: "https://techcorp.io",
+          companyId: "company-2",
+          allowReanalysis: true,
+        })
+        expect(mockNavigate).toHaveBeenCalledWith("/queue-management")
+      })
+    })
+
     it("should show Re-analyze button in detail modal", async () => {
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
