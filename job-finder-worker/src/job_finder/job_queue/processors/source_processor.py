@@ -518,10 +518,10 @@ class SourceProcessor(BaseProcessor):
             if sc.type == "html":
                 resp = requests.get(sc.url, headers=headers, timeout=25)
                 status_code = resp.status_code
-                html = resp.text
                 resp.raise_for_status()
+                html = resp.text
                 soup = BeautifulSoup(html, "html.parser")
-                items = soup.select(sc.job_selector)
+                items = soup.select(getattr(sc, "job_selector", ""))
                 job_count = len(items)
                 return ProbeResult(
                     status="success" if job_count > 0 else "empty",
@@ -555,8 +555,8 @@ class SourceProcessor(BaseProcessor):
             f"Status: {probe.status_code or 'n/a'}\n"
             "Sample (truncated):\n" + sample + "\n"
             "Decide: valid_empty (board is legit but empty) | update_config (return fixed config) | invalid.\n"
-            'Respond JSON: {"decision": '
-            '"valid_empty|update_config|invalid", "reason": "short", "config": {..optional..}}.'
+            'Respond JSON: {"decision": "valid_empty|update_config|invalid", '
+            '"reason": "short", "config": {..optional..}}.'
         )
 
         try:
