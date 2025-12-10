@@ -57,7 +57,7 @@ function extractBearerToken(req: Request): string | null {
  * Check if request is from localhost (127.0.0.1 or ::1)
  * Used to allow desktop app access without auth when running on same machine
  */
-function isLocalhostRequest(req: Request): boolean {
+export function isLocalhostRequest(req: Request): boolean {
   const ip = req.ip || req.socket?.remoteAddress || ''
   // Check for IPv4 localhost, IPv6 localhost, and docker bridge IPs
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
