@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build && electron .",
-    "build": "tsc && cp src/renderer/index.html dist/renderer/",
+    "build": "tsc && node -e \"const fs=require('fs'); fs.cpSync('src/renderer/index.html', 'dist/renderer/index.html'); fs.cpSync('src/renderer/styles.css', 'dist/renderer/styles.css')\"",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },

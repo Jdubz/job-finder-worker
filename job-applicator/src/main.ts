@@ -372,16 +372,18 @@ Example output:
 }
 
 function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[]> {
+  // Commands without the prompt - we'll pass it via stdin for security
   const commands: Record<CliProvider, [string, string[]]> = {
-    claude: ["claude", ["--print", "--output-format", "json", prompt]],
-    codex: ["codex", ["exec", "--json", "--skip-git-repo-check", "--", prompt]],
-    gemini: ["gemini", ["-o", "json", "--yolo", prompt]],
+    claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
+    codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
+    gemini: ["gemini", ["-o", "json", "--yolo"]],
   }
 
   const [cmd, args] = commands[provider]
 
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { shell: true })
+    // Use shell: false for security - avoids command injection
+    const child = spawn(cmd, args)
     let stdout = ""
     let stderr = ""
 
@@ -389,6 +391,10 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
       child.kill("SIGTERM")
       reject(new Error(`${provider} CLI timed out after 60s`))
     }, 60000)
+
+    // Pass prompt via stdin to avoid shell injection
+    child.stdin.write(prompt)
+    child.stdin.end()
 
     child.stdout.on("data", (d) => (stdout += d))
     child.stderr.on("data", (d) => (stderr += d))
@@ -406,7 +412,19 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
           // Handle case where CLI might output extra text before/after JSON
           const jsonMatch = stdout.match(/\[[\s\S]*\]/)
           if (jsonMatch) {
-            resolve(JSON.parse(jsonMatch[0]))
+            const parsed = JSON.parse(jsonMatch[0])
+            // Validate the response structure
+            if (!Array.isArray(parsed)) {
+              reject(new Error(`${provider} CLI did not return an array`))
+              return
+            }
+            for (const item of parsed) {
+              if (typeof item?.selector !== "string" || typeof item?.value !== "string") {
+                reject(new Error(`${provider} CLI returned invalid FillInstruction format`))
+                return
+              }
+            }
+            resolve(parsed)
           } else {
             reject(
               new Error(
