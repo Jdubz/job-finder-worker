@@ -59,14 +59,18 @@ function extractBearerToken(req: Request): string | null {
  *
  * Accepts:
  * - 127.0.0.1, ::1, ::ffff:127.x.x.x (localhost)
- * - 172.x.x.x, ::ffff:172.x.x.x (Docker bridge network - host to container)
+ * - 172.16-31.x.x, ::ffff:172.16-31.x.x (Docker bridge networks)
  *
  * SECURITY: This check assumes Express's `trust proxy` is NOT enabled.
  * If `trust proxy` is enabled, an attacker could spoof the client IP via headers.
  * Always ensure `app.set('trust proxy', false)` when using localhost bypass.
  *
- * SECURITY: 172.x.x.x is safe because the port is bound to 127.0.0.1 only,
+ * SECURITY: 172.16.0.0/12 is safe because the API port is bound to 127.0.0.1 only,
  * so only the Docker host machine can reach it via the bridge network.
+ *
+ * NOTE: Docker Compose creates custom networks in the 172.16-31.x.x range (not just
+ * 172.17.x.x), so we allow the full 172.16.0.0/12 private range. Our production
+ * network uses 172.22.x.x and gateway is 172.23.0.1.
  */
 export function isLocalhostRequest(req: Request): boolean {
   // Prefer raw socket address which is not affected by trust proxy
@@ -78,9 +82,9 @@ export function isLocalhostRequest(req: Request): boolean {
   if (ip === '::1') return true
   // IPv4-mapped IPv6 localhost (::ffff:127.x.x.x range)
   if (/^::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
-  // Docker bridge network (172.16.0.0/12 range - host to container communication)
+  // Docker bridge networks (172.16.0.0/12 - includes compose custom networks)
   if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
-  // IPv4-mapped IPv6 Docker bridge (::ffff:172.x.x.x)
+  // IPv4-mapped IPv6 Docker bridge (::ffff:172.16-31.x.x)
   if (/^::ffff:172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
 
   return false

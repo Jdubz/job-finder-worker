@@ -79,8 +79,6 @@ interface ElectronAPI {
     type?: "resume" | "coverLetter"
   }) => Promise<{ success: boolean; message: string; filePath?: string }>
   submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
-  setSidebarState: (open: boolean) => Promise<void>
-  getSidebarState: () => Promise<{ open: boolean }>
   getCdpStatus: () => Promise<{ connected: boolean; message?: string }>
   getJobMatches: (options?: { limit?: number; status?: string }) => Promise<{
     success: boolean
@@ -770,9 +768,7 @@ async function init() {
     console.warn("CDP not connected:", cdpStatus.message)
   }
 
-  // Open sidebar by default and load job matches
-  sidebar.classList.add("open")
-  await api.setSidebarState(true)
+  // Load job matches on startup (sidebar is always visible)
   await loadJobMatches()
 }
 
