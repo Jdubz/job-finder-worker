@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // CDP status
   getCdpStatus: () => ipcRenderer.invoke("get-cdp-status"),
+  checkFileInput: () => ipcRenderer.invoke("check-file-input"),
 
   // Job matches
   getJobMatches: (options?: { limit?: number; status?: string }) => ipcRenderer.invoke("get-job-matches", options),
