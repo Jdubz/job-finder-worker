@@ -16,10 +16,30 @@ function formatDateRange(startDate: string | null | undefined, endDate: string |
 }
 
 /**
- * Format EEO information in a compact, readable format
+ * Format EEO information in a compact, readable format.
+ *
+ * PRIVACY NOTE: This data is included in AI prompts sent to external providers.
+ * Only non-declined values are included. Users should be aware that EEO data
+ * they provide may be processed by AI services for form filling purposes.
  */
 function formatEEOInfo(eeo: EEOInfo | undefined): string {
   if (!eeo) return ''
+
+  // Lookup maps for proper label formatting (handles acronyms and special cases)
+  const raceLabelMap: Record<string, string> = {
+    american_indian_alaska_native: 'American Indian or Alaska Native',
+    asian: 'Asian',
+    black_african_american: 'Black or African American',
+    native_hawaiian_pacific_islander: 'Native Hawaiian or Other Pacific Islander',
+    white: 'White',
+    two_or_more_races: 'Two or More Races'
+  }
+
+  const veteranLabelMap: Record<string, string> = {
+    not_protected_veteran: 'Not a Protected Veteran',
+    protected_veteran: 'Protected Veteran',
+    disabled_veteran: 'Disabled Veteran'
+  }
 
   const parts: string[] = []
 
@@ -27,14 +47,16 @@ function formatEEOInfo(eeo: EEOInfo | undefined): string {
     parts.push(`Gender: ${eeo.gender}`)
   }
   if (eeo.race && eeo.race !== 'decline_to_identify') {
-    const raceLabel = eeo.race.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    const raceLabel = raceLabelMap[eeo.race] ||
+      eeo.race.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
     parts.push(`Race: ${raceLabel}`)
   }
   if (eeo.hispanicLatino && eeo.hispanicLatino !== 'decline_to_identify') {
     parts.push(`Hispanic/Latino: ${eeo.hispanicLatino}`)
   }
   if (eeo.veteranStatus && eeo.veteranStatus !== 'decline_to_identify') {
-    const vetLabel = eeo.veteranStatus.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    const vetLabel = veteranLabelMap[eeo.veteranStatus] ||
+      eeo.veteranStatus.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
     parts.push(`Veteran Status: ${vetLabel}`)
   }
   if (eeo.disabilityStatus && eeo.disabilityStatus !== 'decline_to_identify') {
@@ -183,6 +205,8 @@ export function buildApplicatorRouter() {
    * - Aggregated skills summary
    *
    * Authentication: Required (session or dev token)
+   *   NOTE: Auth is enforced by middleware in app.ts (firebaseAuthMiddleware).
+   *   This route must be registered after the auth middleware to remain protected.
    * Rate Limiting: None (internal tool usage only)
    */
   router.get(

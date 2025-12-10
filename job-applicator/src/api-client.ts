@@ -177,8 +177,12 @@ export async function fetchJobMatch(id: string): Promise<JobMatchWithListing> {
 export async function findJobMatchByUrl(url: string): Promise<JobMatchWithListing | null> {
   const matches = await fetchJobMatches({ limit: 100 })
 
-  // Normalize URL for comparison (remove trailing slashes, protocol variations)
-  const normalizeUrl = (u: string): string => {
+  /**
+   * Normalize URL for comparison - strips protocol and trailing slashes.
+   * Note: This differs from utils.normalizeUrl which preserves protocol (origin + pathname).
+   * This version is specifically for URL matching where protocol differences should be ignored.
+   */
+  const normalizeForComparison = (u: string): string => {
     try {
       const parsed = new URL(u)
       return `${parsed.host}${parsed.pathname}`.replace(/\/$/, "").toLowerCase()
@@ -187,10 +191,10 @@ export async function findJobMatchByUrl(url: string): Promise<JobMatchWithListin
     }
   }
 
-  const normalizedTarget = normalizeUrl(url)
+  const normalizedTarget = normalizeForComparison(url)
 
   for (const match of matches) {
-    if (match.listing?.url && normalizeUrl(match.listing.url) === normalizedTarget) {
+    if (match.listing?.url && normalizeForComparison(match.listing.url) === normalizedTarget) {
       return match
     }
   }

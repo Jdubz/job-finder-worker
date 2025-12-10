@@ -38,7 +38,12 @@ export type {
 /**
  * Simplified ContentItem for form filling prompts.
  * Uses Pick<> from shared ContentItemNode to ensure type alignment.
- * Includes children for recursive structure needed in prompts.
+ *
+ * NOTE: The 'children' property is intentionally redefined as ContentItem[] rather than
+ * using SharedContentItemNode['children']. This creates a simplified recursive structure
+ * optimized for prompt serialization, which may have fewer properties than the full
+ * SharedContentItemNode. When mapping from SharedContentItemNode to ContentItem,
+ * the conversion is type-safe because ContentItem is a subset of SharedContentItemNode.
  */
 export type ContentItem = Pick<
   SharedContentItemNode,

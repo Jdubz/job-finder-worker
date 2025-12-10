@@ -814,9 +814,9 @@ ipcMain.handle(
             role: match.listing?.title,
             matchedSkills: match.matchedSkills as string[] | undefined,
           }
-        } catch {
-          // Non-critical - continue without job match data
-          logger.warn("Failed to fetch job match data, continuing without it")
+        } catch (err) {
+          // Non-critical - continue without job match data, but log for debugging
+          logger.warn("Failed to fetch job match data, continuing without it:", err)
         }
       }
 

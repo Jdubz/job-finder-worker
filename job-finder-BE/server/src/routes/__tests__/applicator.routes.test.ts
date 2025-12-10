@@ -120,7 +120,7 @@ describe('applicator routes', () => {
     expect(profileText).toContain('Gender: female')
     expect(profileText).toContain('Race: Asian')
     expect(profileText).toContain('Hispanic/Latino: no')
-    expect(profileText).toContain('Veteran Status: Not Protected Veteran')
+    expect(profileText).toContain('Veteran Status: Not a Protected Veteran')
     expect(profileText).toContain('Disability Status: no')
   })
 
