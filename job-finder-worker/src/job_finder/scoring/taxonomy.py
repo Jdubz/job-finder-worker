@@ -68,7 +68,9 @@ class SkillTaxonomyRepository:
     def load_lookup(self) -> Dict[str, Taxon]:
         """Return synonym -> Taxon lookup."""
         with sqlite_connection(self.db_path) as conn:
-            rows = conn.execute("SELECT canonical, category, synonyms_csv FROM skill_taxonomy").fetchall()
+            rows = conn.execute(
+                "SELECT canonical, category, synonyms_csv FROM skill_taxonomy"
+            ).fetchall()
         lookup: Dict[str, Taxon] = {}
         for row in rows:
             synonyms = [
@@ -96,4 +98,3 @@ class SkillTaxonomyRepository:
                 """,
                 (canonical, category, synonyms_csv, utcnow_iso()),
             )
-
