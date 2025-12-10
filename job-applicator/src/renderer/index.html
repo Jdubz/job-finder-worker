@@ -30,11 +30,49 @@
 
     <div class="sidebar" id="sidebar">
       <div class="sidebar-content">
+        <!-- Workflow Progress Section -->
+        <section class="sidebar-section workflow-section">
+          <div class="workflow-progress" id="workflowProgress" role="group" aria-label="Application workflow progress">
+            <div class="workflow-step" data-step="job">
+              <span class="step-indicator" aria-hidden="true"></span>
+              <span class="step-label">Job</span>
+              <span class="sr-only" id="job-status">pending</span>
+            </div>
+            <div class="workflow-connector" aria-hidden="true"></div>
+            <div class="workflow-step" data-step="docs">
+              <span class="step-indicator" aria-hidden="true"></span>
+              <span class="step-label">Docs</span>
+              <span class="sr-only" id="docs-status">pending</span>
+            </div>
+            <div class="workflow-connector" aria-hidden="true"></div>
+            <div class="workflow-step" data-step="fill">
+              <span class="step-indicator" aria-hidden="true"></span>
+              <span class="step-label">Fill</span>
+              <span class="sr-only" id="fill-status">pending</span>
+            </div>
+            <div class="workflow-connector" aria-hidden="true"></div>
+            <div class="workflow-step" data-step="submit">
+              <span class="step-indicator" aria-hidden="true"></span>
+              <span class="step-label">Submit</span>
+              <span class="sr-only" id="submit-status">pending</span>
+            </div>
+          </div>
+        </section>
+
         <!-- Job Matches Section -->
         <section class="sidebar-section">
           <h3 class="section-title">Job Matches</h3>
           <div class="job-list" id="jobList">
             <div class="loading-placeholder">Loading...</div>
+          </div>
+        </section>
+
+        <!-- Job Actions Section (shown when job selected) -->
+        <section class="sidebar-section job-actions-section" id="jobActionsSection" style="display: none;">
+          <h3 class="section-title">Actions</h3>
+          <div class="job-actions">
+            <button class="btn-mark-applied" id="markAppliedBtn">Mark as Applied</button>
+            <button class="btn-mark-ignored" id="markIgnoredBtn">Ignore</button>
           </div>
         </section>
 
@@ -46,6 +84,10 @@
           </div>
           <div class="section-actions">
             <button class="btn-generate" id="generateBtn" disabled>Generate New</button>
+          </div>
+          <!-- Generation Progress -->
+          <div class="generation-progress" id="generationProgress" style="display: none;">
+            <div class="generation-steps" id="generationSteps"></div>
           </div>
         </section>
 

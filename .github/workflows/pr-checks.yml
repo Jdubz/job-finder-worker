@@ -294,3 +294,63 @@ jobs:
         env:
           NODE_ENV: test
         run: npm run test:e2e
+
+  # Job Applicator linting
+  job-applicator-lint:
+    name: Job Applicator Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        working-directory: job-applicator
+        run: npm run lint
+
+  # Job Applicator TypeScript type checking
+  job-applicator-typecheck:
+    name: Job Applicator TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: TypeScript check
+        working-directory: job-applicator
+        run: npm run typecheck
+
+  # Job Applicator build
+  job-applicator-build:
+    name: Job Applicator Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build
+        working-directory: job-applicator
+        run: npm run build
+
+  # Job Applicator unit tests
+  job-applicator-tests:
+    name: Job Applicator Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run tests
+        working-directory: job-applicator
+        run: npm test

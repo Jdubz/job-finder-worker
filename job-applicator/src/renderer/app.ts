@@ -30,6 +30,41 @@ interface FormFillSummary {
   duration: number
 }
 
+interface GenerationStep {
+  id: string
+  name: string
+  description: string
+  status: "pending" | "in_progress" | "completed" | "failed" | "skipped"
+  duration?: number
+  result?: {
+    resumeUrl?: string
+    coverLetterUrl?: string
+  }
+  error?: {
+    message: string
+    code?: string
+  }
+}
+
+interface GenerationProgress {
+  requestId: string
+  status: string
+  steps: GenerationStep[]
+  currentStep?: string
+  resumeUrl?: string
+  coverLetterUrl?: string
+  error?: string
+}
+
+// Workflow steps tracking
+type WorkflowStep = "job" | "docs" | "fill" | "submit"
+interface WorkflowState {
+  job: "pending" | "active" | "completed"
+  docs: "pending" | "active" | "completed"
+  fill: "pending" | "active" | "completed"
+  submit: "pending" | "active" | "completed"
+}
+
 interface ElectronAPI {
   navigate: (url: string) => Promise<void>
   getUrl: () => Promise<string>
@@ -39,7 +74,10 @@ interface ElectronAPI {
     jobMatchId?: string
     documentId?: string
   }) => Promise<{ success: boolean; data?: FormFillSummary; message?: string }>
-  uploadResume: () => Promise<{ success: boolean; message: string }>
+  uploadResume: (options?: {
+    documentId?: string
+    type?: "resume" | "coverLetter"
+  }) => Promise<{ success: boolean; message: string; filePath?: string }>
   submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
   setSidebarState: (open: boolean) => Promise<void>
   getSidebarState: () => Promise<{ open: boolean }>
@@ -50,6 +88,11 @@ interface ElectronAPI {
     message?: string
   }>
   getJobMatch: (id: string) => Promise<{ success: boolean; data?: unknown; message?: string }>
+  findJobMatchByUrl: (url: string) => Promise<{ success: boolean; data?: JobMatchListItem | null; message?: string }>
+  updateJobMatchStatus: (options: {
+    id: string
+    status: "active" | "ignored" | "applied"
+  }) => Promise<{ success: boolean; message?: string }>
   getDocuments: (jobMatchId: string) => Promise<{
     success: boolean
     data?: DocumentInfo[]
@@ -59,6 +102,11 @@ interface ElectronAPI {
     jobMatchId: string
     type: "resume" | "coverLetter" | "both"
   }) => Promise<{ success: boolean; requestId?: string; message?: string }>
+  runGeneration: (options: {
+    jobMatchId: string
+    type: "resume" | "coverLetter" | "both"
+  }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
+  onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
 }
 
 // Extend Window interface - with safety check for missing preload
@@ -74,23 +122,46 @@ let selectedJobMatchId: string | null = null
 let selectedDocumentId: string | null = null
 let jobMatches: JobMatchListItem[] = []
 let documents: DocumentInfo[] = []
+const workflowState: WorkflowState = {
+  job: "pending",
+  docs: "pending",
+  fill: "pending",
+  submit: "pending",
+}
+let unsubscribeGenerationProgress: (() => void) | null = null
+let isGenerating = false // Prevent concurrent document generations
+
+// Helper to get DOM element with null check
+function getElement<T extends HTMLElement>(id: string): T {
+  const el = document.getElementById(id)
+  if (!el) {
+    throw new Error(`Required DOM element not found: #${id}`)
+  }
+  return el as T
+}
 
 // DOM elements - Toolbar
-const urlInput = document.getElementById("urlInput") as HTMLInputElement
-const goBtn = document.getElementById("goBtn") as HTMLButtonElement
-const providerSelect = document.getElementById("providerSelect") as HTMLSelectElement
-const fillBtn = document.getElementById("fillBtn") as HTMLButtonElement
-const uploadBtn = document.getElementById("uploadBtn") as HTMLButtonElement
-const submitJobBtn = document.getElementById("submitJobBtn") as HTMLButtonElement
-const statusEl = document.getElementById("status") as HTMLSpanElement
-const sidebarToggle = document.getElementById("sidebarToggle") as HTMLButtonElement
+const urlInput = getElement<HTMLInputElement>("urlInput")
+const goBtn = getElement<HTMLButtonElement>("goBtn")
+const providerSelect = getElement<HTMLSelectElement>("providerSelect")
+const fillBtn = getElement<HTMLButtonElement>("fillBtn")
+const uploadBtn = getElement<HTMLButtonElement>("uploadBtn")
+const submitJobBtn = getElement<HTMLButtonElement>("submitJobBtn")
+const statusEl = getElement<HTMLSpanElement>("status")
+const sidebarToggle = getElement<HTMLButtonElement>("sidebarToggle")
 
 // DOM elements - Sidebar
-const sidebar = document.getElementById("sidebar") as HTMLDivElement
-const jobList = document.getElementById("jobList") as HTMLDivElement
-const documentsList = document.getElementById("documentsList") as HTMLDivElement
-const generateBtn = document.getElementById("generateBtn") as HTMLButtonElement
-const resultsContent = document.getElementById("resultsContent") as HTMLDivElement
+const sidebar = getElement<HTMLDivElement>("sidebar")
+const jobList = getElement<HTMLDivElement>("jobList")
+const documentsList = getElement<HTMLDivElement>("documentsList")
+const generateBtn = getElement<HTMLButtonElement>("generateBtn")
+const resultsContent = getElement<HTMLDivElement>("resultsContent")
+const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
+const markAppliedBtn = getElement<HTMLButtonElement>("markAppliedBtn")
+const markIgnoredBtn = getElement<HTMLButtonElement>("markIgnoredBtn")
+const workflowProgress = getElement<HTMLDivElement>("workflowProgress")
+const generationProgress = getElement<HTMLDivElement>("generationProgress")
+const generationSteps = getElement<HTMLDivElement>("generationSteps")
 
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
   statusEl.textContent = message
@@ -102,6 +173,29 @@ function setButtonsEnabled(enabled: boolean) {
   fillBtn.disabled = !enabled
   uploadBtn.disabled = !enabled
   submitJobBtn.disabled = !enabled
+}
+
+// Update workflow progress UI
+function updateWorkflowProgress() {
+  const steps: WorkflowStep[] = ["job", "docs", "fill", "submit"]
+  steps.forEach((step) => {
+    const stepEl = workflowProgress.querySelector(`[data-step="${step}"]`)
+    if (stepEl) {
+      stepEl.classList.remove("pending", "active", "completed")
+      stepEl.classList.add(workflowState[step])
+    }
+    // Update screen reader status text
+    const statusEl = document.getElementById(`${step}-status`)
+    if (statusEl) {
+      statusEl.textContent = workflowState[step]
+    }
+  })
+}
+
+// Set workflow step state
+function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "completed") {
+  workflowState[step] = state
+  updateWorkflowProgress()
 }
 
 // Sidebar toggle
@@ -141,9 +235,12 @@ function renderJobList() {
     .map((match) => {
       const scoreClass = match.matchScore >= 85 ? "high" : match.matchScore >= 70 ? "medium" : "low"
       const isSelected = match.id === selectedJobMatchId
+      const statusBadge = match.status !== "active"
+        ? `<span class="job-status-badge ${match.status}">${match.status}</span>`
+        : ""
       return `
       <div class="job-item${isSelected ? " selected" : ""}" data-id="${escapeAttr(match.id)}">
-        <div class="job-title">${escapeHtml(match.listing.title)}</div>
+        <div class="job-title">${escapeHtml(match.listing.title)}${statusBadge}</div>
         <div class="job-company">${escapeHtml(match.listing.companyName)}</div>
         <div class="job-score ${scoreClass}">${match.matchScore}% match</div>
       </div>
@@ -153,7 +250,10 @@ function renderJobList() {
 
   // Add click handlers
   jobList.querySelectorAll(".job-item").forEach((el) => {
-    el.addEventListener("click", () => selectJobMatch((el as HTMLElement).dataset.id!))
+    el.addEventListener("click", () => {
+      const id = (el as HTMLElement).dataset.id
+      if (id) selectJobMatch(id)
+    })
   })
 }
 
@@ -168,6 +268,17 @@ async function selectJobMatch(id: string) {
   // Find the match
   const match = jobMatches.find((m) => m.id === id)
   if (!match) return
+
+  // Update workflow state - job step is now completed
+  setWorkflowStep("job", "completed")
+  setWorkflowStep("docs", "active")
+
+  // Show job actions section
+  jobActionsSection.style.display = "block"
+
+  // Update button states based on match status
+  markAppliedBtn.disabled = match.status === "applied"
+  markIgnoredBtn.disabled = match.status === "ignored"
 
   // Load the job URL in BrowserView
   setStatus("Loading job listing...", "loading")
@@ -235,7 +346,8 @@ function renderDocumentsList() {
     el.addEventListener("click", (e) => {
       // Don't select if clicking a button
       if ((e.target as HTMLElement).tagName === "BUTTON") return
-      selectDocument((el as HTMLElement).dataset.id!)
+      const id = (el as HTMLElement).dataset.id
+      if (id) selectDocument(id)
     })
   })
 
@@ -255,6 +367,56 @@ function selectDocument(id: string) {
   renderDocumentsList()
 }
 
+// Render generation progress steps
+function renderGenerationSteps(steps: GenerationStep[]) {
+  if (steps.length === 0) {
+    generationSteps.innerHTML = '<div class="empty-placeholder">Starting...</div>'
+    return
+  }
+
+  generationSteps.innerHTML = steps
+    .map((step) => `
+      <div class="gen-step ${step.status}">
+        <span class="gen-step-indicator"></span>
+        <span class="gen-step-name">${escapeHtml(step.name)}</span>
+      </div>
+    `)
+    .join("")
+}
+
+// Handle generation progress updates
+function handleGenerationProgress(progress: GenerationProgress) {
+  renderGenerationSteps(progress.steps)
+
+  if (progress.status === "completed") {
+    setStatus("Documents generated successfully", "success")
+    generationProgress.style.display = "none"
+    generateBtn.disabled = false
+    setWorkflowStep("docs", "completed")
+    setWorkflowStep("fill", "active")
+    // Clean up the listener now that generation is complete
+    cleanupGenerationProgressListener()
+    // Reload documents to show the new ones
+    if (selectedJobMatchId) {
+      loadDocuments(selectedJobMatchId)
+    }
+  } else if (progress.status === "failed") {
+    setStatus(progress.error || "Generation failed", "error")
+    generateBtn.disabled = false
+    // Clean up the listener on failure too
+    cleanupGenerationProgressListener()
+  }
+}
+
+// Clean up generation progress listener and reset state
+function cleanupGenerationProgressListener() {
+  if (unsubscribeGenerationProgress) {
+    unsubscribeGenerationProgress()
+    unsubscribeGenerationProgress = null
+  }
+  isGenerating = false
+}
+
 // Generate new document
 async function generateDocument() {
   if (!selectedJobMatchId) {
@@ -262,24 +424,132 @@ async function generateDocument() {
     return
   }
 
-  // For simplicity, generate both resume and cover letter
-  setStatus("Starting document generation...", "loading")
+  // Prevent concurrent generations
+  if (isGenerating) {
+    setStatus("Generation already in progress", "error")
+    return
+  }
+
+  isGenerating = true
+
+  // Show generation progress UI
+  generationProgress.style.display = "block"
+  generationSteps.innerHTML = '<div class="loading-placeholder">Starting generation...</div>'
+  setStatus("Generating documents...", "loading")
   generateBtn.disabled = true
 
-  const result = await electronAPI.startGeneration({
+  // Subscribe to progress updates (clean up any existing listener first)
+  cleanupGenerationProgressListener()
+  unsubscribeGenerationProgress = electronAPI.onGenerationProgress(handleGenerationProgress)
+
+  // Start generation with sequential step execution
+  const result = await electronAPI.runGeneration({
     jobMatchId: selectedJobMatchId,
     type: "both",
   })
 
-  if (result.success) {
-    setStatus(`Generation started (ID: ${result.requestId})`, "success")
-    // Reload documents after a delay
-    setTimeout(() => loadDocuments(selectedJobMatchId!), 3000)
-  } else {
+  if (result.success && result.data) {
+    // Final update from result (will also cleanup listener)
+    handleGenerationProgress(result.data)
+  } else if (!result.success) {
     setStatus(result.message || "Generation failed", "error")
+    generationProgress.style.display = "none"
+    generateBtn.disabled = false
+    // Clean up listener on error path
+    cleanupGenerationProgressListener()
   }
+}
 
-  generateBtn.disabled = false
+// Mark job match as applied
+async function markAsApplied() {
+  if (!selectedJobMatchId) return
+
+  setStatus("Marking as applied...", "loading")
+  markAppliedBtn.disabled = true
+
+  const result = await electronAPI.updateJobMatchStatus({
+    id: selectedJobMatchId,
+    status: "applied",
+  })
+
+  if (result.success) {
+    setStatus("Marked as applied", "success")
+    // Update local state
+    const match = jobMatches.find((m) => m.id === selectedJobMatchId)
+    if (match) {
+      match.status = "applied"
+    }
+    // Update workflow
+    setWorkflowStep("submit", "completed")
+    renderJobList()
+    markIgnoredBtn.disabled = false
+  } else {
+    setStatus(result.message || "Failed to update status", "error")
+    markAppliedBtn.disabled = false
+  }
+}
+
+// Mark job match as ignored
+async function markAsIgnored() {
+  if (!selectedJobMatchId) return
+
+  setStatus("Marking as ignored...", "loading")
+  markIgnoredBtn.disabled = true
+
+  const result = await electronAPI.updateJobMatchStatus({
+    id: selectedJobMatchId,
+    status: "ignored",
+  })
+
+  if (result.success) {
+    setStatus("Marked as ignored", "success")
+    // Update local state
+    const match = jobMatches.find((m) => m.id === selectedJobMatchId)
+    if (match) {
+      match.status = "ignored"
+    }
+    renderJobList()
+    markAppliedBtn.disabled = false
+  } else {
+    setStatus(result.message || "Failed to update status", "error")
+    markIgnoredBtn.disabled = false
+  }
+}
+
+// Check if a URL matches any job match and auto-select it
+async function checkUrlForJobMatch(url: string) {
+  try {
+    const result = await electronAPI.findJobMatchByUrl(url)
+    if (result.success && result.data) {
+      const match = result.data
+      // Add to job matches list if not present
+      if (!jobMatches.find((m) => m.id === match.id)) {
+        jobMatches.unshift(match)
+        renderJobList()
+      }
+      // Auto-select the match (but don't navigate again)
+      selectedJobMatchId = match.id
+      selectedDocumentId = null
+      renderJobList()
+
+      // Update workflow state
+      setWorkflowStep("job", "completed")
+      setWorkflowStep("docs", "active")
+
+      // Show job actions section
+      jobActionsSection.style.display = "block"
+      markAppliedBtn.disabled = match.status === "applied"
+      markIgnoredBtn.disabled = match.status === "ignored"
+
+      // Load documents
+      await loadDocuments(match.id)
+      generateBtn.disabled = false
+
+      setStatus(`Matched: ${match.listing.title} at ${match.listing.companyName}`, "success")
+    }
+  } catch (err) {
+    console.warn("Failed to check URL for job match:", err)
+  }
 }
 
 // Navigate to URL
@@ -290,14 +560,23 @@ async function navigate() {
     return
   }
 
-  // Add https:// if no protocol
-  const fullUrl = url.startsWith("http") ? url : `https://${url}`
+  // Add https:// if no protocol, and normalize protocol case to lowercase
+  let fullUrl: string
+  if (/^https?:\/\//i.test(url)) {
+    // Normalize protocol to lowercase (HTTP:// -> http://, HTTPS:// -> https://)
+    fullUrl = url.replace(/^(https?):\/\//i, (_, proto) => `${proto.toLowerCase()}://`)
+  } else {
+    fullUrl = `https://${url}`
+  }
 
   try {
     setButtonsEnabled(false)
     setStatus("Loading...", "loading")
     await electronAPI.navigate(fullUrl)
     setStatus("Page loaded", "success")
+
+    // Check if this URL matches any job match
+    await checkUrlForJobMatch(fullUrl)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     setStatus(`Navigation failed: ${message}`, "error")
@@ -313,6 +592,7 @@ async function fillForm() {
   try {
     setButtonsEnabled(false)
     setStatus(`Filling form with ${provider}...`, "loading")
+    setWorkflowStep("fill", "active")
 
     // Use enhanced fill if we have a job match selected
     if (selectedJobMatchId) {
@@ -325,6 +605,8 @@ async function fillForm() {
       if (result.success && result.data) {
         renderFillResults(result.data)
         setStatus(`Filled ${result.data.filledCount}/${result.data.totalFields} fields`, "success")
+        setWorkflowStep("fill", "completed")
+        setWorkflowStep("submit", "active")
       } else {
         setStatus(result.message || "Fill failed", "error")
       }
@@ -334,6 +616,8 @@ async function fillForm() {
 
       if (result.success) {
         setStatus(result.message, "success")
+        setWorkflowStep("fill", "completed")
+        setWorkflowStep("submit", "active")
       } else {
         setStatus(result.message, "error")
       }
@@ -388,17 +672,31 @@ function renderFillResults(summary: FormFillSummary) {
   resultsContent.scrollIntoView({ behavior: "smooth" })
 }
 
-// Upload resume
+// Upload resume/document
 async function uploadResume() {
   try {
     setButtonsEnabled(false)
-    setStatus("Uploading resume...", "loading")
-    const result = await electronAPI.uploadResume()
+
+    // Use selected document if available
+    const options = selectedDocumentId
+      ? { documentId: selectedDocumentId, type: "resume" as const }
+      : undefined
+
+    const statusMsg = selectedDocumentId ? "Uploading selected document..." : "Uploading resume..."
+    setStatus(statusMsg, "loading")
+
+    const result = await electronAPI.uploadResume(options)
 
     if (result.success) {
       setStatus(result.message, "success")
     } else {
-      setStatus(result.message, "error")
+      // Show file path for manual fallback if available
+      if (result.filePath) {
+        setStatus(result.message, "error")
+        console.log("Manual upload path:", result.filePath)
+      } else {
+        setStatus(result.message, "error")
+      }
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
@@ -442,22 +740,33 @@ function escapeAttr(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-// Event listeners
-sidebarToggle.addEventListener("click", toggleSidebar)
-goBtn.addEventListener("click", navigate)
-urlInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    navigate()
-  }
-})
-fillBtn.addEventListener("click", fillForm)
-uploadBtn.addEventListener("click", uploadResume)
-submitJobBtn.addEventListener("click", submitJob)
-generateBtn.addEventListener("click", generateDocument)
+// Initialize application when DOM is ready
+function initializeApp() {
+  // Event listeners
+  sidebarToggle.addEventListener("click", toggleSidebar)
+  goBtn.addEventListener("click", navigate)
+  urlInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      navigate()
+    }
+  })
+  fillBtn.addEventListener("click", fillForm)
+  uploadBtn.addEventListener("click", uploadResume)
+  submitJobBtn.addEventListener("click", submitJob)
+  generateBtn.addEventListener("click", generateDocument)
+  markAppliedBtn.addEventListener("click", markAsApplied)
+  markIgnoredBtn.addEventListener("click", markAsIgnored)
+
+  // Run async initialization
+  init()
+}
 
 // Initialize
 async function init() {
   setStatus("Ready")
+
+  // Initialize workflow progress
+  updateWorkflowProgress()
 
   // Check CDP connection status and warn if unavailable
   const cdpStatus = await electronAPI.getCdpStatus()
@@ -477,4 +786,10 @@ async function init() {
   }
 }
 
-init()
+// Wait for DOM to be ready before initializing
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initializeApp)
+} else {
+  // DOM is already ready
+  initializeApp()
+}
