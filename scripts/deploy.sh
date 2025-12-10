@@ -109,14 +109,25 @@ fi
 if [ "${#SERVICES[@]}" -eq 0 ]; then
   echo "[deploy] No backend services flagged for restart (BACKEND_CHANGED=$BACKEND_CHANGED WORKER_CHANGED=$WORKER_CHANGED FORCE_ALL=$FORCE_ALL). Skipping pull/up."
 else
-  # Pull and restart only the changed services (reset Codex volume to match fresh seed)
-  docker volume rm job-finder_codex-home-shared >/dev/null 2>&1 || true
+  # Sync fresh seed to Codex volume (avoid volume removal while in use)
+  if [ -f "$DEPLOY_PATH/codex-seed/.codex/auth.json" ]; then
+    docker run --rm --network=none \
+      -v "job-finder_codex-home-shared:/data" \
+      -v "$DEPLOY_PATH/codex-seed/.codex/auth.json:/host/auth.json:ro" \
+      alpine:3.20.2 \
+      sh -c 'cp /host/auth.json /data/auth.json && chmod 600 /data/auth.json' \
+      || echo "[deploy] WARNING: Failed to sync auth to volume job-finder_codex-home-shared. Continuing..."
+  else
+    echo "[deploy] WARNING: Codex auth seed missing at $DEPLOY_PATH/codex-seed/.codex/auth.json; skipping Codex volume sync"
+  fi
+
+  # Pull and restart only the changed services
   docker compose -f docker-compose.yml pull "${SERVICES[@]}"
   docker compose -f docker-compose.yml up -d --remove-orphans "${SERVICES[@]}"
 fi
 
 # --- Run config/data migrations ---
-if [ "${#SERVICES[@]}" -gt 0 ] && printf '%s\n' "${SERVICES[@]}" | grep -q "^api$"; then
+if [ "${#SERVICES[@]}" -gt 0 ] && [[ " ${SERVICES[*]} " =~ " api " ]]; then
   echo "[deploy] Waiting for API container to be healthy..."
   for i in $(seq 1 30); do
     if docker exec job-finder-api curl -sf http://localhost:8080/healthz > /dev/null 2>&1; then
