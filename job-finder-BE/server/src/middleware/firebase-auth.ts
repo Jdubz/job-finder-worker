@@ -10,7 +10,6 @@ import { SESSION_COOKIE } from '../routes/auth.routes'
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
 const IS_TEST = env.NODE_ENV === 'test'
 const CRON_API_KEY = env.CRON_API_KEY
-const ALLOW_LOCALHOST_BYPASS = env.ALLOW_LOCALHOST_BYPASS
 
 export interface AuthenticatedUser {
   uid: string
@@ -138,7 +137,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
 
   if (!sessionToken) {
     // No session cookie: allow localhost bypass if explicitly enabled
-    if (ALLOW_LOCALHOST_BYPASS && !IS_TEST && isLocalhostRequest(req)) {
+    if (!IS_TEST && isLocalhostRequest(req)) {
       const bypassUser: AuthenticatedUser = {
         uid: 'localhost-desktop',
         email: 'desktop@localhost',
@@ -157,7 +156,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   if (!sessionUser) {
     clearSessionCookie(res)
     // Invalid session: still allow localhost bypass if enabled
-    if (ALLOW_LOCALHOST_BYPASS && !IS_TEST && isLocalhostRequest(req)) {
+    if (!IS_TEST && isLocalhostRequest(req)) {
       const bypassUser: AuthenticatedUser = {
         uid: 'localhost-desktop',
         email: 'desktop@localhost',
@@ -180,7 +179,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     clearSessionCookie(res)
     userRepository.clearSession(sessionUser.id)
     // Expired session: still allow localhost bypass if enabled
-    if (ALLOW_LOCALHOST_BYPASS && !IS_TEST && isLocalhostRequest(req)) {
+    if (!IS_TEST && isLocalhostRequest(req)) {
       const bypassUser: AuthenticatedUser = {
         uid: 'localhost-desktop',
         email: 'desktop@localhost',
