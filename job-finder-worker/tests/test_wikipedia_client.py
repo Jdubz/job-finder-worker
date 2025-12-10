@@ -1,6 +1,5 @@
 """Tests for Wikipedia API client."""
 
-import os
 from unittest.mock import Mock, patch
 
 from job_finder.ai.wikipedia_client import (
@@ -308,32 +307,7 @@ class TestWikipediaClientEmployeeCount:
 class TestGetWikipediaClient:
     """Tests for get_wikipedia_client factory function."""
 
-    def test_returns_client_when_enabled(self):
-        """Test factory returns client when env var is set."""
-        with patch.dict(os.environ, {"ENABLE_WIKIPEDIA_ENRICHMENT": "true"}):
-            client = get_wikipedia_client()
-            assert isinstance(client, WikipediaClient)
-
-    def test_returns_client_case_insensitive(self):
-        """Test factory handles case-insensitive env var."""
-        with patch.dict(os.environ, {"ENABLE_WIKIPEDIA_ENRICHMENT": "TRUE"}):
-            client = get_wikipedia_client()
-            assert isinstance(client, WikipediaClient)
-
-    def test_returns_none_when_disabled(self):
-        """Test factory returns None when env var is false."""
-        with patch.dict(os.environ, {"ENABLE_WIKIPEDIA_ENRICHMENT": "false"}):
-            client = get_wikipedia_client()
-            assert client is None
-
-    def test_returns_none_when_not_set(self):
-        """Test factory returns None when env var is not set."""
-        with patch.dict(os.environ, {}, clear=True):
-            client = get_wikipedia_client()
-            assert client is None
-
-    def test_returns_none_when_empty(self):
-        """Test factory returns None when env var is empty."""
-        with patch.dict(os.environ, {"ENABLE_WIKIPEDIA_ENRICHMENT": ""}):
-            client = get_wikipedia_client()
-            assert client is None
+    def test_returns_client(self):
+        """Test factory always returns a WikipediaClient instance."""
+        client = get_wikipedia_client()
+        assert isinstance(client, WikipediaClient)

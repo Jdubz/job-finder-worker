@@ -153,15 +153,14 @@ class CompanyInfoFetcher:
         try:
             # STEP 0: Try Wikipedia first (fast, high-quality for established companies)
             # Uses search_name (post-Workday resolution) for better accuracy
-            if self.wikipedia_client:
-                wiki_info = self._try_wikipedia(search_name)
-                if wiki_info:
-                    result = self._merge_company_info(result, wiki_info)
-                    logger.info(
-                        "Wikipedia found data for %s: about=%d chars",
-                        company_display,
-                        len(result.get("about", "")),
-                    )
+            wiki_info = self._try_wikipedia(search_name)
+            if wiki_info:
+                result = self._merge_company_info(result, wiki_info)
+                logger.info(
+                    "Wikipedia found data for %s: about=%d chars",
+                    company_display,
+                    len(result.get("about", "")),
+                )
 
             # STEP 1: Search for company info (fills gaps Wikipedia doesn't cover)
             # Wikipedia doesn't provide: culture, mission, techStack, products, etc.

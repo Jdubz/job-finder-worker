@@ -6,7 +6,6 @@ pipeline, before falling back to web search.
 """
 
 import logging
-import os
 import re
 from typing import Dict, Optional
 from urllib.parse import quote
@@ -245,19 +244,11 @@ class WikipediaClient:
         return None
 
 
-def get_wikipedia_client() -> Optional[WikipediaClient]:
+def get_wikipedia_client() -> WikipediaClient:
     """
-    Factory function to get WikipediaClient based on configuration.
-
-    Returns WikipediaClient if ENABLE_WIKIPEDIA_ENRICHMENT is set to "true",
-    otherwise returns None. This follows the same pattern as get_search_client().
+    Factory function to get WikipediaClient.
 
     Returns:
-        WikipediaClient instance or None if not enabled
+        WikipediaClient instance
     """
-    if os.getenv("ENABLE_WIKIPEDIA_ENRICHMENT", "").lower() == "true":
-        logger.info("Wikipedia enrichment enabled")
-        return WikipediaClient()
-
-    logger.debug("Wikipedia enrichment not enabled (set ENABLE_WIKIPEDIA_ENRICHMENT=true)")
-    return None
+    return WikipediaClient()
