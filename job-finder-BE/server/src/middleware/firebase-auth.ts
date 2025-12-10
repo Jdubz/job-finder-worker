@@ -137,7 +137,11 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   const sessionToken = cookies[SESSION_COOKIE]
 
   if (!sessionToken) {
-    // No session cookie: allow localhost bypass when running on host/bridge
+    // No session cookie: allow localhost bypass when running on host/bridge.
+    // This is intentionally always-on (no feature flag) because the
+    // job-applicator runs on the same machine and must function without
+    // an interactive login. Trust boundary is the host's loopback/bridge
+    // interfaces; requests must originate locally and tests force-disable it.
     if (!isTestEnv() && isLocalhostRequest(req)) {
       const bypassUser: AuthenticatedUser = {
         uid: 'localhost-desktop',
