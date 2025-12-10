@@ -205,21 +205,22 @@ class SourceProcessor(BaseProcessor):
                         should_disable = True
                         disabled_notes = validation.get("reason") or disabled_notes
                     elif validation.get("decision") == "update_config":
-                        updated_config = validation.get("config") or source_config
-                        retry = self._probe_config(
-                            updated_config.get("type", source_type), updated_config
-                        )
-                        if retry.status == "success":
-                            source_config = updated_config
-                            probe_result = retry
-                        elif retry.status == "empty":
-                            source_config = updated_config
-                            probe_result = retry
-                        else:
-                            should_disable = True
-                            disabled_notes = (
-                                retry.hint or validation.get("reason") or disabled_notes
+                        updated_config = validation.get("config")
+                        if updated_config:
+                            retry = self._probe_config(
+                                updated_config.get("type", source_type), updated_config
                             )
+                            if retry.status == "success":
+                                source_config = updated_config
+                                probe_result = retry
+                            elif retry.status == "empty":
+                                source_config = updated_config
+                                probe_result = retry
+                            else:
+                                should_disable = True
+                                disabled_notes = (
+                                    retry.hint or validation.get("reason") or disabled_notes
+                                )
                     # valid_empty just passes through (active with 0 jobs)
 
             # Attach probe diagnostics
@@ -478,9 +479,9 @@ class SourceProcessor(BaseProcessor):
         }
         headers.update(sc.headers or {})
 
+        resp = None
         try:
             if sc.type == "api":
-                resp = None
                 if sc.method.upper() == "POST":
                     headers.setdefault("Content-Type", "application/json")
                     resp = requests.post(sc.url, headers=headers, json=sc.post_body, timeout=25)
@@ -532,7 +533,6 @@ class SourceProcessor(BaseProcessor):
             return ProbeResult(status="error", hint=f"Unknown source type {sc.type}")
 
         except Exception as exc:  # noqa: BLE001
-            resp = locals().get("resp")
             status_code = resp.status_code if resp is not None else None
             return ProbeResult(status="error", status_code=status_code, hint=str(exc))
 
