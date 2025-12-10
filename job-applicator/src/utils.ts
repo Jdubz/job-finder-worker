@@ -118,6 +118,31 @@ export function resolveDocumentPath(documentUrl: string, artifactsDir?: string):
   return path.join(baseDir, documentUrl)
 }
 
+// Normalize varying API response shapes for job match payloads
+export function unwrapJobMatch(response: unknown): unknown {
+  if (!response || typeof response !== "object") return response
+  const obj = response as Record<string, unknown>
+  if (obj.data && typeof obj.data === "object" && (obj.data as Record<string, unknown>).match) {
+    return (obj.data as Record<string, unknown>).match
+  }
+  if (obj.match) return obj.match
+  if (obj.data) return obj.data
+  return response
+}
+
+// Normalize generator documents listing payloads
+export function unwrapDocuments(response: unknown): unknown[] {
+  if (Array.isArray(response)) return response
+  if (response && typeof response === "object") {
+    const data = (response as Record<string, unknown>).data
+    if (Array.isArray(data)) return data
+    if (data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).requests)) {
+      return (data as Record<string, unknown>).requests as unknown[]
+    }
+  }
+  return []
+}
+
 // EEO display values for form filling
 export const EEO_DISPLAY: Record<string, Record<string, string>> = {
   race: {
