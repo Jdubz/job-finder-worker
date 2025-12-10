@@ -2,7 +2,7 @@
 
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-12-05
+> Last Updated: 2025-12-09
 
 ## Overview
 
@@ -65,9 +65,10 @@ The Job Finder application is a containerized monorepo with three main services:
 - **Framework**: Flask
 - **Database**: SQLAlchemy (SQLite)
 - **Scraping**: Selenium, BeautifulSoup
-- **AI Integration**: Anthropic Claude, OpenAI
+- **AI Integration**: AgentManager with Gemini, Codex, Claude CLI providers
 - **Data Processing**: pandas
-- **Scoring Engine**: Deterministic scoring with de-duplicated tech vs. skill scoring and configurable `missingRequiredScore` penalty (weights section removed)
+- **Scoring Engine**: Experience-weighted skill matching derived from content-items
+- **Profile Reducer**: Derives skills and experience years from content-items (work history)
 
 ### Shared Types (shared/)
 
@@ -75,6 +76,86 @@ The Job Finder application is a containerized monorepo with three main services:
 - **Purpose**: Shared type definitions across frontend and backend
 - **Package**: `@shared/types` workspace dependency
 - **Contracts in Use**: Shared stats contracts (queue, job listings, job matches) and exported queue enums consumed directly by backend Zod validators to avoid drift
+
+## Agent Manager
+
+The AgentManager centralizes AI provider selection with fallback chains, daily budgets, and per-scope enablement.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       AgentManager                               │
+├─────────────────────────────────────────────────────────────────┤
+│  Task Types:                                                     │
+│    - extraction: Job details, company info, source discovery    │
+│    - analysis: Match scoring rationale, research synthesis      │
+│    - document: Resume/cover letter generation                   │
+├─────────────────────────────────────────────────────────────────┤
+│  Fallback Chain (per task type):                                │
+│    taskFallbacks.extraction: [gemini.cli, codex.cli, claude.cli]│
+│    taskFallbacks.analysis: [codex.cli, gemini.cli, claude.cli]  │
+│    taskFallbacks.document: [codex.cli, claude.cli, gemini.cli]  │
+├─────────────────────────────────────────────────────────────────┤
+│  Per-Agent Config:                                              │
+│    - dailyBudget / dailyUsage (shared across scopes)            │
+│    - runtimeState.worker / runtimeState.backend (per-scope)     │
+│    - authRequirements (env vars, credential files)              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Behavior
+
+1. **Budget Enforcement**: Check budget BEFORE calling agent; disable on quota exhaustion
+2. **Fallback**: On quota exhaustion, try next agent in chain; on API error, break
+3. **Per-Scope Disabling**: Auth failures disable only the calling scope (worker/backend)
+4. **Cron Reset**: Midnight job resets `dailyUsage` and re-enables quota-disabled agents
+
+### Files
+
+- Worker: `job-finder-worker/src/job_finder/ai/agent_manager.py`
+- Backend: `job-finder-BE/server/src/modules/generator/ai/agent-manager.ts`
+- Types: `shared/src/config.types.ts` (AISettings, AgentConfig, AgentTaskType)
+
+## Scoring System
+
+The ScoringEngine evaluates job-candidate fit using experience-weighted skill matching.
+
+### Profile Reducer
+
+Derives a `ScoringProfile` from content-items:
+
+```
+content_items (work history with dates + skills)
+        ↓
+   reduce_content_items()
+        ↓
+┌─────────────────────────────────────┐
+│ ScoringProfile                      │
+├─────────────────────────────────────┤
+│ skills: Set[str]                    │  All unique skills (normalized)
+│ skill_years: Dict[str, float]       │  Skill → years of experience
+│ total_experience_years: float       │  Total from work items
+└─────────────────────────────────────┘
+```
+
+### Skill Matching
+
+```python
+for skill in job_technologies:
+    if skill in user_skills:
+        points = baseMatchScore + min(years, maxYearsBonus) * yearsMultiplier
+    elif skill has analog in user_skills:
+        points = analogScore (typically 0)
+    else:
+        points = missingScore (negative)
+```
+
+### Files
+
+- Profile Reducer: `job-finder-worker/src/job_finder/profile/reducer.py`
+- Scoring Engine: `job-finder-worker/src/job_finder/scoring/engine.py`
+- Config Types: `shared/src/config.types.ts` (SkillMatchConfig)
 
 ## Data Flow
 
@@ -91,9 +172,10 @@ The Job Finder application is a containerized monorepo with three main services:
 1. **Queue Submission**: User or system adds jobs to queue (via API)
 2. **Worker Polling**: Python worker monitors queue for pending items
 3. **Scraping**: Worker scrapes job listings using Selenium
-4. **AI Analysis**: Worker analyzes jobs using Claude/OpenAI
-5. **Storage**: Results persisted to SQLite via SQLAlchemy
-6. **Display**: Frontend fetches processed results via API
+4. **AI Analysis**: Worker uses AgentManager to select provider from fallback chain
+5. **Scoring**: Profile reducer derives skills/experience; scoring engine evaluates fit
+6. **Storage**: Results persisted to SQLite via SQLAlchemy
+7. **Display**: Frontend fetches processed results via API
 
 ## Database Schema
 
@@ -154,6 +236,7 @@ Production deployment via Docker Compose with 5 services:
 | Backend    | Express.js, TypeScript |
 | Database   | SQLite (better-sqlite3, SQLAlchemy) |
 | Worker     | Python, Flask, Selenium |
-| AI         | Anthropic Claude, OpenAI |
+| AI         | AgentManager (Gemini CLI, Codex CLI, Claude CLI) |
+| Search     | Tavily, Brave (company enrichment) |
 | Auth       | Google OAuth |
 | Deployment | Docker Compose, Cloudflare |

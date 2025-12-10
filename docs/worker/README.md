@@ -1,100 +1,141 @@
-> Status: Draft
+> Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-25
+> Last Updated: 2025-12-09
 
-# Job Finder Worker – Production Testing Guide
+# Job Finder Worker
 
-This doc summarizes how the Python worker is wired, how to run it safely against production data, and how to manage credentials/config.
+Python worker service for job processing, company enrichment, and AI-powered analysis.
 
-## Runtime Architecture (current)
-- **Process:** Single-threaded Flask worker (`src/job_finder/flask_worker.py`) with a poll loop reading the SQLite-backed `job_queue` table.
-- **Storage:** SQLite DB shared with the rest of the stack (prod path expected at `/srv/job-finder/jobfinder.db`). Access is via `JobStorage`, `CompaniesManager`, and `JobSourcesManager`.
-- **Queue:** `QueueItemProcessor` routes items by type (JOB, COMPANY, SCRAPE, SOURCE_DISCOVERY, SCRAPE_SOURCE) and updates item status + pipeline stages in SQLite.
-- **AI matching:** `AIJobMatcher` with provider/model + thresholds loaded from `job_finder_config` (`ai-settings`). Defaults are Claude Sonnet 4, min score 70, intake generation on.
-- **Config source of truth:** `job_finder_config` table (stop list, filters, AI, scheduler). YAML config file is optional and rarely used.
-- **Logging:** Structured logs to `logs/worker.log` by default (rotate externally).
+## Architecture
 
-## Prod Data Smoke-Test Checklist
-1) **Secrets**
-   - Fetch from 1Password (personal vault):
-     - `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` if switching providers)
-     - Google service account JSON used for scraping or API access (referenced in `Development/.env`). Export its path as `GOOGLE_APPLICATION_CREDENTIALS` if needed.
-   - Load into the environment of the worker host (systemd unit or shell). Do *not* commit secrets.
-
-2) **Database**
-   - Set `SQLITE_DB_PATH=/srv/job-finder/jobfinder.db` (already defaulted in `run_prod.sh`). Ensure the file is present and writable by the worker user.
-   - Optional: work from a copy for dry-runs (`cp /srv/job-finder/jobfinder.db /srv/job-finder/jobfinder-canary.db` and point the env var to it).
-
-3) **Start the worker (manual mode)**
-   ```bash
-   cd job-finder-worker
-   source venv/bin/activate  # after pip install -r requirements.txt
-   ./run_prod.sh
-   # health check
-   curl -s http://localhost:5555/health
-   ```
-   The worker will only process what is already in `job_queue`. To avoid auto-scheduling, do not enqueue SCRAPE items via any scheduler yet.
-
-4) **Manual scrape trigger (limited targets)**
-   - Insert specific SCRAPE/SCRAPE_SOURCE items or call:
-     ```bash
-     python run_job_search_unified.py --max-sources 3 --target-matches 5 --source-ids <uuid,...>
-     ```
-   - Keep `max-sources` and `target-matches` small for initial prod runs.
-
-5) **Observe & verify**
-   - Tail `logs/worker.log`.
-   - Inspect queue counts: `sqlite3 $SQLITE_DB_PATH 'select status, count(*) from job_queue group by 1;'`.
-   - Spot-check `job_matches` for duplicates and match scores.
-
-## Secrets Handling (1Password -> host env)
-- Sign in to 1Password CLI: `op signin` (requires your device auth).
-- Export keys to the shell (example):
-  ```bash
-  export ANTHROPIC_API_KEY=$(op read op://Personal/job-finder-worker/ANTHROPIC_API_KEY)
-  export GOOGLE_APPLICATION_CREDENTIALS=/srv/job-finder/gcp-sa.json
-  op read op://Personal/job-finder-worker/gcp-sa.json > $GOOGLE_APPLICATION_CREDENTIALS
-  chmod 600 $GOOGLE_APPLICATION_CREDENTIALS
-  ```
-- For production services, prefer storing these in the host’s secrets store or systemd unit env file instead of `.env` files.
-
-## Source Config JSON (schema proposal)
-`job_sources.config_json` should carry scraper hints captured during discovery. Proposed shape:
-```json
-{
-  "entry": {
-    "type": "greenhouse|rss|lever|workday|custom",
-    "url": "https://boards.greenhouse.io/example",
-    "board_token": "example",                // greenhouse
-    "rss": { "url": "https://.../feed" },   // rss
-    "pagination": { "param": "page", "start": 1, "limit": 5 }
-  },
-  "parsing": {
-    "list_selector": "div.opening a",
-    "title_selector": "h1",
-    "location_selector": "span.location",
-    "description_selector": "div.description",
-    "custom_fields": { "employmentType": "#type" }
-  },
-  "filters": {
-    "include_keywords": ["engineer", "remote"],
-    "exclude_keywords": ["senior"],
-    "locations_whitelist": ["Remote", "Portland"],
-    "min_salary": 120000
-  },
-  "dedupe": { "keys": ["url", "title", "location"], "hash_body": true },
-  "auth": { "type": "none|cookie|header", "value": "" },
-  "notes": "Found via discovery; needs human validation"
-}
 ```
-These fields are backward-compatible (unknown keys are ignored by current scrapers). Agents should populate at least `entry.type`, `entry.url`, and any selectors/pagination required.
+┌─────────────────────────────────────────────────────────────────┐
+│                         Flask Worker                             │
+├─────────────────────────────────────────────────────────────────┤
+│  Queue Processors:                                               │
+│    - JobProcessor: Job extraction, matching, scoring            │
+│    - CompanyProcessor: Company enrichment via search/AI         │
+│    - SourceProcessor: Job source discovery and scraping         │
+├─────────────────────────────────────────────────────────────────┤
+│  AI Integration (via AgentManager):                             │
+│    - Fallback chain: gemini.cli → codex.cli → claude.cli        │
+│    - Budget enforcement and per-scope enablement                │
+│    - Task types: extraction, analysis                           │
+├─────────────────────────────────────────────────────────────────┤
+│  Scoring System:                                                 │
+│    - Profile reducer derives skills/experience from content-items│
+│    - Experience-weighted skill matching with analog support     │
+│    - Configurable bonuses/penalties via SkillMatchConfig        │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-## Safety Guardrails
-- `run_prod.sh` now hard-requires `SQLITE_DB_PATH` to exist and an AI key to be present before starting.
-- Avoid multiple worker processes on the same SQLite file to prevent lock contention.
-- No automatic scrape scheduling is enabled; only enqueue SCRAPE/SCRAPE_SOURCE manually during testing.
+## Key Components
 
-## Next Steps (recommended)
-- Add logrotate config for `logs/worker.log` (daily, keep 7, compress).
-- Wire up acceptance tests that run against a prod-DB copy with read-only mode.
-- Implement scraper selection logic that consumes the proposed `config_json` schema and adds coverage for Lever/Workday.
+### AgentManager (`ai/agent_manager.py`)
+
+Centralizes AI provider selection:
+- Reads fresh config per call from `ai-settings`
+- Traverses fallback chain until success or exhaustion
+- Enforces daily budgets with model-specific cost rates
+- Disables agents per-scope on auth/quota failures
+
+### Profile Reducer (`profile/reducer.py`)
+
+Derives scoring profile from content-items:
+- Calculates `skill_years` from work history date ranges
+- Handles overlapping jobs (counts longest coverage per month)
+- Normalizes skills (lowercase, punctuation, synonyms)
+- Builds analog map for equivalent skill matching
+
+### Scoring Engine (`scoring/engine.py`)
+
+Experience-weighted skill matching:
+- `baseMatchScore` + `yearsMultiplier * min(years, maxYearsBonus)`
+- Analog skills score neutral (not penalized)
+- Missing skills apply `missingScore` penalty
+- Capped by `maxBonus` and `maxPenalty`
+
+### Company Info Fetcher (`company_info_fetcher.py`)
+
+Multi-source company enrichment:
+- Web search via Tavily/Brave APIs
+- Multi-query fallback strategy
+- Workday URL company name extraction
+- AI extraction with disambiguation hints
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Required
+SQLITE_DB_PATH=/srv/job-finder/data/jobfinder.db
+
+# AI Providers (at least one required)
+GEMINI_API_KEY=...
+OPENAI_API_KEY=...
+CLAUDE_CODE_OAUTH_TOKEN=...
+
+# Search APIs (for company enrichment)
+TAVILY_API_KEY=...
+BRAVE_API_KEY=...
+```
+
+### Database Config
+
+All configuration stored in `job_finder_config` table:
+- `ai-settings`: Agent configs, fallback chains, model rates
+- `match-policy`: Scoring weights, skill matching config
+- `prefilter-policy`: Pre-match filtering rules
+- `worker-settings`: Runtime settings (taskDelaySeconds, polling)
+
+## Running
+
+### Development
+
+```bash
+cd job-finder-worker
+source venv/bin/activate
+pip install -r requirements.txt
+./run_dev.sh
+```
+
+### Production
+
+```bash
+./run_prod.sh
+# Health check
+curl -s http://localhost:5555/health
+```
+
+## Queue Item Types
+
+| Type | Processor | Description |
+|------|-----------|-------------|
+| JOB | JobProcessor | Extract and score job listing |
+| COMPANY | CompanyProcessor | Enrich company data |
+| SCRAPE | SourceProcessor | Scrape job source for listings |
+| SOURCE_DISCOVERY | SourceProcessor | Discover new job sources |
+| SCRAPE_SOURCE | SourceProcessor | Full source scrape cycle |
+
+## Files
+
+```
+src/job_finder/
+├── ai/
+│   ├── agent_manager.py      # AI provider orchestration
+│   ├── providers.py          # Provider implementations
+│   └── search_client.py      # Tavily/Brave clients
+├── job_queue/
+│   ├── processors/
+│   │   ├── job_processor.py
+│   │   ├── company_processor.py
+│   │   └── source_processor.py
+│   └── config_loader.py      # Config from database
+├── profile/
+│   └── reducer.py            # Content-items → ScoringProfile
+├── scoring/
+│   └── engine.py             # Job-candidate fit scoring
+├── company_info_fetcher.py   # Company enrichment
+└── flask_worker.py           # Main entry point
+```
