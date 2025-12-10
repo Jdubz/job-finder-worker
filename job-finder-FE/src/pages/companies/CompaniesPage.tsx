@@ -59,35 +59,26 @@ const safeText = (value: unknown, fallback = "—") => {
   }
 }
 
-/** Thresholds for company data quality assessment */
-const DATA_QUALITY_THRESHOLDS = {
-  COMPLETE: { ABOUT: 100, CULTURE: 50 },
-  PARTIAL: { ABOUT: 50, CULTURE: 25 },
-} as const
-
 /**
  * Derive company data status from content completeness.
  * A company has "good" data if it has meaningful about/culture content.
  */
-function getDataStatus(company: Company): { label: string; color: string } {
-  const aboutLength = (company.about || "").length
-  const cultureLength = (company.culture || "").length
+function getDataStatus(company: Company, isPending: boolean): { label: string; color: string } {
+  if (isPending) return { label: "Pending", color: "bg-blue-100 text-blue-800" }
 
-  // Good quality: substantial about AND culture content
-  if (aboutLength > DATA_QUALITY_THRESHOLDS.COMPLETE.ABOUT && cultureLength > DATA_QUALITY_THRESHOLDS.COMPLETE.CULTURE) {
+  const hasAbout = !!company.about?.trim()
+  const hasCulture = !!company.culture?.trim()
+
+  if (hasAbout && hasCulture) {
     return { label: "Complete", color: "bg-green-100 text-green-800" }
   }
-  // Minimal quality: some meaningful content
-  if (aboutLength > DATA_QUALITY_THRESHOLDS.PARTIAL.ABOUT || cultureLength > DATA_QUALITY_THRESHOLDS.PARTIAL.CULTURE) {
-    return { label: "Partial", color: "bg-yellow-100 text-yellow-800" }
-  }
-  // Missing: no meaningful content
-  return { label: "Pending", color: "bg-gray-100 text-gray-800" }
+
+  return { label: "Partial", color: "bg-yellow-100 text-yellow-800" }
 }
 
 /** Badge component showing company data completeness status */
-function CompanyStatusBadge({ company }: { company: Company }) {
-  const status = getDataStatus(company)
+function CompanyStatusBadge({ company, isPending }: { company: Company; isPending: boolean }) {
+  const status = getDataStatus(company, isPending)
   return <Badge className={status.color}>{status.label}</Badge>
 }
 
@@ -95,7 +86,11 @@ export function CompaniesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { companies, loading, deleteCompany, setFilters } = useCompanies({ limit: 100 })
-  const { submitCompany } = useQueueItems()
+  const { submitCompany, queueItems: pendingQueueItems } = useQueueItems({
+    status: "pending",
+    type: "company",
+    limit: 500,
+  })
   const { openModal } = useEntityModal()
   const [deleteRequest, setDeleteRequest] = useState<
     | {
@@ -211,6 +206,16 @@ export function CompaniesPage() {
   const getTime = (value: unknown) => normalizeDateValue(value)?.getTime() ?? 0
 
   // Filter companies locally for search and apply sort (memoized)
+  const pendingCompanyIds = useMemo(
+    () =>
+      new Set(
+        pendingQueueItems
+          .filter((item) => item.type === "company" && item.company_id)
+          .map((item) => item.company_id as string)
+      ),
+    [pendingQueueItems]
+  )
+
   const filteredCompanies = useMemo(() => {
     const filtered = companies.filter((company) => {
       if (searchTerm && !company.name.toLowerCase().includes(searchTerm.toLowerCase())) {
@@ -448,50 +453,53 @@ export function CompaniesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCompanies.map((company: Company) => (
-                  <TableRow
-                    key={company.id}
-                    className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
-                    onClick={() =>
-                      openModal({
-                        type: "company",
-                        company,
-                        handlers: {
-                          onDelete: company.id ? () => handleDelete(company.id as string) : undefined,
-                          onReanalyze: handleReanalyze,
-                        },
-                      })
-                    }
-                  >
-                    <TableCell>
-                      <div className="font-medium">{safeText(company.name)}</div>
-                      {/* Show industry on mobile as secondary text */}
-                      <div className="md:hidden text-xs text-muted-foreground mt-0.5">
-                        {safeText(company.industry, "")}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {safeText(company.industry)}
-                    </TableCell>
-                    <TableCell>
-                      <CompanyStatusBadge company={company} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {getDataStatus(company).label !== "Complete" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            handleReanalyze(company)
-                          }}
-                        >
-                          Re-analyze
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredCompanies.map((company: Company) => {
+                  const isPending = company.id ? pendingCompanyIds.has(company.id) : false
+                  return (
+                    <TableRow
+                      key={company.id}
+                      className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
+                      onClick={() =>
+                        openModal({
+                          type: "company",
+                          company,
+                          handlers: {
+                            onDelete: company.id ? () => handleDelete(company.id as string) : undefined,
+                            onReanalyze: handleReanalyze,
+                          },
+                        })
+                      }
+                    >
+                      <TableCell>
+                        <div className="font-medium">{safeText(company.name)}</div>
+                        {/* Show industry on mobile as secondary text */}
+                        <div className="md:hidden text-xs text-muted-foreground mt-0.5">
+                          {safeText(company.industry, "")}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-muted-foreground">
+                        {safeText(company.industry)}
+                      </TableCell>
+                      <TableCell>
+                        <CompanyStatusBadge company={company} isPending={isPending} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {getDataStatus(company, isPending).label !== "Complete" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleReanalyze(company)
+                            }}
+                          >
+                            Re-analyze
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           )}

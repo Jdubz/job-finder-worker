@@ -88,6 +88,7 @@ describe("CompaniesPage", () => {
   const mockDeleteCompany = vi.fn()
   const mockRefetch = vi.fn()
   const mockSetFilters = vi.fn()
+  let mockQueueItems: any[] = []
   const mockJobSources = [
     { id: "source-1", name: "Acme RSS", sourceType: "rss", status: "active", companyId: "company-1" },
   ] as any
@@ -97,6 +98,7 @@ describe("CompaniesPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockQueueItems = []
 
     vi.mocked(useAuth).mockReturnValue({
       user: mockUser as any,
@@ -117,17 +119,19 @@ describe("CompaniesPage", () => {
       setFilters: mockSetFilters,
     } as any)
 
-    vi.mocked(useQueueItems).mockReturnValue({
-      queueItems: [],
+    vi.mocked(useQueueItems).mockImplementation(() => ({
+      queueItems: mockQueueItems as any,
       loading: false,
       error: null,
+      connectionStatus: "connected",
+      eventLog: [],
       submitJob: vi.fn(),
       submitCompany: mockSubmitCompany,
       submitSourceDiscovery: vi.fn(),
       updateQueueItem: vi.fn(),
       deleteQueueItem: vi.fn(),
       refetch: vi.fn(),
-    } as any)
+    } as any))
 
     vi.mocked(useJobSources).mockReturnValue({
       sources: mockJobSources,
@@ -204,6 +208,28 @@ describe("CompaniesPage", () => {
 
       await waitFor(() => {
         expect(screen.getByText(/click on a company to view details/i)).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe("Status badges", () => {
+    it("marks company as Pending when a pending queue item exists", async () => {
+      mockQueueItems = [
+        {
+          id: "queue-1",
+          type: "company",
+          status: "pending",
+          company_id: "company-3",
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      ] as any
+
+      renderWithProviders()
+
+      await waitFor(() => {
+        const row = screen.getByText("StartupXYZ").closest("tr")!
+        expect(within(row).getByText(/pending/i)).toBeInTheDocument()
       })
     })
   })
