@@ -89,7 +89,9 @@ app.whenReady().then(async () => {
 
 ipcMain.handle('fill-form', async () => {
   // 1. Get profile from job-finder backend
-  const profile = await fetch(`${API_URL}/config/personal-info`)
+  const res = await fetch(`${API_URL}/config/personal-info`)
+  if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`)
+  const profile = await res.json()
 
   // 2. Extract form fields
   const fields = await page.evaluate(EXTRACT_FORM_SCRIPT)
@@ -104,9 +106,10 @@ ipcMain.handle('fill-form', async () => {
     await page.fill(selector, value)
   }
 
-  // 5. Upload resume
+  // 5. Upload resume (find file input by label containing "resume")
   const resumePath = await downloadResume(profile.resumeUrl)
-  await page.setInputFiles('input[type="file"]', resumePath)
+  const fileInput = await page.$('input[type="file"]')
+  if (fileInput) await fileInput.setInputFiles(resumePath)
 })
 
 type CliProvider = 'claude' | 'codex' | 'gemini'
@@ -133,8 +136,15 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
     child.stderr.on('data', d => stderr += d)
     child.on('close', code => {
       clearTimeout(timeout)
-      if (code === 0) resolve(JSON.parse(stdout))
-      else reject(new Error(`${provider} CLI failed: ${stderr || stdout}`))
+      if (code === 0) {
+        try {
+          resolve(JSON.parse(stdout))
+        } catch (e) {
+          reject(new Error(`${provider} CLI returned invalid JSON: ${stdout.slice(0, 200)}`))
+        }
+      } else {
+        reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
+      }
     })
   })
 }
@@ -297,7 +307,7 @@ Runs locally in dev mode, connects to prod backend (also local). No packaging or
 ```bash
 # Start the app
 cd job-applicator
-npm run dev
+pnpm dev
 ```
 
 Configure backend URL via environment:
