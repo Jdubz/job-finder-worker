@@ -144,11 +144,15 @@ content_items (work history with dates + skills)
 ```python
 for skill in job_technologies:
     if skill in user_skills:
+        # Apply bonus for matched skills, weighted by experience
+        years = get_skill_years(skill)
         points = baseMatchScore + min(years, maxYearsBonus) * yearsMultiplier
-    elif skill has analog in user_skills:
-        points = analogScore (typically 0)
+    elif has_analog(skill, user_skills):
+        # Apply neutral score for equivalent skills
+        points = analogScore  # typically 0
     else:
-        points = missingScore (negative)
+        # Apply penalty for missing skills
+        points = missingScore  # negative value
 ```
 
 ### Location/Timezone Scoring

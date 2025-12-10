@@ -197,10 +197,34 @@ class WikipediaClient:
                 return value
             if isinstance(value, dict):
                 if "time" in value:
+                    # Time value - extract year
                     return value["time"][:4]
+                if "id" in value:
+                    # Entity reference - resolve to label
+                    return self._resolve_entity_label(value["id"])
                 return ""
             return str(value)
         except (KeyError, IndexError):
+            return ""
+
+    def _resolve_entity_label(self, entity_id: str) -> str:
+        """Resolve a Wikidata entity ID to its English label."""
+        try:
+            response = self.session.get(
+                "https://www.wikidata.org/w/api.php",
+                params={
+                    "action": "wbgetentities",
+                    "ids": entity_id,
+                    "props": "labels",
+                    "languages": "en",
+                    "format": "json",
+                },
+                timeout=5,
+            )
+            response.raise_for_status()
+            entity = response.json().get("entities", {}).get(entity_id, {})
+            return entity.get("labels", {}).get("en", {}).get("value", "")
+        except Exception:
             return ""
 
     def _parse_employee_count(self, value: str) -> Optional[int]:
