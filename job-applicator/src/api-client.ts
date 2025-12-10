@@ -16,7 +16,7 @@ import type {
   JobMatchWithListing,
   GenerationStep,
 } from "@shared/types"
-import { fetchWithRetry, parseApiError, getUserFriendlyErrorMessage } from "./utils.js"
+import { fetchWithRetry, parseApiError } from "./utils.js"
 import { logger } from "./logger.js"
 
 // Configuration from environment

@@ -31,7 +31,6 @@ ipcMain.on("renderer-log", (_event, level: string, args: unknown[]) => {
 // Import shared types and utilities
 import type {
   CliProvider,
-  PersonalInfo,
   ContentItem,
   FormField,
   FillInstruction,
@@ -43,10 +42,8 @@ import type {
 } from "./types.js"
 import type { JobMatchWithListing } from "@shared/types"
 import {
-  normalizeUrl,
   resolveDocumentPath,
   buildPrompt,
-  buildEnhancedPrompt,
   buildPromptFromProfileText,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
@@ -65,8 +62,6 @@ import {
   startGeneration,
   executeGenerationStep,
   submitJobToQueue,
-  API_URL,
-  fetchOptions,
 } from "./api-client.js"
 
 // Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
