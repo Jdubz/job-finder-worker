@@ -6,7 +6,7 @@ import type { GenerationProgress } from "./types.js"
 
 contextBridge.exposeInMainWorld("electronAPI", {
   // Navigation
-  navigate: (url: string) => ipcRenderer.invoke("navigate", url),
+  navigate: (url: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke("navigate", url),
   getUrl: () => ipcRenderer.invoke("get-url"),
 
   // Form filling

@@ -66,7 +66,7 @@ interface WorkflowState {
 }
 
 interface ElectronAPI {
-  navigate: (url: string) => Promise<void>
+  navigate: (url: string) => Promise<{ success: boolean; message?: string }>
   getUrl: () => Promise<string>
   fillForm: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
   fillFormEnhanced: (options: {
@@ -163,6 +163,7 @@ const statusEl = getElement<HTMLSpanElement>("status")
 const jobList = getElement<HTMLDivElement>("jobList")
 const documentsList = getElement<HTMLDivElement>("documentsList")
 const generateBtn = getElement<HTMLButtonElement>("generateBtn")
+const generateTypeSelect = getElement<HTMLSelectElement>("generateType")
 const resultsContent = getElement<HTMLDivElement>("resultsContent")
 const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
 const markAppliedBtn = getElement<HTMLButtonElement>("markAppliedBtn")
@@ -294,12 +295,12 @@ async function selectJobMatch(id: string) {
 
   // Load the job URL in BrowserView
   setStatus("Loading job listing...", "loading")
-  try {
-    await api.navigate(match.listing.url)
+  const navResult = await api.navigate(match.listing.url)
+  if (navResult.success) {
     urlInput.value = match.listing.url
     setStatus("Job listing loaded", "success")
-  } catch (err) {
-    setStatus(`Failed to load: ${err}`, "error")
+  } else {
+    setStatus(navResult.message || "Failed to load job listing", "error")
   }
 
   // Load documents for this job match
@@ -317,9 +318,11 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
 
   try {
     const result = await api.getDocuments(jobMatchId)
+    console.log("[loadDocuments] Result:", result)
 
     if (result.success && Array.isArray(result.data)) {
       documents = result.data
+      console.log("[loadDocuments] Loaded documents:", documents.length, documents)
 
       // Auto-select logic:
       // 1. If autoSelectId provided (e.g., newly generated), select it
@@ -536,10 +539,13 @@ async function generateDocument() {
   cleanupGenerationProgressListener()
   unsubscribeGenerationProgress = api.onGenerationProgress(handleGenerationProgress)
 
+  // Get selected document type
+  const generateType = generateTypeSelect.value as "resume" | "coverLetter" | "both"
+
   // Start generation with sequential step execution
   const result = await api.runGeneration({
     jobMatchId: selectedJobMatchId,
-    type: "both",
+    type: generateType,
   })
 
   if (result.success && result.data) {
@@ -663,10 +669,12 @@ async function navigate() {
     fullUrl = `https://${url}`
   }
 
-  try {
-    setButtonsEnabled(false)
-    setStatus("Loading...", "loading")
-    await api.navigate(fullUrl)
+  setButtonsEnabled(false)
+  setStatus("Loading...", "loading")
+
+  const navResult = await api.navigate(fullUrl)
+
+  if (navResult.success) {
     setStatus("Page loaded", "success")
 
     // Check if this URL matches any job match
@@ -674,12 +682,11 @@ async function navigate() {
 
     // Check for file input on the new page (with delay for page to render)
     setTimeout(checkForFileInput, 500)
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
-    setStatus(`Navigation failed: ${message}`, "error")
-  } finally {
-    setButtonsEnabled(true)
+  } else {
+    setStatus(navResult.message || "Navigation failed", "error")
   }
+
+  setButtonsEnabled(true)
 }
 
 // Fill form with AI

@@ -53,6 +53,10 @@ import {
   buildPrompt,
   buildEnhancedPrompt,
   buildExtractionPrompt,
+  fetchWithTimeout,
+  fetchWithRetry,
+  parseApiError,
+  getUserFriendlyErrorMessage,
 } from "./utils.js"
 
 // Configuration from environment
@@ -233,9 +237,37 @@ async function createWindow(): Promise<void> {
 }
 
 // Navigate to URL
-ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<void> => {
-  if (!browserView) throw new Error("BrowserView not initialized")
-  await browserView.webContents.loadURL(url)
+ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<{ success: boolean; message?: string }> => {
+  try {
+    if (!browserView) {
+      return { success: false, message: "Browser not initialized. Please restart the application." }
+    }
+    // Basic URL validation
+    try {
+      new URL(url)
+    } catch {
+      return { success: false, message: "Invalid URL format" }
+    }
+    await browserView.webContents.loadURL(url)
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error("Navigation failed:", { url, error: message })
+    // Map common errors to user-friendly messages
+    if (message.includes("ERR_NAME_NOT_RESOLVED")) {
+      return { success: false, message: "Could not find the website. Check the URL or your internet connection." }
+    }
+    if (message.includes("ERR_CONNECTION_REFUSED")) {
+      return { success: false, message: "Connection refused. The website may be down." }
+    }
+    if (message.includes("ERR_INTERNET_DISCONNECTED") || message.includes("ERR_NETWORK_CHANGED")) {
+      return { success: false, message: "No internet connection. Please check your network." }
+    }
+    if (message.includes("ERR_CERT")) {
+      return { success: false, message: "SSL certificate error. The website may not be secure." }
+    }
+    return { success: false, message: `Navigation failed: ${message}` }
+  }
 })
 
 // Get current URL
@@ -252,13 +284,22 @@ ipcMain.handle(
       if (!browserView) throw new Error("BrowserView not initialized")
 
       // 1. Get profile and work history from job-finder backend
+      // Use Promise.allSettled so one failure doesn't block the other
       logger.info("Fetching profile from backend...")
-      const [profileRes, contentRes] = await Promise.all([
-        fetch(`${API_URL}/config/personal-info`, fetchOptions()),
-        fetch(`${API_URL}/content-items?limit=100`, fetchOptions())
+      const [profileResult, contentResult] = await Promise.allSettled([
+        fetchWithRetry(`${API_URL}/config/personal-info`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 }),
+        fetchWithRetry(`${API_URL}/content-items?limit=100`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
       ])
+
+      // Profile is required
+      if (profileResult.status === "rejected") {
+        const errorMsg = getUserFriendlyErrorMessage(profileResult.reason)
+        throw new Error(`Failed to fetch profile: ${errorMsg}`)
+      }
+      const profileRes = profileResult.value
       if (!profileRes.ok) {
-        throw new Error(`Failed to fetch profile: ${profileRes.status}`)
+        const errorMsg = await parseApiError(profileRes)
+        throw new Error(`Failed to fetch profile: ${errorMsg}`)
       }
       const profileData = await profileRes.json()
       const profile: PersonalInfo = profileData.data || profileData
@@ -270,10 +311,12 @@ ipcMain.handle(
 
       // Parse work history (optional - don't fail if unavailable)
       let workHistory: ContentItem[] = []
-      if (contentRes.ok) {
-        const contentData = await contentRes.json()
+      if (contentResult.status === "fulfilled" && contentResult.value.ok) {
+        const contentData = await contentResult.value.json()
         workHistory = contentData.data || []
         logger.info(`Fetched ${workHistory.length} work history items`)
+      } else {
+        logger.warn("Work history unavailable, continuing with profile only")
       }
 
       // 2. Extract form fields from page
@@ -560,22 +603,29 @@ ipcMain.handle(
     try {
       const limit = options?.limit || 50
       const status = options?.status || "active"
-      const res = await fetch(`${API_URL}/job-matches/?limit=${limit}&status=${status}&sortBy=updated&sortOrder=desc`, fetchOptions())
+      const url = `${API_URL}/job-matches/?limit=${limit}&status=${status}&sortBy=updated&sortOrder=desc`
+
+      const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
+
+      if (!res.ok) {
+        const errorMsg = await parseApiError(res)
+        return { success: false, message: errorMsg }
+      }
 
       const json = await res.json() as ApiResponse<ListJobMatchesResponse> | ApiErrorResponse
 
-      if (!res.ok || !json.success) {
+      if (!json.success) {
         const errorJson = json as ApiErrorResponse
         return {
           success: false,
-          message: errorJson.error?.message || `Failed to fetch job matches: ${res.status}`,
+          message: errorJson.error?.message || "Failed to fetch job matches",
         }
       }
 
       const successJson = json as ApiResponse<ListJobMatchesResponse> & { success: true }
       return { success: true, data: successJson.data.matches }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
       return { success: false, message }
     }
   }
@@ -604,18 +654,24 @@ ipcMain.handle(
   "get-documents",
   async (_event: IpcMainInvokeEvent, jobMatchId: string): Promise<{ success: boolean; data?: unknown[]; message?: string }> => {
     try {
-      const res = await fetch(`${API_URL}/generator/job-matches/${jobMatchId}/documents`, fetchOptions())
+      const url = `${API_URL}/generator/job-matches/${jobMatchId}/documents`
+      const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
+
       if (!res.ok) {
         // 404 is fine - means no documents yet
         if (res.status === 404) {
           return { success: true, data: [] }
         }
-        return { success: false, message: `Failed to fetch documents: ${res.status}` }
+        const errorMsg = await parseApiError(res)
+        return { success: false, message: errorMsg }
       }
+
       const data = await res.json()
-      return { success: true, data: data.data || data || [] }
+      // Handle both wrapped and unwrapped response formats
+      const documents = Array.isArray(data) ? data : (data.data || [])
+      return { success: true, data: documents }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
       return { success: false, message }
     }
   }

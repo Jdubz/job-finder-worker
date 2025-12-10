@@ -359,3 +359,228 @@ export function parseJsonObjectFromOutput(output: string): Record<string, unknow
   }
   return parsed
 }
+
+// =============================================================================
+// HTTP Error Handling Utilities
+// =============================================================================
+
+/**
+ * Map HTTP status codes to user-friendly error messages
+ */
+export function getHttpErrorMessage(status: number, statusText?: string): string {
+  switch (status) {
+    case 400:
+      return "Invalid request. Please check your input and try again."
+    case 401:
+      return "Authentication required. Please check your credentials."
+    case 403:
+      return "Access denied. You don't have permission for this action."
+    case 404:
+      return "Resource not found."
+    case 408:
+      return "Request timed out. Please try again."
+    case 409:
+      return "Conflict with existing data. Please refresh and try again."
+    case 422:
+      return "Invalid data provided. Please check your input."
+    case 429:
+      return "Too many requests. Please wait a moment and try again."
+    case 500:
+      return "Server error. Please try again later."
+    case 502:
+      return "Server temporarily unavailable. Please try again later."
+    case 503:
+      return "Service unavailable. Please try again later."
+    case 504:
+      return "Server took too long to respond. Please try again."
+    default:
+      return statusText ? `Error ${status}: ${statusText}` : `Error ${status}`
+  }
+}
+
+/**
+ * Parse error message from API response body
+ */
+export async function parseApiError(response: Response): Promise<string> {
+  const status = response.status
+  const friendlyMessage = getHttpErrorMessage(status, response.statusText)
+
+  try {
+    const body = await response.json()
+    // Check for standard API error format
+    if (body.error?.message) {
+      return body.error.message
+    }
+    if (body.message) {
+      return body.message
+    }
+  } catch {
+    // Body is not JSON, try text
+    try {
+      const text = await response.text()
+      if (text && text.length < 200) {
+        return `${friendlyMessage} - ${text}`
+      }
+    } catch {
+      // Ignore text parsing errors
+    }
+  }
+
+  return friendlyMessage
+}
+
+/**
+ * Map generic error messages to user-friendly versions
+ */
+export function getUserFriendlyErrorMessage(error: Error | string): string {
+  const message = typeof error === "string" ? error : error.message
+
+  // Network errors
+  if (message.includes("Failed to fetch") || message.includes("fetch failed")) {
+    return "Unable to connect. Please check your internet connection."
+  }
+  if (message.includes("NetworkError")) {
+    return "Network error. Please check your connection and try again."
+  }
+
+  // Timeout errors
+  if (message.includes("timed out") || message.includes("timeout") || message.includes("AbortError")) {
+    return "Request timed out. Please try again."
+  }
+
+  // SSL errors
+  if (message.includes("SSL") || message.includes("certificate")) {
+    return "Security error. The connection may not be secure."
+  }
+
+  // DNS errors
+  if (message.includes("ENOTFOUND") || message.includes("ERR_NAME_NOT_RESOLVED")) {
+    return "Could not find the server. Please check the URL."
+  }
+
+  // Connection errors
+  if (message.includes("ECONNREFUSED") || message.includes("ERR_CONNECTION_REFUSED")) {
+    return "Connection refused. The server may be down."
+  }
+  if (message.includes("ECONNRESET")) {
+    return "Connection was reset. Please try again."
+  }
+
+  // Return original if no mapping found, but truncate if too long
+  return message.length > 150 ? message.slice(0, 147) + "..." : message
+}
+
+// =============================================================================
+// Fetch Utilities
+// =============================================================================
+
+/**
+ * Fetch with timeout support
+ */
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = 30000
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    })
+    return response
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Request timed out after ${timeoutMs}ms`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+/**
+ * Fetch with retry support for transient failures
+ */
+export async function fetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  config: {
+    maxRetries?: number
+    timeoutMs?: number
+    retryDelayMs?: number
+    retryOn?: number[]
+  } = {}
+): Promise<Response> {
+  const {
+    maxRetries = 3,
+    timeoutMs = 30000,
+    retryDelayMs = 1000,
+    retryOn = [408, 429, 500, 502, 503, 504],
+  } = config
+
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, options, timeoutMs)
+
+      // Check if we should retry based on status code
+      if (retryOn.includes(response.status) && attempt < maxRetries) {
+        // For 429, respect Retry-After header if present
+        const retryAfter = response.headers.get("Retry-After")
+        const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : retryDelayMs * Math.pow(2, attempt)
+        await sleep(delay)
+        continue
+      }
+
+      return response
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+
+      // Don't retry on abort/timeout if it was intentional
+      if (lastError.message.includes("timed out") && attempt < maxRetries) {
+        await sleep(retryDelayMs * Math.pow(2, attempt))
+        continue
+      }
+
+      // Retry on network errors
+      if (
+        (lastError.message.includes("Failed to fetch") ||
+          lastError.message.includes("ECONNRESET") ||
+          lastError.message.includes("ECONNREFUSED")) &&
+        attempt < maxRetries
+      ) {
+        await sleep(retryDelayMs * Math.pow(2, attempt))
+        continue
+      }
+
+      throw lastError
+    }
+  }
+
+  throw lastError || new Error("Max retries exceeded")
+}
+
+/**
+ * Sleep utility for retry delays
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Standard API result type
+ */
+export interface ApiResult<T = unknown> {
+  success: boolean
+  data?: T
+  message?: string
+  error?: {
+    code: string
+    message: string
+    details?: unknown
+  }
+}
