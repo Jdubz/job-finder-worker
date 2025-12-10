@@ -8,8 +8,9 @@ import { ApiHttpError } from './api-error'
 import { SESSION_COOKIE } from '../routes/auth.routes'
 
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
-const IS_TEST = process.env.NODE_ENV === 'test'
 const CRON_API_KEY = env.CRON_API_KEY
+
+const isTestEnv = () => process.env.NODE_ENV === 'test'
 
 export interface AuthenticatedUser {
   uid: string
@@ -26,7 +27,7 @@ export interface AuthenticatedRequest extends Request {
 const userRepository = new UserRepository()
 
 function getCookieDomain(): string | undefined {
-  if (IS_DEVELOPMENT || IS_TEST) {
+  if (IS_DEVELOPMENT || isTestEnv()) {
     return undefined
   }
   return '.joshwentworth.com'
@@ -35,8 +36,8 @@ function getCookieDomain(): string | undefined {
 function clearSessionCookie(res: Response) {
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
-    secure: !IS_DEVELOPMENT && !IS_TEST,
-    sameSite: IS_DEVELOPMENT || IS_TEST ? 'lax' : 'none',
+    secure: !IS_DEVELOPMENT && !isTestEnv(),
+    sameSite: IS_DEVELOPMENT || isTestEnv() ? 'lax' : 'none',
     domain: getCookieDomain(),
     path: '/',
   })
@@ -116,7 +117,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   }
 
   // In development/test mode, check for dev tokens first
-  if (IS_DEVELOPMENT || IS_TEST) {
+  if (IS_DEVELOPMENT || isTestEnv()) {
     const bearerToken = extractBearerToken(req)
     if (bearerToken && bearerToken in DEV_TOKENS) {
       const devConfig = DEV_TOKENS[bearerToken]
@@ -136,8 +137,8 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   const sessionToken = cookies[SESSION_COOKIE]
 
   if (!sessionToken) {
-    // No session cookie: allow localhost bypass if explicitly enabled
-    if (!IS_TEST && isLocalhostRequest(req)) {
+    // No session cookie: allow localhost bypass when running on host/bridge
+    if (!isTestEnv() && isLocalhostRequest(req)) {
       const bypassUser: AuthenticatedUser = {
         uid: 'localhost-desktop',
         email: 'desktop@localhost',
@@ -155,8 +156,8 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   const sessionUser = userRepository.findBySessionToken(sessionToken)
   if (!sessionUser) {
     clearSessionCookie(res)
-    // Invalid session: still allow localhost bypass if enabled
-    if (!IS_TEST && isLocalhostRequest(req)) {
+    // Invalid session: still allow localhost bypass on host/bridge
+    if (!isTestEnv() && isLocalhostRequest(req)) {
       const bypassUser: AuthenticatedUser = {
         uid: 'localhost-desktop',
         email: 'desktop@localhost',
@@ -178,8 +179,8 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   if (expiryMs <= Date.now()) {
     clearSessionCookie(res)
     userRepository.clearSession(sessionUser.id)
-    // Expired session: still allow localhost bypass if enabled
-    if (!IS_TEST && isLocalhostRequest(req)) {
+    // Expired session: still allow localhost bypass on host/bridge
+    if (!isTestEnv() && isLocalhostRequest(req)) {
       const bypassUser: AuthenticatedUser = {
         uid: 'localhost-desktop',
         email: 'desktop@localhost',
