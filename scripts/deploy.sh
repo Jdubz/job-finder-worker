@@ -123,7 +123,7 @@ else
 
   # Pull and restart only the changed services
   docker compose -f docker-compose.yml pull "${SERVICES[@]}"
-  docker compose -f docker-compose.yml up -d --remove-orphans "${SERVICES[@]}"
+  docker compose -f docker-compose.yml up -d "${SERVICES[@]}"
 fi
 
 # --- Run config/data migrations ---
