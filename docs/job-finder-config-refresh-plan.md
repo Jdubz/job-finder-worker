@@ -18,6 +18,12 @@ The following items from the original config refresh plan have been completed:
   - Personal-info values override static config: `timezone→userTimezone`, `city→userCity`, `relocationAllowed`
   - Hybrid/onsite different city: hard reject if `relocationAllowed=false`, else penalty
   - 19 unit tests covering all location scoring scenarios
+- **Per-item config reload**:
+  - JobProcessor calls `_refresh_runtime_config()` before each job
+  - CompanyProcessor calls `_refresh_runtime_config()` before each company
+  - SourceProcessor calls `_refresh_runtime_config()` before each source discovery/scrape
+  - ConfigLoader returns fresh config on each call (no caching)
+  - Integration tests verify config changes apply to next item
 
 This document tracks remaining implementation work.
 
@@ -56,16 +62,6 @@ class StrikeAccumulator:
 - [ ] Refactor prefilter to use strike accumulation
 - [ ] Update matcher to use consistent strike logic
 - [ ] Document scoring order: stop-list -> hard-fail -> strikes -> threshold
-
-### 2. Per-Item Config Reload Verification
-
-Infrastructure exists but needs verification that worker processors actually reload config per item.
-
-**Tasks:**
-- [ ] Verify JobProcessor reloads config per item (not just per batch)
-- [ ] Verify CompanyProcessor reloads config per item
-- [ ] Verify SourceProcessor reloads config per item
-- [ ] Add integration test confirming config changes apply to next item
 
 ## Open Questions
 
