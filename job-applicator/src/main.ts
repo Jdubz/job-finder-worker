@@ -612,18 +612,27 @@ ipcMain.handle(
         return { success: false, message: errorMsg }
       }
 
-      const json = await res.json() as ApiResponse<ListJobMatchesResponse> | ApiErrorResponse
+      const json = await res.json()
+
+      // Validate response structure
+      if (!json || typeof json !== "object") {
+        return { success: false, message: "Invalid response from server" }
+      }
 
       if (!json.success) {
-        const errorJson = json as ApiErrorResponse
         return {
           success: false,
-          message: errorJson.error?.message || "Failed to fetch job matches",
+          message: json.error?.message || "Failed to fetch job matches",
         }
       }
 
-      const successJson = json as ApiResponse<ListJobMatchesResponse> & { success: true }
-      return { success: true, data: successJson.data.matches }
+      // Safely access nested data with validation
+      const matches = json.data?.matches
+      if (!Array.isArray(matches)) {
+        return { success: false, message: "Invalid response format: missing matches array" }
+      }
+
+      return { success: true, data: matches }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
       return { success: false, message }
@@ -636,14 +645,17 @@ ipcMain.handle(
   "get-job-match",
   async (_event: IpcMainInvokeEvent, id: string): Promise<{ success: boolean; data?: unknown; message?: string }> => {
     try {
-      const res = await fetch(`${API_URL}/job-matches/${id}`, fetchOptions())
+      const res = await fetchWithRetry(`${API_URL}/job-matches/${id}`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
       if (!res.ok) {
-        return { success: false, message: `Failed to fetch job match: ${res.status}` }
+        const errorMsg = await parseApiError(res)
+        return { success: false, message: errorMsg }
       }
       const data = await res.json()
-      return { success: true, data: data.data || data }
+      // Safely access nested data
+      const match = data?.data?.match || data?.data || data?.match || data
+      return { success: true, data: match }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
       return { success: false, message }
     }
   }
@@ -667,8 +679,13 @@ ipcMain.handle(
       }
 
       const data = await res.json()
-      // Handle both wrapped and unwrapped response formats
-      const documents = Array.isArray(data) ? data : (data.data || [])
+      // Handle both wrapped and unwrapped response formats with null safety
+      let documents: unknown[] = []
+      if (Array.isArray(data)) {
+        documents = data
+      } else if (data && typeof data === "object" && Array.isArray(data.data)) {
+        documents = data.data
+      }
       return { success: true, data: documents }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
@@ -685,17 +702,21 @@ ipcMain.handle(
     options: { id: string; status: "active" | "ignored" | "applied" }
   ): Promise<{ success: boolean; message?: string }> => {
     try {
-      const res = await fetch(`${API_URL}/job-matches/${options.id}/status`, fetchOptions({
-        method: "PATCH",
-        body: JSON.stringify({ status: options.status }),
-      }))
+      const res = await fetchWithRetry(
+        `${API_URL}/job-matches/${options.id}/status`,
+        fetchOptions({
+          method: "PATCH",
+          body: JSON.stringify({ status: options.status }),
+        }),
+        { maxRetries: 2, timeoutMs: 15000 }
+      )
       if (!res.ok) {
-        const errorText = await res.text()
-        return { success: false, message: `Failed to update status: ${errorText.slice(0, 100)}` }
+        const errorMsg = await parseApiError(res)
+        return { success: false, message: errorMsg }
       }
       return { success: true }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
       return { success: false, message }
     }
   }
@@ -713,23 +734,40 @@ ipcMain.handle(
       const normalizedUrl = normalizeUrl(url)
 
       // Fetch recent job matches and compare URLs
-      const res = await fetch(`${API_URL}/job-matches/?limit=100&sortBy=updated&sortOrder=desc`, fetchOptions())
+      const res = await fetchWithRetry(
+        `${API_URL}/job-matches/?limit=100&sortBy=updated&sortOrder=desc`,
+        fetchOptions(),
+        { maxRetries: 2, timeoutMs: 15000 }
+      )
       if (!res.ok) {
-        return { success: false, message: `Failed to fetch job matches: ${res.status}` }
+        const errorMsg = await parseApiError(res)
+        return { success: false, message: errorMsg }
       }
       const data = await res.json()
-      const matches = data.data || data || []
+
+      // Safely access matches array with validation
+      let matches: unknown[] = []
+      if (data?.data?.matches && Array.isArray(data.data.matches)) {
+        matches = data.data.matches
+      } else if (Array.isArray(data?.data)) {
+        matches = data.data
+      } else if (Array.isArray(data)) {
+        matches = data
+      }
 
       // Find a match where the listing URL matches (normalized)
       for (const match of matches) {
-        if (match.listing?.url && normalizeUrl(match.listing.url) === normalizedUrl) {
-          return { success: true, data: match }
+        if (match && typeof match === "object" && "listing" in match) {
+          const listing = (match as { listing?: { url?: string } }).listing
+          if (listing?.url && normalizeUrl(listing.url) === normalizedUrl) {
+            return { success: true, data: match }
+          }
         }
       }
 
       return { success: true, data: null } // No match found
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)))
       return { success: false, message }
     }
   }

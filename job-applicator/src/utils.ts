@@ -399,26 +399,32 @@ export function getHttpErrorMessage(status: number, statusText?: string): string
 }
 
 /**
- * Parse error message from API response body
+ * Parse error message from API response body.
+ * Clones the response first to avoid consuming the body stream.
  */
 export async function parseApiError(response: Response): Promise<string> {
   const status = response.status
   const friendlyMessage = getHttpErrorMessage(status, response.statusText)
 
+  // Clone response so we don't consume the original body stream
+  const clonedResponse = response.clone()
+
   try {
-    const body = await response.json()
+    const body = await clonedResponse.json()
     // Check for standard API error format
-    if (body.error?.message) {
+    if (body?.error?.message) {
       return body.error.message
     }
-    if (body.message) {
+    if (body?.message) {
       return body.message
     }
   } catch {
-    // Body is not JSON, try text
+    // Body is not JSON, try text with a fresh clone
     try {
-      const text = await response.text()
-      if (text && text.length < 200) {
+      const textResponse = response.clone()
+      const text = await textResponse.text()
+      // Only include text if it's short and not HTML
+      if (text && text.length < 200 && !text.includes("<!DOCTYPE") && !text.includes("<html")) {
         return `${friendlyMessage} - ${text}`
       }
     } catch {
@@ -502,7 +508,8 @@ export async function fetchWithTimeout(
 }
 
 /**
- * Fetch with retry support for transient failures
+ * Fetch with retry support for transient failures.
+ * Throws on final failure instead of returning failed response.
  */
 export async function fetchWithRetry(
   url: string,
@@ -511,6 +518,7 @@ export async function fetchWithRetry(
     maxRetries?: number
     timeoutMs?: number
     retryDelayMs?: number
+    maxDelayMs?: number
     retryOn?: number[]
   } = {}
 ): Promise<Response> {
@@ -518,22 +526,28 @@ export async function fetchWithRetry(
     maxRetries = 3,
     timeoutMs = 30000,
     retryDelayMs = 1000,
+    maxDelayMs = 30000, // Cap retry delay at 30 seconds
     retryOn = [408, 429, 500, 502, 503, 504],
   } = config
 
   let lastError: Error | null = null
+  let lastResponse: Response | null = null
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const response = await fetchWithTimeout(url, options, timeoutMs)
+      lastResponse = response
 
       // Check if we should retry based on status code
       if (retryOn.includes(response.status) && attempt < maxRetries) {
-        // For 429, respect Retry-After header if present
-        const retryAfter = response.headers.get("Retry-After")
-        const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : retryDelayMs * Math.pow(2, attempt)
+        const delay = parseRetryDelay(response, retryDelayMs, attempt, maxDelayMs)
         await sleep(delay)
         continue
+      }
+
+      // On last attempt with retryable status, throw instead of returning failed response
+      if (retryOn.includes(response.status)) {
+        throw new Error(`Request failed after ${maxRetries + 1} attempts with status ${response.status}`)
       }
 
       return response
@@ -542,7 +556,8 @@ export async function fetchWithRetry(
 
       // Don't retry on abort/timeout if it was intentional
       if (lastError.message.includes("timed out") && attempt < maxRetries) {
-        await sleep(retryDelayMs * Math.pow(2, attempt))
+        const delay = Math.min(retryDelayMs * Math.pow(2, attempt), maxDelayMs)
+        await sleep(delay)
         continue
       }
 
@@ -553,7 +568,8 @@ export async function fetchWithRetry(
           lastError.message.includes("ECONNREFUSED")) &&
         attempt < maxRetries
       ) {
-        await sleep(retryDelayMs * Math.pow(2, attempt))
+        const delay = Math.min(retryDelayMs * Math.pow(2, attempt), maxDelayMs)
+        await sleep(delay)
         continue
       }
 
@@ -562,6 +578,26 @@ export async function fetchWithRetry(
   }
 
   throw lastError || new Error("Max retries exceeded")
+}
+
+/**
+ * Parse Retry-After header and calculate delay with validation
+ */
+function parseRetryDelay(response: Response, baseDelay: number, attempt: number, maxDelay: number): number {
+  const retryAfter = response.headers.get("Retry-After")
+
+  if (retryAfter) {
+    // Retry-After can be seconds (number) or HTTP date
+    const seconds = parseInt(retryAfter, 10)
+    if (!isNaN(seconds) && seconds > 0 && seconds < 3600) {
+      // Valid seconds value (cap at 1 hour for safety)
+      return Math.min(seconds * 1000, maxDelay)
+    }
+    // Could be HTTP date format - fall back to exponential backoff
+  }
+
+  // Exponential backoff with cap
+  return Math.min(baseDelay * Math.pow(2, attempt), maxDelay)
 }
 
 /**
