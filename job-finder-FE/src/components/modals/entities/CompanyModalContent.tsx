@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { useCompany } from "@/hooks/useCompany"
 import { useJobSources } from "@/hooks/useJobSources"
 import { useJobListings } from "@/hooks/useJobListings"
+import { useQueueItems } from "@/hooks/useQueueItems"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,34 +22,22 @@ const safeText = (value: unknown, fallback = "—") => {
   }
 }
 
-const DATA_QUALITY_THRESHOLDS = {
-  COMPLETE: { ABOUT: 100, CULTURE: 50 },
-  PARTIAL: { ABOUT: 50, CULTURE: 25 },
-} as const
-
 const dataQualityTone: Record<string, string> = {
   Complete: statusBadgeClass("active"),
   Partial: statusBadgeClass("pending"),
   Pending: statusBadgeClass("disabled"),
 }
 
-function getDataStatus(company: Company): { label: string; tone: string } {
-  const aboutLength = (company.about || "").length
-  const cultureLength = (company.culture || "").length
+function getDataStatus(company: Company, isPending: boolean): { label: string; tone: string } {
+  if (isPending) return { label: "Pending", tone: dataQualityTone.Pending }
 
-  if (
-    aboutLength > DATA_QUALITY_THRESHOLDS.COMPLETE.ABOUT &&
-    cultureLength > DATA_QUALITY_THRESHOLDS.COMPLETE.CULTURE
-  ) {
+  const hasAbout = !!company.about?.trim()
+  const hasCulture = !!company.culture?.trim()
+
+  if (hasAbout && hasCulture) {
     return { label: "Complete", tone: dataQualityTone.Complete }
   }
-  if (
-    aboutLength > DATA_QUALITY_THRESHOLDS.PARTIAL.ABOUT ||
-    cultureLength > DATA_QUALITY_THRESHOLDS.PARTIAL.CULTURE
-  ) {
-    return { label: "Partial", tone: dataQualityTone.Partial }
-  }
-  return { label: "Pending", tone: dataQualityTone.Pending }
+  return { label: "Partial", tone: dataQualityTone.Partial }
 }
 
 interface CompanyDetailsModalContentProps {
@@ -70,6 +59,12 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
     providedCompany ? null : companyId,
     { autoFetch: !providedCompany }
   )
+
+  const { queueItems: pendingQueueItems } = useQueueItems({
+    status: "pending",
+    type: "company",
+    limit: 200,
+  })
 
   const company = providedCompany || fetchedCompany
 
@@ -102,6 +97,11 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
   }
 
   const hasCompanyId = !!(company?.id || companyId)
+
+  const isPending = useMemo(() => {
+    if (!company?.id) return false
+    return pendingQueueItems.some((item) => item.company_id === company.id && item.status === "pending")
+  }, [company?.id, pendingQueueItems])
 
   const { sources, loading: sourcesLoading } = useJobSources({
     companyId: company?.id ?? companyId ?? undefined,
@@ -140,7 +140,7 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
     return <p className="text-sm text-muted-foreground">No company details available.</p>
   }
 
-  const status = getDataStatus(company)
+  const status = getDataStatus(company, isPending)
 
   return (
     <div className="space-y-4 overflow-y-auto flex-1 pr-2">

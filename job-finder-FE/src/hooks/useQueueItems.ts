@@ -14,7 +14,8 @@ import { logger } from "@/services/logging/FrontendLogger"
 
 interface UseQueueItemsOptions {
   limit?: number
-  status?: string
+  status?: string | string[]
+  type?: string
 }
 
 interface SubmitCompanyParams {
@@ -54,7 +55,7 @@ interface UseQueueItemsResult {
 }
 
 export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItemsResult {
-  const { limit = DEFAULT_PAGE_LIMIT, status } = options
+  const { limit = DEFAULT_PAGE_LIMIT, status, type } = options
 
   const [queueItems, setQueueItems] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState<boolean>(true)
@@ -110,7 +111,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     const silent = opts?.silent === true
     if (!silent) setLoading(true)
     try {
-      const response = await queueClient.listQueueItems({ status, limit })
+      const response = await queueClient.listQueueItems({ status, type, limit })
       setQueueItems(response.items.map(normalizeQueueItem))
       setError(null)
     } catch (err) {
@@ -118,7 +119,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [limit, normalizeQueueItem, status])
+  }, [limit, normalizeQueueItem, status, type])
 
   useEffect(() => {
     let cancelled = false
