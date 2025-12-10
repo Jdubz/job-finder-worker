@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from job_finder.ai.search_client import SearchResult
+from job_finder.ai.agent_manager import NoAgentsAvailableError
 from job_finder.job_queue.models import ProcessorContext
 from job_finder.job_queue.processors.company_processor import CompanyProcessor
 
@@ -178,5 +179,64 @@ class TestSearchForCareerPage:
         mock_get_client.return_value = mock_client
 
         url = company_processor._search_for_career_page("Acme Corp")
+
+        assert url is None
+
+
+class TestAgentSelectCareerUrl:
+    """Tests for _agent_select_career_url method."""
+
+    def test_agent_overrides_heuristic(self, company_processor):
+        """Agent result replaces heuristic choice."""
+        company_processor.agent_manager = Mock()
+        company_processor.agent_manager.execute.return_value = Mock(
+            text='{"best_url":"https://boards.greenhouse.io/acme"}'
+        )
+        results = [
+            SearchResult(url="https://example.com/careers", title="Careers", snippet="foo"),
+            SearchResult(url="https://boards.greenhouse.io/acme", title="Jobs", snippet="bar"),
+        ]
+
+        url = company_processor._agent_select_career_url(
+            "Acme", results, heuristic_choice="https://example.com/careers"
+        )
+
+        assert url == "https://boards.greenhouse.io/acme"
+        company_processor.agent_manager.execute.assert_called_once()
+
+    def test_agent_unavailable_returns_none(self, company_processor):
+        """NoAgentsAvailableError is handled gracefully."""
+        company_processor.agent_manager = Mock()
+        company_processor.agent_manager.execute.side_effect = NoAgentsAvailableError(
+            "unavailable", task_type="extraction", tried_agents=[]
+        )
+        results = [SearchResult(url="https://example.com/jobs", title="Jobs", snippet="")]
+
+        url = company_processor._agent_select_career_url(
+            "Acme", results, heuristic_choice="https://example.com/jobs"
+        )
+
+        assert url == "https://example.com/jobs"
+
+    def test_json_decode_error_warns_and_returns_none(self, company_processor, caplog):
+        """Malformed agent response is warned and returns None."""
+        caplog.set_level("WARNING")
+        company_processor.agent_manager = Mock()
+        company_processor.agent_manager.execute.return_value = Mock(text="not json")
+        results = [SearchResult(url="https://example.com/jobs", title="Jobs", snippet="")]
+
+        url = company_processor._agent_select_career_url(
+            "Acme", results, heuristic_choice="https://example.com/jobs"
+        )
+
+        assert url == "https://example.com/jobs"
+        assert any("Failed to decode agent JSON response" in rec.message for rec in caplog.records)
+
+    def test_returns_none_when_no_agent(self, company_processor):
+        """If agent manager missing, returns None."""
+        company_processor.agent_manager = None
+        results = [SearchResult(url="https://example.com/jobs", title="Jobs", snippet="")]
+
+        url = company_processor._agent_select_career_url("Acme", results, heuristic_choice=None)
 
         assert url is None

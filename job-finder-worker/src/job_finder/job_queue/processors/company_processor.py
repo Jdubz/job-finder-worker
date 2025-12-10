@@ -10,6 +10,8 @@ URL is a hint, not a requirement. AI extracts from search results.
 import json
 import logging
 
+from job_finder.ai.agent_manager import AgentManager, NoAgentsAvailableError
+from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import InitializationError
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
@@ -47,6 +49,8 @@ class CompanyProcessor(BaseProcessor):
         self.companies_manager = ctx.companies_manager
         self.sources_manager = ctx.sources_manager
         self.company_info_fetcher = ctx.company_info_fetcher
+        # AgentManager is used for intelligent source discovery (career page selection).
+        self.agent_manager = AgentManager(ctx.config_loader)
 
     def _refresh_runtime_config(self) -> None:
         """
@@ -445,8 +449,27 @@ class CompanyProcessor(BaseProcessor):
                 logger.debug("No search results for %s careers", company_name)
                 return None
 
-            # Find the best career page URL from results
+            # Step 1: strict heuristic using ATS domains from DB
             career_url = self._find_best_career_url(results, company_name)
+
+            # Step 2: ask an agent to pick the best source; agent overrides heuristic
+            agent_choice = self._agent_select_career_url(company_name, results, career_url)
+            if agent_choice:
+                if agent_choice != career_url:
+                    logger.info(
+                        "Agent selected different URL for %s: %s (heuristic: %s)",
+                        company_name,
+                        agent_choice,
+                        career_url,
+                    )
+                else:
+                    logger.info(
+                        "Agent confirmed heuristic career URL for %s: %s",
+                        company_name,
+                        career_url,
+                    )
+                career_url = agent_choice
+
             if career_url:
                 logger.info(
                     "Found career page for %s via search: %s",
@@ -467,8 +490,7 @@ class CompanyProcessor(BaseProcessor):
 
         Prioritizes:
         1. ATS platforms (greenhouse, lever, workday, etc.)
-        2. URLs containing /careers or /jobs
-        3. Subdomains like careers.company.com
+        2. Company-owned career pages (careers/jobs paths or subdomains)
 
         Args:
             results: Search results to analyze
@@ -477,9 +499,15 @@ class CompanyProcessor(BaseProcessor):
         Returns:
             Best matching career URL or None
         """
-        company_lower = company_name.lower().replace(" ", "")
+        # Normalize company tokens (drop suffixes like inc, corp, llc)
+        name_parts = company_name.lower().replace(".", " ").split()
+        suffixes = {"inc", "inc.", "corp", "corp.", "co", "co.", "llc", "ltd", "ltd.", "company"}
+        tokens = [p for p in name_parts if p not in suffixes]
+        company_tokens = {t for t in tokens if len(t) >= 3}
+        if not company_tokens and name_parts:
+            company_tokens = {name_parts[0]}
 
-        # Score each URL
+        # Score each URL with strict safeguards against false positives
         scored_urls = []
         for result in results:
             url = result.url
@@ -493,40 +521,38 @@ class CompanyProcessor(BaseProcessor):
 
                 score = 0
 
-                # High score for ATS platforms (from database)
+                # Only accept known ATS domains (DB-driven) OR company-owned career pages
                 ats_domains = self.sources_manager.get_aggregator_domains()
-                for ats in ats_domains:
-                    if ats in netloc:
-                        score += 100
-                        break
+                ats_match = next(
+                    (ats for ats in ats_domains if netloc == ats or netloc.endswith("." + ats)),
+                    None,
+                )
+                host_path = (netloc + path).replace("-", "").replace(".", "")
+                token_match = any(t in host_path for t in company_tokens)
 
-                # Good score for career-related paths
+                if ats_match:
+                    score += 100
+                else:
+                    # Allow company-owned pages if token matches and career-related path/subdomain
+                    if not token_match:
+                        continue
+                    if not path or path.lower() in ("/", "/index", "/index.html", "/home"):
+                        continue
+                    if (
+                        "/careers" not in path
+                        and "/jobs" not in path
+                        and not (netloc.startswith("careers.") or netloc.startswith("jobs."))
+                    ):
+                        continue
+                    score += 40  # lower than ATS but acceptable
+
+                # Helpful path/subdomain signals
                 if "/careers" in path or "/jobs" in path:
                     score += 50
-
-                # Good score for career subdomain
                 if netloc.startswith("careers.") or netloc.startswith("jobs."):
                     score += 50
 
-                # Bonus if company name appears in domain
-                if company_lower in netloc.replace("-", "").replace(".", ""):
-                    score += 25
-
-                # Penalize aggregators (we want company-specific pages)
-                aggregator_domains = [
-                    "indeed.com",
-                    "linkedin.com",
-                    "glassdoor.com",
-                    "ziprecruiter.com",
-                    "monster.com",
-                ]
-                for agg in aggregator_domains:
-                    if agg in netloc:
-                        score = 0  # Skip aggregators entirely
-                        break
-
-                if score > 0:
-                    scored_urls.append((score, url))
+                scored_urls.append((score, url))
 
             except Exception:
                 continue
@@ -537,6 +563,84 @@ class CompanyProcessor(BaseProcessor):
         # Return highest-scoring URL
         scored_urls.sort(key=lambda x: x[0], reverse=True)
         return scored_urls[0][1]
+
+    def _agent_select_career_url(
+        self,
+        company_name: str,
+        results: List[SearchResult],
+        heuristic_choice: Optional[str],
+    ) -> Optional[str]:
+        """
+        Use an AI agent (extraction task) to choose the best career/source URL
+        from search results. Returns None (or the provided heuristic_choice when
+        available) if the agent is unavailable or returns invalid data.
+        """
+        if not results or not self.agent_manager:
+            return None
+
+        try:
+            trimmed: List[Dict[str, str]] = []
+            max_serialized_len = 5000  # keep prompt comfortably within context
+
+            for idx, r in enumerate(results):
+                snippet = (r.snippet or "")[:200]
+                title = (r.title or "")[:120]
+                candidate = {
+                    "rank": idx + 1,
+                    "title": title,
+                    "url": r.url or "",
+                    "snippet": snippet,
+                }
+
+                prospective = trimmed + [candidate]
+                if len(json.dumps(prospective)) > max_serialized_len:
+                    break
+                trimmed.append(candidate)
+
+                if len(trimmed) >= 8:  # hard cap
+                    break
+
+            ats_domains = self.sources_manager.get_aggregator_domains()
+            prompt = (
+                "You are selecting the single best career page or ATS board URL for a company.\n"
+                f"Company: {company_name}\n"
+                "Prefer company-specific ATS/job board pages that list this company's jobs "
+                "(e.g., Greenhouse, Lever, Workday, Ashby). Avoid generic aggregators "
+                "(Indeed, LinkedIn, Glassdoor) that mix many companies.\n"
+                f"Known ATS/job-board host domains to prioritize: {', '.join(ats_domains)}.\n"
+                'Return JSON only in the shape {"best_url": "<url or null>", "reason": "short reason"}.\n'
+                f"Search results: {json.dumps(trimmed)}\n"
+                f"Heuristic choice (may be blank): {heuristic_choice or ''}\n"
+                "If none are suitable, set best_url to null."
+            )
+
+            agent_result = self.agent_manager.execute(
+                task_type="extraction",
+                prompt=prompt,
+                max_tokens=600,
+                temperature=0.0,
+            )
+
+            json_str = extract_json_from_response(agent_result.text)
+            data = json.loads(json_str)
+            best_url = data.get("best_url")
+            if isinstance(best_url, str) and best_url.strip():
+                return best_url.strip()
+            return heuristic_choice
+        except NoAgentsAvailableError as exc:
+            logger.info("Agent unavailable for career page selection: %s", exc)
+            return heuristic_choice
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "Failed to decode agent JSON response for %s. Error: %s. Response: %s",
+                company_name,
+                exc,
+                agent_result.text[:200],
+            )
+            return heuristic_choice
+        except Exception:  # noqa: BLE001
+            logger.exception("Unexpected agent selection failure for %s", company_name)
+            return heuristic_choice
 
     @contextmanager
     def _handle_company_failure(self, item: JobQueueItem):
