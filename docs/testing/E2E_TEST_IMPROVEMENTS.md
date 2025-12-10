@@ -1,8 +1,8 @@
 # E2E Test Suite Improvements
 
-> Status: Draft
+> Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-12-09
+> Last Updated: 2025-12-10
 
 ## Executive Summary
 
@@ -11,29 +11,17 @@ This document outlines improvements to the E2E test suite and CI integration to 
 ## Current State
 
 ### Test Suites
-
-1. **Playwright E2E Tests** (`job-finder-FE/e2e/`)
-   - 10 spec files covering UI workflows
-   - Uses real browser automation (Chromium)
-   - Tests authentication, navigation, CRUD operations
-   - Runs against live API server + Vite dev server
-
-2. **Vitest Integration Tests** (`tests/e2e/`)
-   - 1 comprehensive integration test file
-   - Tests full job pipeline with mock worker
-   - Tests all frontend API clients against real backend
-   - Uses in-memory SQLite database
+1. **Playwright E2E Tests** (`job-finder-FE/e2e/`) – ~10 specs, Chromium, auth/nav/CRUD flows.
+2. **Vitest Integration Tests** (`tests/e2e/`) – pipeline + API client coverage using in-memory SQLite.
 
 ### Infrastructure
+- In-memory SQLite for isolation; mock auth via `TEST_AUTH_BYPASS_TOKEN`.
+- Dedicated e2e API server script (`scripts/dev/start-api-e2e.mjs`); Playwright web server config present.
 
-- In-memory SQLite for test isolation
-- Mock authentication bypass (`TEST_AUTH_BYPASS_TOKEN`)
-- Dedicated e2e API server script (`scripts/dev/start-api-e2e.mjs`)
-- Playwright web server configuration
-
-### CI Status
-
-❌ **E2E tests currently disabled in CI** (commented out in `.github/workflows/pr-checks.yml`)
+### CI Status (as of 2025-12-10)
+- Playwright job exists in `.github/workflows/pr-checks.yml` but is **optional** (`continue-on-error: true`).
+- Vitest e2e job runs and is blocking.
+- Artifacts (report + results) are uploaded on Playwright runs.
 
 ## Identified Gaps
 
@@ -46,65 +34,18 @@ This document outlines improvements to the E2E test suite and CI integration to 
 
 ## Proposed Improvements
 
-### Phase 1: CI Integration (High Priority)
+### Next Improvements
 
-**Goal**: Run all e2e tests on every PR targeting main
+1) **Make Playwright blocking**: remove `continue-on-error`, add minimal retry (1-2) and keep artifacts.
+2) **Coverage/metrics**: enable coverage for Vitest e2e; track Playwright duration/flakiness.
+3) **Critical-path tagging**: mark @critical specs to prioritize failures.
+4) **Local DX**: add unified `test:e2e:all` script if still missing, and document debug mode.
 
-#### Changes:
-
-1. **Enable Playwright Tests in CI**
-   - Uncomment and enhance e2e job in `pr-checks.yml`
-   - Install Playwright browsers in CI
-   - Run Playwright tests with retry logic
-   - Upload test artifacts (screenshots, videos, HTML report)
-
-2. **Enable Vitest Integration Tests in CI**
-   - Add separate job for Vitest e2e tests
-   - Run with proper database setup
-   - Collect and upload test results
-
-3. **Parallel Execution**
-   - Run Playwright and Vitest e2e in parallel
-   - Use GitHub Actions matrix strategy for browser variants (future)
-
-#### Acceptance Criteria:
-- ✅ All e2e tests run on every PR
-- ✅ Test failures block PR merge
-- ✅ Screenshots/videos available on failure
-- ✅ HTML report published as artifact
-- ✅ Clear pass/fail status in PR checks
-
-### Phase 2: Test Quality (Medium Priority)
-
-**Goal**: Improve test reliability and coverage
-
-#### Changes:
-
-1. **Add Critical Path Tags**
-   - Tag critical user journeys with `@critical`
-   - Run critical tests first, fail fast
-   - Separate critical vs full test runs
-
-2. **Flakiness Detection**
-   - Enable automatic retries on failure (1-2 retries)
-   - Track flaky tests in CI
-   - Add timeout configurations
-
-3. **Test Coverage**
-   - Add coverage collection for Vitest tests
-   - Generate coverage report artifacts
-   - Track coverage trends over time
-
-4. **Performance Benchmarks**
-   - Measure test execution time
-   - Alert on slow tests (>60s)
-   - Track test performance over time
-
-#### Acceptance Criteria:
-- ✅ Critical tests identified and prioritized
-- ✅ Flaky tests automatically retried
-- ✅ Coverage reports generated
-- ✅ Performance metrics tracked
+### Acceptance Targets
+- Playwright failures block PRs; artifacts retained.
+- Vitest e2e remains blocking with coverage report artifact.
+- Critical paths tagged and reported separately.
+- Runtime metrics (duration, retries) captured.
 
 ### Phase 3: Developer Experience (Low Priority)
 
