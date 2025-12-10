@@ -31,6 +31,7 @@ Add Wikipedia as a high-priority data source for established companies.
 """Wikipedia API client for company information."""
 
 import logging
+import os
 import re
 import requests
 from typing import Dict, Optional
@@ -238,6 +239,23 @@ class WikipediaClient:
         except ValueError:
             pass
         return None
+
+
+def get_wikipedia_client() -> Optional["WikipediaClient"]:
+    """
+    Factory function to get WikipediaClient based on configuration.
+
+    Returns WikipediaClient if ENABLE_WIKIPEDIA_ENRICHMENT is set to "true",
+    otherwise returns None. This follows the same pattern as get_search_client().
+
+    Returns:
+        WikipediaClient instance or None if not enabled
+    """
+    if os.getenv("ENABLE_WIKIPEDIA_ENRICHMENT", "").lower() == "true":
+        return WikipediaClient()
+
+    logger.debug("Wikipedia enrichment not enabled (set ENABLE_WIKIPEDIA_ENRICHMENT=true)")
+    return None
 ```
 
 ### 2. Integration in CompanyInfoFetcher
@@ -247,26 +265,33 @@ class WikipediaClient:
 Add Wikipedia as STEP 0 before search queries:
 
 ```python
-from job_finder.ai.wikipedia_client import WikipediaClient
+from job_finder.ai.wikipedia_client import get_wikipedia_client
 
 class CompanyInfoFetcher:
     def __init__(self, ...):
         ...
-        self.wikipedia_client = WikipediaClient()
+        self.wikipedia_client = get_wikipedia_client()  # May be None if not enabled
 
     def fetch_company_info(self, company_name: str, ...) -> Dict[str, Any]:
         ...
+        # Existing: Workday name resolution (lines 116-129)
+        # This sets search_name which may differ from company_name
+
         try:
             # STEP 0: Try Wikipedia first (fast, high-quality for established companies)
-            wiki_info = self._try_wikipedia(company_name)
-            if wiki_info:
-                result = self._merge_company_info(result, wiki_info)
-                logger.info(f"Wikipedia found data for {company_display}")
-                # If Wikipedia gave us good data, we might skip further searches
-                if len(result.get("about", "")) >= 100:
-                    return result
+            # IMPORTANT: Use search_name (post-Workday resolution), not company_name
+            if self.wikipedia_client:
+                wiki_info = self._try_wikipedia(search_name)
+                if wiki_info:
+                    result = self._merge_company_info(result, wiki_info)
+                    logger.info(f"Wikipedia found data for {company_display}")
 
             # STEP 1: Search for company info (existing code)
+            # Always run search to fill gaps (culture, mission, techStack, etc.)
+            # Wikipedia doesn't provide these fields
+            search_info = self._search_and_extract(search_name, source_context)
+            if search_info:
+                result = self._merge_company_info(result, search_info)
             ...
 
     def _try_wikipedia(self, company_name: str) -> Optional[Dict]:
@@ -278,11 +303,70 @@ class CompanyInfoFetcher:
             return None
 ```
 
+### 3. Pre-Implementation Cleanup
+
+Before implementing Wikipedia integration, remove dead code in `company_info_fetcher.py`:
+
+**Remove `_needs_ai_enrichment()` method (line 761-763):**
+```python
+# DELETE THIS - it's never called and duplicates _needs_enrichment()
+def _needs_ai_enrichment(self, info: Dict[str, Any]) -> bool:
+    """Check if info is sparse enough to warrant AI enrichment."""
+    return self._needs_enrichment(info)
+```
+
+## Architecture Notes
+
+### Why No Early Exit
+
+The original proposal suggested returning early if Wikipedia provides 100+ chars of `about` text. However, this would skip valuable data that only comes from web search:
+
+| Field | Wikipedia | Web Search |
+|-------|-----------|------------|
+| about | Yes | Yes |
+| website | Yes | Yes |
+| headquarters | Yes | Yes |
+| industry | Yes | Yes |
+| founded | Yes | Yes |
+| employeeCount | Yes | Yes |
+| culture | No | Yes |
+| mission | No | Yes |
+| techStack | No | Yes |
+| products | No | Yes |
+| isRemoteFirst | No | Yes |
+| aiMlFocus | No | Yes |
+
+**Recommendation:** Always run STEP 1 (search) after Wikipedia to fill these gaps. The merge logic already handles this correctly by preferring non-empty values.
+
+### Factory Pattern
+
+Following the existing `get_search_client()` pattern:
+- `get_wikipedia_client()` returns `Optional[WikipediaClient]`
+- Controlled by `ENABLE_WIKIPEDIA_ENRICHMENT` env var
+- Gracefully degrades when not configured
+
+### Name Resolution Order
+
+```
+company_name (from job listing)
+    ↓
+Workday URL resolution → search_name (may be corrected)
+    ↓
+Wikipedia lookup (uses search_name)
+    ↓
+Web search (uses search_name)
+```
+
+This ensures "mdlz" from Workday URLs becomes "Mondelez International" before any external API calls.
+
 ## Implementation Tasks
 
+- [ ] Remove dead `_needs_ai_enrichment()` method from CompanyInfoFetcher
 - [ ] Create `job-finder-worker/src/job_finder/ai/wikipedia_client.py`
+- [ ] Add `get_wikipedia_client()` factory function
 - [ ] Add `_try_wikipedia()` method to CompanyInfoFetcher
-- [ ] Integrate Wikipedia as STEP 0 in `fetch_company_info()`
+- [ ] Integrate Wikipedia as STEP 0 in `fetch_company_info()` (use `search_name`)
+- [ ] Add `ENABLE_WIKIPEDIA_ENRICHMENT` to environment variable docs
 - [ ] Add unit tests for WikipediaClient
 - [ ] Add integration tests for Wikipedia pipeline
 - [ ] Update `__init__.py` exports
