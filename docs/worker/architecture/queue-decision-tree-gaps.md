@@ -18,7 +18,7 @@ This document tracks implementation gaps between the decision tree architecture 
 
 | Component | Location | Status |
 |-----------|----------|--------|
-| Job Listing Pipeline (single-task: SCRAPE → COMPANY_LOOKUP → AI_EXTRACT → SCORING → AI_ANALYSIS → SAVE_MATCH with optional WAIT_COMPANY requeue) | `job_processor.py` | Complete (2025-12-10) |
+| Job Listing Pipeline (single-task: SCRAPE → COMPANY_LOOKUP → AI_EXTRACTION → SCORING → AI_ANALYSIS → SAVE_MATCH with optional WAIT_COMPANY requeue) | `job_processor.py` | Complete (2025-12-10) |
 | Company Pipeline (single-pass search → extract → save) | `company_processor.py` | Complete |
 | Company enrichment spawn + wait (stub creation, WAIT_COMPANY requeue) | `job_processor.py` | Complete (2025-12-10) |
 | Source Discovery + SCRAPE_SOURCE | `source_processor.py` | Complete |
@@ -28,7 +28,7 @@ This document tracks implementation gaps between the decision tree architecture 
 | Discovery Confidence Levels | `job_sources_manager.py` | Complete |
 
 ### Closed Gaps
-- **Job listing → company enrichment spawning**: Implemented via `_check_company_dependency` and `_spawn_company_enrichment` with `WAIT_COMPANY` requeue (see `job_processor.py` lines ~360-760). No further action required; keep regression tests.
+- **Job listing → company enrichment spawning**: Implemented via `_check_company_dependency` and `_spawn_company_enrichment` with `WAIT_COMPANY` requeue. No further action required; keep regression tests.
 
 ---
 

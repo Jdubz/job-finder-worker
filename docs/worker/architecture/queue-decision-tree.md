@@ -171,7 +171,7 @@ Executed inside one queue item. No `company_sub_task`, no per-stage respawns.
 **Process (matches `CompanyProcessor.process_company`)**
 1) Resolve company name/ID and mark PROCESSING.
 2) Fetch structured info via `CompanyInfoFetcher` (Wikipedia/Wikidata → web search → optional scrape); URL in the queue item is a hint only.
-3) Save/upssert company record and normalize keys (e.g., `headquarters` → `headquartersLocation`).
+3) Save/upsert company record and normalize keys (e.g., `headquarters` → `headquartersLocation`).
 4) Self-heal source links for the company when possible.
 5) Detect job board URL from extracted website or provided URL; if found and not tracked, spawn `SOURCE_DISCOVERY` (single allowed spawn).
 
