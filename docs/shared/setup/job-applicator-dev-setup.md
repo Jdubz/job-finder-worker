@@ -29,10 +29,18 @@ pnpm start
 4. Click "Fill Form"
 5. Review and submit manually
 
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JOB_FINDER_API_URL` | `http://localhost:3000/api` | Backend API URL |
+| `CDP_PORT` | `9222` | Chrome DevTools Protocol port |
+
 ## Troubleshooting
 
 **CDP connection fails:**
-- Ensure port 9222 is free: `lsof -i :9222`
+- Ensure port is free: `lsof -i :9222`
+- Or use different port: `CDP_PORT=9223 pnpm start`
 
 **CLI tool not found:**
 - Verify tool is installed: `which claude` / `which codex` / `which gemini`

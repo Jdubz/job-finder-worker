@@ -72,7 +72,10 @@ import { app, BrowserWindow, BrowserView, ipcMain } from 'electron'
 import { chromium } from 'playwright-core'
 import { spawn } from 'child_process'
 
-app.commandLine.appendSwitch('remote-debugging-port', '9222')
+const CDP_PORT = process.env.CDP_PORT || '9222'
+const API_URL = process.env.JOB_FINDER_API_URL || 'http://localhost:3000/api'
+
+app.commandLine.appendSwitch('remote-debugging-port', CDP_PORT)
 
 let browser, page
 
@@ -81,12 +84,12 @@ app.whenReady().then(async () => {
   const view = new BrowserView()
   win.setBrowserView(view)
 
-  browser = await chromium.connectOverCDP('http://localhost:9222')
+  browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`)
 })
 
 ipcMain.handle('fill-form', async () => {
   // 1. Get profile from job-finder backend
-  const profile = await fetch('http://localhost:3000/api/config/personal-info')
+  const profile = await fetch(`${API_URL}/config/personal-info`)
 
   // 2. Extract form fields
   const fields = await page.evaluate(EXTRACT_FORM_SCRIPT)
@@ -108,6 +111,8 @@ ipcMain.handle('fill-form', async () => {
 
 type CliProvider = 'claude' | 'codex' | 'gemini'
 
+// Reuse cli-runner pattern from job-finder-BE/server/src/modules/generator/workflow/services/cli-runner.ts
+// Handles: timeouts, error classification, JSON parsing, stderr capture
 function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[]> {
   const commands = {
     claude: ['claude', ['--print', '--output-format', 'json', prompt]],
@@ -118,11 +123,18 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
 
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args)
-    let output = ''
-    child.stdout.on('data', d => output += d)
+    let stdout = '', stderr = ''
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM')
+      reject(new Error(`${provider} CLI timed out`))
+    }, 60000)
+
+    child.stdout.on('data', d => stdout += d)
+    child.stderr.on('data', d => stderr += d)
     child.on('close', code => {
-      if (code === 0) resolve(JSON.parse(output))
-      else reject(new Error(`${provider} CLI failed`))
+      clearTimeout(timeout)
+      if (code === 0) resolve(JSON.parse(stdout))
+      else reject(new Error(`${provider} CLI failed: ${stderr || stdout}`))
     })
   })
 }
@@ -130,17 +142,33 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
 
 ### Form Extraction Script
 
-Injected into page to get form structure:
+Injected into page to get form structure. Extracts multiple identification attributes for robust field detection:
 
 ```javascript
 const EXTRACT_FORM_SCRIPT = `
 (() => {
   const inputs = document.querySelectorAll('input, select, textarea')
-  return Array.from(inputs).map(el => ({
-    selector: el.id ? '#' + el.id : el.name ? '[name="' + el.name + '"]' : null,
-    type: el.type,
-    label: document.querySelector('label[for="' + el.id + '"]')?.textContent
-  })).filter(f => f.selector)
+  return Array.from(inputs).map(el => {
+    // Build selector: prefer id, then name, then data-testid
+    const selector = el.id ? '#' + el.id
+      : el.name ? '[name="' + el.name + '"]'
+      : el.dataset.testid ? '[data-testid="' + el.dataset.testid + '"]'
+      : null
+
+    // Find label: check for, aria-label, aria-labelledby, placeholder
+    const forLabel = el.id && document.querySelector('label[for="' + el.id + '"]')
+    const ariaLabel = el.getAttribute('aria-label')
+    const ariaLabelledBy = el.getAttribute('aria-labelledby')
+    const labelledByEl = ariaLabelledBy && document.getElementById(ariaLabelledBy)
+
+    return {
+      selector,
+      type: el.type,
+      label: forLabel?.textContent || ariaLabel || labelledByEl?.textContent || null,
+      placeholder: el.placeholder || null,
+      required: el.required
+    }
+  }).filter(f => f.selector)
 })()
 `
 ```
