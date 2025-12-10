@@ -1,6 +1,6 @@
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-25
+> Last Updated: 2025-12-10
 
 # Queue Decision Tree - Implementation Gaps
 
@@ -18,58 +18,21 @@ This document tracks implementation gaps between the decision tree architecture 
 
 | Component | Location | Status |
 |-----------|----------|--------|
-| Job Listing Pipeline (SCRAPE → FILTER → ANALYZE → SAVE) | `job_processor.py` | Complete |
-| Company Pipeline (FETCH → EXTRACT → ANALYZE → SAVE) | `company_processor.py` | Complete |
-| Source Discovery | `source_processor.py` | Complete |
-| SCRAPE_SOURCE Task Type | `source_processor.py` | Complete (2025-11-25) |
+| Job Listing Pipeline (single-task: SCRAPE → COMPANY_LOOKUP → AI_EXTRACT → SCORING → AI_ANALYSIS → SAVE_MATCH with optional WAIT_COMPANY requeue) | `job_processor.py` | Complete (2025-12-10) |
+| Company Pipeline (single-pass search → extract → save) | `company_processor.py` | Complete |
+| Company enrichment spawn + wait (stub creation, WAIT_COMPANY requeue) | `job_processor.py` | Complete (2025-12-10) |
+| Source Discovery + SCRAPE_SOURCE | `source_processor.py` | Complete |
 | Loop Prevention (tracking_id, ancestry_chain, spawn_depth) | `manager.py` | Complete |
 | Source Health Tracking | `job_sources_manager.py` | Complete |
 | Strike-Based Filtering | `filters/strike_filter_engine.py` | Complete |
 | Discovery Confidence Levels | `job_sources_manager.py` | Complete |
 
+### Closed Gaps
+- **Job listing → company enrichment spawning**: Implemented via `_check_company_dependency` and `_spawn_company_enrichment` with `WAIT_COMPANY` requeue (see `job_processor.py` lines ~360-760). No further action required; keep regression tests.
+
 ---
 
 ## Implementation Gaps
-
-### Gap 1: Job Listing → Company Task Spawning (HIGH PRIORITY)
-
-**Status**: Required for architectural consistency
-
-**Current Behavior** (`job_processor.py:291`):
-```python
-company = self.companies_manager.get_or_create_company(
-    company_name=company_name,
-    company_website=company_website,
-    fetch_info_func=self.company_info_fetcher.fetch_company_info,
-)
-```
-Creates company record **inline** with basic scraping. No queue task spawned.
-
-**Problems**:
-- Breaks consistent queue-based architecture paradigm
-- Company gets minimal info (about/culture scraped inline)
-- No tech stack detection
-- No priority scoring
-- No job board discovery
-- Blocks job listing analysis until company fetch completes
-- No retry/error handling via queue mechanisms
-
-**Required Behavior**:
-When processing a job listing with unknown company:
-1. Create company stub with `status: "pending"`
-2. Spawn COMPANY_FETCH task for full pipeline analysis
-3. Job listing task should either:
-   - Wait for company task completion (dependency tracking), OR
-   - Proceed with stub data and allow company enrichment later
-
-**Implementation Options**:
-- **Option A**: Job listing waits - Add `depends_on_task_id` field, processor skips until dependency completes
-- **Option B**: Async enrichment - Job listing proceeds with stub, company data enriches later
-- **Recommended**: Option A for data consistency
-
-**Impact**: High priority - Architectural consistency
-
----
 
 ### Gap 2: Full State Machine Enforcement (HIGH PRIORITY)
 
@@ -281,23 +244,21 @@ class QueueItemType(str, Enum):
    - Test invalid transition rejection
    - Test analysis_progress tracking
 
-3. `tests/queue/test_company_spawning.py` (needed for Gap 1)
-   - Test job listing → company task spawning logic
-   - Test stub company creation with `pending` status
-   - Test dependency tracking (job listing waits for company)
+3. `tests/queue/test_company_wait_flow.py` (regression)
+   - Verify WAIT_COMPANY requeue path: spawn enrichment, increment wait counter, proceed after max waits
+   - Ensure `pipeline_state.job_listing_id` persists across requeues
 
 ### E2E Test Scenarios
 
-1. **Full Company Discovery Flow** (Gap 1 implementation)
+1. **Job Listing WAIT_COMPANY Flow** (regression)
    ```
    Submit Job Listing (unknown company)
-     → JOB_LISTING SCRAPE
-     → JOB_LISTING FILTER
-     → JOB_LISTING ANALYZE (spawns COMPANY_FETCH task)
-     → JOB_LISTING waits (depends_on_task_id set)
-     → COMPANY FETCH/EXTRACT/ANALYZE/SAVE
-     → JOB_LISTING ANALYZE (retries with company data)
-     → JOB_LISTING SAVE
+     → SCRAPE (loads data)
+     → COMPANY_LOOKUP (creates stub)
+     → WAIT_COMPANY requeue (spawns COMPANY task if sparse)
+     → Company task saves enriched data
+     → Requeued JOB resumes at AI_EXTRACTION/SCORING/ANALYSIS
+     → SAVE_MATCH
    ```
 
 2. **Source Discovery to Scraping Flow** ✓ (working)
@@ -349,11 +310,10 @@ class QueueItemType(str, Enum):
 - Add E2E tests for circular cases
 - Alert on spawn_depth > 5
 
-### Risk 4: Task Dependency Deadlocks (NEW - Gap 1 related)
-**Risk**: Job listing tasks waiting for company tasks might deadlock or timeout
+### Risk 4: Company Wait Churn
+**Risk**: Requeue-on-wait could increase queue depth or starve other items.
 
 **Mitigation**:
-- Max wait time: 5 minutes before FAILED
-- Exponential backoff for dependency checks
-- Alert on tasks stuck in PENDING with unresolved dependencies
-- Fallback: proceed with stub data after timeout
+- Cap waits via `MAX_COMPANY_WAIT_RETRIES` (currently enforced)
+- Emit `job:waiting_company` events and alert on repeated waits per company
+- Consider prioritizing resumed jobs to reduce total latency
