@@ -444,6 +444,7 @@ export function CompaniesPage() {
                   <TableHead>Name</TableHead>
                   <TableHead className="hidden md:table-cell">Industry</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -474,6 +475,20 @@ export function CompaniesPage() {
                     </TableCell>
                     <TableCell>
                       <CompanyStatusBadge company={company} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {getDataStatus(company).label !== "Complete" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleReanalyze(company)
+                          }}
+                        >
+                          Re-analyze
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

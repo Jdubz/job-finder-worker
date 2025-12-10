@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { CompaniesPage } from "../CompaniesPage"
 import { useAuth } from "@/contexts/AuthContext"
@@ -455,6 +455,28 @@ describe("CompaniesPage", () => {
   })
 
   describe("Re-analyze Feature", () => {
+    it("shows list-level Re-analyze button for non-complete companies", async () => {
+      renderWithProviders()
+
+      await waitFor(() => {
+        expect(screen.getByText("TechCorp")).toBeInTheDocument()
+      })
+
+      const techCorpRow = screen.getByText("TechCorp").closest("tr")!
+      expect(within(techCorpRow).getByRole("button", { name: /re-analyze/i })).toBeInTheDocument()
+    })
+
+    it("hides list-level Re-analyze button for complete companies", async () => {
+      renderWithProviders()
+
+      await waitFor(() => {
+        expect(screen.getByText("Acme Corporation")).toBeInTheDocument()
+      })
+
+      const acmeRow = screen.getByText("Acme Corporation").closest("tr")!
+      expect(within(acmeRow).queryByRole("button", { name: /re-analyze/i })).not.toBeInTheDocument()
+    })
+
     it("should show Re-analyze button in detail modal", async () => {
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderWithProviders()
