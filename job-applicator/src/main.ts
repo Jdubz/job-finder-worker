@@ -16,7 +16,6 @@ app.commandLine.appendSwitch("remote-debugging-port", CDP_PORT)
 let mainWindow: BrowserWindow | null = null
 let browserView: BrowserView | null = null
 let playwrightBrowser: Browser | null = null
-let playwrightPage: Page | null = null
 
 // CLI provider types
 type CliProvider = "claude" | "codex" | "gemini"
@@ -26,12 +25,18 @@ interface FillInstruction {
   value: string
 }
 
+interface SelectOption {
+  value: string
+  text: string
+}
+
 interface FormField {
   selector: string | null
   type: string
   label: string | null
   placeholder: string | null
   required: boolean
+  options: SelectOption[] | null
 }
 
 interface PersonalInfo {
@@ -42,6 +47,18 @@ interface PersonalInfo {
   website?: string
   github?: string
   linkedin?: string
+}
+
+interface ContentItem {
+  id: string
+  title?: string
+  role?: string
+  location?: string
+  startDate?: string
+  endDate?: string
+  description?: string
+  skills?: string[]
+  children?: ContentItem[]
 }
 
 // Form extraction script - injected into page
@@ -61,12 +78,18 @@ const EXTRACT_FORM_SCRIPT = `
     const ariaLabelledBy = el.getAttribute('aria-labelledby')
     const labelledByEl = ariaLabelledBy && document.getElementById(ariaLabelledBy)
 
+    // Extract options for select elements
+    const options = el.tagName.toLowerCase() === 'select'
+      ? Array.from(el.options).map(opt => ({ value: opt.value, text: opt.textContent?.trim() }))
+      : null
+
     return {
       selector,
       type: el.type || el.tagName.toLowerCase(),
       label: forLabel?.textContent?.trim() || ariaLabel || labelledByEl?.textContent?.trim() || null,
       placeholder: el.placeholder || null,
-      required: el.required || false
+      required: el.required || false,
+      options
     }
   }).filter(f => f.selector && f.type !== 'hidden' && f.type !== 'submit' && f.type !== 'button')
 })()
@@ -136,23 +159,7 @@ async function createWindow(): Promise<void> {
 // Navigate to URL
 ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<void> => {
   if (!browserView) throw new Error("BrowserView not initialized")
-
   await browserView.webContents.loadURL(url)
-
-  // Get Playwright page handle for the BrowserView
-  if (playwrightBrowser) {
-    const contexts = playwrightBrowser.contexts()
-    for (const context of contexts) {
-      const pages = context.pages()
-      for (const page of pages) {
-        if (page.url() === url || page.url().startsWith(url.split("?")[0])) {
-          playwrightPage = page
-          console.log("Found Playwright page for URL")
-          break
-        }
-      }
-    }
-  }
 })
 
 // Get current URL
@@ -168,14 +175,25 @@ ipcMain.handle(
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
-      // 1. Get profile from job-finder backend
+      // 1. Get profile and work history from job-finder backend
       console.log("Fetching profile from backend...")
-      const profileRes = await fetch(`${API_URL}/config/personal-info`)
+      const [profileRes, contentRes] = await Promise.all([
+        fetch(`${API_URL}/config/personal-info`),
+        fetch(`${API_URL}/content-items?limit=100`)
+      ])
       if (!profileRes.ok) {
         throw new Error(`Failed to fetch profile: ${profileRes.status}`)
       }
       const profileData = await profileRes.json()
       const profile: PersonalInfo = profileData.data || profileData
+
+      // Parse work history (optional - don't fail if unavailable)
+      let workHistory: ContentItem[] = []
+      if (contentRes.ok) {
+        const contentData = await contentRes.json()
+        workHistory = contentData.data?.items || []
+        console.log(`Fetched ${workHistory.length} work history items`)
+      }
 
       // 2. Extract form fields from page
       console.log("Extracting form fields...")
@@ -188,29 +206,35 @@ ipcMain.handle(
 
       // 3. Build prompt and call CLI
       console.log(`Calling ${provider} CLI for field mapping...`)
-      const prompt = buildPrompt(fields, profile)
+      const prompt = buildPrompt(fields, profile, workHistory)
       const instructions = await runCli(provider, prompt)
       console.log(`Got ${instructions.length} fill instructions`)
 
-      // 4. Fill fields using Playwright or executeJavaScript
+      // 4. Fill fields using executeJavaScript (reliable with BrowserView)
+      // Note: Playwright CDP page matching is unreliable with BrowserView,
+      // so we use executeJavaScript directly on the webContents
       console.log("Filling form fields...")
       let filledCount = 0
       for (const instruction of instructions) {
         try {
-          if (playwrightPage) {
-            await playwrightPage.fill(instruction.selector, instruction.value)
-          } else {
-            // Fallback to executeJavaScript
-            await browserView.webContents.executeJavaScript(`
-              const el = document.querySelector('${instruction.selector.replace(/'/g, "\\'")}');
-              if (el) {
-                el.value = '${instruction.value.replace(/'/g, "\\'")}';
+          const safeSelector = JSON.stringify(instruction.selector)
+          const safeValue = JSON.stringify(instruction.value)
+          const filled = await browserView.webContents.executeJavaScript(`
+            (() => {
+              const el = document.querySelector(${safeSelector});
+              if (!el) return false;
+              if (el.tagName.toLowerCase() === 'select') {
+                el.value = ${safeValue};
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              } else {
+                el.value = ${safeValue};
                 el.dispatchEvent(new Event('input', { bubbles: true }));
                 el.dispatchEvent(new Event('change', { bubbles: true }));
               }
-            `)
-          }
-          filledCount++
+              return true;
+            })()
+          `)
+          if (filled) filledCount++
         } catch (err) {
           console.warn(`Failed to fill ${instruction.selector}:`, err)
         }
@@ -254,19 +278,59 @@ ipcMain.handle("upload-resume", async (): Promise<{ success: boolean; message: s
       return { success: false, message: `Resume not found at ${resumePath}` }
     }
 
-    if (playwrightPage) {
-      await playwrightPage.setInputFiles(fileInputSelector, resumePath)
-      return { success: true, message: "Resume uploaded" }
-    } else {
+    // File uploads require Playwright - search all pages for one with the file input
+    if (!playwrightBrowser) {
       return { success: false, message: "Playwright connection required for file upload" }
     }
+
+    // Get the current URL from BrowserView to find the matching page
+    const currentUrl = browserView.webContents.getURL()
+    let targetPage: Page | null = null
+
+    for (const context of playwrightBrowser.contexts()) {
+      for (const page of context.pages()) {
+        // Match by URL (normalize both for comparison)
+        if (page.url() === currentUrl || page.url().split("?")[0] === currentUrl.split("?")[0]) {
+          targetPage = page
+          break
+        }
+      }
+      if (targetPage) break
+    }
+
+    if (!targetPage) {
+      return { success: false, message: "Could not find Playwright page handle for file upload" }
+    }
+
+    await targetPage.setInputFiles(fileInputSelector, resumePath)
+    return { success: true, message: "Resume uploaded" }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return { success: false, message }
   }
 })
 
-function buildPrompt(fields: FormField[], profile: PersonalInfo): string {
+function formatWorkHistory(items: ContentItem[], indent = 0): string {
+  const lines: string[] = []
+  for (const item of items) {
+    const prefix = "  ".repeat(indent)
+    if (item.title) {
+      lines.push(`${prefix}- ${item.title}${item.role ? ` (${item.role})` : ""}`)
+      if (item.startDate || item.endDate) {
+        lines.push(`${prefix}  Period: ${item.startDate || "?"} - ${item.endDate || "present"}`)
+      }
+      if (item.location) lines.push(`${prefix}  Location: ${item.location}`)
+      if (item.description) lines.push(`${prefix}  ${item.description}`)
+      if (item.skills?.length) lines.push(`${prefix}  Skills: ${item.skills.join(", ")}`)
+      if (item.children?.length) {
+        lines.push(formatWorkHistory(item.children, indent + 1))
+      }
+    }
+  }
+  return lines.join("\n")
+}
+
+function buildPrompt(fields: FormField[], profile: PersonalInfo, workHistory: ContentItem[]): string {
   const profileStr = `
 Name: ${profile.name}
 Email: ${profile.email}
@@ -277,12 +341,16 @@ GitHub: ${profile.github || "Not provided"}
 LinkedIn: ${profile.linkedin || "Not provided"}
 `.trim()
 
+  const workHistoryStr = workHistory.length > 0 ? formatWorkHistory(workHistory) : "Not provided"
   const fieldsJson = JSON.stringify(fields, null, 2)
 
   return `Fill this job application form. Return ONLY a JSON array of fill instructions.
 
 ## User Profile
 ${profileStr}
+
+## Work History / Experience
+${workHistoryStr}
 
 ## Form Fields
 ${fieldsJson}
@@ -296,7 +364,7 @@ Rules:
 1. Only fill fields you're confident about
 2. Skip file upload fields (type="file")
 3. Skip cover letter or free-text fields asking "why do you want this job"
-4. For select dropdowns, the value must match an option exactly
+4. For select dropdowns, use the "value" property from the options array (not the "text")
 5. Return ONLY valid JSON array, no markdown, no explanation
 
 Example output:
@@ -305,7 +373,7 @@ Example output:
 
 function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[]> {
   const commands: Record<CliProvider, [string, string[]]> = {
-    claude: ["claude", ["--print", "--output-format", "json", "-p", prompt]],
+    claude: ["claude", ["--print", "--output-format", "json", prompt]],
     codex: ["codex", ["exec", "--json", "--skip-git-repo-check", "--", prompt]],
     gemini: ["gemini", ["-o", "json", "--yolo", prompt]],
   }
