@@ -37,6 +37,11 @@ DEPLOY_KEY_PATH="${SSH_DIR}/deploy_key"
 printf '%s\n' "${DEPLOY_SSH_PRIVATE_KEY}" > "${DEPLOY_KEY_PATH}"
 chmod 600 "${DEPLOY_KEY_PATH}"
 
+# Default change flags to false if not provided (older callers)
+BACKEND_CHANGED="${BACKEND_CHANGED:-false}"
+WORKER_CHANGED="${WORKER_CHANGED:-false}"
+FORCE_ALL="${FORCE_ALL:-false}"
+
 echo "[deploy] Adding ${DEPLOY_HOST} to known_hosts…"
 ssh-keyscan -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts"
 
@@ -92,36 +97,54 @@ if [ -f "$SOURCE_GEMINI" ]; then
 else
   echo "[deploy] WARNING: $SOURCE_GEMINI not found; skipping Gemini auth refresh"
 fi
-# Pull and restart stack (reset Codex volume so it matches the fresh seed)
-docker volume rm job-finder_codex-home-shared >/dev/null 2>&1 || true
-docker compose -f docker-compose.yml pull
-docker compose -f docker-compose.yml up -d --remove-orphans
+# Decide which services to update
+SERVICES=()
+if [ "$FORCE_ALL" = "true" ] || [ "$BACKEND_CHANGED" = "true" ]; then
+  SERVICES+=("api")
+fi
+if [ "$FORCE_ALL" = "true" ] || [ "$WORKER_CHANGED" = "true" ]; then
+  SERVICES+=("worker")
+fi
+
+if [ "${#SERVICES[@]}" -eq 0 ]; then
+  echo "[deploy] No backend services flagged for restart (BACKEND_CHANGED=$BACKEND_CHANGED WORKER_CHANGED=$WORKER_CHANGED FORCE_ALL=$FORCE_ALL). Skipping pull/up."
+else
+  # Pull and restart only the changed services (reset Codex volume to match fresh seed)
+  docker volume rm job-finder_codex-home-shared >/dev/null 2>&1 || true
+  docker compose -f docker-compose.yml pull "${SERVICES[@]}"
+  docker compose -f docker-compose.yml up -d --remove-orphans "${SERVICES[@]}"
+fi
 
 # --- Run config/data migrations ---
-echo "[deploy] Waiting for API container to be healthy..."
-for i in $(seq 1 30); do
-  if docker exec job-finder-api curl -sf http://localhost:8080/healthz > /dev/null 2>&1; then
-    echo "[deploy] API container is healthy"
-    break
-  fi
-  if [ "$i" -eq 30 ]; then
-    echo "[deploy] WARNING: API health check timed out after 30s, attempting migrations anyway..."
-    break
-  fi
-  sleep 1
-done
+if [ "${#SERVICES[@]}" -gt 0 ] && printf '%s\n' "${SERVICES[@]}" | grep -q "^api$"; then
+  echo "[deploy] Waiting for API container to be healthy..."
+  for i in $(seq 1 30); do
+    if docker exec job-finder-api curl -sf http://localhost:8080/healthz > /dev/null 2>&1; then
+      echo "[deploy] API container is healthy"
+      break
+    fi
+    if [ "$i" -eq 30 ]; then
+      echo "[deploy] WARNING: API health check timed out after 30s, attempting migrations anyway..."
+      break
+    fi
+    sleep 1
+  done
 
-echo "[deploy] Running config migrations..."
-# Auto-discover and run pending config migrations from src/db/config-migrations/
-if docker exec job-finder-api node dist/scripts/run-config-migrations.js 2>&1; then
-  echo "[deploy] Config migrations completed successfully"
+  echo "[deploy] Running config migrations..."
+  # Auto-discover and run pending config migrations from src/db/config-migrations/
+  if docker exec job-finder-api node dist/scripts/run-config-migrations.js 2>&1; then
+    echo "[deploy] Config migrations completed successfully"
+  else
+    echo "[deploy] WARNING: Config migrations failed - check logs for details"
+  fi
 else
-  echo "[deploy] WARNING: Config migrations failed - check logs for details"
+  echo "[deploy] API not restarted in this deploy; skipping migrations."
 fi
 EOF
 
 echo "[deploy] Executing remote deployment…"
 scp -i "${DEPLOY_KEY_PATH}" /tmp/deploy-commands.sh "${REMOTE}:${DEPLOY_PATH}/deploy.sh"
-ssh -i "${DEPLOY_KEY_PATH}" "${REMOTE}" "DEPLOY_PATH='${DEPLOY_PATH}' bash '${DEPLOY_PATH}/deploy.sh'"
+ssh -i "${DEPLOY_KEY_PATH}" "${REMOTE}" \
+  "DEPLOY_PATH='${DEPLOY_PATH}' BACKEND_CHANGED='${BACKEND_CHANGED}' WORKER_CHANGED='${WORKER_CHANGED}' FORCE_ALL='${FORCE_ALL}' bash '${DEPLOY_PATH}/deploy.sh'"
 
 echo "[deploy] Deployment completed."

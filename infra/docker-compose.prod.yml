@@ -152,6 +152,29 @@ services:
     networks:
       - jobfinder
 
+  stack-guard:
+    image: docker:26-cli
+    container_name: job-finder-stack-guard
+    restart: unless-stopped
+    command: >
+      sh -c '
+        echo "[stack-guard] monitoring stopped containers with watchtower label";
+        while :; do
+          stopped=$(docker ps -a --filter "label=com.centurylinklabs.watchtower.enable=true" --filter "status=exited" --format "{{.Names}}");
+          if [ -n "$stopped" ]; then
+            echo "[stack-guard] restarting: $stopped";
+            echo "$stopped" | xargs -r docker start;
+          fi;
+          sleep ${STACK_GUARD_INTERVAL:-30};
+        done
+      '
+    environment:
+      STACK_GUARD_INTERVAL: 30
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - jobfinder
+
 networks:
   jobfinder:
     driver: bridge
