@@ -41,18 +41,16 @@ import type {
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
-import type {
-  ApiResponse,
-  ApiErrorResponse,
-  JobMatchWithListing,
-  ListJobMatchesResponse,
-} from "@shared/types"
+import type { JobMatchWithListing } from "@shared/types"
 import {
   normalizeUrl,
   resolveDocumentPath,
   buildPrompt,
   buildEnhancedPrompt,
   buildExtractionPrompt,
+  fetchWithRetry,
+  parseApiError,
+  getUserFriendlyErrorMessage,
 } from "./utils.js"
 
 // Configuration from environment
@@ -217,25 +215,42 @@ async function createWindow(): Promise<void> {
     updateBrowserViewBounds()
   })
 
-  // Keyboard shortcuts for DevTools
-  // Ctrl+Shift+I = Main window (sidebar) DevTools
-  // Ctrl+Shift+J = BrowserView (web page) DevTools
-  mainWindow.webContents.on("before-input-event", (event, input) => {
-    if (input.control && input.shift && input.key.toLowerCase() === "i") {
-      event.preventDefault()
-      mainWindow?.webContents.toggleDevTools()
-    }
-    if (input.control && input.shift && input.key.toLowerCase() === "j") {
-      event.preventDefault()
-      browserView?.webContents.toggleDevTools()
-    }
-  })
+  // DevTools shortcuts are handled via globalShortcut and application menu
+  // See app.whenReady() for globalShortcut registration
 }
 
 // Navigate to URL
-ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<void> => {
-  if (!browserView) throw new Error("BrowserView not initialized")
-  await browserView.webContents.loadURL(url)
+ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<{ success: boolean; message?: string }> => {
+  try {
+    if (!browserView) {
+      return { success: false, message: "Browser not initialized. Please restart the application." }
+    }
+    // Basic URL validation
+    try {
+      new URL(url)
+    } catch {
+      return { success: false, message: "Invalid URL format" }
+    }
+    await browserView.webContents.loadURL(url)
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error("Navigation failed:", { url, error: message })
+    // Map common errors to user-friendly messages
+    if (message.includes("ERR_NAME_NOT_RESOLVED")) {
+      return { success: false, message: "Could not find the website. Check the URL or your internet connection." }
+    }
+    if (message.includes("ERR_CONNECTION_REFUSED")) {
+      return { success: false, message: "Connection refused. The website may be down." }
+    }
+    if (message.includes("ERR_INTERNET_DISCONNECTED") || message.includes("ERR_NETWORK_CHANGED")) {
+      return { success: false, message: "No internet connection. Please check your network." }
+    }
+    if (message.includes("ERR_CERT")) {
+      return { success: false, message: "SSL certificate error. The website may not be secure." }
+    }
+    return { success: false, message: `Navigation failed: ${message}` }
+  }
 })
 
 // Get current URL
@@ -252,13 +267,22 @@ ipcMain.handle(
       if (!browserView) throw new Error("BrowserView not initialized")
 
       // 1. Get profile and work history from job-finder backend
+      // Use Promise.allSettled so one failure doesn't block the other
       logger.info("Fetching profile from backend...")
-      const [profileRes, contentRes] = await Promise.all([
-        fetch(`${API_URL}/config/personal-info`, fetchOptions()),
-        fetch(`${API_URL}/content-items?limit=100`, fetchOptions())
+      const [profileResult, contentResult] = await Promise.allSettled([
+        fetchWithRetry(`${API_URL}/config/personal-info`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 }),
+        fetchWithRetry(`${API_URL}/content-items?limit=100`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
       ])
+
+      // Profile is required
+      if (profileResult.status === "rejected") {
+        const errorMsg = getUserFriendlyErrorMessage(profileResult.reason, logger)
+        throw new Error(`Failed to fetch profile: ${errorMsg}`)
+      }
+      const profileRes = profileResult.value
       if (!profileRes.ok) {
-        throw new Error(`Failed to fetch profile: ${profileRes.status}`)
+        const errorMsg = await parseApiError(profileRes)
+        throw new Error(`Failed to fetch profile: ${errorMsg}`)
       }
       const profileData = await profileRes.json()
       const profile: PersonalInfo = profileData.data || profileData
@@ -270,10 +294,12 @@ ipcMain.handle(
 
       // Parse work history (optional - don't fail if unavailable)
       let workHistory: ContentItem[] = []
-      if (contentRes.ok) {
-        const contentData = await contentRes.json()
+      if (contentResult.status === "fulfilled" && contentResult.value.ok) {
+        const contentData = await contentResult.value.json()
         workHistory = contentData.data || []
         logger.info(`Fetched ${workHistory.length} work history items`)
+      } else {
+        logger.warn("Work history unavailable, continuing with profile only")
       }
 
       // 2. Extract form fields from page
@@ -560,22 +586,38 @@ ipcMain.handle(
     try {
       const limit = options?.limit || 50
       const status = options?.status || "active"
-      const res = await fetch(`${API_URL}/job-matches/?limit=${limit}&status=${status}&sortBy=updated&sortOrder=desc`, fetchOptions())
+      const url = `${API_URL}/job-matches/?limit=${limit}&status=${status}&sortBy=updated&sortOrder=desc`
 
-      const json = await res.json() as ApiResponse<ListJobMatchesResponse> | ApiErrorResponse
+      const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
 
-      if (!res.ok || !json.success) {
-        const errorJson = json as ApiErrorResponse
+      if (!res.ok) {
+        const errorMsg = await parseApiError(res)
+        return { success: false, message: errorMsg }
+      }
+
+      const json = await res.json()
+
+      // Validate response structure
+      if (!json || typeof json !== "object") {
+        return { success: false, message: "Invalid response from server" }
+      }
+
+      if (!json.success) {
         return {
           success: false,
-          message: errorJson.error?.message || `Failed to fetch job matches: ${res.status}`,
+          message: json.error?.message || "Failed to fetch job matches",
         }
       }
 
-      const successJson = json as ApiResponse<ListJobMatchesResponse> & { success: true }
-      return { success: true, data: successJson.data.matches }
+      // Safely access nested data with validation
+      const matches = json.data?.matches
+      if (!Array.isArray(matches)) {
+        return { success: false, message: "Invalid response format: missing matches array" }
+      }
+
+      return { success: true, data: matches }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
     }
   }
@@ -586,14 +628,17 @@ ipcMain.handle(
   "get-job-match",
   async (_event: IpcMainInvokeEvent, id: string): Promise<{ success: boolean; data?: unknown; message?: string }> => {
     try {
-      const res = await fetch(`${API_URL}/job-matches/${id}`, fetchOptions())
+      const res = await fetchWithRetry(`${API_URL}/job-matches/${id}`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
       if (!res.ok) {
-        return { success: false, message: `Failed to fetch job match: ${res.status}` }
+        const errorMsg = await parseApiError(res)
+        return { success: false, message: errorMsg }
       }
       const data = await res.json()
-      return { success: true, data: data.data || data }
+      // Safely access nested data
+      const match = data?.data?.match || data?.data || data?.match || data
+      return { success: true, data: match }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
     }
   }
@@ -604,18 +649,29 @@ ipcMain.handle(
   "get-documents",
   async (_event: IpcMainInvokeEvent, jobMatchId: string): Promise<{ success: boolean; data?: unknown[]; message?: string }> => {
     try {
-      const res = await fetch(`${API_URL}/generator/job-matches/${jobMatchId}/documents`, fetchOptions())
+      const url = `${API_URL}/generator/job-matches/${jobMatchId}/documents`
+      const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
+
       if (!res.ok) {
         // 404 is fine - means no documents yet
         if (res.status === 404) {
           return { success: true, data: [] }
         }
-        return { success: false, message: `Failed to fetch documents: ${res.status}` }
+        const errorMsg = await parseApiError(res)
+        return { success: false, message: errorMsg }
       }
+
       const data = await res.json()
-      return { success: true, data: data.data || data || [] }
+      // Handle both wrapped and unwrapped response formats with null safety
+      let documents: unknown[] = []
+      if (Array.isArray(data)) {
+        documents = data
+      } else if (data && typeof data === "object" && Array.isArray(data.data)) {
+        documents = data.data
+      }
+      return { success: true, data: documents }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
     }
   }
@@ -629,17 +685,21 @@ ipcMain.handle(
     options: { id: string; status: "active" | "ignored" | "applied" }
   ): Promise<{ success: boolean; message?: string }> => {
     try {
-      const res = await fetch(`${API_URL}/job-matches/${options.id}/status`, fetchOptions({
-        method: "PATCH",
-        body: JSON.stringify({ status: options.status }),
-      }))
+      const res = await fetchWithRetry(
+        `${API_URL}/job-matches/${options.id}/status`,
+        fetchOptions({
+          method: "PATCH",
+          body: JSON.stringify({ status: options.status }),
+        }),
+        { maxRetries: 2, timeoutMs: 15000 }
+      )
       if (!res.ok) {
-        const errorText = await res.text()
-        return { success: false, message: `Failed to update status: ${errorText.slice(0, 100)}` }
+        const errorMsg = await parseApiError(res)
+        return { success: false, message: errorMsg }
       }
       return { success: true }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
     }
   }
@@ -657,23 +717,40 @@ ipcMain.handle(
       const normalizedUrl = normalizeUrl(url)
 
       // Fetch recent job matches and compare URLs
-      const res = await fetch(`${API_URL}/job-matches/?limit=100&sortBy=updated&sortOrder=desc`, fetchOptions())
+      const res = await fetchWithRetry(
+        `${API_URL}/job-matches/?limit=100&sortBy=updated&sortOrder=desc`,
+        fetchOptions(),
+        { maxRetries: 2, timeoutMs: 15000 }
+      )
       if (!res.ok) {
-        return { success: false, message: `Failed to fetch job matches: ${res.status}` }
+        const errorMsg = await parseApiError(res)
+        return { success: false, message: errorMsg }
       }
       const data = await res.json()
-      const matches = data.data || data || []
+
+      // Safely access matches array with validation
+      let matches: unknown[] = []
+      if (data?.data?.matches && Array.isArray(data.data.matches)) {
+        matches = data.data.matches
+      } else if (Array.isArray(data?.data)) {
+        matches = data.data
+      } else if (Array.isArray(data)) {
+        matches = data
+      }
 
       // Find a match where the listing URL matches (normalized)
       for (const match of matches) {
-        if (match.listing?.url && normalizeUrl(match.listing.url) === normalizedUrl) {
-          return { success: true, data: match }
+        if (match && typeof match === "object" && "listing" in match) {
+          const listing = (match as { listing?: { url?: string } }).listing
+          if (listing?.url && normalizeUrl(listing.url) === normalizedUrl) {
+            return { success: true, data: match }
+          }
         }
       }
 
       return { success: true, data: null } // No match found
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
     }
   }

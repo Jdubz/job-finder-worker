@@ -66,7 +66,7 @@ interface WorkflowState {
 }
 
 interface ElectronAPI {
-  navigate: (url: string) => Promise<void>
+  navigate: (url: string) => Promise<{ success: boolean; message?: string }>
   getUrl: () => Promise<string>
   fillForm: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
   fillFormEnhanced: (options: {
@@ -163,6 +163,7 @@ const statusEl = getElement<HTMLSpanElement>("status")
 const jobList = getElement<HTMLDivElement>("jobList")
 const documentsList = getElement<HTMLDivElement>("documentsList")
 const generateBtn = getElement<HTMLButtonElement>("generateBtn")
+const generateTypeSelect = getElement<HTMLSelectElement>("generateType")
 const resultsContent = getElement<HTMLDivElement>("resultsContent")
 const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
 const markAppliedBtn = getElement<HTMLButtonElement>("markAppliedBtn")
@@ -294,12 +295,12 @@ async function selectJobMatch(id: string) {
 
   // Load the job URL in BrowserView
   setStatus("Loading job listing...", "loading")
-  try {
-    await api.navigate(match.listing.url)
+  const navResult = await api.navigate(match.listing.url)
+  if (navResult.success) {
     urlInput.value = match.listing.url
     setStatus("Job listing loaded", "success")
-  } catch (err) {
-    setStatus(`Failed to load: ${err}`, "error")
+  } else {
+    setStatus(navResult.message || "Failed to load job listing", "error")
   }
 
   // Load documents for this job match
@@ -518,39 +519,50 @@ async function generateDocument() {
     return
   }
 
-  // Prevent concurrent generations
+  // Prevent concurrent generations - atomic check and set
   if (isGenerating) {
     setStatus("Generation already in progress", "error")
     return
   }
-
   isGenerating = true
 
-  // Show generation progress UI
-  generationProgress.classList.remove("hidden")
-  generationSteps.innerHTML = '<div class="loading-placeholder">Starting generation...</div>'
-  setStatus("Generating documents...", "loading")
-  generateBtn.disabled = true
+  try {
+    // Show generation progress UI
+    generationProgress.classList.remove("hidden")
+    generationSteps.innerHTML = '<div class="loading-placeholder">Starting generation...</div>'
+    setStatus("Generating documents...", "loading")
+    generateBtn.disabled = true
 
-  // Subscribe to progress updates (clean up any existing listener first)
-  cleanupGenerationProgressListener()
-  unsubscribeGenerationProgress = api.onGenerationProgress(handleGenerationProgress)
+    // Subscribe to progress updates (clean up any existing listener first)
+    cleanupGenerationProgressListener()
+    unsubscribeGenerationProgress = api.onGenerationProgress(handleGenerationProgress)
 
-  // Start generation with sequential step execution
-  const result = await api.runGeneration({
-    jobMatchId: selectedJobMatchId,
-    type: "both",
-  })
+    // Get selected document type
+    const generateType = generateTypeSelect.value as "resume" | "coverLetter" | "both"
 
-  if (result.success && result.data) {
-    // Final update from result (will also cleanup listener)
-    handleGenerationProgress(result.data)
-  } else if (!result.success) {
-    setStatus(result.message || "Generation failed", "error")
+    // Start generation with sequential step execution
+    const result = await api.runGeneration({
+      jobMatchId: selectedJobMatchId,
+      type: generateType,
+    })
+
+    if (result.success && result.data) {
+      // Final update from result (will also cleanup listener)
+      handleGenerationProgress(result.data)
+    } else {
+      setStatus(result.message || "Generation failed", "error")
+      generationProgress.classList.add("hidden")
+      generateBtn.disabled = false
+      cleanupGenerationProgressListener()
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Generation failed"
+    setStatus(message, "error")
     generationProgress.classList.add("hidden")
     generateBtn.disabled = false
-    // Clean up listener on error path
     cleanupGenerationProgressListener()
+  } finally {
+    isGenerating = false
   }
 }
 
@@ -663,10 +675,12 @@ async function navigate() {
     fullUrl = `https://${url}`
   }
 
-  try {
-    setButtonsEnabled(false)
-    setStatus("Loading...", "loading")
-    await api.navigate(fullUrl)
+  setButtonsEnabled(false)
+  setStatus("Loading...", "loading")
+
+  const navResult = await api.navigate(fullUrl)
+
+  if (navResult.success) {
     setStatus("Page loaded", "success")
 
     // Check if this URL matches any job match
@@ -674,12 +688,11 @@ async function navigate() {
 
     // Check for file input on the new page (with delay for page to render)
     setTimeout(checkForFileInput, 500)
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
-    setStatus(`Navigation failed: ${message}`, "error")
-  } finally {
-    setButtonsEnabled(true)
+  } else {
+    setStatus(navResult.message || "Navigation failed", "error")
   }
+
+  setButtonsEnabled(true)
 }
 
 // Fill form with AI
@@ -874,6 +887,11 @@ async function init() {
   // Load job matches on startup (sidebar is always visible)
   await loadJobMatches()
 }
+
+// Cleanup on page unload to prevent memory leaks
+window.addEventListener("beforeunload", () => {
+  cleanupGenerationProgressListener()
+})
 
 // Wait for DOM to be ready before initializing
 console.log("[app.ts] document.readyState:", document.readyState)
