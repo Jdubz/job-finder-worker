@@ -198,9 +198,22 @@ export function formatWorkHistory(items: ContentItem[], indent = 0, includeSkill
 
       // Description on next line (truncate if very long to save tokens)
       if (item.description) {
-        const desc = item.description.length > 500
-          ? item.description.slice(0, 500) + "..."
-          : item.description
+        let desc: string
+        if (item.description.length > 500) {
+          // Try to truncate at the last sentence boundary before 500 chars
+          const truncated = item.description.slice(0, 500)
+          const sentenceEnd = truncated.match(/[.!?](?=\s|$)[^.!?]*$/)
+          if (sentenceEnd && sentenceEnd.index !== undefined && sentenceEnd.index > 200) {
+            // Found a sentence boundary after at least 200 chars - use it
+            desc = truncated.slice(0, sentenceEnd.index + 1) + "..."
+          } else {
+            // No good sentence boundary - truncate at word boundary
+            const lastSpace = truncated.lastIndexOf(" ")
+            desc = (lastSpace > 400 ? truncated.slice(0, lastSpace) : truncated) + "..."
+          }
+        } else {
+          desc = item.description
+        }
         lines.push(`${prefix}  ${desc}`)
       }
 
@@ -255,6 +268,7 @@ Rules:
 3. Skip cover letter or free-text fields asking "why do you want this job"
 4. For select dropdowns, use the "value" property from the options array (not the "text")
 5. CRITICAL: Experience/employment history fields MUST exactly match the work history above - this ensures consistency with the uploaded resume
+   Note: The work history above is the authoritative source. If you detect any inconsistencies, always use the work history above and do not attempt to infer or fill in missing details.
 6. Return ONLY valid JSON array, no markdown, no explanation
 
 Example output:

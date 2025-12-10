@@ -3,12 +3,8 @@ import { asyncHandler } from '../utils/async-handler'
 import { success } from '../utils/api-response'
 import { ConfigRepository } from '../modules/config/config.repository'
 import { ContentItemRepository } from '../modules/content-items/content-item.repository'
-import type { PersonalInfo, EEOInfo, ContentItem } from '@shared/types'
+import type { PersonalInfo, EEOInfo, ContentItem, GetApplicatorProfileResponse } from '@shared/types'
 import { logger } from '../logger'
-
-interface ApplicatorProfileResponse {
-  profileText: string
-}
 
 /**
  * Format date range for work history
@@ -45,7 +41,7 @@ function formatEEOInfo(eeo: EEOInfo | undefined): string {
     parts.push(`Disability Status: ${eeo.disabilityStatus}`)
   }
 
-  return parts.length > 0 ? parts.join(', ') : ''
+  return parts.length > 0 ? parts.join('\n') : ''
 }
 
 /**
@@ -255,7 +251,7 @@ export function buildApplicatorRouter() {
       // Combine all sections
       const profileText = sections.join('\n\n---\n\n')
 
-      const response: ApplicatorProfileResponse = {
+      const response: GetApplicatorProfileResponse = {
         profileText
       }
 

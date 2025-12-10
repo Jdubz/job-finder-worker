@@ -137,7 +137,7 @@ export async function fetchJobMatches(
   })
 
   const res = await fetchWithRetry(
-    `${API_URL}/job-matches/?${params}`,
+    `${API_URL}/job-matches?${params}`,
     fetchOptions(),
     { maxRetries: 2, timeoutMs: 15000 }
   )
@@ -275,10 +275,15 @@ export async function fetchDocuments(jobMatchId: string): Promise<GeneratorDocum
  * Fetch a specific generator request/document by ID
  */
 export async function fetchGeneratorRequest(requestId: string): Promise<GeneratorDocument> {
-  const res = await fetch(`${API_URL}/generator/requests/${requestId}`, fetchOptions())
+  const res = await fetchWithRetry(
+    `${API_URL}/generator/requests/${requestId}`,
+    fetchOptions(),
+    { maxRetries: 2, timeoutMs: 15000 }
+  )
 
   if (!res.ok) {
-    throw new Error(`Failed to fetch document: ${res.status}`)
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Failed to fetch document: ${errorMsg}`)
   }
 
   const data: ApiSuccessResponse<{ request: GeneratorDocument }> = await res.json()
@@ -295,7 +300,7 @@ export async function startGeneration(options: {
   // First get the job match to get job details
   const match = await fetchJobMatch(options.jobMatchId)
 
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `${API_URL}/generator/start`,
     fetchOptions({
       method: "POST",
@@ -311,12 +316,13 @@ export async function startGeneration(options: {
         jobMatchId: options.jobMatchId,
         date: new Date().toLocaleDateString(),
       }),
-    })
+    }),
+    { maxRetries: 2, timeoutMs: 30000 }
   )
 
   if (!res.ok) {
-    const errorText = await res.text()
-    throw new Error(`Generation failed to start: ${errorText.slice(0, 100)}`)
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Generation failed to start: ${errorMsg}`)
   }
 
   const data: ApiSuccessResponse<GenerationStartResponse> = await res.json()
@@ -327,17 +333,18 @@ export async function startGeneration(options: {
  * Execute the next generation step
  */
 export async function executeGenerationStep(requestId: string): Promise<GenerationStepResponse> {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `${API_URL}/generator/step/${requestId}`,
     fetchOptions({
       method: "POST",
       body: JSON.stringify({}),
-    })
+    }),
+    { maxRetries: 2, timeoutMs: 60000 } // Longer timeout for generation steps
   )
 
   if (!res.ok) {
-    const errorText = await res.text()
-    throw new Error(`Step execution failed: ${errorText.slice(0, 100)}`)
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Step execution failed: ${errorMsg}`)
   }
 
   const data: ApiSuccessResponse<GenerationStepResponse> = await res.json()
@@ -366,7 +373,7 @@ export async function submitJobToQueue(job: {
   bypassFilter?: boolean
   source?: string
 }): Promise<SubmitJobResponse> {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `${API_URL}/queue/jobs`,
     fetchOptions({
       method: "POST",
@@ -375,12 +382,13 @@ export async function submitJobToQueue(job: {
         bypassFilter: job.bypassFilter ?? true,
         source: job.source ?? "user_submission",
       }),
-    })
+    }),
+    { maxRetries: 2, timeoutMs: 15000 }
   )
 
   if (!res.ok) {
-    const errorText = await res.text()
-    throw new Error(`API error (${res.status}): ${errorText.slice(0, 100)}`)
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Failed to submit job: ${errorMsg}`)
   }
 
   const data: ApiSuccessResponse<{ queueItem: { id: string; status: string } }> = await res.json()
@@ -394,4 +402,4 @@ export async function submitJobToQueue(job: {
 // Re-export for convenience
 // ============================================================================
 
-export { API_URL, fetchOptions }
+export { API_URL }

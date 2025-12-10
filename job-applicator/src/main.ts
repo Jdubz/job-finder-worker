@@ -216,7 +216,7 @@ async function createWindow(): Promise<void> {
 }
 
 // Navigate to URL
-ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<{ success: boolean; message?: string }> => {
+ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<{ success: boolean; message?: string; aborted?: boolean }> => {
   try {
     if (!browserView) {
       return { success: false, message: "Browser not initialized. Please restart the application." }
@@ -247,8 +247,8 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
     }
     if (message.includes("ERR_ABORTED")) {
       // Navigation was aborted (e.g., user navigated again quickly, or page redirected)
-      // This is often not a real error, so we return success
-      return { success: true }
+      // This is often not a real error, so we return success but indicate it was aborted
+      return { success: true, aborted: true }
     }
     return { success: false, message: `Navigation failed: ${message}` }
   }
@@ -894,7 +894,16 @@ ipcMain.handle(
   }
 )
 
-// CLI command configurations
+/**
+ * CLI command configurations for different AI providers.
+ *
+ * Note: Each CLI has different output formats:
+ * - Claude CLI: Returns a wrapper object {"type":"result","result":"[...]"} where "result"
+ *   is a string containing the actual JSON (escaped). Must parse wrapper first, then parse result.
+ * - Codex/Gemini: Return raw JSON arrays directly.
+ *
+ * The runCli and runEnhancedCli functions handle these format differences automatically.
+ */
 const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
   claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
   codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
