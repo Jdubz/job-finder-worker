@@ -6,7 +6,7 @@ import { type AuthenticatedRequest } from '../../middleware/firebase-auth'
 import { getDb } from '../../db/sqlite'
 import { ConfigRepository } from '../../modules/config/config.repository'
 import { ContentItemRepository } from '../../modules/content-items/content-item.repository'
-import type { PersonalInfo } from '@shared/types'
+import type { PersonalInfo, GetApplicatorProfileResponse, ApiSuccessResponse } from '@shared/types'
 
 const app = express()
 app.use(express.json())
@@ -37,6 +37,32 @@ describe('applicator routes', () => {
     contentRepo = new ContentItemRepository()
   })
 
+  it('returns response matching GetApplicatorProfileResponse contract', async () => {
+    // Setup minimal personal info
+    const personalInfo: PersonalInfo = {
+      name: 'Contract Test User',
+      email: 'contract@test.com'
+    }
+    configRepo.upsert('personal-info', personalInfo)
+
+    const response = await request(app).get('/applicator/profile').expect(200)
+
+    // Type assertion to validate against shared API contract
+    const body = response.body as ApiSuccessResponse<GetApplicatorProfileResponse>
+
+    // Verify API wrapper structure (ApiSuccessResponse)
+    expect(body.success).toBe(true)
+    expect(body).toHaveProperty('data')
+
+    // Verify GetApplicatorProfileResponse structure
+    expect(body.data).toHaveProperty('profileText')
+    expect(typeof body.data.profileText).toBe('string')
+
+    // Ensure no unexpected properties in the response data
+    const dataKeys = Object.keys(body.data)
+    expect(dataKeys).toEqual(['profileText'])
+  })
+
   it('returns formatted profile text with personal info', async () => {
     // Setup personal info
     const personalInfo: PersonalInfo = {
@@ -54,10 +80,11 @@ describe('applicator routes', () => {
 
     const response = await request(app).get('/applicator/profile').expect(200)
 
-    expect(response.body.success).toBe(true)
-    expect(response.body.data.profileText).toBeTruthy()
+    // Type-safe access via shared types
+    const body = response.body as ApiSuccessResponse<GetApplicatorProfileResponse>
+    expect(body.success).toBe(true)
 
-    const profileText = response.body.data.profileText as string
+    const { profileText } = body.data
 
     // Verify personal info section
     expect(profileText).toContain('# Personal Information')

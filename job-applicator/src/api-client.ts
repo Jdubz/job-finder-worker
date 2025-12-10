@@ -8,6 +8,7 @@
 import type {
   ApiSuccessResponse,
   GetConfigEntryResponse,
+  GetApplicatorProfileResponse,
   ListJobMatchesResponse,
   GetJobMatchResponse,
   ListContentItemsResponse,
@@ -75,7 +76,7 @@ export async function fetchApplicatorProfile(): Promise<string> {
     throw new Error(`Failed to fetch applicator profile: ${errorMsg}`)
   }
 
-  const data: ApiSuccessResponse<{ profileText: string }> = await res.json()
+  const data: ApiSuccessResponse<GetApplicatorProfileResponse> = await res.json()
   return data.data.profileText
 }
 
