@@ -42,7 +42,11 @@ function expandHome(filePath: string): string {
 export class AgentManager {
   private readonly scope: AgentScope = 'backend'
 
-  constructor(private readonly configRepo = new ConfigRepository(), private readonly log: Logger = logger) {}
+  constructor(
+    private readonly configRepo = new ConfigRepository(),
+    private readonly log: Logger = logger,
+    private readonly runProvider: typeof runCliProvider = runCliProvider
+  ) {}
 
   ensureAvailable(taskType: AgentTaskType): void {
     const entry = this.configRepo.get<AISettings>('ai-settings')
@@ -188,7 +192,7 @@ export class AgentManager {
       throw new UserFacingError(`Interface ${agent.interface} not supported for generator tasks`)
     }
     const provider = agent.provider as CliProvider
-    const result = await runCliProvider(prompt, provider, { model })
+    const result = await this.runProvider(prompt, provider, { model })
 
     if (!result.success) {
       const errorMsg = result.error || 'AI generation failed'

@@ -9,8 +9,11 @@ describe('cli-health.service', () => {
     vi.resetModules()
     vi.clearAllMocks()
 
+    const readFile = vi.fn()
     vi.doMock('node:fs/promises', () => ({
-      readFile: vi.fn()
+      __esModule: true,
+      default: { readFile },
+      readFile
     }))
 
     vi.doMock('node:os', () => ({
