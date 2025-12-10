@@ -43,6 +43,7 @@ interface ElectronAPI {
   submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
   setSidebarState: (open: boolean) => Promise<void>
   getSidebarState: () => Promise<{ open: boolean }>
+  getCdpStatus: () => Promise<{ connected: boolean; message?: string }>
   getJobMatches: (options?: { limit?: number; status?: string }) => Promise<{
     success: boolean
     data?: JobMatchListItem[]
@@ -457,6 +458,15 @@ generateBtn.addEventListener("click", generateDocument)
 // Initialize
 async function init() {
   setStatus("Ready")
+
+  // Check CDP connection status and warn if unavailable
+  const cdpStatus = await electronAPI.getCdpStatus()
+  if (!cdpStatus.connected) {
+    // Disable upload button and show warning
+    uploadBtn.disabled = true
+    uploadBtn.title = cdpStatus.message || "File uploads unavailable"
+    console.warn("CDP not connected:", cdpStatus.message)
+  }
 
   // Check if sidebar was previously open
   const state = await electronAPI.getSidebarState()

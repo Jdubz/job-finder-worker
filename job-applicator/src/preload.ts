@@ -55,6 +55,9 @@ export interface ElectronAPI {
   setSidebarState: (open: boolean) => Promise<void>
   getSidebarState: () => Promise<{ open: boolean }>
 
+  // CDP status
+  getCdpStatus: () => Promise<{ connected: boolean; message?: string }>
+
   // Job matches
   getJobMatches: (options?: { limit?: number; status?: string }) => Promise<{
     success: boolean
@@ -94,6 +97,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Sidebar
   setSidebarState: (open: boolean) => ipcRenderer.invoke("set-sidebar-state", open),
   getSidebarState: () => ipcRenderer.invoke("get-sidebar-state"),
+
+  // CDP status
+  getCdpStatus: () => ipcRenderer.invoke("get-cdp-status"),
 
   // Job matches
   getJobMatches: (options?: { limit?: number; status?: string }) => ipcRenderer.invoke("get-job-matches", options),

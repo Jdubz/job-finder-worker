@@ -7,7 +7,17 @@ import * as os from "os"
 
 // Configuration from environment
 const CDP_PORT = process.env.CDP_PORT || "9222"
+// NOTE: The default API_URL uses HTTP and is intended for local development only.
+// In production, always set JOB_FINDER_API_URL to a secure HTTPS endpoint.
 const API_URL = process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
+
+// Warn if using HTTP in non-development environments
+if (API_URL.startsWith("http://") && process.env.NODE_ENV === "production") {
+  console.warn(
+    "[SECURITY WARNING] API_URL is using HTTP in production. " +
+      "This may expose sensitive data. Please use HTTPS for production deployments."
+  )
+}
 
 // Layout constants
 const TOOLBAR_HEIGHT = 60
@@ -21,6 +31,7 @@ let mainWindow: BrowserWindow | null = null
 let browserView: BrowserView | null = null
 let playwrightBrowser: Browser | null = null
 let sidebarOpen = false
+let cdpConnected = false
 
 // CLI provider types
 type CliProvider = "claude" | "codex" | "gemini"
@@ -147,6 +158,16 @@ function updateBrowserViewBounds(): void {
   })
 }
 
+// Normalize URL for comparison (origin + pathname only)
+function normalizeUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.origin}${parsed.pathname}`
+  } catch {
+    return url
+  }
+}
+
 // Form extraction script - injected into page
 const EXTRACT_FORM_SCRIPT = `
 (() => {
@@ -212,9 +233,16 @@ async function createWindow(): Promise<void> {
   // Connect to Playwright via CDP
   try {
     playwrightBrowser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`)
+    cdpConnected = true
     console.log("Connected to Playwright CDP")
   } catch (err) {
+    cdpConnected = false
     console.error("Failed to connect to Playwright CDP:", err)
+    // Notify renderer of CDP connection failure (file uploads will be unavailable)
+    mainWindow.webContents.send("cdp-status", {
+      connected: false,
+      message: "Playwright CDP connection failed. File uploads will be unavailable.",
+    })
   }
 
   mainWindow.on("closed", () => {
@@ -361,12 +389,13 @@ ipcMain.handle("upload-resume", async (): Promise<{ success: boolean; message: s
 
     // Get the current URL from BrowserView to find the matching page
     const currentUrl = browserView.webContents.getURL()
+    const currentNormalized = normalizeUrl(currentUrl)
     let targetPage: Page | null = null
 
     for (const context of playwrightBrowser.contexts()) {
       for (const page of context.pages()) {
-        // Match by URL (normalize both for comparison)
-        if (page.url() === currentUrl || page.url().split("?")[0] === currentUrl.split("?")[0]) {
+        // Match by normalized URL (origin + pathname)
+        if (normalizeUrl(page.url()) === currentNormalized) {
           targetPage = page
           break
         }
@@ -457,6 +486,14 @@ ipcMain.handle("set-sidebar-state", async (_event: IpcMainInvokeEvent, open: boo
 
 ipcMain.handle("get-sidebar-state", async (): Promise<{ open: boolean }> => {
   return { open: sidebarOpen }
+})
+
+// CDP connection status
+ipcMain.handle("get-cdp-status", async (): Promise<{ connected: boolean; message?: string }> => {
+  return {
+    connected: cdpConnected,
+    message: cdpConnected ? undefined : "Playwright CDP not connected. File uploads unavailable.",
+  }
 })
 
 // Get job matches from backend
@@ -785,7 +822,12 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
 
     child.on("error", (err) => {
       clearTimeout(timeout)
-      reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+      // Provide helpful error if CLI tool is not installed
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
+      } else {
+        reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+      }
     })
 
     child.on("close", (code) => {
@@ -872,7 +914,12 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
 
     child.on("error", (err) => {
       clearTimeout(timeout)
-      reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+      // Provide helpful error if CLI tool is not installed
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
+      } else {
+        reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+      }
     })
 
     child.on("close", (code) => {
@@ -997,7 +1044,12 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
 
     child.on("error", (err) => {
       clearTimeout(timeout)
-      reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+      // Provide helpful error if CLI tool is not installed
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
+      } else {
+        reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+      }
     })
 
     child.on("close", (code) => {
