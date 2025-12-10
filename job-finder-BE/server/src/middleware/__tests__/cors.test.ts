@@ -181,6 +181,7 @@ describe('CORS configuration', () => {
     })
 
     it('includes CORS headers on 401 errors (protected routes)', async () => {
+      // ALLOW_LOCALHOST_BYPASS is disabled by default in tests, so localhost gets 401
       const res = await request(app)
         .get('/api/queue')
         .set('Origin', productionOrigin)

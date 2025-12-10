@@ -17,6 +17,11 @@
   border: 0;
 }
 
+/* Utility class for hidden elements */
+.hidden {
+  display: none !important;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
   background: #1a1a2e;

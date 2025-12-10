@@ -1,9 +1,27 @@
 import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent } from "electron"
-import { chromium, Browser, Page } from "playwright-core"
 import { spawn } from "child_process"
 import * as path from "path"
 import * as fs from "fs"
 import * as os from "os"
+import { logger } from "./logger.js"
+
+logger.info("Main process starting...")
+
+// Listen for renderer console logs and forward to main process logger
+ipcMain.on("renderer-log", (_event, level: string, args: unknown[]) => {
+  const message = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
+  const prefix = "[RENDERER]"
+  switch (level) {
+    case "warn":
+      logger.warn(prefix, message)
+      break
+    case "error":
+      logger.error(prefix, message)
+      break
+    default:
+      logger.info(prefix, message)
+  }
+})
 
 // Import shared types and utilities
 import type {
@@ -27,20 +45,22 @@ import {
 } from "./utils.js"
 
 // Configuration from environment
-const CDP_PORT = process.env.CDP_PORT || "9222"
-// NOTE: The default API_URL uses HTTP and is intended for local development only.
-// In production, always set JOB_FINDER_API_URL to a secure HTTPS endpoint.
+// The API URL defaults to localhost:3000 which connects to the local development server.
+// The server's firebase-auth middleware bypasses authentication for localhost requests
+// when ALLOW_LOCALHOST_BYPASS=true is set in the server environment.
 const API_URL = process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
 // Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
 const ARTIFACTS_DIR = process.env.GENERATOR_ARTIFACTS_DIR || "/data/artifacts"
 
-// Warn about HTTP in production (but don't crash the app)
-if (process.env.NODE_ENV === "production" && API_URL.startsWith("http://")) {
-  console.warn(
-    "SECURITY WARNING: API_URL is using HTTP in production. " +
-      "This may expose sensitive data. Set JOB_FINDER_API_URL to a secure endpoint (https://...)."
-  )
+// Helper to create fetch options
+function fetchOptions(options: RequestInit = {}): RequestInit {
+  const headers = new Headers(options.headers)
+  headers.set("Content-Type", "application/json")
+  return { ...options, headers }
 }
+
+// Note: HTTP is expected for localhost API (localhost:3000) - it's secure because
+// the port is only bound to 127.0.0.1 and requires ALLOW_LOCALHOST_BYPASS=true on server
 
 // Layout constants
 const TOOLBAR_HEIGHT = 60
@@ -52,15 +72,10 @@ const CLI_TIMEOUT_MS = 60000
 // Maximum steps for generation workflow (prevent infinite loops)
 const MAX_GENERATION_STEPS = 20
 
-// Enable remote debugging for Playwright CDP connection
-app.commandLine.appendSwitch("remote-debugging-port", CDP_PORT)
-
 // Global state
 let mainWindow: BrowserWindow | null = null
 let browserView: BrowserView | null = null
-let playwrightBrowser: Browser | null = null
 let sidebarOpen = false
-let cdpConnected = false
 
 // Update BrowserView bounds based on sidebar state
 function updateBrowserViewBounds(): void {
@@ -110,15 +125,21 @@ const EXTRACT_FORM_SCRIPT = `
 `
 
 async function createWindow(): Promise<void> {
+  logger.info("Creating main window...")
+  const preloadPath = path.join(import.meta.dirname, "preload.cjs")
+  logger.info("Preload path:", preloadPath)
+  logger.info("Preload exists:", fs.existsSync(preloadPath))
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     webPreferences: {
-      preload: path.join(import.meta.dirname, "preload.js"),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
     },
   })
+  logger.info("Main window created")
 
   // Create BrowserView for job application pages
   browserView = new BrowserView({
@@ -134,22 +155,48 @@ async function createWindow(): Promise<void> {
   updateBrowserViewBounds()
   browserView.setAutoResize({ width: true, height: true })
 
-  // Load the renderer UI (toolbar)
-  await mainWindow.loadFile(path.join(import.meta.dirname, "renderer", "index.html"))
+  // Capture renderer console messages and errors BEFORE loading HTML
+  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    const levelName = ["verbose", "info", "warning", "error"][level] || "unknown"
+    logger.info(`[RENDERER:${levelName}] ${message} (${sourceId}:${line})`)
+  })
 
-  // Connect to Playwright via CDP
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
+    logger.error(`[RENDERER] Failed to load: ${errorCode} - ${errorDescription}`)
+  })
+
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    logger.error(`[PRELOAD ERROR] ${preloadPath}: ${error}`)
+  })
+
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    logger.error(`[RENDERER] Process gone:`, details)
+  })
+
+  // Load the renderer UI (toolbar)
+  const htmlPath = path.join(import.meta.dirname, "renderer", "index.html")
+  logger.info("Loading HTML:", htmlPath)
+  logger.info("HTML exists:", fs.existsSync(htmlPath))
+
   try {
-    playwrightBrowser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`)
-    cdpConnected = true
-    console.log("Connected to Playwright CDP")
+    await mainWindow.loadFile(htmlPath)
+    logger.info("HTML loaded successfully")
   } catch (err) {
-    cdpConnected = false
-    console.error("Failed to connect to Playwright CDP:", err)
-    // Notify renderer of CDP connection failure (file uploads will be unavailable)
-    mainWindow.webContents.send("cdp-status", {
-      connected: false,
-      message: "Playwright CDP connection failed. File uploads will be unavailable.",
-    })
+    // ERR_ABORTED can happen during hot reload - retry once
+    if (err instanceof Error && err.message.includes("ERR_ABORTED")) {
+      logger.info("Load aborted during hot reload, retrying...")
+      await new Promise(resolve => setTimeout(resolve, 100))
+      await mainWindow.loadFile(htmlPath)
+    } else {
+      logger.error("Failed to load HTML:", err)
+      throw err
+    }
+  }
+
+  // Open DevTools in development for debugging
+  if (process.env.NODE_ENV !== "production") {
+    logger.info("Opening DevTools...")
+    mainWindow.webContents.openDevTools({ mode: "detach" })
   }
 
   mainWindow.on("closed", () => {
@@ -182,10 +229,10 @@ ipcMain.handle(
       if (!browserView) throw new Error("BrowserView not initialized")
 
       // 1. Get profile and work history from job-finder backend
-      console.log("Fetching profile from backend...")
+      logger.info("Fetching profile from backend...")
       const [profileRes, contentRes] = await Promise.all([
-        fetch(`${API_URL}/config/personal-info`),
-        fetch(`${API_URL}/content-items?limit=100`)
+        fetch(`${API_URL}/config/personal-info`, fetchOptions()),
+        fetch(`${API_URL}/content-items?limit=100`, fetchOptions())
       ])
       if (!profileRes.ok) {
         throw new Error(`Failed to fetch profile: ${profileRes.status}`)
@@ -203,28 +250,26 @@ ipcMain.handle(
       if (contentRes.ok) {
         const contentData = await contentRes.json()
         workHistory = contentData.data || []
-        console.log(`Fetched ${workHistory.length} work history items`)
+        logger.info(`Fetched ${workHistory.length} work history items`)
       }
 
       // 2. Extract form fields from page
-      console.log("Extracting form fields...")
+      logger.info("Extracting form fields...")
       const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
-      console.log(`Found ${fields.length} form fields`)
+      logger.info(`Found ${fields.length} form fields`)
 
       if (fields.length === 0) {
         return { success: false, message: "No form fields found on page" }
       }
 
       // 3. Build prompt and call CLI
-      console.log(`Calling ${provider} CLI for field mapping...`)
+      logger.info(`Calling ${provider} CLI for field mapping...`)
       const prompt = buildPrompt(fields, profile, workHistory)
       const instructions = await runCli(provider, prompt)
-      console.log(`Got ${instructions.length} fill instructions`)
+      logger.info(`Got ${instructions.length} fill instructions`)
 
-      // 4. Fill fields using executeJavaScript (reliable with BrowserView)
-      // Note: Playwright CDP page matching is unreliable with BrowserView,
-      // so we use executeJavaScript directly on the webContents
-      console.log("Filling form fields...")
+      // 4. Fill fields using executeJavaScript
+      logger.info("Filling form fields...")
       let filledCount = 0
       for (const instruction of instructions) {
         try {
@@ -247,7 +292,7 @@ ipcMain.handle(
           `)
           if (filled) filledCount++
         } catch (err) {
-          console.warn(`Failed to fill ${instruction.selector}:`, err)
+          logger.warn(`Failed to fill ${instruction.selector}:`, err)
         }
       }
 
@@ -257,13 +302,55 @@ ipcMain.handle(
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error("Fill form error:", message)
+      logger.error("Fill form error:", message)
       return { success: false, message }
     }
   }
 )
 
-// Upload resume/document to form
+// Helper function to set files on a file input using Electron's debugger API
+async function setFileInputFiles(webContents: Electron.WebContents, selector: string, filePaths: string[]): Promise<void> {
+  const debugger_ = webContents.debugger
+
+  try {
+    debugger_.attach("1.3")
+  } catch (err) {
+    // Already attached is fine
+    if (!(err instanceof Error && err.message.includes("Already attached"))) {
+      throw err
+    }
+  }
+
+  try {
+    // Get the document
+    const { root } = await debugger_.sendCommand("DOM.getDocument", {})
+
+    // Find the file input element
+    const { nodeId } = await debugger_.sendCommand("DOM.querySelector", {
+      nodeId: root.nodeId,
+      selector: selector,
+    })
+
+    if (!nodeId) {
+      throw new Error(`File input not found: ${selector}`)
+    }
+
+    // Set the files on the input
+    await debugger_.sendCommand("DOM.setFileInputFiles", {
+      nodeId: nodeId,
+      files: filePaths,
+    })
+  } finally {
+    try {
+      debugger_.detach()
+    } catch (err) {
+      // Log detach errors for debugging (may be expected if target is already closed)
+      logger.warn("Failed to detach debugger, this may be expected:", err)
+    }
+  }
+}
+
+// Upload resume/document to form using Electron's debugger API (CDP)
 ipcMain.handle(
   "upload-resume",
   async (
@@ -275,7 +362,7 @@ ipcMain.handle(
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
-      // Find file input
+      // Find file input selector
       const fileInputSelector = await browserView.webContents.executeJavaScript(`
       (() => {
         const fileInput = document.querySelector('input[type="file"]');
@@ -299,9 +386,9 @@ ipcMain.handle(
         }
 
         // Fetch document details from backend
-        const docRes = await fetch(`${API_URL}/generator/requests/${options.documentId}`)
+        const docRes = await fetch(`${API_URL}/generator/requests/${options.documentId}`, fetchOptions())
         if (!docRes.ok) {
-          console.error(`Failed to fetch document: ${docRes.status} for documentId: ${options.documentId}`)
+          logger.error(`Failed to fetch document: ${docRes.status} for documentId: ${options.documentId}`)
           return { success: false, message: `Failed to fetch document: ${docRes.status}` }
         }
         const docData = await docRes.json()
@@ -332,46 +419,18 @@ ipcMain.handle(
         }
       }
 
-      // File uploads require Playwright
-      if (!playwrightBrowser) {
-        return {
-          success: false,
-          message: `Playwright connection required for file upload. Manual upload: ${resolvedPath}`,
-          filePath: resolvedPath,
-        }
-      }
+      // Use Electron's debugger API to set the file
+      logger.info(`Uploading file: ${resolvedPath} to ${fileInputSelector}`)
+      await setFileInputFiles(browserView.webContents, fileInputSelector, [resolvedPath])
 
-      // Get the current URL from BrowserView to find the matching page
-      const currentUrl = browserView.webContents.getURL()
-      const currentNormalized = normalizeUrl(currentUrl)
-      let targetPage: Page | null = null
-
-      for (const context of playwrightBrowser.contexts()) {
-        for (const page of context.pages()) {
-          if (normalizeUrl(page.url()) === currentNormalized) {
-            targetPage = page
-            break
-          }
-        }
-        if (targetPage) break
-      }
-
-      if (!targetPage) {
-        return {
-          success: false,
-          message: `Could not find page handle for upload. Manual upload: ${resolvedPath}`,
-          filePath: resolvedPath,
-        }
-      }
-
-      await targetPage.setInputFiles(fileInputSelector, resolvedPath)
       const docTypeLabel = options?.type === "coverLetter" ? "Cover letter" : "Resume"
-      return { success: true, message: `${docTypeLabel} uploaded`, filePath: resolvedPath }
+      return { success: true, message: `${docTypeLabel} uploaded successfully`, filePath: resolvedPath }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      logger.error("Upload error:", message)
       return {
         success: false,
-        message: resolvedPath ? `Upload failed: ${message}. Manual upload: ${resolvedPath}` : message,
+        message: resolvedPath ? `Upload failed: ${message}. File path: ${resolvedPath}` : message,
         filePath: resolvedPath || undefined,
       }
     }
@@ -391,7 +450,7 @@ ipcMain.handle(
         return { success: false, message: "No page loaded - navigate to a job listing first" }
       }
 
-      console.log(`Extracting job details from: ${url}`)
+      logger.info(`Extracting job details from: ${url}`)
 
       // 2. Extract page content (text only, limited to 10k chars)
       const pageContent: string = await browserView.webContents.executeJavaScript(`
@@ -403,16 +462,15 @@ ipcMain.handle(
       }
 
       // 3. Use AI CLI to extract job details
-      console.log(`Calling ${provider} CLI for job extraction...`)
+      logger.info(`Calling ${provider} CLI for job extraction...`)
       const extractPrompt = buildExtractionPrompt(pageContent, url)
       const extracted = await runCliForExtraction(provider, extractPrompt)
-      console.log("Extracted job details:", extracted)
+      logger.info("Extracted job details:", extracted)
 
       // 4. Submit to backend API with bypassFilter
-      console.log("Submitting job to queue...")
-      const res = await fetch(`${API_URL}/queue/jobs`, {
+      logger.info("Submitting job to queue...")
+      const res = await fetch(`${API_URL}/queue/jobs`, fetchOptions({
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url,
           title: extracted.title,
@@ -423,7 +481,7 @@ ipcMain.handle(
           bypassFilter: true,
           source: "user_submission",
         }),
-      })
+      }))
 
       if (!res.ok) {
         const errorText = await res.text()
@@ -435,7 +493,7 @@ ipcMain.handle(
       return { success: true, message: `Job submitted (queue ID: ${queueId})` }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error("Submit job error:", message)
+      logger.error("Submit job error:", message)
       return { success: false, message }
     }
   }
@@ -451,12 +509,9 @@ ipcMain.handle("get-sidebar-state", async (): Promise<{ open: boolean }> => {
   return { open: sidebarOpen }
 })
 
-// CDP connection status
+// CDP connection status - always available now using native Electron debugger
 ipcMain.handle("get-cdp-status", async (): Promise<{ connected: boolean; message?: string }> => {
-  return {
-    connected: cdpConnected,
-    message: cdpConnected ? undefined : "Playwright CDP not connected. File uploads unavailable.",
-  }
+  return { connected: true }
 })
 
 // Get job matches from backend
@@ -469,7 +524,7 @@ ipcMain.handle(
     try {
       const limit = options?.limit || 50
       const status = options?.status || "active"
-      const res = await fetch(`${API_URL}/job-matches/?limit=${limit}&status=${status}&sortBy=updated&sortOrder=desc`)
+      const res = await fetch(`${API_URL}/job-matches/?limit=${limit}&status=${status}&sortBy=updated&sortOrder=desc`, fetchOptions())
       if (!res.ok) {
         return { success: false, message: `Failed to fetch job matches: ${res.status}` }
       }
@@ -487,7 +542,7 @@ ipcMain.handle(
   "get-job-match",
   async (_event: IpcMainInvokeEvent, id: string): Promise<{ success: boolean; data?: unknown; message?: string }> => {
     try {
-      const res = await fetch(`${API_URL}/job-matches/${id}`)
+      const res = await fetch(`${API_URL}/job-matches/${id}`, fetchOptions())
       if (!res.ok) {
         return { success: false, message: `Failed to fetch job match: ${res.status}` }
       }
@@ -505,7 +560,7 @@ ipcMain.handle(
   "get-documents",
   async (_event: IpcMainInvokeEvent, jobMatchId: string): Promise<{ success: boolean; data?: unknown[]; message?: string }> => {
     try {
-      const res = await fetch(`${API_URL}/generator/job-matches/${jobMatchId}/documents`)
+      const res = await fetch(`${API_URL}/generator/job-matches/${jobMatchId}/documents`, fetchOptions())
       if (!res.ok) {
         // 404 is fine - means no documents yet
         if (res.status === 404) {
@@ -530,11 +585,10 @@ ipcMain.handle(
     options: { id: string; status: "active" | "ignored" | "applied" }
   ): Promise<{ success: boolean; message?: string }> => {
     try {
-      const res = await fetch(`${API_URL}/job-matches/${options.id}/status`, {
+      const res = await fetch(`${API_URL}/job-matches/${options.id}/status`, fetchOptions({
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: options.status }),
-      })
+      }))
       if (!res.ok) {
         const errorText = await res.text()
         return { success: false, message: `Failed to update status: ${errorText.slice(0, 100)}` }
@@ -559,7 +613,7 @@ ipcMain.handle(
       const normalizedUrl = normalizeUrl(url)
 
       // Fetch recent job matches and compare URLs
-      const res = await fetch(`${API_URL}/job-matches/?limit=100&sortBy=updated&sortOrder=desc`)
+      const res = await fetch(`${API_URL}/job-matches/?limit=100&sortBy=updated&sortOrder=desc`, fetchOptions())
       if (!res.ok) {
         return { success: false, message: `Failed to fetch job matches: ${res.status}` }
       }
@@ -590,7 +644,7 @@ ipcMain.handle(
   ): Promise<{ success: boolean; requestId?: string; message?: string }> => {
     try {
       // First get the job match to get job details
-      const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`)
+      const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`, fetchOptions())
       if (!matchRes.ok) {
         return { success: false, message: `Failed to fetch job match: ${matchRes.status}` }
       }
@@ -598,9 +652,8 @@ ipcMain.handle(
       const match = matchData.data || matchData
 
       // Start generation
-      const res = await fetch(`${API_URL}/generator/start`, {
+      const res = await fetch(`${API_URL}/generator/start`, fetchOptions({
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           generateType: options.type,
           job: {
@@ -613,7 +666,7 @@ ipcMain.handle(
           jobMatchId: options.jobMatchId,
           date: new Date().toLocaleDateString(),
         }),
-      })
+      }))
 
       if (!res.ok) {
         const errorText = await res.text()
@@ -643,7 +696,7 @@ ipcMain.handle(
   }> => {
     try {
       // First get the job match to get job details
-      const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`)
+      const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`, fetchOptions())
       if (!matchRes.ok) {
         return { success: false, message: `Failed to fetch job match: ${matchRes.status}` }
       }
@@ -651,10 +704,9 @@ ipcMain.handle(
       const match = matchData.data || matchData
 
       // Start generation
-      console.log("Starting document generation...")
-      const startRes = await fetch(`${API_URL}/generator/start`, {
+      logger.info("Starting document generation...")
+      const startRes = await fetch(`${API_URL}/generator/start`, fetchOptions({
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           generateType: options.type,
           job: {
@@ -667,7 +719,7 @@ ipcMain.handle(
           jobMatchId: options.jobMatchId,
           date: new Date().toLocaleDateString(),
         }),
-      })
+      }))
 
       if (!startRes.ok) {
         const errorText = await startRes.text()
@@ -681,7 +733,7 @@ ipcMain.handle(
       let resumeUrl = startData.data?.resumeUrl || startData.resumeUrl
       let coverLetterUrl = startData.data?.coverLetterUrl || startData.coverLetterUrl
 
-      console.log(`Generation started: ${requestId}, next step: ${nextStep}`)
+      logger.info(`Generation started: ${requestId}, next step: ${nextStep}`)
 
       // Send initial progress to renderer
       if (mainWindow) {
@@ -716,12 +768,11 @@ ipcMain.handle(
           })
         }
 
-        console.log(`Executing step: ${nextStep}`)
-        const stepRes = await fetch(`${API_URL}/generator/step/${requestId}`, {
+        logger.info(`Executing step: ${nextStep}`)
+        const stepRes = await fetch(`${API_URL}/generator/step/${requestId}`, fetchOptions({
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
-        })
+        }))
 
         if (!stepRes.ok) {
           const errorText = await stepRes.text()
@@ -766,7 +817,7 @@ ipcMain.handle(
         }
         nextStep = stepResult.nextStep
 
-        console.log(`Step completed, next: ${nextStep || "done"}`)
+        logger.info(`Step completed, next: ${nextStep || "done"}`)
 
         // Send progress update
         if (mainWindow) {
@@ -783,7 +834,7 @@ ipcMain.handle(
 
       // Safety check: if we hit max steps but nextStep is still set, something went wrong
       if (nextStep && stepCount >= MAX_GENERATION_STEPS) {
-        console.error(`Generation exceeded max steps (${MAX_GENERATION_STEPS})`)
+        logger.error(`Generation exceeded max steps (${MAX_GENERATION_STEPS})`)
         return {
           success: false,
           message: `Generation exceeded maximum steps (${MAX_GENERATION_STEPS}). This may indicate a backend issue.`,
@@ -796,7 +847,7 @@ ipcMain.handle(
         }
       }
 
-      console.log("Generation completed successfully")
+      logger.info("Generation completed successfully")
       return {
         success: true,
         data: {
@@ -809,7 +860,7 @@ ipcMain.handle(
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error("Generation error:", message)
+      logger.error("Generation error:", message)
       return { success: false, message }
     }
   }
@@ -828,8 +879,8 @@ ipcMain.handle(
       if (!browserView) throw new Error("BrowserView not initialized")
 
       // 1. Get profile with EEO from backend
-      console.log("Fetching profile from backend...")
-      const profileRes = await fetch(`${API_URL}/config/personal-info`)
+      logger.info("Fetching profile from backend...")
+      const profileRes = await fetch(`${API_URL}/config/personal-info`, fetchOptions())
       if (!profileRes.ok) {
         throw new Error(`Failed to fetch profile: ${profileRes.status}`)
       }
@@ -842,7 +893,7 @@ ipcMain.handle(
       }
 
       // 2. Get content items (work history)
-      const contentRes = await fetch(`${API_URL}/content-items?limit=100`)
+      const contentRes = await fetch(`${API_URL}/content-items?limit=100`, fetchOptions())
       let workHistory: ContentItem[] = []
       if (contentRes.ok) {
         const contentData = await contentRes.json()
@@ -852,7 +903,7 @@ ipcMain.handle(
       // 3. Get job match data if provided
       let jobMatchData: Record<string, unknown> | null = null
       if (options.jobMatchId) {
-        const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`)
+        const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`, fetchOptions())
         if (matchRes.ok) {
           const matchJson = await matchRes.json()
           jobMatchData = matchJson.data || matchJson
@@ -860,9 +911,9 @@ ipcMain.handle(
       }
 
       // 4. Extract form fields from page
-      console.log("Extracting form fields...")
+      logger.info("Extracting form fields...")
       const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
-      console.log(`Found ${fields.length} form fields`)
+      logger.info(`Found ${fields.length} form fields`)
 
       if (fields.length === 0) {
         return { success: false, message: "No form fields found on page" }
@@ -870,11 +921,11 @@ ipcMain.handle(
 
       // 5. Build enhanced prompt
       const prompt = buildEnhancedPrompt(fields, profile, workHistory, jobMatchData)
-      console.log(`Calling ${options.provider} CLI for enhanced field mapping...`)
+      logger.info(`Calling ${options.provider} CLI for enhanced field mapping...`)
 
       // 6. Call CLI for fill instructions with skip tracking
       const instructions = await runEnhancedCli(options.provider, prompt)
-      console.log(`Got ${instructions.length} fill instructions`)
+      logger.info(`Got ${instructions.length} fill instructions`)
 
       // 7. Fill fields and track results
       let filledCount = 0
@@ -911,7 +962,7 @@ ipcMain.handle(
           `)
           if (filled) filledCount++
         } catch (err) {
-          console.warn(`Failed to fill ${instruction.selector}:`, err)
+          logger.warn(`Failed to fill ${instruction.selector}:`, err)
         }
       }
 
@@ -927,7 +978,7 @@ ipcMain.handle(
       return { success: true, data: summary }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error("Enhanced fill form error:", message)
+      logger.error("Enhanced fill form error:", message)
       return { success: false, message }
     }
   }
@@ -1144,9 +1195,6 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
 app.whenReady().then(createWindow)
 
 app.on("window-all-closed", () => {
-  if (playwrightBrowser) {
-    playwrightBrowser.close().catch(console.error)
-  }
   if (process.platform !== "darwin") {
     app.quit()
   }

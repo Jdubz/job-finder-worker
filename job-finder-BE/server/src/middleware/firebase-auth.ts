@@ -54,12 +54,50 @@ function extractBearerToken(req: Request): string | null {
 }
 
 /**
+ * Check if request is from localhost (127.0.0.1, ::1, or ::ffff:127.x.x.x).
+ * Used to allow desktop app access without auth when running on same machine.
+ *
+ * SECURITY: This check assumes Express's `trust proxy` is NOT enabled.
+ * If `trust proxy` is enabled, an attacker could spoof the client IP via headers.
+ * Always ensure `app.set('trust proxy', false)` when using localhost bypass.
+ */
+export function isLocalhostRequest(req: Request): boolean {
+  // Prefer raw socket address which is not affected by trust proxy
+  const ip = req.socket?.remoteAddress || req.ip || ''
+
+  // IPv4 localhost
+  if (ip === '127.0.0.1') return true
+  // IPv6 localhost
+  if (ip === '::1') return true
+  // IPv4-mapped IPv6 localhost (::ffff:127.x.x.x range)
+  if (/^::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
+
+  return false
+}
+
+/**
  * Session-based authentication middleware with dev token fallback.
  *
- * In production: Only session cookies are accepted
+ * In production: Only session cookies are accepted (unless localhost)
  * In development/test: Also accepts dev tokens via Bearer header for testing
+ * Localhost requests: Bypass auth for desktop app running on same machine
  */
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
+  // Localhost bypass - allows desktop app on same machine without auth
+  // IMPORTANT: Only enabled when ALLOW_LOCALHOST_BYPASS=true (disabled by default)
+  // SECURITY: Requires port to be bound to 127.0.0.1 only, and trust proxy must be disabled
+  if (env.ALLOW_LOCALHOST_BYPASS && isLocalhostRequest(req)) {
+    const user: AuthenticatedUser = {
+      uid: 'localhost-desktop',
+      email: 'desktop@localhost',
+      name: 'Desktop App',
+      // Use limited 'editor' role instead of 'admin' to reduce privilege escalation risk
+      roles: ['editor']
+    }
+    ;(req as AuthenticatedRequest).user = user
+    return next()
+  }
+
   // Machine key bypass (for internal cron or other trusted automation)
   const cronKey = req.headers['x-cron-key'] || req.headers['x-api-key']
   if (

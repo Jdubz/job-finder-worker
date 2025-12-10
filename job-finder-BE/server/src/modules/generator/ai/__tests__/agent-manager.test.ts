@@ -70,6 +70,9 @@ describe('AgentManager timeout retry logic', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
+    // Reset the runCliProvider mock to ensure fresh state
+    vi.mocked(runCliProvider).mockReset()
+
     // Set up mock config repository
     mockConfigRepo = {
       get: vi.fn(),
