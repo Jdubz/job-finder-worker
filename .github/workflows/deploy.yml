@@ -131,6 +131,9 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          BACKEND_CHANGED: ${{ needs.detect-changes.outputs.backend }}
+          WORKER_CHANGED: ${{ needs.detect-changes.outputs.worker }}
+          FORCE_ALL: ${{ github.event.inputs.force_all || 'false' }}
         run: ./scripts/deploy.sh
 
   deploy-frontend:
