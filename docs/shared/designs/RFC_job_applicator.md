@@ -1,0 +1,284 @@
+> Status: Draft
+> Owner: @jdubz
+> Last Updated: 2025-12-09
+
+# RFC: Job Applicator
+
+Electron app that fills job application forms using AI.
+
+## Problem
+
+Job-finder discovers and matches jobs. Users still manually fill applications (~10 min each).
+
+## Solution
+
+1. User pastes job application URL
+2. User navigates to form, handles login/captcha
+3. User clicks "Fill Form"
+4. App extracts form fields, sends to Claude CLI with user profile
+5. App fills fields and uploads resume
+6. User reviews and submits
+
+## Architecture
+
+```
++------------------------------------------------------+
+|  Electron Window                                     |
+|  +------------------------------------------------+  |
+|  | Toolbar: [URL] [Go] [Claude v] [Fill Form]     |  |
+|  +------------------------------------------------+  |
+|  | BrowserView (job application page)             |  |
+|  |                                                |  |
+|  +------------------------------------------------+  |
++------------------------------------------------------+
+        |                    |
+        | HTTP               | CDP
+        v                    v
++----------------+    +----------------+
+| job-finder API |    | Playwright     |
+| - profile      |    | - form fill    |
+| - resume       |    | - file upload  |
++----------------+    +----------------+
+```
+
+## Implementation
+
+### Files
+
+```
+job-applicator/
+├── package.json
+├── src/
+│   ├── main.ts        # Electron app, Playwright, CLI runner
+│   ├── preload.ts     # IPC bridge
+│   └── renderer/
+│       ├── index.html
+│       └── app.ts     # Toolbar UI
+```
+
+### Main Process (src/main.ts)
+
+Single file handles:
+- Window creation with BrowserView
+- Playwright CDP connection
+- Form extraction (inject script into page)
+- Claude CLI call for field mapping
+- Fill execution
+
+```typescript
+// Pseudocode - actual implementation ~300 lines
+
+import { app, BrowserWindow, BrowserView, ipcMain } from 'electron'
+import { chromium } from 'playwright-core'
+import { spawn } from 'child_process'
+
+app.commandLine.appendSwitch('remote-debugging-port', '9222')
+
+let browser, page
+
+app.whenReady().then(async () => {
+  const win = new BrowserWindow({ width: 1200, height: 800 })
+  const view = new BrowserView()
+  win.setBrowserView(view)
+
+  browser = await chromium.connectOverCDP('http://localhost:9222')
+})
+
+ipcMain.handle('fill-form', async () => {
+  // 1. Get profile from job-finder backend
+  const profile = await fetch('http://localhost:3000/api/config/personal-info')
+
+  // 2. Extract form fields
+  const fields = await page.evaluate(EXTRACT_FORM_SCRIPT)
+
+  // 3. Call selected CLI tool
+  const provider = getSelectedProvider() // from dropdown
+  const prompt = buildPrompt(fields, profile)
+  const instructions = await runCli(provider, prompt)
+
+  // 4. Fill fields
+  for (const { selector, value } of instructions) {
+    await page.fill(selector, value)
+  }
+
+  // 5. Upload resume
+  const resumePath = await downloadResume(profile.resumeUrl)
+  await page.setInputFiles('input[type="file"]', resumePath)
+})
+
+type CliProvider = 'claude' | 'codex' | 'gemini'
+
+function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[]> {
+  const commands = {
+    claude: ['claude', ['--print', '--output-format', 'json', prompt]],
+    codex: ['codex', ['exec', '--json', '--skip-git-repo-check', '--', prompt]],
+    gemini: ['gemini', ['-o', 'json', '--yolo', prompt]]
+  }
+  const [cmd, args] = commands[provider]
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args)
+    let output = ''
+    child.stdout.on('data', d => output += d)
+    child.on('close', code => {
+      if (code === 0) resolve(JSON.parse(output))
+      else reject(new Error(`${provider} CLI failed`))
+    })
+  })
+}
+```
+
+### Form Extraction Script
+
+Injected into page to get form structure:
+
+```javascript
+const EXTRACT_FORM_SCRIPT = `
+(() => {
+  const inputs = document.querySelectorAll('input, select, textarea')
+  return Array.from(inputs).map(el => ({
+    selector: el.id ? '#' + el.id : el.name ? '[name="' + el.name + '"]' : null,
+    type: el.type,
+    label: document.querySelector('label[for="' + el.id + '"]')?.textContent
+  })).filter(f => f.selector)
+})()
+`
+```
+
+### Claude Prompt
+
+```
+Fill this job application form.
+
+Profile:
+- Name: John Doe
+- Email: john@example.com
+- Phone: 555-1234
+- LinkedIn: linkedin.com/in/johndoe
+
+Form fields:
+[{ selector: "#email", type: "email", label: "Email" }, ...]
+
+Return JSON array:
+[{ "selector": "#email", "value": "john@example.com" }, ...]
+
+Only fill fields you're confident about. Skip cover letter fields.
+```
+
+## Phases
+
+### Phase 1: Working Prototype (3-4 days)
+- Electron + BrowserView + Playwright connection
+- Form extraction + Claude CLI + fill execution
+- Hardcoded profile for testing
+
+### Phase 2: Backend Integration (2 days)
+- Fetch profile from job-finder API
+- Download and upload resume file
+
+### Phase 3: Polish (1-2 days)
+- Error handling
+- Loading states
+
+**Total: ~7 days**
+
+## Dependencies
+
+- electron
+- playwright-core
+- One of: Claude CLI, Codex CLI, or Gemini CLI (user selects via dropdown)
+
+## Monorepo Integration
+
+### Workspace Setup
+
+Add to root `package.json`:
+```json
+"workspaces": [
+  "shared",
+  "job-finder-BE/server",
+  "job-finder-FE",
+  "job-applicator"
+]
+```
+
+### Files to Create
+
+```
+job-applicator/
+├── package.json
+├── tsconfig.json
+├── eslint.config.js      # Copy from job-finder-FE, add node globals
+├── .prettierrc.json      # Copy from job-finder-FE
+├── vitest.config.ts      # Node environment for main process tests
+└── src/
+```
+
+### CI Updates (`.github/workflows/pr-checks.yml`)
+
+Add 3 jobs (run parallel with existing jobs):
+
+```yaml
+job-applicator-lint:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with: { node-version: '20', cache: 'npm' }
+    - run: npm ci
+    - run: npm run lint --workspace job-applicator
+
+job-applicator-typecheck:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with: { node-version: '20', cache: 'npm' }
+    - run: npm ci
+    - run: npm run typecheck --workspace job-applicator
+
+job-applicator-build:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with: { node-version: '20', cache: 'npm' }
+    - run: npm ci
+    - run: npm run build --workspace job-applicator
+```
+
+### Pre-commit Hooks (`.husky/pre-commit`)
+
+Add:
+```bash
+npm run lint --workspace job-applicator
+```
+
+### Root Scripts (`package.json`)
+
+Add:
+```json
+"build:applicator": "npm run build:shared && npm run build --workspace job-applicator",
+"lint:applicator": "npm run lint --workspace job-applicator"
+```
+
+### Deployment
+
+Runs locally in dev mode, connects to prod backend (also local). No packaging or distribution needed.
+
+```bash
+# Start the app
+cd job-applicator
+npm run dev
+```
+
+Configure backend URL via environment:
+```
+JOB_FINDER_API_URL=http://localhost:3000/api
+```
+
+No changes to CI deploy workflows - this is a local dev tool.
+
+## Open Questions
+
+1. How to handle multi-page application forms? (defer to v2)
