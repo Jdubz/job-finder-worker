@@ -66,3 +66,33 @@ export const generatorAssetUploadSchema = z.object({
   path: z.string(),
   publicUrl: z.string().optional(),
 })
+
+/**
+ * Schema for a single generator document (request record with URLs)
+ * Used by job-applicator to display generated documents
+ */
+export const generatorDocumentSchema = z.object({
+  id: z.string(),
+  generateType: z.enum(["resume", "coverLetter", "both"]),
+  status: z.enum(["pending", "processing", "completed", "failed"]),
+  resumeUrl: z.string().nullable().optional(),
+  coverLetterUrl: z.string().nullable().optional(),
+  jobMatchId: z.string().nullable().optional(),
+  createdAt: timestampJsonSchema,
+  updatedAt: timestampJsonSchema.optional(),
+})
+
+/**
+ * Schema for GET /generator/job-matches/:id/documents response
+ */
+export const generatorDocumentsResponseSchema = z.object({
+  requests: z.array(generatorDocumentSchema),
+  count: z.number(),
+})
+
+/**
+ * Schema for GET /generator/requests/:id response
+ */
+export const generatorSingleDocumentResponseSchema = z.object({
+  request: generatorDocumentSchema,
+})

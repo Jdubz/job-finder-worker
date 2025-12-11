@@ -15,6 +15,8 @@ import {
   generatorStartResponseSchema,
   generatorStepResponseSchema,
   generatorAssetUploadSchema,
+  generatorDocumentsResponseSchema,
+  generatorSingleDocumentResponseSchema,
   lifecycleEventSchema,
 } from "@shared/types"
 
@@ -205,5 +207,85 @@ test.describe("API contract (shared schemas)", () => {
       const eventParse = lifecycleEventSchema.safeParse(json)
       expect(eventParse.success).toBe(true)
     }
+  })
+
+  test("API contract :: generator documents endpoints conform to shared schemas", async ({ request }) => {
+    // First create a job match to associate documents with
+    const unique = `e2e-docs-${Date.now()}`
+    const listingRes = await request.post(`${API_BASE}/job-listings`, {
+      data: {
+        url: `https://example.com/${unique}`,
+        title: "Documents Test Engineer",
+        companyName: "Docs Co",
+        description: "Test document generation schemas",
+      },
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(listingRes.ok()).toBeTruthy()
+    const listingBody = await listingRes.json()
+    const listingId = listingBody.data.listing.id
+
+    // Create a job match for this listing
+    const matchRes = await request.post(`${API_BASE}/job-matches`, {
+      data: {
+        listingId,
+        score: 85,
+        matchedSkills: ["TypeScript", "Testing"],
+      },
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(matchRes.ok()).toBeTruthy()
+    const matchBody = await matchRes.json()
+    const jobMatchId = matchBody.data.match.id
+
+    // Start a generation request linked to this job match
+    const startRes = await request.post(`${API_BASE}/generator/start`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}`, "Content-Type": "application/json" },
+      data: {
+        generateType: "resume",
+        job: { role: "Engineer", company: "Docs Co", jobDescriptionUrl: "https://example.com" },
+        jobMatchId,
+      },
+    })
+    expect(startRes.ok()).toBeTruthy()
+    const startBody = await startRes.json()
+    const requestId = startBody.data?.requestId
+
+    // Test GET /generator/job-matches/:id/documents
+    const docsRes = await request.get(`${API_BASE}/generator/job-matches/${jobMatchId}/documents`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(docsRes.ok()).toBeTruthy()
+    const docsBody = await docsRes.json()
+    const docsParse = generatorDocumentsResponseSchema.safeParse(docsBody.data)
+    expect(
+      docsParse.success,
+      `Documents response validation failed: ${!docsParse.success ? JSON.stringify(docsParse.error.format(), null, 2) : ""}`
+    ).toBe(true)
+
+    // Test GET /generator/requests/:id (single document)
+    if (requestId) {
+      const singleDocRes = await request.get(`${API_BASE}/generator/requests/${requestId}`, {
+        headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+      })
+      expect(singleDocRes.ok()).toBeTruthy()
+      const singleDocBody = await singleDocRes.json()
+      const singleDocParse = generatorSingleDocumentResponseSchema.safeParse(singleDocBody.data)
+      expect(
+        singleDocParse.success,
+        `Single document response validation failed: ${!singleDocParse.success ? JSON.stringify(singleDocParse.error.format(), null, 2) : ""}`
+      ).toBe(true)
+    }
+
+    // Also test empty documents response (different job match with no documents)
+    const emptyDocsRes = await request.get(`${API_BASE}/generator/job-matches/nonexistent-match/documents`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    expect(emptyDocsRes.ok()).toBeTruthy()
+    const emptyDocsBody = await emptyDocsRes.json()
+    const emptyDocsParse = generatorDocumentsResponseSchema.safeParse(emptyDocsBody.data)
+    expect(emptyDocsParse.success).toBe(true)
+    expect(emptyDocsBody.data.requests).toHaveLength(0)
+    expect(emptyDocsBody.data.count).toBe(0)
   })
 })

@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Documents
   getDocuments: (jobMatchId: string) => ipcRenderer.invoke("get-documents", jobMatchId),
+  openDocument: (documentPath: string) => ipcRenderer.invoke("open-document", documentPath),
   startGeneration: (options: { jobMatchId: string; type: "resume" | "coverLetter" | "both" }) =>
     ipcRenderer.invoke("start-generation", options),
   runGeneration: (options: { jobMatchId: string; type: "resume" | "coverLetter" | "both" }) =>
