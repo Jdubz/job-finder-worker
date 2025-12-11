@@ -21,9 +21,8 @@ import {
 } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { AlertCircle, Loader2, Search, FileText, Eye, Download, Building2 } from "lucide-react"
+import { AlertCircle, Loader2, Search, FileText, Building2 } from "lucide-react"
 import { ROUTES } from "@/types/routes"
-import { DocumentPreviewModal } from "./components/DocumentPreviewModal"
 import { getAbsoluteArtifactUrl } from "@/config/api"
 
 function formatDate(dateString: string): string {
@@ -56,11 +55,6 @@ export function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState<string>("updated")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-
-  // Modal state
-  const [previewOpen, setPreviewOpen] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [previewTitle, setPreviewTitle] = useState("")
 
   // Fetch documents
   useEffect(() => {
@@ -118,13 +112,6 @@ export function DocumentsPage() {
 
     setFilteredDocuments(filtered)
   }, [documents, searchQuery, sortBy, statusFilter])
-
-  const handleViewDocument = (url: string, title: string) => {
-    const fullUrl = getAbsoluteArtifactUrl(url)
-    setPreviewUrl(fullUrl)
-    setPreviewTitle(title)
-    setPreviewOpen(true)
-  }
 
   const handleDownload = (url: string, filename: string) => {
     const fullUrl = getAbsoluteArtifactUrl(url)
@@ -308,67 +295,32 @@ export function DocumentsPage() {
                       {formatDate(doc.createdAt)}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-2">
                         {doc.resumeUrl && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const resumeUrl = doc.resumeUrl as string
-                                handleViewDocument(resumeUrl, `Resume - ${doc.job.role} at ${doc.job.company}`)
-                              }}
-                              title="View Resume"
-                            >
-                              <Eye className="h-4 w-4" />
-                              <span className="sr-only">View Resume</span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const resumeUrl = doc.resumeUrl as string
-                                const artifact = doc.artifacts.find((a) => a.artifactType === "resume")
-                                handleDownload(resumeUrl, artifact?.filename || "resume.pdf")
-                              }}
-                              title="Download Resume"
-                            >
-                              <Download className="h-4 w-4" />
-                              <span className="sr-only">Download Resume</span>
-                            </Button>
-                          </>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const resumeUrl = doc.resumeUrl as string
+                              const artifact = doc.artifacts.find((a) => a.artifactType === "resume")
+                              handleDownload(resumeUrl, artifact?.filename || "resume.pdf")
+                            }}
+                          >
+                            Resume
+                          </Button>
                         )}
                         {doc.coverLetterUrl && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const coverUrl = doc.coverLetterUrl as string
-                                handleViewDocument(
-                                  coverUrl,
-                                  `Cover Letter - ${doc.job.role} at ${doc.job.company}`
-                                )
-                              }}
-                              title="View Cover Letter"
-                            >
-                              <Eye className="h-4 w-4 text-blue-500" />
-                              <span className="sr-only">View Cover Letter</span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const coverUrl = doc.coverLetterUrl as string
-                                const artifact = doc.artifacts.find((a) => a.artifactType === "cover-letter")
-                                handleDownload(coverUrl, artifact?.filename || "cover-letter.pdf")
-                              }}
-                              title="Download Cover Letter"
-                            >
-                              <Download className="h-4 w-4 text-blue-500" />
-                              <span className="sr-only">Download Cover Letter</span>
-                            </Button>
-                          </>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const coverUrl = doc.coverLetterUrl as string
+                              const artifact = doc.artifacts.find((a) => a.artifactType === "cover-letter")
+                              handleDownload(coverUrl, artifact?.filename || "cover-letter.pdf")
+                            }}
+                          >
+                            Cover Letter
+                          </Button>
                         )}
                         {!doc.resumeUrl && !doc.coverLetterUrl && (
                           <span className="text-sm text-muted-foreground">—</span>
