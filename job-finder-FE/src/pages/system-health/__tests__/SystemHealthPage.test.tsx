@@ -118,22 +118,29 @@ describe("SystemHealthPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Cron Scheduler")).toBeInTheDocument()
+      // Multiple "Running" badges may appear (cron + worker)
+      expect(screen.getAllByText("Running").length).toBeGreaterThan(0)
     })
 
-    // Multiple "Running" badges may appear (cron + worker)
-    expect(screen.getAllByText("Running").length).toBeGreaterThan(0)
     expect(screen.getByText("production")).toBeInTheDocument()
   })
 
   it("displays worker health status", async () => {
     render(<SystemHealthPage />)
 
+    // Wait for Worker card title to appear (always rendered)
     await waitFor(() => {
       expect(screen.getByText("Worker")).toBeInTheDocument()
     })
 
-    // Worker is running and reachable
-    expect(screen.getAllByText("Running").length).toBeGreaterThan(0)
+    // Wait for the Running badge to appear after data loads
+    await waitFor(
+      () => {
+        // At least one "Running" badge should appear (cron and/or worker)
+        expect(screen.getAllByText("Running").length).toBeGreaterThan(0)
+      },
+      { timeout: 3000 }
+    )
   })
 
   it("displays agent CLI status", async () => {
