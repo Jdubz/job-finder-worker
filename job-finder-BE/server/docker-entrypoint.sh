@@ -2,13 +2,17 @@
 set -e
 
 # Fix ownership of mounted volumes (runs as root initially)
-# The node user (uid 1000) needs write access to data directories
-chown -R node:node /data
+# The node user (uid 1000) needs write access to data directories.
+# Skip full chown when not needed to speed up restarts.
+if [ -n "${SKIP_CHOWN}" ] && [ "${SKIP_CHOWN}" != "false" ]; then
+  echo "Skipping chown of /data (SKIP_CHOWN=${SKIP_CHOWN})"
+else
+  find /data ! -user node -exec chown node:node {} + || true
+fi
 
-# Codex CLI auth
-# Direct bind mount from host - no seeding or chown needed.
-# Host and container share the same auth.json (UID 1000 matches).
-# Use codex-safe wrapper (flock) to prevent OAuth refresh token races.
+# Codex CLI auth (bind mounted from host; use codex-safe wrapper for flock serialization)
+# If auth.json already exists (typical for bind mounts), keep it to avoid slow reseed;
+# still fail fast if missing.
 echo "=== Codex CLI Setup ==="
 if [ -f /home/node/.codex/auth.json ]; then
     echo "✓ codex auth.json present (bind mount from host)"
@@ -20,9 +24,7 @@ else
 fi
 echo "=== End Codex Setup ==="
 
-# Gemini CLI auth
-# Direct bind mount from host - no seeding or chown needed.
-# Host and container share the same oauth_creds.json (UID 1000 matches).
+# Gemini CLI auth (bind mounted from host)
 echo "=== Gemini CLI Setup ==="
 if [ -f /home/node/.gemini/oauth_creds.json ]; then
     echo "✓ gemini oauth_creds.json present (bind mount from host)"
