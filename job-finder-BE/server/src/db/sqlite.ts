@@ -60,8 +60,21 @@ export function closeDb(): void {
  * Run a passive WAL checkpoint to ensure external writes are visible.
  * Call this before reading config that may have been modified externally (e.g., via sqlite3 CLI).
  * Passive mode does not block writers and is safe to call frequently.
+ * Throttled to run at most once per second to avoid unnecessary disk I/O.
  */
+let lastCheckpoint = 0
+const CHECKPOINT_THROTTLE_MS = 1000
+
 export function checkpointWal(): void {
   if (!db) return
-  db.pragma('wal_checkpoint(PASSIVE)')
+
+  const now = Date.now()
+  if (now - lastCheckpoint < CHECKPOINT_THROTTLE_MS) return
+  lastCheckpoint = now
+
+  try {
+    db.pragma('wal_checkpoint(PASSIVE)')
+  } catch (err) {
+    logger.warn({ err }, 'Failed to run WAL checkpoint. External DB changes may not be visible.')
+  }
 }
