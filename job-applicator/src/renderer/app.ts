@@ -11,8 +11,7 @@ import type {
 interface ElectronAPI {
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
   getUrl: () => Promise<string>
-  fillForm: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
-  fillFormEnhanced: (options: {
+  fillForm: (options: {
     provider: "claude" | "codex" | "gemini"
     jobMatchId?: string
     documentId?: string
@@ -661,33 +660,19 @@ async function fillForm() {
     setStatus(`Filling form with ${provider}...`, "loading")
     setWorkflowStep("fill", "active")
 
-    // Use enhanced fill if we have a job match selected
-    if (selectedJobMatchId) {
-      const result = await api.fillFormEnhanced({
-        provider,
-        jobMatchId: selectedJobMatchId,
-        documentId: selectedDocumentId || undefined,
-      })
+    const result = await api.fillForm({
+      provider,
+      jobMatchId: selectedJobMatchId || undefined,
+      documentId: selectedDocumentId || undefined,
+    })
 
-      if (result.success && result.data) {
-        renderFillResults(result.data)
-        setStatus(`Filled ${result.data.filledCount}/${result.data.totalFields} fields`, "success")
-        setWorkflowStep("fill", "completed")
-        setWorkflowStep("submit", "active")
-      } else {
-        setStatus(result.message || "Fill failed", "error")
-      }
+    if (result.success && result.data) {
+      renderFillResults(result.data)
+      setStatus(`Filled ${result.data.filledCount}/${result.data.totalFields} fields`, "success")
+      setWorkflowStep("fill", "completed")
+      setWorkflowStep("submit", "active")
     } else {
-      // Fall back to basic fill
-      const result = await api.fillForm(provider)
-
-      if (result.success) {
-        setStatus(result.message, "success")
-        setWorkflowStep("fill", "completed")
-        setWorkflowStep("submit", "active")
-      } else {
-        setStatus(result.message, "error")
-      }
+      setStatus(result.message || "Fill failed", "error")
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)

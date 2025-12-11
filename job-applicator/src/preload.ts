@@ -11,9 +11,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getUrl: () => ipcRenderer.invoke("get-url"),
 
   // Form filling
-  fillForm: (provider: "claude" | "codex" | "gemini") => ipcRenderer.invoke("fill-form", provider),
-  fillFormEnhanced: (options: { provider: "claude" | "codex" | "gemini"; jobMatchId?: string; documentId?: string }) =>
-    ipcRenderer.invoke("fill-form-enhanced", options),
+  fillForm: (options: { provider: "claude" | "codex" | "gemini"; jobMatchId?: string; documentId?: string }) =>
+    ipcRenderer.invoke("fill-form", options),
 
   // File upload
   uploadResume: (options?: { documentId?: string; type?: "resume" | "coverLetter" }) =>

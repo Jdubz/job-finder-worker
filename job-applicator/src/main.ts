@@ -32,9 +32,7 @@ ipcMain.on("renderer-log", (_event: unknown, level: string, args: unknown[]) => 
 // Import shared types and utilities
 import type {
   CliProvider,
-  ContentItem,
   FormField,
-  FillInstruction,
   EnhancedFillInstruction,
   FormFillSummary,
   JobExtraction,
@@ -45,7 +43,6 @@ import { getCliCommand } from "./cli-config.js"
 import type { JobMatchWithListing } from "@shared/types"
 import {
   resolveDocumentPath,
-  buildPrompt,
   buildPromptFromProfileText,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
@@ -54,9 +51,7 @@ import {
 } from "./utils.js"
 // Typed API client
 import {
-  fetchPersonalInfo,
   fetchApplicatorProfile,
-  fetchContentItems,
   fetchJobMatches,
   fetchJobMatch,
   findJobMatchByUrl,
@@ -268,95 +263,6 @@ ipcMain.handle("get-url", async (): Promise<string> => {
   return browserView.webContents.getURL()
 })
 
-// Fill form with AI
-ipcMain.handle(
-  "fill-form",
-  async (_event: IpcMainInvokeEvent, provider: CliProvider): Promise<{ success: boolean; message: string }> => {
-    try {
-      if (!browserView) throw new Error("BrowserView not initialized")
-
-      // 1. Get profile and work history from job-finder backend using typed API client
-      logger.info("Fetching profile from backend...")
-      const [profileResult, contentResult] = await Promise.allSettled([
-        fetchPersonalInfo(),
-        fetchContentItems({ limit: 100 }) // Get all content for complete work history
-      ])
-
-      // Profile is required
-      if (profileResult.status === "rejected") {
-        const errorMsg = getUserFriendlyErrorMessage(profileResult.reason, logger)
-        throw new Error(`Failed to fetch profile: ${errorMsg}`)
-      }
-      const profile = profileResult.value
-
-      // Validate required profile fields
-      if (!profile.name || !profile.email) {
-        throw new Error("Profile missing required fields (name, email). Please configure your profile first.")
-      }
-
-      // Parse work history (optional - don't fail if unavailable)
-      let workHistory: ContentItem[] = []
-      if (contentResult.status === "fulfilled") {
-        workHistory = contentResult.value
-        logger.info(`Fetched ${workHistory.length} work history items`)
-      } else {
-        logger.warn("Work history unavailable, continuing with profile only")
-      }
-
-      // 2. Extract form fields from page
-      logger.info("Extracting form fields...")
-      const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
-      logger.info(`Found ${fields.length} form fields`)
-
-      if (fields.length === 0) {
-        return { success: false, message: "No form fields found on page" }
-      }
-
-      // 3. Build prompt and call CLI
-      logger.info(`Calling ${provider} CLI for field mapping...`)
-      const prompt = buildPrompt(fields, profile, workHistory)
-      const instructions = await runCli(provider, prompt)
-      logger.info(`Got ${instructions.length} fill instructions`)
-
-      // 4. Fill fields using executeJavaScript
-      logger.info("Filling form fields...")
-      let filledCount = 0
-      for (const instruction of instructions) {
-        try {
-          const safeSelector = JSON.stringify(instruction.selector)
-          const safeValue = JSON.stringify(instruction.value)
-          const filled = await browserView.webContents.executeJavaScript(`
-            (() => {
-              const el = document.querySelector(${safeSelector});
-              if (!el) return false;
-              if (el.tagName.toLowerCase() === 'select') {
-                el.value = ${safeValue};
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              } else {
-                el.value = ${safeValue};
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              }
-              return true;
-            })()
-          `)
-          if (filled) filledCount++
-        } catch (err) {
-          logger.warn(`Failed to fill ${instruction.selector}:`, err)
-        }
-      }
-
-      return {
-        success: true,
-        message: `Filled ${filledCount}/${instructions.length} fields`,
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.error("Fill form error:", message)
-      return { success: false, message }
-    }
-  }
-)
 
 // Helper function to set files on a file input using Electron's debugger API
 async function setFileInputFiles(webContents: WebContents, selector: string, filePaths: string[]): Promise<void> {
@@ -398,6 +304,163 @@ async function setFileInputFiles(webContents: WebContents, selector: string, fil
       logger.warn("Failed to detach debugger, this may be expected:", err)
     }
   }
+}
+
+/**
+ * Robust form field filling that works with React/Vue/Angular controlled inputs.
+ *
+ * The problem: Modern frameworks like React intercept the native `value` setter.
+ * Simply setting `el.value = "x"` only updates the DOM, not React's internal state.
+ * When the user interacts with the form, React re-renders using its state (which is
+ * still empty), wiping out all manually-set values.
+ *
+ * The solution: Use the native HTMLInputElement value setter to bypass React's
+ * interception, then dispatch proper events to notify the framework of the change.
+ *
+ * References:
+ * - https://coryrylan.com/blog/trigger-input-updates-with-react-controlled-inputs
+ * - https://github.com/facebook/react/issues/1152
+ */
+async function fillFormField(
+  webContents: WebContents,
+  selector: string,
+  value: string,
+  fieldType?: string
+): Promise<boolean> {
+  const safeSelector = JSON.stringify(selector)
+  const safeValue = JSON.stringify(value)
+
+  // Handle checkboxes and radio buttons differently
+  if (fieldType === "checkbox" || fieldType === "radio") {
+    return await webContents.executeJavaScript(`
+      (() => {
+        const el = document.querySelector(${safeSelector});
+        if (!el) return false;
+
+        const shouldBeChecked = ${safeValue}.toLowerCase() === 'true' ||
+                               ${safeValue}.toLowerCase() === 'yes' ||
+                               ${safeValue} === '1';
+
+        if (el.checked !== shouldBeChecked) {
+          // Use native setter for checked property
+          const nativeCheckedSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'checked'
+          )?.set;
+
+          if (nativeCheckedSetter) {
+            nativeCheckedSetter.call(el, shouldBeChecked);
+          } else {
+            el.checked = shouldBeChecked;
+          }
+
+          // Dispatch click and change events
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        return true;
+      })()
+    `)
+  }
+
+  // Handle select elements
+  if (fieldType === "select" || fieldType === "select-one" || fieldType === "select-multiple") {
+    return await webContents.executeJavaScript(`
+      (() => {
+        const el = document.querySelector(${safeSelector});
+        if (!el || el.tagName.toLowerCase() !== 'select') return false;
+
+        // Find matching option (case-insensitive, trimmed)
+        const targetValue = ${safeValue}.toLowerCase().trim();
+        let matchedValue = null;
+
+        for (const opt of el.options) {
+          if (opt.value.toLowerCase().trim() === targetValue ||
+              opt.textContent?.toLowerCase().trim() === targetValue) {
+            matchedValue = opt.value;
+            break;
+          }
+        }
+
+        if (matchedValue === null) {
+          // Try partial match if exact match not found
+          for (const opt of el.options) {
+            if (opt.value.toLowerCase().includes(targetValue) ||
+                opt.textContent?.toLowerCase().includes(targetValue)) {
+              matchedValue = opt.value;
+              break;
+            }
+          }
+        }
+
+        if (matchedValue !== null) {
+          el.value = matchedValue;
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return true;
+        }
+
+        // If still no match, try setting directly
+        el.value = ${safeValue};
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      })()
+    `)
+  }
+
+  // Handle text inputs, textareas, and other input types
+  // This is the critical fix for React controlled inputs
+  return await webContents.executeJavaScript(`
+    (() => {
+      const el = document.querySelector(${safeSelector});
+      if (!el) return false;
+
+      const tagName = el.tagName.toLowerCase();
+      const isInput = tagName === 'input';
+      const isTextarea = tagName === 'textarea';
+
+      if (!isInput && !isTextarea) return false;
+
+      // Focus the element first (important for some frameworks)
+      el.focus();
+
+      // Get the native value setter to bypass React's interception
+      // React overloads the value setter to track state changes, but we need
+      // to bypass that to set the value directly on the DOM element
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+      )?.set;
+      const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, 'value'
+      )?.set;
+
+      // Use the appropriate native setter
+      if (isInput && nativeInputValueSetter) {
+        nativeInputValueSetter.call(el, ${safeValue});
+      } else if (isTextarea && nativeTextAreaValueSetter) {
+        nativeTextAreaValueSetter.call(el, ${safeValue});
+      } else {
+        // Fallback to direct assignment
+        el.value = ${safeValue};
+      }
+
+      // Dispatch events to notify React/Vue/Angular of the change
+      // InputEvent is more reliable than Event for modern frameworks
+      el.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        cancelable: true,
+        inputType: 'insertText',
+        data: ${safeValue}
+      }));
+
+      // Also dispatch change event for frameworks that listen to it
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Blur to trigger validation and ensure the value is committed
+      el.blur();
+
+      return true;
+    })()
+  `)
 }
 
 // Upload resume/document to form using Electron's debugger API (CDP)
@@ -817,10 +880,10 @@ ipcMain.handle(
   }
 )
 
-// Enhanced form fill with EEO, job match context, and results tracking
-// Uses the optimized /api/applicator/profile endpoint for pre-formatted profile data
+// Fill form with AI using optimized profile endpoint
+// Includes EEO data, job match context, and results tracking
 ipcMain.handle(
-  "fill-form-enhanced",
+  "fill-form",
   async (
     _event: IpcMainInvokeEvent,
     options: { provider: CliProvider; jobMatchId?: string; documentId?: string }
@@ -874,9 +937,17 @@ ipcMain.handle(
       const instructions = await runEnhancedCli(options.provider, prompt)
       logger.info(`Got ${instructions.length} fill instructions`)
 
-      // 7. Fill fields and track results
+      // 7. Fill fields using robust React-compatible method and track results
       let filledCount = 0
       const skippedFields: Array<{ label: string; reason: string }> = []
+
+      // Create a map of selectors to field types for proper handling
+      const fieldTypeMap = new Map<string, string>()
+      for (const field of fields) {
+        if (field.selector) {
+          fieldTypeMap.set(field.selector, field.type)
+        }
+      }
 
       for (const instruction of instructions) {
         if (instruction.status === "skipped") {
@@ -890,23 +961,13 @@ ipcMain.handle(
         if (!instruction.value) continue
 
         try {
-          const safeSelector = JSON.stringify(instruction.selector)
-          const safeValue = JSON.stringify(instruction.value)
-          const filled = await browserView.webContents.executeJavaScript(`
-            (() => {
-              const el = document.querySelector(${safeSelector});
-              if (!el) return false;
-              if (el.tagName.toLowerCase() === 'select') {
-                el.value = ${safeValue};
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              } else {
-                el.value = ${safeValue};
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              }
-              return true;
-            })()
-          `)
+          const fieldType = fieldTypeMap.get(instruction.selector)
+          const filled = await fillFormField(
+            browserView.webContents,
+            instruction.selector,
+            instruction.value,
+            fieldType
+          )
           if (filled) filledCount++
         } catch (err) {
           logger.warn(`Failed to fill ${instruction.selector}:`, err)
@@ -939,7 +1000,7 @@ ipcMain.handle(
  *   is a string containing the actual JSON (escaped). Must parse wrapper first, then parse result.
  * - Codex/Gemini: Return raw JSON arrays directly.
  *
- * The runCli and runEnhancedCli functions handle these format differences automatically.
+ * The CLI wrapper functions handle these format differences automatically.
  */
 function runCliCommon<T>(
   provider: CliProvider,
@@ -1048,26 +1109,6 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
       }
     },
     "job-extraction"
-  )
-}
-
-function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[]> {
-  return runCliCommon<FillInstruction[]>(
-    provider,
-    prompt,
-    (stdout) => {
-      const parsed = parseCliArrayOutput(stdout)
-      if (!Array.isArray(parsed)) {
-        throw new Error("CLI did not return an array")
-      }
-      for (const item of parsed as Array<Record<string, unknown>>) {
-        if (typeof item.selector !== "string" || typeof item.value !== "string") {
-          throw new Error("CLI returned invalid FillInstruction format")
-        }
-      }
-      return parsed as FillInstruction[]
-    },
-    "form-fill-basic"
   )
 }
 
