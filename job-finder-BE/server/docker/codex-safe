@@ -16,7 +16,8 @@ LOCK_FILE="${CODEX_LOCK_FILE:-/home/node/.codex/.refresh.lock}"
 LOCK_TIMEOUT="${CODEX_LOCK_TIMEOUT:-300}"  # 5 minute timeout
 
 # Ensure lock file exists (flock needs it)
-touch "$LOCK_FILE" 2>/dev/null || true
+# Let touch fail explicitly so permission issues are visible
+touch "$LOCK_FILE"
 
 # Acquire exclusive lock, run codex, release on exit
 exec flock --timeout "$LOCK_TIMEOUT" "$LOCK_FILE" codex "$@"

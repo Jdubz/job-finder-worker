@@ -32,34 +32,16 @@ else
 fi
 echo "=== End Codex Setup ==="
 
-# Gemini CLI auth: mount ~/.gemini from host (contains OAuth tokens for Google account)
-# The mount must be read-write so gemini can refresh expired tokens
-GEMINI_REQUIRED=${GEMINI_REQUIRED:-false}
+# Gemini CLI auth
+# Direct bind mount from host - no seeding or chown needed.
+# Host and container share the same oauth_creds.json (UID 1000 matches).
 echo "=== Gemini CLI Setup ==="
-echo "GEMINI_HOME=${GEMINI_HOME:-/home/node/.gemini}"
-
-if [ -d "/home/node/.gemini" ]; then
-    echo "Gemini config directory: EXISTS"
-    ls -la /home/node/.gemini/ 2>/dev/null || true
-
-    if [ -f "/home/node/.gemini/oauth_creds.json" ]; then
-        echo "oauth_creds.json: EXISTS"
-        echo "Checking gemini auth status..."
-        if ! gosu node gemini auth status 2>/dev/null; then
-            echo "WARNING: Gemini auth status check failed (token may need refresh)"
-            [ "$GEMINI_REQUIRED" = "true" ] && exit 1
-        else
-            echo "✓ Gemini authenticated"
-        fi
-    else
-        echo "WARNING: /home/node/.gemini/oauth_creds.json not found"
-        [ "$GEMINI_REQUIRED" = "true" ] && exit 1
-    fi
+if [ -f /home/node/.gemini/oauth_creds.json ]; then
+    echo "✓ gemini oauth_creds.json present (bind mount from host)"
 else
-    echo "WARNING: /home/node/.gemini directory not mounted"
-    echo "AI features using Gemini CLI will not work"
-    echo "Mount your ~/.gemini folder to /home/node/.gemini"
-    [ "$GEMINI_REQUIRED" = "true" ] && exit 1
+    echo "ERROR: gemini oauth_creds.json not found"
+    echo "  Ensure ~/.gemini is bind-mounted from host"
+    exit 1
 fi
 echo "=== End Gemini Setup ==="
 
