@@ -3,7 +3,7 @@ import type { Socket } from 'net'
 import { broadcastLifecycleEvent, setLifecyclePhase } from './lifecycle.stream'
 import { logger } from '../../logger'
 
-export function createDrainManager(server: Server) {
+export function createDrainManager(server: Server, timeoutMs = 15000) {
   const sockets = new Set<Socket>()
 
   server.on('connection', (socket) => {
@@ -11,7 +11,7 @@ export function createDrainManager(server: Server) {
     socket.on('close', () => sockets.delete(socket))
   })
 
-  const drain = async (timeoutMs = 15000) => {
+  const drain = async () => {
     setLifecyclePhase('draining', { openSockets: sockets.size })
 
     // Stop accepting new connections

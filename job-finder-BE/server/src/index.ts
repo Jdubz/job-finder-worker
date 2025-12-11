@@ -22,7 +22,7 @@ async function main() {
   // Attach worker WebSocket for bi-directional commands/events
   initWorkerSocket(server)
 
-  const { drain } = createDrainManager(server)
+  const { drain } = createDrainManager(server, env.DRAIN_TIMEOUT_MS)
 
   const shutdown = async (reason: string) => {
     logger.info({ reason }, 'Shutting down Job Finder API')

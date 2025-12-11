@@ -21,6 +21,9 @@ const EnvSchema = z.object({
   WORKER_WS_TOKEN: z.string().optional(),
   WORKER_URL: z.string().default('http://worker:5555'),
 
+  // Graceful shutdown
+  DRAIN_TIMEOUT_MS: z.coerce.number().positive().int().default(15000),
+
   // Log rotation support
   LOG_DIR: z.string().default('/logs'),
   LOG_ROTATE_MAX_BYTES: z.coerce.number().positive().default(100 * 1024 * 1024),

@@ -3,17 +3,27 @@ set -e
 
 # Fix ownership of mounted volumes (runs as root initially)
 # The node user (uid 1000) needs write access to data directories
-chown -R node:node /data
+# Skip if already owned to reduce restart time on large volumes
+if [ -n "${SKIP_CHOWN}" ] && [ "${SKIP_CHOWN}" != "false" ]; then
+  echo "Skipping chown of /data (SKIP_CHOWN=${SKIP_CHOWN})"
+else
+  find /data ! -user node -exec chown node:node {} + || true
+fi
 
 # Codex CLI auth: always reseed runtime volume from read-only seed on start.
 echo "=== Codex CLI Setup ==="
 echo "Syncing codex seed into runtime volume..."
-# The codex runtime lives on a named volume; deleting the mountpoint can fail with
-# 'Device or resource busy' and crash the container. Clear contents instead.
 mkdir -p /home/node/.codex
-find /home/node/.codex -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-cp -a /codex-seed/. /home/node/.codex/
-chown -R node:node /home/node/.codex
+if [ -f /home/node/.codex/auth.json ]; then
+    echo "Codex auth already present; skipping reseed"
+else
+    echo "Reseeding Codex auth..."
+    # The codex runtime lives on a named volume; deleting the mountpoint can fail with
+    # 'Device or resource busy' and crash the container. Clear contents instead.
+    find /home/node/.codex -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    cp -a /codex-seed/. /home/node/.codex/
+    chown -R node:node /home/node/.codex
+fi
 if [ -f /home/node/.codex/auth.json ]; then
     echo "✓ codex auth.json present"
 else
