@@ -8,7 +8,6 @@ import { ApiHttpError } from './api-error'
 import { SESSION_COOKIE } from '../routes/auth.routes'
 
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
-const CRON_API_KEY = env.CRON_API_KEY
 
 const isTestEnv = () => process.env.NODE_ENV === 'test'
 const buildBypassUser = (): AuthenticatedUser => ({
@@ -21,6 +20,29 @@ const buildBypassUser = (): AuthenticatedUser => ({
 function tryLocalhostBypass(req: Request): AuthenticatedUser | null {
   if (isTestEnv()) return null
   if (!isLocalhostRequest(req)) return null
+
+  const host = req.headers.host ?? ''
+  const origin = req.headers.origin ?? ''
+
+  // If headers are present, ensure they align with local access; otherwise allow.
+  const hostProvided = host.length > 0
+  const originProvided = origin.length > 0
+
+  const hostIsLocal =
+    /^localhost(?::\d+)?$/i.test(host) ||
+    /^127\.0\.0\.1(?::\d+)?$/.test(host) ||
+    /^\[::1\](?::\d+)?$/i.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(host)
+
+  const originIsLocal =
+    /^https?:\/\/localhost(?::\d+)?$/i.test(origin) ||
+    /^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin) ||
+    /^https?:\/\/\[::1\](?::\d+)?$/i.test(origin) ||
+    /^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin)
+
+  const headersConsistent = (!hostProvided || hostIsLocal) && (!originProvided || originIsLocal)
+  if (!headersConsistent) return null
+
   return buildBypassUser()
 }
 
@@ -111,23 +133,6 @@ export function isLocalhostRequest(req: Request): boolean {
  * Localhost requests: Bypass auth for desktop app running on same machine
  */
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
-  // Machine key bypass (for internal cron or other trusted automation)
-  const cronKey = req.headers['x-cron-key'] || req.headers['x-api-key']
-  if (
-    typeof CRON_API_KEY === 'string' &&
-    CRON_API_KEY.length > 0 &&
-    typeof cronKey === 'string' &&
-    cronKey === CRON_API_KEY
-  ) {
-    const user: AuthenticatedUser = {
-      uid: 'cron-service',
-      email: 'cron@system.local',
-      roles: ['admin']
-    }
-    ;(req as AuthenticatedRequest).user = user
-    return next()
-  }
-
   // In development/test mode, check for dev tokens first
   if (IS_DEVELOPMENT || isTestEnv()) {
     const bearerToken = extractBearerToken(req)
