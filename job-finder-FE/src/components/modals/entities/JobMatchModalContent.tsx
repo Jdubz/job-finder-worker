@@ -219,10 +219,7 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
                 <div className="text-2xl font-bold text-green-600">{localMatch.matchScore}%</div>
                 <div className="text-xs text-muted-foreground">Overall Match</div>
               </div>
-              <div className="text-center p-3 bg-secondary rounded-lg">
-                <div className="text-2xl font-bold text-primary">{localMatch.experienceMatch}%</div>
-                <div className="text-xs text-muted-foreground">Experience Match</div>
-              </div>
+              {/* Experience match removed – match_score is the single quality metric */}
             </div>
 
             {localMatch.matchReasons && localMatch.matchReasons.length > 0 && (

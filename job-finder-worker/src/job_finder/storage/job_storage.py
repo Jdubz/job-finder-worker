@@ -70,15 +70,9 @@ class JobStorage:
         return flattened
 
     def _parse_experience_match(self, value: Any, fallback: int) -> int:
+        """Deprecated: experience_match is no longer used. Preserve numeric if clean, else fallback."""
         if isinstance(value, (int, float)):
             return int(value)
-        if isinstance(value, str):
-            digits = "".join(ch for ch in value if ch.isdigit())
-            if digits:
-                try:
-                    return int(digits)
-                except ValueError:
-                    return fallback
         return fallback
 
     def _find_existing_by_listing_id(
